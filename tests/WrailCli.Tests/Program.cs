@@ -17,6 +17,12 @@ using WidgetRail.WidgetSdk;
 using WidgetRail.WindowsAppLibraryProvider;
 using WidgetRail.EmbeddedMediaAdapterConformance;
 
+if (args is ["--native-dev-smoke", var nativeExecutable, var nativeInstallation, var nativeOutput])
+{
+    await NativeDevSmoke(nativeExecutable, nativeInstallation, nativeOutput);
+    return 0;
+}
+
 if (args is ["--doctor-stalled-probe", var probeMarker])
 {
     // Publish readiness only after the writer has closed. Seeing a nonempty
@@ -24,6 +30,13 @@ if (args is ["--doctor-stalled-probe", var probeMarker])
     var stagedMarker = probeMarker + ".tmp";
     await File.WriteAllTextAsync(stagedMarker, Environment.ProcessId.ToString());
     File.Move(stagedMarker, probeMarker);
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+    return 0;
+}
+
+if (args is ["--dev-owned-fixture", var jobArgument])
+{
+    WidgetRail.OverlayFrontend.WinUI.DevelopmentJobEnrollment.Join(jobArgument["--development-job-name=".Length..]);
     await Task.Delay(Timeout.InfiniteTimeSpan);
     return 0;
 }
@@ -44,8 +57,9 @@ if (args is ["--dev-persistent-child", var descendantPath, ..])
     return 0;
 }
 
-if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
+if (args.Any(value => value.StartsWith("--development-catalog-root=", StringComparison.Ordinal)))
 {
+    WidgetRail.OverlayFrontend.WinUI.DevelopmentJobEnrollment.Join(DevelopmentArgument(args, "--development-job-name"));
     if (args.Contains("--development-probe-only", StringComparer.Ordinal) &&
         args.Contains("--development-inspector", StringComparer.Ordinal))
         throw new InvalidOperationException("Hidden readiness probe must not open an inspector.");
@@ -108,6 +122,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Doctor cancels and reclaims a stalled SDK probe", DoctorCancelsProbe),
     ("Widget inspection validates bytes without installing or executing", InspectWorkflow),
     ("Development host discovery supports installed CLI layout", InstalledDevHostDiscovery),
+    ("Development activation owns an exact named job and rejects reuse", DevNamedJobOwnership),
+    ("Development arguments preserve isolated profiles and exact readiness", DevLaunchArguments),
+    ("Development ownership rejects identity mismatch and never kills an unowned process", DevOwnershipFailures),
     ("Development transcripts are bounded and preserve console output", DevTranscriptWorkflow),
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
@@ -129,6 +146,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Remote theme installation requires and verifies a pinned release asset", ThemeRemoteInstall),
     ("Validate accepts a scaffolded widget", ValidateScaffold),
     ("Validate rejects unsafe WRSS", ValidateRejectsUnsafeWrss),
+    ("Validate reports WinUI layout guidance including imported styles", ValidateWinUiLayoutGuidance),
     ("Validate rejects malformed manifest", ValidateRejectsManifest),
     ("Dev discovers only bounded declared source files", DevSourceDiscoveryIsScoped),
     ("Dev package watching matches bounded pack inputs and new directories", DevPackageWatchingIsComplete),
@@ -141,6 +159,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dev Job Object reclaims persistent child and grandchild processes", DevJobReclaimsDescendants),
     ("Dev retains last good and cleans its process tree on cancellation", DevRetainsAndCleans),
     ("Render previews a valid snapshot", RenderSnapshot),
+    ("Render rejects unsupported WinUI declarations before writing output", RenderRejectsLegacyPresentation),
     ("Render rejects assembly execution and unbounded snapshot inputs", RenderFailsClosed),
     ("Scenario manifests are bounded and isolated execution is declared", ScenarioPreviewTests.Run),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
@@ -518,12 +537,12 @@ static async Task DoctorWorkflow()
     }
     output.GetStringBuilder().Clear();
     Assert.Equal(0, await DoctorCommand.RunAsync([temp.Path], output, default,
-        (_, _) => Task.FromResult(new SdkProbeResult(true, "10.0.302\r\n")), _ => "test-host"));
+        (_, _) => Task.FromResult(new SdkProbeResult(true, "10.0.302\r\n")), _ => FakeDevHostActivation.Target));
     Assert.Contains("10.0.302", output.ToString());
     Assert.True(!Directory.EnumerateFileSystemEntries(temp.Path).Any(), "Doctor wrote to the project.");
     output.GetStringBuilder().Clear();
     Assert.Equal(1, await DoctorCommand.RunAsync([temp.Path], output, default,
-        (_, _) => Task.FromResult(new SdkProbeResult(true, "7.0.400")), _ => "test-host"));
+        (_, _) => Task.FromResult(new SdkProbeResult(true, "7.0.400")), _ => FakeDevHostActivation.Target));
     Assert.Equal(2, (await RunCli("doctor", "--unknown")).Code);
 }
 
@@ -597,16 +616,214 @@ static Task InstalledDevHostDiscovery()
     var root = Path.Combine(temp.Path, "app");
     var cli = Path.Combine(root, "tools", "wrail");
     Directory.CreateDirectory(cli);
-    foreach (var file in new[] { "OverlayHost.exe", "widget-catalog.json", "runtime/Bridge/WidgetBridge.exe", "runtime/WidgetWorkerHost/WidgetWorkerHost.exe" })
+    foreach (var file in new[] { DevHostLocator.FrontendExecutable, "widget-catalog.json", "runtime/Bridge/WidgetBridge.exe", "runtime/WidgetWorkerHost/WidgetWorkerHost.exe" })
     {
         var path = Path.Combine(root, file);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, "fixture");
     }
-    Assert.Equal(Path.Combine(root, "OverlayHost.exe"), DevHostLocator.Resolve(null, "Debug", [cli]));
+    var executable = Path.Combine(root, DevHostLocator.FrontendExecutable);
+    var host = DevHostLocator.Resolve(null, null, [cli], () => throw new Exception("Colocated CLI must use its own installation."));
+    Assert.Equal(executable, host.ExecutablePath);
+    Assert.Equal(root, host.InstallationRoot);
+    Assert.Equal(executable, DevHostLocator.Resolve(null, root, [], () => null).ExecutablePath);
+    Assert.Equal(executable, DevHostLocator.Resolve(null, null, [], () => root).ExecutablePath);
+    Assert.Equal(root, DevHostLocator.Resolve(executable, null, [], () => null).InstallationRoot);
+    var debug = Path.Combine(temp.Path, "debug", DevHostLocator.FrontendExecutable);
+    Directory.CreateDirectory(Path.GetDirectoryName(debug)!);
+    File.WriteAllText(debug, "debug fixture");
+    var explicitHost = DevHostLocator.Resolve(debug, root, [], () => throw new Exception("Explicit host must bypass installation discovery."));
+    Assert.Equal(debug, explicitHost.ExecutablePath);
+    Assert.Equal(root, explicitHost.InstallationRoot);
+    try { DevHostLocator.Resolve("WidgetRail_fixture!App", root); throw new Exception("AUMID was accepted as an executable."); }
+    catch (CliUsageException exception) { Assert.Contains("path to OverlayFrontend.WinUI.exe", exception.Message); }
+    try { DevHostLocator.Resolve(Path.Combine(root, "OverlayHost.exe"), root); throw new Exception("Old renderer was accepted."); }
+    catch (CliUsageException exception) { Assert.Contains("path to OverlayFrontend.WinUI.exe", exception.Message); }
+    try { DevHostLocator.Resolve(null, null, [], () => null); throw new Exception("Missing host was accepted."); }
+    catch (CliUsageException exception) { Assert.Contains("host was not found", exception.Message); }
+    try { DevHostLocator.Resolve(null, null, [], () => Path.Combine(temp.Path, "missing")); throw new Exception("Stale installation was accepted."); }
+    catch (CliUsageException exception) { Assert.Contains("missing regular file", exception.Message); }
     File.Delete(Path.Combine(root, "runtime", "Bridge", "WidgetBridge.exe"));
-    try { DevHostLocator.Resolve(null, "Debug", [cli]); throw new Exception("Incomplete host was accepted."); }
+    try { DevHostLocator.Resolve(null, null, [cli], () => root); throw new Exception("Incomplete host was accepted."); }
     catch (CliUsageException exception) { Assert.Contains("WidgetBridge.exe", exception.Message); }
+    return Task.CompletedTask;
+}
+static async Task NativeDevSmoke(string executable, string installation, string evidence)
+{
+    evidence = Path.GetFullPath(evidence);
+    if (Directory.Exists(evidence)) throw new InvalidOperationException("Choose a fresh native smoke evidence directory.");
+    Directory.CreateDirectory(evidence);
+    var checks = new List<string>();
+    var trees = new Dictionary<string, Dictionary<int, string>>();
+    var target = DevHostLocator.Resolve(executable, Path.GetFullPath(installation));
+    using var temp = new TemporaryDirectory();
+    var source = Path.Combine(temp.Path, "NativeDevPanel");
+    var package = Path.Combine(temp.Path, "package");
+    DevSession? session = null;
+    Task? run = null;
+    Exception? failure = null;
+    using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+    var outputBuffer = new StringWriter(); var errorBuffer = new StringWriter();
+    var output = TextWriter.Synchronized(outputBuffer); var error = TextWriter.Synchronized(errorBuffer);
+    string Out() { lock (output) return outputBuffer.ToString(); }
+    string Error() { lock (error) return errorBuffer.ToString(); }
+    void Check(bool condition, string text) { Assert.True(condition, text); checks.Add(text); Console.WriteLine("PASS " + text); }
+    Dictionary<int, string> Actors(IEnumerable<int> ids) => ids.ToDictionary(id => id, id => { using var process = Process.GetProcessById(id); return process.ProcessName; });
+    async Task Ready(Func<bool> expected)
+    {
+        await WaitUntilAsync(() => expected() || run?.IsCompleted == true || Error().Contains("No last-good", StringComparison.Ordinal), TimeSpan.FromSeconds(45));
+        if (!expected()) throw new InvalidOperationException("Development session did not reach the expected state. " + Error());
+    }
+    try
+    {
+        Check((await RunCli("new", "widget", "NativeDevPanel", "--output", source, "--id", "dev.test.native-smoke", "--publisher", "dev.test")).Code == 0,
+            "created isolated permission-free synthetic widget");
+        await PrepareDevPackageDirectoryAsync(source, package);
+        var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(Path.Combine(temp.Path, "probe-catalog"));
+        var packed = await DevGenerationBuilder.PrepareAsync(DevWidgetSource.Discover(package), Path.Combine(temp.Path, "probe-build"), "Release",
+            TimeSpan.FromSeconds(90), output, error, cancel.Token);
+        var installed = await catalog.InstallAsync(packed.PackagePath, cancel.Token);
+        await catalog.SetEnabledAsync(installed.Id, true, cancel.Token);
+        var catalogPath = Path.Combine(temp.Path, "probe-catalog");
+        var handshake = DevReadyHandshake.Create(Path.Combine(temp.Path, "probe"), catalogPath, DevWidgetIdentity.FromManifest(packed.Manifest));
+        using (var probe = await DevHostProcess.StartAsync(target,
+            DevSession.HostArguments(target, catalogPath, Path.Combine(temp.Path, "probe-profile"), handshake, true, false),
+            handshake.Nonce, TimeSpan.FromSeconds(20), new WindowsDevHostActivation(), cancel.Token))
+        {
+            await handshake.WaitAsync(probe.Process, TimeSpan.FromSeconds(20), cancel.Token);
+            Check(DevNativeWindows.VisibleTitles(probe.Id).Count == 0, "directly launched hidden probe admits the exact Visible snapshot without a visible window");
+            await File.WriteAllTextAsync(Path.Combine(evidence, "probe-ready.json"), JsonSerializer.Serialize(new { processId = probe.Id }));
+            await WaitUntilAsync(() => File.Exists(Path.Combine(evidence, "probe-observed")), TimeSpan.FromSeconds(60));
+            trees["probe"] = Actors(probe.GetOwnedProcessIds());
+            Check(trees["probe"].Values.Contains("WidgetBridge") && trees["probe"].Values.Contains("WidgetWorkerHost"), "hidden probe owns real Bridge and widget worker descendants");
+            Check((await probe.StopAsync(TimeSpan.FromSeconds(5))).Reclaimed, "hidden probe job reaches zero active processes");
+        }
+        foreach (var id in trees["probe"].Keys) AssertProcessExited(id);
+        var activation = new ControlledNativeDevActivation();
+        session = new DevSession(DevWidgetSource.Discover(package), target, "Release", TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(150),
+            output, error, readyTimeout: TimeSpan.FromSeconds(20), inspect: true, activation: activation);
+        run = session.RunAsync(cancel.Token);
+        await Ready(() => session.ActiveHostProcessId.HasValue && Out().Contains("Ready:"));
+        var first = session.ActiveHostProcessId!.Value;
+        trees["initial"] = Actors(session.ActiveHostProcessIds);
+        Check(DevNativeWindows.VisibleTitles(first).Any(title => title.Contains("Widget Inspector", StringComparison.Ordinal)), "interactive host acknowledges the real WinUI inspector");
+        Check(trees["initial"].Values.Contains("WidgetBridge") && trees["initial"].Values.Contains("WidgetWorkerHost"), "interactive development generation owns real service and worker");
+        await File.WriteAllTextAsync(Path.Combine(evidence, "inspector-ready.json"), JsonSerializer.Serialize(new { processId = first, sessionRoot = session.SessionRoot }));
+        // Bounded external UIA checkpoint: the root/driver writes this marker after
+        // inspecting this exact owned process, rather than relying on redirected Ctrl+C.
+        await WaitUntilAsync(() => File.Exists(Path.Combine(evidence, "inspector-reviewed")), TimeSpan.FromSeconds(90));
+        checks.Add("inspector UIA checkpoint completed for initial native process");
+        var style = Path.Combine(package, "styles", "default.wrss");
+        await File.AppendAllTextAsync(style, "\n.native-dev-smoke { color: var(--text); }\n");
+        await Ready(() => session.ActiveHostProcessId is { } id && id != first);
+        var second = session.ActiveHostProcessId!.Value;
+        trees["reloaded"] = Actors(session.ActiveHostProcessIds);
+        foreach (var id in trees["initial"].Keys) AssertProcessExited(id);
+        Check(second != first, "valid source reload replaces and reclaims the prior frontend process tree");
+        var manifestPath = Path.Combine(package, "manifest.json");
+        var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(manifestPath));
+        await File.WriteAllBytesAsync(manifestPath, ManifestJson.Serialize(manifest with { Entrypoint = manifest.Entrypoint with { Type = "Missing.Widget" } }));
+        await Ready(() => Error().Contains("Retained the last-good", StringComparison.Ordinal));
+        Check(session.ActiveHostProcessId == second, "broken real-worker readiness probe retains the last-good interactive generation");
+        await File.WriteAllBytesAsync(manifestPath, ManifestJson.Serialize(manifest));
+        await Ready(() => session.ActiveHostProcessId is { } id && id != second);
+        trees["recovered"] = Actors(session.ActiveHostProcessIds);
+        foreach (var id in trees["reloaded"].Keys) AssertProcessExited(id);
+        Check(session.ActiveHostProcessId != second, "repair after rejected generation resumes real native reload");
+        var beforeRollback = session.ActiveHostProcessId!.Value;
+        activation.RejectNextInteractive();
+        await File.AppendAllTextAsync(style, "\n/* trigger controlled interactive activation rejection */\n");
+        await Ready(() => activation.InjectedFailures == 1 && session.ActiveHostProcessId is { } id && id != beforeRollback);
+        trees["rollback"] = Actors(session.ActiveHostProcessIds);
+        foreach (var id in trees["recovered"].Keys) AssertProcessExited(id);
+        Check(Error().Contains("phase 'replace development host'", StringComparison.Ordinal), "failed replacement activation rolls back to an authenticated real last-good host");
+        var sessionRoot = session.SessionRoot;
+        cancel.Cancel();
+        try { await run.WaitAsync(TimeSpan.FromSeconds(20)); } catch (OperationCanceledException) { }
+        await session.DisposeAsync(); session = null;
+        Check(!Directory.Exists(sessionRoot), "cancellation removes the isolated session catalog and profiles");
+        foreach (var actors in trees.Values) foreach (var id in actors.Keys) AssertProcessExited(id);
+        checks.Add("all observed frontend Bridge and worker processes are reclaimed");
+    }
+    catch (Exception exception) { failure = exception; throw; }
+    finally
+    {
+        cancel.Cancel();
+        try { if (run is not null) await run.WaitAsync(TimeSpan.FromSeconds(20)); } catch (OperationCanceledException) { } catch (Exception exception) { failure ??= exception; }
+        try { if (session is not null) await session.DisposeAsync(); } catch (Exception exception) { failure ??= exception; }
+        await File.WriteAllTextAsync(Path.Combine(evidence, "output.log"), Out());
+        await File.WriteAllTextAsync(Path.Combine(evidence, "error.log"), Error());
+        await File.WriteAllTextAsync(Path.Combine(evidence, "result.json"), JsonSerializer.Serialize(new { passed = failure is null, checks, trees, error = failure?.ToString() }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+}
+
+static async Task DevNamedJobOwnership()
+{
+    var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+    string[] launch = ["--dev-owned-fixture", "--development-job-name=Local\\WidgetRail.Dev." + nonce];
+    var process = await DevHostProcess.StartAsync(FakeDevHostActivation.Target, launch, nonce,
+        TimeSpan.FromSeconds(3), new WindowsDevHostActivation(), default);
+    var id = process.Id;
+    try
+    {
+        await Assert.ThrowsAsync<CliOperationException>(async () => await DevHostProcess.StartAsync(
+            FakeDevHostActivation.Target, launch, nonce, TimeSpan.FromSeconds(3), new FakeDevHostActivation(), default));
+        Assert.True(!process.HasExited, "Rejecting a reused name harmed the already-owned host.");
+    }
+    finally { process.Dispose(); }
+    await WaitUntilAsync(() => { try { using var child = Process.GetProcessById(id); return child.HasExited; } catch (ArgumentException) { return true; } }, TimeSpan.FromSeconds(3));
+    AssertProcessExited(id);
+    using var current = Process.GetCurrentProcess();
+    var native = new WindowsDevHostActivation();
+    native.VerifyIdentity(FakeDevHostActivation.Target, current);
+    try
+    {
+        native.VerifyIdentity(new DevHostTarget(Path.Combine(AppContext.BaseDirectory, "Unrelated.exe"), AppContext.BaseDirectory), current);
+        throw new Exception("Mismatched executable image was accepted.");
+    }
+    catch (CliOperationException exception) { Assert.Contains("exact requested WinUI executable path", exception.Message); }
+}
+
+static async Task DevOwnershipFailures()
+{
+    foreach (var skipEnrollment in new[] { false, true })
+    {
+        var activation = new FakeDevHostActivation(rejectIdentity: !skipEnrollment, skipEnrollment: skipEnrollment);
+        var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+        try
+        {
+            await Assert.ThrowsAsync<CliOperationException>(async () => await DevHostProcess.StartAsync(FakeDevHostActivation.Target,
+                ["--dev-owned-fixture", "--development-job-name=Local\\WidgetRail.Dev." + nonce], nonce,
+                TimeSpan.FromSeconds(1), activation, default));
+            Assert.True(activation.LastProcessId is not null, "Ownership gate never observed its fixture process.");
+            if (skipEnrollment)
+            {
+                using var process = Process.GetProcessById(activation.LastProcessId!.Value);
+                Assert.True(!process.HasExited, "Unowned activation PID was incorrectly terminated.");
+            }
+            else
+                await WaitUntilAsync(() => { try { using var process = Process.GetProcessById(activation.LastProcessId!.Value); return process.HasExited; }
+                    catch (ArgumentException) { return true; } }, TimeSpan.FromSeconds(3));
+        }
+        finally { if (activation.LastProcessId is { } id) ForceStopProcess(id); }
+    }
+}
+
+static Task DevLaunchArguments()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = Path.Combine(temp.Path, "catalog with spaces");
+    var ready = DevReadyHandshake.Create(temp.Path, catalog, new("dev.test.arguments", "dev.test.arguments.default"));
+    var profile = Path.Combine(temp.Path, "profile");
+    var probeProfile = Path.Combine(temp.Path, "probe-profile");
+    var interactive = DevSession.HostArguments(FakeDevHostActivation.Target, catalog, profile, ready, false, true);
+    var probe = DevSession.HostArguments(FakeDevHostActivation.Target, catalog, probeProfile, ready, true, true);
+    Assert.True(interactive.Contains("--development-inspector") && !probe.Contains("--development-inspector"), "Probe inherited inspector ownership.");
+    Assert.True(probe.Contains("--hidden") && probe.Contains("--development-probe-only"), "Probe was not explicitly hidden.");
+    Assert.True(interactive.Contains("--settings-root=" + profile) && probe.Contains("--settings-root=" + probeProfile), "Profile isolation was lost.");
+    Assert.True(interactive.Contains("--development-job-name=Local\\WidgetRail.Dev." + ready.Nonce), "Ownership nonce differs from readiness nonce.");
+    Assert.True(interactive.Contains("--development-catalog-root=" + catalog), "Catalog argument was split or changed.");
+    Assert.Equal("\"--settings-root=C:\\a b\\\\\"", DevHostProcess.QuoteWindowsArgument("--settings-root=C:\\a b\\"));
     return Task.CompletedTask;
 }
 
@@ -1868,6 +2085,31 @@ static async Task ValidateScaffold()
     Assert.Contains("2 file(s) checked", result.Output);
 }
 
+static async Task ValidateWinUiLayoutGuidance()
+{
+    using var temp = new TemporaryDirectory();
+    var path = Path.Combine(temp.Path, "main.wrss");
+    var imported = Path.Combine(temp.Path, "layout.wrss");
+    await File.WriteAllTextAsync(imported, ".actions { flex-wrap: wrap; }\n");
+    await File.WriteAllTextAsync(path,
+        "@import \"layout.wrss\";\n.row { flex-grow: 1; flex-basis: 0px; }\n.row:focused { flex-shrink: 0; }\n");
+    var result = await RunCli("validate", path);
+    Assert.Equal(0, result.Code);
+    Assert.Contains("Valid: 1 file(s) checked", result.Output);
+    Assert.Contains("layout.wrss(1,", result.Error);
+    Assert.Contains("main.wrss(2,", result.Error);
+    Assert.Contains("main.wrss(3,", result.Error);
+    Assert.Contains("warning winui_unmapped_layout", result.Error);
+    Assert.Contains("UI.ResponsiveGrid", result.Error);
+    Assert.Contains("Auto/Pixel/Star", result.Error);
+    Assert.Equal(3, result.Error.Split("winui_unmapped_layout", StringSplitOptions.None).Length - 1);
+
+    await File.WriteAllTextAsync(path, ".row { flex-grow: 1; min-width: 0px; gap: 12px; }\n");
+    var native = await RunCli("validate", path);
+    Assert.Equal(0, native.Code);
+    Assert.Equal(string.Empty, native.Error);
+}
+
 static async Task ValidateRejectsUnsafeWrss()
 {
     using var temp = new TemporaryDirectory();
@@ -2104,10 +2346,10 @@ static async Task DevReadinessFailsClosed()
         var outputBuffer = new StringWriter();
         var errorBuffer = new StringWriter();
         await using var session = new DevSession(
-            DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+            DevWidgetSource.Discover(sourceRoot), FakeDevHostActivation.Target, "Release",
             TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
             TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer),
-            readyTimeout: TimeSpan.FromSeconds(2));
+            readyTimeout: TimeSpan.FromSeconds(2), activation: new FakeDevHostActivation());
         // Disabling persistent build servers intentionally makes a cold nested
         // build slightly slower. Keep the authentication deadline at two
         // seconds, but give the isolated build a scheduler-safe test budget.
@@ -2136,8 +2378,8 @@ static async Task DevRetainsAndCleans()
     var output = TextWriter.Synchronized(outputBuffer);
     var error = TextWriter.Synchronized(errorBuffer);
     var session = new DevSession(
-        DevWidgetSource.Discover(packageRoot), Environment.ProcessPath!, "Release",
-        TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75), output, error, inspect: true);
+        DevWidgetSource.Discover(packageRoot), FakeDevHostActivation.Target, "Release",
+        TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75), output, error, inspect: true, activation: new FakeDevHostActivation());
     var sessionRoot = session.SessionRoot;
     // Real isolated build behavior and the 90-second product deadline have
     // dedicated tests. This lifecycle fixture starts from one catalog-valid
@@ -2200,10 +2442,10 @@ static async Task DevBrokenEntrypointRetainsLastGood()
     var outputBuffer = new StringWriter();
     var errorBuffer = new StringWriter();
     var session = new DevSession(
-        DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+        DevWidgetSource.Discover(sourceRoot), FakeDevHostActivation.Target, "Release",
         TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
         TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer),
-        readyTimeout: TimeSpan.FromMilliseconds(250));
+        readyTimeout: TimeSpan.FromMilliseconds(250), activation: new FakeDevHostActivation());
     using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(40));
     var run = session.RunAsync(cancellation.Token);
     int? lastGoodPid = null;
@@ -2249,9 +2491,9 @@ static async Task DevJobReclaimsDescendants()
     var outputBuffer = new StringWriter();
     var errorBuffer = new StringWriter();
     var session = new DevSession(
-        DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+        DevWidgetSource.Discover(sourceRoot), FakeDevHostActivation.Target, "Release",
         TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75),
-        TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer));
+        TextWriter.Synchronized(outputBuffer), TextWriter.Synchronized(errorBuffer), activation: new FakeDevHostActivation());
     using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(40));
     var run = session.RunAsync(cancellation.Token);
     var processIds = new List<int>();
@@ -2317,10 +2559,8 @@ static void ForceStopProcess(int processId)
 
 static string DevelopmentArgument(string[] values, string name)
 {
-    var index = Array.IndexOf(values, name);
-    if (index < 0 || index + 1 >= values.Length)
-        throw new ArgumentException($"Missing fake development-host argument {name}.");
-    return values[index + 1];
+    var value = values.SingleOrDefault(value => value.StartsWith(name + "=", StringComparison.Ordinal));
+    return value is null ? throw new ArgumentException($"Missing fake development-host argument {name}.") : value[(name.Length + 1)..];
 }
 
 static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
@@ -2348,6 +2588,24 @@ static async Task RenderSnapshot()
     Assert.Contains("a11y=\"Apply\"", result.Output);
     Assert.Contains("focus=[left:lower,right:raise]", result.Output);
     Assert.Contains("RightBumper:raise", result.Output);
+}
+
+static async Task RenderRejectsLegacyPresentation()
+{
+    using var temp = new TemporaryDirectory();
+    var source = Path.Combine(temp.Path, "legacy.json");
+    var destination = Path.Combine(temp.Path, "unchanged.json");
+    await File.WriteAllTextAsync(destination, "preserve-existing-output");
+    var snapshot = new WidgetView(UI.CollectionList("songs", 72,
+        items: [UI.Button("Song", "play", "song").CollectionItem(new WidgetCollectionItemKey("song-key"))]), "song")
+        .CreateSnapshot("test.instance", 1);
+    await File.WriteAllBytesAsync(source, SnapshotJson.Serialize(snapshot));
+    var result = await RunCli("render", source, "--output", destination);
+    Assert.Equal(1, result.Code);
+    Assert.Contains("winui_legacy_collection_anchor", result.Error);
+    Assert.Contains("$.root.collectionAnchorKey", result.Error);
+    Assert.Contains("IndexedCollectionFocusTarget", result.Error);
+    Assert.Equal("preserve-existing-output", await File.ReadAllTextAsync(destination));
 }
 
 static Task CursorPreviewIsOpaque()

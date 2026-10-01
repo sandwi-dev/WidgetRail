@@ -27,6 +27,46 @@ submission; bounded forward pages load near the end of the controller-focused
 result list. Setup also provides explicit Replace and Delete paths. Quota,
 offline, invalid-key, empty, and unavailable states remain native widget UI.
 
+### WinUI discovered collection
+
+Discover uses `WidgetDiscoveredCollection<SearchQuery, YouTubeSearchItem>`.
+`SearchAsync(query, pageToken, pageSize)` remains an opaque forward continuation:
+12 provider rows per request, with up to 512 retained result metadata entries.
+Google's reported `totalResults` is never used as a native collection count.
+Only validated, admitted videos contribute to the discovered prefix.
+
+The SDK owns query generation, continuation, cancellation and atomic append.
+Tokens never leave the worker. WinUI uses the same indexed range/lease path for
+rows, realizes only native demand and loads another page at the discovered tail.
+An append preserves the existing native source, prefix item keys, focus and
+viewport. It does not replace the list or apply a custom scroll offset.
+
+This widget explicitly selects `KeepFirst` duplicate policy: each VideoId is one
+search result even after service cache eviction. General collections default to
+rejecting duplicate occurrence keys. Search metadata history is never silently
+evicted: at 512 entries discovery stops with a visible limit state and existing
+results remain browsable. Refine or resubmit to begin a new query. A null next
+token exhausts discovery; an empty filtered page can still advance a token.
+
+Loading, failure, explicit Retry and the retention limit appear in the native
+collection footer. Failed reads keep the previously admitted prefix. SDK timeout
+and provider concurrency bounds still apply when a provider ignores cancellation.
+Four consecutive empty/duplicate-only pages pause automatic demand and expose
+**Load more**, bounding quota use without claiming the query is exhausted.
+No real API request runs before explicit query submission.
+
+Each row is one ActionSurface. Actions retain the captured query/video and keyed
+return position, reject a replaced query, and never resolve an old index against
+a mutable window. LB/RB return to Discover uses the exact indexed target. Search
+remains a parked-media route: appends retain the established media session without
+publishing another playback command. Tests cover changed totals, empty results,
+eight pages beyond the old 48-row window, duplicate videos, captured actions,
+keyed return, replacement rejection and parked media using a fake provider.
+
+Player transport, Setup, Captions and playback-rate choices remain bounded
+control trees. Their media/fullscreen/pinned acceptance is independent of this
+collection change.
+
 The sealed package adapter is the top-level document. Its only external frame
 navigation is `https://www.youtube.com`; package-declared exact origins and
 protocol-v26 domain families bound the official player's intercepted resource
@@ -48,11 +88,25 @@ separate, explicit action; package versions are immutable.
 
 ## Controller use
 
+Volume completion waits for YouTube's observed integer percentage, just as mute
+waits for observed provider state. `setVolume` is asynchronous even before first
+playback, when no progress observations are emitted; acknowledging its old getter
+value would incorrectly reconcile the host slider backward. The shared wait is
+bounded and cancelled when command/media authority retires.
+
+On Discover, press R3 to return to the search field. The shortcut uses a fresh
+focus-group entry request, including when focus is inside a lazy result row.
+LT/RT seek actions opt into `WhileHeld`; the host repeats only while their
+captured input owner remains current, with no backlog while commands are busy.
+
 **Discover** and **Player** are flat sibling sections. Use LB/RB to switch between
 them without adding Back history; the destination restores its remembered content
 focus. **Play a link** is the Player section's empty/link-entry state, not a third
 section. The separate in-widget **Y Settings** hint opens search configuration and
-B returns to the exact control that opened it. Player settings remain nested behind
+B returns to the control that opened it. Lazy search results use their indexed
+collection identity instead of an element ID in the page snapshot, with the
+collection's normal validation and fallback if the item is no longer available.
+Player settings remain nested behind
 the player control. Search uses a compact task card; the player keeps the 16:9 video
 primary and places icon transport, timeline, and compact volume on one row. The
 native **Fullscreen** action asks

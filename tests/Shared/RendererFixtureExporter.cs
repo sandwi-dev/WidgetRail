@@ -8,6 +8,14 @@ namespace WidgetRail.Tests;
 
 internal static class RendererFixtureExporter
 {
+    internal static void WriteCollectionFixture(string name, ViewSnapshot snapshot)
+    {
+        if (Environment.GetEnvironmentVariable("WRAIL_COLLECTION_LAYOUT_OUTPUT") is not { Length: > 0 } directory) return;
+        Directory.CreateDirectory(directory);
+        Write(Path.Combine(directory, name + ".renderer.json"), snapshot,
+            CompileTheme(Path.Combine(AppContext.BaseDirectory, "styles"), "default.wrss"));
+    }
+
     internal static void Write(string path, ViewSnapshot snapshot, WrssTheme theme)
     {
         using var document = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));

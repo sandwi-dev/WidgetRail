@@ -21,7 +21,7 @@ public enum GalleryRoute
 /// Copyable, capability-free reference for the public controller-first SDK.
 /// It intentionally has no custom worker, broker calls, or host-only helpers.
 /// </summary>
-public sealed class SdkGalleryWidget : Widget
+public sealed partial class SdkGalleryWidget : Widget
 {
     public const string DefaultBackgroundArtworkHandle = "gallery.artwork.background.default";
     public const string WarmBackgroundArtworkHandle = "gallery.artwork.background.warm";
@@ -193,6 +193,7 @@ public sealed class SdkGalleryWidget : Widget
                 _navigation.PushFromAction(GalleryRoute.ActionSheet, action);
                 return ValueTask.CompletedTask;
             case "gallery.compact.toggle": _compactMode = !_compactMode; break;
+            case "gallery.grid.swap": _reverseGridProportions = !_reverseGridProportions; break;
             case "gallery.picker.open":
                 _navigation.PushFromAction(GalleryRoute.Picker, action);
                 return ValueTask.CompletedTask;
@@ -310,7 +311,7 @@ public sealed class SdkGalleryWidget : Widget
                 UI.StatusBadge("Syncing", StatusTone.Info, "gallery.overview.syncing")),
             UI.Card("gallery.overview.actions-card", CardVariant.Subtle,
                 UI.Text("Icon actions", "gallery.overview.actions-title"),
-                UI.Row("gallery.overview.actions",
+                UI.ResponsiveGrid("gallery.overview.actions", 50, 3,
                     UI.IconButton(WidgetGlyph.Refresh, "gallery.refresh", "gallery.refresh",
                         "Refresh preview", IconButtonVariant.Quiet, IconButtonSize.Small),
                     UI.IconButton(WidgetGlyph.Play, "gallery.toast.show", "gallery.play",
@@ -319,7 +320,7 @@ public sealed class SdkGalleryWidget : Widget
                         "Acknowledge warning", IconButtonVariant.Danger, IconButtonSize.Small))
                     .Classes("gallery-overview-actions"),
                 UI.Text("Package SVG", "gallery.overview.package-icons-title"),
-                UI.Row("gallery.overview.package-icons",
+                UI.ResponsiveGrid("gallery.overview.package-icons", 50, 3,
                     UI.Icon(GalleryOriginalIcon, "gallery.package-icon.original",
                         "Original-color package icon"),
                     UI.IconButton(GalleryTintedIcon, "gallery.refresh",
@@ -340,7 +341,7 @@ public sealed class SdkGalleryWidget : Widget
             "Empty states keep one clear recovery action and no decorative focus stops.",
             "gallery.overview.empty",
             new ComponentAction("Populate example", "gallery.empty.populate", WidgetGlyph.Play)),
-        UI.Row("gallery.overview.hints",
+        UI.ResponsiveGrid("gallery.overview.hints", 112, 4,
             UI.ControllerHint(ControllerPrompt.DPad, "Navigate", "gallery.hint.navigate"),
             UI.ControllerHint(ControllerButton.A, "Select", "gallery.hint.select"),
             UI.ControllerHint(ControllerButton.B, "Back", "gallery.hint.back"),
@@ -386,7 +387,7 @@ public sealed class SdkGalleryWidget : Widget
             UI.Text(
                 "The same repeated content changes geometry without changing focus IDs.",
                 "gallery.controls.density-preview.description"),
-            UI.Row("gallery.controls.density-preview.row-one",
+            UI.ResponsiveGrid("gallery.controls.density-preview.row-one", 88, 3,
                 UI.StatusBadge("Alpha", StatusTone.Info,
                     "gallery.controls.density-preview.alpha"),
                 UI.StatusBadge("Beta", StatusTone.Success,
@@ -394,7 +395,7 @@ public sealed class SdkGalleryWidget : Widget
                 UI.StatusBadge("Gamma", StatusTone.Warning,
                     "gallery.controls.density-preview.gamma"))
                 .Classes("gallery-density-preview-row", DensityRowClass()),
-            UI.Row("gallery.controls.density-preview.row-two",
+            UI.ResponsiveGrid("gallery.controls.density-preview.row-two", 88, 3,
                 UI.StatusBadge("Delta", StatusTone.Info,
                     "gallery.controls.density-preview.delta"),
                 UI.StatusBadge("Epsilon", StatusTone.Success,
@@ -403,7 +404,7 @@ public sealed class SdkGalleryWidget : Widget
                     "gallery.controls.density-preview.zeta"))
                 .Classes("gallery-density-preview-row", DensityRowClass()))
             .AddClasses("gallery-density-preview", DensityClass()),
-        UI.Row("gallery.controls.openers",
+        UI.ResponsiveGrid("gallery.controls.openers", 180, 2,
             UI.Button("Choose density", "gallery.picker.open", "gallery.picker.open")
                 .Icon(WidgetGlyph.Settings).Classes("gallery-wide-action"),
             UI.Button("More actions", "gallery.sheet.open", "gallery.sheet.open")
@@ -418,7 +419,8 @@ public sealed class SdkGalleryWidget : Widget
                 "gallery.scrub",
                 "gallery.scrubber",
                 "Preview position"))
-            .AddClasses("gallery-controls-scrubber-card"))
+            .AddClasses("gallery-controls-scrubber-card"),
+        NativeGridDemo())
         .AddClasses("gallery-page");
 
     private StackElement TilesPage() => UI.Stack("gallery.tiles",
@@ -532,7 +534,7 @@ public sealed class SdkGalleryWidget : Widget
             UI.Text(
                 "Move across the row: warm and cool replace the root artwork; Retain keeps the last accepted artwork.",
                 "gallery.backgrounds.focus-description"),
-            UI.Row("gallery.backgrounds.focus-row",
+            UI.ResponsiveGrid("gallery.backgrounds.focus-row", 142, 3,
                 UI.Button("Warm artwork", "gallery.toast.show", "gallery.backgrounds.warm")
                     .Classes("gallery-background-button")
                     .FocusBackground(new WidgetArtworkHandle(WarmBackgroundArtworkHandle)),

@@ -64,7 +64,9 @@ foreach ($edition in @('production', 'developer')) {
     Test-ReleaseInventory $payload
     $display = if ($edition -eq 'developer') { 'WidgetRail Developer' } else { 'WidgetRail' }
     $name = $display.Replace(' ', '-') + '-' + $manifest.version + '-win-x64-setup'
-    $payloadId = $manifest.version + '-' + $edition + '-' + $manifest.sourceCommit.Substring(0, 12) + '-' + $manifest.packagingCommit.Substring(0, 12)
+    # Distinct inventories retain separate version directories during upgrades.
+    $inventoryId = (Get-FileHash -LiteralPath (Join-Path $payload 'release.json') -Algorithm SHA256).Hash.Substring(0, 16).ToLowerInvariant()
+    $payloadId = $manifest.version + '-' + $edition + '-' + $inventoryId
     $dependencies = Get-Content (Join-Path $payload 'prerequisites/runtime-dependencies.json') -Raw | ConvertFrom-Json
     # Runtime compatibility is independent of the redistributable package version.
     $requirements = Get-Content (Join-Path $repository 'eng/installer/requirements.json') -Raw | ConvertFrom-Json
@@ -84,7 +86,7 @@ foreach ($edition in @('production', 'developer')) {
     $lines.Add('#define GameInputVersionMS ' + (($gameVersion.Major -shl 16) + $gameVersion.Minor))
     $lines.Add('#define GameInputVersionLS ' + (($gameVersion.Build -shl 16) + $gameVersion.Revision))
     $lines.Add('[Files]')
-    $installerFiles = @($manifest.files.path) + @('release.json') | Sort-Object @{ Expression = { if ($_ -like 'prerequisites/*') { 0 } else { 1 } } }, @{ Expression = { $_ } }
+    $installerFiles = @($manifest.files.path | Sort-Object @{ Expression = { if ($_ -like 'prerequisites/*') { 0 } else { 1 } } }, @{ Expression = { $_ } }) + @('release.json')
     foreach ($relative in $installerFiles) {
         $source = Assert-ReleasePath (Join-Path $payload $relative) -Within $payload
         $directory = [IO.Path]::GetDirectoryName($relative.Replace('/', '\'))
@@ -113,7 +115,10 @@ Write-ReleaseJson (Join-Path $stage 'installer-build.json') ([ordered]@{
     version = $production.version; sourceCommit = $production.sourceCommit
     packagingCommit = $packagingCommit
     compiler = 'Inno Setup 6.7.3'; compilerSha256 = (Get-FileHash -LiteralPath $CompilerPath).Hash
-    signed = $false; scope = 'per-user'; runtimeProvisioning = 'private-dotnet-and-microsoft-prerequisite-installers'
+    signed = $false; scope = 'per-user'; runtimeProvisioning = 'private-dotnet-and-explicit-microsoft-prerequisites'
+    applicationDeployment = 'unpackaged-direct-executable'
+    windowsAppRuntimeProvisioning = 'self-contained'
+    cleanMachineQualified = $false
 })
 [IO.Directory]::Move($stage, $final)
 Write-Output "Installers ready: $final"

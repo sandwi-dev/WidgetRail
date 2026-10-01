@@ -91,5 +91,6 @@ and delete only the `WidgetRail` folder. Temporary files are under `%TEMP%\Widge
 Close every WidgetRail copy first. To also unregister its Windows sandbox profiles,
 reinstall and choose the uninstaller's delete-data option.
 
-Full-access add-ons can store data outside WidgetRail's folders, such as their
-own Windows credentials. Follow their instructions for any additional cleanup.
+Credentials stored in Windows Credential Manager are kept, including provider
+and add-on credentials. Full-access add-ons can also store data outside WidgetRail's
+folders. Follow their instructions for any additional cleanup.

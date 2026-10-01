@@ -13,6 +13,21 @@ public sealed partial class YouTubeWidgetTests
     private const string VideoId = "M7lc1UVf-VE";
 
     [TestMethod]
+    public async Task ExportPlayerLayoutForNativeSliderSpacing()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        try
+        {
+            await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+            var loading = widget.RenderSnapshot("youtube-layout", 1);
+            await ObserveAsync(widget, loading.EmbeddedMediaSession!.PendingCommand!, EmbeddedMediaPlaybackState.Paused, 1,
+                duration: 120, volume: .8);
+            WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("youtube-player", widget.RenderSnapshot("youtube-layout", 2));
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod]
     public void StrictParserAcceptsSupportedYouTubeLinks()
     {
         var links = new[]
@@ -434,11 +449,10 @@ public sealed partial class YouTubeWidgetTests
                 "youtube.player.fullscreen",
                 "youtube.player.captions",
                 "youtube.timeline-group",
-                "youtube.volume",
             },
             Find(ready.Root, "youtube.controls").Children.Select(child => child.Id).ToArray());
         CollectionAssert.AreEqual(
-            new[] { "youtube.position", "youtube.timeline", "youtube.duration" },
+            new[] { "youtube.position", "youtube.timeline", "youtube.duration", "youtube.volume" },
             Find(ready.Root, "youtube.timeline-group").Children
                 .Select(child => child.Id).ToArray());
         Assert.AreEqual(ViewNodeKind.Slider, Find(ready.Root, "youtube.timeline").Kind);
@@ -465,15 +479,13 @@ public sealed partial class YouTubeWidgetTests
         StringAssert.Contains(styles,
             ".youtube-controls { width: 100%; min-width: 0px; min-height: 36px;");
         StringAssert.Contains(styles,
-            ".youtube-timeline-group { min-width: 156px; max-width: 360px;");
+            ".youtube-timeline-group { min-width: 156px; min-height: 34px;");
         StringAssert.Contains(styles,
-            ".youtube-volume { width: 72px; min-width: 56px; height: 32px;");
+            ".youtube-volume { min-width: 80px; height: 32px; flex-grow: 1;");
         StringAssert.Contains(styles,
             ".youtube-section-header { width: 100%; min-width: 0px; align: center; justify: end; gap: 12px;");
         StringAssert.Contains(styles,
-            ".youtube-section-navigation { min-width: 0px; flex-grow: 1; flex-shrink: 1; }");
-        StringAssert.Contains(styles,
-            ".youtube-section-settings-hint { flex-shrink: 0; }");
+            ".youtube-section-navigation { min-width: 0px; flex-grow: 1; }");
         StringAssert.Contains(styles,
             ".youtube-section-bumper-key { font-size: var(--controller-glyph-size, 24px);");
         Assert.DoesNotContain(".youtube-section-bumper-key { height: 100%", styles);
@@ -529,14 +541,17 @@ public sealed partial class YouTubeWidgetTests
             Find(settings.Root, "youtube.player.settings.quality.value").Text);
         var settingsStyles = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "styles", "default.wrss"));
+        var parsedStyles = WidgetRail.WidgetStyling.WrssParser.Parse(settingsStyles, "styles/default.wrss");
+        Assert.IsTrue(parsedStyles.IsValid);
+        Assert.IsEmpty(WidgetRail.WidgetStyling.WinUiStyleDiagnostics.Analyze(parsedStyles.Document));
         StringAssert.Contains(settingsStyles,
             ".youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px;");
         Assert.DoesNotContain(".youtube-player-settings { width: 100%; height: 100%;",
             settingsStyles);
         StringAssert.Contains(settingsStyles,
-            ".wrail-dialog__content { min-height: 0px; flex-grow: 1; flex-shrink: 1; }");
+            ".wrail-dialog__content { min-height: 0px; flex-grow: 1; }");
         StringAssert.Contains(settingsStyles,
-            ".youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-basis: 0px; flex-grow: 1; flex-shrink: 1;");
+            ".youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1;");
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.PlaybackRateActionId,

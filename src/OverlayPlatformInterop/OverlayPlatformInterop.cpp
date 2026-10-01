@@ -6,10 +6,11 @@
 #include "DualSenseHidReader.h"
 #include "LocalControllerPolicy.h"
 #include "ViGEmOutputAdapter.h"
-#include "../OverlayHost/ControllerInputOwnership.h"
-#include "../OverlayHost/GuideInputCompatibility.h"
-#include "../OverlayHost/OverlayPlacement.h"
-#include "../OverlayHost/OverlayTargeting.h"
+#include "ControllerInputOwnership.h"
+#include "ControllerOpenShortcut.h"
+#include "GuideInputCompatibility.h"
+#include "OverlayPlacement.h"
+#include "OverlayTargeting.h"
 
 #include <Windows.h>
 #include <GameInput.h>
@@ -131,12 +132,14 @@ struct WidgetRailOverlayPlatformHandle final {
     GameInputCallbackToken guideCallback{};
     GameInputCallbackToken compatibilityDeviceCallback{};
     widgetrail::input::XInputGuideCompatibility guideCompatibility;
+    std::unique_ptr<widgetrail::input::ControllerOpenShortcut> openShortcut;
     widgetrail::input::GuideCompatibilityActivation guideCompatibilityActivation;
     widgetrail::platform::GuideToggleDebouncer guideDebouncer;
     widgetrail::platform::ControllerFrameTracker controllerTracker;
     widgetrail::isolation::ControllerIsolationHostSession controllerIsolation;
     widgetrail::isolation::DualSenseHidReader dualSense;
     widgetrail::ForegroundTargetTracker foregroundTarget;
+    HWND overlayWindow{};
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
     widgetrail::platform::ControllerActivitySelection controllerSelection;
@@ -746,6 +749,7 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
 void WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformShutdown(
     WidgetRailOverlayPlatformHandle* handle) noexcept {
     if (!handle || !handle->BeginShutdown()) return;
+    handle->openShortcut.reset();
     handle->controllerIsolation.Stop();
     handle->RetireLocalControllerOwners();
     handle->controllerTracker.Reset();
@@ -790,6 +794,8 @@ WidgetRailOverlayPlatformSetWindowState(
     if (status != WidgetRailOverlayPlatformStatus::Ok) return status;
     const bool visible = visibleValue != WRAIL_OVERLAY_PLATFORM_FALSE;
     const bool focused = focusedValue != WRAIL_OVERLAY_PLATFORM_FALSE;
+    handle->controllerTracker.ApplyWindowStateTransition(
+        handle->visible, handle->focused, visible, focused);
     if (handle->visible != visible) {
         handle->visible = visible;
         RawEvent event;
@@ -808,7 +814,6 @@ WidgetRailOverlayPlatformSetWindowState(
         handle->controllerSelection.Reset();
         handle->sampledGameInputDevice.Reset();
     }
-    if (!visible || !focused) handle->controllerTracker.Reset();
     if (!visible && handle->controllerIsolation.active())
         handle->controllerIsolation.CloseOverlay();
     return WidgetRailOverlayPlatformStatus::Ok;
@@ -999,6 +1004,43 @@ WidgetRailOverlayPlatformNativeShortcutSource WRAIL_OVERLAY_PLATFORM_CALL Widget
     return Source::Shared;
 }
 
+WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformSetViewMenuShortcut(
+    WidgetRailOverlayPlatformHandle* handle, const std::uint32_t enabled) noexcept {
+    const auto status = ValidateHandle(handle);
+    if (status != WidgetRailOverlayPlatformStatus::Ok) return status;
+    if (enabled > 1) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    try {
+        if (!enabled) handle->openShortcut.reset();
+        else if (!handle->openShortcut) {
+            auto observer = std::make_unique<widgetrail::input::ControllerOpenShortcut>();
+            observer->Start(); // Held input must be released before the first chord.
+            handle->openShortcut = std::move(observer);
+        }
+        return WidgetRailOverlayPlatformStatus::Ok;
+    } catch (...) { return WidgetRailOverlayPlatformStatus::AllocationFailed; }
+}
+
+WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformPollViewMenuShortcut(
+    WidgetRailOverlayPlatformHandle* handle, std::uint32_t* pressed, std::uint32_t* consumed) noexcept {
+    if (!pressed || !consumed) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    *pressed = *consumed = 0;
+    const auto status = ValidateHandle(handle);
+    if (status != WidgetRailOverlayPlatformStatus::Ok) return status;
+    if (!handle->openShortcut) return WidgetRailOverlayPlatformStatus::Ok;
+    try {
+        std::uint16_t buttons{};
+        const auto source = WidgetRailOverlayPlatformNativeShortcutButtons(handle, &buttons);
+        using Source = WidgetRailOverlayPlatformNativeShortcutSource;
+        const auto sampling = handle->controllerIsolation.active()
+            ? widgetrail::input::OpenShortcutSampling::NativeOnly
+            : widgetrail::input::OpenShortcutSampling::AllControllers;
+        *pressed = ToAbiBoolean(handle->openShortcut->Poll(source == Source::Unavailable
+            ? std::nullopt : std::optional<std::uint16_t>{buttons}, sampling));
+        *consumed = ToAbiBoolean(handle->openShortcut->consumed());
+        return WidgetRailOverlayPlatformStatus::Ok;
+    } catch (...) { return WidgetRailOverlayPlatformStatus::AllocationFailed; }
+}
+
 WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformReadController(
     WidgetRailOverlayPlatformHandle* handle,
@@ -1081,6 +1123,68 @@ WidgetRailOverlayPlatformSetOwnedWindows(
             : WidgetRailOverlayPlatformStatus::InvalidArgument;
     }
     handle->foregroundTarget.SetOwnedWindows(overlay, backdrop);
+    handle->overlayWindow = reinterpret_cast<HWND>(overlay);
+    return WidgetRailOverlayPlatformStatus::Ok;
+}
+
+WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformAcquireForeground(
+    WidgetRailOverlayPlatformHandle* handle,
+    std::uint32_t* confirmed) noexcept {
+    if (!confirmed) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    *confirmed = WRAIL_OVERLAY_PLATFORM_FALSE;
+    if (!handle) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    if (handle->shutDown) return WidgetRailOverlayPlatformStatus::ShutDown;
+
+    const HWND window = handle->overlayWindow;
+    DWORD ownerProcess{};
+    const DWORD ownerThread = window ? GetWindowThreadProcessId(window, &ownerProcess) : 0;
+    const DWORD currentThread = GetCurrentThreadId();
+    const DWORD currentProcess = GetCurrentProcessId();
+    if (!window || !IsWindow(window) || ownerProcess != currentProcess || ownerThread != currentThread)
+        return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    if (!IsWindowVisible(window)) return WidgetRailOverlayPlatformStatus::Ok;
+
+    const auto isForeground = [currentProcess]() noexcept {
+        DWORD process{};
+        (void)GetWindowThreadProcessId(GetForegroundWindow(), &process);
+        return process == currentProcess;
+    };
+    DWORD foregroundProcess{};
+    const DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
+    const auto plan = widgetrail::input::PlanForegroundAcquisition(
+        foregroundProcess == currentProcess, currentThread, foregroundThread);
+    handle->Diagnostic(L"Foreground acquire begin callerThread=" + std::to_wstring(currentThread) +
+        L" foregroundThread=" + std::to_wstring(foregroundThread) + L" foregroundPid=" + std::to_wstring(foregroundProcess));
+    if (plan.attemptDirect) {
+        const BOOL accepted = SetForegroundWindow(window);
+        handle->Diagnostic(L"Foreground direct SetForegroundWindow accepted=" + std::to_wstring(accepted) +
+            L" foreground=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(GetForegroundWindow())));
+        const HWND previous = SetActiveWindow(window);
+        handle->Diagnostic(L"Foreground SetActiveWindow previous=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(previous)));
+    }
+    // The Guide callback does not itself grant foreground rights. Reuse the
+    // native host's single bounded queue-attachment fallback, never a retry loop.
+    // Every successful attachment is detached before returning to the caller.
+    if (!isForeground() && plan.attachForegroundThread) {
+        const BOOL attached = AttachThreadInput(currentThread, foregroundThread, TRUE);
+        const DWORD attachError = attached ? ERROR_SUCCESS : GetLastError();
+        handle->Diagnostic(L"Foreground AttachThreadInput accepted=" + std::to_wstring(attached) + L" error=" + std::to_wstring(attachError));
+        if (attached) {
+            const BOOL raised = BringWindowToTop(window);
+            const BOOL accepted = SetForegroundWindow(window);
+            const HWND previous = SetActiveWindow(window);
+            const BOOL detached = AttachThreadInput(currentThread, foregroundThread, FALSE);
+            handle->Diagnostic(L"Foreground attached BringWindowToTop accepted=" + std::to_wstring(raised) +
+                L" SetForegroundWindow accepted=" + std::to_wstring(accepted) +
+                L" SetActiveWindow previous=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(previous)) +
+                L" detached=" + std::to_wstring(detached) +
+                L" foreground=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(GetForegroundWindow())));
+        }
+    }
+    // Control focus belongs to the frontend. WinUI uses a child content HWND;
+    // assigning focus to its outer window can suppress native focus visuals.
+    *confirmed = ToAbiBoolean(isForeground());
     return WidgetRailOverlayPlatformStatus::Ok;
 }
 

@@ -292,7 +292,8 @@ internal static class WidgetPresentationDiff
         ViewNode current,
         List<PresentationUpdateOperation> operations)
     {
-        if (previous.Kind != current.Kind)
+        if (previous.Kind != current.Kind || previous.IndexedCollection != current.IndexedCollection ||
+            !SameJson(previous.IndexedGroups, current.IndexedGroups))
         {
             operations.Add(new()
             {
@@ -395,6 +396,8 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ActionSurfaceOrientation, before.ActionSurfaceOrientation, after.ActionSurfaceOrientation);
         Add(PresentationProperty.ActionSurfacePresentation, before.ActionSurfacePresentation, after.ActionSurfacePresentation);
         Add(PresentationProperty.GridMinimumColumnWidth, before.GridMinimumColumnWidth, after.GridMinimumColumnWidth);
+        Add(PresentationProperty.GridLayout, before.GridLayout, after.GridLayout);
+        Add(PresentationProperty.GridCell, before.GridCell, after.GridCell);
         Add(PresentationProperty.GridMaximumColumns, before.GridMaximumColumns, after.GridMaximumColumns);
         Add(PresentationProperty.IsDisabled, before.IsDisabled, after.IsDisabled);
         Add(PresentationProperty.IsSelected, before.IsSelected, after.IsSelected);
@@ -414,6 +417,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ScrollNearEndActionId, before.ScrollNearEndActionId, after.ScrollNearEndActionId);
         Add(PresentationProperty.ScrollPaginationThreshold, before.ScrollPaginationThreshold, after.ScrollPaginationThreshold);
         Add(PresentationProperty.VirtualCollectionWindow, before.VirtualCollectionWindow, after.VirtualCollectionWindow);
+        Add(PresentationProperty.CollectionLayout, before.CollectionLayout, after.CollectionLayout);
         Add(PresentationProperty.CollectionAnchorKey, before.CollectionAnchorKey, after.CollectionAnchorKey);
         Add(PresentationProperty.CollectionStartIndex, before.CollectionStartIndex, after.CollectionStartIndex);
         Add(PresentationProperty.CollectionGeneration, before.CollectionGeneration, after.CollectionGeneration);

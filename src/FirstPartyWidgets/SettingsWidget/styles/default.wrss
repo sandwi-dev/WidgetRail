@@ -10,12 +10,10 @@
 .root-category-list,
 .theme-picker { gap: 8px; }
 
-.settings-header { flex-shrink: 0; }
 .settings-page-motion { flex-grow: 1; min-height: 0; min-width: 0; }
 .theme-row {
   min-height: 52px;
   min-width: 0;
-  flex-shrink: 0;
   padding: 10px 14px;
   gap: 12px;
   align: center;
@@ -26,25 +24,22 @@
 }
 .theme-row:selected { border-color: var(--accent); }
 .theme-row:focused {
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
 }
 .theme-name {
   flex-grow: 1;
-  flex-shrink: 1;
   min-width: 0;
   font-size: 16px;
   font-weight: 600;
   max-lines: 2;
 }
-.theme-version { color: var(--text-muted); font-size: 13px; flex-shrink: 0; max-lines: 1; }
-.theme-status { flex-shrink: 0; padding: 3px 8px; }
-.settings-toast { flex-shrink: 0; }
+.theme-version { color: var(--text-muted); font-size: 13px; max-lines: 1; }
+.theme-status { padding: 3px 8px; }
 .settings-header-row { gap: 8px; }
 .header-title { flex-grow: 1; min-width: 0; }
-.header-action { flex-shrink: 0; padding: 8px 14px; }
+.header-action { padding: 8px 14px; }
 .header-quit { color: var(--warning); border-color: var(--warning); }
 .header-restart { color: var(--accent); border-color: var(--accent); }
 
@@ -59,11 +54,10 @@
 
 .settings-page {
   flex-grow: 1;
-  flex-basis: 0;
   min-height: 44px;
 }
 
-.root-category-list { min-height: 44px; flex-grow: 1; flex-basis: 0; }
+.root-category-list { min-height: 44px; flex-grow: 1; }
 
 
 .category-grid {
@@ -165,7 +159,6 @@
 .primary-button:focused,
 .secondary-button:focused,
 .wrail-stepper__button:focused {
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -173,6 +166,12 @@
 
 .wrail-switch:selected,
 .setting-row.is-enabled { color: var(--accent); }
+
+.wrail-switch--on,
+.wrail-switch:selected,
+.setting-row:selected { background: var(--surface-active, rgba(48, 47, 43, 0.98)); }
+.wrail-switch:disabled,
+.setting-row:disabled { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }
 
 .primary-button,
 .secondary-button,
@@ -194,7 +193,6 @@
 .danger-button { color: var(--danger, #c98181); }
 
 .danger-button:focused {
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   color: var(--danger, #c98181);
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
@@ -202,17 +200,17 @@
 }
 
 .home-header { align: center; gap: 14px; }
-.home-mark { width: 38px; height: 38px; flex-shrink: 0; color: var(--accent); }
+.home-mark { width: 38px; height: 38px; color: var(--accent); }
 .home-title { font-size: 26px; font-weight: 600; max-lines: 1; }
-.home-body { flex-grow: 1; flex-basis: 0; min-height: 0; gap: 12px; }
-.home-loading { flex-grow: 1; flex-basis: 0; min-height: 0; align: start; justify: start; }
+.home-body { flex-grow: 1; min-height: 0; gap: 12px; }
+.home-loading { flex-grow: 1; min-height: 0; align: start; justify: start; }
 .home-loading-content { align: start; gap: 12px; }
 .home-loading-message { color: var(--text-muted); font-size: 13px; max-lines: 1; }
-.home-card-icon { width: 34px; height: 34px; flex-shrink: 0; color: var(--accent); }
+.home-card-icon { width: 34px; height: 34px; color: var(--accent); }
 .home-card-copy { flex-grow: 1; min-width: 0; gap: 6px; }
 .home-card-title { color: var(--text); font-size: 18px; font-weight: 600; max-lines: 1; }
 .home-card-description { color: var(--text-muted); font-size: 13px; max-lines: 2; }
-.home-utilities { flex-shrink: 0; gap: 8px; }
+.home-utilities { gap: 8px; }
 .home-utility { min-height: 40px; padding: 8px 12px; font-size: 13px; color: var(--text-muted); }
 .home-utility.danger-card { color: var(--danger, #c98181); }
-.home-utility:focused { background: var(--surface-active, rgba(48, 47, 43, 0.98)); color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+.home-utility:focused { color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }

@@ -19,6 +19,9 @@ if (args is ["--identity-read"] && OperatingSystem.IsWindows())
         Console.WriteLine($"Monitor: {target.Name}; physical identity available={target.HardwareKey is not null}");
     var scale = DisplayScaleIdentity.Resolve(current.Targets.Select(target => target.DevicePath).ToArray());
     Check(scale is { Length: 64 }, "Shared display scale identity unavailable");
+    var windowContext = WindowDisplayContext.Read(0);
+    Check(windowContext.Id.Length == 64 && windowContext.DevicePaths.Count > 0, "Window-to-display context unavailable.");
+    Check(DisplayScaleIdentity.Resolve(windowContext.DevicePaths) is { Length: 64 }, "Window context did not resolve a saved physical identity.");
     Console.WriteLine("PASS live identities resolve without changing displays or saving profiles.");
     return;
 }
@@ -56,6 +59,7 @@ if (args is ["--guard-parent-exit", var bridgeExecutable])
 var checks = new (string Name, Func<Task> Run)[]
 {
     ("Native structures and configuration serialization preserve display modes", Layout),
+    ("Window monitor context preserves canonical bounded connection identity", WindowContexts),
     ("VRR product changes use unique physical serial identities", HardwareIdentities),
     ("Monitor identities remap adapter IDs and preserve clone groups", Matching),
     ("Profile status agrees with remapped physical monitor identity", ProfileIdentityStatus),
@@ -90,6 +94,20 @@ static Task Layout()
     var copy = JsonSerializer.Deserialize<DisplayConfiguration>(JsonSerializer.Serialize(original))!;
     Check(copy.Paths.SequenceEqual(original.Paths) && copy.Modes.SequenceEqual(original.Modes));
     Check(copy.Matches(original));
+    return Task.CompletedTask;
+}
+static Task WindowContexts()
+{
+    var first = WindowDisplayContext.FromTargets([("monitor.b", "Display B"), ("MONITOR.A", "Display A")]);
+    var second = WindowDisplayContext.FromTargets([("monitor.a", "Display A"), ("MONITOR.B", "Display B"), ("monitor.b", "Display B")]);
+    Check(first.Id == second.Id && first.DevicePaths.SequenceEqual(new[] { "MONITOR.A", "MONITOR.B" }), "Monitor order/case/duplicates changed connection identity.");
+    Check(first.Name == "Duplicated displays: Display A, Display B");
+    var expected = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.Unicode.GetBytes("MONITOR.A\nMONITOR.B\n"))).ToLowerInvariant();
+    Check(first.Id == expected, "Managed connection token differs from native DisplayScaleContext.");
+    Check(WindowDisplayContext.FromTargets([]) == WindowDisplayContext.Unavailable);
+    Check(WindowDisplayContext.FromTargets([(new string('a', 257), "Display")]) == WindowDisplayContext.Unavailable);
+    Check(WindowDisplayContext.FromTargets(Enumerable.Range(0, 17).Select(i => ("monitor." + i, "Display"))) == WindowDisplayContext.Unavailable);
+    Check(WindowDisplayContext.FromTargets([("monitor", "Private\nlabel")]).Name == "Private label");
     return Task.CompletedTask;
 }
 static Task HardwareIdentities()

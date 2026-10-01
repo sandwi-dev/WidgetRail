@@ -13,30 +13,30 @@
   background: var(--canvas, var(--surface));
   color: var(--text);
 }
-.playnite-library-canvas { flex-grow: 1; flex-basis: 0; }
+.playnite-library-canvas { flex-grow: 1; }
 .wrail-background-surface { background: rgba(0, 0, 0, 0); }
-.wrail-focus-presentation-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 14px; align: start; justify: end; }
-.playnite-library-home-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; background: rgba(0, 0, 0, 0); }
-.playnite-library-home-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; background: var(--canvas, var(--surface)); }
-.playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; }
-.playnite-library-home-foreground { width: 100%; min-width: 520px; max-width: 1180px; height: 100%; min-height: 0px; flex-grow: 1; flex-shrink: 1; flex-basis: 0; overflow: clip; padding: 18px 20px 16px; }
-.playnite-library-home-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 0; flex-shrink: 0; gap: 14px; }
+.wrail-focus-presentation-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 14px; align: start; justify: end; }
+.playnite-library-home-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; overflow: clip; background: rgba(0, 0, 0, 0); }
+.playnite-library-home-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; overflow: clip; background: var(--canvas, var(--surface)); }
+.playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; overflow: clip; }
+.playnite-library-home-foreground { width: 100%; min-width: 520px; max-width: 1180px; height: 100%; min-height: 0px; flex-grow: 1; overflow: clip; padding: 18px 20px 16px; }
+.playnite-library-home-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 0; gap: 14px; }
 .playnite-library-home-fallback { gap: 12px; }
-.playnite-library-browse-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; padding: 0px; background: rgba(0, 0, 0, 0); overflow: clip; }
-.playnite-library-browse-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; background: var(--canvas, var(--surface)); overflow: clip; }
-.playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; padding: 18px; gap: 12px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 16px; opacity: 0.84; }
+.playnite-library-browse-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; padding: 0px; background: rgba(0, 0, 0, 0); overflow: clip; }
+.playnite-library-browse-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; background: var(--canvas, var(--surface)); overflow: clip; }
+.playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; padding: 18px; gap: 12px; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 16px; }
 .playnite-library-header { min-width: 0px; gap: 3px; overflow: visible; }
 .playnite-library-header-row { width: 100%; align: center; justify: space-between; gap: 16px; padding: 10px 14px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
-.playnite-library-home-actions { width: 100%; min-width: 0px; flex-shrink: 0; align: center; justify: space-between; gap: 12px; padding: 10px 14px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; opacity: 0.84; }
-.playnite-library-home-utilities { min-width: 0px; flex-grow: 0; flex-shrink: 0; align: center; gap: 8px; }
-.playnite-library-control { min-height: 40px; flex-grow: 0; flex-shrink: 0; padding: 8px 12px; font-family: var(--font-text, Segoe UI); font-size: 13px; font-weight: 600; text-align: center; background: var(--surface-raised); color: var(--text); border-color: var(--border-strong, var(--text-muted)); border-width: 1px; corner-radius: 10px; outline-color: transparent; outline-width: 0px; outline-offset: var(--focus-offset, -1.5px); }
-.playnite-library-control:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+.playnite-library-home-actions { width: 100%; min-width: 0px; align: center; justify: space-between; gap: 12px; padding: 10px 14px; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 12px; }
+.playnite-library-home-utilities { min-width: 0px; flex-grow: 0; align: center; gap: 8px; }
+.playnite-library-control { min-height: 40px; flex-grow: 0; padding: 8px 12px; font-family: var(--font-text, Segoe UI); font-size: 13px; font-weight: 600; text-align: center; background: var(--surface-raised); color: var(--text); border-color: var(--border-strong, var(--text-muted)); border-width: 1px; corner-radius: 10px; outline-color: transparent; outline-width: 0px; outline-offset: var(--focus-offset, -1.5px); }
+.playnite-library-control:focused { border-color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .playnite-library-control:pressed { background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); }
 .playnite-library-control:selected { background: var(--surface-active, var(--surface-muted)); color: var(--text); border-color: var(--accent); }
 .playnite-library-filter-active { background: var(--surface-active, var(--surface-muted)); color: var(--text); border-color: var(--accent); }
-.playnite-library-filter-active:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); }
+.playnite-library-filter-active:focused { border-color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); }
 .playnite-library-control:disabled { background: var(--surface-subtle, var(--surface-muted)); color: var(--text-subdued); border-color: var(--border, var(--surface-muted)); }
-.playnite-library-header-copy { min-width: 0px; flex-grow: 1; flex-shrink: 1; }
+.playnite-library-header-copy { min-width: 0px; flex-grow: 1; }
 .playnite-library-header-expanded { min-width: 0px; gap: 3px; overflow: visible; }
 .playnite-library-eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; max-lines: 1; }
 .playnite-library-title { min-height: 38px; padding: 2px 0px 4px; overflow: visible; color: var(--text); font-family: var(--font-display, Segoe UI); font-size: 26px; font-weight: 600; line-height: 1.30; max-lines: 2; }
@@ -44,7 +44,7 @@
 .playnite-library-library-menu { min-width: 208px; gap: 6px; }
 .playnite-library-library-menu-content { min-width: 0px; align: center; justify: space-between; gap: 10px; }
 .playnite-library-menu-label { color: var(--text); font-size: 13px; font-weight: 600; max-lines: 1; }
-.playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 760px; gap: 0px; padding: 16px; overflow: clip; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 16px; opacity: 0.84; }
+.playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 760px; gap: 0px; padding: 16px; overflow: clip; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 16px; }
 .playnite-library-summary-title { min-width: 0px; color: var(--text); font-family: var(--font-display, Segoe UI); font-size: 34px; font-weight: 600; line-height: 1.15; max-lines: 2; text-overflow: ellipsis; }
 .playnite-library-summary-meta { min-width: 0px; color: var(--text-muted); font-size: 13px; line-height: 1.3; max-lines: 2; text-overflow: ellipsis; }
 .playnite-library-summary-state { color: var(--accent); font-size: 12px; font-weight: 600; max-lines: 1; }
@@ -54,36 +54,37 @@
 .playnite-library-source-rows { gap: 3px; }
 .playnite-library-source-row { color: var(--text); font-size: 13px; }
 .playnite-library-source-summary { color: var(--text-muted); font-size: 13px; }
-.playnite-library-query { min-width: 0px; flex-grow: 0; flex-shrink: 0; gap: 10px; padding: 4px; background: transparent; }
-.playnite-library-search { width: 100%; min-width: 0px; min-height: 42px; flex-grow: 1; flex-shrink: 1; font-weight: 400; text-align: start; }
+.playnite-library-query { min-width: 0px; flex-grow: 0; gap: 10px; padding: 4px; background: transparent; }
+.playnite-library-search { width: 100%; min-width: 0px; min-height: 42px; flex-grow: 1; font-weight: 400; text-align: start; }
 .playnite-library-collections,
-.playnite-library-filters { align: center; min-width: 0px; flex-shrink: 0; gap: 8px; }
+.playnite-library-filters { align: center; min-width: 0px; gap: 8px; }
 .playnite-library-main { width: 100%; min-width: 0px; min-height: 0; }
-.playnite-library-content { width: 100%; min-width: 0px; min-height: 0; flex-grow: 1; flex-basis: 0; gap: 10px; }
-.playnite-library-empty { width: 100%; min-width: 0px; max-width: 560px; flex-shrink: 0; gap: 8px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
+.playnite-library-content { width: 100%; min-width: 0px; min-height: 0; flex-grow: 1; gap: 10px; }
+.playnite-library-empty { width: 100%; min-width: 0px; max-width: 560px; gap: 8px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
 .playnite-library-empty-content { align: center; justify: center; }
 .playnite-library-empty-title { color: var(--text); font-family: var(--font-text, Segoe UI); font-size: 20px; font-weight: 700; text-align: start; max-lines: 2; }
 .playnite-library-empty-detail { color: var(--text-muted); font-family: var(--font-text, Segoe UI); font-size: 13px; font-weight: 400; text-align: start; max-lines: 3; }
 .playnite-library-empty-action { align: center; }
-.playnite-library-page-scroll { width: 100%; height: 100%; min-width: 0px; min-height: 0; max-width: 980px; max-height: 680px; flex-grow: 1; flex-basis: 0; gap: 12px; overflow: clip; }
-.playnite-library-catalog-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 10px; overflow: clip; }
-.playnite-library-hidden-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0; flex-grow: 1; flex-basis: 0; gap: 12px; align: center; justify: center; padding: 12px; overflow: clip; background: rgba(0, 0, 0, 0); color: var(--text); }
-.playnite-library-scroll { width: 100%; min-width: 0px; flex-grow: 1; flex-basis: 0; min-height: 0; gap: 10px; overflow: clip; }
-.playnite-library-hero { min-width: 0px; flex-shrink: 0; min-height: 126px; gap: 14px; padding: 12px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
+.playnite-library-page-scroll { width: 100%; height: 100%; min-width: 0px; min-height: 0; max-width: 980px; max-height: 680px; flex-grow: 1; gap: 12px; overflow: clip; }
+.playnite-library-catalog-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 10px; overflow: clip; }
+.playnite-library-hidden-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0; flex-grow: 1; gap: 12px; align: center; justify: center; padding: 12px; overflow: clip; background: rgba(0, 0, 0, 0); color: var(--text); }
+.playnite-library-scroll { width: 100%; min-width: 0px; flex-grow: 1; min-height: 0; gap: 10px; overflow: clip; }
+.playnite-library-hero { min-width: 0px; min-height: 126px; gap: 14px; padding: 12px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
 .playnite-library-hero-artwork { width: 172px; min-width: 172px; height: 102px; min-height: 102px; corner-radius: 9px; overflow: clip; }
 .playnite-library-hero-content { min-width: 0px; gap: 5px; overflow: visible; }
 .playnite-library-hero-title { min-height: 33px; padding: 2px 0px 3px; overflow: visible; color: var(--text); font-size: 22px; font-weight: 700; line-height: 1.30; max-lines: 2; }
 .playnite-library-hero-source { color: var(--text-muted); }
 .playnite-library-hero-state { color: var(--accent); font-weight: 600; }
 /* Tile margins contribute 12px of the total gap between posters. */
-.playnite-library-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 0px; }
-.playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 4px 2px; padding: 4px; justify: center; }
-.playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 0px; padding: 4px 6px 10px; }
-/* Tile margins keep the focused poster inside its rail/grid viewport. */
+.playnite-library-grid { width: 100%; min-width: 0px; gap: 0px; }
+/* Outer breathing room protects the enlarged border without widening item gaps. */
+.playnite-library-browse-scroll { gap: 4px 2px; padding: 8px 4px; }
+.playnite-library-rail { width: 100%; min-width: 0px; gap: 0px; padding: 8px 6px 12px; }
+/* Preserve compact spacing; focused posters may overlap their neighbours. */
 .playnite-library-tile { aspect-ratio: 2/3; min-height: 0px; margin: 6px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; background: var(--surface-subtle, var(--surface-muted)); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
-.playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-basis: 28vh; flex-grow: 0; flex-shrink: 0; }
-.playnite-library-browse-tile { min-width: 0px; flex-grow: 0; flex-shrink: 1; }
-.playnite-library-tile:focused { scale: 1.04; background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); }
+.playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-grow: 0; }
+.playnite-library-browse-tile { min-width: 0px; flex-grow: 0; }
+.playnite-library-tile:focused { scale: 1.10; border-color: var(--focus); }
 .playnite-library-tile:pressed { scale: 0.96; }
 .playnite-library-tile:disabled { background: var(--surface-subtle, var(--surface-muted)); color: var(--text-subdued); }
 .wrail-poster-tile__scrim { width: 100%; min-height: 0px; padding: 12px; background: var(--surface-subtle, var(--surface-muted)); corner-radius: 12px; overflow: clip; }
@@ -92,56 +93,54 @@
 .wrail-poster-tile__subtitle,
 .wrail-poster-tile__metadata { color: var(--text-muted); }
 .wrail-poster-tile__state { color: var(--accent); }
-.playnite-library-actions { min-width: 0px; flex-shrink: 0; gap: 8px; }
-.playnite-library-footer { min-height: 28px; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
+.playnite-library-actions { min-width: 0px; gap: 8px; }
+.playnite-library-footer { min-height: 28px; gap: 6px; }
 .playnite-library-hint-unavailable { opacity: 0.64; }
-.playnite-library-warning { flex-shrink: 0; margin: 8px 0 0; }
+.playnite-library-warning { margin: 8px 0 0; }
 .playnite-library-details { max-width: 980px; max-height: 720px; }
-.playnite-library-details-scroll { padding: 2px 4px 2px 0; }
+.playnite-library-details-layout { width: 100%; min-width: 0; min-height: 0; flex-grow: 1; }
+.playnite-library-details-scroll { min-width: 0; min-height: 0; padding: 2px 4px 2px 0; gap: 16px; }
 .playnite-library-playnite { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; padding: 12px; background: rgba(0, 0, 0, 0); color: var(--text); }
 .playnite-library-playnite-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; gap: 14px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 14px; overflow: clip; }
 .playnite-library-playnite-header { width: 100%; min-width: 0px; align: center; justify: space-between; gap: 12px; overflow: visible; }
-.playnite-library-playnite-heading { min-width: 0px; flex-grow: 1; flex-shrink: 1; gap: 2px; overflow: visible; }
-.playnite-library-playnite-actions { width: 100%; flex-grow: 0; flex-shrink: 0; flex-wrap: wrap; justify: start; }
+.playnite-library-playnite-heading { min-width: 0px; flex-grow: 1; gap: 2px; overflow: visible; }
+.playnite-library-playnite-actions { width: 100%; flex-grow: 0; justify: start; }
 .playnite-library-playnite-card { gap: 10px; padding: 14px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; overflow: clip; }
-.playnite-library-categories { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; padding: 12px; overflow: clip; background: rgba(0, 0, 0, 0); color: var(--text); }
-.playnite-library-categories-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 14px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 14px; overflow: clip; }
-.playnite-library-categories-header { width: 100%; min-width: 0px; flex-grow: 0; flex-shrink: 0; align: center; justify: space-between; gap: 12px; background: rgba(0, 0, 0, 0); overflow: visible; }
-.playnite-library-categories-heading { min-width: 0px; flex-grow: 1; flex-shrink: 1; gap: 2px; overflow: visible; }
-.playnite-library-categories-back { flex-grow: 0; flex-shrink: 0; }
-.playnite-library-categories-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 10px; overflow: clip; }
-.playnite-library-category-create { width: 340px; max-width: 340px; min-width: 0px; flex-grow: 0; flex-shrink: 1; }
-.playnite-library-categories-list { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 8px; overflow: clip; }
-.playnite-library-category { width: 100%; min-width: 0px; min-height: 64px; flex-grow: 0; flex-shrink: 0; padding: 12px 16px; gap: 16px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; }
+.playnite-library-categories { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; padding: 12px; overflow: clip; background: rgba(0, 0, 0, 0); color: var(--text); }
+.playnite-library-categories-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 14px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 14px; overflow: clip; }
+.playnite-library-categories-header { width: 100%; min-width: 0px; flex-grow: 0; align: center; justify: space-between; gap: 12px; background: rgba(0, 0, 0, 0); overflow: visible; }
+.playnite-library-categories-heading { min-width: 0px; flex-grow: 1; gap: 2px; overflow: visible; }
+.playnite-library-categories-back { flex-grow: 0; }
+.playnite-library-categories-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 10px; overflow: clip; }
+.playnite-library-category-create { width: 340px; max-width: 340px; min-width: 0px; flex-grow: 0; }
+.playnite-library-categories-list { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 8px; overflow: clip; }
+.playnite-library-category { width: 100%; min-width: 0px; min-height: 64px; flex-grow: 0; padding: 12px 16px; gap: 16px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; }
 .playnite-library-category-row { width: 100%; min-width: 0px; align: center; justify: space-between; gap: 12px; }
-.playnite-library-category-copy { min-width: 0px; flex-grow: 1; flex-shrink: 1; gap: 2px; }
+.playnite-library-category-copy { min-width: 0px; flex-grow: 1; gap: 2px; }
 .playnite-library-category-summary { min-width: 0px; color: var(--text); font-size: 16px; font-weight: 600; max-lines: 2; text-overflow: ellipsis; }
 .playnite-library-category-count { min-width: 0px; color: var(--text-muted); font-size: 12px; max-lines: 1; }
-.playnite-library-category-open { flex-grow: 0; flex-shrink: 0; }
+.playnite-library-category-open { flex-grow: 0; }
 .playnite-library-playnite-token { min-height: 44px; }
-.playnite-library-hidden-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 14px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 14px; overflow: clip; }
-.playnite-library-hidden-header { width: 100%; min-width: 0px; flex-grow: 0; flex-shrink: 0; align: center; justify: space-between; gap: 12px; background: rgba(0, 0, 0, 0); overflow: visible; }
-.playnite-library-hidden-heading { min-width: 0px; flex-grow: 1; flex-shrink: 1; gap: 2px; overflow: visible; }
-.playnite-library-hidden-back { flex-grow: 0; flex-shrink: 0; }
+.playnite-library-hidden-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 14px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 14px; overflow: clip; }
+.playnite-library-hidden-header { width: 100%; min-width: 0px; flex-grow: 0; align: center; justify: space-between; gap: 12px; background: rgba(0, 0, 0, 0); overflow: visible; }
+.playnite-library-hidden-heading { min-width: 0px; flex-grow: 1; gap: 2px; overflow: visible; }
+.playnite-library-hidden-back { flex-grow: 0; }
 
 /* Readable controller hints remain outside focus navigation. */
-.wrail-controller-hint { min-height: 28px; flex-grow: 0; flex-shrink: 1; align: center; gap: 6px; padding: 0px; background: transparent; border-width: 0px; }
+.wrail-controller-hint { min-height: 28px; flex-grow: 0; align: center; gap: 6px; padding: 0px; background: transparent; border-width: 0px; }
 .wrail-controller-hint__key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; background: transparent; border-width: 0px; }
 .wrail-controller-hint__label { color: var(--text-muted); font-size: 12px; font-weight: 400; max-lines: 1; text-overflow: ellipsis; }
-.playnite-library-footer { width: 100%; align: center; gap: 10px; }
+.playnite-library-footer { width: 100%; align: center; justify: start; gap: 24px; }
 .playnite-library-install-badge { height: 34px; min-height: 34px; padding: 7px 8px; background: var(--surface-active, var(--surface-muted)); border-top-color: var(--border-strong, var(--text-muted)); border-top-width: 1px; corner-radius: 0px; }
 .playnite-library-install-label { color: var(--text); font-size: 12px; font-weight: 600; max-lines: 1; text-align: center; }
 
-/* Container opacity affects its own paint in the native renderer, not descendants.
-   Keep controls, copy, and artwork opaque above the three translucent panels. */
-
 /* Shared navigation and focused-game information use the global palette. */
-.playnite-library-summary-badges { min-width: 0px; flex-wrap: wrap; gap: 6px; }
+.playnite-library-summary-badges { min-width: 0px; gap: 6px; }
 .playnite-library-summary-badge { color: var(--text); background: var(--surface-active, var(--surface-muted)); padding: 4px 8px; corner-radius: 6px; font-size: 12px; font-weight: 600; max-lines: 1; text-overflow: ellipsis; }
 .playnite-library-summary-badge-accent { color: var(--accent); }
-.playnite-library-category:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+.playnite-library-category:focused { border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .playnite-library-category:pressed { background: var(--surface-subtle, var(--surface-muted)); }
-.playnite-library-category-chevron { color: var(--text-muted); flex-shrink: 0; }
+.playnite-library-category-chevron { color: var(--text-muted); }
 /* Preserve readable labels when no cover is available, including warm rows. */
 .playnite-library-poster-fallback { min-height: 0px; padding: 12px; background: var(--surface-subtle, var(--surface-muted)); }
 .playnite-library-poster-fallback-content { min-height: 0px; gap: 6px; }
@@ -154,38 +153,46 @@
 .playnite-library-summary-compact { min-width: 0px; gap: 4px; }
 .playnite-library-summary-compact-title { color: var(--text); font-family: var(--font-display, Segoe UI); font-size: 22px; font-weight: 600; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; }
 .playnite-library-summary-compact-meta { color: var(--text-muted); font-size: 12px; max-lines: 1; text-overflow: ellipsis; }
-.playnite-library-playnite-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 14px; padding: 2px; overflow: clip; }
+.playnite-library-playnite-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 14px; padding: 2px; overflow: clip; }
 
-.playnite-library-search-group { min-width: 0; flex-shrink: 0; }
+.playnite-library-search-group { min-width: 0; }
 .playnite-library-details-content { gap: 16px; min-width: 0; }
 .playnite-library-details-play { width: 100%; min-height: 44px; flex-grow: 0; background: var(--surface-active, #302f2b); color: var(--text); }
 .playnite-library-details-meta { color: var(--text-muted); max-lines: 3; text-overflow: ellipsis; overflow-wrap: anywhere; }
 .playnite-library-details-description { color: var(--text); font-size: 15px; font-weight: 400; line-height: 1.4; max-lines: 128; text-overflow: ellipsis; overflow-wrap: anywhere; }
 
-.playnite-library-tabs { min-width: 0px; max-width: 360px; gap: 12px; flex-shrink: 1; padding: 6px 12px; }
-.playnite-library-tab-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); flex-shrink: 0; }
+.playnite-library-tabs { width: 400px; min-width: 0px; max-width: 400px; gap: 12px; padding: 6px 12px; }
+.playnite-library-tab { width: 128px; min-width: 104px; flex-grow: 1; text-align: center; }
+.playnite-library-tab-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); }
 
-.playnite-library-details-toolbar { align: center; gap: 12px; min-width: 0; flex-shrink: 0; }
+.playnite-library-details-toolbar { align: center; gap: 12px; min-width: 0; }
 .playnite-library-details-row { direction: column; min-width: 0; padding: 12px; gap: 6px; background: var(--surface-subtle, var(--surface-muted)); corner-radius: 10px; }
 .playnite-library-details-row-title { font-size: 16px; font-weight: 600; color: var(--text); max-lines: 2; }
 .playnite-library-details-section-title { margin: 12px 0px 2px 0px; font-size: 20px; font-weight: 600; color: var(--text); max-lines: 2; }
-.playnite-library-details-tabs { width: 100%; min-width: 0; flex-shrink: 0; gap: 8px; padding: 6px 10px; }
+.playnite-library-details-tabs { width: 100%; min-width: 0; gap: 8px; padding: 6px 10px; }
 .playnite-library-details-paragraphs { min-width: 0; gap: 12px; }
 
-.playnite-library-common-frame { width: 100%; height: 100%; min-width: 0px; min-height: 0px; max-width: 1180px; padding: 24px 20px; flex-grow: 1; flex-basis: 0; gap: 12px; }
+.playnite-library-common-frame { width: 100%; height: 100%; min-width: 0px; min-height: 0px; max-width: 1180px; padding: 24px 20px; flex-grow: 1; gap: 12px; }
 .playnite-library-result-count { color: var(--text); background: var(--surface-subtle, var(--surface-muted)); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; font-size: 13px; font-weight: 600; min-width: 0px; padding: 9px 12px; margin: 0px 0px 0px 8px; }
 .playnite-library-details-value { align: center; gap: 20px; min-width: 0; padding: 4px 0px; }
-.playnite-library-details-label { color: var(--text-muted); font-size: 13px; font-weight: 400; width: 28%; min-width: 0; flex-shrink: 0; max-lines: 3; overflow-wrap: anywhere; }
-.playnite-library-details-field { color: var(--text); font-size: 15px; font-weight: 400; min-width: 0; flex-grow: 1; flex-basis: 0; max-lines: 6; overflow-wrap: anywhere; }
-.playnite-library-details-header-hints { align: center; gap: 16px; flex-shrink: 0; }
+.playnite-library-details-label { color: var(--text-muted); font-size: 13px; font-weight: 400; min-width: 0; flex-grow: 1; max-lines: 3; overflow-wrap: anywhere; }
+.playnite-library-details-field { color: var(--text); font-size: 15px; font-weight: 400; min-width: 0; flex-grow: 3; max-lines: 6; overflow-wrap: anywhere; }
+.playnite-library-details-header-hints { align: center; gap: 16px; }
 
-.playnite-library-details-header { min-width: 0; align: start; gap: 20px; flex-shrink: 0; }
-.playnite-library-details-poster { width: 144px; height: 216px; flex-shrink: 0; corner-radius: 12px; overflow: clip; background: var(--surface-muted); }
-.playnite-library-details-controls { min-width: 0; flex-grow: 1; flex-basis: 0; gap: 12px; }
+.playnite-library-details-header { min-width: 0; align: start; gap: 20px; }
+.playnite-library-details-poster { width: 144px; height: 216px; corner-radius: 12px; overflow: clip; background: var(--surface-muted); }
+.playnite-library-details-controls { min-width: 0; flex-grow: 1; gap: 12px; }
 .playnite-library-details-buttons { width: 100%; max-width: 300px; min-width: 0; gap: 8px; }
 .playnite-library-details-button { width: 100%; min-width: 0; }
 
 .playnite-library-details-source { color: var(--text); font-size: 18px; font-weight: 600; max-lines: 2; overflow-wrap: anywhere; }
 
-.playnite-library-details-source-row { min-width: 0; align: center; gap: 12px; flex-wrap: wrap; }
+.playnite-library-details-source-row { min-width: 0; align: center; gap: 12px; }
 .playnite-library-details-completion { color: var(--text); background: var(--surface-subtle, var(--surface-muted)); font-size: 13px; font-weight: 600; padding: 4px 10px; corner-radius: 8px; min-width: 0; max-lines: 2; overflow-wrap: anywhere; }
+
+/* Give long game titles and controller hints independent, full-width rows. */
+/* Built-in raised surfaces have .98 alpha; .84 gives approximately .82 without dimming the content. */
+.wrail-modal { width: 900px; height: 720px; padding: 24px; gap: 20px; background: alpha(var(--surface-raised), .84); }
+.wrail-modal__header { direction: column; align: start; gap: 10px; }
+.wrail-modal__title { width: 100%; font-size: 24px; line-height: 1.2; }
+.playnite-library-details-header-hints { width: 100%; justify: end; gap: 16px; }

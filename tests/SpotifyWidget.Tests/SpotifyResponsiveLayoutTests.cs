@@ -12,6 +12,8 @@ internal static class SpotifyResponsiveLayoutTests
         var snapshot = SpotifyPresentation.Render(
                 ReadyState(), handles.Compact, handles.UpNext)
             .CreateSnapshot("spotify.responsive-fit", 1);
+        Equal(840d, snapshot.Surface!.PreferredWidth);
+        Equal(580d, snapshot.Surface.PreferredHeight);
 
         Equal(ViewNodeKind.Row, Find(snapshot.Root, "spotify.connected.panes").Kind);
         var player = Find(snapshot.Root, "spotify.card");
@@ -47,12 +49,43 @@ internal static class SpotifyResponsiveLayoutTests
             "spotify-player-card", "spotify-player-card-wide", "spotify-player-pane");
         Equal("320px", paneStyle.Get("width")?.Text);
         Equal("0", paneStyle.Get("flex-grow")?.Text);
-        Equal("1", paneStyle.Get("flex-shrink")?.Text);
+        Equal("260px", paneStyle.Get("min-width")?.Text);
+        Equal("340px", paneStyle.Get("max-width")?.Text);
         var bodyStyle = Resolve(theme, "row", "spotify.connected.panes",
             "spotify-connected-panes");
-        Equal("0px", bodyStyle.Get("flex-basis")?.Text);
+        Equal("0px", bodyStyle.Get("min-width")?.Text);
         Equal("1", bodyStyle.Get("flex-grow")?.Text);
-        Equal("1", bodyStyle.Get("flex-shrink")?.Text);
+        Equal("12px", bodyStyle.Get("gap")?.Text);
+        var compactPin = snapshot.PinnedLayouts.Single(layout => layout.Id == SpotifyPresentation.CompactPinnedLayoutId);
+        Equal(360d, compactPin.Surface.PreferredWidth);
+        Equal(360d, compactPin.Surface.PreferredHeight);
+        Equal(320d, compactPin.Surface.MinimumWidth);
+        Equal(300d, compactPin.Surface.MinimumHeight);
+        Equal(ViewNodeKind.Scroll, Find(compactPin.Root!, "spotify.player.pinned-compact.card").Kind);
+        Equal(ViewNodeKind.Image, Find(compactPin.Root!, "spotify.player.pinned-compact.artwork").Kind);
+        foreach (var playerTree in new[] { snapshot.Root, compactPin.Root! })
+        {
+            var toggle = FindAction(playerTree, "spotify.play-toggle");
+            Equal(string.Empty, toggle.Text);
+            Equal<WidgetGlyph?>(WidgetGlyph.Pause, toggle.Glyph);
+            HasClass(toggle, "wrail-icon-button--primary");
+            HasClass(toggle, "spotify-play");
+        }
+        var toggleStyle = Resolve(theme, "button", "spotify.play-toggle", "spotify-play");
+        Equal("52px", toggleStyle.Get("width")?.Text);
+        Equal("52px", toggleStyle.Get("height")?.Text);
+        foreach (var classes in new[] { new[] { "spotify-text-action" }, new[] { "spotify-page-action", "is-quiet" }, new[] { "wrail-settings-row__action" } })
+        {
+            var actionStyle = Resolve(theme, "button", "spotify.text.action", classes);
+            True(actionStyle.Get("background")?.Text != "transparent" && actionStyle.Get("border-color")?.Text != "transparent",
+                "Spotify text actions need a themed visible button surface and border.");
+            Equal("44px", actionStyle.Get("min-height")?.Text);
+            Equal("14px", actionStyle.Get("font-size")?.Text);
+        }
+        WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Player", snapshot);
+        WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Compact-Pin", snapshot with
+        { Root = compactPin.Root!, Surface = compactPin.Surface, InitialFocusId = compactPin.InitialFocusId,
+            ActiveInputScopeId = compactPin.ActiveInputScopeId!, PinnedLayouts = [], FocusGroupEntryRequest = null });
         return Task.CompletedTask;
     }
 
@@ -81,11 +114,7 @@ internal static class SpotifyResponsiveLayoutTests
                 new(false, false, false, false, false, false, false, false), "Spotify"),
             null, "Playing Small Hours", null, 0, false, navigation,
             EmptyCursor<SpotifyMediaCollectionItem>(),
-            new SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>(
-            playlistSnapshot, UI.VerticalScroll("spotify.playlists.scroll", []) with
-            {
-                CollectionAnchorKey = playlistItem.Key.Value,
-            }),
+            new(SpotifyPresentationHandleFixture.Discovered("spotify.playlists.scroll", grid: true)),
             null, null, null, false, null, false, null);
     }
 

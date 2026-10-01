@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using WidgetRail.WidgetProtocol;
 
-const string artifactRelativePath = "src/OverlayHost/WidgetProtocolPresentationContract.generated.h";
+const string artifactRelativePath = "src/OverlayPlatformInterop/WidgetProtocolPresentationContract.generated.h";
 
 var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
 var artifactPath = Path.Combine(repositoryRoot, artifactRelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -216,3 +216,4 @@ static void VerifyDriftDetection(string artifact)
     if (vectors.Any(candidate => string.Equals(candidate, artifact, StringComparison.Ordinal)))
         throw new InvalidOperationException("A deterministic presentation-contract drift vector was not rejected.");
 }
+

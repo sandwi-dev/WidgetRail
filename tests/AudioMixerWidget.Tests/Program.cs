@@ -1562,7 +1562,7 @@ static async Task ShippedAssetsValidate()
     Assert.True(!style.Contains("min-width: 440px", StringComparison.Ordinal),
         "The widget retained a desktop-only hard width floor.");
 
-    var catalogPath = Path.Combine(project, "..", "..", "OverlayHost", "widget-catalog.json");
+    var catalogPath = Path.Combine(project, "..", "..", "..", "eng", "widget-catalog.json");
     using var catalog = JsonDocument.Parse(await File.ReadAllBytesAsync(catalogPath));
     var bundled = catalog.RootElement.GetProperty("bundledWidgets").EnumerateArray().Single(item =>
         item.GetProperty("packageId").GetString() == manifest.Id);
@@ -1583,26 +1583,20 @@ static void AssertResponsiveLayoutBudget(WrssTheme theme)
     var muteIcon = Resolve(theme, "icon", "audio.session.test.mute.icon", "audio-mute-icon");
     var value = Resolve(theme, "text", "audio.session.test.volume.value", "audio-volume-value");
     var list = Resolve(theme, "stack", "audio.sessions.list", "audio-session-list");
-    var header = Resolve(theme, "stack", "audio.header", "audio-header");
     var sessionState = Resolve(theme, "text", "audio.session.test.state", "audio-session-state");
 
     Assert.True(Pixels(slider.Get("height")!, 280) >= 44,
         "The slider focus target fell below the compact 44px controller budget.");
     Assert.Equal(28D, Pixels(muteIcon.Get("width")!, 280));
     Assert.Equal(28D, Pixels(muteIcon.Get("height")!, 280));
-    Assert.Equal("0", header.Get("flex-shrink")!.Text);
-    Assert.Equal("0", card.Get("flex-shrink")!.Text);
-    Assert.Equal("0", sessionState.Get("flex-shrink")!.Text);
     Assert.True(Pixels(sessionState.Get("width")!, 280) >= 44,
         "The trailing session state can collapse into clipped character fragments.");
-    Assert.Equal("0", list.Get("flex-shrink")!.Text);
     Assert.Equal("100%", root.Get("width")!.Text);
     Assert.Equal("100%", card.Get("width")!.Text);
     Assert.Equal("100%", controls.Get("width")!.Text);
     Assert.Equal("100%", list.Get("width")!.Text);
     Assert.Equal("0px", slider.Get("min-width")!.Text);
     Assert.Equal("1", slider.Get("flex-grow")!.Text);
-    Assert.Equal("1", slider.Get("flex-shrink")!.Text);
 
     foreach (var viewport in new[] { 280D, 320D, 520D, 572D, 650D, 1280D, 3840D })
     {

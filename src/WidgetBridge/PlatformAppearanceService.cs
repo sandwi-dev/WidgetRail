@@ -87,13 +87,16 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
     }
 
     public WrssTheme ResolveWidgetTheme(string widgetId, WrssPackageResult widgetPackage)
+        => ResolveWidgetThemeSnapshot(widgetId, widgetPackage).Theme;
+
+    internal (long Revision, WrssTheme Theme) ResolveWidgetThemeSnapshot(string widgetId, WrssPackageResult widgetPackage)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         ArgumentNullException.ThrowIfNull(widgetPackage);
         var current = Current;
         if (_widgetThemes.TryGetValue(widgetId, out var cached) && cached.Revision == current.Revision &&
             ReferenceEquals(cached.Package, widgetPackage))
-            return cached.Theme;
+            return (cached.Revision, cached.Theme);
 
         var compiled = current.CompileForWidget(widgetPackage);
         if (!compiled.IsValid)
@@ -106,7 +109,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         }
         var entry = new WidgetThemeCacheEntry(current.Revision, widgetPackage, compiled.Theme!);
         _widgetThemes[widgetId] = entry;
-        return entry.Theme;
+        return (entry.Revision, entry.Theme);
     }
 
     private WidgetRail.PlatformDiagnostics.OverlayDisplayContext _display =
@@ -266,7 +269,11 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             ("title", "title", EmptyStates()),
             ("body", "body", EmptyStates()),
             ("hint", "hint", EmptyStates()),
+            ("controller-glyph", "controller-glyph", EmptyStates()),
             ("status", "status", EmptyStates()),
+            ("tray-clock", "status", EmptyStates()),
+            ("tray-date", "status", EmptyStates()),
+            ("tray-status-icon", "status", EmptyStates()),
         };
         var result = new SortedDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>(StringComparer.Ordinal);
         var total = 0;
@@ -275,7 +282,9 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             var resolved = theme.Resolve(new WrssElement(
                 definition.Role,
                 $"shell.{definition.Key.Replace(':', '.')}",
-                new HashSet<string>(StringComparer.Ordinal),
+                definition.Key is "controller-glyph" or "tray-clock" or "tray-date" or "tray-status-icon"
+                    ? new HashSet<string>(StringComparer.Ordinal) { "wrail-" + definition.Key }
+                    : new HashSet<string>(StringComparer.Ordinal),
                 definition.States));
             if (resolved.Properties.Count > BridgeRenderStyleLimits.MaximumPropertiesPerState)
                 throw new BridgeProtocolException($"Shell style '{definition.Key}' has too many properties.");

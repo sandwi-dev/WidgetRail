@@ -37,33 +37,26 @@ Pressing A opens details with an Install action for uninstalled games. Installat
 and uninstallation are delegated to Playnite; refresh after the launcher finishes.
 Home lists installed games only.
 
-Home orders the full provider collection by favorites, most recently played,
-name, and stable game ID before splitting it into pages. The rail preserves
-that order as pages arrive. Saved games outside a partial cursor window are
-not presented as unavailable merely because their page has not loaded.
-Browse shows the total matching its current query, independently of retained
-page size. Adjacent loading preserves focus and uses the shared edge indicator;
-providers without a known total display an explicitly labeled loaded count.
-Each cursor traversal keeps its initial membership and ordering until refresh;
-current game details and favorite authority remain live. A favorite change takes
-effect in ordering on refresh, so later pages cannot overlap an earlier ordering.
-Home and Browse own separate traversals. Replacing a query retires its old cursors.
-Saving a favorite disables activation temporarily while preserving rail focus.
-Home and Browse load more games automatically while scrolling or navigating;
-there are no LB/RB page-jump shortcuts. Home fetches 16 games per page; Browse fetches 30. Home refreshes
-once whenever it becomes active, including reopening the overlay and returning from another
-route. A successful refresh starts the rail at the beginning.
-Visible-to-interactive transitions do not trigger a second refresh.
-Browse reuses its loaded pages, stable scroll container, and position on reopening
-while the widget remains loaded. After five minutes hidden, WidgetRail unloads
-the widget application to release memory. Reopening then starts a fresh instance;
-in-memory pages and navigation reset, while saved settings remain. This does not
-close Playnite itself or its Bridge extension.
-Refresh and query changes request fresh data explicitly. The retention target is 48 items for Home and 60 for Browse, with a hard maximum
-of 192. The shared cursor policy protects visible pages and retains nearby
-prefetched pages when capacity permits, so reversing direction does not immediately
-refetch them. Browse uses a pagination threshold of 4. The host also provides a
-measured viewport lead range and a wider retention range for reversal headroom.
+Home and Browse now publish separate frozen indexed queries. Home preserves the
+provider's favorite/recent/name/ID order and inserts its bounded manual and title
+match rows before the provider rows. Referenced unavailable saved entries appear
+last, only after complete query membership is known. Browse displays its exact
+logical query count. Neither page builds a full poster tree: the native frontend
+requests bounded random-access ranges and owns realization, scrolling and focus.
+
+Actions and artwork capture the exact item and query owner. Same-membership content
+updates preserve logical focus identity; a semantic query or membership/order change
+publishes a new query generation. Home refreshes once on activation and return from
+another route. Unchanged membership preserves its native position. Visible-to-
+interactive transitions do not refresh again. Browse retains its query on reopening.
+After five minutes hidden, the widget application unloads and its in-memory queries
+and navigation reset; saved settings and the external Playnite process remain.
+
+The SDK leases bound rendered-row lifetimes independently of the application catalog.
+A range request does not issue another Bridge page request or accumulate cursor
+history. Provider capture, fixed-row resolution, persistence and authority publication
+are coordinated before the replacement query is visible. Failed same-query refreshes
+retain the last complete query; retired/superseded captures cannot publish.
 
 ## Setup and safety
 
@@ -87,8 +80,8 @@ account operations.
 
 Playnite game GUIDs are the exact item, action, and mutation authority. Library
 queries traverse deterministic 64-item Bridge pages up to 10,000 games, then
-apply the current search, source, collection, sort, and 32-item presentation
-window locally. Installed and owned-but-not-installed games remain distinct.
+apply the current search, source, collection and sort locally. The indexed
+frontend requests bounded presentation ranges from that frozen membership. Installed and owned-but-not-installed games remain distinct.
 Manual and emulated games are ordinary Playnite records; optional source,
 category, completion, metadata, and artwork fields fail closed when absent or
 malformed.
@@ -103,10 +96,9 @@ the Bridge becomes unavailable. Retained entries are marked stale, expose no
 launch capability, and cannot authorize mutations. A fresh current observation
 is required before any action.
 
-Home and Browse use independent cursor resources, query generations, retained
-windows, selection anchors, and pagination. Paging or filtering Browse does not
-replace Home's current window or fixed rows, while Home refreshes on returning to it. Provider identity and mutation authority remain
-shared and current across both presentation routes.
+Home and Browse own independent query publications and native collections. Browse
+filtering cannot replace Home's membership or fixed rows. Provider identity and
+mutation authority remain shared and current across both presentation routes.
 
 ## Artwork retention
 
@@ -147,7 +139,7 @@ Provider and persistence authority deliberately remain outside that model:
 | Owner | State and responsibility |
 | --- | --- |
 | `WidgetModel<PlayniteLibraryRenderState>` | Immutable query/collection projection, fixed rows and source observations, details/action-sheet/title-editor selections, route-local category/running/hero/focus state, local status/busy/launching presentation, and Playnite connection presentation. |
-| Home and Browse `WidgetCursorResource` instances | Independent remote page lifecycles, queries, cursors, retained item windows, anchors, stale-generation rejection, cancellation, and provider errors. |
+| Home and Browse `WidgetIndexedCollection` instances | Frozen logical membership, bounded demanded rows, exact item action/artwork captures, query generations and content revisions. The native frontend owns realization, scroll position and focus. |
 | `WidgetNavigator` | Route stack, route input scopes, and route-return focus. |
 | `WidgetOperations` | Named asynchronous operation admission, cancellation, and drain. |
 | Playnite application/Bridge authority | Current catalog identities, favorites, hidden/category/completion state, and exact mutation/launch authorization. |
@@ -161,7 +153,7 @@ contains only immutable local projections needed to produce a coherent view.
 ## Navigation and game details
 
 Home (`Library` internally) and Library (`Browse` internally) are root destinations.
-They retain separate cursor resources and remembered content groups. RS click requests
+They retain separate indexed collections and native remembered item focus. RS click requests
 one-shot entry into the single-field search group; analog scrolling remains host-owned.
 A poster opens a `WidgetModal` instead of launching. The modal retains the game's
 opaque identity and displays current provider metadata, rechecking current membership
@@ -230,6 +222,14 @@ focus cache, cursor refresh, or background input admission is added.
 
 ## Section motion
 
+Home places the horizontal game rail at the bottom of its available content area,
+with the retained focused-game summary immediately above it, aligned left. The
+focus-presentation surface declares this through `justify: end`, `align: start`, and
+a 14-DIP gap; the rail content keeps its full width and does not grow a spacer.
+Home and Library destination buttons share a 128-DIP preferred width with a
+104-DIP minimum for narrower overlays. These layout styles preserve the existing
+presentation ownership, logical focus IDs, and section transition group.
+
 Home and Library opt into the shared navigation transition group
 `playnite-library.destinations`. The header stays in place while its selected
 destination and lower content animate together. Cursor changes keep the section
@@ -237,3 +237,35 @@ key; details use the host's ordinary modal entrance/exit motion.
 Overview, Achievements, and Activity also share a transition group inside the
 details dialog. Only their lower content moves; the poster and action controls
 remain stationary. Data refreshes preserve the selected tab's transition key.
+
+
+## Native presentation contract
+
+Home and Library require their indexed collection source even when empty or
+loading. The page publishes the total count, navigation and background owner;
+SDK-acquired ranges publish exact game posters, focus summaries and artwork.
+There is no eager cursor-window renderer or separate warm-saved-game renderer.
+Warm Home uses the same indexed query with noninteractive saved-only rows.
+Provider cursor resources and captured action authority remain independent.
+
+Use explicit responsive grids for bounded wrapping groups (badges,
+connection actions and details source/completion). Native track sizing replaces
+ignored flex-basis, flex-shrink and flex-wrap style declarations.
+Controller footer hints instead use left-aligned content-sized rows with24DIP
+gaps, so their positions are not redistributed into equal-width columns.
+
+The Playnite test suite can export synthetic layout evidence when
+`WRAIL_PLAYNITE_LAYOUT_OUTPUT` is set. Indexed pages emit `.indexed.json` files with
+separate parent snapshots, bounded acquired ranges and their resolved styles.
+`Test-WinUiPlaynitePresentation.ps1 -FixturePath <path> -OutputDirectory <fresh>`
+checks native row and focused-summary geometry. The existing standalone Details
+geometry fixture remains `.renderer.json`. These fixtures do not use Playnite,
+credentials, launch actions or system settings, and are not performance benchmarks.
+
+Game details use a bounded Auto/Star Grid: artwork and controls remain fixed above
+the lower section scroll. The tabs are Description (initial), Information,
+Achievements, Activity and Links. Description also contains saved notes. The
+section tabs share the scroll owner with their content so directional fallback
+can read sections with no action controls. The SDK modal's default whole-content
+scroll is disabled explicitly. Opening identities and scroll IDs still survive
+background/resume and refresh, and optional providers remain on-demand.

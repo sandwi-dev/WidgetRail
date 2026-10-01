@@ -33,7 +33,26 @@ focus. `var(--accent)` uses a theme value instead of fixing the highlight to one
 For a reusable visual treatment, apply the same style class to several elements
 and use a `.class-name` selector. Roles such as `button` can style a kind of control.
 
+Focus and selection are independent. Shared controls, including standalone actions,
+settings actions, steppers, selectors, sliders and selectable rows, retain their
+normal fill when focused and add an outline and depth; selection keeps its
+persistent fill even when focus moves elsewhere. If you supply a selected
+background, do not reuse it for `:focused`: a focused choice is not necessarily
+the active choice. Keep a selected-and-focused control's selection fill and
+let the focus outline identify the current controller target. Primary and
+brand-colored controls also retain their authored fill while focused.
+Use that same convention for widget-specific focus rules so an action next to a
+selected choice cannot acquire selection-like fill just from receiving focus.
+
 ## Let the theme supply colors
+
+For a translucent surface with opaque labels and artwork, use
+`background: alpha(var(--surface), .84)` and, if needed,
+`border-color: alpha(var(--border, var(--surface-muted)), .84)`. This multiplies
+the theme color's existing alpha without dimming child content. Avoid container
+`opacity` for that effect; WinUI applies opacity to the whole subtree. See the
+[color transparency contract](../reference/wrss.md#color-transparency) for
+supported arguments and limits.
 
 Shared tokens include `--accent`, `--surface`, `--text`, `--text-muted`, and
 `--focus`. If your widget leaves a token undefined, it can inherit the global

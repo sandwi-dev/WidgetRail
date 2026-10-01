@@ -1,15 +1,29 @@
 # Installer build contract
 
+## Unpackaged WinUI distribution
+
+WidgetRail ships as a per-user Inno Setup installer. The frontend is an unpackaged,
+self-contained WinUI executable with its own .NET 10 and Windows App SDK runtime.
+Setup creates a direct executable shortcut; neither setup nor launch registers an
+application MSIX or requires trusting an application signing certificate. Shared
+GameInput and WebView2 prerequisites still use their Microsoft-signed installers.
+
+`scripts/Build-WinUiReleasePayload.ps1` publishes the frontend, compiles its native
+boundaries, and prepares the private widget services and runtime. It creates no
+package identity, trust-store change, application registration, or launch.
+`scripts/Test-WinUiInstallerSyntax.ps1` compiles the actual Inno script with
+placeholder inputs and never executes its installer.
+
 Production and Developer installers use one per-user Inno Setup AppId. Installing
 either edition updates the same Start menu entry and uninstall entry. Files live
-under `%LOCALAPPDATA%\Programs\WidgetRail\versions\<version-edition-commit>`.
+under `%LOCALAPPDATA%\Programs\WidgetRail\versions\<version-edition-inventoryHash>`.
 The active application root is recorded in
 `HKCU\Software\WidgetRail\Installation`. Setup preserves existing user data.
 Uninstall keeps data by default and offers an explicit option to delete it.
 
 Previous version payloads remain installed until uninstall. This avoids deleting
 working binaries during an interrupted upgrade and keeps file removal restricted
-to Inno's installation log. Only the newest edition is registered and launched by
+to Inno's installation log. The active edition is selected by
 the Start menu or startup entry. Automatic old-version cleanup is not implemented.
 
 ## Build
@@ -30,7 +44,7 @@ source revisions separately. Temporary build evidence is retained.
 
 Setup requires Windows 10 build 19041 or later and x64 app compatibility. Each
 edition contains private .NET 8 base and Windows Desktop runtimes, selected through process-local
-DOTNET_ROOT/DOTNET_ROOT_X64 by the native host. Isolated workers inherit that
+DOTNET_ROOT/DOTNET_ROOT_X64 by the WinUI frontend's Bridge launcher. Isolated workers inherit that
 selection and receive read/execute access only to the private runtime actually
 hosting the bridge. Global .NET permissions and environment variables are not
 changed. Both editions include the CLI. The root `wrail.cmd` uses the private runtime; building
@@ -63,7 +77,7 @@ remain unsigned until release signing is configured.
 ## Startup and process lifetime
 
 The checkbox and Settings > Overlay share `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WidgetRail`.
-Its value is exactly the quoted active `OverlayHost.exe` path, with no `--show`.
+Its value is the quoted active `OverlayFrontend.WinUI.exe` path plus `--hidden`.
 Fresh installation defaults off; upgrades read the actual entry instead of a
 saved installer task choice. Windows-owned StartupApproved values are never
 written or deleted, including on uninstall. Settings reports known disabled
@@ -74,19 +88,19 @@ surface does not gain registry access. The service checks that the worker's
 application directory matches the registered installation. Development copies
 cannot redirect the installed startup entry. Registration failures become UI
 feedback. Uninstall removes the startup entry only when it exactly matches this
-installation. The empty WidgetRail installation registry parent is also removed;
-unrelated values or subkeys prevent that removal.
+installation. Unrelated registry values and subkeys remain preserved.
 
 ## Uninstall data choices
 
-Interactive uninstall asks whether to delete **all WidgetRail data for this
-Windows account**, including data shared with development copies. **No** is the
+Interactive uninstall asks whether to delete **WidgetRail local data for this
+Windows account**, including data shared with development copies. Windows
+Credential Manager entries and data saved elsewhere by add-ons are kept. **No** is the
 default; Cancel stops uninstall. Silent uninstall always keeps data. Explicit Yes
 removes data only after payload removal and only when this uninstaller owns the
 active installation registration:
 
 - `%LOCALAPPDATA%\WidgetRail`: installed community widgets, settings, permissions,
-  sign-ins, artwork caches, diagnostic logs and other application data.
+  artwork caches, diagnostic logs and other local application data.
 - `%TEMP%\WidgetRail`: WidgetRail temporary files.
 - WidgetRail's isolated-worker profiles: only names with the exact
   `widgetrail.widget.` prefix followed by 32 hexadecimal characters. These are
@@ -104,10 +118,10 @@ When data is kept, the completion message explains how to remove it later:
 press Win+R, open `%LOCALAPPDATA%`, and delete only its `WidgetRail` folder. The
 `WidgetRail` folder inside `%TEMP%` may also be removed. These manual folder
 deletions do not unregister Windows sandbox profiles; for that complete cleanup,
-reinstall WidgetRail and choose Yes to delete all data when uninstalling. Close
+reinstall WidgetRail and choose Yes to delete local data when uninstalling. Close
 all WidgetRail/development copies before either form of cleanup.
 
-Setup and uninstall require WidgetRail to be quit by the user. The native process
+Setup and uninstall require WidgetRail to be quit by the user. The WinUI frontend
 holds a lifetime mutex until cleanup finishes; it refuses a new launch while setup
 is open. Setup also checks for the older host window class. Neither path force
 terminates an overlay that could own controller isolation.

@@ -49,7 +49,7 @@ internal static class ViewFocusTargetLookup
         void Visit(ViewNode node, string path, string inheritedScopeKey, bool isRoot)
         {
             var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or
-                ViewNodeKind.Scroll or ViewNodeKind.Grid;
+                ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection;
             var startsScope = isRoot || (isContainer && node.InputScopeId is not null);
             var scopeKey = startsScope ? path : inheritedScopeKey;
             if (startsScope)
@@ -93,7 +93,7 @@ internal static class ViewFocusTargetLookup
         void Visit(ViewNode node, string path, string inheritedScopeKey, bool isRoot)
         {
             var isContainer = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or
-                ViewNodeKind.Scroll or ViewNodeKind.Grid;
+                ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection;
             var startsScope = isRoot || (isContainer && node.InputScopeId is not null);
             var scopeKey = startsScope ? path : inheritedScopeKey;
             if (startsScope)

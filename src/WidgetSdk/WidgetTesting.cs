@@ -336,6 +336,25 @@ public sealed class WidgetTestPrivateState
 public static class WidgetTestHost
 {
     /// <summary>
+    /// Validates protocol shape and WinUI declaration support before a native run.
+    /// Lazy row templates must also be checked after acquisition using
+    /// <see cref="WinUiPresentationContract.ValidateSubtree"/>. This does not validate pixels or provider effects.
+    /// </summary>
+    public static IReadOnlyList<ProtocolValidationError> ValidateWinUiPresentation(ViewSnapshot snapshot) =>
+        WinUiPresentationContract.Validate(snapshot);
+
+    /// <summary>
+    /// Attaches a deterministic indexed-collection host to an already initialized
+    /// widget. The caller remains responsible for its lifecycle and action effects.
+    /// </summary>
+    public static WidgetIndexedCollectionTestHost CreateIndexedCollectionHost(
+        Widget widget, string widgetInstanceId, long initialSequence = 1)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return new(widget, widgetInstanceId, initialSequence);
+    }
+
+    /// <summary>
     /// Attaches services and returns the widget for fluent test setup. A second
     /// attachment, or attachment after lifecycle creation, always fails.
     /// </summary>

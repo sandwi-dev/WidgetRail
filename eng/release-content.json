@@ -1,20 +1,16 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "architecture": "x64",
   "rootFiles": [
-    "OverlayHost.exe",
+    "OverlayFrontend.WinUI.exe",
+    "OverlayFrontend.WinUI.dll",
+    "OverlayFrontend.WinUI.runtimeconfig.json",
     "OverlayPlatformInterop.dll",
-    "ArtworkDecoderHost.exe",
-    "public_suffix_list.dat",
-    "assets/fonts/promptfont/promptfont.ttf",
-    "assets/fonts/promptfont/LICENSE.txt",
-    "assets/fonts/promptfont/NOTICE.txt",
-    "assets/fonts/kenney/kenney_input_xbox_series.ttf",
-    "assets/fonts/kenney/kenney_input_playstation_series.ttf",
-    "assets/fonts/kenney/kenney_input_xbox_series_map.txt",
-    "assets/fonts/kenney/kenney_input_playstation_series_map.txt",
-    "assets/fonts/kenney/LICENSE.txt",
-    "assets/fonts/kenney/NOTICE.txt"
+    "WinUiWindowPreviewNative.dll",
+    "OverlayFrontend.WinUI.pri",
+    "coreclr.dll",
+    "Microsoft.ui.xaml.dll",
+    "Microsoft.WindowsAppRuntime.dll"
   ],
   "hostRuntimeDirectories": [
     "Bridge",
@@ -78,10 +74,17 @@
       "scope": "setup bootstrapper installs Evergreen per user if missing; download requires internet",
       "bundled": false,
       "bootstrapperBundled": true
+    },
+    {
+      "scope": "self-contained application-local Windows App SDK runtime; no package registration",
+      "name": "Microsoft Windows App SDK",
+      "bundled": true,
+      "version": "2.5.1"
     }
   ],
   "sharedRuntimeDirectories": [
     "dotnet",
     "prerequisites"
-  ]
+  ],
+  "frontendDirectory": "frontend"
 }

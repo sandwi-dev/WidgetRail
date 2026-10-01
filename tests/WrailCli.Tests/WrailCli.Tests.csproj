@@ -4,9 +4,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/OverlayFrontend.WinUI/DevelopmentJobEnrollment.cs" Link="DevelopmentJobEnrollment.cs" />
     <ProjectReference Include="..\\..\\tools\\WrailCli\\WrailCli.csproj" />
     <ProjectReference Include="..\\EmbeddedMediaAdapterConformance\\EmbeddedMediaAdapterConformance.csproj" />
   </ItemGroup>

@@ -85,6 +85,12 @@ internal static class ControllerShortcutResolver
             return new(ControllerShortcutResolutionStatus.FocusNotFound);
         }
 
+        return ResolvePath(path, button, phase);
+    }
+
+    internal static ControllerShortcutResolution ResolvePath(
+        IReadOnlyList<ViewNode> path, ControllerButton button, ControllerEventPhase phase)
+    {
         for (var index = path.Count - 1; index >= 0; index--)
         {
             var owner = path[index];

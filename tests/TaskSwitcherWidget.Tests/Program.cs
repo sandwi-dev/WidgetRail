@@ -4,6 +4,8 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Cold activation publishes loading without waiting for window enumeration", ColdActivation),
+    ("Hiding during initial enumeration cancels old publication and permits fresh reopen", CancelColdActivation),
     ("Root scope, per-window actions and separate windows", Routing),
     ("Close request preserves the window until Windows reports it gone", CloseRefresh),
     ("Switch errors are themed and leave the list usable", Failure),
@@ -14,6 +16,39 @@ var tests = new (string Name, Func<Task> Run)[]
 foreach (var test in tests) { await test.Run(); Console.WriteLine("PASS " + test.Name); }
 Console.WriteLine($"TaskSwitcherWidget.Tests passed ({tests.Length} tests)");
 
+static async Task ColdActivation()
+{
+    var fake = new Fake { ReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+    var widget = fake.Create();
+    var activation = WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible).AsTask();
+    try
+    {
+        await fake.ReadEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await activation.WaitAsync(TimeSpan.FromMilliseconds(500));
+        Check(!fake.ReadGate.Task.IsCompleted);
+        var loading = Snapshot(widget);
+        Check(Nodes(loading.Root).Single(node => node.Id == "tasks.count").Text == "Finding open windows...");
+        Check(WinUiPresentationContract.Validate(loading).Count == 0);
+        fake.ReadGate.SetResult();
+        await WaitUntil(() => Nodes(Snapshot(widget).Root).Any(node => node.Id == "window-a"));
+        Check(Snapshot(widget).InitialFocusId == "window-a");
+    }
+    finally { fake.ReadGate.TrySetResult(); await activation; await Hide(widget); }
+}
+static async Task CancelColdActivation()
+{
+    var fake = new Fake { ReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+    var widget = fake.Create();
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible).AsTask().WaitAsync(TimeSpan.FromMilliseconds(500));
+    await fake.ReadEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await Hide(widget).WaitAsync(TimeSpan.FromSeconds(1));
+    fake.ReadGate.SetResult(); fake.ReadGate = null;
+    fake.Windows = [new("window-new", "New app", "Fresh window", false)];
+    await Activate(widget);
+    Check(Nodes(Snapshot(widget).Root).Any(node => node.Id == "window-new"));
+    Check(!Nodes(Snapshot(widget).Root).Any(node => node.Id == "window-a"));
+    await Hide(widget);
+}
 static async Task Routing()
 {
     var fake = new Fake();
@@ -29,6 +64,8 @@ static async Task Routing()
     Check(Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.Grid));
     Check(Nodes(snapshot.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface) == 2);
     Check(Nodes(snapshot.Root).Single(node => node.Id == "window-a").Shortcuts.Single().ActionId == "close.window-a");
+    Check(!Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.Button && node.ActionId?.StartsWith("close.") == true));
+    Check(Nodes(snapshot.Root).Single(node => node.Id == "window-a").Shortcuts.Single().Button == ControllerButton.X);
     await widget.OnActionAsync(new("switch.window-b", "window-b"));
     Check(fake.Switched == "window-b");
     Check(!await widget.OnControllerInputAsync(new(ControllerButton.B, ControllerEventPhase.Pressed, ControllerInputContext.OpenWidget)));
@@ -93,7 +130,11 @@ static IEnumerable<ViewNode> Nodes(ViewNode root)
     yield return root;
     foreach (var child in root.Children) foreach (var node in Nodes(child)) yield return node;
 }
-static async Task Activate(TaskSwitcherWidget widget) => await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+static async Task Activate(TaskSwitcherWidget widget)
+{
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    await WaitUntil(() => Nodes(Snapshot(widget).Root).Single(node => node.Id == "tasks.count").Text != "Finding open windows...");
+}
 static async Task Hide(TaskSwitcherWidget widget) => await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
 static void Check(bool condition) { if (!condition) throw new Exception("Task Switcher assertion failed."); }
 static async Task WaitUntil(Func<bool> condition)
@@ -108,12 +149,17 @@ file sealed class Fake
     internal string? Switched;
     internal string? Closed;
     internal Exception? Error;
+    internal TaskCompletionSource? ReadGate;
+    internal TaskCompletionSource ReadEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskSwitcherWidget Create() => WidgetTestHost.Attach(new TaskSwitcherWidget(),
         new WidgetTestHostServicesBuilder()
-            .WithHandler(WidgetTaskSwitcherCapabilities.List, (request, token) =>
+            .WithHandler(WidgetTaskSwitcherCapabilities.List, async (request, token) =>
             {
                 Interlocked.Increment(ref Reads);
-                return ValueTask.FromResult(Windows);
+                var snapshot = Windows;
+                ReadEntered.TrySetResult();
+                if (ReadGate is { } gate) await gate.Task.WaitAsync(token);
+                return snapshot;
             })
             .WithHandler(WidgetTaskSwitcherCapabilities.Switch, (request, token) =>
             {

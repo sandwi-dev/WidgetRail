@@ -65,6 +65,12 @@ void GuideToggleDebouncer::Reset() noexcept {
     hasAccepted_ = false;
 }
 
+void ControllerFrameTracker::ApplyWindowStateTransition(
+    const bool wasVisible, const bool wasFocused,
+    const bool visible, const bool focused) noexcept {
+    if ((wasVisible && !visible) || (wasFocused && !focused)) Reset();
+}
+
 void ControllerFrameTracker::Prime(
     const bool connected,
     const WidgetRailOverlayPlatformRawControllerState& state,

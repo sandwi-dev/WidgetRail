@@ -13,7 +13,7 @@ namespace WidgetRail.WidgetRuntime;
 /// Host-side lifecycle and IPC client. Constructing it is inert; the worker is
 /// launched only when the first render or action request is made.
 /// </summary>
-public sealed class WidgetProcessClient : IAsyncDisposable
+public sealed partial class WidgetProcessClient : IAsyncDisposable
 {
     // A dormant reservation is not broker authority. It exists only long
     // enough for bounded serial widget work to reach its exact capability call.
@@ -279,15 +279,35 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     public async Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
+        => await AdmitActionForWorkerAsync(action, cancellationToken, null).ConfigureAwait(false);
+
+    internal async Task<WidgetOperationAdmission> AdmitActionForWorkerAsync(
+        WidgetActionEvent action, CancellationToken cancellationToken, int? expectedStartOrdinal)
     {
         ArgumentNullException.ThrowIfNull(action);
         // Packaged application workers carry their own strict JSON reader.
         // Omit additive action metadata unless their view advertises support.
         action = PrepareActionForWorker(action, Volatile.Read(ref _materializedSnapshot)?.ProtocolVersion);
-        var response = await RequestAsync(MessageTypes.Action, action, cancellationToken).ConfigureAwait(false);
+        var response = expectedStartOrdinal is { } ordinal
+            ? await RequestConnectedAsync(DemandInputWorker(ordinal), MessageTypes.Action, action, cancellationToken).ConfigureAwait(false)
+            : await RequestAsync(MessageTypes.Action, action, cancellationToken).ConfigureAwait(false);
         if (response.Type != MessageTypes.Acknowledged)
             throw new WidgetProtocolViolationException($"Expected acknowledgement, received '{response.Type}'.");
         return ParseActionAdmission(response.Payload);
+    }
+
+    internal async Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input,
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null)
+    {
+        PinnedActionContract.Validate(input);
+        // A pinned action must never launch a replacement worker.
+        var session = expectedStartOrdinal is { } ordinal ? DemandInputWorker(ordinal) : Volatile.Read(ref _session);
+        if (session is null || session.IsTerminal) return null;
+        var response = await RequestConnectedAsync(session, MessageTypes.PinnedAction, input, cancellationToken).ConfigureAwait(false);
+        if (response.Type != MessageTypes.Acknowledged)
+            throw new WidgetProtocolViolationException("Expected pinned action acknowledgement.");
+        try { return PinnedActionContract.ValidateAdmission(RuntimeJson.FromElement<PinnedActionResult>(response.Payload).Admission); }
+        catch (ArgumentException error) { throw new WidgetProtocolViolationException("Invalid pinned action result.", error); }
     }
 
     internal static WidgetActionEvent PrepareActionForWorker(WidgetActionEvent action, int? protocolVersion) =>
@@ -327,9 +347,15 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     public async Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken = default)
+        => await SendEmbeddedMediaPlaybackEventForWorkerAsync(playbackEvent, cancellationToken, Starts).ConfigureAwait(false);
+
+    internal async Task SendEmbeddedMediaPlaybackEventForWorkerAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent, CancellationToken cancellationToken, int expectedStartOrdinal)
     {
         ArgumentNullException.ThrowIfNull(playbackEvent);
-        var response = await RequestAsync(
+        // Browser callbacks observe an existing worker. They must never resurrect
+        // an unloaded process, including after admission races its final exit.
+        var response = await RequestConnectedAsync(DemandInputWorker(expectedStartOrdinal),
             MessageTypes.EmbeddedMediaPlaybackEvent, playbackEvent, cancellationToken)
             .ConfigureAwait(false);
         if (response.Type != MessageTypes.Acknowledged)
@@ -365,14 +391,19 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken = default)
+        => await SendControllerInputForWorkerAsync(input, authority, cancellationToken, null).ConfigureAwait(false);
+
+    internal async Task<bool> SendControllerInputForWorkerAsync(
+        ControllerInputEvent input, WidgetDashboardGestureAuthority? authority,
+        CancellationToken cancellationToken, int? expectedStartOrdinal)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (!Enum.IsDefined(input.Origin))
             throw new ArgumentOutOfRangeException(
                 nameof(input), input.Origin, "Controller input origin is invalid.");
         ObjectDisposedException.ThrowIf(_disposed, this);
-        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        var session = Volatile.Read(ref _session) ??
+        if (expectedStartOrdinal is null) await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        var session = (expectedStartOrdinal is { } ordinal ? DemandInputWorker(ordinal) : Volatile.Read(ref _session)) ??
             throw new IOException("Widget pipe disconnected.");
         var authorityMayRemain = false;
         if (authority is not null) session.GestureReservations.Reserve(input, authority);
@@ -402,11 +433,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     }
 
     internal async Task<bool?> SendRevalidatedControllerInputAsync(
-        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null)
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null, int? expectedStartOrdinal = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         // Revalidation must never lazily start a replacement runtime.
-        var session = Volatile.Read(ref _session);
+        var session = expectedStartOrdinal is { } ordinal ? DemandInputWorker(ordinal) : Volatile.Read(ref _session);
         if (session is null || session.IsTerminal) return null;
         try
         {

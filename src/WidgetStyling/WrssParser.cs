@@ -299,7 +299,7 @@ public static partial class WrssParser
     {
         if (DangerousValueRegex().IsMatch(value) || value.Contains('@')) return true;
         foreach (Match match in FunctionRegex().Matches(value))
-            if (match.Groups["name"].Value is not ("var" or "rgb" or "rgba")) return true;
+            if (match.Groups["name"].Value is not ("var" or "rgb" or "rgba" or "alpha")) return true;
         return false;
     }
 

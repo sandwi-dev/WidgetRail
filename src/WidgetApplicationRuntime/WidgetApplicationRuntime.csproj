@@ -11,6 +11,9 @@
   <ItemGroup>
     <Compile Include="..\WidgetRuntime\RuntimeProtocol.cs" Link="RuntimeProtocol.cs" />
     <Compile Include="..\WidgetRuntime\WidgetWorkerServer.cs" Link="WidgetWorkerServer.cs" />
+    <Compile Include="..\WidgetRuntime\WidgetIndexedRangeLane.cs" Link="WidgetIndexedRangeLane.cs" />
+    <Compile Include="..\WidgetRuntime\WidgetIndexedArtworkLane.cs" Link="WidgetIndexedArtworkLane.cs" />
+    <Compile Include="..\WidgetRuntime\WidgetWorkerAsyncLane.cs" Link="WidgetWorkerAsyncLane.cs" />
     <Compile Include="..\WidgetRuntime\WidgetWorkerNotificationLane.cs" Link="WidgetWorkerNotificationLane.cs" />
   </ItemGroup>
 </Project>

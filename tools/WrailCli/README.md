@@ -80,7 +80,7 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   a disabled widget and preserve previous versions; theme updates preserve the
   appearance selection. See [manual updates](../../docs/reference/cli-packages.md#review-and-apply-an-update).
 - `doctor [project-directory|widget.csproj]` checks the selected .NET SDK, CLI/SDK
-  release pairing and packaged host discovery without building or launching a
+  release pairing and WinUI executable discovery without building or launching a
   widget. Use `--host` for an explicit host and `--json` for a versioned report.
   Missing prerequisites produce actionable messages and exit code 1. This is
   a development prerequisite check, not a hardware or runtime health test.
@@ -127,14 +127,20 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   directory, one `.csproj`, a prebuilt package directory, or one
   `.wrwidget`. Source projects are validated, built in a child `dotnet`
   process with a 120-second default timeout, staged as a catalog-valid package,
-  installed into a session-only catalog, and opened by the packaged overlay.
+  installed into a session-only catalog, and opened by the unpackaged WinUI overlay.
   The overlay routes the package through the same generic `WidgetWorkerHost`,
   package-specific AppContainer, capability broker, lifecycle, and renderer
   used by installed community widgets; `wrail` never loads the widget assembly.
-  `--host` selects a packaged `OverlayHost.exe`, `--configuration` selects the
-  project build configuration, `--build-timeout-seconds` is bounded to
-  10–600 seconds, and `--debounce-ms` is bounded to 50–2000 milliseconds.
-  Installed `<app>/tools/wrail` and source checkout layouts are both discovered.
+  `--host` selects an explicit `OverlayFrontend.WinUI.exe` path;
+  `--installation-root` supplies its complete runtime payload (required when
+  using a separately built debug frontend). Without `--host`, the frontend is
+  resolved directly within the installation root. Default discovery checks the
+  CLI's containing installation, then the current directory's ancestors, then
+  `HKCU\Software\WidgetRail\Installation` / `ApplicationRoot` written by Inno Setup.
+  No package registration or certificate installation is needed.
+  `--configuration` selects the project build configuration,
+  `--build-timeout-seconds` is bounded to 10–600 seconds, and `--debounce-ms`
+  is bounded to 50–2000 milliseconds.
   `--log <new-file>` records bounded build/lifecycle messages for this invocation.
   Files are created exclusively and capped at 2 MiB; a cap or write failure
   stops file logging while console feedback continues. It does not collect

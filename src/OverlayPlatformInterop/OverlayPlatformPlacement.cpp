@@ -1,4 +1,4 @@
-#include "../OverlayHost/OverlayPlacement.h"
+#include "OverlayPlacement.h"
 
 #include <algorithm>
 #include <cmath>

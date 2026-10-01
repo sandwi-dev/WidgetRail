@@ -1,5 +1,13 @@
 # Widget SDK developer testing
 
+For current control mapping, working C# examples and native-frontend differences,
+start with [WinUI authoring](../../docs/reference/winui-authoring.md).
+
+For the WinUI migration branch, see the [indexed collection authoring contract](../../docs/developers/indexed-collections.md).
+It defines exact-count queries, occurrence identity, captured row actions, focus
+return and publication rules. Existing cursor declarations are not automatically
+converted into indexed queries.
+
 Widgets access platform providers through the protected `HostServices` property.
 Production services are attached exactly once by `WidgetWorkerBootstrap` before
 `OnCreatedAsync`; a widget cannot replace them after creation.
@@ -110,7 +118,7 @@ shutdown. Those terminal boundaries start fresh and do not restore playback.
 
 Protocol v23 adds `UI.MediaViewport(session, id)`, a provider-neutral native
 layout leaf that binds the one current `WidgetView.EmbeddedMediaSession` declaration
-into the ordinary declarative tree. Taffy layout, WRSS/GBSS styling, clipping,
+into the ordinary declarative tree. WinUI layout, theme projection, clipping,
 accessibility, and responsive geometry remain host-owned; the embedded browser
 supplies only the pixels inside the committed viewport. Exactly one viewport
 must reference the current session identity. Missing, duplicate, or mismatched
@@ -213,6 +221,40 @@ from final DIP width, authored gap, a 44–1600 DIP minimum column width, and an
 optional 1–32 column cap. The Grid is not focusable; children keep their stable
 IDs and normal focus graph. Put unbounded collections in a host-owned Scroll.
 Settings uses this same public helper for its root category surface.
+
+For large regular collections, use protocol-v59 `UI.CollectionList` or
+`UI.CollectionGrid`. These are scroll viewports with an explicit realization
+policy: direct children must be always-present keyed Buttons or ActionSurfaces.
+The host owns measurement, row/column placement, realization, navigation and
+scroll position. `estimatedItemExtent` is a starting DIP estimate, excluding gaps;
+it does not fix the item's actual size. Use ordinary Scroll for heterogeneous or
+nested interactive layouts. Existing cursor `Capture().Present(scroll)` still
+supplies loading, anchor and window metadata; reuse its item-key mapping.
+
+Keep a `WidgetCollectionItems<TItem>` instance on the widget to avoid rebuilding
+unchanged item declarations. Supply immutable per-item render inputs, including
+selection/playback flags, and a pure render factory. Equal inputs reuse the same
+frozen declaration; reorder follows keys, and removed items leave the cache.
+Factories run in the widget worker, never in the trusted UI host. A factory
+failure leaves the prior cache intact. Overall snapshot validation still happens
+when creating the WidgetView snapshot, including cross-item focus references.
+
+```csharp
+private sealed record SongRow(string Id, string Title, bool Playing);
+private readonly WidgetCollectionItems<SongRow> _songItems = new(
+    static row => new WidgetCollectionItemKey(row.Id),
+    static row => UI.Button(row.Title, "play." + row.Id, row.Id).Selected(row.Playing));
+
+// rows contains every input used by the factory; do not read mutable widget
+// state inside a cached factory. The capture remains valid after later updates.
+var items = _songItems.Capture(rows);
+var list = UI.CollectionList("songs", 64, items: items.ToArray());
+```
+
+The cache retains at most the protocol's current logical-window limit (256
+items), not every item ever loaded. Call `Clear()` when intentionally invalidating
+mutable render inputs; it does not invalidate previously returned captures.
+Keys identify items; equality of the complete render inputs controls reuse.
 
 Use `element.VisibleWhen(ResponsiveVisibility.CompactOnly)` and
 `ExpandedOnly` when the same semantic view needs substantially different
@@ -1034,6 +1076,20 @@ for focus restoration, lifecycle ownership, and theme classes.
 Modal entrance/exit motion is host-owned and follows reduced-motion policy.
 Returning the original page dismisses input immediately; outgoing panel pixels
 may remain briefly while the exit animation finishes.
+
+### WinUI author preflight
+
+Use `WidgetTestHost.ValidateWinUiPresentation(snapshot)` in author tests before
+launching the native candidate. It combines protocol validity with the frontend's
+shared declaration-admission rules, including pinned layouts and focus fragments.
+Errors identify a structural path and a safe element ID, and explain which native
+collection contract replaces unsupported legacy pagination declarations.
+
+Lazy collection templates are intentionally not executed by this check. Acquire
+representative ranges with `CreateIndexedCollectionHost`, then validate each
+`lease.Range.Items` root through `WinUiPresentationContract.ValidateSubtree`.
+Preflight does not prove theme rendering, focus, performance or provider effects;
+those still need behavioral and native tests.
 
 ### Retained focus presentations
 

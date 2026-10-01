@@ -7,8 +7,57 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.WidgetPresentationSession.Tests;
 
 [TestClass]
-public sealed class SessionTransportTests
+public sealed partial class SessionTransportTests
 {
+    [TestMethod]
+    public async Task InvalidationBeforeFirstSnapshotRefreshesAfterEstablishment()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var list = await channel.ReadAsync(CancellationToken.None);
+            await ReplyCatalogAsync(channel, list.RequestId, revision: 1);
+            var establish = await channel.ReadAsync(CancellationToken.None);
+            await SendInvalidationAsync(channel, revision: 3);
+            await SendInvalidationAsync(channel, revision: 5);
+            await observed.Task.WaitAsync(TestDeadline);
+            await ReplySnapshotAsync(channel, establish.RequestId, Descriptor(), sequence: 1);
+            var refresh = await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(TestDeadline);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, refresh.Type);
+            await ReplySnapshotAsync(channel, refresh.RequestId, Descriptor(), sequence: 2);
+            await ExpectStopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options()))
+        {
+            session.Invalidated += (_, args) => { if (args.Invalidation.Revision == 5) observed.TrySetResult(); };
+            await session.ListWidgetsAsync();
+            await session.EstablishPresentationAsync(session.GetTarget("session-widget"), WidgetLifecycleState.Interactive);
+            await WaitUntilAsync(() => session.GetState("session-widget")?.LastGood?.Authority.SnapshotSequence == 2);
+            Assert.AreEqual(5L, session.GetState("session-widget")!.InvalidationRevision);
+        }
+        await serverTask.WaitAsync(TestDeadline);
+    }
+
+    [TestMethod]
+    public async Task CatalogPreservesPendingInstalledPackageAdmission()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var pending = await channel.ReadAsync(CancellationToken.None);
+            await ReplyCatalogAsync(channel, pending.RequestId, 1, [Descriptor()], isComplete: false);
+            var complete = await channel.ReadAsync(CancellationToken.None);
+            await ReplyCatalogAsync(channel, complete.RequestId, 2, [Descriptor()], isComplete: true);
+            await ExpectStopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options()))
+        {
+            Assert.IsFalse((await session.ListWidgetsAsync()).IsComplete);
+            Assert.IsTrue((await session.ListWidgetsAsync()).IsComplete);
+        }
+        await serverTask.WaitAsync(TestDeadline);
+    }
     private static readonly TimeSpan TestDeadline = TimeSpan.FromSeconds(5);
 
     [TestMethod]
@@ -84,8 +133,12 @@ public sealed class SessionTransportTests
             {
                 await channel.WriteAsync(new BridgeEnvelope
                 {
-                    Type = BridgeMessageTypes.CatalogChanged,
-                    Payload = BridgeJson.ToElement(new BridgeCatalogChangedEvent(revision)),
+                    Type = BridgeMessageTypes.HostEffect,
+                    Payload = BridgeJson.ToElement(new
+                    {
+                        widgetId = $"unadmitted-{revision}", runtimeGeneration = new string('a', 32),
+                        effect = "closeOverlayAfterAppLaunch", sequence = revision, initiatedAtMilliseconds = 0,
+                    }),
                 }, CancellationToken.None);
             }
             await ExpectStopAsync(channel);
@@ -95,10 +148,10 @@ public sealed class SessionTransportTests
             Options() with { MaximumRetainedDiagnostics = 2 });
         try
         {
-            await WaitUntilAsync(() => session.Diagnostics.Count == 2);
+            await WaitUntilAsync(() => session.Diagnostics.LastOrDefault()?.WidgetId == "unadmitted-5");
             Assert.AreEqual(2, session.Diagnostics.Count);
-            StringAssert.Contains(session.Diagnostics[0].Message, "4");
-            StringAssert.Contains(session.Diagnostics[1].Message, "5");
+            Assert.AreEqual("unadmitted-4", session.Diagnostics[0].WidgetId);
+            Assert.AreEqual("unadmitted-5", session.Diagnostics[1].WidgetId);
         }
         finally
         {
@@ -177,6 +230,9 @@ public sealed class SessionTransportTests
                 {
                     widgetId = "session-widget",
                     artworkHandle = "app-library.test-artwork",
+                    runtimeGeneration = artwork.Payload.GetProperty("runtimeGeneration").GetString(),
+                    presentationGeneration = artwork.Payload.GetProperty("presentationGeneration").GetString(),
+                    demandId = artwork.Payload.GetProperty("demandId").GetString(),
                     contentType = "image/webp",
                     contentBase64 = Convert.ToBase64String(expectedBytes),
                 }),
@@ -806,7 +862,8 @@ public sealed class SessionTransportTests
         long requestId,
         BridgeWidgetDescriptor descriptor,
         long sequence,
-        string activeInputScopeId = "root")
+        string activeInputScopeId = "root",
+        BridgeWorkerRun? workerRun = null)
     {
         var snapshot = new ViewSnapshot
         {
@@ -826,6 +883,7 @@ public sealed class SessionTransportTests
                 transactionKind = "ordinaryCheckpoint",
                 baseSequence = 0,
                 recoveryOriginSequence = 0,
+                workerRun,
                 snapshot = document.RootElement.Clone(),
                 renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(),
             }),
@@ -898,7 +956,8 @@ public sealed class SessionTransportTests
         BridgeFrameChannel channel,
         long requestId,
         long revision,
-        IReadOnlyList<BridgeWidgetDescriptor> widgets)
+        IReadOnlyList<BridgeWidgetDescriptor> widgets,
+        bool isComplete = true)
     {
         await channel.WriteAsync(new BridgeEnvelope
         {
@@ -908,6 +967,7 @@ public sealed class SessionTransportTests
             {
                 revision,
                 widgets,
+                isComplete,
             }),
         }, CancellationToken.None);
     }
@@ -981,7 +1041,7 @@ internal sealed class ScriptedBridgeServer : IAsyncDisposable
             {
                 Type = BridgeMessageTypes.HelloAccepted,
                 RequestId = hello.RequestId,
-                Payload = BridgeJson.ToElement(new { }),
+                Payload = BridgeJson.ToElement(new BridgeEmptyPayload()),
             }, CancellationToken.None);
             await scenario(channel);
         });

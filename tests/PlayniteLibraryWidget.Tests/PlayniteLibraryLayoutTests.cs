@@ -12,12 +12,22 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
-    public void HomeFallbackStatesShareTheReadySurfaceAndCenteredBackgroundOwner()
+    [DataRow((int)PlayniteLibraryRoute.Library)]
+    [DataRow((int)PlayniteLibraryRoute.Browse)]
+    public void CatalogRoutesRequireTheirIndexedSourceEvenWhenEmpty(int route)
+    {
+        var state = State(Snapshot(WidgetPagedResourceStatus.NotLoaded, []),
+            PlayniteLibraryPrivateState.Empty, (PlayniteLibraryRoute)route, []);
+        Assert.ThrowsExactly<ArgumentNullException>(() => PlayniteLibraryPresentation.Render(state));
+    }
+
+    [TestMethod]
+    public async Task HomeFallbackStatesShareTheReadySurfaceAndCenteredBackgroundOwner()
     {
         var item = PlayniteLibraryItem.From(Item("app-home", "saved-home", "Home game", "Steam"));
-        var ready = PlayniteLibraryPresentation.Render(State(
+        var ready = (await CapturePresentationAsync(State(
             Snapshot(WidgetPagedResourceStatus.Ready, [item]),
-            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []))).View;
         var readySnapshot = new PresentationWidget(ready).RenderSnapshot("home.ready", 1);
         var theme = CompileStyles();
         var states = new[]
@@ -31,8 +41,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         };
         foreach (var collection in states)
         {
-            var view = PlayniteLibraryPresentation.Render(State(collection,
-                PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+            var view = (await CapturePresentationAsync(State(collection,
+                PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []))).View;
             var snapshot = new PresentationWidget(view).RenderSnapshot("home.fallback", 2);
             Assert.AreEqual(ready.Surface, view.Surface, "Loading the library must not resize the host surface.");
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
@@ -61,40 +71,54 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod]
-    public void BrowsePagingPreservesFocusAndMatchingCount()
+    public async Task DestinationsKeepOneStableDeclaredBackgroundOwner()
     {
-        var items = Enumerable.Range(0, 6).Select(index => PlayniteLibraryItem.From(
-            Item($"app-page-{index}", $"saved-page-{index}", $"Game {index}", "Steam"))).ToArray();
-        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items, after: "next"),
-            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []) with
+        foreach (var route in new[] { PlayniteLibraryRoute.Library, PlayniteLibraryRoute.Browse,
+                     PlayniteLibraryRoute.Categories, PlayniteLibraryRoute.Hidden })
         {
-            HeroSavedId = items[2].Value.SavedId, HeroIndex = 2, MatchingGameCount = 34,
-            Status = "6+ games in the current catalog window",
-        };
-        var expected = PlayniteLibraryIdentity.FocusId("grid", items[2].Key);
-        foreach (var phase in new[] { WidgetPagedResourceStatus.Ready,
-                     WidgetPagedResourceStatus.LoadingAdjacent, WidgetPagedResourceStatus.Refreshing })
-        {
-            var view = PlayniteLibraryPresentation.Render(state with
-                { Collection = state.Collection with { Status = phase, LoadingDirection = WidgetCursorDirection.After } });
-            Assert.AreEqual(expected, view.InitialFocusId, phase.ToString());
-            var snapshot = new PresentationWidget(view).RenderSnapshot("browse.paging", 1);
-            Assert.AreEqual("34 games", Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
-            var scroll = Nodes(snapshot.Root).Single(node => node.Id == PlayniteLibraryPresentation.ScrollId);
-            Assert.AreEqual(phase == WidgetPagedResourceStatus.Ready, scroll.ScrollNearEndActionId is not null,
-                "Only a settled collection may advertise another page request.");
+            var view = (await CapturePresentationAsync(State(Snapshot(WidgetPagedResourceStatus.Ready, []),
+                PlayniteLibraryPrivateState.Empty, route, []))).View;
+            var snapshot = new PresentationWidget(view).RenderSnapshot("shared-background", 1);
+            var background = snapshot.Root.Children.Single(node => node.Kind == ViewNodeKind.BackgroundSurface);
+            Assert.AreEqual("playnite-library.root", snapshot.Root.Id, route.ToString());
+            Assert.AreEqual("playnite-library.cinematic", background.Id, route.ToString());
+            Assert.IsTrue(background.UsesFocusedDescendantArtwork == true);
+            Assert.IsFalse(background.RetainLastPresentation == false);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
         }
-        var finalPage = state with { Collection = Snapshot(WidgetPagedResourceStatus.Ready, items.Take(4).ToArray(), before: "prev") };
-        var finalSnapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(finalPage)).RenderSnapshot("browse.final", 2);
-        Assert.AreEqual("34 games", Nodes(finalSnapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
-        var unknown = finalPage with { MatchingGameCount = null };
-        var unknownSnapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(unknown)).RenderSnapshot("browse.unknown", 3);
-        Assert.AreEqual("4 games loaded", Nodes(unknownSnapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
     }
 
     [TestMethod]
-    public void HomePagingPreservesProviderOrderDespiteFavoriteAndVariantMetadata()
+    public async Task BrowseRangeDemandPreservesLogicalEntryAndMatchingCount()
+    {
+        var items = Enumerable.Range(0, 34).Select(index => PlayniteLibraryItem.From(
+            Item($"app-page-{index}", $"saved-page-{index}", $"Game {index}", "Steam"))).ToArray();
+        foreach (var phase in new[] { WidgetPagedResourceStatus.Ready, WidgetPagedResourceStatus.Refreshing })
+        {
+            var state = State(Snapshot(phase, items), PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, [])
+                with { ContentEntryRequestId = 1 };
+            await using var fixture = new IndexedPresentationFixture(state, items);
+            await fixture.StartAsync();
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "browse.ranges");
+            var snapshot = host.CurrentSnapshot;
+            Assert.AreEqual(PlayniteLibraryPresentation.ScrollId, snapshot.InitialFocusId);
+            Assert.AreEqual("34 games", Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
+            var declaration = Nodes(snapshot.Root).Single(node => node.Id == PlayniteLibraryPresentation.ScrollId);
+            Assert.AreEqual(34, declaration.IndexedCollection!.Count);
+            Assert.AreEqual(0, declaration.Children.Count);
+            Assert.IsNull(declaration.ScrollNearEndActionId, "Native range demand replaces cursor pagination actions.");
+            using var first = await host.AcquireAsync(declaration.Id, 0, 6);
+            using var last = await host.AcquireAsync(declaration.Id, 30, 4);
+            Assert.AreEqual(items[30].Key.Value, last.Range.Items[0].Key);
+            var after = host.PublishSnapshot();
+            Assert.AreEqual(snapshot.InitialFocusId, after.InitialFocusId);
+            Assert.AreEqual(declaration.IndexedCollection, Nodes(after.Root).Single(node => node.Id == declaration.Id).IndexedCollection);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(after).Count);
+        }
+    }
+
+    [TestMethod]
+    public async Task HomeRangesPreserveProviderOrderDespiteFavoriteAndVariantMetadata()
     {
         var items = Enumerable.Range(0, 8).Select(index => PlayniteLibraryItem.From(
             Item($"app-order-{index}", $"saved-order-{index}", $"Game {index}", "Steam"))).ToArray();
@@ -105,19 +129,16 @@ public sealed partial class PlayniteLibraryLayoutTests
             FavoriteSavedIds = [items[6].Value.SavedId, items[1].Value.SavedId],
             VariantGroups = [new("variant.order", [items[4].Value.SavedId, items[5].Value.SavedId], items[5].Value.SavedId)],
         };
-        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items.Take(4).ToArray(), after: "next"),
-            organization, PlayniteLibraryRoute.Library, []);
-        var first = PlayniteLibraryHeroRailPolicy.Project(state, null, 0);
-        var next = PlayniteLibraryHeroRailPolicy.Project(state with
-            { Collection = Snapshot(WidgetPagedResourceStatus.Ready, items) }, null, 0);
-        CollectionAssert.AreEqual(items.Select(item => item.Value.SavedId).ToArray(),
-            next.Items.Select(item => item.Display.SavedId).ToArray());
-        CollectionAssert.AreEqual(first.Items.Select(item => item.Display.SavedId).ToArray(),
-            next.Items.Take(4).Select(item => item.Display.SavedId).ToArray());
+        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items), organization, PlayniteLibraryRoute.Library, []);
+        var captured = await CapturePresentationAsync(state);
+        var rows = captured.Ranges.SelectMany(range => range.Items).ToArray();
+        CollectionAssert.AreEqual(items.Select(item => item.Key.Value).ToArray(), rows.Select(row => row.Key).ToArray());
+        Assert.AreEqual(8, Nodes(captured.Snapshot.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection).IndexedCollection!.Count);
+
     }
 
     [TestMethod, Timeout(30_000)]
-    public void CurrentDeclarativeLibraryPreservesExactGameAuthorityAndSemanticRegions()
+    public async Task CurrentDeclarativeLibraryPreservesExactGameAuthorityAndSemanticRegions()
     {
         var items = Enumerable.Range(0, 64)
             .Select(index => PlayniteLibraryItem.From(Item(
@@ -138,12 +159,13 @@ public sealed partial class PlayniteLibraryLayoutTests
         };
         var presentation = State(
             collection, organization, PlayniteLibraryRoute.Library, []);
-        var view = PlayniteLibraryPresentation.Render(presentation);
+        var homeCapture = await CapturePresentationAsync(presentation);
+        var view = homeCapture.View;
         Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, view.Surface!.WidthMode);
         Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, view.Surface.HeightMode);
         var snapshot = new PresentationWidget(view).RenderSnapshot(
             "playnite-library.presentation", 1);
-        var nodes = Nodes(snapshot.Root).ToArray();
+        var nodes = homeCapture.ParentAndRowNodes.ToArray();
         Assert.AreEqual(1, snapshot.Root.Children.Count);
         var homeStage = nodes.Single(node => node.Id == "playnite-library.cinematic").Children.Single();
         Assert.AreEqual("playnite-library.home.stage", homeStage.Id);
@@ -179,9 +201,10 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(nodes.Any(node =>
             node.Id == "playnite-library.library.menu.key" && node.ControllerPrompt == ControllerPrompt.Menu));
         var rail = nodes.Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId);
-        Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
+        Assert.AreEqual(ViewNodeKind.IndexedCollection, rail.Kind);
         Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
-        Assert.AreEqual(items[0].Key.Value, rail.CollectionAnchorKey);
+        Assert.AreEqual(items.Length, rail.IndexedCollection!.Count);
+        Assert.AreEqual(0, rail.Children.Count);
         Assert.IsTrue(nodes.Any(node => node.Shortcuts.Any(shortcut =>
             shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)));
         var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
@@ -221,7 +244,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var hintRegion = nodes.Single(node =>
             node.Id == "playnite-library.organization.hints");
         Assert.AreEqual(ViewNodeKind.Row, hintRegion.Kind,
-            "controller hints must be a non-scroll row for wrapping");
+            "controller hints use a left-aligned content-sized row with fixed gaps");
         Assert.IsNull(hintRegion.ScrollAxis,
             "controller hints unexpectedly own scrolling");
         Assert.IsTrue(Nodes(hintRegion).Any(node =>
@@ -232,8 +255,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(Nodes(hintRegion).Any(node =>
                 node.Id == "playnite-library.hint.options.key" && node.ControllerPrompt == ControllerPrompt.X),
             "Home must advertise X for game options.");
-        var unavailableView = PlayniteLibraryPresentation.Render(
-            presentation with { OrganizationBusy = true });
+        var unavailableView = (await CapturePresentationAsync(
+            presentation with { OrganizationBusy = true })).View;
         var unavailableSnapshot = new PresentationWidget(unavailableView)
             .RenderSnapshot("playnite-library.unavailable-hints", 2);
         var unavailableHints = Nodes(unavailableSnapshot.Root)
@@ -253,8 +276,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsFalse(Nodes(unavailableHints).Any(node =>
                 node.ActionId == PlayniteLibraryActions.Favorite),
             "The inactive Home hint became an executable Favorite action.");
-        Assert.AreEqual(PlayniteLibraryIdentity.FocusId("grid", items[0].Key),
-            snapshot.InitialFocusId);
+        Assert.AreEqual(PlayniteLibraryPresentation.HomeRailId, snapshot.InitialFocusId);
         var styles = File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
             "styles", "default.wrss"));
         Assert.IsFalse(styles.Contains("\nbutton {", StringComparison.Ordinal),
@@ -262,17 +284,17 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(topActions.Children[^1].Children.All(node =>
             !node.IsFocusable));
         StringAssert.Contains(styles,
-            ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 0px; padding: 4px 6px 10px; }");
+            ".playnite-library-rail { width: 100%; min-width: 0px; gap: 0px; padding: 8px 6px 12px; }");
         StringAssert.Contains(styles,
-            ".playnite-library-footer { min-height: 28px; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }");
+            ".playnite-library-footer { min-height: 28px; gap: 6px; }");
         StringAssert.Contains(styles,
             ".playnite-library-hint-unavailable { opacity: 0.64; }");
         StringAssert.Contains(styles,
             ".playnite-library-tile { aspect-ratio: 2/3;");
         StringAssert.Contains(styles,
-            ".playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-basis: 28vh; flex-grow: 0; flex-shrink: 0; }");
+            ".playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-grow: 0; }");
         StringAssert.Contains(styles,
-            ".playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; }");
+            ".playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; overflow: clip; }");
         StringAssert.Contains(styles,
             ".playnite-library-home-foreground { width: 100%; min-width: 520px; max-width: 1180px;");
         StringAssert.Contains(styles,
@@ -312,24 +334,28 @@ public sealed partial class PlayniteLibraryLayoutTests
             new HashSet<string>(["wrail-focus-presentation-surface"],
                 StringComparer.Ordinal)));
         Assert.AreEqual("start", focusSurfaceStyle.Get("align")?.Text,
-            "The selected-game details must align with the left edge of the poster rail.");
+            "The selected-game details must align with the left edge above the poster rail.");
+        Assert.AreEqual("end", focusSurfaceStyle.Get("justify")?.Text,
+            "The summary and Home rail must remain adjacent at the bottom of the available frame.");
         var homeContentStyle = theme.Resolve(new WrssElement("stack", null,
             new HashSet<string>(["playnite-library-home-content"],
                 StringComparer.Ordinal)));
         Assert.AreEqual("0", homeContentStyle.Get("flex-grow")?.Text,
             "Home content must not grow a spacer between selected-game details and the rail.");
-        Assert.AreEqual("0", homeContentStyle.Get("flex-shrink")?.Text,
+        Assert.IsNull(homeContentStyle.Get("flex-shrink"),
             "Home details and the rail must remain one adjacent bottom composition.");
         var topActionsStyle = theme.Resolve(new WrssElement("row", null,
             new HashSet<string>(["playnite-library-home-actions"],
                 StringComparer.Ordinal)));
-        Assert.AreEqual("rgba(21, 21, 20, 0.98)", topActionsStyle.Get("background")?.Text);
+        Assert.AreEqual("rgba(21, 21, 20, 0.8232)", topActionsStyle.Get("background")?.Text);
+        Assert.IsNull(topActionsStyle.Get("opacity"), "Panel alpha must not dim its children.");
 
-        var browseView = PlayniteLibraryPresentation.Render(State(
+        var browseCapture = await CapturePresentationAsync(State(
             collection, organization, PlayniteLibraryRoute.Browse, []));
+        var browseView = browseCapture.View;
         var browseSnapshot = new PresentationWidget(browseView).RenderSnapshot(
             "playnite-library.presentation.browse", 2);
-        var browseNodes = Nodes(browseSnapshot.Root).ToArray();
+        var browseNodes = browseCapture.ParentAndRowNodes.ToArray();
         var browsePage = browseNodes.Single(node =>
             node.Id == "playnite-library.browse.page");
         var browsePageNodes = Nodes(browsePage).ToArray();
@@ -345,8 +371,8 @@ public sealed partial class PlayniteLibraryLayoutTests
                  })
             Assert.IsTrue(browsePageNodes.Any(node => node.Id == id),
                 id + " must remain inside the page-wide Browse shortcut owner.");
-        Assert.IsTrue(browsePageNodes.Any(node =>
-            node.ActionId == PlayniteLibraryActions.DetailsOpen));
+        Assert.IsTrue(browsePageNodes.Any(node => node.Kind == ViewNodeKind.IndexedCollection));
+        Assert.IsTrue(browseCapture.RowNodes.Any(node => node.ActionId == PlayniteLibraryActions.DetailsOpen));
         Assert.AreEqual(1, browseNodes.Count(node => node.Shortcuts.Any(shortcut =>
             shortcut.Button == ControllerButton.LeftTrigger)));
         Assert.AreEqual(1, browseNodes.Count(node => node.Shortcuts.Any(shortcut =>
@@ -370,9 +396,9 @@ public sealed partial class PlayniteLibraryLayoutTests
             node.Id == "playnite-library.collection.hint.next");
         Assert.IsTrue(Nodes(nextCollectionHint).Any(node =>
             node.Text == "Next collection"));
-        var emptyBrowse = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+        var emptyBrowse = new PresentationWidget((await CapturePresentationAsync(State(
                 Snapshot(WidgetPagedResourceStatus.Ready, []), organization,
-                PlayniteLibraryRoute.Browse, [])))
+                PlayniteLibraryRoute.Browse, []))).View)
             .RenderSnapshot("playnite-library.presentation.browse.empty", 3);
         var emptyBrowsePage = Nodes(emptyBrowse.Root).Single(node =>
             node.Id == "playnite-library.browse.page");
@@ -416,7 +442,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var activeBrowse = State(collection, organization, PlayniteLibraryRoute.Browse, [])
             with { FavoriteFilter = true, RecentlyPlayed = true };
         var activeNodes = Nodes(new PresentationWidget(
-                PlayniteLibraryPresentation.Render(activeBrowse)).RenderSnapshot(
+                (await CapturePresentationAsync(activeBrowse)).View).RenderSnapshot(
                 "playnite-library.presentation.browse.active", 3).Root).ToArray();
         foreach (var id in new[]
                  {
@@ -425,9 +451,15 @@ public sealed partial class PlayniteLibraryLayoutTests
                  })
             CollectionAssert.Contains(activeNodes.Single(node => node.Id == id)
                 .StyleClasses.ToArray(), "playnite-library-filter-active");
-        StringAssert.Contains(styles,
-            ".playnite-library-filter-active:focused { background:",
-            "The active hue must retain an independently visible focused state.");
+        var activeClasses = new HashSet<string>(["playnite-library-control", "playnite-library-filter-active"]);
+        var selectedStyle = theme.Resolve(new WrssElement("button", null, activeClasses));
+        var focusedStyle = theme.Resolve(new WrssElement("button", null, activeClasses,
+            new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
+        Assert.AreEqual(selectedStyle.Get("background")?.Text, focusedStyle.Get("background")?.Text,
+            "Focusing a selected filter must preserve its selected fill.");
+        Assert.AreNotEqual(selectedStyle.Get("outline-color")?.Text, focusedStyle.Get("outline-color")?.Text,
+            "Focus must be distinguished by an outline instead of borrowing the selected fill.");
+        Assert.AreNotEqual("0px", focusedStyle.Get("outline-width")?.Text);
 
         var productionSources = Directory.GetFiles(RepositoryRoot(), "*.cs",
                 SearchOption.AllDirectories)
@@ -446,7 +478,7 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public void CatalogCardsAdoptPosterTilePresentationWithSemanticArtworkFallback()
+    public async Task CatalogCardsAdoptPosterTilePresentationWithSemanticArtworkFallback()
     {
         var artwork = PlayniteLibraryItem.From(Item(
             "app-poster", "saved-poster", "Poster game", "Steam", "poster-handle"));
@@ -456,14 +488,15 @@ public sealed partial class PlayniteLibraryLayoutTests
         var display = items.Select(item => new PlayniteLibraryDisplayItem(
             item.Value.SavedId, item.Value.Presentation.DisplayName,
             item.Value.Presentation.Source.DisplayName)).ToArray();
-        var view = PlayniteLibraryPresentation.Render(State(
+        var posterCapture = await CapturePresentationAsync(State(
             Snapshot(WidgetPagedResourceStatus.Ready, items),
             new PlayniteLibraryPrivateState(
                 PlayniteLibraryPrivateState.CurrentVersion, display),
             PlayniteLibraryRoute.Library, []));
+        var view = posterCapture.View;
         var snapshot = new PresentationWidget(view).RenderSnapshot(
             "playnite-library.poster", 1);
-        var nodes = Nodes(snapshot.Root).ToArray();
+        var nodes = posterCapture.ParentAndRowNodes.ToArray();
         var posterId = PlayniteLibraryIdentity.FocusId("grid", artwork.Key);
         var fallbackId = PlayniteLibraryIdentity.FocusId("grid", fallback.Key);
 
@@ -497,35 +530,35 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public void HomeOwnsFocusSummariesAndBrowseDoesNot()
+    public async Task HomeOwnsFocusSummariesAndBrowseDoesNot()
     {
         var first = PlayniteLibraryItem.From(Item("app-a", "saved-a", "Alpha", "Steam"));
         var second = PlayniteLibraryItem.From(Item("app-b", "saved-b", "Bravo", "Windows"));
-        var home = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+        var homeCapture = await CapturePresentationAsync(State(
             Snapshot(WidgetPagedResourceStatus.Ready, [first, second]),
-            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, [])))
-            .RenderSnapshot("playnite-library.home.focus", 1);
-        var homeNodes = Nodes(home.Root).ToArray();
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+        var home = homeCapture.Snapshot;
+        var homeNodes = homeCapture.ParentAndRowNodes.ToArray();
         Assert.AreEqual(1, homeNodes.Count(node => node.Kind ==
             ViewNodeKind.FocusPresentationSurface));
         Assert.AreEqual(true, homeNodes.Single(node => node.Kind == ViewNodeKind.FocusPresentationSurface).RetainLastPresentation);
-        Assert.AreEqual(ProtocolConstants.WidgetTransitionVersion, home.ProtocolVersion);
+        Assert.IsGreaterThanOrEqualTo(ProtocolConstants.IndexedCollectionVersion, home.ProtocolVersion);
         Assert.AreEqual(2, homeNodes.Count(node => node.ActionId ==
             PlayniteLibraryActions.DetailsOpen && node.FocusPresentation is not null));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(home).Count);
 
-        var browse = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
-            Snapshot(WidgetPagedResourceStatus.Ready, [first, second]),
-            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, [])))
-            .RenderSnapshot("playnite-library.browse.focus", 1);
-        var browseView = PlayniteLibraryPresentation.Render(State(
+        var browseCapture = await CapturePresentationAsync(State(
             Snapshot(WidgetPagedResourceStatus.Ready, [first, second]),
             PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []));
+        var browse = browseCapture.Snapshot;
+        var browseView = (await CapturePresentationAsync(State(
+            Snapshot(WidgetPagedResourceStatus.Ready, [first, second]),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []))).View;
         Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, browseView.Surface!.WidthMode);
-        Assert.IsTrue(Nodes(browse.Root).Any(node =>
-            node.Id == "playnite-library.browse.cinematic" &&
+        Assert.IsTrue(browseCapture.ParentAndRowNodes.Any(node =>
+            node.Id == "playnite-library.cinematic" &&
             node.Kind == ViewNodeKind.BackgroundSurface));
-        var browseBackground = Nodes(browse.Root).Single(node => node.Id == "playnite-library.browse.cinematic");
+        var browseBackground = browseCapture.ParentAndRowNodes.Single(node => node.Id == "playnite-library.cinematic");
         var browseStage = browseBackground.Children.Single();
         Assert.AreEqual("playnite-library.browse.stage", browseStage.Id);
         CollectionAssert.Contains(browseStage.StyleClasses.ToArray(),
@@ -534,21 +567,21 @@ public sealed partial class PlayniteLibraryLayoutTests
             "playnite-library-browse-stage");
         Assert.AreEqual("playnite-library.browse.frame",
             browseStage.Children.Single().Id);
-        Assert.IsTrue(Nodes(browse.Root).Single(node =>
+        Assert.IsTrue(browseCapture.ParentAndRowNodes.Single(node =>
                 node.Id == "playnite-library.home.actions").StyleClasses.Contains(
                 "playnite-library-home-actions", StringComparer.Ordinal));
         Assert.IsFalse(browse.Root.StyleClasses.Contains(
                 "playnite-library-widget", StringComparer.Ordinal),
             "Browse must not inherit the bounded ordinary widget root.");
-        Assert.IsFalse(Nodes(browse.Root).Any(node => node.FocusPresentation is not null));
-        Assert.IsFalse(Nodes(browse.Root).Any(node => node.Id.StartsWith(
+        Assert.IsFalse(browseCapture.ParentAndRowNodes.Any(node => node.FocusPresentation is not null));
+        Assert.IsFalse(browseCapture.ParentAndRowNodes.Any(node => node.Id.StartsWith(
             "playnite-library.hero.", StringComparison.Ordinal)),
             "Browse must not duplicate selected-game details beneath its filters.");
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(browse).Count);
         var styles = File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
             "styles", "default.wrss"));
         StringAssert.Contains(styles,
-            ".playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 4px 2px; padding: 4px; justify: center; }");
+            ".playnite-library-browse-scroll { gap: 4px 2px; padding: 8px 4px; }");
         StringAssert.Contains(styles,
             ".playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px;");
         var theme = CompileStyles();
@@ -569,34 +602,34 @@ public sealed partial class PlayniteLibraryLayoutTests
             ], StringComparer.Ordinal)));
         Assert.AreEqual("center", browseBackgroundStyle.Get("align")?.Text);
         Assert.AreEqual("center", browseBackgroundStyle.Get("justify")?.Text);
-        Assert.IsFalse(Nodes(browse.Root).Any(node => node.StyleClasses.Contains(
+        Assert.IsFalse(browseCapture.ParentAndRowNodes.Any(node => node.StyleClasses.Contains(
                 "playnite-library-page-scroll", StringComparer.Ordinal)),
             "Browse must not emit the retired shared page-scroll class.");
-        var browseGrid = Nodes(browse.Root).Single(node =>
-            node.Id == "playnite-library.browse.grid");
+        var browseGrid = browseCapture.ParentAndRowNodes.Single(node =>
+            node.Id == PlayniteLibraryPresentation.ScrollId);
         Assert.IsNull(browseGrid.InitialChildFocusId,
             "Mutable Browse results must not retain native remembered-child authority.");
-        var browseQuery = Nodes(browse.Root).Single(node =>
+        var browseQuery = browseCapture.ParentAndRowNodes.Single(node =>
             node.Id == "playnite-library.query");
         Assert.IsNull(browseQuery.InitialChildFocusId,
             "The query row must not claim remembered-child ownership from its native Select controls.");
         Assert.IsTrue(Nodes(browseQuery).Any(node =>
             node.Id == "playnite-library.search"));
-        var browseActions = Nodes(browse.Root).Single(node =>
+        var browseActions = browseCapture.ParentAndRowNodes.Single(node =>
             node.Id == "playnite-library.collection.hints");
         Assert.IsNull(browseActions.InitialChildFocusId);
         Assert.IsFalse(Nodes(browseActions).Any(node => node.IsFocusable));
-        Assert.AreEqual(150D, browseGrid.GridMinimumColumnWidth);
-        Assert.AreEqual(7, browseGrid.GridMaximumColumns);
+        Assert.AreEqual(150D, browseGrid.CollectionLayout!.MinimumColumnWidth);
+        Assert.AreEqual(7, browseGrid.CollectionLayout!.MaximumColumns);
         var browseRootStyle = theme.Resolve(new WrssElement("stack", null,
-            Nodes(browse.Root).Single(node => node.Id == "playnite-library.root").StyleClasses.ToHashSet(StringComparer.Ordinal)));
+            browseCapture.ParentAndRowNodes.Single(node => node.Id == "playnite-library.root").StyleClasses.ToHashSet(StringComparer.Ordinal)));
         Assert.AreEqual("100%", browseRootStyle.Get("width")?.Text);
         Assert.AreEqual("100%", browseRootStyle.Get("height")?.Text);
         Assert.IsNull(browseRootStyle.Get("max-width"),
             "Browse root must fill the admitted width; only its foreground is bounded.");
         Assert.IsNull(browseRootStyle.Get("max-height"),
             "Browse root must fill the admitted height; only its foreground is bounded.");
-        var browseTile = Nodes(browse.Root).First(node =>
+        var browseTile = browseCapture.ParentAndRowNodes.First(node =>
             node.ActionId == PlayniteLibraryActions.DetailsOpen);
         CollectionAssert.Contains(browseTile.StyleClasses.ToArray(),
             "playnite-library-browse-tile");
@@ -611,23 +644,23 @@ public sealed partial class PlayniteLibraryLayoutTests
             "Browse must not retain the fixed Home rail basis.");
         Assert.AreEqual(2D / 3D, browseTileStyle.Get("aspect-ratio")?.Number);
         Assert.AreEqual(0D, browseTileStyle.Get("flex-grow")?.Number);
-        Assert.AreEqual(1D, browseTileStyle.Get("flex-shrink")?.Number);
+        Assert.IsNull(browseTileStyle.Get("flex-shrink"));
     }
 
     [TestMethod, Timeout(30_000)]
-    public void HiddenMatchesHomePosterGeometryAndConnectionShellCentersAcrossWideSurfaces()
+    public async Task HiddenMatchesHomePosterGeometryAndConnectionShellCentersAcrossWideSurfaces()
     {
         var item = PlayniteLibraryItem.From(Item(
             "app-layout", "saved-layout", "Layout game", "Steam"));
         var display = new PlayniteLibraryDisplayItem(
             item.Value.SavedId, item.Presentation.DisplayName,
             item.Presentation.Source.DisplayName);
-        var home = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+        var homeCapture = await CapturePresentationAsync(State(
                 Snapshot(WidgetPagedResourceStatus.Ready, [item]),
                 new PlayniteLibraryPrivateState(
                     PlayniteLibraryPrivateState.CurrentVersion, [display]),
-                PlayniteLibraryRoute.Library, [])))
-            .RenderSnapshot("playnite-library.layout.home", 1);
+                PlayniteLibraryRoute.Library, []));
+        var home = homeCapture.Snapshot;
         var hiddenOrganization = new PlayniteLibraryPrivateState(
             PlayniteLibraryPrivateState.CurrentVersion, [display])
         {
@@ -640,9 +673,9 @@ public sealed partial class PlayniteLibraryLayoutTests
             HiddenRows = [item],
         };
         var hidden = new PresentationWidget(
-                PlayniteLibraryPresentation.Render(hiddenState))
+                (await CapturePresentationAsync(hiddenState)).View)
             .RenderSnapshot("playnite-library.layout.hidden", 2);
-        var homeTile = Nodes(home.Root).Single(node =>
+        var homeTile = homeCapture.ParentAndRowNodes.Single(node =>
             node.ActionId == PlayniteLibraryActions.DetailsOpen);
         var hiddenTile = Nodes(hidden.Root).Single(node =>
             node.ActionId == PlayniteLibraryActions.Restore);
@@ -678,13 +711,13 @@ public sealed partial class PlayniteLibraryLayoutTests
             "playnite-library-playnite");
         Assert.AreEqual(WidgetSurfaceAppearance.Transparent,
             connection.Surface!.Appearance);
-        Assert.AreEqual(PlayniteLibraryPresentation.Render(hiddenState).Surface!.Appearance,
+        Assert.AreEqual((await CapturePresentationAsync(hiddenState)).View.Surface!.Appearance,
             connection.Surface.Appearance,
             "Connection and Hidden must share the transparent secondary-page treatment.");
         var categoriesState = State(
             Snapshot(WidgetPagedResourceStatus.Ready, [item]),
             hiddenOrganization, PlayniteLibraryRoute.Categories, []);
-        Assert.AreEqual(PlayniteLibraryPresentation.Render(categoriesState).Surface!.Appearance,
+        Assert.AreEqual((await CapturePresentationAsync(categoriesState)).View.Surface!.Appearance,
             connection.Surface.Appearance,
             "Connection and Categories must share the transparent secondary-page treatment.");
         var connectionRootStyle = theme.Resolve(new WrssElement("stack", null,
@@ -726,7 +759,7 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public void BrowseShellAndPackageControlsRemainStableAcrossResourceStates()
+    public async Task BrowseShellAndPackageControlsRemainStableAcrossResourceStates()
     {
         var item = PlayniteLibraryItem.From(Item(
             "app-state", "saved-state", "State game", "Steam"));
@@ -753,14 +786,14 @@ public sealed partial class PlayniteLibraryLayoutTests
 
         foreach (var (phase, state) in states)
         {
-            var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
-                .RenderSnapshot("playnite-library.browse." + phase, 10);
-            var nodes = Nodes(snapshot.Root).ToArray();
+            var capture = await CapturePresentationAsync(state);
+            var snapshot = capture.Snapshot;
+            var nodes = capture.ParentAndRowNodes.ToArray();
             Assert.AreEqual("playnite-library.root", snapshot.Root.Id, phase);
             CollectionAssert.Contains(nodes.Single(node => node.Id == "playnite-library.root").StyleClasses.ToArray(),
                 "playnite-library-browse-surface", phase);
             var background = nodes.Single(node =>
-                node.Id == "playnite-library.browse.cinematic");
+                node.Id == "playnite-library.cinematic");
             Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind, phase);
             CollectionAssert.Contains(background.StyleClasses.ToArray(),
                 "playnite-library-browse-background", phase);
@@ -794,12 +827,13 @@ public sealed partial class PlayniteLibraryLayoutTests
             {
                 var catalogScroll = nodes.Single(node =>
                     node.Id == PlayniteLibraryPresentation.ScrollId);
-                Assert.AreEqual(ViewNodeKind.Scroll, catalogScroll.Kind, phase);
+                Assert.AreEqual(ViewNodeKind.IndexedCollection, catalogScroll.Kind, phase);
                 CollectionAssert.Contains(catalogScroll.StyleClasses.ToArray(),
                     "playnite-library-catalog-scroll", phase);
-                Assert.AreEqual(item.Key.Value, catalogScroll.CollectionAnchorKey);
+                Assert.AreEqual(1, catalogScroll.IndexedCollection!.Count);
+                Assert.AreEqual(0, catalogScroll.Children.Count);
                 var grid = nodes.Single(node =>
-                    node.Id == "playnite-library.browse.grid");
+                    node.Id == PlayniteLibraryPresentation.ScrollId);
                 Assert.IsNull(grid.InitialChildFocusId,
                     phase + " mutable Browse results must not retain remembered focus.");
                 var actions = nodes.Single(node =>
@@ -829,7 +863,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Query = new WidgetAppLibraryQuery { SearchText = "missing" },
         };
         var filteredSnapshot = new PresentationWidget(
-                PlayniteLibraryPresentation.Render(filtered))
+                (await CapturePresentationAsync(filtered)).View)
             .RenderSnapshot("playnite-library.browse.filtered-empty", 11);
         var filteredNodes = Nodes(filteredSnapshot.Root).ToArray();
         Assert.AreEqual("No matching games", filteredNodes.Single(node =>
@@ -843,9 +877,9 @@ public sealed partial class PlayniteLibraryLayoutTests
             node.Id.StartsWith("playnite-library.empty", StringComparison.Ordinal) ||
             node.Id == "playnite-library.browse.empty.icon"));
 
-        var trulyEmpty = new PresentationWidget(PlayniteLibraryPresentation.Render(
+        var trulyEmpty = new PresentationWidget((await CapturePresentationAsync(
                 State(Snapshot(WidgetPagedResourceStatus.Ready, []),
-                    PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, [])))
+                    PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []))).View)
             .RenderSnapshot("playnite-library.browse.catalog-empty", 12);
         var emptyNodes = Nodes(trulyEmpty.Root).ToArray();
         Assert.AreEqual("No games", emptyNodes.Single(node =>
@@ -860,7 +894,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             FixedRows = new([], [], [item]),
         };
         var fixedRowsOnlySnapshot = new PresentationWidget(
-                PlayniteLibraryPresentation.Render(fixedRowsOnly))
+                (await CapturePresentationAsync(fixedRowsOnly)).View)
             .RenderSnapshot("playnite-library.browse.fixed-rows-only", 13);
         var fixedRowsOnlyNodes = Nodes(fixedRowsOnlySnapshot.Root).ToArray();
         Assert.AreEqual("No matching games", fixedRowsOnlyNodes.Single(node =>
@@ -868,7 +902,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual("playnite-library.search",
             fixedRowsOnlySnapshot.InitialFocusId);
         Assert.IsFalse(fixedRowsOnlyNodes.Any(node =>
-            node.Id == "playnite-library.browse.grid"));
+            node.Id == PlayniteLibraryPresentation.ScrollId));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(fixedRowsOnlySnapshot).Count,
             "Browse fixed rows must not create an empty catalog or invalid focus target.");
 
@@ -916,42 +950,40 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public void HomeAndBrowseDefaultBackgroundUseProjectedSelectedArtwork()
+    public async Task HomeAndBrowseDefaultBackgroundUseProjectedSelectedArtwork()
     {
         var hero = ArtworkItem("app-hero", "saved-hero", "Hero game", "Steam",
             "library.tile.hero", "library.background.hero");
         var homeState = State(Snapshot(WidgetPagedResourceStatus.Ready, [hero]),
-            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []) with
-        {
-            HeroSavedId = hero.Value.SavedId,
-        };
-        var home = new PresentationWidget(PlayniteLibraryPresentation.Render(homeState))
-            .RenderSnapshot("playnite-library.home.background", 1);
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []);
+        var homeCapture = await CapturePresentationAsync(homeState);
+        var home = homeCapture.Snapshot;
         var homeBackground = Nodes(home.Root).Single(node =>
             node.Id == "playnite-library.cinematic");
-        Assert.AreEqual("library.background.hero", homeBackground.ArtworkHandle);
-        Assert.AreEqual(ImageFit.Cover, homeBackground.ImageFit);
+        Assert.AreEqual("library.background.hero", homeCapture.Ranges.Single().Items.Single().Root.FocusBackgroundArtworkHandle);
+        Assert.IsNull(homeBackground.ArtworkHandle, "Artwork is owned by demanded rows, never eagerly projected on the page.");
         Assert.AreEqual(true, homeBackground.UsesFocusedDescendantArtwork);
 
         var tileOnly = ArtworkItem("app-tile", "saved-tile", "Tile game", "Windows",
             "library.tile.fallback", heroHandle: null);
         var browseState = State(Snapshot(WidgetPagedResourceStatus.Ready, [tileOnly]),
-            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []) with
-        {
-            HeroSavedId = tileOnly.Value.SavedId,
-        };
-        var browse = new PresentationWidget(PlayniteLibraryPresentation.Render(browseState))
-            .RenderSnapshot("playnite-library.browse.background", 2);
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []);
+        var browseCapture = await CapturePresentationAsync(browseState);
+        var browse = browseCapture.Snapshot;
         var browseBackground = Nodes(browse.Root).Single(node =>
-            node.Id == "playnite-library.browse.cinematic");
-        Assert.AreEqual("library.tile.fallback", browseBackground.ArtworkHandle,
+            node.Id == "playnite-library.cinematic");
+        Assert.AreEqual(homeBackground.Id, browseBackground.Id,
+            "Home and Library declare one shared background owner across section changes.");
+        Assert.AreEqual(home.Root.Id, browse.Root.Id);
+        Assert.AreEqual(home.Root.InputScopeId, browse.Root.InputScopeId);
+        Assert.AreEqual("library.tile.fallback", browseCapture.Ranges.Single().Items.Single().Root.FocusBackgroundArtworkHandle,
             "A selected game without Hero artwork must use its exact Tile handle.");
-        Assert.AreEqual(ImageFit.Cover, browseBackground.ImageFit);
+        Assert.IsNull(browseBackground.ArtworkHandle);
         Assert.AreEqual(true, browseBackground.UsesFocusedDescendantArtwork);
     }
 
     [TestMethod, Timeout(30_000)]
-    public void BrowseSearchTransitionsAlwaysPublishAValidFocusableInitialTarget()
+    public async Task BrowseSearchTransitionsAlwaysPublishAValidFocusableInitialTarget()
     {
         var item = PlayniteLibraryItem.From(Item(
             "app-search", "saved-search", "Search result", "Steam"));
@@ -963,11 +995,10 @@ public sealed partial class PlayniteLibraryLayoutTests
             {
                 RequestedFocusId = staleFocus,
             }, PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []);
-        var matching = new PresentationWidget(PlayniteLibraryPresentation.Render(matchingState))
+        var matching = new PresentationWidget((await CapturePresentationAsync(matchingState)).View)
             .RenderSnapshot("playnite-library.search.matching", 1);
-        Assert.AreEqual(item.Key.Value,
-            Nodes(matching.Root).Single(node => node.Id == matching.InitialFocusId)
-                .CollectionItemKey);
+        Assert.AreEqual(PlayniteLibraryPresentation.ScrollId, matching.InitialFocusId);
+        Assert.AreEqual(ViewNodeKind.IndexedCollection, Nodes(matching.Root).Single(node => node.Id == matching.InitialFocusId).Kind);
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(matching).Count);
 
         foreach (var state in new[]
@@ -984,7 +1015,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                          PlayniteLibraryRoute.Browse, []),
                  })
         {
-            var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
+            var snapshot = new PresentationWidget((await CapturePresentationAsync(state)).View)
                 .RenderSnapshot("playnite-library.search.transient", 2);
             Assert.AreEqual("playnite-library.search", snapshot.InitialFocusId);
             var search = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
@@ -995,7 +1026,7 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public void HeroRailPolicyBoundsLongFallbackAndSelectedState()
+    public async Task IndexedHomeBoundsParentAndKeepsLongSelectedSummaryInItsRow()
     {
         var longTitle = new string('H', 96);
         var items = Enumerable.Range(0, 20).Select(index =>
@@ -1019,42 +1050,22 @@ public sealed partial class PlayniteLibraryLayoutTests
                 items[7].Value.SavedId)],
         };
         var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items), organization,
-            PlayniteLibraryRoute.Library, [] ) with
-        {
-            HeroSavedId = items[7].Value.SavedId,
-            HeroIndex = 7,
-        };
-        var model = PlayniteLibraryHeroRailPolicy.Project(
-            state, state.HeroSavedId, state.HeroIndex);
-        Assert.AreEqual(20, model.Items.Count);
-        Assert.AreEqual(items[7].Value.SavedId, model.Selected?.Display.SavedId);
-        var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
-            .RenderSnapshot("hero.layout", 30);
-        var nodes = Nodes(snapshot.Root).ToArray();
-        var selected = nodes.Single(node => node.Id == PlayniteLibraryIdentity.FocusId(
-            "grid", items[7].Key));
-        Assert.IsNotNull(selected.FocusPresentation,
-            "The selected Home poster must own the focused-game summary.");
-        Assert.IsFalse(nodes.Any(node => node.Id.StartsWith("playnite-library.hero.",
-            StringComparison.Ordinal)),
-            "The legacy hero must not duplicate the focused-game summary on Home.");
-        Assert.IsLessThanOrEqualTo(20 * 8 + 40, nodes.Length,
-            "Hero-rail semantic nodes must remain linear in the bounded page.");
-
-        var filtered = state with
-        {
-            Collection = Snapshot(WidgetPagedResourceStatus.Ready,
-                items.Where((_, index) => index != 7).ToArray()),
-            Organization = organization with
-            {
-                ExcludedSavedIds = [items[7].Value.SavedId],
-            },
-        };
-        var fallback = PlayniteLibraryHeroRailPolicy.Project(
-            filtered, state.HeroSavedId, state.HeroIndex);
-        Assert.AreEqual(items[8].Value.SavedId, fallback.Selected?.Display.SavedId,
-            "A removed selection must choose the nearest retained rail position.");
+            PlayniteLibraryRoute.Library, [] );
+        var captured = await CapturePresentationAsync(state);
+        Assert.AreEqual(20, captured.Ranges.Sum(range => range.Items.Count));
+        var selected = captured.Ranges.SelectMany(range => range.Items).Single(row => row.Key == items[7].Key.Value).Root;
+        Assert.IsNotNull(selected.FocusPresentation);
+        Assert.IsTrue(Nodes(selected.FocusPresentation!).Any(node => node.Text == longTitle));
+        Assert.IsFalse(Nodes(captured.Snapshot.Root).Any(node => node.Id.StartsWith("playnite-library.hero.", StringComparison.Ordinal)));
+        Assert.IsLessThan(100, Nodes(captured.Snapshot.Root).Count(), "Parent declarations stay bounded independently of poster count.");
+        var filtered = state with { Organization = organization with { ExcludedSavedIds = [items[7].Value.SavedId] } };
+        var replacement = await CapturePresentationAsync(filtered);
+        Assert.AreEqual(19, replacement.Ranges.Sum(range => range.Items.Count));
+        Assert.IsFalse(replacement.Ranges.SelectMany(range => range.Items).Any(row => row.Key == items[7].Key.Value));
+        Assert.AreEqual(PlayniteLibraryPresentation.HomeRailId, replacement.Snapshot.InitialFocusId,
+            "The indexed owner resolves entry after query replacement; the page cannot target a removed native child.");
     }
+
 
     private static PlayniteLibraryPresentationState State(
         WidgetCursorResourceSnapshot<PlayniteLibraryItem> collection,
@@ -1066,8 +1077,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             OrganizationBusy: false, Interactive: true,
             new WidgetAppLibraryQuery { InstalledOnly = route != PlayniteLibraryRoute.Browse },
             RecentlyPlayed: false, FavoriteFilter: false, route,
-            PlayniteLibraryFixedRows.Empty, HiddenRows: [], sources,
-            HeroSavedId: null, HeroIndex: 0)
+            PlayniteLibraryFixedRows.Empty, HiddenRows: [], sources)
         {
             Collections = PlayniteLibraryCollectionPolicy.Options(
                 organization, organization.ProvenSources.ToArray(),

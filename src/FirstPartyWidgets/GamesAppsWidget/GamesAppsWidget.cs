@@ -27,7 +27,7 @@ public enum GamesAppsPage
 /// bounded names, conservative kinds, and opaque host IDs. Listing and launch
 /// remain separate consent-gated broker operations.
 /// </summary>
-public sealed class GamesAppsWidget : Widget
+public sealed partial class GamesAppsWidget : Widget
 {
     private const string RetryActionId = "games.retry";
     private const string RefreshCatalogActionId = "games.refresh-catalog";
@@ -88,6 +88,8 @@ public sealed class GamesAppsWidget : Widget
     internal GamesAppsWidget(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _indexedLibrary = CreateAppCollection("games.source.library", GamesAppsPage.Library);
+        _indexedRunning = CreateAppCollection("games.source.running", GamesAppsPage.Running);
         _navigation = CreateNavigatorWithOptions(
             "games.navigation",
             GamesAppsPage.Library,
@@ -126,6 +128,7 @@ public sealed class GamesAppsWidget : Widget
     {
         var navigation = _navigation.Value;
         GamesAppsPresentationState presentation;
+        FocusGroupEntryRequest? focusRequest;
         lock (_gate)
         {
             presentation = new GamesAppsPresentationState(
@@ -144,6 +147,8 @@ public sealed class GamesAppsWidget : Widget
                 _catalog.CanLoadPrevious,
                 LifecycleState,
                 _toast);
+            presentation = PrepareIndexedPresentation(presentation);
+            focusRequest = ResolveIndexedFocusRequest(navigation, presentation);
         }
         var view = GamesAppsPresentation.Render(presentation);
         var scoped = _navigation.Scope(navigation, view.Root);
@@ -154,12 +159,12 @@ public sealed class GamesAppsWidget : Widget
             InitialFocusId = navigation.Revision == 0
                 ? view.InitialFocusId
                 : navigation.InitialFocusId,
-            FocusGroupEntryRequest = navigation.FocusGroupEntryRequest,
+            FocusGroupEntryRequest = focusRequest,
         };
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime) =>
-        StartActiveRunAsync(activeLifetime);
+        StartActiveRun();
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
@@ -182,9 +187,8 @@ public sealed class GamesAppsWidget : Widget
             WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive;
         var isVisible = current is
             WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive;
-        // OnActivated publishes the first entering-visible projection after it
-        // restores retained rows. Publishing here would admit the cold extent
-        // before that ordered restore completes.
+        // OnActivated owns the entering-visible projection and schedules cold
+        // restoration. Keep provider I/O outside the lifecycle acknowledgement.
         if (wasVisible || !isVisible)
             Invalidate();
         return ValueTask.CompletedTask;
@@ -376,7 +380,7 @@ public sealed class GamesAppsWidget : Widget
         }
     }
 
-    private async Task RemoveCuratedAsync(string appId, CancellationToken cancellationToken)
+    private async Task RemoveCuratedAsync(string appId, CancellationToken cancellationToken, AppActionOrigin? origin = null)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
@@ -398,6 +402,7 @@ public sealed class GamesAppsWidget : Widget
             var rejected = false;
             lock (_gate)
             {
+                if (!IsAppActionCurrentLocked(origin)) return;
                 if (Page != GamesAppsPage.Library) return;
                 item = _items.FirstOrDefault(candidate =>
                     string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
@@ -591,7 +596,7 @@ public sealed class GamesAppsWidget : Widget
               "games · recent first";
     }
 
-    private async ValueTask StartActiveRunAsync(CancellationToken activeLifetime)
+    private ValueTask StartActiveRun()
     {
         StopActiveRun();
         if (Page == GamesAppsPage.Catalog)
@@ -603,13 +608,13 @@ public sealed class GamesAppsWidget : Widget
             if (retainLaterPage)
             {
                 Invalidate();
-                return;
+                return ValueTask.CompletedTask;
             }
             OpenCatalog(
                 enterRememberedContent: false,
                 force: true,
                 resumeActiveRoot: true);
-            return;
+            return ValueTask.CompletedTask;
         }
         if (Page == GamesAppsPage.Running)
         {
@@ -617,7 +622,7 @@ public sealed class GamesAppsWidget : Widget
                 enterRememberedContent: false,
                 force: true,
                 resumeActiveRoot: true);
-            return;
+            return ValueTask.CompletedTask;
         }
         _ = _navigation.NavigateRoot(
             GamesAppsPage.Library,
@@ -646,11 +651,21 @@ public sealed class GamesAppsWidget : Widget
             _libraryMutationBusy = false;
             restoreRetainedSnapshot = !_hasLibrarySnapshot;
         }
+        Invalidate();
         if (restoreRetainedSnapshot)
-            await RestoreRetainedLibraryAsync(generation, activeLifetime)
-                .ConfigureAwait(false);
+            _ = Operations.RunLatest(
+                LibraryLoadOperationKey,
+                context => new ValueTask(Task.WhenAll(
+                    RestoreAndLoadLibraryAsync(generation, context.CancellationToken),
+                    ShowColdLoadingAfterDelayAsync(generation, context.CancellationToken))),
+                WidgetOperationLifetime.Active);
+        return ValueTask.CompletedTask;
+    }
 
-        bool hasLibrarySnapshot;
+    private async Task RestoreAndLoadLibraryAsync(long generation, CancellationToken cancellationToken)
+    {
+        await RestoreRetainedLibraryAsync(generation, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
             if (Interlocked.Read(ref _generation) != generation) return;
@@ -663,16 +678,9 @@ public sealed class GamesAppsWidget : Widget
                 _viewState = GamesAppsViewState.Ready;
                 _status = LibraryStatusLocked();
             }
-            hasLibrarySnapshot = _hasLibrarySnapshot;
         }
         Invalidate();
-        if (!restoreRetainedSnapshot) return;
-        _ = Operations.RunLatest(
-            LibraryLoadOperationKey,
-            context => LoadSavedLibraryRunAsync(
-                generation, showColdLoading: !hasLibrarySnapshot,
-                refreshCatalog: false, context),
-            WidgetOperationLifetime.Active);
+        await LoadSavedLibraryAsync(generation, refreshCatalog: false, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask RestoreRetainedLibraryAsync(
@@ -683,12 +691,14 @@ public sealed class GamesAppsWidget : Widget
         {
             var persisted = await HostServices.PrivateState.ReadAsync<GamesAppsLibraryState>(
                     cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             var state = GamesAppsLibraryPolicy.Normalize(
                 persisted.Exists ? persisted.Value : null);
             if (state.DisplayItems.Count == 0) return;
 
             var resolved = await HostServices.AppLibrary.ResolveSavedAsync(
                     state.SavedIds, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             var current = GamesAppsLibraryPolicy.NormalizeResolved(
                 resolved, state.SavedIds);
             lock (_gate)
@@ -1533,7 +1543,7 @@ public sealed class GamesAppsWidget : Widget
         ScheduleToastExpiry(notice);
     }
 
-    private async Task AddRunningAsync(string savedId, CancellationToken cancellationToken)
+    private async Task AddRunningAsync(string savedId, CancellationToken cancellationToken, AppActionOrigin? origin = null)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
@@ -1548,6 +1558,7 @@ public sealed class GamesAppsWidget : Widget
             string? observationRevision;
             lock (_gate)
             {
+                if (!IsAppActionCurrentLocked(origin)) return;
                 if (Page != GamesAppsPage.Running ||
                     _libraryItems.Any(item => item.SavedId == savedId)) return;
                 observationRevision = _runningRevision;
@@ -1793,7 +1804,7 @@ public sealed class GamesAppsWidget : Widget
             ToastTone.Danger);
     }
 
-    private async Task LaunchAsync(string appId, CancellationToken cancellationToken)
+    private async Task LaunchAsync(string appId, CancellationToken cancellationToken, AppActionOrigin? origin = null)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
@@ -1810,6 +1821,7 @@ public sealed class GamesAppsWidget : Widget
             if (!acquired) return;
             lock (_gate)
             {
+                if (!IsAppActionCurrentLocked(origin)) return;
                 selected = _items.FirstOrDefault(item => item.AppId == appId);
                 if (selected is null || !_resolvedSavedIds.Contains(selected.SavedId) ||
                     LifecycleState != WidgetLifecycleState.Interactive)

@@ -1,0 +1,77 @@
+<Page
+    x:Class="WidgetRail.OverlayFrontend.WinUI.Shell.OverlayShellPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:WidgetRail.OverlayFrontend.WinUI.Shell"
+    xmlns:bridge="using:WidgetRail.WidgetBridge">
+    <local:ProductionShellRoot x:Name="ProductionRoot" Background="Transparent" PointerPressed="ProductionGapPressed"
+                               AutomationProperties.AutomationId="Overlay.Shell" AutomationProperties.Name="WidgetRail">
+        <Grid x:Name="ProductionLayout">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="58" />
+                <RowDefinition Height="8" />
+                <RowDefinition Height="76" />
+            </Grid.RowDefinitions>
+            <Border x:Name="WidgetSurface" VerticalAlignment="Bottom" IsHitTestVisible="False" />
+            <!-- Presenters remain parented in a full-size native layout stage.
+                 Incoming content can reach its final extent without resizing the
+                 committed backdrop or unloading/recreating native controls. -->
+            <ContentControl x:Name="WidgetHost" IsTabStop="False"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="Overlay.Widget">
+                <Grid x:Name="WidgetSurfaces" />
+            </ContentControl>
+            <Border x:Name="StatusChrome" VerticalAlignment="Bottom" Padding="20" CornerRadius="12"
+                    AutomationProperties.AutomationId="Overlay.Recovery">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="Status" Text="Connecting to widget service…" TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="Overlay.Status"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <Button x:Name="Retry" Grid.Column="1" Content="Retry" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="Overlay.Retry" Click="RetryClicked" />
+                </Grid>
+            </Border>
+            <Grid x:Name="MediaParking" Visibility="Collapsed" IsHitTestVisible="False"
+                  AutomationProperties.AccessibilityView="Raw" />
+            <ContentControl x:Name="TrayHelp" Grid.Row="2" IsTabStop="False"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                            AutomationProperties.AutomationId="Overlay.TrayHelp" />
+            <Grid x:Name="RailRegion" Grid.Row="4" VerticalAlignment="Center" ColumnSpacing="14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="LeadingStatusColumn" Width="0" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition x:Name="TrailingStatusColumn" Width="0" />
+                </Grid.ColumnDefinitions>
+                <ContentControl x:Name="RailStatusHost" IsTabStop="False" IsHitTestVisible="False" Visibility="Collapsed"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                AutomationProperties.AutomationId="Overlay.RailStatus" />
+                <Grid x:Name="RailControls" Grid.Column="1" ColumnSpacing="6">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Button x:Name="TrayPrevious" Content="&#xE76B;" FontFamily="Segoe Fluent Icons" Width="36" Height="44" Padding="0"
+                            IsTabStop="False" Visibility="Collapsed" Click="TrayPreviousClicked"
+                            AutomationProperties.AutomationId="Overlay.TrayPrevious" AutomationProperties.Name="Previous widgets" />
+                    <ListView x:Name="Tray" Grid.Column="1" SelectionMode="Single" IsItemClickEnabled="True"
+                              Padding="0" BorderThickness="0" Background="Transparent"
+                              ItemClick="TrayItemClicked" AutomationProperties.Name="Widgets"
+                              AutomationProperties.AutomationId="Overlay.Tray"
+                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListView.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListView.ItemsPanel>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="bridge:BridgeWidgetDescriptor">
+                                <ContentControl IsTabStop="False" IsHitTestVisible="False" HorizontalContentAlignment="Center"
+                                                VerticalContentAlignment="Center" Loaded="TrayItemContentLoaded" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <Button x:Name="TrayNext" Grid.Column="2" Content="&#xE76C;" FontFamily="Segoe Fluent Icons" Width="36" Height="44" Padding="0"
+                            IsTabStop="False" Visibility="Collapsed" Click="TrayNextClicked"
+                            AutomationProperties.AutomationId="Overlay.TrayNext" AutomationProperties.Name="Next widgets" />
+                </Grid>
+            </Grid>
+        </Grid>
+    </local:ProductionShellRoot>
+</Page>

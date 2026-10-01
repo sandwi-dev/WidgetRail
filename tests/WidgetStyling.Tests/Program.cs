@@ -5,6 +5,8 @@ using WidgetRail.WidgetStyling;
 var tests = new (string Name, Action Run)[]
 {
     ("Parser preserves semantic selectors and source locations", ParserAndLocations),
+    ("WinUI layout guidance retains authored locations without changing valid styles", WinUiLayoutGuidance),
+    ("WinUI layout guidance ignores tokens and supported track inputs", WinUiSupportedLayout),
     ("Parser rejects browser and script escape syntax", UnsafeValues),
     ("Parser recovers independent declaration diagnostics", ErrorRecovery),
     ("Parser enforces bounded untrusted source sizes", ParserLimits),
@@ -13,6 +15,11 @@ var tests = new (string Name, Action Run)[]
     ("File sources enforce consumed bytes and verified digests", VerifiedFileSources),
     ("Variables resolve forward references and fallbacks", Variables),
     ("Variable cycles prevent theme publication", VariableCycles),
+    ("Alpha colors multiply existing transparency without changing channels", AlphaColors),
+    ("Alpha colors compose with token fallback and theme layers", AlphaVariables),
+    ("Alpha color grammar errors retain source diagnostics and safe functions", AlphaErrors),
+    ("Alpha color nesting and expansion remain bounded", AlphaLimits),
+    ("Playnite translucent panels preserve descendant opacity", PlaynitePanelColors),
     ("Cascade applies specificity states and source order", Cascade),
     ("Explicit theme layers outrank selector specificity", LayerPrecedence),
     ("Selected disabled busy and focused states compose", InteractionStateComposition),
@@ -53,6 +60,44 @@ foreach (var test in tests)
 
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static void WinUiLayoutGuidance()
+{
+    var parsed = WrssParser.Parse("""
+        :root { --basis: 80px; }
+        .row, .row:focused {
+          flex-wrap: wrap;
+          flex-basis: var(--basis);
+          flex-shrink: 0;
+          flex-grow: 1;
+        }
+        """, "styles/layout.wrss");
+    Assert.EmptyErrors(parsed.Diagnostics);
+    var compiled = WrssThemeCompiler.Compile(new[] { parsed.Document });
+    Assert.True(compiled.IsValid, "Guidance must not invalidate legal shared stylesheet syntax.");
+    var diagnostics = WinUiStyleDiagnostics.Analyze(parsed.Document);
+    Assert.Equal(3, diagnostics.Count);
+    Assert.SequenceEqual(new[] { 3, 4, 5 }, diagnostics.Select(item => item.Line));
+    Assert.True(diagnostics.All(item => item.Source == "styles/layout.wrss" && item.Column > 0 &&
+        item.Code == "winui_unmapped_layout" && item.Severity == WrssDiagnosticSeverity.Warning), "Warnings retain declaration locations and stable codes.");
+    Assert.True(diagnostics[0].Message.Contains("UI.ResponsiveGrid", StringComparison.Ordinal) &&
+        diagnostics[1].Message.Contains("UI.Grid", StringComparison.Ordinal), "Warnings provide native authoring alternatives.");
+    Assert.True(diagnostics.All(item => !item.Message.Contains("--basis", StringComparison.Ordinal)), "Guidance need not echo authored values.");
+    var style = compiled.Theme!.Resolve(new WrssElement("row", StyleClasses: new HashSet<string> { "row" }));
+    Assert.Equal("80px", style.Get("flex-basis")!.Text);
+}
+
+static void WinUiSupportedLayout()
+{
+    var parsed = WrssParser.Parse("""
+        :root { --flex-wrap: wrap; --flex-basis: 80px; }
+        .row { flex-grow: 1; width: 100%; min-width: 0px; max-width: 200px; gap: 8px; direction: row; align: stretch; }
+        .row:focused { scale: 1.05; }
+        """);
+    Assert.EmptyErrors(parsed.Diagnostics);
+    Assert.Equal(0, WinUiStyleDiagnostics.Analyze(parsed.Document).Count);
+    Assert.Throws<ArgumentNullException>(() => WinUiStyleDiagnostics.Analyze(null!));
+}
 
 static void ParserAndLocations()
 {
@@ -307,6 +352,116 @@ static void VariableCycles()
         """);
     Assert.True(!compile.IsValid, "Variable cycle unexpectedly compiled.");
     Assert.True(compile.Diagnostics.Any(item => item.Code is "variable_cycle" or "invalid_variable"), Describe(compile.Diagnostics));
+}
+
+static void AlphaColors()
+{
+    foreach (var (input, expected) in new[]
+    {
+        ("alpha(#123, .84)", "rgba(17, 34, 51, 0.84)"),
+        ("alpha(#aBcD, .5)", "rgba(170, 187, 204, 0.4333333333333333)"),
+        ("alpha(#10203080, 1)", "rgba(16, 32, 48, 0.5019607843137255)"),
+        ("alpha(rgb(10%, 12.5, 255), 25%)", "rgba(10%, 12.5, 255, 0.25)"),
+        ("alpha(rgba(23, 26, 34, .98), .84)", "rgba(23, 26, 34, 0.8232)"),
+        ("alpha(rgba(1, 2, 3, 50%), .5)", "rgba(1, 2, 3, 0.25)"),
+        ("alpha(alpha(rgba(1, 2, 3, .8), .5), .25)", "rgba(1, 2, 3, 0.1)"),
+        ("alpha(transparent, .5)", "rgba(0, 0, 0, 0)"),
+        ("alpha(#abcdef, 0)", "rgba(171, 205, 239, 0)"),
+    })
+    {
+        var compile = Compile($"button {{ background: {input}; }}");
+        Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+        var computed = compile.Theme!.Resolve(Element("button")).Get("background")!;
+        Assert.Equal(WrssValueKind.Color, computed.Kind);
+        var separator = expected.LastIndexOf(',');
+        var actualSeparator = computed.Text.LastIndexOf(',');
+        Assert.Equal(expected[..separator], computed.Text[..actualSeparator]);
+        var expectedAlpha = double.Parse(expected[(separator + 1)..^1], System.Globalization.CultureInfo.InvariantCulture);
+        var actualAlpha = double.Parse(computed.Text[(actualSeparator + 1)..^1], System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(Math.Abs(expectedAlpha - actualAlpha) < 1e-14, $"Wrong multiplied alpha for {input}: {computed.Text}");
+        // Frontends receive only an existing RGBA color; round-trip it through
+        // the old typed-value path, without understanding alpha() themselves.
+        Assert.True(Compile($"button {{ background: {computed.Text}; }}").IsValid, "Computed RGBA did not round-trip.");
+    }
+}
+
+static void AlphaVariables()
+{
+    var package = WrssParser.Parse("""
+        :root { --factor: .84; --panel: alpha(var(--tone), var(--factor)); --tone: var(--surface); }
+        button { background: var(--panel); border-color: alpha(var(--missing, var(--other, rgba(1, 2, 3, .5))), .2); }
+        button:focused { outline-color: alpha(var(--accent, #123456), 50%); }
+        """, "package.wrss");
+    var theme = WrssParser.Parse(":root { --surface: rgba(10, 20, 30, .75); --accent: #123456; }", "theme.wrss");
+    Assert.EmptyErrors(package.Diagnostics);
+    var compile = WrssThemeCompiler.Compile([new WrssThemeLayer(0, [theme.Document]), new WrssThemeLayer(1, [package.Document])]);
+    Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+    var style = compile.Theme!.Resolve(new WrssElement("button", PseudoStates: new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
+    Assert.Equal("rgba(10, 20, 30, 0.63)", style.Get("background")!.Text);
+    Assert.Equal("rgba(1, 2, 3, 0.1)", style.Get("border-color")!.Text);
+    Assert.Equal("rgba(18, 52, 86, 0.5)", style.Get("outline-color")!.Text);
+    var cycle = Compile(":root { --one: alpha(var(--two), .5); --two: var(--one); } button { background: var(--one); }");
+    Assert.True(!cycle.IsValid, "Color expression bypassed variable cycle validation.");
+    var missing = Compile("button { background: alpha(var(--missing), .5); }");
+    Assert.HasCode(missing.Diagnostics, "invalid_variable");
+}
+
+static void AlphaErrors()
+{
+    foreach (var expression in new[] { "alpha(#fff)", "alpha(#fff, .5, .6)", "alpha(, .5)", "alpha(#fff,)",
+        "alpha(#fff, 1.01)", "alpha(#fff, -0.1)", "alpha(#fff, 101%)", "alpha(#fff, NaN)",
+        "alpha(#fff, Infinity)", "alpha(#fff, 1e999)", "alpha(#fff, 4px)", "alpha(12px, .5)",
+        "alpha(rgb(256, 0, 0), .5)", "alpha(rgba(0,0,0,2), .5)", "alpha(#12345, .5)",
+        "alpha(#fff, alpha(#000, .5))", "alpha(#fff, .5) trailing", "alpha((#fff), .5)" })
+    {
+        var parsed = WrssParser.Parse($"button {{\n  background: {expression};\n}}", "alpha-errors.wrss");
+        Assert.EmptyErrors(parsed.Diagnostics);
+        var compile = WrssThemeCompiler.Compile([parsed.Document]);
+        Assert.True(!compile.IsValid && compile.Theme is null, $"Invalid color compiled: {expression}");
+        Assert.HasCode(compile.Diagnostics, "invalid_value");
+        var error = compile.Diagnostics.First(item => item.Code == "invalid_value");
+        Assert.Equal("alpha-errors.wrss", error.Source);
+        Assert.Equal(2, error.Line);
+        Assert.Equal(3, error.Column);
+    }
+    Assert.True(!Compile("button { opacity: alpha(#fff, .5); }").IsValid, "A color function escaped the color property family.");
+    Assert.HasCode(WrssParser.Parse("button { background: alpha(url(https://bad.example/a), .5); }", "unsafe.wrss").Diagnostics, "unsafe_value");
+    Assert.HasCode(WrssParser.Parse("button { background: alpha(calc(1 + 2), .5); }", "unsafe.wrss").Diagnostics, "unsafe_value");
+    Assert.HasCode(WrssParser.Parse("button { background: alpha(#fff, .5; }", "malformed.wrss").Diagnostics, "unbalanced_parenthesis");
+}
+
+static void AlphaLimits()
+{
+    static string Nest(int count) => string.Concat(Enumerable.Repeat("alpha(", count)) + "#fff" +
+        string.Concat(Enumerable.Repeat(", 1)", count));
+    Assert.True(Compile($"button {{ color: {Nest(WrssLimits.MaximumColorFunctionNesting)}; }}").IsValid, "Maximum color nesting rejected.");
+    var excessive = Compile($"button {{ color: {Nest(WrssLimits.MaximumColorFunctionNesting + 1)}; }}");
+    Assert.HasCode(excessive.Diagnostics, "invalid_value");
+    Assert.True(excessive.Diagnostics.Any(item => item.Message.Contains("nested alpha()", StringComparison.Ordinal)), "Missing nesting-limit diagnostic.");
+    // Limits apply to expressions introduced through token expansion too.
+    var expanded = Compile($":root {{ --a: {Nest(32)}; }} button {{ color: alpha(var(--a), .5); }}");
+    Assert.True(!expanded.IsValid, "Token substitution bypassed color nesting limit.");
+    var large = new string(' ', 4000) + "#fff";
+    var oversized = Compile($":root {{ --a: '{large}'; --b: var(--a) var(--a) var(--a); --c: var(--b) var(--b); }} button {{ background: alpha(var(--c), .5); }}");
+    Assert.HasCode(oversized.Diagnostics, "invalid_variable");
+    Assert.True(oversized.Diagnostics.Any(item => item.Message.Contains("Expanded value exceeds", StringComparison.Ordinal)), "Expanded color bypassed byte-work bound.");
+}
+
+static void PlaynitePanelColors()
+{
+    var parsed = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Themes", "playnite-library.wrss")), "playnite.wrss");
+    Assert.EmptyErrors(parsed.Diagnostics);
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
+    foreach (var panel in new[] { "browse-foreground", "home-actions", "home-summary" })
+    {
+        var style = compiled.Theme!.Resolve(new WrssElement("stack", StyleClasses: new HashSet<string>(["playnite-library-" + panel])));
+        Assert.Equal("rgba(23, 26, 34, 0.8232)", style.Get("background")!.Text);
+        Assert.Equal("rgba(44, 49, 62, 0.7728)", style.Get("border-color")!.Text);
+        Assert.True(style.Get("opacity") is null, "Panel applies opacity to descendants.");
+    }
+    var hint = compiled.Theme!.Resolve(new WrssElement("text", StyleClasses: new HashSet<string>(["playnite-library-hint-unavailable"])));
+    Assert.Equal("0.64", hint.Get("opacity")!.Text);
 }
 
 static void Cascade()

@@ -17,7 +17,7 @@ public sealed partial class StandaloneMusicWidget
             var group = UI.Stack(compact ? ContentGroupId : _browse.GroupId, content).Classes(compact ? "music-panel-body" : "music-body");
             if (group.Id == ContentGroupId && !entry.StartsWith("music.nav.", StringComparison.Ordinal))
                 group = group.RememberChildFocus(entry);
-            var status = state.Player.Error ?? _status;
+            var status = state.Player.Error ?? state.PlaybackNotice ?? _status;
             if (string.IsNullOrWhiteSpace(status) || status == "Loading…" || _signingIn) status = string.Empty;
             var children = new List<WidgetElement> { Header(panel, status) };
             if (compact) children.Add(group);
@@ -44,26 +44,30 @@ public sealed partial class StandaloneMusicWidget
                 if (_history.Count != 0) root = root.Shortcut(ControllerButton.B, "back", label: "Back");
             }
             if (state.Current is not null)
-                root = root.Shortcut(ControllerButton.X, "player.toggle", label: "Play or pause")
-                    .Shortcut(ControllerButton.LeftBumper, "player.previous", label: "Previous song")
-                    .Shortcut(ControllerButton.RightBumper, "player.next", label: "Next song");
+                root = PlaybackShortcuts(root);
 
-            var pinned = UI.Stack("music.pinned", Player(state, "pinned"))
-                .InputScope("music.pinned").Classes("music-root");
+            var pinned = PlaybackShortcuts(UI.Stack("music.pinned", Player(state, "pinned"))
+                .InputScope("music.pinned").Classes("music-root", "music-pinned-root"));
             return new(root, InitialFocusId: entry, Surface: new()
             {
-                Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 980,
-                PreferredHeight = compact ? 440 : 700, MinimumWidth = 620, MinimumHeight = compact ? 360 : 400,
+                Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 840,
+                PreferredHeight = compact ? 440 : 580, MinimumWidth = 620, MinimumHeight = compact ? 360 : 400,
             })
             {
                 FocusGroupEntryRequest = _focusRequest,
                 QuickActions = state.Current is null ? [] :
                     [new(ControllerButton.X, "player.toggle", "Play or pause"), new(ControllerButton.LeftBumper, "player.previous", "Previous song"), new(ControllerButton.RightBumper, "player.next", "Next song")],
                 PinnedLayouts = state.Current is null ? [] : [WidgetView.PinnedLayout("music.compact", "Compact now playing",
-                    new() { Mode = WidgetSurfaceMode.Compact, PreferredWidth = 420, PreferredHeight = 330, MinimumWidth = 360, MinimumHeight = 300 }, pinned)],
+                    new() { Mode = WidgetSurfaceMode.Compact, PreferredWidth = 360, PreferredHeight = 440, MinimumWidth = 320, MinimumHeight = 300 },
+                    pinned, initialFocusId: "player.pinned.toggle")],
             };
         }
     }
+
+    private static StackElement PlaybackShortcuts(StackElement root) =>
+        root.Shortcut(ControllerButton.X, "player.toggle", label: "Play or pause")
+            .Shortcut(ControllerButton.LeftBumper, "player.previous", label: "Previous song")
+            .Shortcut(ControllerButton.RightBumper, "player.next", label: "Next song");
 
     private static WidgetElement Header(string? panel, string status)
     {
@@ -120,8 +124,7 @@ public sealed partial class StandaloneMusicWidget
 
     private WidgetElement Browse(MusicState state)
     {
-        var collection = Collection.Capture();
-        var entries = collection.Snapshot.Items;
+        IReadOnlyList<BrowseEntry> entries = _browse.Items;
         var content = new List<WidgetElement>();
         var rows = new List<WidgetElement>();
         if (_tab == "search")
@@ -132,7 +135,7 @@ public sealed partial class StandaloneMusicWidget
                 (WidgetElement)UI.Button(Title(filter), "library." + filter, "library." + filter)
                     .Selected(_value == filter).Classes("music-filter")).ToArray();
             content.Add(UI.Row("library.toolbar",
-                UI.Row("library.filters", filters).Classes("music-filters"),
+                UI.ResponsiveGrid("library.filters", 96, 4, filters).Classes("music-filters"),
                 RefreshControl()).Classes("music-library-toolbar"));
         }
         if (!state.Connected && _tab == "library")
@@ -150,54 +153,6 @@ public sealed partial class StandaloneMusicWidget
                 if (_loading || _tab != "queue") heading.Add(RefreshControl());
             }
             content.Add(UI.Row("page.heading", heading.ToArray()).Classes("music-controls"));
-            var sectionTiles = new List<WidgetElement>();
-            string? section = null;
-            var sectionStart = 0;
-            void FinishSection()
-            {
-                if (sectionTiles.Count == 0) return;
-                rows.Add(UI.Stack("home.section." + sectionStart,
-                    UI.Text(section ?? "Recommendations", "section.title." + sectionStart).Classes("music-shelf-title"),
-                    UI.ResponsiveGrid("home.grid." + sectionStart, 130, 4, sectionTiles.ToArray()).Classes("music-home-grid"))
-                    .Classes("music-home-section"));
-                sectionTiles.Clear();
-            }
-            for (var position = 0; position < entries.Count; position++)
-            {
-                var entry = entries[position];
-                var index = entry.Index;
-                var item = entry.Item;
-                var playing = _tab == "queue" && index == state.Index;
-                var home = _kind == "home";
-                var subtitle = string.IsNullOrWhiteSpace(item.Subtitle) ? null : item.Subtitle;
-                var label = (item.Kind == "song" ? "Play " : "Open ") + item.Title + ". " + item.Subtitle;
-                var row = home
-                    ? UI.PosterTile(item.Title, Title(item.Kind), "item." + index, "item." + index,
-                        subtitle: subtitle, artwork: item.Artwork.StartsWith("https://", StringComparison.Ordinal) ? Artwork(item) : null,
-                        accessibilityLabel: label).Classes("music-home-poster")
-                    : UI.Tile(item.Title, playing ? "Now playing" : Title(item.Kind), "item." + index, "item." + index,
-                        subtitle: subtitle, artwork: Artwork(item), accessibilityLabel: label).Classes("music-track");
-                row = row.Selected(playing);
-                if (position == 0 && !collection.Snapshot.HasBefore) row = row.FocusUp(TopEntry(state));
-                // Grid navigation owns horizontal neighbours between Home posters.
-                if (!home && state.Current is not null) row = row.FocusLeft("player.main.toggle");
-                if (item.Kind is "song" or "playlist" or "album") row = row.ContextMenuShortcut(ControllerButton.Menu)
-                    .ContextAction("next." + index, "Play next");
-                if (item.Kind == "song") row = row.ContextAction("radio." + index, "Start radio");
-                var presented = collection.PresentItem(entry, row);
-                if (home)
-                {
-                    if (section != (string.IsNullOrWhiteSpace(item.Section) ? "Recommendations" : item.Section))
-                    {
-                        FinishSection();
-                        section = string.IsNullOrWhiteSpace(item.Section) ? "Recommendations" : item.Section;
-                        sectionStart = index;
-                    }
-                    sectionTiles.Add(presented);
-                }
-                else rows.Add(presented);
-            }
-            FinishSection();
             if (!_loading && entries.Count == 0)
             {
                 rows.Add(UI.Icon(WidgetGlyph.Music, "empty.icon", "Music").Classes("music-empty-icon"));
@@ -208,15 +163,59 @@ public sealed partial class StandaloneMusicWidget
                 if (_tab != "search") rows.Add(UI.Button("Search music", "tab.search", "empty.search").Classes("music-primary"));
             }
         }
-        var scroll = collection.Present(UI.VerticalScroll(_browse.ScrollId, rows.ToArray())).Classes("music-scroll");
-        // Filter buttons must not replace the remembered selection inside a Library list.
-        if (_kind == "library" && state.Connected)
+        if (entries.Count > 0 && (state.Connected || _tab != "library"))
         {
-            if (entries.Count > 0) scroll = scroll.RememberChildFocus("item." + entries[0].Index);
-            else if (!_loading) scroll = scroll.RememberChildFocus("empty.search");
+            var scroll = _kind == "home"
+                ? UI.CollectionGrid(_browse.ScrollId, _browse.Collection, 130, 230, "Music recommendations", 4)
+                    .Grouped(HomeGroups(entries))
+                : UI.CollectionList(_browse.ScrollId, _browse.Collection, 90, "Music");
+            content.Add(scroll.Classes("music-scroll"));
         }
-        content.Add(scroll);
+        else
+        {
+            var empty = UI.VerticalScroll(_browse.ScrollId, rows.ToArray()).Classes("music-scroll");
+            if (_kind == "library" && state.Connected && !_loading) empty = empty.RememberChildFocus("empty.search");
+            content.Add(empty);
+        }
         return UI.Stack("music.browse", content.ToArray()).Classes("music-browse");
+    }
+
+    private static IndexedCollectionGroup[] HomeGroups(IReadOnlyList<BrowseEntry> entries)
+    {
+        var groups = new List<IndexedCollectionGroup>();
+        foreach (var entry in entries)
+        {
+            var title = string.IsNullOrWhiteSpace(entry.Item.Section) ? "Recommendations" : entry.Item.Section;
+            if (groups.Count == 0 || groups[^1].Header != title)
+                groups.Add(new("section." + entry.Index, title, 1));
+            else groups[^1] = groups[^1] with { Count = groups[^1].Count + 1 };
+        }
+        return groups.ToArray();
+    }
+
+    // Every factory input is immutable and explicit, including focus neighbours
+    // and playback state. Timer/status updates can reuse unchanged declarations.
+    private sealed record BrowseRow(BrowseEntry Entry, bool Home, bool Playing, string? FocusUp, bool HasPlayer);
+
+    private static WidgetElement RenderBrowseRow(BrowseRow input)
+    {
+        var item = input.Entry.Item;
+        var index = input.Entry.Index;
+        var subtitle = string.IsNullOrWhiteSpace(item.Subtitle) ? null : item.Subtitle;
+        var label = (item.Kind == "song" ? "Play " : "Open ") + item.Title + ". " + item.Subtitle;
+        var row = input.Home
+            ? UI.PosterTile(item.Title, Title(item.Kind), "item." + index, "item." + index,
+                subtitle: subtitle, artwork: item.Artwork.StartsWith("https://", StringComparison.Ordinal) ? Artwork(item) : null,
+                accessibilityLabel: label).Classes("music-home-poster")
+            : UI.Tile(item.Title, input.Playing ? "Now playing" : Title(item.Kind), "item." + index, "item." + index,
+                subtitle: subtitle, artwork: Artwork(item), accessibilityLabel: label).Classes("music-track");
+        row = row.Selected(input.Playing);
+        if (input.FocusUp is not null) row = row.FocusUp(input.FocusUp);
+        if (!input.Home && input.HasPlayer) row = row.FocusLeft("player.main.toggle");
+        if (item.Kind is "song" or "playlist" or "album") row = row.ContextMenuShortcut(ControllerButton.Menu)
+            .ContextAction("next." + index, "Play next");
+        if (item.Kind == "song") row = row.ContextAction("radio." + index, "Start radio");
+        return row;
     }
 
     private WidgetElement RefreshControl() => _loading
@@ -228,12 +227,10 @@ public sealed partial class StandaloneMusicWidget
     private string EntryFocus(MusicState state)
     {
         if (_panel == "setup") return "setup.primary";
-        var entries = Collection.Snapshot.Items;
-        if (_panelReturnFocus is { } remembered && remembered.StartsWith("item.", StringComparison.Ordinal) &&
-            int.TryParse(remembered[5..], out var index) && entries.Any(entry => entry.Index == index)) return remembered;
+        var entries = _browse.Items;
         if (_tab == "search") return "search";
         if (_tab == "library" && !state.Connected) return "connect.prompt";
-        if (entries.Count > 0) return "item." + entries[0].Index;
+        if (entries.Length > 0) return _browse.ScrollId;
         if (_tab == "library" && _history.Count == 0 && _loading) return "library." + _libraryFilter;
         if (!_loading) return "empty.search";
         return NavigationFocusId;
@@ -269,8 +266,9 @@ public sealed partial class StandaloneMusicWidget
         WidgetElement artwork = current.Artwork.StartsWith("https://", StringComparison.Ordinal)
             ? UI.Image(current.Artwork, prefix + ".artwork", current.Title, ImageFit.Cover).Classes("music-artwork")
             : UI.Icon(WidgetGlyph.Music, prefix + ".artwork", "No artwork").Classes("music-artwork", "music-artwork-placeholder");
-        var content = new List<WidgetElement>();
-        if (pane) content.Add(UI.Row(prefix + ".artwork.frame", artwork).Classes("music-artwork-frame"));
+        if (!pane) artwork = artwork.AddClasses("music-pinned-artwork");
+        var content = new List<WidgetElement>
+        { UI.Row(prefix + ".artwork.frame", artwork).Classes("music-artwork-frame") };
         content.Add(UI.Text(current.Title, prefix + ".title").Classes("music-track-title"));
         content.Add(UI.Text(p.Buffering ? "Buffering…" : current.Subtitle, prefix + ".artist").Classes("music-player-subtitle"));
         content.Add(UI.Scrubber(TimeSpan.FromSeconds(Math.Clamp(p.Position, 0, Math.Max(1, p.Duration))),

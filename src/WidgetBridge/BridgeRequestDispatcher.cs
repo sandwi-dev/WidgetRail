@@ -22,6 +22,7 @@ internal readonly record struct BridgeRequestDispatch(
 internal sealed class BridgeRequestDispatcher : IAsyncDisposable
 {
     internal const int MaximumConcurrentRequests = 16;
+    internal const int MaximumConcurrentIndexedReads = 8;
     internal static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(2);
 
     private readonly int _maximumConcurrentRequests;
@@ -106,15 +107,28 @@ internal sealed class BridgeRequestDispatcher : IAsyncDisposable
             if (_active.Count >= _maximumConcurrentRequests)
                 return BridgeRequestDispatch.CapacityExceeded;
 
-            var predecessor = requestKey.WidgetId is not null &&
+            if (requestKey.IsIndexedProvider &&
+                _active.Values.Count(entry => entry.Key.IsIndexedProvider) >= MaximumConcurrentIndexedReads)
+                return BridgeRequestDispatch.CapacityExceeded;
+            var predecessor = !requestKey.IsIndependent && requestKey.WidgetId is not null &&
                 _widgetTails.TryGetValue(requestKey.WidgetId, out var tail)
                 ? tail
                 : Task.CompletedTask;
+            if (requestKey.Kind == BridgeRequestKind.CancelIndexedRange && requestKey.IndexedRange is { } demand)
+            {
+                var earlierRead = _active.Values.FirstOrDefault(entry => entry.Key.Kind is (BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange) && entry.Key.IndexedRange == demand);
+                if (earlierRead is not null) predecessor = earlierRead.Admitted.Task;
+            }
+            if (requestKey.Kind == BridgeRequestKind.CancelIndexedArtwork && requestKey.IndexedArtwork is { } artwork)
+            {
+                var earlierRead = _active.Values.FirstOrDefault(entry => entry.Key.Kind == BridgeRequestKind.ResolveIndexedArtwork && entry.Key.IndexedArtwork == artwork);
+                if (earlierRead is not null) predecessor = earlierRead.Admitted.Task;
+            }
             var entry = new RequestEntry(requestId, requestKey);
             var completion = RunAsync(entry, predecessor, handler);
             entry.Completion = completion;
             _active.Add(requestId, entry);
-            if (requestKey.WidgetId is not null)
+            if (!requestKey.IsIndependent && requestKey.WidgetId is not null)
                 _widgetTails[requestKey.WidgetId] = completion;
             return new BridgeRequestDispatch(
                 BridgeRequestDispatchStatus.Accepted, completion);
@@ -187,7 +201,11 @@ internal sealed class BridgeRequestDispatcher : IAsyncDisposable
             await predecessor.ConfigureAwait(false);
             _cancellation.Token.ThrowIfCancellationRequested();
             handlerStarted = true;
-            await handler(_cancellation.Token).ConfigureAwait(false);
+            var execution = handler(_cancellation.Token);
+            // Range handlers register ownership before their first await. Cancellation
+            // waits for this boundary, never for provider I/O or a widget FIFO tail.
+            entry.Admitted.TrySetResult();
+            await execution.ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
         {
@@ -205,6 +223,7 @@ internal sealed class BridgeRequestDispatcher : IAsyncDisposable
         }
         finally
         {
+            entry.Admitted.TrySetResult();
             Complete(entry, fatal);
         }
     }
@@ -320,6 +339,8 @@ internal sealed class BridgeRequestDispatcher : IAsyncDisposable
 
     private sealed class RequestEntry(long requestId, BridgeRequestKey requestKey)
     {
+        internal BridgeRequestKey Key { get; } = requestKey;
+        internal TaskCompletionSource Admitted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal long RequestId { get; } = requestId;
         internal string? WidgetId { get; } = requestKey.WidgetId;
         internal Task Completion { get; set; } = Task.CompletedTask;

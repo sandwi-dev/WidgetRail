@@ -17,8 +17,8 @@ function Get-BoundedFileEvidence([IO.FileInfo]$file) {
 $discoveryError = $null
 $vsRoot = $null
 $visualStudioRoot = Join-Path $env:ProgramFiles 'Microsoft Visual Studio'
-$vsWhere = Join-Path $visualStudioRoot 'Installer\vswhere.exe'
-if (Test-Path -LiteralPath $vsWhere) {
+$vsWhere = @((Join-Path $visualStudioRoot 'Installer\vswhere.exe'), (Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe')) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ($vsWhere -and (Test-Path -LiteralPath $vsWhere)) {
     try {
         $vsRoot = (& $vsWhere -latest -products * -requires `
             Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null |
@@ -57,7 +57,7 @@ if (-not [string]::IsNullOrWhiteSpace($programFilesX86)) {
     if (Test-Path -LiteralPath $sdkIncludeRoot) {
         $sdkVersions = Get-ChildItem -LiteralPath $sdkIncludeRoot -Directory | Sort-Object Name -Descending
         $overlaySdk = $sdkVersions |
-            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'um\GameInput.h') } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'um\Windows.h') } |
             Select-Object -First 1
         $inputProbeSdk = $sdkVersions |
             Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'um\Windows.h') } |
@@ -83,3 +83,4 @@ $manifestToolEvidence = Get-BoundedFileEvidence $manifestTool
     manifestToolVersion = if ($manifestToolEvidence) { $manifestToolEvidence.version } else { $null }
     manifestToolSha256 = if ($manifestToolEvidence) { $manifestToolEvidence.sha256 } else { $null }
 } | ConvertTo-Json -Depth 4 -Compress
+

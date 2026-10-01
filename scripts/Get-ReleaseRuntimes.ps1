@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $lock = Get-Content (Join-Path $repository 'eng/runtime-dependencies.json') -Raw | ConvertFrom-Json
-$native = [xml](Get-Content (Join-Path $repository 'src/OverlayHost/NativeDependencies.csproj') -Raw)
+$native = [xml](Get-Content (Join-Path $repository 'src/OverlayPlatformInterop/NativeDependencies.csproj') -Raw)
 $nativeGameInput = @($native.Project.ItemGroup.PackageReference | Where-Object Include -EQ 'Microsoft.GameInput')[0]
 if ($nativeGameInput.Version -ne $lock.gameInput.version) { throw 'GameInput build and redistributable versions differ.' }
 if ($lock.dotnet.version -cne $lock.windowsDesktop.version) { throw 'Base and Desktop .NET runtime versions differ.' }
@@ -12,6 +12,7 @@ $Destination = [IO.Path]::GetFullPath($Destination)
 $runtime = Join-Path $Destination 'dotnet'
 $redist = Join-Path $Destination 'prerequisites'
 if ((Test-Path $runtime) -or (Test-Path $redist)) { throw 'Runtime destination already exists.' }
+New-Item -ItemType Directory -Path $Destination -Force | Out-Null
 New-Item -ItemType Directory -Path $redist -Force | Out-Null
 $archive = Join-Path $Destination 'dotnet-runtime.zip'
 Invoke-WebRequest $lock.dotnet.url -OutFile $archive

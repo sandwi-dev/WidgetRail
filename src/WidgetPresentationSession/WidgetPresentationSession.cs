@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Json;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
@@ -6,7 +6,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession;
 
-public sealed class WidgetPresentationSession : IAsyncDisposable
+public sealed partial class WidgetPresentationSession : IAsyncDisposable
 {
     private readonly BridgePresentationTransport _transport;
     private readonly WidgetPresentationSessionOptions _options;
@@ -18,13 +18,17 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _sessionGenerations =
         new(StringComparer.Ordinal);
+    private sealed record WorkerRunState(BridgeWorkerRun Run, long Generation, long ReplacedGeneration);
+    private readonly Dictionary<string, WorkerRunState> _workerRuns = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task> _refreshes = new(StringComparer.Ordinal);
     private readonly Queue<WidgetPresentationState> _statePublications = [];
-    private readonly Dictionary<(string WidgetId, string ArtworkHandle), Queue<PendingArtwork>>
-        _artwork = [];
+    private readonly Dictionary<string, PendingArtwork> _artwork = new(StringComparer.Ordinal);
     private readonly Queue<WidgetPresentationDiagnostic> _diagnostics = [];
     private long _catalogRevision = -1;
-    private int _pendingArtworkCount;
+    private long _notifiedCatalogRevision = -1;
+    private long _notifiedAppearanceRevision = -1;
+    private long _hostEffectSequence;
+    private readonly Dictionary<string, long> _hostEffectAdmissionBoundaries = new(StringComparer.Ordinal);
     private long _publicationRevision;
     private bool _publicationOwner;
     private bool _disposed;
@@ -61,6 +65,31 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     public event EventHandler<WidgetPresentationInvalidatedEventArgs>? Invalidated;
     public event EventHandler<WidgetPresentationArtworkEventArgs>? ArtworkResolved;
     public event EventHandler<WidgetPresentationDiagnosticEventArgs>? DiagnosticPublished;
+    /// <summary>Raised on the transport thread. Marshal to the UI thread and recheck authority before acting.</summary>
+    public event EventHandler<WidgetHostEffectEventArgs>? HostEffectReceived;
+    /// <summary>Fetch the new catalog explicitly; notifications never mutate the admitted catalog.</summary>
+    public event EventHandler<WidgetRevisionChangedEventArgs>? CatalogChanged;
+    /// <summary>Signals a newer appearance revision; does not contain theme/settings values.</summary>
+    public event EventHandler<WidgetRevisionChangedEventArgs>? AppearanceChanged;
+
+    public long LatestCatalogNotificationRevision { get { lock (_gate) return _notifiedCatalogRevision; } }
+    public long LatestAppearanceNotificationRevision { get { lock (_gate) return _notifiedAppearanceRevision; } }
+
+    /// <summary>
+    /// Rechecks worker membership after dispatching an effect to another thread. This
+    /// does not consume the effect or validate foreground/visible-session/window identity.
+    /// Hosts must execute each delivered sequence at most once.
+    /// </summary>
+    public bool IsHostEffectAuthorityCurrent(WidgetHostEffectAuthority authority)
+    {
+        ArgumentNullException.ThrowIfNull(authority);
+        lock (_gate)
+            return !_disposed && _terminalFailure is null &&
+                _descriptors.TryGetValue(authority.WidgetId, out var descriptor) &&
+                descriptor.InstanceId == authority.WidgetInstanceId &&
+                descriptor.RuntimeGeneration == authority.RuntimeGeneration &&
+                _sessionGenerations.GetValueOrDefault(authority.WidgetId) == authority.SessionGeneration;
+    }
 
     internal Func<Task>? BridgeFailureCapturedForTesting { get; set; }
 
@@ -108,14 +137,18 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     {
         var response = await RequestAsync(
             BridgeMessageTypes.ListWidgets,
-            new { },
+            new BridgeEmptyPayload(),
             BridgeMessageTypes.Widgets,
             cancellationToken).ConfigureAwait(false);
-        RequireObjectProperties(response.Payload, "revision", "widgets");
+        RequireObjectProperties(response.Payload, "revision", "isComplete", "widgets");
+        var completeness = response.Payload.GetProperty("isComplete");
+        if (completeness.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new BridgeProtocolException("WidgetBridge returned invalid catalog completeness.");
         var revision = ReadInt64(response.Payload, "revision", minimum: 0);
-        var widgets = response.Payload.GetProperty("widgets")
-            .Deserialize<BridgeWidgetDescriptor[]>(BridgeJson.Options)
-            ?? throw new BridgeProtocolException("WidgetBridge returned a null widget catalog.");
+        var rawWidgets = response.Payload.GetProperty("widgets");
+        if (rawWidgets.ValueKind == JsonValueKind.Null)
+            throw new BridgeProtocolException("WidgetBridge returned a null widget catalog.");
+        var widgets = BridgeJson.FromElement<BridgeWidgetDescriptor[]>(rawWidgets);
         if (widgets.Length > 256 || widgets.Any(widget => widget is null))
             throw new BridgeProtocolException("WidgetBridge returned an invalid widget catalog.");
         var byId = new Dictionary<string, BridgeWidgetDescriptor>(StringComparer.Ordinal);
@@ -134,12 +167,17 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             foreach (var pair in byId)
             {
                 if (!_descriptors.TryGetValue(pair.Key, out var prior))
+                {
+                    if (_sessionGenerations.ContainsKey(pair.Key))
+                        _hostEffectAdmissionBoundaries[pair.Key] = Environment.TickCount64;
                     _sessionGenerations[pair.Key] =
                         _sessionGenerations.GetValueOrDefault(pair.Key) + 1;
+                }
                 else if (prior.InstanceId != pair.Value.InstanceId ||
                          prior.RuntimeGeneration != pair.Value.RuntimeGeneration ||
                          prior.PresentationGeneration != pair.Value.PresentationGeneration)
                 {
+                    _hostEffectAdmissionBoundaries[pair.Key] = Environment.TickCount64;
                     _sessionGenerations[pair.Key] =
                         _sessionGenerations.GetValueOrDefault(pair.Key) + 1;
                     startPublications |= RetireStateLocked(pair.Key);
@@ -147,6 +185,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             }
             foreach (var removed in _descriptors.Keys.Where(id => !byId.ContainsKey(id)).ToArray())
             {
+                _hostEffectAdmissionBoundaries[removed] = Environment.TickCount64;
                 _sessionGenerations[removed] =
                     _sessionGenerations.GetValueOrDefault(removed) + 1;
                 startPublications |= RetireStateLocked(removed);
@@ -155,7 +194,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             foreach (var pair in byId) _descriptors.Add(pair.Key, pair.Value);
         }
         if (startPublications) DrainStatePublications();
-        return new WidgetPresentationCatalog(revision, Array.AsReadOnly(widgets));
+        return new WidgetPresentationCatalog(revision, Array.AsReadOnly(widgets)) { IsComplete = completeness.GetBoolean() };
     }
 
     public async Task<WidgetPresentationFrame> EstablishPresentationAsync(
@@ -165,6 +204,19 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     {
         ValidatePresentationLifecycle(state);
         var sessionGeneration = ValidateTarget(target);
+        var lifecycleVersion = BeginIndexedLifecycle(target, state);
+        long invalidationBeforeEstablishment;
+        lock (_gate)
+        {
+            if (ValidateTarget(target) != sessionGeneration)
+                throw Stale("presentation_stale", target.Descriptor.Id, "The presentation session changed before activation.");
+            // Activation may finish async widget work before its first snapshot
+            // reaches us. Retain that notification against this catalog/session
+            // instead of dropping it because no LastGood exists yet.
+            if (!_states.TryGetValue(target.Descriptor.Id, out var pending))
+                pending = CommitStateLocked(new(target.Descriptor.Id, null, null, 0), publish: false);
+            invalidationBeforeEstablishment = pending.InvalidationRevision;
+        }
         var response = await RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest(
@@ -178,7 +230,11 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                     RecoveryOriginSequence: 0)),
             BridgeMessageTypes.Snapshot,
             cancellationToken).ConfigureAwait(false);
-        return PublishSnapshot(target.Descriptor, sessionGeneration, response.Payload);
+        var frame = PublishSnapshot(target.Descriptor, sessionGeneration, response.Payload);
+        CompleteIndexedLifecycle(target, frame.Authority.SessionGeneration, lifecycleVersion, state);
+        if (GetState(target.Descriptor.Id)?.InvalidationRevision > invalidationBeforeEstablishment)
+            StartInvalidationRefresh(target.Descriptor.Id);
+        return frame;
     }
 
     public async Task SetLifecycleAsync(
@@ -187,12 +243,14 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidatePresentationLifecycle(state);
-        _ = ValidateTarget(target);
+        var lifecycleGeneration = ValidateTarget(target);
+        var lifecycleVersion = BeginIndexedLifecycle(target, state);
         await RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest(target.Descriptor.Id, state),
             BridgeMessageTypes.Acknowledged,
             cancellationToken).ConfigureAwait(false);
+        CompleteIndexedLifecycle(target, lifecycleGeneration, lifecycleVersion, state);
         if (state == WidgetLifecycleState.Background)
         {
             lock (_gate)
@@ -237,7 +295,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge restarted a different widget.");
         var state = response.Payload.GetProperty("state")
-            .Deserialize<WidgetLifecycleState>(BridgeJson.Options);
+            .Deserialize(BridgeJson.TypeInfo<WidgetLifecycleState>());
         ValidatePresentationLifecycle(state);
         lock (_gate)
         {
@@ -261,7 +319,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 "The action input scope is not the active presentation scope.");
         var response = await RequestAsync(
             BridgeMessageTypes.Action,
-            new BridgeActionRequest(authority.WidgetId, action),
+            new BridgeActionRequest(authority.WidgetId, action, authority.WorkerRun),
             BridgeMessageTypes.Acknowledged,
             cancellationToken).ConfigureAwait(false);
         return ReadAdmission(response.Payload);
@@ -273,6 +331,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
+        if (input.Context is ControllerInputContext.PinnedSurface or ControllerInputContext.PinnedLayoutSelection ||
+            input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null)
+            throw PinnedStale("Pinned input requires the pinned projection and selection API.");
         _ = ValidateAuthority(authority);
         if (input.SnapshotSequence != authority.SnapshotSequence)
             throw Stale("snapshot_stale", authority.WidgetId,
@@ -283,7 +344,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 "The controller input scope is not current.");
         var response = await RequestAsync(
             BridgeMessageTypes.ControllerInput,
-            new BridgeControllerInputRequest(authority.WidgetId, input),
+            new BridgeControllerInputRequest(authority.WidgetId, input, authority.RuntimeGeneration, WorkerRun: authority.WorkerRun),
             BridgeMessageTypes.ControllerInputResult,
             cancellationToken).ConfigureAwait(false);
         RequireObjectProperties(response.Payload, "handled");
@@ -314,47 +375,92 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         return ReadAdmission(response.Payload);
     }
 
-    public async Task<WidgetPresentationArtwork> ResolveArtworkAsync(
-        WidgetPresentationAuthority authority,
-        string artworkHandle,
-        CancellationToken cancellationToken = default)
-    {
-        var descriptor = ValidateAuthority(authority);
-        ArgumentException.ThrowIfNullOrWhiteSpace(artworkHandle);
-        WidgetPresentationFrame frame;
-        lock (_gate) frame = _states[descriptor.Id].LastGood!;
-        if (!ContainsArtwork(frame.Snapshot.Root, artworkHandle))
-            throw new WidgetPresentationSessionException(
-                "unknown_artwork", "The artwork handle is not declared by the current snapshot.");
+    /// <summary>
+    /// Admits one demand against a genuine presentation authority, then retains it while
+    /// its artwork handle remains declared by the same presentation owner. Cancellation and timeout
+    /// abandon only this local demand; the existing bridge has no per-demand cancellation
+    /// command. Late results are discarded by ID and cannot complete a replacement demand.
+    /// </summary>
+    public Task<WidgetPresentationArtwork> ResolveArtworkAsync(
+        WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken = default) =>
+        ResolveArtworkCoreAsync(authority, artworkHandle, cancellationToken);
 
+    private async Task<WidgetPresentationArtwork> ResolveArtworkCoreAsync(
+        WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken,
+        WidgetPinnedSelection? selection = null, WidgetPinnedProjection? projection = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(artworkHandle);
+        cancellationToken.ThrowIfCancellationRequested();
         var completion = new TaskCompletionSource<WidgetPresentationArtwork>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var key = (authority.WidgetId, artworkHandle);
+        var demandId = Guid.NewGuid().ToString("N");
+        CancellationTokenSource demandLifetime;
         lock (_gate)
         {
-            ThrowIfTerminalLocked();
-            if (_pendingArtworkCount >= _options.MaximumPendingArtworkRequests)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (selection is not null && projection is not null) DemandPinnedArtworkLocked(selection, projection, artworkHandle);
+            else
+            {
+                DemandOrdinaryArtworkLocked(authority, artworkHandle);
+            }
+            if (_artwork.Count >= _options.MaximumPendingArtworkRequests)
                 throw new WidgetPresentationSessionException(
                     "artwork_saturated", "The presentation artwork request queue is full.");
-            if (!_artwork.TryGetValue(key, out var queue))
-                _artwork.Add(key, queue = new Queue<PendingArtwork>());
-            queue.Enqueue(new PendingArtwork(authority, completion));
-            _pendingArtworkCount++;
+            demandLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+            demandLifetime.CancelAfter(_options.ArtworkTimeout);
+            _artwork.Add(demandId, new(authority, artworkHandle, demandLifetime.Token, completion, selection, projection));
         }
-
+        var demandToken = demandLifetime.Token;
+        var cancellationRegistration = demandToken.Register(() =>
+        {
+            lock (_gate)
+                if (_artwork.Remove(demandId, out var retired))
+                    retired.Completion.TrySetCanceled(demandToken);
+        });
+        // Completion can fail before the acknowledgement arrives. Always observe it,
+        // including when an admission failure prevents the caller from awaiting it.
+        _ = completion.Task.ContinueWith(static task => { _ = task.Exception; },
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         try
         {
-            await RequestAsync(
+            var admission = projection is null ? RequestAsync(
                 BridgeMessageTypes.ResolveArtwork,
-                new BridgeArtworkRequest(authority.WidgetId, artworkHandle),
-                BridgeMessageTypes.Acknowledged,
-                cancellationToken).ConfigureAwait(false);
-            return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                new BridgeArtworkRequest(authority.WidgetId, artworkHandle,
+                    authority.RuntimeGeneration, authority.PresentationGeneration, demandId),
+                BridgeMessageTypes.Acknowledged, demandToken) : RequestAsync(
+                BridgeMessageTypes.ResolvePinnedArtwork,
+                new BridgePinnedArtworkRequest(1, authority.WidgetId, authority.WidgetInstanceId,
+                    authority.RuntimeGeneration, authority.PresentationGeneration, projection.LayoutId,
+                    authority.SnapshotSequence, projection.Snapshot.ActiveInputScopeId, artworkHandle, demandId),
+                BridgeMessageTypes.Acknowledged, demandToken);
+            _ = admission.ContinueWith(static task => { _ = task.Exception; },
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            // An already-started framed pipe write cannot be retracted without
+            // closing the transport. Bound the caller separately and observe its
+            // eventual completion under the transport's own pending-request limit.
+            await Task.WhenAny(admission, completion.Task).WaitAsync(demandToken).ConfigureAwait(false);
+            // Artwork or selection retirement can precede wire admission. Stop
+            // local waiting immediately while observing the correlated late reply.
+            if (completion.Task.IsFaulted || completion.Task.IsCanceled) return await completion.Task.ConfigureAwait(false);
+            await admission.WaitAsync(demandToken).ConfigureAwait(false);
+            return await completion.Task.ConfigureAwait(false);
         }
-        catch
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
         {
-            RemovePendingArtwork(key, completion);
-            throw;
+            throw new WidgetPresentationSessionException("artwork_timeout", "The artwork demand timed out.");
+        }
+        finally
+        {
+            lock (_gate) _artwork.Remove(demandId);
+            completion.TrySetCanceled();
+            // Artwork retirement may finish via the local completion before IPC
+            // admission. Cancel unsent lane waits before removing the timeout;
+            // an already-written command retains transport correlation.
+            await demandLifetime.CancelAsync().ConfigureAwait(false);
+            cancellationRegistration.Dispose();
+            demandLifetime.Dispose();
         }
     }
 
@@ -363,20 +469,41 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
         _lifetime.Cancel();
+        Task[] indexed;
+        lock (_gate)
+        {
+            _packageIcons.Clear(); _packageIconBytes = 0;
+            RetireIndexedRangesLocked();
+            RetireMediaDocumentLocked();
+            RetireWindowPreviewsLocked();
+            RetirePinnedProjectionsLocked();
+            indexed = _indexedDemands.Values.Select(item => item.Done.Task)
+                .Concat(_indexedArtworkDemands.Values.Select(item => item.Done.Task))
+                .Concat(_indexedLeaseRetirements).ToArray();
+        }
+        var indexedDrain = Task.WhenAll(indexed);
+        try { await indexedDrain.WaitAsync(TimeSpan.FromSeconds(4)).ConfigureAwait(false); }
+        catch (TimeoutException)
+        {
+            // A stalled ordinary control can own admission ahead of lease releases.
+            // Session shutdown must still reach the bounded transport stop boundary.
+            await _transport.DisposeAsync().ConfigureAwait(false);
+            await indexedDrain.ConfigureAwait(false);
+        }
         await _transport.DisposeAsync().ConfigureAwait(false);
         Task[] refreshes;
-        lock (_gate) refreshes = _refreshes.Values.ToArray();
+        lock (_gate) refreshes = _refreshes.Values.Concat(_styleRefresh is { } styles ? [styles] : Array.Empty<Task>()).ToArray();
         try { await Task.WhenAll(refreshes).ConfigureAwait(false); }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
         PendingArtwork[] artwork;
         lock (_gate)
         {
-            artwork = _artwork.Values.SelectMany(queue => queue).ToArray();
+            artwork = _artwork.Values.ToArray();
             _artwork.Clear();
-            _pendingArtworkCount = 0;
         }
         var disposed = new ObjectDisposedException(nameof(WidgetPresentationSession));
         foreach (var item in artwork) item.Completion.TrySetException(disposed);
+        _indexedReleaseCapacity.Dispose();
         _lifetime.Dispose();
     }
 
@@ -430,29 +557,128 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             HandleArtwork(envelope.Payload);
             break;
         case BridgeMessageTypes.CatalogChanged:
-            RequireObjectProperties(envelope.Payload, "revision");
-            RecordDiagnostic(
-                "catalog_changed",
-                $"Widget catalog revision {ReadInt64(envelope.Payload, "revision", 0)} is available.");
+            HandleRevisionChanged(envelope.Payload, catalog: true);
             break;
         case BridgeMessageTypes.HostEffect:
-            RequireObjectProperties(
-                envelope.Payload, "widgetId", "runtimeGeneration", "effect", "sequence");
-            RecordDiagnostic(
-                "host_effect",
-                $"Host effect '{Bound(ReadString(envelope.Payload, "effect"))}' is available.",
-                ReadString(envelope.Payload, "widgetId"));
+            HandleHostEffect(envelope.Payload);
             break;
         case BridgeMessageTypes.AppearanceChanged:
-            RequireObjectProperties(envelope.Payload, "revision");
-            RecordDiagnostic(
-                envelope.Type,
-                $"Revision {ReadInt64(envelope.Payload, "revision", 0)} is available.");
+            HandleRevisionChanged(envelope.Payload, catalog: false);
             break;
         default:
             throw new BridgeProtocolException(
                 $"WidgetBridge sent unknown event '{envelope.Type}'.");
         }
+    }
+
+    private void HandleRevisionChanged(JsonElement payload, bool catalog)
+    {
+        RequireObjectProperties(payload, "revision");
+        var revision = ReadInt64(payload, "revision", 0);
+        lock (_gate)
+        {
+            if (_disposed || _terminalFailure is not null) return;
+            if (catalog)
+            {
+                if (revision <= Math.Max(_catalogRevision, _notifiedCatalogRevision)) return;
+                _notifiedCatalogRevision = revision;
+            }
+            else
+            {
+                if (revision <= _notifiedAppearanceRevision) return;
+                _notifiedAppearanceRevision = revision;
+                QueueStyleRefreshLocked();
+            }
+        }
+        (catalog ? CatalogChanged : AppearanceChanged)?.Invoke(this, new(revision));
+    }
+
+    private void HandleHostEffect(JsonElement payload)
+    {
+        RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
+        {
+            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews",
+        }, "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds");
+        var widgetId = ReadHostIdentifier(payload, "widgetId");
+        var runtime = ReadHostIdentifier(payload, "runtimeGeneration");
+        var name = ReadHostIdentifier(payload, "effect");
+        var sequence = ReadInt64(payload, "sequence", 1);
+        var initiatedAt = ReadInt64(payload, "initiatedAtMilliseconds", 0);
+        var kind = name switch
+        {
+            "closeOverlayAfterAppLaunch" => WidgetHostEffectKind.CloseOverlayAfterAppLaunch,
+            "activateTaskWindow" => WidgetHostEffectKind.ActivateTaskWindow,
+            _ => WidgetHostEffectKind.Unsupported,
+        };
+        WidgetHostWindowTarget? target = null;
+        if (kind == WidgetHostEffectKind.ActivateTaskWindow)
+            target = ReadHostWindowTarget(payload);
+        else if (kind == WidgetHostEffectKind.CloseOverlayAfterAppLaunch && payload.TryGetProperty("windowPreviews", out _))
+            throw new BridgeProtocolException("An app-launch close effect cannot carry window targets.");
+
+        WidgetHostEffectAuthority? authority = null;
+        lock (_gate)
+        {
+            if (_disposed || _terminalFailure is not null) return;
+            if (sequence > _hostEffectSequence)
+            {
+                // Sequence is global, including unsupported effects and retired workers.
+                _hostEffectSequence = sequence;
+                if (_descriptors.TryGetValue(widgetId, out var descriptor) &&
+                    descriptor.RuntimeGeneration == runtime &&
+                    (!_hostEffectAdmissionBoundaries.TryGetValue(widgetId, out var boundary) || initiatedAt > boundary))
+                    authority = new(widgetId, descriptor.InstanceId, runtime,
+                        _sessionGenerations.GetValueOrDefault(widgetId));
+            }
+        }
+        if (authority is null)
+        {
+            RecordDiagnostic("stale_host_effect", "A stale or replayed host effect was rejected.", widgetId);
+            return;
+        }
+        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target)));
+    }
+
+    private static string ReadHostIdentifier(JsonElement payload, string name)
+    {
+        var value = ReadString(payload, name);
+        if (value.Length > 128 || value.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')))
+            throw new BridgeProtocolException("A host effect identifier is invalid.");
+        return value;
+    }
+
+    private static WidgetHostWindowTarget ReadHostWindowTarget(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("windowPreviews", out var targets) || targets.ValueKind != JsonValueKind.Object)
+            throw new BridgeProtocolException("A task activation effect requires one window target.");
+        var entries = targets.EnumerateObject().ToArray();
+        if (entries.Length != 1)
+            throw new BridgeProtocolException("A task activation effect requires one window target.");
+        var entry = entries[0];
+        return ReadHostWindowTarget(entry.Name, entry.Value);
+    }
+
+    private static WidgetHostWindowTarget ReadHostWindowTarget(string id, JsonElement target)
+    {
+        if (id.Length is 0 or > 128 || id.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')))
+            throw new BridgeProtocolException("A task activation window identifier is invalid.");
+        RequireObjectProperties(target, "handle", "processId", "processCreated", "className");
+        var handle = ReadHex(target, "handle");
+        var created = ReadHex(target, "processCreated");
+        var pid = ReadInt64(target, "processId", 1);
+        var className = ReadString(target, "className");
+        if (pid > uint.MaxValue || className.Length > 256 || className.Any(char.IsControl))
+            throw new BridgeProtocolException("A task activation window identity is invalid.");
+        return new(id, handle, (uint)pid, created, className);
+    }
+
+    private static ulong ReadHex(JsonElement payload, string property)
+    {
+        var value = ReadString(payload, property);
+        if (value.Length > 16 || value.Any(character => !char.IsAsciiHexDigit(character)) ||
+            !ulong.TryParse(value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var number) || number == 0)
+            throw new BridgeProtocolException("A task activation native identity is invalid.");
+        return number;
     }
 
     private void HandleFailure(JsonElement payload)
@@ -593,6 +819,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             if (_descriptors.ContainsKey(failure.WidgetId))
             {
                 var current = _states.GetValueOrDefault(failure.WidgetId);
+                _hostEffectAdmissionBoundaries[failure.WidgetId] = Environment.TickCount64;
                 _sessionGenerations[failure.WidgetId] = checked(
                     _sessionGenerations.GetValueOrDefault(failure.WidgetId) + 1);
                 _ = CommitStateLocked(
@@ -619,12 +846,42 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
 
     private void HandleArtwork(JsonElement payload)
     {
-        RequireObjectProperties(
-            payload, "widgetId", "artworkHandle", "contentType", "contentBase64");
+        RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
+        {
+            "widgetId", "artworkHandle", "runtimeGeneration", "presentationGeneration",
+            "demandId", "contentType", "contentBase64",
+        }, "widgetId", "artworkHandle", "contentType", "contentBase64");
         var widgetId = ReadString(payload, "widgetId");
         var handle = ReadString(payload, "artworkHandle");
+        var demandId = ReadOptionalString(payload, "demandId");
+        PendingArtwork? pending;
+        lock (_gate)
+            pending = demandId is not null ? _artwork.GetValueOrDefault(demandId) : null;
+        if (pending is null)
+        {
+            // Never fall back to FIFO widget/handle matching, including for legacy
+            // replies without an ID. That would let an old demand satisfy a new one.
+            RecordDiagnostic("unmatched_artwork", "An unmatched artwork result was discarded.", widgetId);
+            return;
+        }
+        var runtime = ReadOptionalString(payload, "runtimeGeneration");
+        var presentation = ReadOptionalString(payload, "presentationGeneration");
+        if (widgetId != pending.Authority.WidgetId || handle != pending.ArtworkHandle ||
+            runtime != pending.Authority.RuntimeGeneration || presentation != pending.Authority.PresentationGeneration)
+        {
+            RecordDiagnostic("stale_artwork", "Artwork with mismatched demand authority was discarded.", widgetId);
+            return;
+        }
+        lock (_gate)
+        {
+            if (!TryAdmitArtworkCompletionLocked(demandId!, pending)) return;
+        }
         var contentTypeValue = ReadString(payload, "contentType", allowEmpty: true);
-        var encoded = ReadString(payload, "contentBase64", allowEmpty: true);
+        if (!payload.TryGetProperty("contentBase64", out var encodedValue) || encodedValue.ValueKind != JsonValueKind.String)
+            throw new BridgeProtocolException("WidgetBridge returned invalid artwork encoding.");
+        var encoded = encodedValue.GetString()!;
+        if (encoded.Length > ((ProtocolConstants.MaximumEncodedArtworkBytes + 2) / 3) * 4)
+            throw new BridgeProtocolException("WidgetBridge returned oversized artwork.");
         byte[] bytes;
         try { bytes = encoded.Length == 0 ? [] : Convert.FromBase64String(encoded); }
         catch (FormatException exception)
@@ -640,37 +897,45 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                  new WidgetEncodedArtwork(contentType.Value, bytes))))
             throw new BridgeProtocolException("WidgetBridge returned invalid artwork.");
 
-        PendingArtwork? pending = null;
+        WidgetPresentationArtwork result;
         lock (_gate)
         {
-            var key = (widgetId, handle);
-            if (_artwork.TryGetValue(key, out var queue) && queue.Count != 0)
-            {
-                pending = queue.Dequeue();
-                _pendingArtworkCount--;
-                if (queue.Count == 0) _artwork.Remove(key);
-            }
-        }
-        if (pending is null)
-        {
-            RecordDiagnostic("unmatched_artwork", "An unmatched artwork result was discarded.", widgetId);
-            return;
-        }
-        try
-        {
-            _ = ValidateAuthority(pending.Authority);
-            var result = new WidgetPresentationArtwork(
+            // Decode happened outside the state lock. Cancellation or a replacement
+            // snapshot may have retired the demand in the meantime.
+            if (!TryAdmitArtworkCompletionLocked(demandId!, pending)) return;
+            _artwork.Remove(demandId!);
+            result = new WidgetPresentationArtwork(
                 pending.Authority,
                 handle,
                 contentType ?? WidgetArtworkContentType.Png,
                 bytes);
-            pending.Completion.TrySetResult(result);
-            ArtworkResolved?.Invoke(this, new WidgetPresentationArtworkEventArgs(result));
+            if (!pending.Completion.TrySetResult(result)) return;
+        }
+        ArtworkResolved?.Invoke(this, new WidgetPresentationArtworkEventArgs(result));
+    }
+
+    private bool TryAdmitArtworkCompletionLocked(string demandId, PendingArtwork pending)
+    {
+        if (!_artwork.TryGetValue(demandId, out var current) || !ReferenceEquals(current, pending)) return false;
+        if (pending.CancellationToken.IsCancellationRequested || _disposed)
+        {
+            _artwork.Remove(demandId);
+            pending.Completion.TrySetCanceled();
+            return false;
+        }
+        try
+        {
+            if (pending.PinnedSelection is { } selection && pending.PinnedProjection is { } projection)
+                DemandPinnedArtworkLocked(selection, projection, pending.ArtworkHandle);
+            else DemandOrdinaryArtworkLocked(pending.Authority, pending.ArtworkHandle);
         }
         catch (WidgetPresentationSessionException exception)
         {
+            _artwork.Remove(demandId);
             pending.Completion.TrySetException(exception);
+            return false;
         }
+        return true;
     }
 
     private void StartInvalidationRefresh(string widgetId)
@@ -685,6 +950,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
 
     private async Task RefreshInvalidationsAsync(string widgetId)
     {
+        // Let StartInvalidationRefresh register ownership even when a transport
+        // or authority check completes synchronously.
+        await Task.Yield();
         long appliedRevision = 0;
         try
         {
@@ -694,8 +962,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 lock (_gate)
                 {
                     var state = _states.GetValueOrDefault(widgetId);
+                    var inputRefresh = _inputRefreshRequested.Remove(widgetId);
                     if (state?.LastGood is null ||
-                        state.InvalidationRevision <= appliedRevision ||
+                        (state.InvalidationRevision <= appliedRevision && !inputRefresh) ||
                         !_descriptors.TryGetValue(widgetId, out var descriptor))
                     {
                         publication = null;
@@ -737,7 +1006,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 _refreshes.Remove(widgetId);
                 var current = _states.GetValueOrDefault(widgetId);
                 restart = current?.LastGood is not null &&
-                          current.InvalidationRevision > appliedRevision &&
+                          (current.InvalidationRevision > appliedRevision || _inputRefreshRequested.Contains(widgetId)) &&
                           !_lifetime.IsCancellationRequested;
             }
             if (restart) StartInvalidationRefresh(widgetId);
@@ -790,9 +1059,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         long sessionGeneration,
         JsonElement payload)
     {
-        RequireObjectProperties(
-            payload, "widgetId", "transactionKind", "baseSequence",
-            "recoveryOriginSequence", "snapshot", "renderStyles");
+        RequireAllowedProperties(payload, new HashSet<string>(["widgetId", "transactionKind", "baseSequence",
+            "recoveryOriginSequence", "snapshot", "renderStyles", "windowPreviews", "appearanceRevision", "workerRun"], StringComparer.Ordinal),
+            "widgetId", "transactionKind", "baseSequence", "recoveryOriginSequence", "snapshot", "renderStyles");
         if (!string.Equals(ReadString(payload, "widgetId"), descriptor.Id, StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge returned a snapshot for another widget.");
         if (!string.Equals(
@@ -802,15 +1071,24 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             payload.GetProperty("recoveryOriginSequence").GetInt64() != 0)
             throw new BridgeProtocolException(
                 "WidgetBridge returned different checkpoint transaction authority.");
+        BridgeWorkerRun? workerRun = null;
+        if (payload.TryGetProperty("workerRun", out var receipt) && receipt.ValueKind != JsonValueKind.Null)
+        {
+            RequireAllowedProperties(receipt, new HashSet<string>(["registryGeneration", "startOrdinal"], StringComparer.Ordinal),
+                "registryGeneration", "startOrdinal");
+            var ordinal = ReadInt64(receipt, "startOrdinal", 1);
+            if (ordinal > int.MaxValue) throw new BridgeProtocolException("Worker run ordinal is too large.");
+            workerRun = new(ReadInt64(receipt, "registryGeneration", 1), (int)ordinal);
+        }
         var snapshot = SnapshotJson.Deserialize(
             System.Text.Encoding.UTF8.GetBytes(payload.GetProperty("snapshot").GetRawText()));
         if (!string.Equals(snapshot.WidgetInstanceId, descriptor.InstanceId, StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge returned a mismatched widget instance.");
         var renderStyles = payload.GetProperty("renderStyles")
-            .Deserialize<Dictionary<string, BridgeNodeRenderStyles>>(BridgeJson.Options)
+            .Deserialize(BridgeJson.TypeInfo<Dictionary<string, BridgeNodeRenderStyles>>())
             ?? throw new BridgeProtocolException("WidgetBridge returned null render styles.");
-        if (renderStyles.Count > BridgeRenderStyleLimits.MaximumNodes)
-            throw new BridgeProtocolException("WidgetBridge returned oversized render styles.");
+        var frozenStyles = BridgeRenderStyleContract.ValidateAndFreeze(renderStyles,
+            BridgeRenderStyleContract.SnapshotNodeIds(snapshot), requireComplete: false);
         var authority = new WidgetPresentationAuthority(
             descriptor.Id,
             descriptor.RuntimeGeneration,
@@ -818,28 +1096,67 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             sessionGeneration,
             descriptor.InstanceId,
             snapshot.Sequence,
-            snapshot.ActiveInputScopeId);
+            snapshot.ActiveInputScopeId) { WorkerRun = workerRun };
         var frame = new WidgetPresentationFrame(
             authority,
             descriptor,
             snapshot,
-            new ReadOnlyDictionary<string, BridgeNodeRenderStyles>(renderStyles));
+            frozenStyles) { WindowPreviews = ReadWindowPreviewInventory(payload, snapshot),
+                AppearanceRevision = payload.TryGetProperty("appearanceRevision", out _) ? ReadInt64(payload, "appearanceRevision", 0) : 0 };
         WidgetPresentationState committed;
         var startPublications = false;
         lock (_gate)
         {
-            if (!_descriptors.TryGetValue(descriptor.Id, out var currentDescriptor) ||
-                currentDescriptor != descriptor ||
-                _sessionGenerations.GetValueOrDefault(descriptor.Id) != sessionGeneration)
+            if (!_descriptors.TryGetValue(descriptor.Id, out var currentDescriptor) || currentDescriptor != descriptor)
                 throw Stale("presentation_stale", descriptor.Id,
                     "The snapshot belongs to a retired presentation session.");
             var prior = _states.GetValueOrDefault(descriptor.Id);
+            var generation = _sessionGenerations.GetValueOrDefault(descriptor.Id);
+            var previousRun = _workerRuns.GetValueOrDefault(descriptor.Id);
+            if (generation != sessionGeneration)
+            {
+                // Concurrent requests can both predate automatic restart admission.
+                // Rebase only this exact admitted run, then apply normal sequence
+                // ordering: the later reply may contain a newer snapshot.
+                if (workerRun is not null && previousRun is not null && previousRun.Run == workerRun &&
+                    previousRun.Generation == generation && previousRun.ReplacedGeneration == sessionGeneration &&
+                    prior?.LastGood is { } latest && latest.Authority.SessionGeneration == generation)
+                    frame = frame with { Authority = frame.Authority with { SessionGeneration = generation } };
+                else throw Stale("presentation_stale", descriptor.Id, "The snapshot belongs to a retired presentation session.");
+            }
+            if (workerRun is not null)
+            {
+                var order = previousRun is null ? 1 : workerRun.RegistryGeneration != previousRun.Run.RegistryGeneration
+                    ? workerRun.RegistryGeneration.CompareTo(previousRun.Run.RegistryGeneration)
+                    : workerRun.StartOrdinal.CompareTo(previousRun.Run.StartOrdinal);
+                if (order < 0) throw Stale("presentation_stale", descriptor.Id, "The snapshot belongs to a retired worker run.");
+                if (order > 0)
+                {
+                    var replaced = 0L;
+                    if (prior?.LastGood is not null)
+                    {
+                        replaced = generation;
+                        generation++;
+                        _sessionGenerations[descriptor.Id] = generation;
+                        _hostEffectAdmissionBoundaries[descriptor.Id] = Environment.TickCount64;
+                        frame = frame with { Authority = frame.Authority with { SessionGeneration = generation } };
+                        // CommitStateLocked retires old range/media/pin authority
+                        // against this new session generation in one publication.
+                    }
+                    _workerRuns[descriptor.Id] = new(workerRun, generation, replaced);
+                }
+            }
+            else if (previousRun is not null)
+                throw new BridgeProtocolException("Snapshot omitted its established worker run identity.");
             if (prior?.LastGood is { } current &&
-                current.Authority.SessionGeneration == sessionGeneration)
+                current.Authority.SessionGeneration == generation)
             {
                 if (current.Authority.SnapshotSequence > snapshot.Sequence)
+                {
+                    if (workerRun is not null) return current;
                     throw Stale("snapshot_stale", descriptor.Id,
                         "An older snapshot completed after the current snapshot.");
+                }
                 if (current.Authority.SnapshotSequence == snapshot.Sequence)
                     return current;
             }
@@ -858,14 +1175,27 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         bool publish)
     {
         var committed = state with { PublicationRevision = NextPublicationRevisionLocked() };
+        if (state.LastGood is { } inputFrame) _publishedInputFrames.GetValue(inputFrame, _ => PublishedInputFrameMarker);
         _states[state.WidgetId] = committed;
+        ReconcileOrdinaryArtworkLocked(state.WidgetId);
+        QueueStyleRefreshLocked();
+        ReconcileMediaDocumentLocked(committed);
+        ReconcileWindowPreviewsLocked(committed);
+        ReconcilePinnedProjectionsLocked(committed);
+        RetireIndexedRangesLocked(state.WidgetId, committed.LastGood?.Authority);
         if (publish) _statePublications.Enqueue(committed);
         return committed;
     }
 
     private bool RetireStateLocked(string widgetId)
     {
+        _workerRuns.Remove(widgetId);
+        RetireIndexedRangesLocked(widgetId);
+        RetireMediaDocumentLocked(widgetId);
+        RetireWindowPreviewsLocked(widgetId);
+        RetirePinnedProjectionsLocked(widgetId);
         if (!_states.Remove(widgetId)) return false;
+        ReconcileOrdinaryArtworkLocked(widgetId);
         var retired = new WidgetPresentationState(widgetId, null, null, 0)
         {
             PublicationRevision = NextPublicationRevisionLocked(),
@@ -975,6 +1305,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                     "The widget descriptor is no longer current.");
             generation = _sessionGenerations.GetValueOrDefault(target.Descriptor.Id) + 1;
             _sessionGenerations[target.Descriptor.Id] = generation;
+            // Runtime fingerprints can survive restart. An effect initiated before
+            // retiring this local incarnation must not acquire the new authority.
+            _hostEffectAdmissionBoundaries[target.Descriptor.Id] = Environment.TickCount64;
             cleared = CommitStateLocked(
                 new WidgetPresentationState(target.Descriptor.Id, null, null, 0),
                 publish: true);
@@ -1007,9 +1340,12 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         {
             if (_terminalFailure is not null) return;
             _terminalFailure = exception;
-            artwork = _artwork.Values.SelectMany(queue => queue).ToArray();
+            RetireIndexedRangesLocked();
+            RetireMediaDocumentLocked();
+            RetireWindowPreviewsLocked();
+            RetirePinnedProjectionsLocked();
+            artwork = _artwork.Values.ToArray();
             _artwork.Clear();
-            _pendingArtworkCount = 0;
         }
         var failure = new WidgetPresentationSessionException(
             "transport_closed", "The WidgetBridge presentation session closed.", exception);
@@ -1025,26 +1361,11 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 _terminalFailure);
     }
 
-    private void RemovePendingArtwork(
-        (string WidgetId, string ArtworkHandle) key,
-        TaskCompletionSource<WidgetPresentationArtwork> completion)
-    {
-        lock (_gate)
-        {
-            if (!_artwork.TryGetValue(key, out var queue)) return;
-            var retained = queue.Where(item => !ReferenceEquals(item.Completion, completion)).ToArray();
-            if (retained.Length == queue.Count) return;
-            _pendingArtworkCount--;
-            if (retained.Length == 0) _artwork.Remove(key);
-            else _artwork[key] = new Queue<PendingArtwork>(retained);
-        }
-    }
-
     private static WidgetOperationAdmission ReadAdmission(JsonElement payload)
     {
         RequireObjectProperties(payload, "admission");
         var admission = payload.GetProperty("admission")
-            .Deserialize<WidgetOperationAdmission>(BridgeJson.Options);
+            .Deserialize(BridgeJson.TypeInfo<WidgetOperationAdmission>());
         if (admission is not (WidgetOperationAdmission.Enqueued or
                               WidgetOperationAdmission.Replaced))
             throw new BridgeProtocolException("WidgetBridge returned an invalid action admission.");
@@ -1081,7 +1402,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     private static bool ContainsArtwork(ViewNode node, string handle) =>
         (string.Equals(node.ArtworkHandle, handle, StringComparison.Ordinal) ||
          string.Equals(node.FocusBackgroundArtworkHandle, handle, StringComparison.Ordinal)) ||
-        node.Children.Any(child => ContainsArtwork(child, handle));
+        node.Children.Any(child => ContainsArtwork(child, handle)) ||
+        node.FocusPresentation is { } focus && ContainsArtwork(focus, handle) ||
+        node.DefaultFocusPresentation is { } fallback && ContainsArtwork(fallback, handle);
 
     private static WidgetPresentationSessionException Stale(
         string code,

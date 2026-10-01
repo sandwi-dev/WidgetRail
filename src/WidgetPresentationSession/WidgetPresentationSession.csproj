@@ -4,10 +4,11 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\WidgetBridge\WidgetBridge.csproj" />
+    <ProjectReference Include="..\WidgetBridge.Contracts\WidgetBridge.Contracts.csproj" />
     <ProjectReference Include="..\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>

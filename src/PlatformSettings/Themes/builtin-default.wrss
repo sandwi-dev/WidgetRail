@@ -90,6 +90,10 @@ hint {
   line-height: 1.3;
 }
 
+.wrail-tray-clock { color: var(--text); font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1; }
+.wrail-tray-date { color: var(--text-muted); font-family: var(--font-text); font-size: 11px; line-height: 1; }
+.wrail-tray-status-icon { color: var(--text-muted); font-size: 16px; }
+
 button {
   min-height: 44px;
   padding: 10px 14px;
@@ -110,7 +114,6 @@ button:selected {
   border-color: var(--border-strong);
 }
 button:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -133,7 +136,6 @@ select {
   transition-easing: ease-out;
 }
 select:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -153,12 +155,11 @@ slider {
   border-color: var(--border);
   border-width: 1px;
   corner-radius: 10px;
-  scale: 0.99;
+  scale: 1;
   transition-duration: 90ms;
   transition-easing: ease-out;
 }
 slider:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -182,7 +183,6 @@ slider:focused {
   corner-radius: 8px;
 }
 .wrail-scrubber__slider:focused {
-  background: var(--surface-subtle);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -205,11 +205,9 @@ slider:focused {
 }
 .wrail-scrubber__elapsed {
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-scrubber__duration {
   text-align: end;
-  flex-shrink: 0;
 }
 
 .wrail-icon-button {
@@ -223,7 +221,6 @@ slider:focused {
   border-color: var(--border);
   border-width: 1px;
   corner-radius: 10px;
-  flex-shrink: 0;
 }
 .wrail-icon-button--small { width: 44px; height: 44px; padding: 10px; }
 .wrail-icon-button--large { width: 52px; height: 52px; padding: 12px; corner-radius: 12px; }
@@ -244,7 +241,7 @@ slider:focused {
 
 .wrail-section-header { gap: 4px; }
 .wrail-section-header__content { gap: 10px; align: center; justify: space-between; }
-.wrail-section-header__text { min-width: 0; flex-grow: 1; flex-shrink: 1; gap: 2px; }
+.wrail-section-header__text { min-width: 0; flex-grow: 1; gap: 2px; }
 .wrail-section-header__eyebrow {
   color: var(--text-muted);
   font-family: var(--font-text);
@@ -271,7 +268,6 @@ slider:focused {
   line-height: 1.35;
   max-lines: 2;
 }
-.wrail-section-header__trailing { flex-shrink: 0; }
 
 .wrail-badge {
   gap: 5px;
@@ -283,7 +279,7 @@ slider:focused {
   border-width: 1px;
   corner-radius: 10px;
 }
-.wrail-badge__icon { width: 14px; height: 14px; flex-shrink: 0; }
+.wrail-badge__icon { width: 14px; height: 14px; }
 .wrail-badge__label {
   color: var(--text-muted);
   font-family: var(--font-text);
@@ -345,7 +341,6 @@ slider:focused {
   border-color: var(--border);
   border-width: 1px;
   corner-radius: 10px;
-  flex-shrink: 0;
 }
 .wrail-segmented-tabs__tab {
   min-width: 96px;
@@ -369,7 +364,6 @@ slider:focused {
   min-width: 0;
   min-height: 0;
   flex-grow: 1;
-  flex-shrink: 1;
   gap: 10px;
   overflow: clip;
 }
@@ -377,7 +371,6 @@ slider:focused {
   width: 100%;
   min-width: 0;
   min-height: 50px;
-  flex-shrink: 0;
   gap: 2px;
   padding: 3px;
   background: var(--surface-subtle);
@@ -390,7 +383,6 @@ slider:focused {
   min-width: 0;
   min-height: 44px;
   flex-grow: 1;
-  flex-shrink: 1;
   gap: 7px;
   padding: 9px 10px;
   background: transparent;
@@ -408,7 +400,6 @@ slider:focused {
   min-width: 0;
   min-height: 0;
   flex-grow: 1;
-  flex-shrink: 1;
   gap: 10px;
   align: stretch;
   overflow: clip;
@@ -416,7 +407,6 @@ slider:focused {
 .wrail-navigation-shell__rail {
   width: 156px;
   min-height: 0;
-  flex-shrink: 0;
   gap: 4px;
   padding: 8px;
   background: var(--surface-subtle);
@@ -429,7 +419,6 @@ slider:focused {
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  flex-shrink: 0;
   justify: start;
   gap: 9px;
   padding: 9px 11px;
@@ -462,14 +451,12 @@ slider:focused {
   min-width: 240px;
   max-width: 360px;
   min-height: 0;
-  flex-shrink: 1;
   overflow: clip;
 }
 .wrail-navigation-shell__content {
   min-width: 0;
   min-height: 0;
   flex-grow: 1;
-  flex-shrink: 1;
   overflow: clip;
 }
 
@@ -488,7 +475,6 @@ slider:focused {
   border-color: var(--border-strong);
 }
 .wrail-switch:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -509,7 +495,6 @@ slider:focused {
   min-width: 0;
   color: var(--text);
   flex-grow: 1;
-  flex-shrink: 1;
   max-lines: 1;
   text-overflow: ellipsis;
 }
@@ -517,7 +502,6 @@ slider:focused {
   min-width: 64px;
   color: var(--text-muted);
   text-align: center;
-  flex-shrink: 0;
   max-lines: 1;
 }
 .wrail-stepper__button {
@@ -532,10 +516,7 @@ slider:focused {
   border-width: 1px;
   corner-radius: 10px;
 }
-.wrail-stepper__button--decrement,
-.wrail-stepper__button--increment { flex-shrink: 0; }
 .wrail-stepper__button:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -581,13 +562,11 @@ slider:focused {
   width: 20px;
   height: 20px;
   color: var(--text-muted);
-  flex-shrink: 0;
 }
 .wrail-settings-row__copy {
   min-width: 0;
   gap: 3px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-settings-row__label {
   color: var(--text);
@@ -628,7 +607,6 @@ slider:focused {
   text-align: start;
 }
 .wrail-settings-row__action:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -652,7 +630,6 @@ slider:focused {
   line-height: 1.2;
   max-lines: 2;
   text-overflow: ellipsis;
-  flex-shrink: 0;
 }
 .wrail-action-sheet__description {
   color: var(--text-muted);
@@ -661,7 +638,6 @@ slider:focused {
   line-height: 1.35;
   max-lines: 4;
   text-overflow: ellipsis;
-  flex-shrink: 0;
 }
 .wrail-action-sheet__list {
   min-width: 0;
@@ -669,7 +645,6 @@ slider:focused {
   max-height: 440px;
   gap: 4px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-action-sheet__item {
   min-height: 44px;
@@ -682,11 +657,9 @@ slider:focused {
   font-size: 15px;
   font-weight: 400;
   text-align: start;
-  flex-shrink: 0;
 }
 .wrail-action-sheet__item--danger { color: var(--danger); }
 .wrail-action-sheet__item:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -710,7 +683,6 @@ slider:focused {
   line-height: 1.2;
   max-lines: 2;
   text-overflow: ellipsis;
-  flex-shrink: 0;
 }
 .wrail-picker__description {
   color: var(--text-muted);
@@ -719,7 +691,6 @@ slider:focused {
   line-height: 1.35;
   max-lines: 4;
   text-overflow: ellipsis;
-  flex-shrink: 0;
 }
 .wrail-picker__options {
   min-width: 0;
@@ -727,7 +698,6 @@ slider:focused {
   max-height: 440px;
   gap: 4px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-picker__option {
   min-height: 44px;
@@ -740,11 +710,9 @@ slider:focused {
   font-size: 15px;
   font-weight: 400;
   text-align: start;
-  flex-shrink: 0;
 }
 .wrail-picker__option--selected { background: var(--surface-subtle); }
 .wrail-picker__option:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -762,13 +730,11 @@ slider:focused {
   width: 20px;
   height: 20px;
   color: var(--text-muted);
-  flex-shrink: 0;
 }
 .wrail-value-row__text {
   min-width: 0;
   gap: 2px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-value-row__label {
   color: var(--text);
@@ -792,7 +758,6 @@ slider:focused {
   text-align: end;
   max-lines: 1;
   text-overflow: ellipsis;
-  flex-shrink: 0;
 }
 
 .wrail-choice-row {
@@ -809,7 +774,6 @@ slider:focused {
 }
 .wrail-choice-row--selected { background: var(--surface-subtle); }
 .wrail-choice-row:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -822,13 +786,11 @@ slider:focused {
   color: var(--controller-glyph-color, var(--text-muted));
   padding: 0px;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 .wrail-controller-hint {
   min-height: 24px;
   gap: 8px;
   align: center;
-  flex-shrink: 1;
 }
 .wrail-controller-hint__key {
   background: transparent;
@@ -853,13 +815,11 @@ slider:focused {
   border-color: var(--border);
   border-width: 1px;
   corner-radius: 10px;
-  flex-shrink: 0;
 }
 .wrail-toast__icon {
   width: 20px;
   height: 20px;
   color: var(--text-muted);
-  flex-shrink: 0;
 }
 .wrail-toast__icon--info { color: var(--accent); }
 .wrail-toast__icon--success { color: var(--success); }
@@ -869,7 +829,6 @@ slider:focused {
   min-width: 0;
   gap: 2px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-toast__title {
   color: var(--text);
@@ -901,12 +860,10 @@ slider:focused {
   border-color: var(--border);
   border-width: 1px;
   corner-radius: 10px;
-  flex-shrink: 0;
   transition-duration: 90ms;
   transition-easing: ease-out;
 }
 .wrail-action-surface:focused {
-  background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: var(--focus-width);
   outline-offset: var(--focus-offset);
@@ -914,7 +871,6 @@ slider:focused {
 .wrail-action-surface:pressed { background: var(--surface-raised); scale: 0.96; }
 .wrail-action-surface:selected { border-color: var(--accent); }
 .wrail-action-surface:disabled { color: var(--text-muted); }
-.wrail-tile { flex-wrap: wrap; }
 .wrail-background-surface {
   overflow: clip;
   background: rgba(18, 18, 20, 0.96);
@@ -925,13 +881,11 @@ slider:focused {
   height: 56px;
   corner-radius: 8px;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 .wrail-tile__content {
   min-width: 0;
   gap: 2px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-tile__title {
   color: var(--text);
@@ -1027,7 +981,6 @@ slider:focused {
   max-lines: 1;
   text-overflow: ellipsis;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 .wrail-poster-tile__state {
   color: var(--accent);
@@ -1037,7 +990,6 @@ slider:focused {
   max-lines: 1;
   text-overflow: ellipsis;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
 /* Diagnostics and commands remain presentational and controller-neutral.
@@ -1067,11 +1019,11 @@ slider:focused {
 }
 
 .wrail-window-preview {
-  width: 100%; min-width: 0; flex-shrink: 0; overflow: clip;
+  width: 100%; min-width: 0; overflow: clip;
   background: var(--surface); color: var(--text-muted);
   corner-radius: 6px; font-size: 12px; text-align: center;
 }
-.wrail-preview-poster { flex-wrap: nowrap; gap: 8px; min-width: 0; }
+.wrail-preview-poster { gap: 8px; min-width: 0; }
 
 /* Widget modal: host-clamped geometry, theme-owned colors and typography. */
 .wrail-modal-layer { background: var(--canvas-veil); }
@@ -1081,11 +1033,14 @@ slider:focused {
   border-color: var(--border-strong); border-width: 1px; corner-radius: 16px;
   shadow-color: rgba(0, 0, 0, 0.45); shadow-blur: 20px; overflow: clip;
 }
-.wrail-modal__header { direction: row; align: center; gap: 20px; flex-shrink: 0; }
+.wrail-modal__header { direction: row; align: center; gap: 20px; }
 .wrail-modal__title { font-size: 26px; font-weight: 600; flex-grow: 1; min-width: 0; max-lines: 2; text-overflow: ellipsis; overflow-wrap: anywhere; }
 .wrail-modal__scroll { flex-grow: 1; min-height: 0; min-width: 0; gap: 12px; padding: 4px; }
 
-/* Focus belongs to the surface. Accessibility can strengthen this edge. */
+/* Focus adds an edge and depth without repainting a selectable control's fill.
+   Selection owns its persistent background, including while it is focused.
+   This also preserves transparent controls and authored primary/brand fills.
+   Accessibility can strengthen this edge. */
 button:focused, select:focused, slider:focused,
 .wrail-action-surface:focused, .wrail-choice-row:focused,
 .wrail-tile:focused, .wrail-poster-tile:focused {
@@ -1108,6 +1063,8 @@ button:focused, select:focused, slider:focused,
   shadow-offset-y: 2px;
   border-top-color: var(--depth-highlight);
   border-bottom-color: var(--depth-lowlight);
+  border-left-color: var(--depth-lowlight);
+  border-right-color: var(--depth-lowlight);
 }
 .wrail-surface-inset,
 .wrail-segmented-tabs,
@@ -1116,6 +1073,8 @@ button:focused, select:focused, slider:focused,
   surface-shading: var(--inset-shading);
   border-top-color: var(--depth-lowlight);
   border-bottom-color: var(--depth-highlight);
+  border-left-color: var(--depth-lowlight);
+  border-right-color: var(--depth-lowlight);
 }
 button, select,
 .wrail-action-surface, .wrail-choice-row {

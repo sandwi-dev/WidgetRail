@@ -7,7 +7,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\WidgetPresentationBinding.cs" Link="WidgetPresentationBinding.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Media\EmbeddedMediaRequestPolicy.cs" Link="EmbeddedMediaRequestPolicy.cs" />
+    <ProjectReference Include="..\..\src\WidgetBridge.Contracts\WidgetBridge.Contracts.csproj" />
     <ProjectReference Include="..\..\src\WidgetPresentationSession\WidgetPresentationSession.csproj" />
   </ItemGroup>
 </Project>

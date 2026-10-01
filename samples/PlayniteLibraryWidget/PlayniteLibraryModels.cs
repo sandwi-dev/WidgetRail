@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
@@ -38,11 +39,32 @@ internal sealed record PlayniteLibraryFixedRows(
     internal IEnumerable<PlayniteLibraryItem> All => Recent.Concat(Manual).Concat(TitleMatches);
 }
 
-internal sealed record PlayniteLibraryBrowseReload(
-    long AttemptId,
-    WidgetCursorResourceSnapshot<PlayniteLibraryItem>? RetainedCollection);
+internal sealed record PlayniteLibraryBrowseReload(long AttemptId);
 
 internal sealed record PlayniteLibraryQueryCount(long Generation, int? Count);
+
+internal sealed record PlayniteLibraryIndexedBrowseState
+{
+    internal PlayniteLibraryBrowseContent? Publication { get; init; }
+    internal WidgetPagedResourceStatus Status { get; init; } = WidgetPagedResourceStatus.NotLoaded;
+    internal WidgetResourceError? Error { get; init; }
+    internal long Attempt { get; init; }
+    internal PlayniteLibraryCollectionState? Selection { get; init; }
+    internal string? Category { get; init; }
+    internal IndexedCollectionFocusTarget? ModalReturn { get; init; }
+    internal long ModalReturnRequestId { get; init; }
+}
+
+internal sealed record PlayniteLibraryIndexedHomeState
+{
+    internal PlayniteLibraryHomeContent? Publication { get; init; }
+    internal WidgetPagedResourceStatus Status { get; init; } = WidgetPagedResourceStatus.NotLoaded;
+    internal WidgetResourceError? Error { get; init; }
+    internal long Attempt { get; init; }
+    internal PlayniteLibraryCollectionState? Selection { get; init; }
+    internal IndexedCollectionFocusTarget? ModalReturn { get; init; }
+    internal long ModalReturnRequestId { get; init; }
+}
 
 internal sealed class PlayniteLibraryActionFeedback(
     string title,
@@ -61,6 +83,8 @@ internal sealed record PlayniteLibraryRenderState
     // Collection is the Home route's independent query/selection model.
     internal required PlayniteLibraryCollectionState Collection { get; init; }
     internal required PlayniteLibraryCollectionState BrowseCollection { get; init; }
+    internal PlayniteLibraryIndexedHomeState IndexedHome { get; init; } = new();
+    internal PlayniteLibraryIndexedBrowseState IndexedBrowse { get; init; } = new();
     internal required WidgetAppLibraryQuery HiddenQuery { get; init; }
     internal PlayniteLibraryFixedRows FixedRows { get; init; } =
         PlayniteLibraryFixedRows.Empty;
@@ -70,6 +94,7 @@ internal sealed record PlayniteLibraryRenderState
     internal string? PendingRestoredSavedId { get; init; }
     internal bool PreferLibraryContentFocus { get; init; }
     internal PlayniteLibraryItem? DetailsItem { get; init; }
+    internal PlayniteLibraryGameTarget? DetailsCapturedTarget { get; init; }
     internal PlayniteDetailsExtras DetailsExtras { get; init; } = new();
     internal long DetailsGeneration { get; init; }
     internal long DetailsOpening { get; init; }

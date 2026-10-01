@@ -31,7 +31,7 @@ members are rejected.
 
 Native requests use nonzero monotonically increasing `requestId` values.
 Responses repeat that value. Events have `requestId: 0`. The first request must
-be `hello` with `{ "clientName": "OverlayHost" }`; the bridge responds with
+be `hello` with `{ "clientName": "WinUI" }`; the bridge responds with
 `hello-accepted`.
 
 ## Requests
@@ -422,3 +422,46 @@ changes. Reload/list remains lazy. This integration is still not a marketplace
 or publisher-trust guarantee: production needs package signatures/revocation,
 CPU quotas, disk/profile quotas and cleanup, and a broker security audit/history
 surface.
+
+## Indexed collection range transport
+
+The private `read-indexed-range` / `indexed-range` exchange carries a widget ID,
+instance ID, runtime generation, presentation generation, and the SDK indexed
+range request/result. `cancel-indexed-range` uses the exact same request identity
+and acknowledges whether that captured demand was found. Receiving a range does
+not grant item action, controller, or artwork authority.
+
+Read/cancel requests bypass per-widget FIFO tails. Cancellation waits only for a
+matching earlier read handler to register its demand, so immediately cancelling
+a just-written read cannot race its asynchronous dispatch. Eight global read
+slots leave dispatcher capacity for ordinary work; each widget admits at most
+four reads. The registry checks the current parent/query and worker start ordinal
+before and after the read. It briefly takes OperationGate to inspect/publish
+state, but does not hold it during provider I/O.
+
+Reads require an already-published running worker. The runtime's exact-start
+internal overload never starts or recovers a worker. A registration publication
+lease keeps that captured client alive until its actual read has drained. Query
+replacement, presentation-generation change, worker retirement, and session
+cancellation cancel captured demand. Production IBridgeWidgetClient range reads
+must preserve WidgetProcessClient's bounded cancellation/terminal-session
+contract; the registry does not abandon client calls or dispose their resources
+under a still-running trusted implementation.
+
+`acquire-indexed-range` additionally returns a bounded semantic lease. The registry
+owns the exact worker lease until explicit release, cancelled/failed delivery,
+query/projection retirement or session teardown. Owned ranges, items and nodes
+include pending acquisition reservations; a retiring owner remains accounted for
+until its active operations and remote release finish. No registry lock is held
+during provider work or remote disposal.
+
+`indexed-input` joins the ordinary per-widget ordering. It resolves the leased
+row and logical parent path in both the user's origin snapshot and the current
+snapshot. Only an unchanged, available binding can be forwarded with the current
+worker sequence. A modal disables parent input without discarding unchanged
+parent data. Row actions and parent shortcuts use the same worker action queue.
+
+`resolve-indexed-artwork` and exact-demand cancellation use the independent
+provider lane. The handle must occur in the retained row or its presentation
+fragment. Artwork and input retain the owning registration through actual
+completion, so query/worker replacement cannot dispose it underneath them.

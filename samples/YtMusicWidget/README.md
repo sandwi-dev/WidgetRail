@@ -5,6 +5,12 @@ Home recommendations in square artwork grids under YouTube Music’s section hea
 Search, your Library, a local Queue, and a compact pinned player.
 **Mixed for you** appears first when available.
 Collections scroll continuously as you browse.
+
+On the WinUI migration branch, each returned service page is an exact-count
+indexed collection. Home uses grouped native grids; lists request only needed
+rows. This does not add remote continuation beyond the service's bounded result.
+Row actions retain captured occurrences, including repeated songs; playback ticks
+do not replace the query. See [indexed authoring](../../docs/developers/indexed-collections.md).
 Switching tabs or Library filters remembers your highlighted item while the widget
 is running. Use **Refresh** to reload a collection from the beginning.
 **YTMDesktop is not required.**
@@ -77,8 +83,11 @@ and the next queued song is prepared in advance. Uncached selections can still t
 several seconds. URLs expire—often after about six hours—or can be rejected earlier;
 the player then resolves a fresh URL.
 
-**A song does not start.** Select it again to resolve a fresh stream. If your library
-also fails to load, reconnect in Settings. YouTube changes can require a widget update.
+**A song does not start.** Playback refreshes its stream once, then skips an
+unavailable song with a header status notice. Three consecutive unavailable songs
+stop playback instead of draining the queue; Play or another selection retries.
+If your library also fails to load, reconnect in Settings. YouTube changes can
+require a widget update.
 
 **Sign-in does not open.** Install Edge or Chrome. The widget uses a separate temporary
 profile and does not inspect your existing browser profile.

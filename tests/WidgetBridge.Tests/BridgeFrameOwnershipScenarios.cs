@@ -6,6 +6,81 @@ internal static class BridgeFrameOwnershipScenarios
 {
     private const int MaximumMessageBytes = 64 * 1024;
 
+    internal static async Task TypedIndexedRepliesPreserveOwnership()
+    {
+        var payload = new BridgeIndexedArtworkResponse("widget", "instance", "runtime", "presentation",
+            new("lease", "item"), "cover", "demand", "image/png", new byte[] { 1, 2, 3 });
+        await using (var adapter = new ManualEventWriteAdapter(true, false))
+        {
+            var boundary = new BridgeFrameWriteBoundary(adapter);
+            await boundary.WriteReplyAsync(BridgeMessageTypes.IndexedArtwork, 47, payload, CancellationToken.None);
+            await using var bytes = new MemoryStream(adapter.Stream.Bytes);
+            var frame = await new BridgeFrameChannel(bytes, MaximumMessageBytes).ReadAsync(CancellationToken.None);
+            var read = BridgeJson.FromElement<BridgeIndexedArtworkResponse>(frame.Payload);
+            BoundaryAssert.Equal(47L, frame.RequestId);
+            BoundaryAssert.Equal(payload.Item, read.Item);
+            BoundaryAssert.Equal(payload.DemandId, read.DemandId);
+            BoundaryAssert.Equal(true, payload.ContentBase64.Span.SequenceEqual(read.ContentBase64.Span));
+            BoundaryAssert.Equal(BridgeFrameWriteBoundary.WriteDeadline, adapter.ObservedDeadline);
+            BoundaryAssert.Equal(1, adapter.ReleaseCount);
+        }
+        await using (var adapter = new ManualEventWriteAdapter(false, false))
+        {
+            var boundary = new BridgeFrameWriteBoundary(adapter);
+            using var cancel = new CancellationTokenSource();
+            var pending = boundary.WriteReplyAsync(BridgeMessageTypes.IndexedArtwork, 48, payload, cancel.Token);
+            await adapter.FirstWriterWaiting;
+            cancel.Cancel();
+            await BoundaryAssert.ThrowsAsync<OperationCanceledException>(() => pending);
+            BoundaryAssert.Equal(0, adapter.Stream.Bytes.Length);
+        }
+        var large = payload with { ContentBase64 = new byte[512 * 1024] };
+        var channel = new BridgeFrameChannel(Stream.Null, 2 * 1024 * 1024);
+        ValueTask Old() => channel.WriteAsync(new BridgeEnvelope { Type = BridgeMessageTypes.IndexedArtwork,
+            RequestId = 47, Payload = BridgeJson.ToElement(large) }, CancellationToken.None);
+        ValueTask Direct() => channel.WriteAsync(BridgeMessageTypes.IndexedArtwork, 47, large, CancellationToken.None);
+        // Null-stream writes complete synchronously. Warm serializer metadata,
+        // then measure allocation on this thread without timing or GC thresholds.
+        Old().GetAwaiter().GetResult(); Direct().GetAwaiter().GetResult();
+        long Measure(Func<ValueTask> write)
+        {
+            var start = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 8; ++i) write().GetAwaiter().GetResult();
+            return GC.GetAllocatedBytesForCurrentThread() - start;
+        }
+        var oldBytes = Measure(Old); var directBytes = Measure(Direct);
+        Console.WriteLine($"Indexed artwork reply allocations for 8 x 512 KiB: before={oldBytes}, direct={directBytes}");
+        BoundaryAssert.Equal(true, directBytes < oldBytes * .8);
+
+        await using var wire = new MemoryStream();
+        var writer = new BridgeFrameChannel(wire, 2 * 1024 * 1024);
+        await writer.WriteAsync(BridgeMessageTypes.IndexedArtwork, 1, large, CancellationToken.None);
+        await writer.WriteAsync(BridgeMessageTypes.IndexedArtwork, 2, payload, CancellationToken.None);
+        wire.Position = 0;
+        var reader = new BridgeFrameChannel(wire, 2 * 1024 * 1024);
+        var retained = await reader.ReadAsync(CancellationToken.None);
+        var next = await reader.ReadAsync(CancellationToken.None);
+        BoundaryAssert.Equal(2L, next.RequestId);
+        BoundaryAssert.Equal(large.ContentBase64.Length,
+            BridgeJson.FromElement<BridgeIndexedArtworkResponse>(retained.Payload).ContentBase64.Length);
+        BoundaryAssert.Equal(true, BridgeJson.FromElement<BridgeIndexedArtworkResponse>(next.Payload)
+            .ContentBase64.Span.SequenceEqual(payload.ContentBase64.Span));
+        long ReadAllocations(bool reuse)
+        {
+            var start = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 8; ++i)
+            {
+                wire.Position = 0;
+                var input = reuse ? reader : new BridgeFrameChannel(wire, 2 * 1024 * 1024);
+                _ = input.ReadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            return GC.GetAllocatedBytesForCurrentThread() - start;
+        }
+        var freshReads = ReadAllocations(false); var reusedReads = ReadAllocations(true);
+        Console.WriteLine($"Indexed artwork frame read allocations for 8 x 512 KiB: fresh={freshReads}, reused={reusedReads}");
+        BoundaryAssert.Equal(true, reusedReads < freshReads * .8);
+    }
+
     internal static async Task TimeoutAndCancellationHaveExactOwners()
     {
         await AbandonedWaitReproducesRetainedBodyPrefixAsync();
@@ -15,6 +90,7 @@ internal static class BridgeFrameOwnershipScenarios
 
     internal static async Task TypedArtworkNotificationsPreserveWireContent()
     {
+        foreach (var demandId in new string?[] { null, "demand-1", "demand-2" })
         foreach (var length in new[] { 0, 1, 2, 3 })
         {
             var content = Enumerable.Range(0, length)
@@ -26,7 +102,7 @@ internal static class BridgeFrameOwnershipScenarios
                 0,
                 new BridgeEncodedArtworkEvent(
                     "sample", "artwork", "runtime", "presentation",
-                    length == 0 ? string.Empty : "image/png", content),
+                    length == 0 ? string.Empty : "image/png", content, demandId),
                 CancellationToken.None);
 
             var frame = stream.ToArray();
@@ -45,6 +121,10 @@ internal static class BridgeFrameOwnershipScenarios
                 payload.GetProperty("contentBase64").GetString());
             BoundaryAssert.Equal("sample", payload.GetProperty("widgetId").GetString());
             BoundaryAssert.Equal("artwork", payload.GetProperty("artworkHandle").GetString());
+            if (demandId is null)
+                BoundaryAssert.Equal(false, payload.TryGetProperty("demandId", out _));
+            else
+                BoundaryAssert.Equal(demandId, payload.GetProperty("demandId").GetString());
         }
 
         await using var legacyStream = new MemoryStream();

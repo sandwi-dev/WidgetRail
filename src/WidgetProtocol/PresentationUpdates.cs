@@ -84,6 +84,9 @@ public enum PresentationProperty
     ShowScrollbar,
     RetainLastPresentation,
     Transition,
+    CollectionLayout,
+    GridLayout,
+    GridCell,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -237,6 +240,8 @@ public static class PresentationPropertyMetadata
         PresentationProperty.StyleClasses or
         PresentationProperty.GridMinimumColumnWidth or
         PresentationProperty.GridMaximumColumns or
+        PresentationProperty.GridLayout or
+        PresentationProperty.GridCell or
         PresentationProperty.Minimum or
         PresentationProperty.Maximum or
         PresentationProperty.Step or
@@ -250,6 +255,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.ScrollAxis or
         PresentationProperty.ScrollPaginationThreshold or
         PresentationProperty.VirtualCollectionWindow or
+        PresentationProperty.CollectionLayout or
         PresentationProperty.CollectionNavigation or
         PresentationProperty.CollectionStartIndex or
         PresentationProperty.CollectionAnchorKey or

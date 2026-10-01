@@ -1382,7 +1382,7 @@ static async Task ShippedAssetsValidate()
     Assert.True(!style.Contains("scale:", StringComparison.Ordinal),
         "Full-width Wi-Fi rows may not scale beyond their clipped scroll viewport.");
 
-    var catalogPath = Path.Combine(project, "..", "..", "OverlayHost", "widget-catalog.json");
+    var catalogPath = Path.Combine(project, "..", "..", "..", "eng", "widget-catalog.json");
     using var catalog = JsonDocument.Parse(await File.ReadAllBytesAsync(catalogPath));
     var bundled = catalog.RootElement.GetProperty("bundledWidgets").EnumerateArray().Single(item =>
         item.GetProperty("packageId").GetString() == manifest.Id);
@@ -1401,7 +1401,6 @@ static void AssertResponsiveLayoutBudget(WrssTheme theme)
 {
     var root = Resolve(theme, "stack", "network.root", "network-controls-widget");
     var list = Resolve(theme, "scroll", "network.wifi.body.scroll", "network-view-scroll");
-    var row = Resolve(theme, "stack", "network.wifi.test.row", "network-profile-row");
     var button = Resolve(theme, "button", "network.wifi.test", "network-profile-button");
     var scan = Resolve(theme, "button", "network.wifi.scan", "network-scan-action");
     var focused = theme.Resolve(new WrssElement("button", "network.wifi.test",
@@ -1414,7 +1413,6 @@ static void AssertResponsiveLayoutBudget(WrssTheme theme)
     Assert.True(Pixels(button.Get("min-height")!, 320) >= 44);
     Assert.True(Pixels(scan.Get("min-height")!, 320) >= 44);
     Assert.True(Pixels(list.Get("min-height")!, 560) >= 120);
-    Assert.Equal("0", row.Get("flex-shrink")!.Text);
     var inset = HorizontalSpacing(list.Get("padding")!, 560) / 2;
     var focusInset = Math.Abs(Pixels(focused.Get("outline-offset")!, 560));
     Assert.True(inset >= focusInset, "Wi-Fi focus outline can clip against the scroll edge.");

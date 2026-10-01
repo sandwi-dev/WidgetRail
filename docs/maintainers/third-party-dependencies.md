@@ -1,52 +1,23 @@
 # Third-party dependencies
 
-## Native layout engine
+The WinUI frontend uses Microsoft Windows App SDK for XAML layout, controls,
+composition and accessibility. WebView2 presents embedded web media. Exact NuGet
+versions are declared in the consuming projects and audited during restore.
 
-The production native overlay uses Taffy 0.12.2 for geometry calculation. It is
-built as an x64 MSVC Rust static library and linked into the existing native
-executables. Rust is a build-time dependency only; the installed product does
-not require a Rust runtime or a separate layout process.
+The C++ boundary in `src/OverlayPlatformInterop` consumes Microsoft.GameInput
+from `NativeDependencies.csproj`. Controller isolation also uses the vendored
+ViGEmClient sources under `third_party/ViGEmClient`. Runtime and driver
+installation are separate from compilation and verification.
 
-The integration deliberately exposes a narrow, product-owned C ABI in
-`src/OverlayHost/TaffyLayoutBridge.h`. Only fixed-size plain data, one
-synchronous intrinsic-measurement callback, integer result codes, and a bulk
-layout output cross the boundary. Rust types, ownership, panics, allocators,
-rendering, input, focus, scrolling, accessibility, and HWND authority do not.
+Window previews use Windows Graphics Capture and Direct3D through
+`src/WinUiWindowPreviewNative`. Both native DLLs use the static C runtime and
+are published explicitly with the matching frontend build.
 
-### Reproducibility
+The frontend ships self-contained .NET 10. Managed widget services retain their
+private .NET 8 Core runtime; Spotify and YouTube Music playback helpers also
+need the .NET 8 Desktop runtime. Removing the retired renderer does not remove
+those active helper dependencies.
 
-- Rust channel: 1.97.1, pinned by `rust-toolchain.toml`.
-- Target: `x86_64-pc-windows-msvc`.
-- Taffy: exactly 0.12.2.
-- Resolution: `Cargo.lock`, built with `cargo build --locked`.
-- Enabled Taffy features: `std`, `taffy_tree`, `flexbox`, `grid`, and
-  `content_size`.
-- Release builds use thin LTO and one code-generation unit.
-
-The active linked dependency tree is Taffy 0.12.2, arrayvec 0.7.8, grid 1.0.1,
-and slotmap 1.1.1. Cargo may retain metadata for optional packages in the lock
-file, but they are not part of the enabled build graph. Redistribution notices
-are in `THIRD_PARTY_NOTICES.md` and are copied beside the native binaries.
-
-### Ownership boundary
-
-Taffy replaces the former custom flex/grid geometry solver. The product still
-owns semantic-tree validation and style translation, DirectWrite intrinsic text
-measurement, scroll offsets and extents, clipping, DPI snapping, rendering,
-animation, controller navigation, focus restoration, UI Automation, process
-lifecycle, and the single overlay window. The Widget SDK and wire protocol are
-unchanged.
-
-The bridge maps generic semantic layout properties to Taffy Flexbox and CSS
-Grid. Responsive grids derive an explicit capped track count from the admitted
-content width, then let Taffy perform final track sizing and placement. There
-are no widget-identity branches in the bridge.
-
-Authored percentage `width` values remain typed fractions through the native
-bridge so Taffy resolves them against the actual parent after grid/flex sizing.
-They must not be frozen to pixels using an earlier layout estimate: nested
-poster scrims and text would otherwise change width between full layout,
-right-stick scrolling and D-pad focus reveal. A local relayout root keeps its
-already assigned border-box width; the percentage is not applied a second time.
-The internal C ABI is version 4, with matching native/Rust size checks. This
-does not change the Widget SDK, WRSS syntax or widget wire protocol.
+Taffy and the Rust layout bridge are no longer part of the product or build.
+WinUI owns layout. Redistribution notices are retained in
+[`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).

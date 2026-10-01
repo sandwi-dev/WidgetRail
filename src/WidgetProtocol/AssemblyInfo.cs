@@ -3,4 +3,9 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetSdk")]
 [assembly: InternalsVisibleTo("WidgetSdk.Tests")]
 [assembly: InternalsVisibleTo("WidgetBridge")]
+[assembly: InternalsVisibleTo("WidgetBridge.Contracts")]
 [assembly: InternalsVisibleTo("WidgetProtocol.ContractParity.Tests")]
+
+[assembly: InternalsVisibleTo("WidgetPresentationSession")]
+[assembly: InternalsVisibleTo("OverlayFrontend.WinUI")]
+[assembly: InternalsVisibleTo("WinUiShell.Tests")]

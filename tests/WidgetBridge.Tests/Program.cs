@@ -20,6 +20,26 @@ using WidgetRail.Samples.SdkGalleryWidget;
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
 
+if (args is ["--serve-pinned-validation", var pinnedPipe])
+{
+    await PinnedPresenterBridgeWidget.Serve(pinnedPipe); return 0;
+}
+if (args is ["--serve-indexed-validation", var validationPipe])
+{
+    await BridgeIndexedEndToEndScenarios.ServeValidationAsync(validationPipe);
+    return 0;
+}
+if (args is ["--serve-themed-indexed-validation", var themedPipe, var themeSettingsRoot])
+{
+    await BridgeIndexedEndToEndScenarios.ServeThemedValidationAsync(themedPipe, themeSettingsRoot);
+    return 0;
+}
+if (args is ["--serve-discovered-validation", var discoveredPipe])
+{
+    await DiscoveredBridgeScenarios.ServeAsync(discoveredPipe);
+    return 0;
+}
+
 if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var outputPath])
 {
     var snapshot = SnapshotJson.Deserialize(await File.ReadAllBytesAsync(snapshotPath));
@@ -41,6 +61,38 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Dashboard input tolerates compatible publications without changing command", BridgeClientRegistryScenarios.DashboardRevalidatesCompatiblePublication),
+    ("Task activation tickets are single-use bounded and owner-scoped", TaskActivationScenarios.TicketsAndWire),
+    ("Task activation completion survives hiding but rejects retired workers", BridgeClientRegistryScenarios.TaskActivationSurvivesHideButNotWorkerReplacement),
+    ("Worker run input rejects colliding sequences from retired processes", WorkerRunInputScenarios.CollidingSequencesRejectRetiredWorker),
+    ("Worker run input never starts a replacement during exact dispatch", WorkerRunInputScenarios.ExactInputNeverStartsWorker),
+    ("Worker run media observations cannot revive or cross worker incarnations", WorkerRunInputScenarios.MediaObservationsNeverStartOrCrossWorkerRuns),
+    ("Worker run media gate waits retain registration through cancellation and retirement", WorkerRunInputScenarios.MediaGateWaitRetainsRegistrationUntilCancelledOrRejected),
+    ("Worker run action controller and pinned gate waits retain registration through retirement", WorkerRunInputScenarios.InputGateWaitRetainsRegistrationUntilCancelledOrRejected),
+    ("Shell palette accepts every real resolved theme role across bridge session", ShellPaletteEndToEndScenario.RunAsync),
+    ("Pinned action worker validates layout sequence scope text and context triggers", PinnedActionBridgeScenarios.WorkerAuthority),
+    ("Pinned actions and artwork cross session bridge and real worker", PinnedActionBridgeScenarios.EndToEnd),
+    ("Pinned action bridge rejects stale binding scope version and foreign artwork", PinnedActionBridgeScenarios.Authority),
+    ("Discovered prefixes cross real worker bridge and session with retained action authority", DiscoveredBridgeScenarios.EndToEnd),
+    ("Indexed styles failure releases acquired runtime semantics", BridgeIndexedLeaseRegistryScenarios.StylePreparationFailureReleasesExactRuntimeLease),
+    ("Indexed styles match parent cascade and focus fragments", BridgeIndexedStyleScenarios.RangeStylesMatchSnapshotCascadeAndFragments),
+    ("Indexed styles refresh retained semantics without provider reload", BridgeIndexedLeaseRegistryScenarios.StyleRefreshUsesRetainedSemanticsAndRejectsRetirement),
+    ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
+    ("Indexed lease session through bridge to real worker", BridgeIndexedEndToEndScenarios.SessionToRealWorker),
+    ("Indexed modal data lifetime and input scopes through real worker", BridgeIndexedEndToEndScenarios.RealWorkerModalDataAndInputScopes),
+    ("Indexed lease registry real worker semantic round trip", BridgeIndexedLeaseRegistryScenarios.RealWorkerLeaseRoundTrip),
+    ("Indexed lease registry separates data lifetime and input authority", BridgeIndexedLeaseRegistryScenarios.DataLifetimeAndInputAuthorityAreSeparate),
+    ("Indexed lease registry stale input differs from malformed input and worker failures", BridgeIndexedLeaseRegistryScenarios.StaleInputIsRecoverableButMalformedInputIsNot),
+    ("Indexed lease registry duplicates and cancellation preserve ownership", BridgeIndexedLeaseRegistryScenarios.DuplicateAndCancellationPreserveOwnership),
+    ("Indexed lease registry artwork drains before retirement", BridgeIndexedLeaseRegistryScenarios.ArtworkReleaseDrainsBeforeRetirement),
+    ("Indexed broker artwork preserves exact lease and host identity", BridgeIndexedLeaseRegistryScenarios.BrokerArtworkUsesExactLeaseAndHostIdentity),
+    ("Indexed lease registry bounds owners and drains replacement", BridgeIndexedLeaseRegistryScenarios.BoundedOwnersAndReplacementRelease),
+    ("Indexed lease wire cancellation and serial input scheduling", BridgeIndexedLeaseWireScenarios.CancellationWaitsOnlyForExactAdmissionAndInputRetainsSerialOrdering),
+    ("Indexed bridge server wire orders cancellation and publishes ranges", BridgeIndexedRangeScenarios.ServerWireOrdersCancellationAndPublishesRanges),
+    ("Indexed bridge real worker reads cancel and retire boundedly", BridgeIndexedRangeScenarios.RealWorkerReadDoesNotBlockAndRetires),
+    ("Indexed bridge reads preserve serial work and exact cancellation", BridgeIndexedRangeScenarios.SlowReadsPreserveSerialWork),
+    ("Indexed bridge query and worker retirement preserve ownership", BridgeIndexedRangeScenarios.QueryAndWorkerRetirementAreExact),
+    ("Indexed bridge admission and dispatcher stay bounded", BridgeIndexedRangeScenarios.AdmissionAndDispatcherAreBounded),
     ("Widget modal main and pinned inputs have separate authority", BridgeClientRegistryScenarios.ModalSeparatesMainAndPinnedAuthority),
     ("Window previews publish themed render styles for every protocol role", WindowPreviewScenarios.ThemedRenderRoles),
     ("Window previews require current manifest consent instance and snapshot authority", WindowPreviewScenarios.Authority),
@@ -51,6 +103,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bridge-wide revision notifications are latest-wins and bounded", BridgeRevisionNotificationScenarios.LatestRevisionsAreBoundedAndOrdered),
     ("Bridge read and reply timeouts have exact frame owners", BridgeFrameOwnershipScenarios.TimeoutAndCancellationHaveExactOwners),
     ("Typed artwork notifications preserve bounded wire content", BridgeFrameOwnershipScenarios.TypedArtworkNotificationsPreserveWireContent),
+    ("Typed indexed artwork replies reduce large allocations and preserve ownership", BridgeFrameOwnershipScenarios.TypedIndexedRepliesPreserveOwnership),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
     ("Catalog rejects host-reserved View quick actions", CatalogRejectsHostReservedView),
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
@@ -88,6 +141,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Two unrelated full-trust applications use one ordinary runtime", FullTrustCommunityScenarios.TwoApplicationsUseTheOrdinaryRuntime),
     ("Packaged Spotify uses the ordinary full-trust runtime", FullTrustCommunityScenarios.SpotifyUsesTheOrdinaryRuntime),
     ("Packaged Playnite Library uses the ordinary full-trust runtime", FullTrustCommunityScenarios.PlayniteLibraryUsesTheOrdinaryRuntime),
+    ("Playnite process fixture preserves indexed workflows and stale query guards", FullTrustCommunityScenarios.PlayniteProcessWorkflow),
     ("Full-trust missing entrypoints and silent promotion fail closed", FullTrustCommunityScenarios.MissingEntrypointAndManifestPromotionFailClosed),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
     ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),
@@ -138,6 +192,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Open widget input retains compatible committed authority across refresh", BridgeClientRegistryScenarios.OpenWidgetInputRetainsCompatibleCommittedAuthority),
     ("Input waits for publication and admits each compatible event once", BridgeClientRegistryScenarios.InputAdmissionSerializesWithSnapshotPublication),
     ("Embedded media resolution requires exact current publication authority", BridgeClientRegistryScenarios.EmbeddedMediaRequiresExactPublicationAuthority),
+    ("Embedded media observations follow document lifetime across publications", BridgeClientRegistryScenarios.EmbeddedMediaObservationsFollowDocumentLifetime),
+    ("Embedded media command terminals survive intermediate compatible publications", BridgeClientRegistryScenarios.EmbeddedMediaIntermediateCommandPublication),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
     ("Local package full-access review is explicit cancellable and source locked", LocalPackageFullTrustReview),
@@ -160,6 +216,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
     ("Suspend-when-hidden blocks work and serves only a cached view", SuspendWhenHiddenIsLogical),
     ("Idle unload is cancellable cached and lazily resumable", IdleUnloadIsPolicyDriven),
+    ("Idle unload session resumes real worker without stale presentation failure", IdleUnloadSessionResumes),
     ("Force reload retires a healthy worker and restores lifecycle", ForceReloadRestoresLifecycle),
     ("Force reload clears suspended snapshots and stale input authority", ForceReloadClearsCachedAuthority),
     ("Force reload drains a hung admitted action and restores lifecycle", ForceReloadDrainsHungAction),
@@ -177,6 +234,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protocol-v37 poster and ordinary action surfaces resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
     ("Overflow wrapping crosses the generic Bridge render-style boundary", OverflowWrapRenderStyle),
+    ("Grouped collection headers resolve shared section typography", GroupHeaderRenderStyle),
     ("Protocol-v41 Select nodes resolve bridge render roles", SelectRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
@@ -229,7 +287,7 @@ return failures.Count == 0 ? 0 : 1;
 
 static Task ConfiguredSettingsIcons()
 {
-    var catalog = BridgeCatalog.Load(Path.Combine(FindRepositoryRoot(), "src", "OverlayHost", "out", "Release", "widget-catalog.json"));
+    var catalog = BridgeCatalog.Load(Path.Combine(VerificationInstallation.Root, "widget-catalog.json"));
     var settings = catalog.GetConfigured("settings");
     var descriptor = settings.PublicDescriptor();
     Assert.Equal(6, descriptor.IconAssets.Count);
@@ -292,7 +350,17 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
+        _ => string.Equals(instance, "pinned-presenter.instance", StringComparison.Ordinal)
+            ? new PinnedPresenterBridgeWidget()
+            : string.Equals(instance, "pinned-actions.instance", StringComparison.Ordinal)
+            ? new PinnedActionBridgeWidget()
+            : string.Equals(instance, "discovered.instance", StringComparison.Ordinal)
+            ? new DiscoveredBridgeWidget()
+            : string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)
+            ? new IndexedOwnedBridgeProbeWidget()
+            : string.Equals(instance, "indexed-real.instance", StringComparison.Ordinal)
+            ? new IndexedBridgeProbeWidget()
+            : string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
             ? new VirtualCollectionBridgeWidget()
             : string.Equals(instance, "background-surface-test.instance", StringComparison.Ordinal)
                 ? new BackgroundSurfaceBridgeFixtureWidget()
@@ -829,7 +897,12 @@ static async Task DiagnosticsAreSettingsOnly()
         _ => ValueTask.FromResult(WidgetRail.PlatformDiagnostics.PlatformDiagnosticsSnapshot.Unavailable()),
         (_, _) => ValueTask.FromResult(PlatformAuthorityRecoveryRetryResult.Refused("test_refused")),
         new WidgetProcessCompanionContext(
-            WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null));
+            WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null),
+        settingsRoot: Path.Combine(Path.GetTempPath(), "wrail-isolated-settings-profile"));
+    var settingsIndex = companion.WorkerArguments.ToList().IndexOf("--settings-root");
+    Assert.True(settingsIndex >= 0, "Trusted Settings worker must receive the Bridge's active settings root.");
+    Assert.Equal(Path.GetFullPath(Path.Combine(Path.GetTempPath(), "wrail-isolated-settings-profile")),
+        companion.WorkerArguments[settingsIndex + 1]);
     var pidIndex = companion.WorkerArguments.ToList().IndexOf("--diagnostics-server-pid");
     Assert.True(pidIndex >= 0 && pidIndex + 1 < companion.WorkerArguments.Count,
         "Diagnostics companion omitted its kernel-verifiable server PID.");
@@ -2074,6 +2147,10 @@ static async Task TrustedArtworkDemandIsExact()
     await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
     try
     {
+        var startupCatalog = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(BridgeMessageTypes.Widgets, startupCatalog.Type);
+        Assert.Equal(0, backend.AppLibraryRefreshCalls);
+        Assert.Equal(0, backend.AppLibraryReadCalls);
         var lifecycle = await client.RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
@@ -2100,27 +2177,35 @@ static async Task TrustedArtworkDemandIsExact()
             firstHandle.StartsWith("library.art.", StringComparison.Ordinal),
             "Worker snapshot did not carry one bounded opaque artwork handle.");
         Assert.Equal(0, backend.AppLibraryIconCalls);
-        Assert.Equal(4, backend.AppLibraryRefreshCalls);
+        Assert.Equal(3, backend.AppLibraryRefreshCalls);
         Assert.Equal(2, backend.AppLibraryReadCalls);
         var launched = await client.RequestAsync(
             BridgeMessageTypes.Action,
             new BridgeActionRequest(
                 "test-widget", new WidgetActionEvent("artwork.launch", "artwork.launch")));
         Assert.Equal(BridgeMessageTypes.Acknowledged, launched.Type);
+        await WaitUntilAsync(() => backend.AppLibraryLaunchCalls == 1, TimeSpan.FromSeconds(2));
         Assert.Equal(1, backend.AppLibraryLaunchCalls);
         Assert.Equal("provider-one", backend.LastLaunchedAppId);
 
+        var invalidDemand = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", firstHandle,
+                initialRuntimeGeneration, initialPresentationGeneration, new string('x', 65)));
+        Assert.Equal(BridgeMessageTypes.Error, invalidDemand.Type);
+        Assert.Equal(0, backend.AppLibraryIconCalls);
         var resolved = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
             new BridgeArtworkRequest(
                 "test-widget", firstHandle,
-                initialRuntimeGeneration, initialPresentationGeneration));
+                initialRuntimeGeneration, initialPresentationGeneration, "demand-1"));
         Assert.Equal(BridgeMessageTypes.Acknowledged, resolved.Type);
         await iconStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var concurrent = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(BridgeMessageTypes.Widgets, concurrent.Type);
         releaseIcon.TrySetResult();
         var artwork = await client.ReadEventAsync(BridgeMessageTypes.Artwork);
+        Assert.Equal("demand-1", artwork.Payload.GetProperty("demandId").GetString());
         Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
         Assert.Equal(png, artwork.Payload.GetProperty("contentBase64").GetString());
         Assert.Equal(initialRuntimeGeneration,
@@ -3457,7 +3542,7 @@ static async Task CatalogCompletenessRecovery()
 static async Task ColdInstalledCatalogDoesNotBlockBridgeReadiness()
 {
     var trustedCatalogPath = Path.Combine(
-        FindRepositoryRoot(), "src", "OverlayHost", "out", "Release", "widget-catalog.json");
+        VerificationInstallation.Root, "widget-catalog.json");
     Assert.True(File.Exists(trustedCatalogPath),
         "The coherent bundled catalog fixture was not built before the startup gate.");
     using var installedFiles = TemporaryCatalog.Create(
@@ -4363,7 +4448,10 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(1.5d, response.Payload.GetProperty("widgetAnimationSpeed").GetDouble());
     Assert.Equal(false, response.Payload.GetProperty("animateWidgetModals").GetBoolean());
     var shellStyles = response.Payload.GetProperty("shellStyles");
-    Assert.Equal(12, shellStyles.EnumerateObject().Count());
+    Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected",
+        "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph",
+        "status", "tray-clock", "tray-date", "tray-status-icon" }.Order(StringComparer.Ordinal),
+        shellStyles.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.True(shellStyles.GetProperty("tray-item:focused")
         .TryGetProperty("outline-color", out _), "Focused tray style was not resolved.");
     Assert.Equal(0.9d, response.Payload.GetProperty("displayScales").GetProperty("monitor-a")
@@ -4532,6 +4620,56 @@ static async Task SuspendWhenHiddenIsLogical()
     Assert.Equal(1, harness.Server.RunningWorkerCount);
 }
 
+static async Task IdleUnloadSessionResumes()
+{
+    using var temporary = TemporaryCatalog.Create(residencyPolicy: new WidgetResidencyPolicy
+    {
+        Mode = WidgetResidencyPolicies.UnloadAfterIdle,
+        IdleSeconds = WidgetResidencyPolicies.MinimumIdleSeconds,
+    });
+    var pipe = $"wrail-session-idle-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipe, BridgeCatalog.Load(temporary.Path), 64 * 1024);
+    var serving = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using (var session = await WidgetPresentationSession.ConnectAsync(pipe,
+        new WidgetPresentationSessionOptions { MaximumMessageBytes = 64 * 1024 }))
+    {
+        await session.ListWidgetsAsync();
+        var target = session.GetTarget("test-widget");
+        var first = await session.EstablishPresentationAsync(target, WidgetLifecycleState.Interactive);
+        for (var i = 0; i < 3; ++i) first = await ActAndAwaitPublicationAsync(first, i + 1);
+        for (var i = 0; i < 3; ++i) first = await session.RefreshAsync(first.Authority);
+        await session.SetLifecycleAsync(target, WidgetLifecycleState.Background);
+        await WaitUntilAsync(() => server.RunningWorkerCount == 0,
+            TimeSpan.FromSeconds(WidgetResidencyPolicies.MinimumIdleSeconds + 3));
+        var resumed = await session.EstablishPresentationAsync(target, WidgetLifecycleState.Interactive);
+        Assert.True(resumed.Authority.SessionGeneration > first.Authority.SessionGeneration,
+            "Real worker restart did not retire old presentation authority.");
+        Assert.True(resumed.Authority.SnapshotSequence < first.Authority.SnapshotSequence,
+            "Fixture must exercise actual worker sequence reset.");
+        Assert.True(session.GetState("test-widget")!.Failure is null,
+            "Idle restart produced a stale-snapshot error.");
+        var stale = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.RefreshAsync(first.Authority));
+        Assert.Equal("presentation_stale", stale.Code);
+        // Reopening must restore live updates, not just fetch one fresh checkpoint.
+        // The restarted worker's first invalidation is below the old run's revision.
+        // No lifecycle change or explicit refresh may rescue this action.
+        var updated = await ActAndAwaitPublicationAsync(resumed, 10);
+        Assert.Equal("unknown", FindNode(updated.Snapshot.Root, "busy-button").Text);
+
+        async Task<WidgetPresentationFrame> ActAndAwaitPublicationAsync(WidgetPresentationFrame displayed, long sequence)
+        {
+            var changed = WaitForPresentationAsync(session, state => state.LastGood is { } next &&
+                next.Authority.SessionGeneration == displayed.Authority.SessionGeneration &&
+                next.Authority.SnapshotSequence > displayed.Authority.SnapshotSequence);
+            await session.SendActionAsync(displayed, new WidgetActionEvent("refresh", "button",
+                Sequence: sequence, MonotonicTimestampMicroseconds: sequence * 1000,
+                InputScopeId: displayed.Authority.ActiveInputScopeId));
+            return (await changed).LastGood!;
+        }
+    }
+    await serving.WaitAsync(TimeSpan.FromSeconds(3));
+}
+
 static async Task IdleUnloadIsPolicyDriven()
 {
     var policy = new WidgetResidencyPolicy
@@ -4547,6 +4685,8 @@ static async Task IdleUnloadIsPolicyDriven()
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
     var first = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         firstResponse.Payload.GetProperty("snapshot").GetRawText()));
+    var firstRun = firstResponse.Payload.GetProperty("workerRun").Deserialize<BridgeWorkerRun>(BridgeJson.Options)!;
+    Assert.True(firstRun.RegistryGeneration > 0 && firstRun.StartOrdinal > 0, "Bridge stamps the actual worker run.");
     Assert.Equal(1, harness.Server.RunningWorkerCount);
 
     _ = await harness.Client.RequestAsync(
@@ -4572,6 +4712,7 @@ static async Task IdleUnloadIsPolicyDriven()
     var cached = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         cachedResponse.Payload.GetProperty("snapshot").GetRawText()));
     Assert.Equal(first.Sequence, cached.Sequence);
+    Assert.Equal(firstRun, cachedResponse.Payload.GetProperty("workerRun").Deserialize<BridgeWorkerRun>(BridgeJson.Options)!);
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 
     _ = await harness.Client.RequestAsync(
@@ -4579,11 +4720,23 @@ static async Task IdleUnloadIsPolicyDriven()
         new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
     Assert.Equal(1, harness.Server.RunningWorkerCount);
     Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
+    // A lifecycle-only restart has not produced a new tree. Retaining that
+    // tree must retain its old run identity, even though a new process exists.
+    _ = await harness.Client.RequestAsync(BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Background));
+    var retainedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(firstRun, retainedResponse.Payload.GetProperty("workerRun").Deserialize<BridgeWorkerRun>(BridgeJson.Options)!);
+    _ = await harness.Client.RequestAsync(BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
     var resumedResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
     var resumed = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         resumedResponse.Payload.GetProperty("snapshot").GetRawText()));
     Assert.Equal(first.WidgetInstanceId, resumed.WidgetInstanceId);
+    var resumedRun = resumedResponse.Payload.GetProperty("workerRun").Deserialize<BridgeWorkerRun>(BridgeJson.Options)!;
+    Assert.Equal(firstRun.RegistryGeneration, resumedRun.RegistryGeneration);
+    Assert.True(resumedRun.StartOrdinal > firstRun.StartOrdinal, "Idle restart advances run identity independently of package identity.");
     // Leave a fresh idle timer pending. Harness disposal must cancel it,
     // serialize with teardown, and release the resumed worker without waiting
     // for the manifest duration.
@@ -4783,6 +4936,14 @@ static async Task SnapshotAndQuickAction()
         new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Acknowledged, activation.Type);
 
+    // A lifecycle transition withdraws the prior presentation. Admit the
+    // current Visible snapshot before sending controller input against it.
+    snapshotResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, snapshotResponse.Type);
+    snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        snapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
+
     var acknowledgement = await harness.Client.RequestAsync(
         BridgeMessageTypes.ControllerInput,
         new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
@@ -4791,8 +4952,10 @@ static async Task SnapshotAndQuickAction()
             ControllerInputContext.DashboardQuickAction,
             Sequence: 7,
             MonotonicTimestampMicroseconds: 1000,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence)));
-    Assert.Equal(BridgeMessageTypes.ControllerInputResult, acknowledgement.Type);
+    Assert.True(acknowledgement.Type == BridgeMessageTypes.ControllerInputResult,
+        "Dashboard input failed: " + acknowledgement.Payload.GetRawText());
     Assert.True(acknowledgement.Payload.GetProperty("handled").GetBoolean(),
         "Expected dashboard quick action to be handled.");
     var invalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
@@ -4806,6 +4969,7 @@ static async Task SnapshotAndQuickAction()
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 8,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence,
             Origin: ControllerInputOrigin.AccessibilityAutomation)));
     Assert.Equal(BridgeMessageTypes.ControllerInputResult, automation.Type);
@@ -4822,6 +4986,7 @@ static async Task SnapshotAndQuickAction()
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 7,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence)));
     Assert.Equal(BridgeMessageTypes.Error, replay.Type);
     var stale = await harness.Client.RequestAsync(
@@ -4831,6 +4996,7 @@ static async Task SnapshotAndQuickAction()
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 9,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence + 1)));
     Assert.Equal(BridgeMessageTypes.Error, stale.Type);
 
@@ -4838,6 +5004,12 @@ static async Task SnapshotAndQuickAction()
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
     Assert.Equal(BridgeMessageTypes.Acknowledged, interactive.Type);
+
+    snapshotResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, snapshotResponse.Type);
+    snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        snapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
 
     var shortcut = await harness.Client.RequestAsync(
         BridgeMessageTypes.ControllerInput,
@@ -5523,7 +5695,7 @@ static async Task VirtualCollectionWindowCrossesBridge()
     Assert.Equal(BridgeMessageTypes.Snapshot, firstResponse.Type);
     var first = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         firstResponse.Payload.GetProperty("snapshot").GetRawText()));
-    Assert.Equal(ProtocolConstants.CollectionResetGenerationVersion, first.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.CursorRetentionVersion, first.ProtocolVersion);
     Assert.Equal(1L, first.Root.CollectionGeneration);
     Assert.Equal(1L, first.Root.CollectionResetGeneration);
     Assert.Equal(32, first.Root.Children.Count);
@@ -5788,6 +5960,22 @@ static Task OverflowWrapRenderStyle()
     Assert.Equal("anywhere", styles["diagnostic"].Base["overflow-wrap"].Text);
     Assert.Equal(WrssValueKind.Keyword,
         styles["diagnostic"].Base["overflow-wrap"].Kind);
+    return Task.CompletedTask;
+}
+
+static Task GroupHeaderRenderStyle()
+{
+    var snapshot = new WidgetView(UI.Text("Fixture", "fixture")).CreateSnapshot("bridge.group-header", 1);
+    snapshot = snapshot with { Root = new ViewNode { Id = "grouped", Kind = ViewNodeKind.IndexedCollection,
+        IndexedGroups = [new("first", "Recommendations", 1)] } };
+    var compiled = WrssThemeCompiler.Compile([WrssParser.Parse(
+        ".wrail-section-header__title { color: #123456; font-size: 21px; font-weight: 500; }",
+        "group-header.wrss").Document]);
+    Assert.True(compiled.IsValid, "Shared group header fixture must compile.");
+    var styles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    Assert.Equal("#123456", styles["grouped"].GroupHeader!["color"].Text);
+    Assert.Equal(21d, styles["grouped"].GroupHeader!["font-size"].Number!.Value);
+    Assert.Equal(1, styles.Count);
     return Task.CompletedTask;
 }
 
@@ -6165,7 +6353,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
 {
     if (!OperatingSystem.IsWindows()) return;
     var catalogPath = Path.GetFullPath(
-        Path.Combine("src", "OverlayHost", "out", "Release", "widget-catalog.json"));
+        Path.Combine(VerificationInstallation.Root, "widget-catalog.json"));
     var catalog = BridgeCatalog.Load(catalogPath);
     var descriptor = catalog.Widgets.Single(widget => widget.Id == "embedded-media-sample");
     var pipeName = $"wrail-embedded-media-sample-{Guid.NewGuid():N}";

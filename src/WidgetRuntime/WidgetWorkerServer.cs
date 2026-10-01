@@ -71,6 +71,8 @@ internal sealed class WidgetWorkerServer
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         WidgetWorkerNotificationLane? notifications = null;
+        WidgetIndexedRangeLane? indexedRanges = null;
+        WidgetIndexedArtworkLane? indexedArtwork = null;
         await using var pipe = new NamedPipeClientStream(
             ".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -107,6 +109,13 @@ internal sealed class WidgetWorkerServer
                 AllowSynchronousContinuations = false,
             });
             Exception? readerFailure = null;
+            void ReadLaneFailed(Exception exception)
+            {
+                Interlocked.CompareExchange(ref readerFailure, exception, null);
+                requestLoopCancellation.Cancel();
+            }
+            indexedRanges = new(_widget, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
+            indexedArtwork = new(_widget, SendEncodedArtworkAsync, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
             var pendingRequests = 0;
             var stopQueued = false;
             var processor = ProcessRequestsAsync(
@@ -151,6 +160,66 @@ internal sealed class WidgetWorkerServer
                                 new ErrorPayload("worker_stopping", "Worker shutdown is already queued."),
                                 requestLoopCancellation.Token)
                             .ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (request.Type is MessageTypes.ReadIndexedRange or MessageTypes.AcquireIndexedRange or MessageTypes.CancelIndexedRange)
+                    {
+                        try
+                        {
+                            var rangeRequest = RuntimeJson.FromElement<IndexedCollectionRangeRequest>(request.Payload);
+                            if (request.Type == MessageTypes.CancelIndexedRange)
+                            {
+                                var cancelled = indexedRanges.Cancel(rangeRequest);
+                                await ReplyAsync(MessageTypes.Acknowledged, request.RequestId, new { cancelled }, requestLoopCancellation.Token).ConfigureAwait(false);
+                            }
+                            else if (!indexedRanges.TryRead(request.RequestId, rangeRequest, out var code, request.Type == MessageTypes.AcquireIndexedRange))
+                                await SendAsync(WidgetIndexedRangeLane.Error(request.RequestId, code, "The indexed range demand was not admitted."), requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
+                        catch (Exception exception) when (exception is ArgumentException or JsonException or ProtocolValidationException)
+                        {
+                            await SendAsync(WidgetIndexedRangeLane.Error(request.RequestId, "indexed_range_invalid", "The indexed range request is invalid."), requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
+                        continue;
+                    }
+
+                    if (request.Type is MessageTypes.ResolveIndexedArtwork or MessageTypes.CancelIndexedArtwork)
+                    {
+                        try
+                        {
+                            if (request.Type == MessageTypes.CancelIndexedArtwork)
+                            {
+                                var cancel = RuntimeJson.FromElement<CancelIndexedArtworkPayload>(request.Payload);
+                                await ReplyAsync(MessageTypes.Acknowledged, request.RequestId,
+                                    new { cancelled = indexedArtwork.Cancel(cancel.RequestId) }, requestLoopCancellation.Token).ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                var artwork = RuntimeJson.FromElement<ResolveIndexedArtworkPayload>(request.Payload);
+                                if (!indexedArtwork.TryRead(request.RequestId, artwork, out var code))
+                                    await SendAsync(WidgetIndexedRangeLane.Error(request.RequestId, code, "The indexed artwork request was not admitted."), requestLoopCancellation.Token).ConfigureAwait(false);
+                            }
+                        }
+                        catch (Exception error) when (error is ArgumentException or JsonException)
+                        {
+                            await SendAsync(WidgetIndexedRangeLane.Error(request.RequestId, "indexed_artwork_invalid", "The indexed artwork request is invalid."), requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
+                        continue;
+                    }
+
+                    if (request.Type == MessageTypes.ReleaseIndexedRange)
+                    {
+                        try
+                        {
+                            var release = RuntimeJson.FromElement<ReleaseIndexedRangePayload>(request.Payload);
+                            if (!Guid.TryParseExact(release.LeaseId, "N", out _)) throw new ArgumentException("Invalid indexed lease identity.");
+                            await ReplyAsync(MessageTypes.Acknowledged, request.RequestId,
+                                new { released = _widget.ReleaseIndexedRange(release.LeaseId) }, requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
+                        catch (Exception error) when (error is ArgumentException or JsonException)
+                        {
+                            await SendAsync(WidgetIndexedRangeLane.Error(request.RequestId, "indexed_lease_invalid", "The indexed lease reference is invalid."), requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
                         continue;
                     }
 
@@ -208,6 +277,7 @@ internal sealed class WidgetWorkerServer
                     {
                         if (request.Type == MessageTypes.Stop)
                         {
+                            await Task.WhenAll(indexedRanges.CloseAsync(), indexedArtwork.CloseAsync()).ConfigureAwait(false);
                             await ReplyAsync(
                                     MessageTypes.Acknowledged, request.RequestId, new { },
                                     loopCancellation.Token)
@@ -244,6 +314,12 @@ internal sealed class WidgetWorkerServer
         }
         finally
         {
+            Exception? indexedDrainFailure = null;
+            try
+            {
+                await Task.WhenAll(indexedRanges?.CloseAsync() ?? Task.CompletedTask, indexedArtwork?.CloseAsync() ?? Task.CompletedTask).ConfigureAwait(false);
+            }
+            catch (Exception exception) { indexedDrainFailure = exception; }
             try
             {
                 using var shutdownTimeout =
@@ -290,6 +366,7 @@ internal sealed class WidgetWorkerServer
                 _dashboardGestureActivations.Clear();
                 _channel = null;
             }
+            if (indexedDrainFailure is not null) throw indexedDrainFailure;
         }
     }
 
@@ -422,6 +499,19 @@ internal sealed class WidgetWorkerServer
                     Payload = document.RootElement.Clone(),
                 }, cancellationToken).ConfigureAwait(false);
             }
+            break;
+        case MessageTypes.IndexedInput:
+            var indexedInput = RuntimeJson.FromElement<IndexedInputPayload>(request.Payload);
+            IndexedCollectionInputContract.ValidateContext(indexedInput.Correlation);
+            var indexedAdmission = _widget.AdmitIndexedInput(indexedInput.Input, indexedInput.Correlation);
+            await ReplyAsync(MessageTypes.Acknowledged, request.RequestId,
+                new IndexedInputAdmissionPayload(indexedAdmission), cancellationToken).ConfigureAwait(false);
+            break;
+        case MessageTypes.PinnedAction:
+            var pinnedAction = RuntimeJson.FromElement<PinnedActionInput>(request.Payload);
+            var pinnedAdmission = _widget.AdmitPinnedAction(pinnedAction);
+            await ReplyAsync(MessageTypes.Acknowledged, request.RequestId,
+                new PinnedActionResult(pinnedAdmission), cancellationToken).ConfigureAwait(false);
             break;
         case MessageTypes.Action:
             var action = RuntimeJson.FromElement<WidgetActionEvent>(request.Payload);
@@ -557,6 +647,11 @@ internal sealed class WidgetWorkerServer
             RequestId = requestId,
             Payload = RuntimeJson.ToElement(payload),
         }, cancellationToken);
+
+    private Task SendEncodedArtworkAsync(long requestId, WidgetEncodedArtwork? artwork, CancellationToken cancellationToken) =>
+        artwork is null
+            ? ReplyAsync(MessageTypes.Artwork, requestId, new EncodedArtworkPayload(null, null), cancellationToken)
+            : SendArtworkAsync(requestId, WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType), artwork.Bytes, cancellationToken);
 
     private async Task SendArtworkAsync(
         long requestId,

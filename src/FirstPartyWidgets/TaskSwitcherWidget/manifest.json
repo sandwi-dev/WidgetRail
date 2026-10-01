@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.task-switcher",
   "publisher": "widgetrail.firstparty",
   "name": "Task Switcher",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

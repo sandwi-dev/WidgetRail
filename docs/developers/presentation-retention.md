@@ -35,3 +35,33 @@ authority. Measurement, painting, accessibility projection, image protection, an
 incremental invalidation use the same selection. Compositor and fallback image
 paths consume that selection; their bounded decode caches and crossfade textures
 remain separate rendering concerns.
+
+## WinUI background continuity
+
+A retaining background keeps its last decoded image until another image is ready
+for that same declared surface. Losing a source still retires its semantic selection,
+lease and pending requests, as described above. An empty default, missing artwork
+or a pending replacement does not clear the already painted background. A nonempty
+authored default can replace it after decoding. Focus fragments continue to resolve
+the current default; this pixel-retention rule applies only to backgrounds.
+
+Surface identity is scoped to the widget/runtime/presentation owner, declared input
+scope, element ID, collection-item ancestry and enclosing presentation surfaces.
+Keep a shared background surface's ID and scope stable across sections; change its
+foreground content underneath it. Playnite Home and Library declare the same
+`playnite-library.cinematic` surface for this purpose. Different surface IDs are
+independent, even when they occupy the same position. Nested surfaces never replace
+their parent's retained image. Opening a modal with a separate input scope preserves
+the declared parent surface; retiring the parent does not transfer its image to the
+modal. Removing a surface or replacing its authority releases its retained image.
+
+Set `RetainLastPresentation = false` when an empty selection should clear background
+pixels. This is a declaration policy, not a global last-background cache; no input,
+focus, data-fetch or navigation authority survives solely because pixels remain.
+
+When a navigator supplies a different input scope per page, apply that scope to
+the foreground subtree **inside** a shared background, not to its enclosing root.
+Keeping the element ID alone does not preserve ownership when its inherited scope
+changes. Playnite uses an explicit stable `playnite-library.presentation` scope
+around the cinematic surface and keeps the navigator's page scopes underneath it.
+This preserves separate page focus/scroll/action authority while artwork continues.

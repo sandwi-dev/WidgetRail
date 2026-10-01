@@ -26,6 +26,7 @@ public enum ViewNodeKind
     WindowPreview,
     ControllerGlyph,
     ModalLayer,
+    IndexedCollection,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>
@@ -373,6 +374,10 @@ public sealed record VirtualCollectionWindow
 /// <summary>A renderer-neutral node. Properties that do not apply to Kind must be null.</summary>
 public sealed record ViewNode
 {
+    /// <summary>Protocol-v60 exact indexed source; items are delivered separately on demand.</summary>
+    public IndexedCollectionDescriptor? IndexedCollection { get; init; }
+    /// <summary>Display-only contiguous groups over the existing flat query; null means ungrouped.</summary>
+    public IReadOnlyList<IndexedCollectionGroup>? IndexedGroups { get; init; }
     /// <summary>Optional host-owned, coordinated section motion.</summary>
     public WidgetTransition? Transition { get; init; }
     public required string Id { get; init; }
@@ -446,6 +451,10 @@ public sealed record ViewNode
     /// width; it never treats this value as a physical-pixel measurement.
     /// </summary>
     public double? GridMinimumColumnWidth { get; init; }
+    /// <summary>Explicit native Grid tracks; mutually exclusive with responsive grid columns.</summary>
+    public GridLayoutDefinition? GridLayout { get; init; }
+    /// <summary>Attached placement for a direct child of an explicit Grid.</summary>
+    public GridCellPlacement? GridCell { get; init; }
     /// <summary>
     /// Optional author cap on responsive columns. Omitting it lets the host use
     /// any safe count allowed by the protocol and available width.
@@ -517,6 +526,8 @@ public sealed record ViewNode
     /// extent, scrolling, clipping, focus, layout, and accessibility.
     /// </summary>
     public VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
+    /// <summary>Protocol-v59 explicit list/grid realization policy for direct keyed items.</summary>
+    public CollectionLayout? CollectionLayout { get; init; }
     /// <summary>
     /// Protocol-v14 keyed collection anchor retained at the same viewport
     /// position when children are appended, prepended, or evicted; a new
@@ -542,7 +553,7 @@ public sealed record ViewNode
     [JsonIgnore]
     public bool IsFocusable => Kind is
         ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or
-        ViewNodeKind.TextEntry or ViewNodeKind.Select;
+        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection;
 }
 
 public sealed record ViewSnapshot
@@ -590,6 +601,8 @@ public sealed record FocusGroupEntryRequest
 {
     public required long RequestId { get; init; }
     public required string GroupId { get; init; }
+    /// <summary>Optional exact lazy occurrence; otherwise enter the group's remembered/default child.</summary>
+    public IndexedCollectionFocusTarget? IndexedItem { get; init; }
 }
 
 public enum EmbeddedMediaCommand

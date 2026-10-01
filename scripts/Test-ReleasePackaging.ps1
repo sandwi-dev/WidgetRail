@@ -38,7 +38,12 @@ $desktopRoot = Join-Path $developer "dotnet/shared/Microsoft.WindowsDesktop.App/
 foreach ($file in @('System.Windows.Forms.dll', 'PresentationFramework.dll', 'Microsoft.WindowsDesktop.App.deps.json')) {
     Put (Join-Path $desktopRoot $file) 'desktop runtime fixture'
 }
-foreach ($file in $content.rootFiles) { Put (Join-Path $build $file) "fixture $file" }
+foreach ($file in $content.rootFiles) { Put (Join-Path $build "frontend/$file") "fixture $file" }
+Put (Join-Path $build 'frontend/Assets/Fonts/xbox.ttf') 'font fixture'
+Put (Join-Path $build 'frontend/Assets/Fonts/playstation.ttf') 'font fixture'
+Put (Join-Path $build 'frontend/Assets/Fonts/guide.ttf') 'font fixture'
+Put (Join-Path $build 'frontend/Assets/required-resource.xml') '<resource>must survive payload copying</resource>'
+Put (Join-Path $build 'frontend/frontend.pdb') 'symbols do not ship'
 Put (Join-Path $build 'DoNotShipTests.exe') 'test only'
 Put (Join-Path $build 'developer-machine.env') 'must not ship'
 foreach ($name in $content.hostRuntimeDirectories) {
@@ -66,13 +71,6 @@ function Assemble([string]$Out) {
     New-WidgetRailReleaseFolders -BuildRoot $build -DeveloperRoot $developer -RepositoryRoot $repository `
         -OutputRoot $Out -Version '0.1.0-preview.1' -SourceCommit ('a' * 40) -SdkVersion '0.3.0-dev' -Content $content
 }
-$nativeBuild = Get-Content -LiteralPath (Join-Path $repository 'src/OverlayHost/build.ps1') -Raw
-$hostStart = $nativeBuild.IndexOf('$hostArguments = $hostCompileArguments', [StringComparison]::Ordinal)
-$hostEnd = $nativeBuild.IndexOf('& $cl $hostArguments', $hostStart, [StringComparison]::Ordinal)
-Check ($hostStart -ge 0 -and $hostEnd -gt $hostStart) 'Production host compilation is missing.'
-$hostLink = $nativeBuild.Substring($hostStart, $hostEnd - $hostStart)
-Check ($hostLink.Contains("'/link', " + '$versionResource', [StringComparison]::Ordinal)) 'Production host omits its version resource.'
-Check ($hostLink.Contains('/Brepro', [StringComparison]::Ordinal) -and $hostLink.Contains('/PDBALTPATH:%_PDB%', [StringComparison]::Ordinal)) 'Production host omits deterministic link metadata.'
 $first = Assemble (Join-Path $fixture 'one')
 $production = Join-Path $first 'WidgetRail-0.1.0-preview.1-win-x64'
 $dev = Join-Path $first 'WidgetRail-Developer-0.1.0-preview.1-win-x64'
@@ -84,18 +82,18 @@ Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').C
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1) 'Display Profiles is missing from an edition.'
 Check (!(Test-Path (Join-Path $production 'runtime/embedded-media-sample'))) 'Developer content leaked into Production.'
 foreach ($editionRoot in @($production, $dev)) {
-    foreach ($fontFile in @('promptfont.ttf', 'LICENSE.txt', 'NOTICE.txt')) {
-        Check (Test-Path (Join-Path $editionRoot "assets/fonts/promptfont/$fontFile")) 'Controller font or attribution missing.'
+    foreach ($fontFile in @('xbox.ttf', 'playstation.ttf', 'guide.ttf')) {
+        Check (Test-Path (Join-Path $editionRoot "Assets/Fonts/$fontFile")) 'WinUI controller font missing.'
     }
-    foreach ($fontFile in @('kenney_input_xbox_series.ttf', 'kenney_input_playstation_series.ttf',
-        'kenney_input_xbox_series_map.txt', 'kenney_input_playstation_series_map.txt', 'LICENSE.txt', 'NOTICE.txt')) {
-        Check (Test-Path (Join-Path $editionRoot "assets/fonts/kenney/$fontFile")) 'Kenney controller font or attribution missing.'
-    }
+    Check (Test-Path (Join-Path $editionRoot 'Assets/required-resource.xml')) 'Required frontend XML was silently dropped.'
+    Check (!(Test-Path (Join-Path $editionRoot 'frontend.pdb'))) 'Frontend symbols leaked into release.'
+    Check (!(Test-Path (Join-Path $editionRoot 'deployment'))) 'Identity deployment payload must not ship.'
     Check ((Test-Path (Join-Path $editionRoot 'tools/wrail/templates/ControllerWidget/template.json')) -and (Test-Path (Join-Path $editionRoot 'wrail.cmd'))) 'Shared CLI or launcher missing.'
 }
 Check (!(Test-Path (Join-Path $production 'DoNotShipTests.exe')) -and !(Test-Path (Join-Path $production 'developer-machine.env')) -and
     !(Test-Path (Join-Path $production 'runtime/Bridge/Bridge.pdb'))) 'Build debris leaked into release.'
 Write-Output 'PASS edition catalogs, tools and explicit distribution roots'
+Check ((Get-Content (Join-Path $production 'release.json') -Raw | ConvertFrom-Json).packaging -ceq 'winui-unpackaged') 'Release must use unpackaged WinUI.'
 
 $second = Assemble (Join-Path $fixture 'two')
 $files = Get-ReleaseFiles $first
@@ -109,7 +107,7 @@ Fails { Assemble (Join-Path $fixture 'one') } 'An existing release was overwritt
 Test-ReleaseInventory $production
 Write-Output 'PASS immutable release destination'
 
-$hostPath = Join-Path $production 'OverlayHost.exe'
+$hostPath = Join-Path $production 'OverlayFrontend.WinUI.exe'
 $original = [IO.File]::ReadAllBytes($hostPath)
 Put $hostPath 'tampered'
 Fails { Test-ReleaseInventory $production } 'Modified executable was accepted.'
@@ -118,7 +116,7 @@ Put (Join-Path $production 'extra.txt') 'unexpected'
 Fails { Test-ReleaseInventory $production } 'Unlisted file was accepted.'
 Write-Output 'PASS output tamper and extra-file detection'
 
-$nativeInput = Join-Path $build 'OverlayHost.exe'
+$nativeInput = Join-Path $build 'frontend/OverlayFrontend.WinUI.exe'
 $original = [IO.File]::ReadAllBytes($nativeInput)
 Remove-Item -LiteralPath $nativeInput
 Fails { Assemble (Join-Path $fixture 'missing') } 'Missing native input was accepted.'
@@ -131,6 +129,12 @@ Remove-Item -LiteralPath $desktopInput
 Fails { Assemble (Join-Path $fixture 'missing-desktop') } 'Release without its declared Desktop runtime was accepted.'
 Put $desktopInput 'desktop runtime fixture'
 Write-Output 'PASS missing Desktop runtime cannot publish a release'
+$runtimeInput = Join-Path $build 'frontend/Microsoft.ui.xaml.dll'
+$runtimeBytes = [IO.File]::ReadAllBytes($runtimeInput)
+Remove-Item -LiteralPath $runtimeInput
+Fails { Assemble (Join-Path $fixture 'missing-winui-runtime') } 'Missing self-contained WinUI runtime was accepted.'
+[IO.File]::WriteAllBytes($runtimeInput, $runtimeBytes)
+Write-Output 'PASS missing self-contained WinUI runtime cannot publish a release'
 
 $originalRoots = $content.rootFiles
 $content.rootFiles = @('../outside.dll')
@@ -150,4 +154,4 @@ New-Item -ItemType Directory -Path $target | Out-Null
 New-Item -ItemType Junction -Path $junction -Target $target | Out-Null
 Fails { Assemble (Join-Path $fixture 'junction') } 'Reparse point was followed.'
 Write-Output 'PASS reparse-point rejection'
-Write-Output 'Release packaging self-test passed (9 scenarios).'
+Write-Output 'Release packaging self-test passed.'

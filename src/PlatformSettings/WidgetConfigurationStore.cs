@@ -20,7 +20,7 @@ public sealed partial class WidgetConfigurationStore
     public const int MaximumStoredDocuments = 256;
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LockRetry = TimeSpan.FromMilliseconds(40);
-    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private static readonly PlatformSettingsJsonContext JsonContext = new(CreateJsonOptions());
 
     private readonly string _root;
     private readonly string _lockFile;
@@ -47,7 +47,7 @@ public sealed partial class WidgetConfigurationStore
         try
         {
             StrictJson.RejectDuplicateProperties(bytes);
-            var document = JsonSerializer.Deserialize<WidgetConfigurationDocument>(bytes, JsonOptions)
+            var document = JsonSerializer.Deserialize(bytes, JsonContext.WidgetConfigurationDocument)
                 ?? throw new JsonException("Widget configuration document was null.");
             ValidateDocument(document, packageId, publisherId);
             return new WidgetConfigurationSnapshot(
@@ -103,7 +103,7 @@ public sealed partial class WidgetConfigurationStore
             try
             {
                 StrictJson.RejectDuplicateProperties(bytes);
-                document = JsonSerializer.Deserialize<WidgetConfigurationDocument>(bytes, JsonOptions);
+                document = JsonSerializer.Deserialize(bytes, JsonContext.WidgetConfigurationDocument);
                 if (document is null) continue;
                 ValidateIdentity(document.PackageId, document.PublisherId);
                 ValidateDocument(document, document.PackageId, document.PublisherId);
@@ -235,7 +235,7 @@ public sealed partial class WidgetConfigurationStore
         WidgetConfigurationDocument document,
         CancellationToken cancellationToken)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, JsonContext.WidgetConfigurationDocument);
         if (bytes.Length > MaximumDocumentBytes)
             throw new PlatformSettingsException(
                 "widget_configuration_too_large",

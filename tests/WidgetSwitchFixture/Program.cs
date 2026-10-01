@@ -44,7 +44,10 @@ internal static class Program
                         blockSnapshotSignal,
                         blockSnapshotRelease,
                         blockSnapshotComplete,
-                        actionSignal),
+                        actionSignal,
+                        OptionalValue(args, "--deactivation-barrier"),
+                        int.Parse(OptionalValue(args, "--initial-delay-ms") ?? "-1", CultureInfo.InvariantCulture),
+                        OptionalValue(args, "--view-kind") ?? "normal"),
                     instanceId,
                     pipeName,
                     maximumBytes,
@@ -89,7 +92,10 @@ internal static class Program
         string? blockSnapshotSignal,
         string? blockSnapshotRelease,
         string? blockSnapshotComplete,
-        string? actionSignal) : Widget
+        string? actionSignal,
+        string? deactivationBarrier,
+        int initialDelayMilliseconds,
+        string viewKind) : Widget
     {
         private readonly SurfaceDefinition _surface = ResolveSurface(instanceId);
         private bool _firstSnapshotDelayed;
@@ -97,6 +103,26 @@ internal static class Program
         private volatile bool _blockNextSnapshot;
         private long _blockedEpoch;
         private double _sliderValue = 50;
+
+        protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+        {
+            if (deactivationBarrier is null || !File.Exists(deactivationBarrier + ".arm")) return;
+            var epoch = File.ReadAllText(deactivationBarrier + ".arm");
+            File.Delete(deactivationBarrier + ".arm");
+            File.WriteAllText(deactivationBarrier + ".entered", epoch);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(transitionToken);
+            deadline.CancelAfter(TimeSpan.FromMilliseconds(1800));
+            try
+            {
+                while (!File.Exists(deactivationBarrier + ".release") || File.ReadAllText(deactivationBarrier + ".release") != epoch)
+                    await Task.Delay(10, deadline.Token).ConfigureAwait(false);
+                File.WriteAllText(deactivationBarrier + ".completed", epoch);
+            }
+            catch (OperationCanceledException) when (!transitionToken.IsCancellationRequested)
+            {
+                File.WriteAllText(deactivationBarrier + ".timed-out", epoch);
+            }
+        }
 
         public override WidgetView Render()
         {
@@ -108,10 +134,8 @@ internal static class Program
                     File.WriteAllText(
                         firstSnapshotSignal,
                         Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
-                if (_surface.FirstSnapshotDelayMilliseconds > 0)
-                {
-                    Thread.Sleep(_surface.FirstSnapshotDelayMilliseconds);
-                }
+                var delay = initialDelayMilliseconds >= 0 ? Math.Clamp(initialDelayMilliseconds, 0, 10000) : _surface.FirstSnapshotDelayMilliseconds;
+                if (delay > 0) Thread.Sleep(delay);
             }
             if (_blockNextSnapshot)
             {
@@ -132,6 +156,9 @@ internal static class Program
                     File.WriteAllText(blockSnapshotComplete,
                         $"epoch={epoch.ToString(CultureInfo.InvariantCulture)} completed");
             }
+            if (viewKind == "failure") throw new InvalidOperationException("Intentional switch fixture failure.");
+            if (viewKind == "empty") return new WidgetView(UI.Stack("intentional-empty"), Surface: _surface.Hints);
+            if (viewKind == "loading") return new WidgetView(UI.Text("Loading fixture content", "intentional-loading"), Surface: _surface.Hints);
             if (_surface.Id == "pinned-slider")
             {
                 return new WidgetView(
@@ -163,6 +190,7 @@ internal static class Program
                         .Classes("switch-button"))
                     .Classes("switch-surface", _surface.ClassName),
                 InitialFocusId: $"{_surface.Id}-ready",
+                QuickActions: [new(ControllerButton.X, "fixture.ready", "Dashboard feedback")],
                 Surface: _surface.Hints);
         }
 
@@ -190,6 +218,7 @@ internal static class Program
             }
             if (action.ActionId == "fixture.ready")
             {
+                if (actionSignal is not null) File.AppendAllText(actionSignal, "ready\n");
                 if (TryConsumeBlockEpoch(out var epoch))
                 {
                     Interlocked.Exchange(ref _blockedEpoch, epoch);

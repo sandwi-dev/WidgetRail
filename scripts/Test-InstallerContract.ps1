@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $installer = Get-Content -LiteralPath (Join-Path $repository 'eng/installer/WidgetRail.iss') -Raw
 $startup = Get-Content -LiteralPath (Join-Path $repository 'src/PlatformSettings/StartupRegistration.cs') -Raw
-$native = Get-Content -LiteralPath (Join-Path $repository 'src/OverlayHost/main.cpp') -Raw
+$native = Get-Content -LiteralPath (Join-Path $repository 'src/OverlayPlatformInterop/OverlayProcessOwner.cpp') -Raw
 function Require([bool]$Condition, [string]$Message) { if (!$Condition) { throw $Message } }
 foreach ($setting in @('PrivilegesRequired=lowest', 'UsePreviousTasks=no', 'CloseApplications=no',
     'RestartApplications=no', 'Flags: unchecked', 'AppMutex=Local\WidgetRail.OverlayHost.Running')) {
@@ -66,3 +66,10 @@ Require ($installer.Contains('if UninstallSilent then Exit;') -and
 Require ($installer.Contains('if CurUninstallStep = usPostUninstall then begin')) 'Data cleanup must follow payload removal.'
 Require ($installer.Contains('To remove saved data manually later')) 'Uninstall must explain later manual deletion.'
 Write-Output 'PASS GameInput compatibility, recovery guidance, data consent and cleanup ordering contracts'
+
+Require ($installer.Contains('\OverlayFrontend.WinUI.exe" --hidden')) 'Startup must launch the unpackaged frontend quietly.'
+Require ($installer.Contains('[Registry]') -and $installer.Contains('ValueName: "ApplicationRoot"') -and
+    $installer.Contains('Filename: "{app}\versions\{#PayloadId}\OverlayFrontend.WinUI.exe"')) 'Inno must register the selected payload and launch its executable directly.'
+Require (!$installer.Contains('shell:AppsFolder') -and !$installer.Contains('RunDeployment') -and
+    !$builder.Contains('SignedIdentityPackage') -and !$builder.Contains('identity.msix')) 'Inno must not require application package identity or trusted application signing.'
+Write-Output 'PASS unpackaged WinUI executable and installation registry contracts'

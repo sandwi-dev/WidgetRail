@@ -50,7 +50,7 @@ You can reopen connection settings through **Menu → Playnite connection**.
 Use the **Home** and **Library** navigation tabs to switch between peer destinations.
 Each keeps its own game focus, filters, and scroll position. Home retains the last
 focused game summary and artwork while using the tray, other controls, or details;
-it falls back if that game leaves the current view, including cursor eviction. Home shows installed
+it falls back if that game leaves the current view, including query replacement. Home shows installed
 games; Library includes uninstalled games too. Selecting either destination enters
 its game list. Game details appears inside the widget with the page dimmed behind
 it; B restores the selected game. Each opening starts at Play/Install, while
@@ -111,3 +111,17 @@ pwsh -NoProfile -File .\samples\PlayniteLibraryWidget\Build-CommunityPackage.ps1
 
 The package is written to `artifacts/community-addons/playnite-library/` without installing it.
 See [development notes](DEVELOPMENT.md) for the bridge contract, state ownership, caching, and package structure.
+
+### Indexed Home and Browse declarations
+
+Home and Browse publish separate frozen indexed queries. The native frontend
+owns realization, scrolling and remembered item focus; requesting a range never
+walks or paginates the provider again. Home keeps manual entries first, followed
+by title matches, the provider's installed-game order, and referenced unavailable
+entries. Artwork and actions retain the exact query item, not a position in a
+moving cursor window. Content-only changes keep query identity; changes in
+membership or order publish a new query. Closing details requests the exact
+logical occurrence that opened it, if that query still exists.
+
+These declarations require an indexed-collection frontend. Do not install this
+migration package into the older cursor-only native frontend.

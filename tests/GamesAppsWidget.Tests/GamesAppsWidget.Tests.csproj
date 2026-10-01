@@ -17,4 +17,10 @@
     <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsLibraryState.cs" Link="source\GamesAppsLibraryState.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsLibraryStore.cs" Link="source\GamesAppsLibraryStore.cs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\RendererFixtureExporter.cs" Link="fixture\RendererFixtureExporter.cs" />
+    <Compile Include="..\Shared\RendererFixtureBridgeProtocolException.cs" Link="fixture\RendererFixtureBridgeProtocolException.cs" />
+    <Compile Include="..\..\src\WidgetBridge.Contracts\BridgeRenderStyles.cs" Link="fixture\BridgeRenderStyles.cs" />
+    <Compile Include="..\..\src\WidgetBridge\BridgeRenderStyleResolver.cs" Link="fixture\BridgeRenderStyleResolver.cs" />
+  </ItemGroup>
 </Project>

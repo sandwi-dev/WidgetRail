@@ -7,7 +7,7 @@ public sealed record MusicQueueAddition(MusicState State, MusicItem[] OriginalQu
 public sealed record PlayerState(string TrackId = "", bool Playing = false, bool Buffering = false,
     double Position = 0, double Duration = 0, double Volume = .5, string? Error = null);
 public sealed record MusicState(bool Connected, IReadOnlyList<MusicItem> Queue, int Index,
-    bool Shuffle, string Repeat, PlayerState Player)
+    bool Shuffle, string Repeat, PlayerState Player, string? PlaybackNotice = null)
 {
     public static MusicState Empty { get; } = new(false, [], -1, false, "off", new());
     public MusicItem? Current => Index >= 0 && Index < Queue.Count ? Queue[Index] : null;
@@ -23,6 +23,7 @@ public interface IMusicService : IAsyncDisposable
     Task DisconnectAsync(CancellationToken token);
     Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token);
     Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token);
+    Task SelectQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token);
     Task RadioAsync(MusicItem song, CancellationToken token);
     Task<PlayNextResult> PlayNextAsync(MusicItem item, CancellationToken token);
     Task CommandAsync(string command, double? value, CancellationToken token);

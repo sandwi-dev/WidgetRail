@@ -1,4 +1,5 @@
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.Samples.SpotifyWidget;
 
@@ -12,28 +13,16 @@ internal sealed record SpotifyPlaylistSelection(
 
 internal sealed record SpotifyPlaylistDetailPresentation(
     SpotifyPlaylistSelection Selection,
-    SpotifyCursorPresentation<SpotifyMediaCollectionItem> Items);
+    SpotifyDiscoveredPresentation Items);
 
 /// <summary>
-/// One cursor snapshot and its SDK-projected viewport shell from the same
-/// resource revision. Presentation replaces only the immutable child rows.
+/// One immutable discovered descriptor and its lazy native collection shell.
+/// Rendering never reads a mutable viewport window or materializes all rows.
 /// </summary>
-internal sealed record SpotifyCursorPresentation<TItem>(
-    WidgetCursorResourceSnapshot<TItem> Snapshot,
-    ScrollElement Viewport) where TItem : notnull
+internal sealed record SpotifyDiscoveredPresentation(IndexedCollectionElement Collection)
 {
-    internal ScrollElement Present(IReadOnlyList<WidgetElement> children) =>
-        Viewport with { Children = children };
-
-    internal static SpotifyCursorPresentation<TItem> Capture(
-        WidgetCursorResource<TItem> resource,
-        string operationKey,
-        string scrollId)
-    {
-        var capture = resource.Capture();
-        return new(capture.Snapshot, capture.Present(UI.VerticalScroll(scrollId, [])));
-    }
-
+    internal IndexedCollectionDescriptor Source => Collection.Source;
+    internal DiscoveredCollectionState State => Source.Discovery!;
 }
 
 internal readonly record struct SpotifyPresentationRevision(
@@ -57,7 +46,7 @@ internal sealed record SpotifyPresentationState(
     bool SetupBusy,
     WidgetNavigationSnapshot<SpotifyRoute> Navigation,
     WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> Queue,
-    SpotifyCursorPresentation<SpotifyPlaylistCollectionItem> Playlists,
+    SpotifyDiscoveredPresentation Playlists,
     SpotifyPlaylistDetailPresentation? PlaylistDetail,
     SpotifyDevicesSummary? Devices,
     SpotifyLocalPlaybackSummary? LocalPlayback,
@@ -66,4 +55,8 @@ internal sealed record SpotifyPresentationState(
     bool PageLoading,
     string? PageError,
     SpotifySearchPresentation? Search = null,
-    ToastElement? ActionToast = null);
+    ToastElement? ActionToast = null)
+{
+    internal IndexedCollectionElement? IndexedQueue { get; init; }
+    internal FocusGroupEntryRequest? CollectionEntry { get; init; }
+}

@@ -1,0 +1,44 @@
+<Page
+    x:Class="WidgetRail.OverlayFrontend.WinUI.Validation.CollectionValidationPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Page.Resources>
+        <!-- The closed, trusted runtime binding projects generic keyed entries.
+             No XAML or property paths are received from a worker. -->
+        <DataTemplate x:Key="ItemTemplate">
+            <ItemContainer AutomationProperties.Name="{Binding Value.Title, Mode=OneWay}">
+                <Border Width="140" Height="160" Padding="12"
+                        CornerRadius="{ThemeResource ControlCornerRadius}"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <TextBlock Text="{Binding Value.Title, Mode=OneWay}" TextWrapping="Wrap"
+                               Style="{StaticResource BodyTextBlockStyle}" />
+                </Border>
+            </ItemContainer>
+        </DataTemplate>
+    </Page.Resources>
+    <Grid RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button AutomationProperties.AutomationId="Collection.Append" Content="Append page" Click="AppendClicked" />
+            <Button AutomationProperties.AutomationId="Collection.Prepend" Content="Prepend page" Click="PrependClicked" />
+            <Button AutomationProperties.AutomationId="Collection.Refresh" Content="Update first item" Click="RefreshClicked" />
+            <Button AutomationProperties.AutomationId="Collection.Inspect" Content="Inspect realization" Click="InspectClicked" />
+        </StackPanel>
+        <ItemsView x:Name="CollectionView" Grid.Row="1" AutomationProperties.AutomationId="Collection.View"
+                   AutomationProperties.Name="Virtualized collection validation"
+                   ItemTemplate="{StaticResource ItemTemplate}" SelectionMode="None"
+                   IsItemInvokedEnabled="True" ItemInvoked="ItemInvoked">
+            <ItemsView.Layout>
+                <UniformGridLayout MinItemWidth="140" MinItemHeight="160" MinRowSpacing="8" MinColumnSpacing="8" />
+            </ItemsView.Layout>
+        </ItemsView>
+        <StackPanel Grid.Row="2">
+            <TextBlock x:Name="StatusText" AutomationProperties.AutomationId="Collection.Status" />
+            <TextBlock x:Name="RealizedText" AutomationProperties.AutomationId="Collection.Realized" />
+        </StackPanel>
+    </Grid>
+</Page>

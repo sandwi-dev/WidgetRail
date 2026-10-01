@@ -1,0 +1,19 @@
+WidgetRail WinUI controller font subsets
+
+These generated subsets preserve the controller outlines from Kenney Input
+Prompts (CC0 1.0) and PromptFont (SIL Open Font License 1.1). The Guide subset
+remains under SIL OFL 1.1 and retains the original copyright notices:
+Copyright 2018-2026, Yukari Hafner; Copyright 2011-2016, Severin Meyer.
+Its modified font family is WidgetRail Controller Guide.
+The Kenney subsets remain under CC0 1.0.
+Their outlines are scaled and
+centered within the font em to match WidgetRail's controller prompt display
+contract (88 percent optical fit; 1.35-em shoulder/trigger cells).
+
+Original source fonts, licenses and notices remain in ../kenney and ../promptfont.
+The application distributes those licenses and notices alongside this notice.
+No fonts are registered with Windows. WinUI loads the private packaged subsets.
+
+Regenerate with scripts/Generate-WinUiControllerFonts.py and fonttools 4.66.0.
+inventory.json records source/output hashes and the included glyph bounds.
+The generator and Python are not application or ordinary build dependencies.

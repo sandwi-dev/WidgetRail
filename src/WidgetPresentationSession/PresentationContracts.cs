@@ -1,17 +1,33 @@
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
-using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession;
 
 public sealed record WidgetPresentationSessionOptions
 {
+    // Installed only by the trusted process owner, not exposed to widget code or
+    // arbitrary pipe clients. Invoked at the serialized admitted-input write.
+    internal Action<string>? BeforeInputWrite { get; init; }
     public string ClientName { get; init; } = "ManagedPresentationHost";
+    /// <summary>Opt in only when the frontend implements permission renewal and native capture retirement.</summary>
+    public bool WindowPreviews { get; init; }
+    /// <summary>Advertise only controller behaviors this frontend actually consumes.</summary>
+    public bool ExclusiveControllerControl { get; init; }
+    public bool HeldDpadScroll { get; init; }
+    /// <summary>True only when the trusted Settings startup backend launches this frontend.</summary>
+    public bool StartupRegistration { get; init; }
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public int MaximumMessageBytes { get; init; } = BridgeProtocol.DefaultMaximumMessageBytes;
     public int MaximumPendingRequests { get; init; } = 32;
     public int MaximumPendingArtworkRequests { get; init; } = 32;
+    /// <summary>Bounds local artwork demand, including admission and completion. Does not cancel server-side decoding.</summary>
+    public TimeSpan ArtworkTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public int MaximumPendingIndexedRanges { get; init; } = 4;
+    /// <summary>Provider range budget; independent of ordinary action/IPC timeouts.</summary>
+    public TimeSpan IndexedRangeTimeout { get; init; } = TimeSpan.FromSeconds(35);
+    /// <summary>Bounds media bundle/event waits independently of artwork decoding.</summary>
+    public TimeSpan EmbeddedMediaTimeout { get; init; } = TimeSpan.FromSeconds(15);
     public int MaximumRetainedDiagnostics { get; init; } = 64;
 
     internal void Validate()
@@ -26,6 +42,14 @@ public sealed record WidgetPresentationSessionOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumPendingRequests));
         if (MaximumPendingArtworkRequests is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(MaximumPendingArtworkRequests));
+        if (ArtworkTimeout < TimeSpan.FromMilliseconds(100) || ArtworkTimeout > TimeSpan.FromMinutes(2))
+            throw new ArgumentOutOfRangeException(nameof(ArtworkTimeout));
+        if (MaximumPendingIndexedRanges is < 1 or > 16)
+            throw new ArgumentOutOfRangeException(nameof(MaximumPendingIndexedRanges));
+        if (IndexedRangeTimeout < TimeSpan.FromMilliseconds(100) || IndexedRangeTimeout > TimeSpan.FromMinutes(2))
+            throw new ArgumentOutOfRangeException(nameof(IndexedRangeTimeout));
+        if (EmbeddedMediaTimeout < TimeSpan.FromMilliseconds(100) || EmbeddedMediaTimeout > TimeSpan.FromMinutes(2))
+            throw new ArgumentOutOfRangeException(nameof(EmbeddedMediaTimeout));
         if (MaximumRetainedDiagnostics is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(MaximumRetainedDiagnostics));
     }
@@ -33,7 +57,11 @@ public sealed record WidgetPresentationSessionOptions
 
 public sealed record WidgetPresentationCatalog(
     long Revision,
-    IReadOnlyList<BridgeWidgetDescriptor> Widgets);
+    IReadOnlyList<BridgeWidgetDescriptor> Widgets)
+{
+    /// <summary>False while installed package admission is still in progress.</summary>
+    public bool IsComplete { get; init; }
+}
 
 public sealed record WidgetPresentationTarget(
     long CatalogRevision,
@@ -46,13 +74,24 @@ public sealed record WidgetPresentationAuthority(
     long SessionGeneration,
     string WidgetInstanceId,
     long SnapshotSequence,
-    string ActiveInputScopeId);
+    string ActiveInputScopeId)
+{
+    /// <summary>Trusted worker incarnation that produced the displayed snapshot.</summary>
+    public BridgeWorkerRun? WorkerRun { get; init; }
+}
 
 public sealed record WidgetPresentationFrame(
     WidgetPresentationAuthority Authority,
     BridgeWidgetDescriptor Descriptor,
     ViewSnapshot Snapshot,
-    IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
+    IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles)
+{
+    /// <summary>Trusted computed-style revision; independent of widget snapshot/input identity.</summary>
+    public long AppearanceRevision { get; init; }
+    /// <summary>Host-only candidate identities. Capture additionally requires a current permission grant.</summary>
+    public IReadOnlyDictionary<string, WidgetHostWindowTarget> WindowPreviews { get; init; } =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<string, WidgetHostWindowTarget>(new Dictionary<string, WidgetHostWindowTarget>());
+}
 
 public sealed record WidgetPresentationFailure(
     string WidgetId,
@@ -76,6 +115,46 @@ public sealed record WidgetPresentationState(
 }
 
 public sealed record WidgetPresentationInvalidation(string WidgetId, long Revision);
+
+/// <summary>Identifies the worker incarnation admitted when an effect arrived.</summary>
+public sealed record WidgetHostEffectAuthority(
+    string WidgetId, string WidgetInstanceId, string RuntimeGeneration, long SessionGeneration);
+
+public enum WidgetHostEffectKind
+{
+    /// <summary>An optional effect unknown to this frontend; never execute it.</summary>
+    Unsupported,
+    CloseOverlayAfterAppLaunch,
+    ActivateTaskWindow,
+}
+
+/// <summary>
+/// Host-private native window identity. Revalidate process creation and class identity
+/// with the platform adapter before activation. Never send this to widget workers.
+/// </summary>
+public sealed record WidgetHostWindowTarget(
+    string WindowId, ulong Handle, uint ProcessId, ulong ProcessCreated, string ClassName);
+
+/// <summary>
+/// Broker-issued, one-shot effect. Sequence is session-wide. InitiatedAtMilliseconds
+/// uses Windows uptime, not wall time. A UI dispatcher must recheck authority and
+/// its current visible session before acting; admission is not platform execution.
+/// Unsupported effects are observable but must be ignored. No raw provider payload is exposed.
+/// </summary>
+public sealed record WidgetPresentationHostEffect(
+    WidgetHostEffectAuthority Authority, WidgetHostEffectKind Kind, string WireName,
+    long Sequence, long InitiatedAtMilliseconds, WidgetHostWindowTarget? WindowTarget);
+
+public sealed class WidgetHostEffectEventArgs(WidgetPresentationHostEffect effect) : EventArgs
+{
+    public WidgetPresentationHostEffect Effect { get; } = effect;
+}
+
+/// <summary>A revision notification, not a replacement catalog or appearance snapshot.</summary>
+public sealed class WidgetRevisionChangedEventArgs(long revision) : EventArgs
+{
+    public long Revision { get; } = revision;
+}
 
 public sealed record WidgetPresentationArtwork(
     WidgetPresentationAuthority Authority,
@@ -125,7 +204,11 @@ public sealed class WidgetPresentationSessionException : Exception
 
 internal sealed record PendingArtwork(
     WidgetPresentationAuthority Authority,
-    TaskCompletionSource<WidgetPresentationArtwork> Completion);
+    string ArtworkHandle,
+    CancellationToken CancellationToken,
+    TaskCompletionSource<WidgetPresentationArtwork> Completion,
+    WidgetPinnedSelection? PinnedSelection = null,
+    WidgetPinnedProjection? PinnedProjection = null);
 
 internal sealed record BridgeRequestFailure(string Code, string Message);
 

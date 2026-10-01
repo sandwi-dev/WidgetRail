@@ -10,7 +10,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetBridge;
 
-public sealed class WidgetBridgeServer : IAsyncDisposable
+public sealed partial class WidgetBridgeServer : IAsyncDisposable
 {
     private readonly string _pipeName;
     private readonly int _maximumMessageBytes;
@@ -22,8 +22,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeClientRegistry _registry;
     private readonly BridgeDiagnosticsProjection _diagnostics;
     private readonly BridgeControllerControl _controllers;
+    private readonly string? _settingsRoot;
     private int _pendingApplicationControl;
     private bool _supportsWindowPreviews;
+    private bool _supportsExclusiveControllerControl = true;
+    private bool _supportsHeldDpadScroll = true;
+    private bool _supportsStartupRegistration = true;
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
@@ -36,6 +40,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly Action<BridgeWidgetRequestDiagnostic>? _requestDiagnosticSink;
     private readonly string? _workerDiagnosticRoot;
     private long _hostEffectSequence;
+    private long _invalidationSequence;
+    private readonly BridgeTaskActivationTickets _taskActivations = new();
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
     private CancellationTokenSource? _activeSessionCancellation;
@@ -88,6 +94,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
         _appearance = appearance;
         _controllers = new BridgeControllerControl(settingsStore);
+        _settingsRoot = settingsStore?.Paths.RootDirectory;
         _consentStore = consentStore;
         _platformBackend = platformBackend;
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
@@ -210,6 +217,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(helloPayload.ClientName) || helloPayload.ClientName.Length > 128)
             throw new BridgeProtocolException("Bridge client name is invalid.");
         _supportsWindowPreviews = helloPayload.WindowPreviews;
+        _supportsExclusiveControllerControl = helloPayload.ExclusiveControllerControl;
+        _supportsHeldDpadScroll = helloPayload.HeldDpadScroll;
+        _supportsStartupRegistration = helloPayload.StartupRegistration;
         await SendAsync(new BridgeEnvelope
         {
             Type = BridgeMessageTypes.HelloAccepted,
@@ -217,8 +227,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             Payload = BridgeJson.ToElement(new { }),
         }, cancellationToken).ConfigureAwait(false);
 
-        await RefreshAppLibrarySessionCatalogAsync(sessionCancellation.Token)
-            .ConfigureAwait(false);
+        // The app-library provider scans lazily on its first actual query and
+        // serializes concurrent scans. Do not enumerate every app/game before
+        // serving unrelated requests such as Settings and the widget catalog.
 
         if (_appearance is not null) _appearance.Changed += OnAppearanceChanged;
         try
@@ -313,40 +324,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             ExceptionDispatchInfo.Capture(fatal).Throw();
     }
 
-    private async Task RefreshAppLibrarySessionCatalogAsync(
-        CancellationToken cancellationToken)
-    {
-        if (_platformBackend is null) return;
-        try
-        {
-            _ = await _platformBackend.QueryAppLibraryAsync(
-                    new AppLibraryBackendCursorRequest(
-                        new AppLibraryBackendQuery(),
-                        Cursor: null,
-                        Direction: null,
-                        Limit: 1,
-                        Refresh: true),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception) when (exception is BrokerException or IOException or
-            UnauthorizedAccessException or InvalidOperationException or ArgumentException or
-            NotSupportedException)
-        {
-            // App-library availability must not block the overlay session. The
-            // provider retains its last-good snapshot and explicit widget
-            // refresh remains the only later rescan path for this session.
-        }
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
+        _taskActivations.Clear();
         if (_localPackageImport is not null)
             await _localPackageImport.DisposeAsync().ConfigureAwait(false);
         await _registry.DisposeAsync().ConfigureAwait(false);
@@ -362,6 +344,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         switch (request.Type)
         {
+        case BridgeMessageTypes.CompleteTaskActivation:
+            var activationRequest = BridgeJson.FromElement<BridgeTaskActivationRequest>(request.Payload);
+            var activationResponse = CompleteTaskActivation(activationRequest, cancellationToken);
+            await ReplyAsync(BridgeMessageTypes.CompleteTaskActivation, request.RequestId,
+                activationResponse, cancellationToken).ConfigureAwait(false);
+            return;
         case BridgeMessageTypes.WindowPreviewPermissions:
             var previewRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
             var (previewCatalog, _) = _registry.CatalogSnapshot();
@@ -401,6 +389,91 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 _appearance.CreatePayload(),
                 cancellationToken).ConfigureAwait(false);
             break;
+        case BridgeMessageTypes.ReadIndexedRange:
+        {
+            var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
+            using var range = await _registry.ReadIndexedRangeAsync(rangeRequest, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IndexedRange, request.RequestId, range.Value, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.AcquireIndexedRange:
+        {
+            var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
+            using var publication = await _registry.AcquireIndexedRangeAsync(rangeRequest, cancellationToken,
+                ResolveIndexedStyles).ConfigureAwait(false);
+            var lease = publication.Value;
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await ReplyAsync(BridgeMessageTypes.IndexedLease, request.RequestId, lease, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch
+            {
+                await _registry.ReleaseIndexedLeaseAsync(new(lease.WidgetId, lease.InstanceId,
+                    lease.RuntimeGeneration, lease.PresentationGeneration, lease.Lease.LeaseId)).ConfigureAwait(false);
+                throw;
+            }
+            break;
+        }
+        case BridgeMessageTypes.RefreshPresentationStyles:
+        {
+            var styleRequest = BridgeJson.FromElement<BridgePresentationStylesRequest>(request.Payload);
+            using var styles = _registry.RefreshPresentationStyles(styleRequest, ResolveSnapshotStyles, cancellationToken);
+            await ReplyAsync(BridgeMessageTypes.PresentationStyles, request.RequestId, styles.Value, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.RefreshIndexedStyles:
+        {
+            var styleRequest = BridgeJson.FromElement<BridgeIndexedLeaseRequest>(request.Payload);
+            using var styles = _registry.RefreshIndexedStyles(styleRequest, ResolveIndexedStyles, cancellationToken);
+            await ReplyAsync(BridgeMessageTypes.IndexedStyles, request.RequestId, styles.Value, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.ReleaseIndexedLease:
+        {
+            var leaseRequest = BridgeJson.FromElement<BridgeIndexedLeaseRequest>(request.Payload);
+            var released = await _registry.ReleaseIndexedLeaseAsync(leaseRequest).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { released }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.IndexedInput:
+        {
+            var inputRequest = BridgeJson.FromElement<BridgeIndexedInputRequest>(request.Payload);
+            var admission = await _registry.AdmitIndexedInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
+            // Null is deliberately retained: an unhandled input is not enqueued.
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId,
+                new Dictionary<string, string?> { ["admission"] = admission is { } value ? JsonSerializer.SerializeToElement(value, BridgeJson.Options).GetString() : null },
+                cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.ResolveIndexedArtwork:
+        {
+            var artworkRequest = BridgeJson.FromElement<BridgeIndexedArtworkRequest>(request.Payload);
+            var artwork = await _registry.ResolveIndexedArtworkAsync(artworkRequest, cancellationToken,
+                ResolveIndexedBrokerArtworkAsync).ConfigureAwait(false);
+            await _frameWriter.WriteReplyAsync(BridgeMessageTypes.IndexedArtwork, request.RequestId,
+                new BridgeIndexedArtworkResponse(artworkRequest.WidgetId, artworkRequest.InstanceId,
+                    artworkRequest.RuntimeGeneration, artworkRequest.PresentationGeneration,
+                    artworkRequest.Item, artworkRequest.ArtworkHandle, artworkRequest.DemandId,
+                    artwork is null ? string.Empty : WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType),
+                    artwork?.Bytes ?? ReadOnlyMemory<byte>.Empty), cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.CancelIndexedArtwork:
+        {
+            var artworkRequest = BridgeJson.FromElement<BridgeIndexedArtworkRequest>(request.Payload);
+            var cancelled = await _registry.CancelIndexedArtworkAsync(artworkRequest).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { cancelled }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.CancelIndexedRange:
+        {
+            var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
+            var cancelled = await _registry.CancelIndexedRangeAsync(rangeRequest).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { cancelled }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.GetSnapshot:
         {
             var snapshotRequest = BridgeJson.FromElement<BridgePresentationRequest>(request.Payload);
@@ -422,11 +495,20 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.ResolvePinnedArtwork:
         case BridgeMessageTypes.ResolveArtwork:
         {
-            var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
+            var pinnedArtwork = request.Type == BridgeMessageTypes.ResolvePinnedArtwork
+                ? BridgeJson.FromElement<BridgePinnedArtworkRequest>(request.Payload) : null;
+            if (pinnedArtwork is not null) BridgePinnedRequestValidation.Validate(pinnedArtwork);
+            var artworkRequest = pinnedArtwork is null ? BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload)
+                : new(pinnedArtwork.WidgetId, pinnedArtwork.ArtworkHandle, pinnedArtwork.RuntimeGeneration,
+                    pinnedArtwork.PresentationGeneration, pinnedArtwork.DemandId);
             if (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
+            if (artworkRequest.DemandId is { } demandId &&
+                (demandId.Length > 64 || !BridgeRequestKey.IsBoundedIdentifier(demandId)))
+                throw new BridgeProtocolException("Artwork demand identifier is invalid.");
             if ((artworkRequest.RuntimeGeneration is null) !=
                     (artworkRequest.PresentationGeneration is null) ||
                 (artworkRequest.RuntimeGeneration is not null &&
@@ -451,7 +533,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     cancellationToken,
                     token => ReplyAsync(
                         BridgeMessageTypes.Acknowledged,
-                        request.RequestId, new { }, token)).ConfigureAwait(false))
+                        request.RequestId, new { }, token), pinnedArtwork).ConfigureAwait(false))
                 {
                     configured = resolution.Value.Configured;
                     workerFingerprint = resolution.Value.WorkerFingerprint;
@@ -501,7 +583,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                         artworkRequest.RuntimeGeneration!,
                         artworkRequest.PresentationGeneration!,
                         contentType,
-                        encodedArtwork.Bytes),
+                        encodedArtwork.Bytes, artworkRequest.DemandId),
                     _sessionCancellation).ConfigureAwait(false);
             }
             else
@@ -514,7 +596,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                         artworkRequest.RuntimeGeneration!,
                         artworkRequest.PresentationGeneration!,
                         contentType,
-                        legacyContentBase64),
+                        legacyContentBase64, artworkRequest.DemandId),
                     _sessionCancellation).ConfigureAwait(false);
             }
             break;
@@ -645,6 +727,15 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 .ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.PinnedAction:
+        {
+            var pinnedRequest = BridgeJson.FromElement<BridgePinnedActionRequest>(request.Payload);
+            using var pinnedPublication = await _registry.AdmitPinnedActionAsync(pinnedRequest,
+                _sessionCancellation, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId,
+                new PinnedActionResult(pinnedPublication.Value), cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.Action:
         {
             var actionRequest = BridgeJson.FromElement<BridgeActionRequest>(request.Payload);
@@ -652,7 +743,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     actionRequest.WidgetId,
                     actionRequest.Action,
                     _sessionCancellation,
-                    cancellationToken)
+                    cancellationToken,
+                    actionRequest.WorkerRun)
                 .ConfigureAwait(false);
             var actionAdmission = actionPublication.Value;
             await ReplyActionAdmissionAsync(
@@ -694,7 +786,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     _sessionCancellation,
                     cancellationToken,
                     controllerRequest.ExpectedActionId,
-                    controllerRequest.ExpectedSelectOptionActionId)
+                    controllerRequest.ExpectedSelectOptionActionId,
+                    controllerRequest.WorkerRun)
                 .ConfigureAwait(false);
             var handled = controllerPublication.Value;
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,
@@ -796,6 +889,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         catch (Exception exception) when (exception is BridgeProtocolException or
             BridgeStaleControllerInputAuthorityException or
             BridgeStalePinnedInputAuthorityException or
+            BridgeStaleIndexedInputAuthorityException or BridgeStaleMediaAuthorityException or
             BridgeStaleArtworkAuthorityException or
             BridgeStalePackageIconAuthorityException or
             BridgeStalePresentationBaseException or JsonException)
@@ -827,6 +921,17 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         }
     }
 
+    private async Task<WidgetEncodedArtwork?> ResolveIndexedBrokerArtworkAsync(ConfiguredWidget configured,
+        string handle, CancellationToken cancellationToken)
+    {
+        if (_appLibraryArtwork is null) return null;
+        var identity = new BrokerWidgetIdentity(configured.PackageId, configured.PublisherId, configured.InstanceId);
+        var encoded = await _appLibraryArtwork.ResolveAsync(identity, handle, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return encoded is not null && _appLibraryArtwork.IsCurrent(identity, handle)
+            ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, Convert.FromBase64String(encoded)) : null;
+    }
+
     private async Task ReplyRequestFailureAsync(
         long requestId,
         Exception exception,
@@ -855,6 +960,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 BridgeStalePresentationBaseException => "stale_presentation_base",
                 BridgeStaleControllerInputAuthorityException => "stale_controller_input_authority",
                 BridgeStalePinnedInputAuthorityException => "stale_pinned_input_authority",
+                BridgeStaleIndexedInputAuthorityException => "stale_indexed_input_authority",
+                BridgeStaleMediaAuthorityException media => media.Code,
                 BridgeStaleArtworkAuthorityException => "stale_artwork_authority",
                 BridgeStalePackageIconAuthorityException => "stale_package_icon_authority",
                 _ => "request_failed",
@@ -986,11 +1093,15 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     _localData.ClearAsync,
                     _packageUninstall.InspectAsync,
                     _packageUninstall.UninstallAsync,
-                    context, _controllers.SetAsync, RequestApplicationControlAsync,
+                    context, _supportsExclusiveControllerControl ? _controllers.SetAsync : null, RequestApplicationControlAsync,
                     _ => ValueTask.FromResult(_localPackageImport?.TakeNotification(configured.PublicDescriptor().RuntimeGeneration)
                         ?? PlatformWidgetPackageNotification.Empty),
                     _localData.InspectBuiltInAsync, _localData.ClearBuiltInAsync,
-                    () => _appearance?.Display ?? OverlayDisplayContext.Unavailable)
+                    () => _appearance?.Display ?? OverlayDisplayContext.Unavailable,
+                    settingsRoot: _settingsRoot,
+                    exclusiveControllerControl: _supportsExclusiveControllerControl,
+                    heldDpadScroll: _supportsHeldDpadScroll,
+                    startupRegistration: _supportsStartupRegistration)
                 : _consentStore is null || _platformBackend is null
                     ? null
                     : CreateCompanionFactory(configured),
@@ -1003,7 +1114,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         CancellationToken cancellationToken) =>
         SendEventAsync(
             BridgeMessageTypes.Invalidation,
-            new BridgeInvalidation(invalidation.WidgetId, invalidation.Revision),
+            // Worker revisions restart at one after idle unload or replacement.
+            // The bridge connection outlives those runs; its refresh signals must
+            // remain monotonic or consumers suppress new updates as duplicates.
+            // The registry still owns current-run admission and coalescing.
+            new BridgeInvalidation(invalidation.WidgetId, Interlocked.Increment(ref _invalidationSequence)),
             cancellationToken);
 
     private Task PublishClientActionFailure(
@@ -1039,6 +1154,20 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             },
             cancellationToken);
 
+    private BridgeResolvedStyleSnapshot ResolveIndexedStyles(ConfiguredWidget configured, IndexedCollectionRange range)
+    {
+        if (_appearance is null) return new(0, BridgeRenderStyleResolver.ResolveRange(range, configured.CompiledTheme));
+        var snapshot = _appearance.ResolveWidgetThemeSnapshot(configured.Id, configured.StylePackage);
+        return new(snapshot.Revision, BridgeRenderStyleResolver.ResolveRange(range, snapshot.Theme));
+    }
+
+    private BridgeResolvedStyleSnapshot ResolveSnapshotStyles(ConfiguredWidget configured, ViewSnapshot snapshot)
+    {
+        if (_appearance is null) return new(0, BridgeRenderStyleResolver.Resolve(snapshot, configured.CompiledTheme));
+        var theme = _appearance.ResolveWidgetThemeSnapshot(configured.Id, configured.StylePackage);
+        return new(theme.Revision, BridgeRenderStyleResolver.Resolve(snapshot, theme.Theme));
+    }
+
     private async Task ReplySnapshotAsync(
         long requestId,
         string widgetId,
@@ -1050,11 +1179,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         var snapshot = snapshotResult.Snapshot;
         var configuredForStyle = snapshotResult.Configured;
-        var theme = _appearance is null
-            ? configuredForStyle.CompiledTheme
-            : _appearance.ResolveWidgetTheme(
-                configuredForStyle.Id, configuredForStyle.StylePackage);
-        var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, theme);
+        var styles = ResolveSnapshotStyles(configuredForStyle, snapshot);
+        var renderStyles = styles.RenderStyles;
         var windowPreviews = _supportsWindowPreviews
             ? await WindowPreviewResolver.ResolveAsync(_consentStore, configuredForStyle, snapshot, cancellationToken).ConfigureAwait(false)
             : null;
@@ -1070,8 +1196,10 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 transactionKind,
                 baseSequence,
                 recoveryOriginSequence,
+                workerRun = snapshotResult.WorkerRun,
                 snapshot = document.RootElement.Clone(),
                 renderStyles,
+                appearanceRevision = styles.Revision,
                 windowPreviews = windowPreviews is { Count: > 0 } ? windowPreviews : null,
             }),
         }, cancellationToken).ConfigureAwait(false);
@@ -1088,7 +1216,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             await ReplySnapshotAsync(
                 requestId,
                 widgetId,
-                new BridgeClientSnapshot(presentation.Configured, presentation.Snapshot),
+                new BridgeClientSnapshot(presentation.Configured, presentation.Snapshot) { WorkerRun = presentation.WorkerRun },
                 presentation.TransactionKind,
                 presentation.RequestBaseSequence,
                 presentation.RecoveryOriginSequence,
@@ -1096,12 +1224,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             return;
         }
 
-        var theme = _appearance is null
-            ? presentation.Configured.CompiledTheme
-            : _appearance.ResolveWidgetTheme(
-                presentation.Configured.Id,
-                presentation.Configured.StylePackage);
-        var renderStyles = BridgeRenderStyleResolver.Resolve(presentation.Snapshot, theme);
+        var styles = ResolveSnapshotStyles(presentation.Configured, presentation.Snapshot);
+        var renderStyles = styles.RenderStyles;
         var windowPreviews = _supportsWindowPreviews
             ? await WindowPreviewResolver.ResolveAsync(_consentStore, presentation.Configured, presentation.Snapshot, cancellationToken).ConfigureAwait(false)
             : null;
@@ -1119,6 +1243,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 recoveryOriginSequence = presentation.RecoveryOriginSequence,
                 update = document.RootElement.Clone(),
                 renderStyles,
+                appearanceRevision = styles.Revision,
                 windowPreviews = windowPreviews is { Count: > 0 } ? windowPreviews : null,
             }),
         }, cancellationToken).ConfigureAwait(false);
@@ -1162,14 +1287,25 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         using var publication = _registry.TryAdmitHostEffect(
             widgetId, expectedWorkerFingerprint);
         if (publication is null) return;
-        var descriptor = publication.Value;
+        var descriptor = publication.Value.Descriptor;
+        var sequence = Interlocked.Increment(ref _hostEffectSequence);
+        if (effect.Kind == BrokerHostEffectKind.ActivateTaskWindow && effect.WindowTarget is { } activationTarget)
+        {
+            var activationIdentity = new WidgetRail.WindowsWindowActivation.TaskWindowTarget(
+                ulong.Parse(activationTarget.Handle, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture),
+                activationTarget.ProcessId,
+                ulong.Parse(activationTarget.ProcessCreated, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture),
+                activationTarget.ClassName);
+            _taskActivations.Offer(sequence, new(widgetId, expectedWorkerFingerprint, descriptor.InstanceId,
+                descriptor.RuntimeGeneration, effect.InitiatedAtMilliseconds, activationIdentity, publication.Value.WorkerRun), Environment.TickCount64);
+        }
         await SendEventAsync(
             BridgeMessageTypes.HostEffect,
             new BridgeHostEffect(
                 widgetId,
                 descriptor.RuntimeGeneration,
                 effect.Kind == BrokerHostEffectKind.ActivateTaskWindow ? "activateTaskWindow" : "closeOverlayAfterAppLaunch",
-                Interlocked.Increment(ref _hostEffectSequence), effect.InitiatedAtMilliseconds,
+                sequence, effect.InitiatedAtMilliseconds,
                 effect.Kind == BrokerHostEffectKind.ActivateTaskWindow && effect.WindowId is { } id && effect.WindowTarget is { } target
                     ? new Dictionary<string, NativeWindowPreviewTarget> { [id] = target } : null)).ConfigureAwait(false);
     }

@@ -45,8 +45,9 @@ public sealed class MediaSessionsWidget : Widget
         Mode = WidgetSurfaceMode.Compact,
         PreferredWidth = 580,
         PreferredHeight = 400,
+        HeightMode = WidgetSurfaceAxisMode.Content,
         MinimumWidth = 360,
-        MinimumHeight = 330,
+        MinimumHeight = 260,
     };
 
     private readonly TimeProvider _timeProvider;
@@ -163,7 +164,7 @@ public sealed class MediaSessionsWidget : Widget
             pills[index] = UI.Button(session.AppName, "media.select", id)
                 .Icon(session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
                     ? WidgetGlyph.Pause : WidgetGlyph.Music,
-                    $"{session.AppName}. {session.Title}. Select to select")
+                    $"{session.AppName}. {session.Title}. Select this session.")
                 .PersistFocusAs(id + ".focus")
                 .Selected(string.Equals(session.SessionId, selected.SessionId, StringComparison.Ordinal))
                 .FocusLeft(pillIds[Math.Max(0, index - 1)])

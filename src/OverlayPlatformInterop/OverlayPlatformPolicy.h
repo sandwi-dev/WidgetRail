@@ -1,7 +1,7 @@
 #pragma once
 
 #include "OverlayPlatformInterop.h"
-#include "../OverlayHost/ControllerNavigation.h"
+#include "ControllerNavigation.h"
 
 #include <cstdint>
 
@@ -21,6 +21,10 @@ private:
 
 class ControllerFrameTracker final {
 public:
+    // State publication is idempotent. Only a real hide/focus-loss transition
+    // retires edges; a visible background read lease must keep tracking input.
+    void ApplyWindowStateTransition(bool wasVisible, bool wasFocused,
+        bool visible, bool focused) noexcept;
     void Prime(
         bool connected,
         const WidgetRailOverlayPlatformRawControllerState& state,

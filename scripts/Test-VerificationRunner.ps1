@@ -12,6 +12,7 @@ $manifestProjectReferences = @($manifest.steps |
     ForEach-Object { $_.arguments } | ForEach-Object { $_ } |
     Where-Object { $_ -is [string] -and $_.EndsWith('.csproj', [StringComparison]::OrdinalIgnoreCase) } |
     ForEach-Object { $_.Replace('\', '/') })
+$manifestProjectReferences += @($manifest.steps | Where-Object { $_.PSObject.Properties.Name -contains 'testProject' } | ForEach-Object testProject)
 $manifestProjects = @($manifestProjectReferences | Sort-Object -Unique)
 $testProjects = @(Get-ChildItem (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.csproj' -File |
     Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
@@ -36,13 +37,13 @@ $expectedDefaultStepIds = @(
     'installer-contract-selftest',
     'release-packaging-selftest',
     'verification-runner-selftest',
-    'performance-harness-selftest',
     'widget-sdk-build',
     'widget-protocol-native-parity',
     'widget-sdk-tests',
     'widget-sdk-compatibility-tests',
     'widget-scenario-tests',
     'widget-ticker-tests',
+    'ytmusic-standalone-tests',
     'youtube-widget-tests',
     'widget-runtime-tests',
     'widget-presentation-session-tests',
@@ -86,23 +87,26 @@ $expectedDefaultStepIds = @(
     'widget-catalog-tests',
     'documentation-tests',
     'first-party-conformance-tests',
-    'overlay-native-build-tests',
-    'overlay-hidden-smoke',
+    'overlay-platform-client-tests',
+    'widget-deployment-tests',
+    'widget-ui-state-tests',
+    'winui-motion-tests',
+    'winui-shell-tests',
+    'winui-native-verification',
     'widget-bridge-tests',
     'input-probe-build',
     'input-probe-smoke'
 )
 $defaultSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all)
 $defaultIds = @($defaultSelection | ForEach-Object { $_.id })
-if ($defaultIds.Count -ne 59 -or
+if ($defaultIds.Count -ne $expectedDefaultStepIds.Count -or
     [string]::Join("`n", $defaultIds) -cne [string]::Join("`n", $expectedDefaultStepIds)) {
-    throw 'Focused selection changed the exact 59-step default aggregate identity or order.'
+    throw 'Focused selection changed the exact default aggregate identity or order.'
 }
 $nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
     [string]::Join("`n", @(
-        'overlay-native-build-tests',
-        'overlay-hidden-smoke',
+        'winui-native-verification',
         'widget-bridge-tests',
         'input-probe-build',
         'input-probe-smoke'))) {
@@ -110,7 +114,7 @@ if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
 }
 $orderedSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
     -RequestedStepIds @(
-        'overlay-declarative-layout-tests',
+        'winui-native-verification',
         'platform-broker-tests',
         'widget-sdk-tests') -ExplicitSelection)
 $orderedIds = @($orderedSelection | ForEach-Object id)
@@ -118,24 +122,23 @@ $expectedOrderedIds = @(
     'widget-sdk-build',
     'widget-sdk-tests',
     'platform-broker-tests',
-    'overlay-declarative-layout-tests')
+    'winui-native-verification')
 if ([string]::Join("`n", $orderedIds) -cne [string]::Join("`n", $expectedOrderedIds) -or
     @($orderedIds | Group-Object | Where-Object Count -ne 1).Count -ne 0) {
     throw 'Explicit focused selection did not expand once in manifest order.'
 }
 $nativeFocused = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native `
-    -RequestedStepIds @('overlay-declarative-layout-tests') -ExplicitSelection)
+    -RequestedStepIds @('winui-native-verification') -ExplicitSelection)
 if ($nativeFocused.Count -ne 1 -or
-    $nativeFocused[0].arguments[-1] -cne '-DeclarativeLayoutTestsOnly') {
+    $nativeFocused[0].arguments[-1] -cne '{configuration}') {
     throw 'Native focused selection did not resolve its exact existing selector.'
 }
-$hiddenSmoke = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native `
-    -RequestedStepIds @('overlay-hidden-smoke') -ExplicitSelection)
-if ([string]::Join("`n", @($hiddenSmoke | ForEach-Object id)) -cne
-    [string]::Join("`n", @('overlay-native-build-only', 'overlay-hidden-smoke'))) {
-    throw 'Hidden smoke selection did not resolve its build-only prerequisite.'
+$probeSmoke = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native `
+    -RequestedStepIds @('input-probe-smoke') -ExplicitSelection)
+if ([string]::Join("`n", @($probeSmoke | ForEach-Object id)) -cne
+    [string]::Join("`n", @('input-probe-build', 'input-probe-smoke'))) {
+    throw 'Probe smoke selection did not resolve its build prerequisite.'
 }
-
 function Assert-SelectionRejected([scriptblock]$Action, [string]$ExpectedText) {
     $message = $null
     try { & $Action | Out-Null }
@@ -165,7 +168,7 @@ Assert-SelectionRejected {
 } 'Unknown verification step ID'
 Assert-SelectionRejected {
     Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane managed `
-        -RequestedStepIds @('overlay-declarative-layout-tests') -ExplicitSelection
+        -RequestedStepIds @('winui-native-verification') -ExplicitSelection
 } "incompatible with lane 'managed'"
 Assert-SelectionRejected {
     Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
@@ -288,25 +291,17 @@ if ($actionReferences.Count -eq 0 -or
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ("wrail-verification-runner-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
-    $nativeBuildScript = Join-Path $repositoryRoot 'src\OverlayHost\build.ps1'
+    $nativeBuildScript = Join-Path $repositoryRoot 'scripts/Build-WinUiVerification.ps1'
     $nativeSelectionCases = @(
         [pscustomobject]@{
-            Id = 'native-selector-conflict'
-            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-NoRestore',
-                '-DeclarativeLayoutTestsOnly', '-DeclarativeRendererTestsOnly')
-            Expected = 'Native focused test selectors are mutually exclusive'
+            Id = 'winui-invalid-configuration'
+            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-Configuration', 'invalid')
+            Expected = 'ValidateSet'
         },
         [pscustomobject]@{
-            Id = 'native-selector-modifier'
-            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-NoRestore',
-                '-WidgetSwitchGeometryOnly')
-            Expected = 'WidgetSwitchGeometryOnly requires WidgetSwitchTestsOnly'
-        },
-        [pscustomobject]@{
-            Id = 'native-selector-packaging'
-            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-NoRestore',
-                '-SkipPackaging', '-TextEntryHostTestsOnly')
-            Expected = 'TextEntryHostTestsOnly requires packaging'
+            Id = 'winui-existing-output'
+            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-NoRestore', '-OutputDirectory', $temporary)
+            Expected = 'Choose a fresh WinUI verification output directory'
         })
     foreach ($selectionCase in $nativeSelectionCases) {
         $selectionResult = Invoke-BoundedVerificationProcess -Id $selectionCase.Id `
@@ -604,3 +599,6 @@ Wait-Process -Id $child.Id
 finally {
     if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Recurse -Force }
 }
+
+
+

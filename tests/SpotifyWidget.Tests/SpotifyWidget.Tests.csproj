@@ -25,4 +25,10 @@
     <None Include="..\..\samples\SpotifyWidget\assets\icons\spotify-green.svg" Link="assets\icons\spotify-green.svg" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SpotifyWidget\assets\icons\spotify-white.svg" Link="assets\icons\spotify-white.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\RendererFixtureExporter.cs" Link="fixture\RendererFixtureExporter.cs" />
+    <Compile Include="..\Shared\RendererFixtureBridgeProtocolException.cs" Link="fixture\RendererFixtureBridgeProtocolException.cs" />
+    <Compile Include="..\..\src\WidgetBridge.Contracts\BridgeRenderStyles.cs" Link="fixture\BridgeRenderStyles.cs" />
+    <Compile Include="..\..\src\WidgetBridge\BridgeRenderStyleResolver.cs" Link="fixture\BridgeRenderStyleResolver.cs" />
+  </ItemGroup>
 </Project>

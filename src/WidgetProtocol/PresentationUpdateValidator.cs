@@ -316,6 +316,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.CollectionLoading => Read<CollectionLoadingState?>(change.Value),
                 PresentationProperty.VirtualCollectionWindow =>
                     Read<VirtualCollectionWindow?>(change.Value),
+                PresentationProperty.CollectionLayout => Read<CollectionLayout?>(change.Value),
                 PresentationProperty.FocusPresentation or
                 PresentationProperty.DefaultFocusPresentation => Read<ViewNode?>(change.Value),
                 PresentationProperty.Value or PresentationProperty.Minimum or PresentationProperty.Maximum or
@@ -335,6 +336,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.Focus => Read<FocusNeighbors?>(change.Value),
                 PresentationProperty.ScrollAxis => Read<ScrollAxis?>(change.Value),
                 PresentationProperty.ShowScrollbar => Read<bool?>(change.Value),
+                PresentationProperty.GridLayout => Read<GridLayoutDefinition?>(change.Value),
+                PresentationProperty.GridCell => Read<GridCellPlacement?>(change.Value),
                 PresentationProperty.Transition => Read<WidgetTransition?>(change.Value),
                 PresentationProperty.StyleClasses => ReadRequired<IReadOnlyList<string>>(change.Value),
                 PresentationProperty.Shortcuts => ReadRequired<IReadOnlyList<ControllerShortcut>>(change.Value),
@@ -468,6 +471,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ActionSurfaceOrientation => node with { ActionSurfaceOrientation = Read<ActionSurfaceOrientation?>(change.Value) },
                 PresentationProperty.ActionSurfacePresentation => node with { ActionSurfacePresentation = Read<ActionSurfacePresentation?>(change.Value) },
                 PresentationProperty.GridMinimumColumnWidth => node with { GridMinimumColumnWidth = Read<double?>(change.Value) },
+                PresentationProperty.GridLayout => node with { GridLayout = Read<GridLayoutDefinition?>(change.Value) },
+                PresentationProperty.GridCell => node with { GridCell = Read<GridCellPlacement?>(change.Value) },
                 PresentationProperty.GridMaximumColumns => node with { GridMaximumColumns = Read<int?>(change.Value) },
                 PresentationProperty.IsDisabled => node with { IsDisabled = Read<bool?>(change.Value) },
                 PresentationProperty.IsSelected => node with { IsSelected = Read<bool?>(change.Value) },
@@ -487,6 +492,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ScrollNearEndActionId => node with { ScrollNearEndActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollPaginationThreshold => node with { ScrollPaginationThreshold = Read<int?>(change.Value) },
                 PresentationProperty.VirtualCollectionWindow => node with { VirtualCollectionWindow = Read<VirtualCollectionWindow?>(change.Value) },
+                PresentationProperty.CollectionLayout => node with { CollectionLayout = Read<CollectionLayout?>(change.Value) },
                 PresentationProperty.CollectionStartIndex => node with { CollectionStartIndex = Read<long?>(change.Value) },
                 PresentationProperty.CollectionGeneration => node with { CollectionGeneration = Read<long?>(change.Value) },
                 PresentationProperty.CollectionResetGeneration => node with { CollectionResetGeneration = Read<long?>(change.Value) },

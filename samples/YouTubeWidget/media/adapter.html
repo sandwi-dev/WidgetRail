@@ -291,7 +291,7 @@ function completePreference(start, signal) {
   });
 }
 
-function waitForMuted(command) {
+function waitForObservedValue(command, start, matches) {
   if (pendingProviderOperation) {
     return Promise.reject(
       WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
@@ -316,7 +316,7 @@ function waitForMuted(command) {
         finish(WidgetRailEmbeddedMediaAdapter.error("media-key-mismatch"));
         return;
       }
-      if (player.isMuted() === command.muted) {
+      if (matches()) {
         finish();
         return;
       }
@@ -345,13 +345,25 @@ function waitForMuted(command) {
       return;
     }
     try {
-      if (command.muted) player.mute();
-      else player.unMute();
+      start();
       poll();
     } catch (error) {
       finish(error);
     }
   });
+}
+
+function waitForMuted(command) {
+  return waitForObservedValue(command,
+    () => command.muted ? player.mute() : player.unMute(),
+    () => player.isMuted() === command.muted);
+}
+
+function waitForVolume(command) {
+  const target = Math.round(command.volume * 100);
+  return waitForObservedValue(command,
+    () => player.setVolume(target),
+    () => Number(player.getVolume()) === target);
 }
 
 function onReady() {
@@ -510,8 +522,7 @@ adapter = WidgetRailEmbeddedMediaAdapter.create({
     },
     async setVolume(command) {
       await readyFor(command);
-      player.setVolume(Math.round(command.volume * 100));
-      return { playbackState: stateName(player.getPlayerState()) };
+      return waitForVolume(command);
     },
     async setPlaybackRate(command) {
       await readyFor(command);

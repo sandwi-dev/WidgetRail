@@ -2,7 +2,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
-internal enum PlayniteDetailsTab { Overview, Achievements, Activity }
+internal enum PlayniteDetailsTab { Description, Information, Achievements, Activity, Links }
 internal sealed record PlayniteGameLink(string Name, string Url);
 internal sealed record PlayniteGameDetails(WidgetAppLibraryItem Item, PlayniteBridgeGame? Game = null);
 internal sealed record PlayniteAchievement(string Name, string Description, bool Unlocked,

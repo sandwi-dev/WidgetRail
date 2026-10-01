@@ -81,8 +81,10 @@ public sealed record WidgetView(
                 UI.Text(modal.Title, StableIdentifier.Child(modal.Id, "title")).Classes("wrail-modal__title"),
                 modal.HeaderActions ?? UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close")))
                 .Classes("wrail-modal__header"),
-            (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
-                { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll"))
+            modal.ScrollContent
+                ? (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
+                    { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll")
+                : modal.Content)
             .InputScope(scope)
             .Shortcut(ControllerButton.B, modal.DismissActionId, "Close")
             .Classes("wrail-modal");
@@ -127,6 +129,14 @@ public sealed record WidgetView(
         snapshot = snapshot with { ProtocolVersion = supportsCursorRetention
             ? Math.Max(requirements.RequiredVersion, ProtocolConstants.CursorRetentionVersion)
             : requirements.RequiredVersion };
+        // Deferred item declarations are not in the parent snapshot. Advertise
+        // this SDK's supported protocol so lazily rendered templates can use
+        // current controls without eagerly rendering the entire collection.
+        static bool HasIndexed(ViewNode node) => node.IndexedCollection is not null ||
+            node.Children.Any(HasIndexed) || node.FocusPresentation is { } focus && HasIndexed(focus) ||
+            node.DefaultFocusPresentation is { } fallback && HasIndexed(fallback);
+        if (HasIndexed(snapshot.Root) || snapshot.PinnedLayouts.Any(layout => layout.Root is { } root && HasIndexed(root)))
+            snapshot = snapshot with { ProtocolVersion = ProtocolConstants.CurrentVersion };
         var errors = ViewSnapshotValidator.Validate(snapshot, requirements);
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
@@ -159,6 +169,9 @@ public sealed record WidgetActionEvent(
     /// which identifies the node that declared the action or shortcut.
     /// </summary>
     public string? FocusedElementId { get; init; }
+    /// <summary>Worker-validated lazy occurrence that held focus. Ordinary action payloads cannot supply this metadata.</summary>
+    [JsonIgnore]
+    public IndexedCollectionFocusTarget? FocusedCollectionItem { get; init; }
     /// <summary>Host-observed visible collection keys protected by a pagination demand.</summary>
     public IReadOnlyList<string>? VisibleCollectionKeys { get; init; }
     /// <summary>Host-observed nearby collection keys retained when capacity permits. Visible keys take priority.</summary>
@@ -427,6 +440,7 @@ public abstract partial class Widget
         try
         {
             if (LifecycleState == WidgetLifecycleState.Destroying) return;
+            ClearIndexedLeases();
 
             var stateLifetime = Interlocked.Exchange(ref _stateLifetime, null);
             var activeLifetime = Interlocked.Exchange(ref _activeLifetime, null);
@@ -575,6 +589,7 @@ public abstract partial class Widget
     {
         var snapshot = Render().CreateSnapshot(widgetInstanceId, sequence);
         Volatile.Write(ref _latestSnapshot, snapshot);
+        RetireIndexedLeases();
         return snapshot;
     }
 
@@ -598,6 +613,7 @@ public abstract partial class Widget
             transactionKind,
             recoveryOriginSequence);
         Volatile.Write(ref _latestSnapshot, publication.Snapshot);
+        RetireIndexedLeases();
         return publication;
     }
 

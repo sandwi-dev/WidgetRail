@@ -24,7 +24,6 @@
 
 .audio-header {
   gap: 1px;
-  flex-shrink: 0;
 }
 
 .audio-eyebrow {
@@ -75,12 +74,6 @@
   background: var(--surface-raised);
 }
 
-.audio-master-card,
-.audio-input-card,
-.audio-device-card,
-.audio-state-card,
-.audio-session-card { flex-shrink: 0; }
-
 .audio-device-card {
   gap: 5px;
   padding: 8px 10px;
@@ -99,14 +92,12 @@
   padding: 1px;
   color: var(--text-muted);
   background: transparent;
-  flex-shrink: 0;
 }
 
 .audio-device-copy {
   min-width: 0px;
   gap: 0px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 
 .audio-device-label {
@@ -149,11 +140,9 @@
 
 .audio-master-state.is-muted { color: var(--danger, #c98181); }
 .audio-sessions-count { color: var(--text-subdued); }
-.audio-sessions-heading { flex-shrink: 0; }
 
 .audio-session-list {
   width: 100%;
-  flex-shrink: 0;
   gap: 2px;
   padding: 1px 3px 1px 1px;
 }
@@ -174,7 +163,6 @@
   max-lines: 1;
   text-overflow: ellipsis;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 
 .audio-mute-icon {
@@ -183,7 +171,6 @@
   padding: 3px;
   color: var(--text-muted);
   background: transparent;
-  flex-shrink: 0;
 }
 
 .audio-mute-icon.is-muted { color: var(--danger, #c98181); }
@@ -192,7 +179,6 @@
   height: 44px;
   min-width: 0px;
   flex-grow: 1;
-  flex-shrink: 1;
   color: var(--accent);
   background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
   border-color: var(--border, rgba(246, 240, 226, 0.12));
@@ -206,7 +192,6 @@
 
 .audio-volume-slider:focused {
   color: var(--accent);
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -218,14 +203,12 @@
   font-size: 13px;
   font-weight: 500;
   text-align: end;
-  flex-shrink: 0;
 }
 
 .audio-session-state {
   width: 48px;
   max-lines: 1;
   text-align: end;
-  flex-shrink: 0;
 }
 
 .audio-state-title {
@@ -249,7 +232,6 @@
 }
 
 .audio-retry-action:focused {
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);

@@ -1,0 +1,113 @@
+# WinUI widget switching
+
+The shell distinguishes the requested widget, the native presenter being prepared,
+and the committed widget. A request immediately revokes outgoing action/focus
+admission. It leaves the committed native tree, extent, background and live regions
+visible until a replacement can be published. The bridge moves the outgoing widget
+to Visible during that interval, and to Background after commit.
+
+Incoming presenters stay parented in a full-size native Grid. Each presenter has
+its final widget extent and alignment; its opacity stays zero during preparation.
+The committed background has its own extent. Switching therefore does not resize
+the old page or unload/reparent the new page at commit. Content, selected identity,
+surface hints, backdrop policy and final geometry change in one dispatcher call.
+
+Readiness means an accepted SDK frame has native layout and a transient
+CompositionTarget.Rendering opportunity. This accepts all valid SDK trees,
+including an empty root or a loading/error view. It does not classify leaf types,
+wait for remote artwork/media, or run a permanent frame callback. This milestone
+is **not evidence of pixels reaching the display**; native raster/screen checks
+remain separate verification.
+
+New selection and hide cancel pending preparation. Obsolete requests cannot
+publish. The existing transition semaphore still serializes bridge/lifetime
+mutation, while cancellation removes obsolete waiters. The surface cache remains
+bounded to three native trees, including displayed and staged content. Same-ID
+incarnation changes preserve the outgoing tree until its replacement commits.
+Failures retain the committed page and expose the shell's recovery control.
+
+The native tray's GettingFocus/GotFocus pair can straddle an asynchronous switch.
+The shell records the selection epoch at GettingFocus so completion of an older
+focus entry cannot act as a fresh selection request. Explicit latest tray entry
+continues through the existing FocusTray route.
+
+## Diagnostics and checks
+
+`SwitchDiagnosticsPath` is an optional absolute output path in shell options.
+It uses a bounded asynchronous writer: requested, preparing, layout-ready,
+committed, superseded, hidden-or-retired, timed-out and failed milestones have
+monotonic timestamps and elapsed times. Disabled diagnostics add no disk work.
+No widget content or credentials are recorded.
+
+Build `tests/WidgetSwitchFixture`, then use `scripts/New-WinUiSwitchFixture.ps1`
+with an existing isolated Bridge installation and a fresh output directory. The
+script copies the runtime into the new fixture and creates isolated catalog and
+settings roots. It does not modify the user's installed overlay or settings.
+The slow fixture stays below the worker's two-second request deadline.
+
+Launch the Debug WinUI frontend with `--shell-no-controller`, the generated
+`--shell-config=<absolute shell.json>` and
+`--validate-widget-switches=<absolute result.json>`. The native probe exercises
+the production session/worker path, delayed cold/cached/recreated switches,
+rapid reversal, bounded retention, valid empty/loading trees, worker failure,
+hide/reopen, dynamic updates and same-ID incarnation replacement. It compares
+outgoing raster pixels during preparation and observes native render callbacks;
+these checks complement, rather than replace, a screen recording of presentation.
+
+`scripts/Test-WinUiWidgetSwitches.ps1` creates that isolated fixture, launches the
+already-built Debug frontend, verifies the result belongs to the launched process,
+and closes only that process through normal window shutdown. Supply
+`-BridgeInstallation` and a fresh `-OutputDirectory`. The script requires exclusive
+use of the WinUI development package identity and preserves results on failure.
+
+The combined frontend (including radial chooser, bounded artwork demand and the
+current Windows SDK projection) passes all 21 switch checks against its rebuilt
+Bridge. Evidence: `artifacts/winui-shell/switch-fixture-integrated-01/`. The same
+combined frontend passes all 199 native style checks. These tests preserve the
+distinction between layout readiness, sampled retained pixels, and actual display
+timing; they are not a smoothness benchmark or physical acceptance.
+# Popup ownership during switching
+
+Outgoing content remains drawable while incoming content prepares, but its popup
+ownership ends as soon as presentation input is revoked. Select and TextEntry
+check that gate both at opening and in delayed native continuations. Revocation
+also dismisses an existing Select, text editor or context menu without restoring
+focus into the outgoing widget. Logical focus eligibility remains independent so
+retained focus/viewport capture is not lost.
+
+Native automation regressions invoke real button peers after revocation and
+verify that no popup, focus transfer or action occurs. Existing open controls are
+also revoked. The combined behavior run passes 21 Select, 28 TextEntry and 60
+context-menu checks, with an analyzer-clean build. Evidence:
+`artifacts/winui-shell/popup-admission-behavior-02/`. This run intentionally uses
+the control runner's `-BehaviorOnly` mode and makes no new pixel-parity claim.
+The first run's Select behavior passed but its foreground-required screenshot
+was refused; that capture failure is preserved in `popup-admission-native-01/`.
+Media qualification does not permit behavior-only mode.
+
+## Input readiness and outgoing cleanup
+
+An interactive switch now obtains the incoming worker's Interactive lifecycle
+acknowledgment before the final native layout/render opportunity. Lifecycle
+callbacks can publish declarations, so no awaited acknowledgment remains between
+that final readiness gate and visible publication. Tray-only previews keep their
+Visible lifecycle; they do not gain interaction merely by being prepared.
+
+Publication revokes/collapses the outgoing native tree and enables the incoming
+input/focus ownership in the same dispatcher operation. The outgoing asynchronous
+cleanup remains awaited under the existing lifecycle serializer. The acknowledged
+current owner can dispatch without waiting for that unrelated cleanup; it still
+checks current presentation authority, foreground, cancellation and the admission
+epoch. Hide, tray transfer, foreground change and newer selection revoke admission.
+Cleanup completion cannot restore an earlier focus position on a page the user
+has already navigated. Diagnostics include a separate `input-ready` milestone.
+
+The native switch fixture holds a real outgoing worker's deactivation callback,
+proves an incoming action reaches its worker before release, navigates to the
+second button, and verifies cleanup preserves that focus. A second held cleanup
+tests supersession/hide/reopen. All 27 native checks pass, including retained
+raster pixels, delayed/cached/evicted switches, failure and incarnation replacement;
+all 94 managed shell checks pass. Evidence:
+`artifacts/winui-shell/switch-cleanup-green-02/`. The earlier red run reproduced
+the visible-but-inert interval. These checks do not establish frame-pacing or
+physical controller acceptance.

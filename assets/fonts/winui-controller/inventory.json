@@ -1,0 +1,510 @@
+[
+  {
+    "source": "assets\\fonts\\kenney\\kenney_input_xbox_series.ttf",
+    "sourceSha256": "5de6eba22a1af6d003e9f36c15f49f3569df4c912b8b5eb530ce7036ef6c9a27",
+    "file": "xbox.ttf",
+    "sha256": "72f4464a5caf73a66fc8d409f417b054e8cf021a444aa2aee97951a77d969326",
+    "glyphs": [
+      {
+        "prompt": "A",
+        "codepoint": 57349,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "B",
+        "codepoint": 57351,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "Menu",
+        "codepoint": 57365,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "View",
+        "codepoint": 57373,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "X",
+        "codepoint": 57375,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "Y",
+        "codepoint": 57377,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPad",
+        "codepoint": 57378,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadDown",
+        "codepoint": 57381,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadHorizontal",
+        "codepoint": 57383,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadLeft",
+        "codepoint": 57385,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadRight",
+        "codepoint": 57388,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadUp",
+        "codepoint": 57398,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadVertical",
+        "codepoint": 57400,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "Guide",
+        "codepoint": 57410,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "LeftBumper",
+        "codepoint": 57412,
+        "advance": 1350,
+        "bounds": [
+          81,
+          105,
+          1269,
+          895
+        ]
+      },
+      {
+        "prompt": "LeftStickPress",
+        "codepoint": 57414,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "LeftTrigger",
+        "codepoint": 57416,
+        "advance": 1350,
+        "bounds": [
+          194,
+          60,
+          1156,
+          940
+        ]
+      },
+      {
+        "prompt": "RightBumper",
+        "codepoint": 57418,
+        "advance": 1350,
+        "bounds": [
+          81,
+          105,
+          1269,
+          895
+        ]
+      },
+      {
+        "prompt": "RightStickPress",
+        "codepoint": 57420,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "RightTrigger",
+        "codepoint": 57422,
+        "advance": 1350,
+        "bounds": [
+          194,
+          60,
+          1156,
+          940
+        ]
+      },
+      {
+        "prompt": "LeftStickMove",
+        "codepoint": 57423,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "RightStickMove",
+        "codepoint": 57431,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      }
+    ]
+  },
+  {
+    "source": "assets\\fonts\\kenney\\kenney_input_playstation_series.ttf",
+    "sourceSha256": "5ff91a5c268ab15bae95fb574c6dd06468734895d3c5596f0f33c11a7d612059",
+    "file": "playstation.ttf",
+    "sha256": "84be7939762a078e8e59ab9db13bf75c1beac9698b5b9b7af223da079a4aeb49",
+    "glyphs": [
+      {
+        "prompt": "View",
+        "codepoint": 57376,
+        "advance": 1000,
+        "bounds": [
+          191,
+          41,
+          809,
+          958
+        ]
+      },
+      {
+        "prompt": "Menu",
+        "codepoint": 57382,
+        "advance": 1000,
+        "bounds": [
+          191,
+          41,
+          809,
+          958
+        ]
+      },
+      {
+        "prompt": "B",
+        "codepoint": 57410,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "A",
+        "codepoint": 57420,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "LeftStickPress",
+        "codepoint": 57422,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "RightStickPress",
+        "codepoint": 57424,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "X",
+        "codepoint": 57426,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "Y",
+        "codepoint": 57428,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPad",
+        "codepoint": 57429,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadDown",
+        "codepoint": 57432,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadHorizontal",
+        "codepoint": 57434,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadLeft",
+        "codepoint": 57436,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadRight",
+        "codepoint": 57439,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadUp",
+        "codepoint": 57441,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "DPadVertical",
+        "codepoint": 57443,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "LeftStickMove",
+        "codepoint": 57444,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "RightStickMove",
+        "codepoint": 57452,
+        "advance": 1000,
+        "bounds": [
+          60,
+          60,
+          940,
+          940
+        ]
+      },
+      {
+        "prompt": "LeftBumper",
+        "codepoint": 57467,
+        "advance": 1350,
+        "bounds": [
+          275,
+          60,
+          1075,
+          940
+        ]
+      },
+      {
+        "prompt": "LeftTrigger",
+        "codepoint": 57471,
+        "advance": 1350,
+        "bounds": [
+          235,
+          60,
+          1115,
+          940
+        ]
+      },
+      {
+        "prompt": "RightBumper",
+        "codepoint": 57475,
+        "advance": 1350,
+        "bounds": [
+          275,
+          60,
+          1075,
+          940
+        ]
+      },
+      {
+        "prompt": "RightTrigger",
+        "codepoint": 57479,
+        "advance": 1350,
+        "bounds": [
+          235,
+          60,
+          1115,
+          940
+        ]
+      }
+    ]
+  },
+  {
+    "source": "assets\\fonts\\promptfont\\promptfont.ttf",
+    "sourceSha256": "a5fe3498acda95c12694ddb5c1b6eccd56a73826977bdda85756b24c7cf0eeb3",
+    "file": "guide.ttf",
+    "sha256": "363b4d44ade003e8b987878e0b43dc07d25acac9feb5137b9f9f41e700944fe5",
+    "glyphs": [
+      {
+        "prompt": "Guide",
+        "codepoint": 57344,
+        "advance": 1000,
+        "bounds": [
+          54,
+          81,
+          946,
+          919
+        ]
+      }
+    ]
+  }
+]

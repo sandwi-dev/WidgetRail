@@ -40,7 +40,7 @@ player remains visible beside four browse destinations:
 - The persistent player keeps artwork, concise metadata, projected progress,
   transport, shuffle, and repeat visible without increasing Spotify polling.
 - **Queue** is fetched on demand for its page or the selected up-next pinned layout, and remains cached while the widget worker lives.
-- **Playlists** lazily appends bounded keyed windows, opens a continuous detail list, and can start the playlist or an exact URI-keyed track context.
+- **Playlists** lazily appends a bounded discovered history, opens a continuous detail list, and can start the playlist or an exact URI-keyed track context.
 - **Devices** transfers to Spotify devices and exposes **This overlay** through
   the package-owned Web Playback SDK child. Its short-lived token handoff and
   local device ID stay inside the application process tree.
@@ -58,6 +58,16 @@ ordinary overlay deactivation does not revoke a still-selected pinned surface.
 Each immutable presentation supplies the focus target that exists in its exact
 ready, empty, setup, connection, failure, or loading root while the typed handle
 continues to own the stable layout metadata.
+Up Next deliberately renders at most two ordinary rows inside a native scroll.
+It is a finite preview, not a pageable collection, so it declares neither a
+cursor anchor nor `CollectionItem` metadata. Its stable row IDs, persistence IDs
+and action IDs still encode the exact queue occurrence, including repeated songs.
+The first occurrence performs Next; the second starts the bounded queue
+suffix from that occurrence through the existing queue action path. Native scrolling
+reveals either row; existing links return to the player or its realized neighbor.
+Pinned scope/selection lifetime, availability and artwork contracts are unchanged.
+The full Queue page always uses its complete indexed source; the obsolete eager
+cursor-rendering fallback is removed.
 
 ## State ownership
 
@@ -147,7 +157,7 @@ to both its playlist ID and selection generation, so Back, rapid reselection,
 refresh, and lifecycle cancellation cannot pair a newer heading or route with
 items from an older request. Cancellation-ignoring provider results are drained
 without changing the current screen, and a retained detail selection reloads
-when the widget becomes visible again.
+on the next native demand when the widget becomes visible again; accepted history remains available.
 
 ## Refresh and failure handling
 
@@ -155,13 +165,13 @@ Playback refresh and Active polling share one typed failure policy. A transient
 provider outage, invalid response, or unexpected request failure keeps the last
 accepted Player, route, and focus visible, adds one bounded warning with a safe
 diagnostic code, and backs automatic polling off through 5, 15, then at most 30
-seconds. Y retries immediately through the same policy. A successful response
+seconds. Explicit Refresh retries immediately through the same policy. A successful response
 clears the warning without navigating; permission revocation, authorization
 expiry, and incompatible configuration still select their explicit safe state
 and clear provider-derived data. Provider exception messages and response bodies
 are never rendered.
 
-## Collection windows
+## Discovered collections and finite Queue
 
 Playlist pages are cached after they are fetched, rather than downloading whole
 playlists in advance. Reuse requires a fresh matching Spotify `snapshot_id`.
@@ -170,20 +180,48 @@ The optional disk cache is bounded to 100 playlists and 50 MiB; disk failures
 fall back to ordinary fetching. See [memory cache](SpotifyPlaylistCache.cs) and
 [disk cache](SpotifyPlaylistDiskCache.cs) for the current policy.
 
-Queue, playlist, and detail collections use protocol-v14 stable keys and the
-shared bounded cursor resource. Collections retain bounded windows and fetch adjacent pages on demand. The current limits are defined by each resource in `SpotifyWidget.cs` and `SpotifyWidget.Search.cs`. Evicted rows are refetched on
-reverse traversal, a short final page remains reversible, and refresh retains
-the exact URI/playlist anchor or chooses a deterministic surviving fallback.
-Media URI remains the semantic identity; repeated occurrences receive bounded
-collection-context discriminators so equal tracks or episodes keep distinct
-focus and action targets across retained pages and refresh churn.
-Repeated identical edge input joins one in-flight provider request; a genuinely
-different cursor intent remains latest-wins. Detail Play points to the first
-row and that row points back to Play; a singleton row has no self edge, while a
-multi-row first row continues forward into the list. Queue, playlist, and
-playlist-detail rows expose exact adjacent focus edges; terminal input stays on
-the terminal row rather than wrapping into earlier content or page chrome.
-Failures retain the last-good window and expose a Retry action. Tests cover forward/reverse traversal, repeated media identities, and stale-response rejection. Live Spotify playback and account eligibility still require manual verification.
+Playlists, playlist details and Search use `WidgetDiscoveredCollection`. Provider
+paging policy lives in [SpotifyDiscoveredCollections.cs](SpotifyDiscoveredCollections.cs);
+the non-partial widget owner retains navigation, lifecycle and command authority.
+The parent snapshot contains an empty-child indexed declaration. WinUI realizes
+only needed ranges and owns focus navigation, scroll memory and the continuation
+footer. Authors do not create offscreen row elements or neighbor-ID links.
+
+`Count` is the number of admitted logical items, never Spotify's remote total.
+Provider offsets remain worker-private continuation tokens. Library/detail requests
+use 24-item batches and Search uses 10; each source retains at most 1,024 logical
+items by default. History is not evicted from its leading edge, so reversing within
+accepted results does not refetch them. At the cap, the footer reports the result
+limit. Four consecutive pages that add no unique items pause automatic loading;
+explicit Load more resumes it. Failed pages keep the accepted prefix and expose
+explicit Retry. Repeated tail demands join one in-flight load.
+
+Playlist identity is the playlist ID and duplicate library entries keep the first
+occurrence. Detail/Search keys distinguish repeated media occurrences using query
+or playlist context, provider-page offset and admitted slot. They do not pretend
+that slots in a filtered provider response are raw remote indexes. Remote totals
+only indicate whether a continuation may exist. Refresh creates a new logical
+query; playlist detail also revalidates metadata/cache identity. Ordinary polling,
+background/reopen and section changes retain the accepted query history. A transient
+playback refresh warning does not discard it.
+
+Indexed actions execute captured items and recheck current route/query authority
+and availability after command admission. A legacy action string cannot resolve a
+new item through a reused position. Playlist Back and nested Settings return retain
+the admitted `FocusedCollectionItem`, then issue one keyed collection entry request.
+Navigation revision supplies the request ID; data updates do not replay entry.
+Playlist Play targets the collection boundary rather than an unrealized first row.
+
+Queue deliberately remains different: the provider returns a complete bounded
+observation, which [SpotifyIndexedQueue.cs](SpotifyIndexedQueue.cs) exposes as a
+finite indexed collection without continuation. Queue occurrence keys, playback
+suffix semantics and the two-row pinned Up Next projection remain unchanged.
+
+Provider tests acquire actual SDK ranges and route leased actions. They cover
+prefix growth, sparse/failed pages, metadata caps, duplicate occurrences,
+cancellation, stale queries, cache reuse, exact nested return targets and deep
+reverse access. Shared native fixtures cover viewport/focus behavior; live Spotify
+playback and account eligibility still require manual verification.
 
 The `wrail config` command remains available for developer diagnostics and
 automation, but ordinary setup is complete inside the overlay.

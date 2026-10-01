@@ -154,9 +154,9 @@ public sealed partial class YouTubeVideoWidget : Widget
                     .Classes("youtube-time"),
                 timeline,
                 UI.Text(FormatTime(playback.Duration), "youtube.duration")
-                    .Classes("youtube-time", "is-end"))
+                    .Classes("youtube-time", "is-end"),
+                volumeControl)
             .Classes("youtube-timeline-group"));
-        transportControls.Add(volumeControl);
         var page = UI.Stack(
                 PlayerFocusGroupId,
                 UI.Row(
@@ -361,8 +361,10 @@ public sealed partial class YouTubeVideoWidget : Widget
             case YouTubePlaybackIntent.SelectResult when
                 request.ReturnFocusId is { } returnFocusId &&
                 request.VideoId is { } selectedVideoId:
+                if (request.SearchRevision is { } revision && (state.Route != YouTubeRoute.Search || state.Search.Revision != revision))
+                    return new(state, state.Playback.VideoId ?? "youtube.none", false);
                 next = state.WithSelectedResult(
-                    returnFocusId, selectedVideoId, sequence, PlayerFocusGroupId);
+                    returnFocusId, selectedVideoId, sequence, PlayerFocusGroupId, request.ReturnCollectionItem);
                 break;
             default:
                 var preferenceIntent = request.Intent is

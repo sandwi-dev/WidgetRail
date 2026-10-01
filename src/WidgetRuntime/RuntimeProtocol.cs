@@ -24,10 +24,20 @@ internal static class MessageTypes
     public const string Hello = "hello";
     public const string HelloAccepted = "hello-accepted";
     public const string Render = "render";
+    public const string AcquireIndexedRange = "acquire-indexed-range";
+    public const string IndexedLease = "indexed-lease";
+    public const string ReleaseIndexedRange = "release-indexed-range";
+    public const string IndexedInput = "indexed-input";
+    public const string ResolveIndexedArtwork = "resolve-indexed-artwork";
+    public const string CancelIndexedArtwork = "cancel-indexed-artwork";
+    public const string ReadIndexedRange = "read-indexed-range";
+    public const string IndexedRange = "indexed-range";
+    public const string CancelIndexedRange = "cancel-indexed-range";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
     public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";
+    public const string PinnedAction = "pinned-action-v1";
     public const string ControllerInput = "controller-input";
     public const string ControllerInputResult = "controller-input-result";
     // Separate request keeps the strict runtime-v2 handshake and existing
@@ -97,6 +107,13 @@ internal sealed record ControllerInputResultPayload(bool Handled);
 // Null means rejected before invoking any widget handler, never unhandled.
 internal sealed record RevalidatedControllerInputPayload(ControllerInputEvent Input, string? ActionId);
 internal sealed record RevalidatedControllerInputResultPayload(bool? Handled);
+internal sealed record ReleaseIndexedRangePayload(string LeaseId);
+internal sealed record IndexedReleaseResultPayload([property: JsonRequired] bool Released);
+internal sealed record IndexedCancellationResultPayload([property: JsonRequired] bool Cancelled);
+internal sealed record IndexedInputPayload(IndexedCollectionInputRequest Input, IndexedCollectionInputContext Correlation);
+internal sealed record IndexedInputAdmissionPayload(WidgetOperationAdmission? Admission);
+internal sealed record ResolveIndexedArtworkPayload(IndexedCollectionItemReference Item, string ArtworkHandle);
+internal sealed record CancelIndexedArtworkPayload(long RequestId);
 internal sealed record ResolveArtworkPayload(string ArtworkHandle);
 internal sealed record EncodedArtworkPayload(string? ContentType, string? ContentBase64);
 internal sealed record DashboardGestureActivationRequestPayload(

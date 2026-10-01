@@ -51,5 +51,5 @@ Try narrow and wide layouts, normal and larger text, and a scrolled position.
 Verify Back, offscreen navigation, and theme focus outlines in each case.
 
 See the source contracts in [`Elements.cs`](../../src/WidgetSdk/Elements.cs),
-native layout in [`DeclarativeLayout.cpp`](../../src/OverlayHost/DeclarativeLayout.cpp),
+WinUI layout in [`WidgetViewPresenter.Layout.cs`](../../src/OverlayFrontend.WinUI/Presentation/WidgetViewPresenter.Layout.cs),
 and the [WRSS property reference](wrss.md).

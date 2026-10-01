@@ -6,8 +6,10 @@ namespace WidgetRail.Samples.YouTubeWidget;
 public sealed partial class YouTubeVideoWidget
 {
     internal const int SearchPageSize = 12;
-    internal const int MaximumRetainedSearchItems = 48;
+    internal const int MaximumRetainedSearchItems = 512;
     internal const string SearchScrollId = "youtube.search.results";
+    internal const string SearchFocusActionId = "youtube.search.focus";
+    internal const string SearchFieldGroupId = "youtube.search.field";
     private const string SearchCommitActionId = "youtube.search.query.commit";
     private const string SearchSubmitActionId = "youtube.search.submit";
     private const string SearchOpenActionId = "youtube.search.open";
@@ -22,12 +24,13 @@ public sealed partial class YouTubeVideoWidget
     private const string PreviousSectionActionId = "youtube.section.previous";
     private const string NextSectionActionId = "youtube.section.next";
     private const string RootScopeId = "youtube.root";
-    private const string SearchFocusGroupId = "youtube.search.page";
+    internal const string SearchFocusGroupId = "youtube.search.page";
     private const string PlayerFocusGroupId = "youtube.player.page";
     private const string ConfigurationKey = "youtube.configuration";
     private const string SetupCommandKey = "youtube.configure";
     private readonly IYouTubeApplicationService _application;
-    private readonly WidgetCursorResource<YouTubeSearchItem> _searchResults;
+    private sealed record SearchQuery(long Revision, string Text);
+    private readonly WidgetDiscoveredCollection<SearchQuery, YouTubeSearchItem> _searchResults;
     private readonly WidgetOptimisticCommand<
         YouTubeWidgetState,
         YouTubeSetupRequest,
@@ -78,23 +81,29 @@ public sealed partial class YouTubeVideoWidget
                     state.WithPlayback(playback => playback.WithPlaybackEvent(
                         playbackEvent, confirmsProjection)),
             });
-        _searchResults = CreateCursorResource<YouTubeSearchItem>("youtube.search", new()
+        _searchResults = CreateDiscoveredCollection<SearchQuery, YouTubeSearchItem>("youtube.search", new(0, ""), new()
         {
             PageSize = SearchPageSize,
-            MaximumRetainedItems = MaximumRetainedSearchItems,
-            PaginationThreshold = 2,
-            LoadPage = LoadSearchPageAsync,
+            MaximumItems = MaximumRetainedSearchItems,
+            DuplicatePolicy = WidgetDiscoveredDuplicatePolicy.KeepFirst,
+            LoadNext = LoadSearchPageAsync,
             MapError = MapSearchError,
-            Viewports =
-            [
-                new(SearchScrollId,
-                    item => new WidgetCollectionItemKey("youtube-video-" + item.VideoId),
-                    item => ResultFocusId(item.VideoId),
-                    SearchRetryActionId)
-                {
-                    EstimatedItemExtent = 92,
-                },
-            ],
+            ItemKey = item => new("youtube-video-" + item.VideoId),
+            RenderItem = (_, item, context) => UI.ActionSurface(SearchOpenActionId, ResultFocusId(item.VideoId), "Play " + item.Title,
+                ActionSurfaceOrientation.Horizontal,
+                UI.Image(item.ThumbnailUrl, context.Id("image"), "Thumbnail for " + item.Title, ImageFit.Cover).Classes("youtube-result-image"),
+                UI.Stack(context.Id("copy"), UI.Text(item.Title, context.Id("title")).Classes("youtube-result-title"),
+                    UI.Text(item.Channel + " · " + item.Duration, context.Id("meta")).Classes("youtube-result-meta"),
+                    UI.Text("Play", context.Id("play")).Classes("youtube-result-action")).Classes("youtube-result-copy"))
+                .Classes("youtube-result-row"),
+            OnAction = (query, item, action, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                if (!IsActive || action.ActionId != SearchOpenActionId) return ValueTask.CompletedTask;
+                RunPlaybackLatest(new(YouTubePlaybackIntent.SelectResult, ReturnFocusId: ResultFocusId(item.VideoId), VideoId: item.VideoId,
+                    SearchRevision: query.Revision, ReturnCollectionItem: action.FocusedCollectionItem));
+                return ValueTask.CompletedTask;
+            },
         });
         // Both key mutations share one latest-wins key, so a delete supersedes an
         // in-flight configure exactly as before. Cancellation removes only this
@@ -275,15 +284,17 @@ public sealed partial class YouTubeVideoWidget
     {
         var search = state.Search;
         var draft = search.QueryDraft;
-        var capture = _searchResults.Capture();
-        var snapshot = capture.Snapshot;
-        var resultsEntry = SearchResultsEntry(snapshot);
+        var snapshot = _searchResults.Descriptor;
+        // Independent owners can publish on adjacent turns; never expose an old
+        // source beneath a newer query label or stale keyed return request.
+        var hasQuery = search.ActiveQuery.Length != 0 && snapshot.QueryGeneration == search.Revision + 1;
+        var resultsEntry = hasQuery && snapshot.Count > 0 ? SearchScrollId : null;
         var query = UI.TextEntry(draft, "Search public YouTube videos", SearchCommitActionId,
                 "youtube.search.query", 96)
             .FocusRight(SearchSubmitActionId)
             .Classes("youtube-entry", "youtube-search-entry");
         var submit = UI.Button("Search", SearchSubmitActionId, SearchSubmitActionId)
-            .Disabled(string.IsNullOrWhiteSpace(draft) || _searchResults.IsBusy)
+            .Disabled(string.IsNullOrWhiteSpace(draft) || snapshot.Discovery?.Status == DiscoveredCollectionStatus.Loading)
             .FocusLeft("youtube.search.query")
             .Classes("youtube-primary", "youtube-search-submit");
         if (resultsEntry is not null)
@@ -297,75 +308,29 @@ public sealed partial class YouTubeVideoWidget
                 UI.Text("Find a video by title, channel, or topic.", "youtube.search.task-help")
                     .Classes("youtube-section-copy"),
                 UI.Row("youtube.search.controls",
-                        query,
+                        UI.Stack(SearchFieldGroupId, query).RememberChildFocus("youtube.search.query").Classes("youtube-search-field"),
                         submit)
                     .RememberChildFocus("youtube.search.query")
                     .Classes("youtube-search-controls"))
             .Classes("youtube-card", "youtube-search-task");
-        WidgetElement? content;
-        if (snapshot.Status == WidgetPagedResourceStatus.NotLoaded)
-            content = null;
-        else if (snapshot.Status == WidgetPagedResourceStatus.Loading && snapshot.Items.Count == 0)
-            content = UI.Stack("youtube.search.loading",
-                    UI.LoadingIndicator("youtube.search.loading.indicator", "Searching YouTube"),
-                    UI.Text("Searching YouTube", "youtube.search.loading.title").Classes("youtube-card-title"),
-                    UI.Text($"Looking for {search.ActiveQuery}…", "youtube.search.loading.text")
-                        .Classes("youtube-section-copy"))
-                .Classes("youtube-state-card", "is-loading");
-        else if (snapshot.Status == WidgetPagedResourceStatus.Error && snapshot.Items.Count == 0)
-            content = UI.Stack("youtube.search.error",
-                    UI.Text("Search needs attention", "youtube.search.error.title")
-                        .Classes("youtube-card-title"),
-                    UI.Text(snapshot.Error?.Message ?? "YouTube search failed.", "youtube.search.error.text")
-                        .Classes("youtube-status", "is-error"),
-                    UI.Button("Try again", SearchRetryActionId, SearchRetryActionId)
-                        .FocusUp("youtube.search.query")
-                        .Classes("youtube-primary"))
-                .Classes("youtube-state-card", "is-error");
-        else if (snapshot.Items.Count == 0)
-            content = UI.Stack("youtube.search.no-results",
-                    UI.Text("No matches", "youtube.search.no-results.title").Classes("youtube-card-title"),
-                    UI.Text("Try a broader title, channel, or topic.", "youtube.search.no-results.text")
-                        .Classes("youtube-section-copy"))
-                .Classes("youtube-state-card", "is-empty");
-        else
-        {
-            var rows = snapshot.Items.Select((item, index) =>
-            {
-                var play = UI.Button("Play", SearchOpenActionId, ResultFocusId(item.VideoId))
-                    .Classes("youtube-result-action");
-                if (index == 0) play = play.FocusUp("youtube.search.query");
-                return capture.PresentItem(item,
-                    UI.Row("youtube.result.row." + item.VideoId,
-                        UI.Image(item.ThumbnailUrl, "youtube.result.image." + item.VideoId,
-                            $"Thumbnail for {item.Title}", ImageFit.Cover).Classes("youtube-result-image"),
-                        UI.Stack("youtube.result.copy." + item.VideoId,
-                            UI.Text(item.Title, "youtube.result.title." + item.VideoId)
-                                .Classes("youtube-result-title"),
-                            UI.Text($"{item.Channel} · {item.Duration}",
-                                    "youtube.result.meta." + item.VideoId)
-                                .Classes("youtube-result-meta"),
-                            play)
-                        .Classes("youtube-result-copy"))
-                    .Classes("youtube-result-row"));
-            }).ToArray();
-            content = capture.Present(UI.VerticalScroll(SearchScrollId, rows))
-                .Classes("youtube-results");
-        }
+        WidgetElement? content = hasQuery
+            ? UI.CollectionList(SearchScrollId, _searchResults, 112, "YouTube search results").Classes("youtube-results")
+            : null;
         var children = new List<WidgetElement> { searchTask };
         if (NowPlayingRow(state.Playback) is { } nowPlaying) children.Add(nowPlaying);
         if (content is not null) children.Add(content);
         var page = UI.Stack(SearchFocusGroupId, children.ToArray())
             .RememberChildFocus("youtube.search.query")
             .Classes("youtube-search-root");
-        var root = RootSectionShell(state, page, "youtube.search.query");
+        var root = RootSectionShell(state, page, "youtube.search.query")
+            .Shortcut(ControllerButton.RightStick, SearchFocusActionId, label: "Search");
         return new WidgetView(root,
-            state.RootInitialFocusId ?? SearchInitialFocus(search, snapshot),
+            state.RootInitialFocusId ?? (hasQuery && snapshot.Count > 0 ? SearchScrollId : "youtube.search.query"),
             ActiveInputScopeId: RootScopeId, Surface: new WidgetSurfaceHints
         {
             Mode = WidgetSurfaceMode.Standard,
             WidthMode = WidgetSurfaceAxisMode.Preferred,
-            HeightMode = snapshot.Items.Count == 0
+            HeightMode = !hasQuery
                 ? WidgetSurfaceAxisMode.Content
                 : WidgetSurfaceAxisMode.Preferred,
             PreferredWidth = 820,
@@ -375,7 +340,9 @@ public sealed partial class YouTubeVideoWidget
         })
         {
             EmbeddedMediaSession = ParkedMediaSession(state.Playback),
-            FocusGroupEntryRequest = state.RootFocusGroupEntryRequest,
+            FocusGroupEntryRequest = state.RootFocusGroupEntryRequest is { GroupId: SearchFocusGroupId } enter &&
+                hasQuery && search.ReturnCollectionItem is { } target && target.QueryGeneration == snapshot.QueryGeneration
+                ? _searchResults.Enter(SearchScrollId, enter.RequestId, target) : state.RootFocusGroupEntryRequest,
         };
     }
 
@@ -550,7 +517,6 @@ public sealed partial class YouTubeVideoWidget
 
     private bool TryHandleApplicationAction(WidgetActionEvent action)
     {
-        if (_searchResults.TryHandlePagination(action, out _)) return true;
         switch (action.ActionId)
         {
             case SetupOpenConsoleActionId:
@@ -564,7 +530,7 @@ public sealed partial class YouTubeVideoWidget
                 _setupCommand.Run(new(YouTubeSetupOperation.Delete));
                 return true;
             case SetupRouteActionId:
-                _model.Update(state => state.WithSetupRoute(action.FocusedElementId));
+                _model.Update(state => state.WithSetupRoute(action.FocusedElementId, action.FocusedCollectionItem));
                 return true;
             case SetupBackActionId:
                 _model.Update(state => state.WithSetupReturnRoute());
@@ -573,6 +539,12 @@ public sealed partial class YouTubeVideoWidget
                 _model.Update(state => state.Setup.Configured
                     ? state.WithRootSection(YouTubeRootSection.Discover)
                     : state.WithSetupRoute());
+                return true;
+            case SearchFocusActionId:
+                if (IsActive)
+                    _model.Update(state => state.Route == YouTubeRoute.Search && state.RootFocusRequestId < ProtocolConstants.MaximumFocusGroupEntryRequestId
+                        ? state with { RootFocusRequestId = state.RootFocusRequestId + 1, RootFocusGroupId = SearchFieldGroupId,
+                            RootInitialFocusId = "youtube.search.query" } : state);
                 return true;
             case LinkRouteActionId:
                 _model.Update(state => state.WithRootSection(YouTubeRootSection.Player));
@@ -617,10 +589,13 @@ public sealed partial class YouTubeVideoWidget
                 StartSearch();
                 return true;
             case SearchRetryActionId:
-                _searchResults.Retry();
+                // Continuation retry is owned by the native discovered footer;
+                // this legacy authored retry starts an explicit replacement query.
+                StartSearch();
                 return true;
             case SearchOpenActionId:
-                return OpenSearchResult(action.SourceElementId);
+                // Item actions are admitted through exact captured indexed leases.
+                return true;
             default:
                 return false;
         }
@@ -638,11 +613,11 @@ public sealed partial class YouTubeVideoWidget
             return YouTubeSetupOperation.Configure;
         }
         await _application.DeleteApiKeyAsync(cancellationToken).ConfigureAwait(false);
-        // The cursor resource is not part of the model, so a superseded delete
+        // The discovered source is not part of the model, so a superseded delete
         // must not clear it. Cancellation here rolls the attempt back untouched.
         cancellationToken.ThrowIfCancellationRequested();
         if (!context.IsCurrent) return YouTubeSetupOperation.Delete;
-        _searchResults.Reset(invalidate: false);
+        _searchResults.ReplaceQuery(new(_model.Value.Search.Revision + 1, ""));
         return YouTubeSetupOperation.Delete;
     }
 
@@ -650,29 +625,12 @@ public sealed partial class YouTubeVideoWidget
     {
         var query = _model.Value.Search.QueryDraft.Trim();
         if (query.Length == 0) return;
-        // Each owner publishes its own change: the model commits the active query,
-        // and the cursor resource publishes when its load starts. Adding an
-        // Invalidate() here would add a third redundant invalidation request;
-        // the runtime may still coalesce those requests into fewer renders.
-        _searchResults.Reset(invalidate: false);
-        _model.Update(state => state.WithActiveQuery(query));
-        _searchResults.EnsureLoaded();
-    }
-
-    private bool OpenSearchResult(string sourceId)
-    {
-        const string prefix = "youtube.result.";
-        if (!sourceId.StartsWith(prefix, StringComparison.Ordinal)) return true;
-        var id = sourceId[prefix.Length..];
-        var item = _searchResults.Snapshot.Items.FirstOrDefault(candidate =>
-            string.Equals(candidate.VideoId, id, StringComparison.Ordinal));
-        if (item is null) return true;
-        _searchResults.SelectAnchor(new("youtube-video-" + item.VideoId), invalidate: false);
-        RunPlaybackLatest(new(
-            YouTubePlaybackIntent.SelectResult,
-            ReturnFocusId: sourceId,
-            VideoId: item.VideoId));
-        return true;
+        var captured = _model.Update(state =>
+        {
+            var next = state.WithActiveQuery(query);
+            return (next, new SearchQuery(next.Search.Revision, query));
+        });
+        _searchResults.ReplaceQuery(captured.Result);
     }
 
     private void SwitchRootSection(int offset)
@@ -692,14 +650,6 @@ public sealed partial class YouTubeVideoWidget
             return state.WithRootSection(destination, groupId);
         });
     }
-
-    private static string? SearchResultsEntry(
-        WidgetCursorResourceSnapshot<YouTubeSearchItem> snapshot) => snapshot.Status switch
-    {
-        WidgetPagedResourceStatus.Error when snapshot.Items.Count == 0 => SearchRetryActionId,
-        _ when snapshot.Items.Count != 0 => ResultFocusId(snapshot.Items[0].VideoId),
-        _ => null,
-    };
 
     private static StackElement RootSectionShell(
         YouTubeWidgetState state,
@@ -762,24 +712,16 @@ public sealed partial class YouTubeVideoWidget
         ControllerButton button, string accessibilityLabel, string id) =>
         UI.ControllerGlyph(button, id, accessibilityLabel).Classes("youtube-section-bumper-key");
 
-    private async ValueTask<WidgetCursorPage<YouTubeSearchItem>> LoadSearchPageAsync(
-        WidgetCollectionCursor? cursor,
-        WidgetCursorDirection? direction,
+    private async ValueTask<WidgetDiscoveredPage<YouTubeSearchItem>> LoadSearchPageAsync(
+        SearchQuery query,
+        string? cursor,
         int pageSize,
         CancellationToken cancellationToken)
     {
-        var query = _model.Value.Search.ActiveQuery;
-        var page = await _application.SearchAsync(query, cursor?.Value, pageSize, cancellationToken)
+        var page = await _application.SearchAsync(query.Text, cursor, pageSize, cancellationToken)
             .ConfigureAwait(false);
-        return new WidgetCursorPage<YouTubeSearchItem>(
-            page.Items,
-            null,
-            page.NextPageToken is null ? null : new WidgetCollectionCursor(page.NextPageToken))
-        {
-            FirstItemIndex = direction == WidgetCursorDirection.After
-                ? _searchResults.Snapshot.Items.Count : 0,
-            TotalItemCount = page.TotalResults,
-        };
+        // Reported remote totals are not the count of admitted discovered rows.
+        return new(page.Items, page.NextPageToken);
     }
 
     private static WidgetResourceError MapSearchError(Exception exception) => exception switch
@@ -811,22 +753,6 @@ public sealed partial class YouTubeVideoWidget
         {
             return new WidgetCommandError("youtube_setup_failed", UnknownSetupFailure);
         }
-    }
-
-    private string? SearchInitialFocus(
-        YouTubeSearchState search,
-        WidgetCursorResourceSnapshot<YouTubeSearchItem> snapshot)
-    {
-        if (snapshot.RequestedFocusId is { } requested) return requested;
-        if (search.ReturnFocusId is { } retained && snapshot.Items.Any(item =>
-                string.Equals(ResultFocusId(item.VideoId), retained, StringComparison.Ordinal)))
-            return retained;
-        return snapshot.Status switch
-        {
-            WidgetPagedResourceStatus.Error when snapshot.Items.Count == 0 => SearchRetryActionId,
-            _ when snapshot.Items.Count != 0 => ResultFocusId(snapshot.Items[0].VideoId),
-            _ => "youtube.search.query",
-        };
     }
 
     private static string ResultFocusId(string videoId) => "youtube.result." + videoId;

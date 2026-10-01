@@ -10,8 +10,18 @@ internal enum BridgeRequestKind
     GetPlatformAppearance,
     ControllerControl,
     ApplicationControl,
+    CompleteTaskActivation,
     WindowPreviewPermissions,
     GetSnapshot,
+    ReadIndexedRange,
+    CancelIndexedRange,
+    AcquireIndexedRange,
+    ReleaseIndexedLease,
+    RefreshIndexedStyles,
+    RefreshPresentationStyles,
+    IndexedInput,
+    ResolveIndexedArtwork,
+    CancelIndexedArtwork,
     ResolveArtwork,
     ResolvePackageIcon,
     ResolveEmbeddedMedia,
@@ -40,12 +50,23 @@ internal readonly record struct BridgeRequestKey
 
     internal BridgeRequestKind Kind { get; }
     internal string? WidgetId { get; }
+    internal BridgeIndexedRangeRequest? IndexedRange { get; private init; }
+    internal BridgeIndexedArtworkRequest? IndexedArtwork { get; private init; }
+    internal bool IsIndependent => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.CancelIndexedRange or
+        BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or
+        BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork;
+    internal bool IsIndexedProvider => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ResolveIndexedArtwork;
     internal bool IsKnown => Kind is not (BridgeRequestKind.Malformed or
         BridgeRequestKind.Unknown);
 
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
-        if (kind is BridgeRequestKind.GetSnapshot or
+        if (kind is BridgeRequestKind.CompleteTaskActivation or BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ReadIndexedRange or
+            BridgeRequestKind.CancelIndexedRange or
+            BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
+            BridgeRequestKind.RefreshIndexedStyles or BridgeRequestKind.RefreshPresentationStyles or
+            BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork or
             BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
@@ -62,7 +83,12 @@ internal readonly record struct BridgeRequestKey
 
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
-        if (kind is not (BridgeRequestKind.GetSnapshot or
+        if (kind is not (BridgeRequestKind.CompleteTaskActivation or BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ReadIndexedRange or
+            BridgeRequestKind.CancelIndexedRange or
+            BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
+            BridgeRequestKind.RefreshIndexedStyles or BridgeRequestKind.RefreshPresentationStyles or
+            BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork or
             BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
@@ -78,6 +104,11 @@ internal readonly record struct BridgeRequestKey
             throw new BridgeProtocolException("Bridge request widget ID is invalid.");
         return new BridgeRequestKey(kind, widgetId);
     }
+
+    internal static BridgeRequestKey Indexed(BridgeRequestKind kind, BridgeIndexedRangeRequest request) =>
+        Widget(kind, request.WidgetId) with { IndexedRange = request };
+    internal static BridgeRequestKey IndexedArtworkDemand(BridgeRequestKind kind, BridgeIndexedArtworkRequest request) =>
+        Widget(kind, request.WidgetId) with { IndexedArtwork = request };
 
     private static bool IsIdentifier(string? value) =>
         value is { Length: > 0 and <= 128 } &&
@@ -115,16 +146,28 @@ internal static class BridgeRequestClassifier
         {
             return request.Type switch
             {
+                BridgeMessageTypes.CompleteTaskActivation => TaskActivation(request.Payload),
                 BridgeMessageTypes.ListWidgets => Empty(
                     request.Payload, BridgeRequestKind.ListWidgets),
                 BridgeMessageTypes.GetPlatformAppearance => Appearance(request.Payload),
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
+                BridgeMessageTypes.ReadIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.ReadIndexedRange),
+                BridgeMessageTypes.CancelIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.CancelIndexedRange),
+                BridgeMessageTypes.AcquireIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.AcquireIndexedRange),
+                BridgeMessageTypes.ReleaseIndexedLease => IndexedLease(request.Payload),
+                BridgeMessageTypes.RefreshIndexedStyles => IndexedLease(request.Payload, BridgeRequestKind.RefreshIndexedStyles),
+                BridgeMessageTypes.RefreshPresentationStyles => PresentationStyles(request.Payload),
+                BridgeMessageTypes.IndexedInput => IndexedInput(request.Payload),
+                BridgeMessageTypes.ResolveIndexedArtwork => IndexedArtwork(request.Payload, BridgeRequestKind.ResolveIndexedArtwork),
+                BridgeMessageTypes.CancelIndexedArtwork => IndexedArtwork(request.Payload, BridgeRequestKind.CancelIndexedArtwork),
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
                 BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
+                BridgeMessageTypes.ResolvePinnedArtwork => PinnedArtwork(request.Payload),
+                BridgeMessageTypes.PinnedAction => PinnedAction(request.Payload),
                 BridgeMessageTypes.ResolvePackageIcon => PackageIcon(request.Payload),
                 BridgeMessageTypes.ResolveEmbeddedMedia => EmbeddedMedia(request.Payload),
                 BridgeMessageTypes.EmbeddedMediaPlaybackEvent => EmbeddedMediaEvent(request.Payload),
@@ -156,10 +199,51 @@ internal static class BridgeRequestClassifier
             };
         }
         catch (Exception exception) when (exception is JsonException or
-            NotSupportedException or BridgeProtocolException)
+            NotSupportedException or BridgeProtocolException or ArgumentException)
         {
             return BridgeRequestKey.Global(BridgeRequestKind.Malformed);
         }
+    }
+
+    private static void IndexedIdentity(string widget, string instance, string runtime, string presentation)
+    {
+        if (!new[] { widget, instance, runtime, presentation }.All(BridgeRequestKey.IsBoundedIdentifier))
+            throw new BridgeProtocolException("Indexed identity is invalid.");
+    }
+
+    private static BridgeRequestKey IndexedLease(JsonElement payload, BridgeRequestKind kind = BridgeRequestKind.ReleaseIndexedLease)
+    {
+        var request = BridgeJson.FromElement<BridgeIndexedLeaseRequest>(payload);
+        IndexedIdentity(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration);
+        if (!Guid.TryParseExact(request.LeaseId, "N", out _)) throw new BridgeProtocolException("Indexed lease ID is invalid.");
+        return Widget(request.WidgetId, kind);
+    }
+
+    private static BridgeRequestKey PresentationStyles(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgePresentationStylesRequest>(payload);
+        IndexedIdentity(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration);
+        if (request.SnapshotSequence < 1) throw new BridgeProtocolException("Style snapshot sequence is invalid.");
+        return Widget(request.WidgetId, BridgeRequestKind.RefreshPresentationStyles);
+    }
+
+    private static BridgeRequestKey IndexedInput(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeIndexedInputRequest>(payload);
+        IndexedIdentity(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration);
+        IndexedCollectionInputContract.ValidateInput(request.Input);
+        IndexedCollectionInputContract.ValidateContext(request.Context);
+        return Widget(request.WidgetId, BridgeRequestKind.IndexedInput);
+    }
+
+    private static BridgeRequestKey IndexedArtwork(JsonElement payload, BridgeRequestKind kind)
+    {
+        var request = BridgeJson.FromElement<BridgeIndexedArtworkRequest>(payload);
+        IndexedIdentity(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration);
+        IndexedCollectionInputContract.ValidateReference(request.Item);
+        if (!BridgeRequestKey.IsBoundedIdentifier(request.ArtworkHandle) || !BridgeRequestKey.IsBoundedIdentifier(request.DemandId) || request.DemandId.Length > 64)
+            throw new BridgeProtocolException("Indexed artwork demand is invalid.");
+        return BridgeRequestKey.IndexedArtworkDemand(kind, request);
     }
 
     private static BridgeRequestKey Appearance(JsonElement payload)
@@ -173,6 +257,14 @@ internal static class BridgeRequestClassifier
         return BridgeRequestKey.Global(BridgeRequestKind.GetPlatformAppearance);
     }
 
+    private static BridgeRequestKey TaskActivation(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeTaskActivationRequest>(payload);
+        if (request.Sequence <= 0 || !BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration))
+            throw new BridgeProtocolException("Invalid task activation completion.");
+        return BridgeRequestKey.Widget(BridgeRequestKind.CompleteTaskActivation, request.WidgetId);
+    }
+
     private static BridgeRequestKey Empty(JsonElement payload, BridgeRequestKind kind) =>
         payload.ValueKind == JsonValueKind.Object && !payload.EnumerateObject().Any()
             ? BridgeRequestKey.Global(kind)
@@ -181,12 +273,35 @@ internal static class BridgeRequestClassifier
     private static BridgeRequestKey Widget(string widgetId, BridgeRequestKind kind) =>
         BridgeRequestKey.Widget(kind, widgetId);
 
+    private static BridgeRequestKey IndexedRange(JsonElement payload, BridgeRequestKind kind)
+    {
+        var request = BridgeJson.FromElement<BridgeIndexedRangeRequest>(payload);
+        BridgeIndexedRangeValidation.Validate(request);
+        return BridgeRequestKey.Indexed(kind, request);
+    }
+
+    private static BridgeRequestKey PinnedAction(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgePinnedActionRequest>(payload);
+        BridgePinnedRequestValidation.Validate(request);
+        return BridgeRequestKey.Widget(BridgeRequestKind.Action, request.WidgetId);
+    }
+    private static BridgeRequestKey PinnedArtwork(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgePinnedArtworkRequest>(payload);
+        BridgePinnedRequestValidation.Validate(request);
+        return BridgeRequestKey.Widget(BridgeRequestKind.ResolveArtwork, request.WidgetId);
+    }
+
     private static BridgeRequestKey Artwork(JsonElement payload)
     {
         var request = BridgeJson.FromElement<BridgeArtworkRequest>(payload);
         _ = BridgeRequestKey.Widget(BridgeRequestKind.GetSnapshot, request.WidgetId);
         if (!BridgeRequestKey.IsBoundedIdentifier(request.ArtworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
+        if (request.DemandId is { } demandId &&
+            (demandId.Length > 64 || !BridgeRequestKey.IsBoundedIdentifier(demandId)))
+            throw new BridgeProtocolException("Artwork demand identifier is invalid.");
         if ((request.RuntimeGeneration is null) !=
                 (request.PresentationGeneration is null) ||
             (request.RuntimeGeneration is not null &&

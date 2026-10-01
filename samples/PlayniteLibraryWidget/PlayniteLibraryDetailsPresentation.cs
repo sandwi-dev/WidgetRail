@@ -56,7 +56,7 @@ internal static class PlayniteLibraryDetailsPresentation
         var completion = completionStatus ?? game?.CompletionStatus;
         var controlItems = new List<WidgetElement>
         {
-            UI.Row(Prefix + "source-row",
+            UI.ResponsiveGrid(Prefix + "source-row", 180, 2,
                 UI.Text(presentation.Source.DisplayName, Prefix + "source").Classes("playnite-library-details-source"),
                 UI.Text(string.IsNullOrWhiteSpace(completion) ? "No completion status" : completion,
                     Prefix + "completion.value").Classes("playnite-library-details-completion"))
@@ -85,23 +85,27 @@ internal static class PlayniteLibraryDetailsPresentation
             .AddClasses("playnite-library-details-tabs");
         var content = new List<WidgetElement>
         {
-            UI.Row(Prefix + "overview-header", poster, controls).Classes("playnite-library-details-header"),
             navigationRail,
         };
         if (extras.OperationMessage is { } message) content.Add(Copy(message, "operation.message"));
         if (extras.CompletionStatusesError is { } completionError) content.Add(Copy(completionError, "completion.error"));
         var tabContent = new List<WidgetElement>();
-        if (extras.Tab == PlayniteDetailsTab.Overview)
+        if (extras.Tab is PlayniteDetailsTab.Description or PlayniteDetailsTab.Information or PlayniteDetailsTab.Links)
         {
             if (loading) tabContent.Add(Loading("Loading game details..."));
             if (error is not null) tabContent.Add(Copy(error, "load.error"));
-            AddOverview(tabContent, item, game, loading, error, busy);
+            if (extras.Tab == PlayniteDetailsTab.Description) AddDescription(tabContent, item, game, loading, error);
+            else if (extras.Tab == PlayniteDetailsTab.Information) AddInformation(tabContent, item, game);
+            else if (!loading && error is null) AddLinks(tabContent, game, busy);
         }
         else if (extras.Tab == PlayniteDetailsTab.Achievements) AddAchievements(tabContent, extras);
         else AddActivity(tabContent, extras);
         content.Add(UI.Stack(Prefix + "tab.content", tabContent.ToArray()).Classes("playnite-library-details-content")
             .TransitionContent(Prefix + "navigation", tabName, (int)extras.Tab));
-        var body = UI.Stack(ContentId, content.ToArray()).Classes("playnite-library-details-content")
+        var body = UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+                UI.Row(Prefix + "overview-header", poster, controls).Classes("playnite-library-details-header"),
+                UI.VerticalScroll(modalId + ".scroll", content.ToArray()).Classes("playnite-library-details-scroll").InGrid(row: 1))
+            .Spacing(16, 0).Classes("playnite-library-details-layout")
             .Shortcut(ControllerButton.LeftBumper, Prefix + "tab.previous", "Previous details tab")
             .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab")
             .Shortcut(ControllerButton.Y, Prefix + "refresh", "Refresh details");
@@ -111,6 +115,7 @@ internal static class PlayniteLibraryDetailsPresentation
                 PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current));
         return new(modalId, presentation.DisplayName, body, PlayId, PlayniteLibraryActions.DetailsClose)
         {
+            ScrollContent = false,
             HeaderActions = UI.Row(Prefix + "header-hints", options,
                 UI.ControllerHint(ControllerButton.Y, "Refresh", Prefix + "refresh.hint"),
                 UI.ControllerHint(ControllerButton.B, "Close", Prefix + "close.hint"))
@@ -142,8 +147,7 @@ internal static class PlayniteLibraryDetailsPresentation
             .AddClasses("playnite-library-details-button");
     }
 
-    private static void AddOverview(List<WidgetElement> content, PlayniteLibraryItem item, PlayniteBridgeGame? game,
-        bool loading, string? error, bool busy)
+    private static void AddInformation(List<WidgetElement> content, PlayniteLibraryItem item, PlayniteBridgeGame? game)
     {
         var metadata = item.Presentation.Metadata;
         if (metadata?.PlaytimeMinutes is { } minutes) content.Add(Value("Time played", Duration(minutes * 60), Prefix + "playtime"));
@@ -169,6 +173,17 @@ internal static class PlayniteLibraryDetailsPresentation
             AddValue("Tags", string.Join(", ", game.Tags), "tags");
         }
         AddValue("Version", metadata?.Version, "version");
+        if (content.Count == 0) content.Add(Copy("No additional information is available for this game.", "information.empty"));
+        void AddValue(string label, string? value, string id)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) content.Add(Value(label, value, Prefix + id));
+        }
+    }
+
+    private static void AddDescription(List<WidgetElement> content, PlayniteLibraryItem item, PlayniteBridgeGame? game,
+        bool loading, string? error)
+    {
+        var metadata = item.Presentation.Metadata;
         if (error is null && (!loading || !string.IsNullOrWhiteSpace(metadata?.Description)))
         {
             content.Add(UI.Text("Description", Prefix + "description.title").Classes("playnite-library-details-section-title"));
@@ -181,16 +196,17 @@ internal static class PlayniteLibraryDetailsPresentation
             content.Add(UI.Text("Notes", Prefix + "notes.title").Classes("playnite-library-details-section-title"));
             AddParagraphs(content, game.Notes, "notes");
         }
+    }
+
+    private static void AddLinks(List<WidgetElement> content, PlayniteBridgeGame? game, bool busy)
+    {
         if (game?.Links.Count > 0)
         {
             content.Add(UI.Text("Links", Prefix + "links.title").Classes("playnite-library-details-section-title"));
             for (var index = 0; index < game.Links.Count; index++)
                 content.Add(UI.Button(game.Links[index].Name + " (browser)", Prefix + "link." + index, Prefix + "link." + index).Disabled(busy));
         }
-        void AddValue(string label, string? value, string id)
-        {
-            if (!string.IsNullOrWhiteSpace(value)) content.Add(Value(label, value, Prefix + id));
-        }
+        else content.Add(Copy("No links are available for this game.", "links.empty"));
     }
 
     private static void AddAchievements(List<WidgetElement> content, PlayniteDetailsExtras state)

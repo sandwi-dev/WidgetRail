@@ -83,6 +83,8 @@ static async Task HonestTransportStates()
     await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
     var snapshot = widget.RenderSnapshot("media.test", 1);
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
+    Assert.Equal(WidgetSurfaceAxisMode.Content, snapshot.Surface.HeightMode);
+    Assert.Equal(260d, snapshot.Surface.MinimumHeight!.Value);
     Assert.Equal("media-sessions", snapshot.ActiveInputScopeId);
     Assert.Equal(0, snapshot.QuickActions.Count);
     var controls = Nodes(snapshot.Root).Where(node =>
@@ -282,7 +284,7 @@ static async Task SessionPillsKeepStableFocusIdentity()
     Assert.True(pills.Select(node => node.Id).Distinct(StringComparer.Ordinal).Count() == 2);
     Assert.True(pills.All(node => node.FocusPersistenceId == node.Id + ".focus"));
     var stable = pills.Single(node => node.Text == "Player");
-    Assert.Equal("Player. Original. Press A to select", stable.AccessibilityLabel);
+    Assert.Equal("Player. Original. Select this session.", stable.AccessibilityLabel);
 
     fake.Publish([
         Session("other/provider:id", app: "Second renamed", title: "Other updated"),
@@ -293,7 +295,7 @@ static async Task SessionPillsKeepStableFocusIdentity()
         .Single(node => node.ActionId == "media.select" && node.Text == "Player renamed");
     Assert.Equal(stable.Id, updated.Id);
     Assert.Equal(stable.FocusPersistenceId, updated.FocusPersistenceId);
-    Assert.Equal("Player renamed. Updated. Press A to select", updated.AccessibilityLabel);
+    Assert.Equal("Player renamed. Updated. Select this session.", updated.AccessibilityLabel);
     Assert.Equal("stable/provider:id", widget.SelectedSessionId);
     await Background(widget);
 }
@@ -323,7 +325,7 @@ static async Task RemovedRememberedSelectionFallsBack()
     var fallbackPill = fallbackScroll.Children.Single();
     Assert.Equal(fallbackPill.Id, fallbackScroll.InitialChildFocusId);
     Assert.True(fallbackPill.IsSelected is true);
-    Assert.Equal("Player. Current survives. Press A to select", fallbackPill.AccessibilityLabel);
+    Assert.Equal("Player. Current survives. Select this session.", fallbackPill.AccessibilityLabel);
     Assert.Equal(3, fallback.QuickActions.Count);
     Assert.Equal(0, ViewSnapshotValidator.Validate(fallback).Count);
     await Background(widget);
@@ -343,7 +345,6 @@ static Task SessionSelectorStylesStayBounded()
     Assert.True(pill.Contains("min-width: 148px;", StringComparison.Ordinal));
     Assert.True(pill.Contains("max-width: 148px;", StringComparison.Ordinal));
     Assert.True(pill.Contains("flex-grow: 0;", StringComparison.Ordinal));
-    Assert.True(pill.Contains("flex-shrink: 0;", StringComparison.Ordinal));
     Assert.True(pill.Contains("text-overflow: ellipsis;", StringComparison.Ordinal));
     return Task.CompletedTask;
 }

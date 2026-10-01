@@ -1,4 +1,4 @@
-#include "../OverlayHost/OverlayTargeting.h"
+#include "OverlayTargeting.h"
 
 namespace widgetrail {
 

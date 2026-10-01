@@ -63,7 +63,8 @@ public static class ViewSnapshotValidator
 
     internal static IReadOnlyList<ProtocolValidationError> Validate(
         ViewSnapshot snapshot,
-        ProtocolVersionRequirements requirements)
+        ProtocolVersionRequirements requirements,
+        bool materializedIndexedCollections = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(requirements);
@@ -213,7 +214,7 @@ public static class ViewSnapshotValidator
                         ProtocolValidationIdentifierKind.ElementReference,
                         ProtocolValidationIdentifierState.Missing, groupId);
                 else if (group.Node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
-                             ViewNodeKind.Scroll or ViewNodeKind.Grid))
+                             ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection))
                     AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
                         "Focus-group entry must name a child-owning layout container.",
                         ProtocolValidationIdentifierKind.ElementReference,
@@ -231,6 +232,17 @@ public static class ViewSnapshotValidator
                         "Focus-group entry must belong to the active input scope.",
                         ProtocolValidationIdentifierKind.ElementReference,
                         ProtocolValidationIdentifierState.OutsideActiveScope, groupId);
+                if (groupEntry.IndexedItem is { } item)
+                {
+                    if (group.Node?.Kind != ViewNodeKind.IndexedCollection)
+                        Add("$.focusGroupEntryRequest.indexedItem", "invalid_indexed_focus_target", "An indexed focus target requires an indexed collection group.");
+                    try { IndexedCollectionContract.ValidateFocusTargetShape(item, groupId); }
+                    catch (ArgumentException)
+                    { Add("$.focusGroupEntryRequest.indexedItem", "invalid_indexed_focus_target", "Indexed focus target identity is invalid."); }
+                    // A consumed request may remain declared while its source
+                    // publishes a newer query. Hosts ignore stale generations;
+                    // that must not invalidate the new parent presentation.
+                }
             }
         }
 
@@ -688,7 +700,7 @@ public static class ViewSnapshotValidator
                     $"The {label} height must be finite and between {minimumHeight} and {maximumHeight} DIPs.");
         }
 
-        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey)
+        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey, ViewNode? parent = null)
         {
             if (node is null)
             {
@@ -697,10 +709,11 @@ public static class ViewSnapshotValidator
             }
 
             nodes++;
-            if (nodes > ProtocolConstants.MaximumNodeCount)
+            var nodeLimit = materializedIndexedCollections ? ProtocolConstants.MaximumNodeCount + IndexedCollectionLimits.MaximumRangeNodes : ProtocolConstants.MaximumNodeCount;
+            if (nodes > nodeLimit)
             {
-                if (nodes == ProtocolConstants.MaximumNodeCount + 1)
-                    Add(path, "tree_too_large", $"A view may contain at most {ProtocolConstants.MaximumNodeCount} nodes.");
+                if (nodes == nodeLimit + 1)
+                    Add(path, "tree_too_large", $"A view may contain at most {nodeLimit} nodes.");
                 return;
             }
 
@@ -712,6 +725,7 @@ public static class ViewSnapshotValidator
 
             CheckIdentifier(node.Id, $"{path}.id", "node ID",
                 ProtocolValidationIdentifierKind.ElementReference);
+            GridLayoutValidation.Validate(node, parent, path, (errorPath, code, message) => Add(errorPath, code, message));
             if (!Enum.IsDefined(node.Kind))
                 Add($"{path}.kind", "invalid_node_kind", "The node kind is not supported.");
             if (node.VisibleWhen is { } visibility)
@@ -783,7 +797,7 @@ public static class ViewSnapshotValidator
                 CheckString(node.ImageSource, $"{path}.imageSource");
 
             var isContainer = node.Kind is
-                ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid;
+                ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection;
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
             if (node.Kind is ViewNodeKind.WindowPreview)
             {
@@ -863,6 +877,62 @@ public static class ViewSnapshotValidator
             {
                 Add($"{path}.indicatorSize", "loading_indicator_size_not_allowed",
                     "Indicator size applies only to loading indicators.");
+            }
+            if (node.Kind == ViewNodeKind.IndexedCollection)
+            {
+                if (node.IndexedCollection is null || node.CollectionLayout is null || node.ScrollAxis is null || !Enum.IsDefined(node.ScrollAxis.Value)
+                    || string.IsNullOrWhiteSpace(node.AccessibilityLabel) || (!materializedIndexedCollections && node.Children.Count != 0)
+                    || node.InitialChildFocusId is not null || node.VirtualCollectionWindow is not null || node.CollectionAnchorKey is not null
+                    || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null || node.CollectionNavigation is not null
+                    || node.CollectionStartIndex is not null || node.CollectionLoading is not null || node.ScrollNearStartActionId is not null
+                    || node.ScrollNearEndActionId is not null || node.ScrollPaginationThreshold is not null)
+                    Add(path, "invalid_indexed_collection", "Indexed collections require a labeled source/layout/axis and no inline items or legacy cursor metadata.");
+                if (node.IndexedCollection is { } indexed)
+                {
+                    CheckIdentifier(indexed.SourceId, $"{path}.indexedCollection.sourceId", "indexed source ID");
+                    if (indexed.QueryGeneration < 0 || indexed.ContentRevision < 0 || indexed.Count < 0)
+                        Add(path, "invalid_indexed_collection", "Indexed query generations, revisions and count cannot be negative.");
+                    try { IndexedCollectionContract.ValidateDescriptor(indexed); }
+                    catch (ArgumentException) { Add(path, "invalid_indexed_collection", "Indexed source extent or discovery state is invalid."); }
+                }
+            }
+            else if (node.IndexedCollection is not null)
+                Add(path, "indexed_collection_not_allowed", "Indexed source metadata applies only to an IndexedCollection node.");
+            if (node.IndexedGroups is { } indexedGroups)
+            {
+                if (node.Kind != ViewNodeKind.IndexedCollection || node.IndexedCollection is null || node.ScrollAxis is null)
+                    Add(path, "indexed_groups_not_allowed", "Indexed grouping applies only to a vertical indexed collection.");
+                else
+                {
+                    try { IndexedCollectionContract.ValidateGroups(indexedGroups, node.IndexedCollection, node.ScrollAxis.Value); }
+                    catch (ArgumentException) { Add(path, "invalid_indexed_groups", "Indexed groups require unique safe keys, bounded headings and a complete vertical query partition."); }
+                }
+            }
+            if (node.CollectionLayout is { } collectionLayout)
+            {
+                if (node.Kind is not (ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection) || !Enum.IsDefined(collectionLayout.Kind))
+                    Add(path, "invalid_collection_layout", "Collection layout requires a Scroll or IndexedCollection and a supported layout kind.");
+                if (!double.IsFinite(collectionLayout.EstimatedItemExtent) ||
+                    collectionLayout.EstimatedItemExtent < ProtocolConstants.MinimumVirtualCollectionItemExtent ||
+                    collectionLayout.EstimatedItemExtent > ProtocolConstants.MaximumVirtualCollectionItemExtent)
+                    Add(path, "invalid_collection_estimate", "Collection estimates must be finite and within the supported DIP range.");
+                if (collectionLayout.Kind is CollectionLayoutKind.AdaptiveGrid)
+                {
+                    if (node.ScrollAxis is not ScrollAxis.Vertical ||
+                        collectionLayout.MinimumColumnWidth is not { } width || !double.IsFinite(width) ||
+                        width < ProtocolConstants.MinimumGridColumnWidth || width > ProtocolConstants.MaximumGridColumnWidth ||
+                        collectionLayout.MaximumColumns is < 1 or > ProtocolConstants.MaximumGridColumns)
+                        Add(path, "invalid_collection_grid", "Adaptive collections require vertical scrolling and bounded column widths/counts.");
+                }
+                else if (collectionLayout.MinimumColumnWidth is not null || collectionLayout.MaximumColumns is not null)
+                    Add(path, "invalid_collection_grid", "Column properties apply only to adaptive collections.");
+                var collectionItems = node.Children;
+                foreach (var item in collectionItems ?? [])
+                {
+                    if (item is null || item.Kind is not (ViewNodeKind.Button or ViewNodeKind.ActionSurface) ||
+                        item.CollectionItemKey is null || item.VisibleWhen is not (null or ResponsiveVisibility.Always))
+                        Add(path, "invalid_collection_item", "Collections require direct, always-present keyed buttons or action surfaces.");
+                }
             }
             if (node.Kind is ViewNodeKind.Scroll)
             {
@@ -1022,11 +1092,11 @@ public static class ViewSnapshotValidator
                         ContainsCollectionItem(child, isRoot: false));
                 }
             }
-            else if (node.ScrollAxis is not null || node.ShowScrollbar is not null || node.ScrollNearStartActionId is not null ||
+            else if (node.Kind != ViewNodeKind.IndexedCollection && (node.ScrollAxis is not null || node.ShowScrollbar is not null || node.ScrollNearStartActionId is not null ||
                      node.ScrollNearEndActionId is not null ||
                      node.ScrollPaginationThreshold is not null ||
                      node.VirtualCollectionWindow is not null ||
-                     node.CollectionAnchorKey is not null || node.CollectionStartIndex is not null || node.CollectionNavigation is not null || node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null)
+                     node.CollectionAnchorKey is not null || node.CollectionStartIndex is not null || node.CollectionNavigation is not null || node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null))
             {
                 Add(path, "scroll_property_not_allowed",
                     "Scroll properties apply only to scroll containers.");
@@ -1036,7 +1106,7 @@ public static class ViewSnapshotValidator
                 CheckIdentifier(node.CollectionItemKey,
                     $"{path}.collectionItemKey", "collection item key");
             }
-            if (node.Kind is ViewNodeKind.Grid)
+            if (node.Kind is ViewNodeKind.Grid && node.GridLayout is null)
             {
                 if (node.GridMinimumColumnWidth is not { } minimumColumnWidth ||
                     !double.IsFinite(minimumColumnWidth) ||
@@ -1049,7 +1119,7 @@ public static class ViewSnapshotValidator
                     Add($"{path}.gridMaximumColumns", "invalid_grid_maximum_columns",
                         $"Grid maximum columns must be between 1 and {ProtocolConstants.MaximumGridColumns}.");
             }
-            else if (node.GridMinimumColumnWidth is not null || node.GridMaximumColumns is not null)
+            else if (node.Kind != ViewNodeKind.Grid && (node.GridMinimumColumnWidth is not null || node.GridMaximumColumns is not null))
             {
                 Add(path, "grid_property_not_allowed",
                     "Grid column properties apply only to responsive Grid nodes.");
@@ -1142,7 +1212,7 @@ public static class ViewSnapshotValidator
             if (node.Kind is ViewNodeKind.Select && string.IsNullOrWhiteSpace(node.Text))
                 Add($"{path}.text", "required",
                     "A Select requires bounded non-whitespace visible text.");
-            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry or ViewNodeKind.Select) &&
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection) &&
                 (node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null))
                 Add(path, "interaction_state_not_allowed",
                     "Interaction states apply only to buttons, sliders, action surfaces, and text entry.");
@@ -1243,7 +1313,7 @@ public static class ViewSnapshotValidator
             if (node.ContextActions is null)
                 Add($"{path}.contextActions", "required", "Context actions cannot be null.");
             else if (node.Kind is not ViewNodeKind.ActionSurface &&
-                     !(node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll && node.ContextMenuButton is not null) && contextActions.Count != 0)
+                     !(node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection && node.ContextMenuButton is not null) && contextActions.Count != 0)
                 Add($"{path}.contextActions", "context_actions_not_allowed",
                     "Context actions require an action surface or a container with an explicit menu trigger.");
             else if (contextActions.Count > ProtocolConstants.MaximumContextActionCount)
@@ -1252,7 +1322,7 @@ public static class ViewSnapshotValidator
             if (node.ContextMenuButton is { } menuButton &&
                 (menuButton is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y) ||
                  contextActions.Count == 0 ||
-                 node.Kind is not (ViewNodeKind.ActionSurface or ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll)))
+                 node.Kind is not (ViewNodeKind.ActionSurface or ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection)))
                 Add(path, "invalid_context_menu_trigger", "A context menu trigger requires contextual actions on a supported owner and Menu, X or Y.");
             var contextActionIds = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < Math.Min(
@@ -1462,9 +1532,9 @@ public static class ViewSnapshotValidator
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
                 ViewNodeKind.ActionSurface or ViewNodeKind.Grid or ViewNodeKind.BackgroundSurface or
                 ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ModalLayer) &&
-                children.Count != 0)
+                !(materializedIndexedCollections && node.Kind == ViewNodeKind.IndexedCollection) && children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
-            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection or
                 ViewNodeKind.Button or ViewNodeKind.ActionSurface) && shortcuts.Count != 0)
                 Add($"{path}.shortcuts", "shortcuts_not_allowed",
                     "Only input-scope containers, buttons, and action surfaces may declare shortcuts.");
@@ -1524,7 +1594,7 @@ public static class ViewSnapshotValidator
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
                     node.UsesFocusedDescendantArtwork is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
-                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                     Add(path, "focus_presentation_surface_property_not_allowed",
@@ -1584,7 +1654,7 @@ public static class ViewSnapshotValidator
                     $"{path}.defaultFocusPresentation", depth + 1, scopeKey);
             }
             for (var index = 0; index < children.Count; index++)
-                Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey);
+                Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey, node);
         }
 
         void ValidateFocusPresentationOwnership(
@@ -1620,7 +1690,7 @@ public static class ViewSnapshotValidator
                 Add(path, "action_surface_too_deep",
                     $"Action-surface content may be at most {ProtocolConstants.MaximumActionSurfaceRelativeDepth} levels deep relative to its surface.");
             if (child.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
-                ViewNodeKind.ActionSurface or ViewNodeKind.Scroll ||
+                ViewNodeKind.ActionSurface or ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection ||
                 child.ActionId is not null || child.ValueChangedActionId is not null ||
                 child.FocusPersistenceId is not null || child.Focus is not null ||
                 child.InputScopeId is not null ||
@@ -1668,7 +1738,7 @@ public static class ViewSnapshotValidator
                     node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
                     node.DefaultFocusPresentation is not null || node.Transition is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
-                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                 {
@@ -1720,7 +1790,9 @@ public static class ViewSnapshotValidator
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
                     StringLength(node.InitialChildFocusId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
-                    StringLength(node.CollectionAnchorKey) + StringLength(node.CollectionItemKey) +
+                    StringLength(node.IndexedCollection?.SourceId) + StringLength(node.CollectionAnchorKey) + StringLength(node.CollectionItemKey) +
+                    (node.IndexedGroups?.Take(IndexedCollectionLimits.MaximumGroups).Sum(group =>
+                        StringLength(group?.Key) + StringLength(group?.Header)) ?? 0) +
                     StringLength(node.Focus?.Up) + StringLength(node.Focus?.Down) +
                     StringLength(node.Focus?.Left) + StringLength(node.Focus?.Right) +
                     (node.StyleClasses?.Sum(StringLength) ?? 0) +

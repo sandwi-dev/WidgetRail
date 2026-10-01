@@ -491,6 +491,29 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(1, len(instances), "Restart unnecessarily resolved the same signed URL")
         self.assertNotEqual(first["url"], second["url"], "Restart reused the old local capability")
 
+    def test_player_refresh_bypasses_memory_and_persistent_stream_cache(self):
+        instance = FakeDownloader({})
+        instance.url += "?expire=" + str(int(time.time() + 3600))
+        with patch.object(music, "make_downloader", return_value=instance):
+            first = self.service.resolve({"videoId": "AAAAAAAAAAA"})
+            self.assertEqual(first, self.service.resolve({"videoId": "AAAAAAAAAAA"}))
+            refreshed = self.service.resolve({"videoId": "AAAAAAAAAAA", "refresh": True})
+            self.assertEqual(2, instance.calls)
+            self.assertNotEqual(first["url"], refreshed["url"])
+            self.assertEqual(refreshed, self.service.resolve({"videoId": "AAAAAAAAAAA"}))
+
+    def test_content_failure_has_a_closed_category_but_helper_failure_does_not(self):
+        from yt_dlp.utils import DownloadError
+        def unavailable(*_):
+            raise DownloadError("private provider diagnostics must remain local")
+        instance = FakeDownloader({}, on_extract=unavailable)
+        with patch.object(music, "make_downloader", return_value=instance):
+            with self.assertRaises(music.StreamUnavailableError):
+                self.service.resolve({"videoId": "AAAAAAAAAAA"})
+        with patch.object(music, "make_downloader", side_effect=OSError("helper installation failure")):
+            with self.assertRaises(OSError):
+                self.service.resolve({"videoId": "BBBBBBBBBBB"})
+
     def test_revoked_cached_url_refreshes_once_and_keeps_range_requests(self):
         instances = []
         def create(auth):

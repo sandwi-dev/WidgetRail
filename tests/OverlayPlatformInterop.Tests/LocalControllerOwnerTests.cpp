@@ -388,11 +388,12 @@ void AutomaticSelectionLifetime(const std::filesystem::path& root) {
     Effects effects; Source source; Output output;
     struct Discovery {
         std::atomic_bool available{};
+        std::atomic<SelectedControllerDiscoveryStatus> pendingStatus{SelectedControllerDiscoveryStatus::Unavailable};
         std::atomic_int calls{};
         SelectedControllerDescriptor descriptor;
         static SelectedControllerDiscoveryStatus Read(void* context, SelectedControllerDescriptor& result) noexcept {
             auto& self = *static_cast<Discovery*>(context); ++self.calls;
-            if (!self.available.load()) return SelectedControllerDiscoveryStatus::Unavailable;
+            if (!self.available.load()) return self.pendingStatus.load();
             result = self.descriptor; return SelectedControllerDiscoveryStatus::Ready;
         }
     } discovery;
@@ -421,6 +422,20 @@ void AutomaticSelectionLifetime(const std::filesystem::path& root) {
     Check(Until([&] { return owner.progress() == LocalControllerProgress::WaitingForController; }) &&
               output.opens == 1 && output.removals == 0 && output.Is({}),
           "selected loss retains one neutral virtual controller while waiting");
+    for (const auto pending : {SelectedControllerDiscoveryStatus::UnknownIdentity,
+                              SelectedControllerDiscoveryStatus::Ambiguous}) {
+        discovery.pendingStatus = pending;
+        const auto previousCalls = discovery.calls.load();
+        Check(Until([&] { return discovery.calls >= previousCalls + 2; }) &&
+                  owner.progress() == LocalControllerProgress::WaitingForController &&
+                  output.opens == 1 && output.removals == 0 && output.Is({}) &&
+                  !effects.state.active && !std::filesystem::exists(dependencies.journalPath),
+              "uncertain hotplug identity retries without hiding a device or retiring neutral output");
+        ControllerIsolationHostReading waiting;
+        Check(owner.Poll(waiting, error) &&
+                  waiting.progress == LocalControllerProgress::WaitingForController,
+              "uncertain rediscovery keeps input owner pollable instead of latching recovery");
+    }
     discovery.descriptor.enrollment.enrollmentToken = 2;
     discovery.descriptor.enrollment.deviceId[0] = 2;
     discovery.descriptor.enrollment.containerId[0] = 4;

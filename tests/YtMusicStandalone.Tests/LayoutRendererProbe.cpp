@@ -1,4 +1,5 @@
 #include "DeclarativeRenderer.h"
+#include "WidgetRenderMotionPolicy.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetSurfaceFocus.h"
 #include "NativeStyle.h"
@@ -29,7 +30,42 @@ int Run(int argc, wchar_t** argv) {
         const auto fixture = std::filesystem::path(argv[file]).stem().wstring();
         for (const auto size : {widgetrail::declarative::Size{980, 700}, widgetrail::declarative::Size{620, 400}}) {
             widgetrail::DeclarativeRenderOptions options;
+            options.deferScrollPreparation = true;
             options.responsiveViewport = size;
+            if (fixture == L"library") {
+                for (const auto scale : {1.0F,1.25F,2.0F}) {
+                auto preparationOptions = options;
+                preparationOptions.pixelScale = scale;
+                const widgetrail::declarative::Rect preparationViewport{1,1,size.width-2,size.width > 900 ? 643.8F : size.height-2};
+                preparationOptions.responsiveViewport = {size.width, preparationViewport.height+2};
+                widgetrail::PlatformAppearance appearance;
+                appearance.widgetAnimationSpeed = 1.25;
+                appearance.sectionAnimation = L"paging";
+                widgetrail::ApplyWidgetRenderMotionPolicy(preparationOptions, &appearance, *snapshot, true);
+                for (const auto* focus : {L"item.0", L"item.5", L"item.6", L"item.20"}) {
+                    widgetrail::DeclarativeRenderer prepared{nullptr, factory.Get(), nullptr};
+                    bool ready{}; unsigned measurements{};
+                    for (unsigned slice = 0; slice < 128; ++slice) {
+                        const auto step = prepared.PrepareCollections(*snapshot, focus, preparationViewport, preparationOptions, {1,1}, true);
+                        measurements += static_cast<unsigned>(step.newMeasurements);
+                        Require(step.status != widgetrail::CollectionPreparationStatus::Failed, "production list preflight failed");
+                        if (step.status == widgetrail::CollectionPreparationStatus::Ready) { ready = true; break; }
+                    }
+                    std::wcout << L"SECTION-PREFLIGHT focus=" << focus << L" width=" << size.width << L" scale=" << scale
+                        << L" measurements=" << measurements << L" ready=" << ready << L'\n';
+                    Require(ready, "remembered list focus must finish preparation without D-pad or painting");
+                    auto paintOptions = options;
+                    paintOptions.pixelScale = scale;
+                    paintOptions.responsiveViewport = preparationOptions.responsiveViewport;
+                    widgetrail::ApplyWidgetRenderMotionPolicy(paintOptions, &appearance, *snapshot, true);
+                    // Null-target renders inspect layout only in this probe;
+                    // WIC pixel equivalence is covered by the renderer suite.
+                    const auto adopted = prepared.Render(nullptr, *snapshot, focus, preparationViewport, paintOptions);
+                    Require(adopted.timing.reusedCollectionPreparation,
+                        "host motion policy must allow production-list preparation reuse");
+                }
+                }
+            }
             const auto result = renderer.Render(nullptr, *snapshot, fixture == L"search" ? L"search" : L"item.0", {0, 0, size.width, size.height}, options);
             if (fixture == L"search") {
                 const auto* field = widgetrail::input::FindNodeInInputScope(*snapshot, L"search", snapshot->activeInputScopeId);
@@ -37,7 +73,8 @@ int Run(int argc, wchar_t** argv) {
                 const auto style = widgetrail::NativeStyleAdapter::Adapt(widgetrail::ResolveDeclarativeComputedStyle(*field, true, false), {}).style;
                 const auto& rect = *result.currentFocusRect;
                 const auto clip = result.currentFocusOutlineClip.value_or(widgetrail::declarative::Rect{0, 0, size.width, size.height});
-                const auto outward = style.outlineOffsetPx() + std::max(2.0F, style.outlineWidthPx());
+                const auto outward = style.outlineOffsetPx() +
+                    (style.outlineWidthPx() > 0 ? style.outlineWidthPx() : 2.0F);
                 std::cout << "search ring rect=" << rect.x << "," << rect.y << "," << rect.width << "," << rect.height
                     << " outward=" << outward << " clip=" << clip.x << "," << clip.y << "," << clip.width << "," << clip.height << '\n';
                 Require(rect.x - outward >= clip.x - .1F && rect.y - outward >= clip.y - .1F &&
@@ -92,7 +129,10 @@ int Run(int argc, wchar_t** argv) {
                 Require(refresh.x >= filters.x + filters.width + 17, "Refresh lost its separation from library filters");
                 const auto moved = renderer.Render(nullptr, *snapshot, L"item.20", {0, 0, size.width, size.height}, options);
                 Require(moved.focusRects.contains(L"item.20"), "Later playlist was not revealed by scrolling");
-                Require(moved.elementRects.at(L"item.20").y < result.elementRects.at(L"item.20").y - 10, "List did not move during toolbar check");
+                Require(moved.scrollOffsets.at(L"music.scroll.library.playlists") >
+                    result.scrollOffsets.at(L"music.scroll.library.playlists") + 10, "List did not move during toolbar check");
+                Require(!result.elementRects.contains(L"item.20") && result.realizableFocusIds.contains(L"item.20"),
+                    "Offscreen playlist must retain logical identity without realized geometry");
                 Require(std::abs(moved.elementRects.at(L"library.toolbar").y - result.elementRects.at(L"library.toolbar").y) < .1f &&
                     std::abs(moved.elementRects.at(L"page.heading").y - result.elementRects.at(L"page.heading").y) < .1f,
                     "Library toolbar or heading moves with the list");

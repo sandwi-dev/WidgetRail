@@ -99,6 +99,8 @@ let playbackRateTimeout = null;
 let suppressPlaybackRateEvent = false;
 let providerErrorCode = null;
 let mutedValueAfterReads = 0;
+let volumeValueAfterReads = 0;
+let pendingVolumeValue = null;
 let pendingMutedValue = null;
 let holdMutedPolls = false;
 let heldMutedPolls = [];
@@ -128,7 +130,10 @@ const player = {
   playVideo() { this.state = 1; stateCallback?.({data:1}); },
   pauseVideo() { this.state = 2; stateCallback?.({data:2}); },
   seekTo(value) { this.currentTime = value; },
-  setVolume(value) { this.volume = value; },
+  setVolume(value) {
+    if (volumeValueAfterReads > 0) pendingVolumeValue = value;
+    else { this.volume = value; pendingVolumeValue = null; }
+  },
   setPlaybackRate(value) {
     this.playbackRate = value;
     if (emitProviderError()) return;
@@ -152,7 +157,12 @@ const player = {
   getPlayerState() { return this.state; },
   getCurrentTime() { return this.currentTime; },
   getDuration() { return this.duration; },
-  getVolume() { return this.volume; },
+  getVolume() {
+    if (pendingVolumeValue !== null && --volumeValueAfterReads <= 0) {
+      this.volume = pendingVolumeValue; pendingVolumeValue = null;
+    }
+    return this.volume;
+  },
 };
 const document = {
   documentElement: {clientWidth:640, clientHeight:360},
@@ -239,6 +249,15 @@ if (profile === 'state-callback' && request.playbackCommands.includes('SetPlayba
   await exercisePlaybackRateContract();
 if (profile === 'state-callback' && request.playbackCommands.includes('SetMuted'))
   await exerciseMutedContract();
+if (profile === 'state-callback' && request.playbackCommands.includes('SetVolume')) {
+  player.state = 5;
+  for (const volume of [0, 1, .35]) {
+    const terminal = await exercise({source:'volume:cued-delayed', command:'volume'},
+      {volume, volumeValueAfterReads:3, expectedPlaybackState:'ready'});
+    if (Math.abs(terminal.volume - volume) > .00001)
+      fail('volume-delayed-value', 'cued volume acknowledged before the provider applied it');
+  }
+}
 if (profile === 'state-callback' && request.playbackCommands.some(command =>
   ['SetPlaybackRate', 'SetMuted', 'SetLoop'].includes(command)))
   await exercisePreferenceProviderErrors();
@@ -260,13 +279,14 @@ async function exercise(requirement, options = {}) {
     commandSequence:sequence,
     mediaKey:options.mediaKey ?? currentMediaKey,
     positionSeconds:12,
-    volume:.65,
+    volume:options.volume ?? .65,
     playbackRate:options.playbackRate ?? 1.25,
     muted:options.muted ?? true,
     loop:false,
   };
   providerErrorCode = options.providerErrorCode ?? null;
   mutedValueAfterReads = options.mutedValueAfterReads ?? 0;
+  volumeValueAfterReads = options.volumeValueAfterReads ?? 0;
   holdMutedPolls = options.triggerMutedTimeout === true;
   if (holdMutedPolls) heldMutedPolls = [];
   await send(message);
@@ -328,6 +348,11 @@ async function exercise(requirement, options = {}) {
     fail('unsolicited-correlation', `${requirement.source} observation acknowledged a command`);
 
   const probeId = ++commandId;
+  volumeValueAfterReads = 0;
+  // The release probe must target the current provider item after a deliberate
+  // stale-video test. A correctly guarded volume command rejects that mismatch.
+  if (profile === 'state-callback' && expectedErrorCode !== null)
+    player.videoId = currentMediaKey;
   const probeSequence = ++commandSequence;
   const probeStart = pageEvents.length;
   await send({command:'volume', ...authority, commandId:probeId,

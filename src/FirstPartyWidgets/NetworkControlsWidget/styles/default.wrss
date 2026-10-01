@@ -13,13 +13,12 @@
   min-height: 120px;
   min-width: 0px;
   flex-grow: 1;
-  flex-shrink: 1;
   gap: 8px;
   padding: 2px 4px 2px 2px;
   overflow: clip;
 }
 
-.network-header { gap: 1px; flex-shrink: 0; }
+.network-header { gap: 1px; }
 .network-eyebrow {
   color: var(--text-muted);
   font-size: 10px;
@@ -70,7 +69,6 @@
   border-color: var(--border, rgba(246, 240, 226, 0.12));
   border-width: 1px;
   corner-radius: 10px;
-  flex-shrink: 0;
 }
 
 .network-connection-card { align: center; justify: space-between; }
@@ -94,7 +92,6 @@
   padding: 1px;
   color: var(--text-muted);
   background: transparent;
-  flex-shrink: 0;
 }
 
 .network-notice-icon { color: var(--warning); }
@@ -105,7 +102,6 @@
 .network-section-copy {
   min-width: 0px;
   flex-grow: 1;
-  flex-shrink: 1;
   gap: 1px;
 }
 
@@ -123,7 +119,6 @@
   border-color: var(--border, rgba(246, 240, 226, 0.12));
   border-width: 1px;
   corner-radius: 8px;
-  flex-shrink: 0;
   font-size: 12px;
   font-weight: 400;
 }
@@ -138,7 +133,6 @@
 
 .network-radio-toggle:focused {
   color: var(--text);
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -168,7 +162,6 @@
 }
 
 .network-section-count { color: var(--text-subdued); }
-.network-section-heading { flex-shrink: 0; }
 .network-section-summary { color: var(--text-muted); font-size: 11px; max-lines: 1; }
 .network-signal-row { gap: 10px; align: center; }
 
@@ -194,7 +187,6 @@
   min-height: 156px;
   max-height: 292px;
   flex-grow: 1;
-  flex-shrink: 1;
   gap: 2px;
   padding: 1px 3px 1px 1px;
   overflow: clip;
@@ -207,7 +199,6 @@
   border-color: transparent;
   border-width: 1px;
   corner-radius: 8px;
-  flex-shrink: 0;
 }
 
 .network-profile-row.is-pending { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }
@@ -240,14 +231,13 @@
 .network-retry-action:focused,
 .network-scan-action:focused {
   color: var(--text);
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
 }
 
-.network-profile-meta { padding: 0px 10px; flex-shrink: 0; }
-.network-profile-detail { max-lines: 1; text-align: end; flex-shrink: 0; }
+.network-profile-meta { padding: 0px 10px; }
+.network-profile-detail { max-lines: 1; text-align: end; }
 
 .network-retry-action,
 .network-scan-action {
@@ -255,14 +245,13 @@
   border-color: var(--border, rgba(246, 240, 226, 0.12));
 }
 
-.network-scan-action { min-width: 132px; flex-shrink: 0; font-size: 12px; }
+.network-scan-action { min-width: 132px; font-size: 12px; }
 .network-state-card { min-height: 88px; }
 
 /* Full-width cards keep long IPv6 and DNS values within the available width. */
 .network-details-scroll { gap: 8px; }
 .network-details-row {
   min-width: 0px;
-  flex-shrink: 0;
   gap: 4px;
   padding: 10px 12px;
   background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
@@ -292,7 +281,6 @@
 .network-secondary-action {
   min-width: 0px;
   min-height: 40px;
-  flex-shrink: 0;
   padding: 8px 12px;
   background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
   color: var(--text);
@@ -300,5 +288,5 @@
   font-size: 14px;
   text-overflow: ellipsis;
 }
-.network-secondary-action:focused { background: var(--accent); color: var(--accent-contrast, #ffffff); }
+.network-secondary-action:focused { color: var(--accent-contrast, #ffffff); }
 .network-secondary-action:disabled { opacity: 0.55; }

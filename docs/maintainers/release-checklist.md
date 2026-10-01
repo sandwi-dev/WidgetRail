@@ -1,5 +1,9 @@
 # Prepare a public release
 
+WidgetRail ships through per-user Inno Setup with an unpackaged WinUI frontend.
+Application MSIX packaging and its signing/trust prerequisite have been removed.
+See the [installer contract](../../eng/installer/README.md) for deployment details.
+
 Use this checklist for the exact commit and artifacts being offered to users.
 The project has accepted local installers, version stamping, and initial
 branding. Publishing those artifacts is a separate step.
@@ -20,10 +24,9 @@ their previous revisions remain available through Git.
 
 ## Build the editions
 
-From a clean checkout with the [development tools](building.md):
+From a clean committed checkout with the [development tools](building.md):
 
 ```powershell
-$env:RUSTUP_TOOLCHAIN = '1.97.1'
 pwsh -NoProfile -File .\scripts\Build-Release.ps1
 pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
 pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
@@ -34,6 +37,8 @@ pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
 Use the actual version from the build output when it changes. Existing release
 destinations are not overwritten. The build records source and packaging revisions
 and validates the catalogs and file inventory for both editions.
+The builder compiles WinUI plus the shared native platform/preview boundaries;
+it does not build the retired native renderer or require Rust/Taffy.
 
 Read the [installer contract](../../eng/installer/README.md) for runtime provisioning,
 startup ownership, uninstall behavior, and the supported GameInput minimum.
@@ -55,7 +60,8 @@ cleanup boundaries before describing uninstall as removing every possible sign-i
 
 ## Publish deliberately
 
-Choose the signing and distribution policy. Test the download/install experience
+Choose the executable-signing and distribution policy. Application signing is
+optional for this installer path. Test the download/install experience
 on a normal user account, including the warnings an unsigned preview may show.
 Review third-party redistribution terms for the actual bundle and retain notices.
 

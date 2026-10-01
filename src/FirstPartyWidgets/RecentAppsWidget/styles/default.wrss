@@ -20,7 +20,6 @@
 
 .recent-header {
   gap: 1px;
-  flex-shrink: 0;
 }
 
 .recent-eyebrow {
@@ -61,7 +60,6 @@
   gap: 8px;
   align: center;
   justify: space-between;
-  flex-shrink: 0;
 }
 
 .recent-section-label,
@@ -85,7 +83,6 @@
   min-height: 170px;
   max-height: 344px;
   flex-grow: 1;
-  flex-shrink: 1;
   gap: 6px;
   padding: 1px 3px 1px 1px;
   overflow: clip;
@@ -98,7 +95,6 @@
   background: var(--recent-card);
   border-width: 0;
   corner-radius: 10px;
-  flex-shrink: 0;
 }
 
 .recent-item.is-most-recent {
@@ -121,7 +117,6 @@
 
 .recent-item-button:focused,
 .recent-retry:focused {
-  background: var(--recent-control-focus);
   outline-color: var(--recent-focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);

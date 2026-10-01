@@ -239,22 +239,12 @@ foreach (var retiredPath in new[]
     if (File.Exists(retiredPath))
         failures.Add($"{Relative(retiredPath)} is a retired product-owned domain path.");
 
-var overlayBuild = File.ReadAllText(Path.Combine(repository, "src", "OverlayHost", "build.ps1"));
-var bridgeOutputDeclaration = overlayBuild.IndexOf(
-    "$bridgeOutput = Join-Path $outputDirectory 'runtime\\Bridge'", StringComparison.Ordinal);
-var cleanupLoop = Regex.Match(overlayBuild,
-    @"foreach\s*\(\$hostRuntimeOutput\s+in\s+@\((?<paths>[\s\S]*?)\)\)\s*\{\s*Remove-GeneratedDirectory\s+-Path\s+\$hostRuntimeOutput\s*\}");
-var bridgePublish = overlayBuild.IndexOf(
-    "..\\WidgetBridge\\WidgetBridge.csproj", StringComparison.Ordinal);
-if (!cleanupLoop.Success ||
-    !cleanupLoop.Groups["paths"].Value.Contains("$bridgeOutput", StringComparison.Ordinal) ||
-    !cleanupLoop.Groups["paths"].Value.Contains("runtime\\SpotifyPlaybackHost", StringComparison.Ordinal) ||
-    bridgeOutputDeclaration < 0 || cleanupLoop.Index <= bridgeOutputDeclaration ||
-    bridgePublish <= cleanupLoop.Index + cleanupLoop.Length)
-    failures.Add("OverlayHost must clean Bridge and retired Spotify runtime output before republishing.");
-
-
-
+var frontendBuild = File.ReadAllText(Path.Combine(repository, "scripts", "Build-WinUiReleasePayload.ps1"));
+var freshOutputGuard = frontendBuild.IndexOf("Choose a fresh payload build directory", StringComparison.Ordinal);
+var bridgePublish = frontendBuild.IndexOf("src/$($entry[0])/$($entry[0]).csproj", StringComparison.Ordinal);
+if (freshOutputGuard < 0 || bridgePublish <= freshOutputGuard ||
+    frontendBuild.Contains("src/OverlayHost", StringComparison.Ordinal))
+    failures.Add("WinUI publication must reject reused payload roots before publishing services and must not build the retired renderer.");
 RequireLink(Path.Combine(repository, "README.md"), "docs/developers/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/reference/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "developers/widget-authoring-guide.md");
@@ -282,7 +272,7 @@ foreach (var removed in new[] { "archive", "history" })
     if (Directory.Exists(Path.Combine(repository, "docs", removed)) &&
         Directory.EnumerateFiles(Path.Combine(repository, "docs", removed), "*", SearchOption.AllDirectories).Any())
         failures.Add($"Retired notes remain: {removed}");
-foreach (var screenshot in new[] { "overview", "pinned-video", "themes" })
+foreach (var screenshot in new[] { "overview-rail", "overview-games-apps-radial", "pinned-video", "themes" })
     RequireLink(Path.Combine(repository, "README.md"), $"docs/images/{screenshot}.png");
 RequireLink(Path.Combine(repository, "docs", "developers", "widget-authoring-guide.md"), "../images/sdk-gallery.png");
 
@@ -325,3 +315,5 @@ static bool HasIgnoredSegment(string root, string path)
     return relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         .Any(segment => segment is ".git" or "bin" or "obj" or "artifacts" or "history" or "archive" or "logs");
 }
+
+

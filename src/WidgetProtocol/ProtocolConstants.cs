@@ -21,7 +21,16 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 58;
+    public const int CurrentVersion = 64;
+    public const int GridLayoutVersion = 64;
+    public const int MaximumGridLayoutTracks = 64;
+    public const double MaximumGridLayoutLength = 16384;
+    public const double MaximumGridStarWeight = 1024;
+    public const int DiscoveredCollectionVersion = 63;
+    public const int IndexedCollectionGroupsVersion = 62;
+    public const int IndexedCollectionFocusVersion = 61;
+    public const int IndexedCollectionVersion = 60;
+    public const int CollectionLayoutVersion = 59;
     public const int WidgetTransitionVersion = 58;
     public const int MaximumWidgetTransitionGroups = 7;
     public const int MaximumWidgetTransitionLayoutNodes = 64;

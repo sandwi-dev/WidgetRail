@@ -1,20 +1,21 @@
 # Platform architecture
 
-WidgetRail separates the native overlay from widget code and Windows integrations.
+WidgetRail separates the WinUI frontend from widget code and Windows integrations.
 This lets widgets share one controller experience while running outside the
 resident presentation process.
 
 ## The main parts
 
 ```text
-OverlayHost ↔ WidgetBridge ↔ widget worker
+OverlayFrontend.WinUI ↔ WidgetBridge ↔ widget worker
                   ↕
              capability broker ↔ Windows providers
 ```
 
 | Part | Responsibility |
 |---|---|
-| `OverlayHost` | Windows, native rendering, controller routing, layout, focus, media presentation |
+| `OverlayFrontend.WinUI` | WinUI controls, layout, focus, controller routing and media presentation |
+| `OverlayPlatformInterop`, `WinUiWindowPreviewNative` | Windows/controller operations and native capture resources |
 | `WidgetBridge` | Coordinate catalogs, workers, snapshots, styles, and host services |
 | `WidgetRuntime` | Worker startup, lifecycle, isolation, and message transport |
 | `WidgetWorkerHost` | Load an ordinary packaged widget into its worker |
@@ -29,15 +30,13 @@ The source folders under [`src`](../../src/) use these names.
 ## From widget state to pixels
 
 The worker renders a view from its current state. The bridge validates the
-presentation and resolves styles. The native host prepares layout and draws the
-supported elements.
+presentation and resolves styles. The WinUI frontend reconciles XAML controls and uses WinUI layout and composition.
 
 When state changes, invalidation tells the host that a newer view is available.
 A new snapshot does not automatically mean every style, text layout, or pixel
-must be rebuilt. The renderer compares changes and retains reusable preparation.
+must be rebuilt. The presenter reconciles controls, retains compatible elements and virtualizes indexed collections.
 
-See [Renderer preparation](renderer-preparation-retention.md) and
-[Performance](performance.md) for the update path.
+See [Performance](performance.md) for measurement guidance.
 
 ## From input to an action
 
@@ -60,7 +59,7 @@ See [Security boundaries](security-and-trust.md).
 
 ## Packaging and lifetime
 
-The application release includes the native host, bridge, workers, built-in
+The application release includes the WinUI frontend and native platform boundary, bridge, workers, built-in
 packages, and runtime dependencies together. Independently installed widgets
 have their own immutable package versions.
 
@@ -72,3 +71,5 @@ is still being presented.
 When changing one boundary, verify the next consumer too. For a UI change, use
 [Adding an element](adding-declarative-ui-elements.md). For a provider change,
 use [Windows provider architecture](windows-provider-architecture.md).
+
+

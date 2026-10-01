@@ -26,8 +26,9 @@ want the development package served through a running host. It watches the
 declared project inputs and rebuilds a development generation.
 
 Start with `wrail doctor .` from your project directory. It checks the selected
-.NET SDK, the CLI/SDK release pairing, and the packaged host files. Failures
-include a suggested fix. Add `--host <OverlayHost.exe>` to choose a host, or
+.NET SDK, the CLI/SDK release pairing, the WinUI executable, and its complete
+Bridge/worker payload. Failures include a suggested fix. Add
+`--host <path-to-OverlayFrontend.WinUI.exe>` to choose a WinUI build, or
 `--json` for structured output. The check does not build your project or launch
 the overlay; it does not test controller hardware or widget permissions.
 
@@ -38,6 +39,24 @@ working widget. The transcript stops at 2 MiB, or on a write failure, while
 terminal output continues. Existing log files are never overwritten; choose a
 new filename for each run. These are CLI messages, not a capture of all host or
 widget runtime logs.
+
+The CLI launches `OverlayFrontend.WinUI.exe` directly. It discovers a complete
+installation containing the CLI, then checks the current directory's ancestors,
+then reads Inno Setup's `ApplicationRoot` value under
+`HKCU\Software\WidgetRail\Installation`. Use `--installation-root <complete-payload>`
+to select a runtime payload explicitly; its root contains the frontend executable,
+`widget-catalog.json`, and `runtime` directory. A separately built debug frontend
+uses both `--host` and `--installation-root`. No package registration or
+certificate installation is required.
+
+Each generation first runs a hidden probe with its own settings profile. The
+last-good visible widget remains open until the exact package instance publishes
+a successful snapshot/readiness acknowledgement. The interactive session uses a
+separate reusable temporary profile, never your normal overlay settings. Each
+launched frontend joins a unique CLI-owned kill-on-close Job Object before
+starting child processes; the CLI checks its exact executable path and membership.
+Ctrl+C reclaims that process tree and the temporary session catalog. Doctor only
+checks discovery and files; successful launch/ownership is verified by dev.
 
 `preview`, `render`, and `replay` are different tools: a scenario runs widget code,
 render inspects presentation data, and replay applies declared inputs to that data.
@@ -50,28 +69,30 @@ using their output as evidence of a feature.
 & $wrail dev . --inspect
 ```
 
-Use a host build that supports the inspector; `--host <OverlayHost.exe>` selects
-a particular packaged build. The inspector opens beside the development
+Use a WinUI host build that supports the inspector;
+`--host <path-to-OverlayFrontend.WinUI.exe>` selects it. For a separately built
+debug frontend, `--installation-root <complete-payload>` selects its Bridge/worker
+payload. The inspector opens in a separate window from the development
 overlay, opens the requested widget, and follows its committed ordinary widget
 frames. When the overlay hides, the last captured frame remains available and
 is labeled inactive.
 
 Select a node in the tree or the layout map. The details pane shows rendered
-bounds, clipping, resolved layout and paint styles, explicit focus links,
-navigation eligibility, and scroll/cursor state. Blue marks the inspected node;
-green marks widget focus. Inspecting a node does not focus or activate it in
-the widget. The navigation summary reports the host's latest directional
-resolution, including geometry, explicit links and cursor waits.
+native bounds, visibility, resolved styles, explicit focus links and current
+focus/scroll state. Theme accent outlines mark inspected and focused elements.
+Inspecting a node does not focus or activate it in the widget. Filter by element
+ID to narrow the tree. The navigation summary reports the latest direction,
+focus before and after, and whether the host handled that input.
 
-Use **Pause capture** while reading a changing view. Close the inspector
+Use **Pause** while reading a changing view. Close the inspector
 independently; press **F12 in the overlay** to reopen it. Rendered frame display
-updates at most four times a second, with at most 2,048 nodes per frame.
+updates at most five times a second, with at most 1,024 nodes per frame.
 Capture is off in ordinary overlay sessions.
 
 The map shows layout geometry, not captured application pixels. It excludes
-text-entry values, artwork handles and media/window identifiers. Render timings
-are CPU timings from the production renderer; enabled inspection adds its own
-capture overhead. This first inspector is read-only and follows the ordinary
+text-entry values, artwork handles and media/window identifiers. Enabled inspection
+adds capture overhead; the inspector does not measure rendering CPU or frame timing.
+This inspector is read-only and follows the ordinary
 development widget, not pinned windows or the full compositor.
 
 For the complete command syntax, run `wrail help` or use the

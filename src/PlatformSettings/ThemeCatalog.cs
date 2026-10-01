@@ -81,7 +81,7 @@ public sealed class ThemeCatalog
         "WidgetRail.PlatformSettings.Themes.builtin-redline.theme.json";
     private const string BuiltInRedlineSourceResource =
         "WidgetRail.PlatformSettings.Themes.builtin-redline.theme.wrss";
-    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private static readonly PlatformSettingsJsonContext JsonContext = new(CreateJsonOptions());
 
     private readonly PlatformSettingsPaths _paths;
     private readonly ThemeLoadResult _builtIn;
@@ -231,7 +231,7 @@ public sealed class ThemeCatalog
             try
             {
                 StrictJson.RejectDuplicateProperties(manifestBytes);
-                document = JsonSerializer.Deserialize<ThemeManifestDocument>(manifestBytes, JsonOptions)
+                document = JsonSerializer.Deserialize(manifestBytes, JsonContext.ThemeManifestDocument)
                     ?? throw new JsonException("Theme manifest was null.");
             }
             catch (JsonException exception)
@@ -343,7 +343,7 @@ public sealed class ThemeCatalog
         try
         {
             StrictJson.RejectDuplicateProperties(manifestBytes);
-            document = JsonSerializer.Deserialize<ThemeManifestDocument>(manifestBytes, JsonOptions)
+            document = JsonSerializer.Deserialize(manifestBytes, JsonContext.ThemeManifestDocument)
                 ?? throw new JsonException("Theme manifest was null.");
         }
         catch (JsonException exception)

@@ -16,6 +16,12 @@ public sealed record WidgetModal(
     /// </summary>
     public WidgetElement? HeaderActions { get; init; }
 
+    /// <summary>
+    /// Wraps the entire content in a vertical scroll viewport. Set false when
+    /// the content supplies its own bounded layout and scroll regions.
+    /// </summary>
+    public bool ScrollContent { get; init; } = true;
+
     /// <summary>Shows the ordinary scroll indicator and reserves its gutter. Defaults to true.</summary>
     public bool ShowScrollbar { get; init; } = true;
 }

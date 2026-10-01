@@ -14,6 +14,90 @@ must carry that authority. Successful invalidations are coalesced into a fresh
 snapshot; a failed refresh retains the last accepted frame and publishes a
 bounded typed failure.
 
+Snapshot authority also carries the trusted Bridge worker-run receipt. Ordinary,
+displayed-frame and pinned input echo that exact receipt; the Bridge checks it
+against the cached tree and running process under its operation gate. Sequence
+numbers can repeat after idle unload or restart without making old input valid.
+Exact input dispatch uses the existing worker pipe and never starts a replacement
+process. Legacy callers that omit the additive receipt retain their prior contract.
+
 The facade keeps bounded pending request, artwork, and diagnostic collections.
 Disposal asks the existing bridge session to stop, closes the client endpoint,
 and completes outstanding work with a terminal transport failure.
+
+## Owned indexed ranges
+
+`AcquireIndexedRangeAsync` returns a `WidgetPresentationIndexedLease`. Its `Range`
+contains immutable declarative rows; retain the lease while the frontend retains
+those rows, their open popup, or their presentation/artwork contribution. XAML
+container recycling does not by itself dispose a semantic lease. The ordinary
+`ReadIndexedRangeAsync` remains a data-only read with no action/artwork authority.
+
+Native indexed rows use `lease.ClaimsInput(originFrame, itemKey, button, ...)`
+and `lease.AdmitInputAsync(originFrame, itemKey, button, ...)`, retaining the exact
+`WidgetPresentationFrame` published by this session. A receive-thread update can
+be newer than the frame still displayed by WinUI. These overloads permit that
+normal delay only while the lease/query, current scope and exact input binding
+remain unchanged. Weak frame provenance rejects fabricated copies without
+retaining another history of full trees. The original displayed sequence crosses
+the wire unchanged; there is no frontend retry, rebase or action replay.
+
+The older authority-only overload remains strict to the session's current frame.
+The bridge independently compares its bounded retained origin with current
+binding before the worker's serial queue admits the command. Origins outside
+that bridge history are rejected. Admission is not execution completion, and
+cancellation does not retract a sent command.
+
+`lease.ResolveArtworkAsync(itemKey, handle)` authorizes only artwork declared by
+that row, including focused background and presentation fragments. Requests have
+independent bounded demand IDs and cancellation correlation; slow artwork never
+occupies the row's action queue. A missing image returns null.
+
+Leases survive unrelated snapshot revisions and parent modals. Main-view row
+input is rejected while its parent scope is inactive; pinned projection scope is
+resolved independently. Query/content revision changes, projection removal,
+widget/session replacement and widget retirement invalidate the data lease and
+release its exact remote owner. Disposal is idempotent and never targets a new
+worker incarnation. Capacity includes in-flight acquisitions and releases, not
+only successfully returned lease objects. Dispose the session to release all
+remaining ownership before bridge shutdown.
+
+The transport admits at most 15 correlated wire requests against the bridge's
+16-request limit, leaving headroom for response finalization. Separate bounded
+lanes reserve four provider and four provider-cancellation slots at the default
+configuration; ordinary controls share the remainder. Lower configured capacity
+reduces these reservations. Lane ownership lasts until a correlated response or
+terminal transport failure, even if a caller stops waiting. Bulk lease release
+uses at most four control slots, and its acknowledgement deadline begins after
+write admission. Range and indexed-artwork admission share the same effective
+provider bound, so an unsent extra artwork request cannot occupy cancellation
+capacity. Session disposal bounds aggregate drain before reaching transport stop.
+
+Before letting an unhandled indexed button return to host navigation, call
+`lease.ClaimsInput` with the exact displayed authority and key. This shares the
+worker's shortcut resolver and treats unavailable authored shortcuts as owned.
+A stale frame/scope/lease throws and must be consumed. Once a declaration claims
+input, a null `AdmitInputAsync` result must also be consumed: null can indicate a
+worker publication racing IPC, not just an absent binding. Never infer host Back
+from a null admission result or retry it against a newer frame.
+
+## Package icons
+
+`ResolvePackageIconAsync(target, assetId)` resolves manifest-inventory SVG through
+its existing bridge endpoint. The session sends descriptor generation, package
+content digest, source hash and normalized hash, verifies echoed identity, byte
+count and SHA-256, then returns a private copy. Paths, URIs and widget SVG are
+never accepted. Catalog replacement invalidates both in-flight results and cache
+lookups. Cache retention is capped at 128 entries/2 MiB; pending demand at 16 and
+active package exchanges at four. Cancellation/timeout never publishes late bytes.
+
+## Pinned projections
+
+Use `ResolvePinnedProjection` and a `WidgetPinnedSelection` for pinned surfaces;
+never fabricate an ordinary frame from a pinned root. Selection and the genuine
+displayed origin are required for both ordinary pinned controls and indexed row
+input. See [pinned session authority](../../docs/maintainers/winui-pinned-session.md)
+for API flow, lifecycle rules, full-widget demand semantics, exact-layout
+context/text commits and scoped artwork. `ResolvePinnedArtworkAsync` authorizes
+handles declared only in a pinned root. Pinned context/text commits require a
+worker with the version-1 pinned-action route; there is no ordinary Action fallback.

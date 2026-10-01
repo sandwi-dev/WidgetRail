@@ -34,6 +34,10 @@ internal sealed class ProtocolVersionRequirements
                 $"Focus-group entry requests require protocol version {ProtocolConstants.FocusGroupEntryRequestVersion} or later.");
         }
 
+        if (snapshot.FocusGroupEntryRequest?.IndexedItem is not null)
+            Add("indexed-focus-target", ProtocolConstants.IndexedCollectionFocusVersion, "$.focusGroupEntryRequest.indexedItem",
+                "Logical indexed focus targets require protocol version 61 or later.");
+
         if (snapshot.Surface is not null)
         {
             Add(
@@ -127,6 +131,9 @@ internal sealed class ProtocolVersionRequirements
             bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
+            if (node.GridLayout is not null || node.GridCell is not null)
+                Add("grid-layout", ProtocolConstants.GridLayoutVersion, path,
+                    $"Explicit Grid layout and cell placement require protocol version {ProtocolConstants.GridLayoutVersion} or later.");
             nodes++;
             if (nodes > ProtocolConstants.MaximumNodeCount ||
                 depth > ProtocolConstants.MaximumTreeDepth)
@@ -144,6 +151,18 @@ internal sealed class ProtocolVersionRequirements
                     "$.focusGroupEntryRequest",
                     $"Deferred focus-group entry requires protocol version {ProtocolConstants.DeferredFocusGroupEntryVersion} or later.");
 
+            if (node.Kind == ViewNodeKind.IndexedCollection || node.IndexedCollection is not null)
+                Add("indexed-collection", ProtocolConstants.IndexedCollectionVersion, path,
+                    "Indexed collection sources require protocol version 60 or later.");
+            if (node.IndexedGroups is not null)
+                Add("indexed-collection-groups", ProtocolConstants.IndexedCollectionGroupsVersion, path,
+                    "Grouped indexed collections require protocol v62.");
+            if (node.IndexedCollection?.Discovery is not null)
+                Add("discovered-collection", ProtocolConstants.DiscoveredCollectionVersion, path,
+                    "Discovered collection prefixes require protocol v63.");
+            if (node.Kind == ViewNodeKind.IndexedCollection && snapshot.FocusGroupEntryRequest?.GroupId == node.Id)
+                Add("indexed-focus-entry", ProtocolConstants.IndexedCollectionFocusVersion, "$.focusGroupEntryRequest",
+                    "Indexed collection entry requires protocol version 61 or later.");
             if (node.VisibleWhen is not null)
                 Add(
                     "responsive-visibility",
@@ -368,6 +387,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.Transition is not null)
                 Add("widget-transition", ProtocolConstants.WidgetTransitionVersion,
                     $"{path}.transition", "Widget transitions require protocol version 58 or later.");
+            if (node.CollectionLayout is not null)
+                Add("collection-layout", ProtocolConstants.CollectionLayoutVersion,
+                    $"{path}.collectionLayout", "Collection realization requires protocol version 59 or later.");
             if (node.FocusBackgroundArtworkHandle is not null ||
                 node.UsesFocusedDescendantArtwork is true)
                 Add(
