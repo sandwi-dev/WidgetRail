@@ -59,12 +59,9 @@ internal static class SettingsInstalledWidgetPresentation
             for (var index = 0; index < builtIn.Count; index++)
             {
                 var manifest = builtIn[index];
-                children.Add(UI.Button(
-                        $"{manifest.Name} · {manifest.Version} · {(settings.BuiltInWidgets.IsEnabled(manifest.Id) ? "Enabled" : "Disabled")}",
-                        $"installed.builtin.select.{index}", $"installed.builtin.item.{index}")
-                    .Disabled(!valid).Busy(busy)
-                    .Selected(settings.BuiltInWidgets.IsEnabled(manifest.Id))
-                    .Classes("setting-row", "is-built-in", settings.BuiltInWidgets.IsEnabled(manifest.Id) ? "is-enabled" : "is-disabled"));
+                children.Add(InstalledEntry(manifest.Name, manifest.Version.ToString(),
+                    settings.BuiltInWidgets.IsEnabled(manifest.Id) ? "Enabled" : "Disabled",
+                    $"installed.builtin.select.{index}", $"installed.builtin.item.{index}", busy, !valid));
             }
         }
 
@@ -83,13 +80,8 @@ internal static class SettingsInstalledWidgetPresentation
             var status = superseded ? "Unused copy · built-in version takes priority" : package.Enabled
                 ? compatibility.IsSupported ? "Enabled" : "Enabled · incompatible"
                 : compatibility.IsSupported ? "Disabled · review before enabling" : "Incompatible";
-            children.Add(UI.Button(
-                    $"{package.Name} · {package.ActiveVersion.Version} · " +
-                    (valid ? status : $"Last good · {status}"),
-                    $"installed.select.{index}", $"installed.item.{index}")
-                .Busy(busy)
-                .Selected(package.Enabled && !superseded)
-                .Classes("setting-row", package.Enabled && !superseded ? "is-enabled" : "is-disabled"));
+            children.Add(InstalledEntry(package.Name, package.ActiveVersion.Version.ToString(),
+                valid ? status : $"Last good · {status}", $"installed.select.{index}", $"installed.item.{index}", busy));
         }
 
         if (visible.Length == 0)
@@ -120,6 +112,17 @@ internal static class SettingsInstalledWidgetPresentation
                 : visible.Length == 0 ? "installed.install-local" : $"installed.item.{start}";
         return SettingsPresentation.View(header, scope, initialFocus, "installed.widgets");
     }
+
+    private static ActionSurfaceElement InstalledEntry(string name, string version, string status,
+        string action, string id, bool busy, bool disabled = false) =>
+        UI.ActionSurface(action, id, $"{name}. Version {version}. {status}. Open details.", ActionSurfaceOrientation.Horizontal,
+            UI.Stack(id + ".copy",
+                UI.Text(name, id + ".name").Classes("installed-entry-name"),
+                UI.Text(status, id + ".status").Classes("installed-entry-status"))
+                .Classes("installed-entry-copy"),
+            UI.Text(version, id + ".version").Classes("installed-entry-version"),
+            UI.Text("›", id + ".chevron").Classes("installed-entry-chevron"))
+            .Busy(busy).Disabled(disabled).Classes("installed-entry");
 
     public static WidgetView RenderInstalledCatalogRecoveryList(
         StackElement header,
@@ -221,7 +224,7 @@ internal static class SettingsInstalledWidgetPresentation
         bool busy,
         SettingsInstalledWidgetState state,
         SettingsPermissionState permissionState,
-        PlatformSettingsDocument settings)
+        PlatformSettingsDocument settings, bool technical = false)
     {
         var package = state.SelectedInstalled;
         var builtIn = state.SelectedBuiltIn;
@@ -257,7 +260,7 @@ internal static class SettingsInstalledWidgetPresentation
             };
             SettingsPresentation.LinkVertical(builtInControls);
             return SettingsPresentation.View(header,
-                SettingsPresentation.PageScope("installed.details", [
+                DetailsContent([
                     UI.Text(builtIn.Name, "installed.details.heading", "Built-in widget name")
                         .Classes("page-heading"),
                     UI.Text("Source: Built-in", "installed.details.source", "Built-in widget source")
@@ -284,8 +287,8 @@ internal static class SettingsInstalledWidgetPresentation
                             settings.BuiltInWidgets.IsEnabled(builtIn.Id) ? "Enabled · Included and updated with WidgetRail." : "Disabled · Enable this widget to show it in the overlay.",
                         "installed.details.status", "Built-in widget management status")
                         .Classes("page-help"),
-                    .. builtInControls]),
-                builtInHasPermissions ? "installed.details.permissions" :
+                    .. builtInControls], technical),
+                technical ? "settings.back" : builtInHasPermissions ? "installed.details.permissions" :
                     builtIn.Id != BuiltInWidgetSettings.SettingsWidgetId ? "installed.details.toggle" : "installed.details.back",
                 "installed.details");
         }
@@ -424,11 +427,28 @@ internal static class SettingsInstalledWidgetPresentation
         };
         details.AddRange(controls);
         return SettingsPresentation.View(header,
-            SettingsPresentation.PageScope("installed.details", details.ToArray()),
-            canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
+            DetailsContent(details, technical),
+            technical ? "settings.back" : canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
                 ? SettingsInstalledWidgetUninstallPolicy.FocusId
                 : canToggleNow ? "installed.details.toggle" : "installed.details.back",
             "installed.details");
+    }
+
+    private static ScrollElement DetailsContent(IEnumerable<WidgetElement> content, bool technical)
+    {
+        var items = content.ToList();
+        string[] technicalIds = ["installed.details.id", "installed.details.publisher", "installed.details.digest-label",
+            "installed.details.digest", "installed.details.runtime", "installed.details.host-api", "installed.details.architectures",
+            "installed.details.residency", "installed.details.required-permissions", "installed.details.optional-permissions"];
+        if (technical)
+            return SettingsPresentation.PageScope("installed.details", [
+                UI.Text("Technical details", "installed.technical.heading").Classes("page-heading"),
+                .. items.Where(item => technicalIds.Contains(item.Id))]);
+        items.RemoveAll(item => technicalIds.Contains(item.Id));
+        var beforeBack = items.FindIndex(item => item.Id == "installed.details.back");
+        items.Insert(beforeBack < 0 ? items.Count : beforeBack,
+            UI.Button("Technical details  ›", "open.widget-technical", "installed.details.technical").Classes("setting-row"));
+        return SettingsPresentation.PageScope("installed.details", items.ToArray());
     }
 
     private static WidgetView RenderUnusedInstalledCopy(

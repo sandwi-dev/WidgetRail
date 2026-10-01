@@ -7,6 +7,194 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Preserve network scan focus — 2026-10-01, candidate running
+
+Follow-up to preview.19: Wi-Fi and Bluetooth scan buttons still set disabled while
+scanning, removing the focused control from native navigation. Remove only each
+scan's own busy flag from its disabled condition; retain busy presentation, host
+busy dispatch admission and widget duplicate-scan guards. Inactive/unavailable
+radios and conflicting operations still disable scan. No host change needed.
+Network Controls 0.1.5; preview.20. Network 31/31 fake-provider checks pass, including
+both scan buttons enabled/busy during pending work and duplicate commands rejected.
+Evidence: artifacts/scan-focus. Shared native busy-button focus and dispatch behavior
+was verified in preview.19's 16-check fixture. No real scans or radio changes run.
+Source commit b671c066. Production/developer catalog integrity checks passed (8/12
+widgets). Preview.19 PID8540 closed normally; preview.20 launched with --show
+and normal profile as PID34200. Startup process paths use the preview.20 payload;
+no frontend errors recorded for PID34200. Left running for physical acceptance.
+No installer built.
+
+### Revert native switches and preserve radio focus — 2026-10-01, candidate running
+
+User rejected native toggle styling and reported state oscillation/focus loss in
+Wi-Fi. Restore the pre-preview.18 shared UI.Switch button renderer/SDK accessibility
+label; remove the native adapter, palette handling and native-toggle-only fixtures.
+Keep structured widget-list rows and the dedicated Exclusive control page.
+Confirmed code path: native IsOn changes before provider acknowledgement; Network
+publishes old state with busy=true and disabled=true, resetting appearance and
+removing the focused control from navigation. Restoring authored-state-only buttons
+removes optimistic state. Wi-Fi/Bluetooth radio controls should remain enabled and
+busy during pending operations; actual unavailable capabilities still disable them.
+Use fake providers and native synthetic checks, never real radio mutations. No
+installer requested; rebuild and launch a normal coherent candidate with the
+existing profile after validation. Preview.18 PID24720 was closed normally for checks.
+Validation: Network 31/31, SDK 148/148, Settings 81/81, native switch-command
+16/16 and Settings production layout 253/253 passed. Evidence: artifacts/switch-rollback.
+Native synthetic checks cover Invoke semantics, no optimistic state, repeated busy
+snapshots, stable focus, blocked repeat/automation commands, authoritative completion
+and genuinely unavailable controls. Layout screenshot reviewed; scoped code review
+found no further issues. Preview.19 production/developer catalogs validated (8/12 widgets).
+Source commit 771b10c5. Production candidate launched with --show and the normal
+profile: frontend PID8540, own Bridge PID28364, Settings PID36100 and worker host
+PID34192, all from the preview.19 release root. No frontend errors for PID8540
+at startup. Candidate remains running for physical acceptance; no installer built
+and no system-setting controls exercised. Network Controls is version 0.1.4.
+
+
+### Native toggles and widget-list rows — 2026-10-01, test candidate running
+
+User authorized the remaining suggested improvements. Continue on the existing
+codex/settings-usability branch (preview.17 is delivered but not accepted/merged).
+UI.Switch keeps its SDK API and action authority, with a native ToggleSwitch
+renderer. Snapshot publication must never emit actions; busy/disabled/inactive,
+controller repeats, focus retention and live theme changes require native checks.
+Settings widget-list entries use existing ActionSurface composition for separate
+name/version/status, one stable focus target and unchanged package review gates.
+User additionally requested Exclusive control be a separate page reached from
+Controllers, merging its toggle/status/recovery with driver information and help.
+Do not move that toggle back into the primary Controllers page. Installed app and
+machine settings remain untouched; physical acceptance is user-owned. Preserve
+normal Inno/manual-install delivery. No push or merge requested.
+
+Implementation complete. UI.Switch keeps its SDK signature and existing semantic
+marker/action contract. The host composes a stock sealed WinUI ToggleSwitch with a
+small publication/event adapter: applying a snapshot never dispatches an action;
+busy/disabled/passive or retired controls cannot dispatch. The control survives
+state and busy updates, while changes between switch and ordinary command retire
+the old native element. Retirement detaches its event handler. Screen-reader names
+no longer repeat On/Off because native TogglePattern supplies the state. Ordinary
+selected command buttons retain their Invoke semantics. Native stock brushes,
+including Color-valued Off animation resources, follow theme/high-contrast colors.
+Missing/transparent On palettes retain the native paired palette.
+
+The Settings list now composes one existing ActionSurface per widget with distinct
+name, status and version fields. No new public widget-list component. IDs/actions,
+review gates and return focus remain stable. Controllers now contains a navigation
+option for Exclusive control; its dedicated page merges toggle, live status,
+recovery/check-again, drivers and help. Polling includes this page. Old inline
+exclusive actions are rejected; valid dedicated-page actions keep existing driver
+and recovery safeguards.
+
+Passed: Settings81; SDK148; compatibility14; native toggles50; production Settings
+layout253 at 880/520 DIP and ordinary/150% text; separate trimmed Release runtime
+smoke includes ToggleSwitch template, native accessibility, user activation and
+publication suppression plus the existing slider/artwork checks. Native toggle
+checks cover all five bundled themes, high contrast, hover/pressed resource types,
+controller repeat/release, busy and delayed publications, passive input denial,
+retired callbacks and semantic control replacement. Rendered widget-list and
+exclusive-page screenshots inspected. No system-setting/driver mutation performed.
+Native fixtures use simulated actions and isolated profiles; installed app untouched.
+
+Evidence: artifacts/settings-completion/. Initial build attempted derivation, but
+WinUI ToggleSwitch is sealed: corrected to composition around the stock control.
+A trim-fixture collection expression required explicit string[] for CsWinRT AOT;
+fixed in the fixture. New catalog fixtures initially used invalid publisher IDs;
+corrected them to reverse DNS. Existing SDK name expectations were updated for the
+native Toggle provider, retaining assertions for serialized state and action IDs.
+Code review also corrected Color-versus-Brush resources for stock visual states,
+and verified disposal and controller-page admission. The pre-existing unrelated
+documentation publication assertion recorded in preview.17 remains unchanged.
+Normal preview.18 / FileVersion0.1.0.17 and Settings0.1.6 are ready. Source b5047fed.
+The user then requested no installer yet: build a coherent test candidate, close
+installed preview.17 normally and launch the candidate with the existing user
+profile. No installer compilation or installation is authorized in this step.
+A normal release folder supplies the complete frontend, Bridge, sealed Settings,
+workers and bundled widgets; it will be launched directly for physical acceptance.
+
+Candidate built and launched. Normal source f301a067 publication passed both
+8/12-widget catalog/integrity checks. Production app root:
+C:/Users/dwive/.codex/worktrees/settings-usability/WidgetRail/artifacts/releases/0.1.0-preview.18/WidgetRail-0.1.0-preview.18-win-x64/.
+Frontend PID24720 launched with --show and the normal existing
+C:/Users/dwive/AppData/Local/WidgetRail profile; own Bridge PID16052 and Settings
+worker PID39292 verified under that same candidate root. UIA shows rendered
+Settings controls; no failure entry for the candidate PID. Normal profile election
+is retained. No installer built or installed, no profile reset, no provider-control
+actions sent. Candidate left running for the user's physical test. Runtime paths,
+processes and startup UI evidence are in artifacts/settings-completion/candidate-*.
+New UI work remains committed on codex/settings-usability, unmerged and unpushed.
+
+
+
+### Settings organization and consistent rows — 2026-10-01, first-pass installer delivered
+
+User accepted preview.16; main fast-forwarded to bf15d9d0. Unrelated instruction
+edits preserved. Prior evidence copied to
+C:/Users/dwive/Projects/WidgetRail-worktree-archive-20261001/winui-usability/.
+Codex refused archive because a pinned task/workspace protects that checkout.
+No bypass or pin changes. New branch: codex/settings-usability from bf15d9d0.
+
+Scope: category ownership, consistent label/control rows, explicit preference
+choices, stable Back/page title, concise help and management-first widget details.
+Preserve persisted preferences, focus and permission/recovery gates. Synthetic
+checks only; installed app update and physical acceptance remain user-owned.
+Normal Inno distribution, no MSIX.
+
+Implemented: General owns position/navigation/startup; Appearance owns theme,
+sizing/backdrop and grouped animations; Accessibility has explicit three-state
+motion/contrast choices in one page. Controllers uses an explicit shortcut picker,
+with driver help separated while recovery stays actionable. About/troubleshooting
+owns diagnostics/reset and shows the build version. Every subpage has stable Back
+and title; Quit/Restart remain secondary home actions. Widget technical information
+moves behind Technical details; trust/enable/permission confirmations remain intact.
+
+Cause of scanning problems: settings were split by implementation history, and
+combined-label buttons, toggles, steppers and selections used unrelated positions.
+The new shared UI.SettingsField composition provides native responsive label/control
+columns without duplicating control identity during reflow. Select.ShowLabel hides
+only repeated visual text and preserves accessible name/value. Explicit preference
+set actions are idempotent. Vertical focus links follow rows and preserve stepper
+columns. Cards/headings wrap at larger text sizes. Existing settings remain valid.
+
+Passed: Settings80 (including new category/focus/authority/choice tests), SDK148,
+SDK compatibility14, PlatformSettings27, native layout213 (six actual pages,
+880/520 DIP widths, ordinary/150% text, same-snapshot focus retention). Native
+fixture reused unchanged accepted native DLLs with recorded hashes; the release
+pipeline rebuilds them. Initial native fixture reused snapshot sequence1 across
+pages; its stale-frame guard correctly retained the first page. Corrected the
+fixture sequence, not production admission. Final layout screenshots inspected.
+
+Documentation mapping for the new SDK file passes. The documentation suite retains
+one unrelated baseline failure: its publication assertion expects inline code in
+Build-WinUiReleasePayload.ps1, now delegated to a module. Both script and assertion
+are unchanged from bf15d9d0. Not waived or reported green. No OS/provider mutations
+were exercised. The installed preview.16 is running and remains untouched. Full
+native live-service action qualification is user-owned; synthetic layout and managed
+state/action guards passed. Evidence: artifacts/settings-usability/.
+
+Code review checked stable identities, correct Back hierarchy, theme tokens,
+accessible select values, recovery action availability on both controller pages,
+exact preference setters and preserved permission/confirmation gates. Prepared
+normal preview.17 / FileVersion0.1.0.16, Settings widget0.1.5.
+
+Delivery complete: source599b162d built cleanly through the normal release and Inno
+pipelines. Both 8/12-widget catalogs and release inventories passed. Production
+107,295,411 bytes; Developer115,214,238 bytes. Installers, SHA256SUMS.txt and build
+metadata copied and hash-verified in
+C:/Users/dwive/Downloads/WidgetRail-Inno-0.1.0-preview.17/.
+Published Settings retains the About version metadata after trimming. No installer
+was executed; installed preview.16 remains running. Final regenerated layouts pass
+213 native checks and their Appearance screenshot was inspected. Settings80,
+SDK148, compatibility14 and PlatformSettings27 are green; the separate documentation
+baseline assertion remains recorded above. New work stays on codex/settings-usability;
+no push or integration of this unaccepted UI iteration.
+
+Remaining design polish from the review: converting the existing SDK switch-button
+contract to a native toggle renderer, and giving the installed-widget list separate
+name/version/status fields. This first pass preserves those interaction contracts;
+its delivered changes address category ownership, reading alignment, explicit choices,
+page navigation and secondary detail hierarchy.
+
+
 ### Post-migration usability batch — 2026-10-01, installer delivered
 
 FINAL: Normal Production and Developer preview.16 Inno installers are delivered in

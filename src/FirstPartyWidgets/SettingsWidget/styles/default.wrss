@@ -71,7 +71,7 @@
   color: var(--text);
   font-size: 21px;
   font-weight: 500;
-  max-lines: 1;
+  max-lines: 2;
 }
 
 .settings-status,
@@ -140,9 +140,7 @@
   transition-easing: ease-in-out;
   gap: 16px;
   align: center;
-  height: 20vh;
   min-height: 88px;
-  max-height: 128px;
   background: var(--surface-raised);
   border-width: 1px;
   border-color: var(--border, rgba(246, 240, 226, 0.12));
@@ -208,9 +206,31 @@
 .home-loading-message { color: var(--text-muted); font-size: 13px; max-lines: 1; }
 .home-card-icon { width: 34px; height: 34px; color: var(--accent); }
 .home-card-copy { flex-grow: 1; min-width: 0; gap: 6px; }
-.home-card-title { color: var(--text); font-size: 18px; font-weight: 600; max-lines: 1; }
+.home-card-title { color: var(--text); font-size: 18px; font-weight: 600; max-lines: 2; }
 .home-card-description { color: var(--text-muted); font-size: 13px; max-lines: 2; }
 .home-utilities { gap: 8px; }
 .home-utility { min-height: 40px; padding: 8px 12px; font-size: 13px; color: var(--text-muted); }
 .home-utility.danger-card { color: var(--danger, #c98181); }
 .home-utility:focused { color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+
+/* One shared reading rhythm; controls retain stable IDs during responsive reflow. */
+.wrail-setting-row { gap: 12px; padding: 12px 14px; min-width: 0; background: var(--surface-raised); border-width: 1px; border-color: var(--border, rgba(246, 240, 226, 0.12)); corner-radius: 8px; }
+.wrail-setting-row__copy { gap: 4px; min-width: 0; justify: center; }
+.wrail-setting-row__label { font-size: 15px; font-weight: 500; color: var(--text); }
+.wrail-setting-row__description { font-size: 13px; color: var(--text-muted); }
+.wrail-setting-row__control { min-width: 0; justify: center; }
+.setting-control { width: 100%; min-height: 44px; text-align: start; background: var(--surface); border-width: 1px; border-color: var(--border, rgba(246, 240, 226, 0.12)); }
+.wrail-stepper { width: 100%; justify: end; }
+.wrail-stepper__value { flex-grow: 1; }
+.setting-row, .primary-button, .secondary-button, .danger-button { text-align: start; }
+.section-heading { padding: 16px 0 4px; }
+.settings-header-row { align: center; }
+.home-utilities { justify: end; }
+
+.installed-entry { min-height: 64px; min-width: 0; padding: 12px 14px; gap: 14px; align: center; background: var(--surface-raised); border-width: 1px; border-color: var(--border, rgba(246, 240, 226, 0.12)); corner-radius: 8px; }
+.installed-entry:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+.installed-entry-copy { flex-grow: 1; min-width: 0; gap: 4px; }
+.installed-entry-name { font-size: 15px; font-weight: 600; max-lines: 2; }
+.installed-entry-status { font-size: 13px; color: var(--text-muted); max-lines: 3; }
+.installed-entry-version { font-size: 13px; color: var(--text-muted); max-width: 140px; max-lines: 2; text-align: end; }
+.installed-entry-chevron { font-size: 20px; color: var(--text-muted); width: 16px; }

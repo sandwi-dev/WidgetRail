@@ -651,6 +651,9 @@ public sealed record SelectElement : WidgetElement
     public SelectElement FocusRight(string id) => this with
         { FocusNeighbors = (FocusNeighbors ?? new()) with { Right = RequireId(id) } };
 
+    /// <summary>Hide the repeated label when a setting row supplies it externally.</summary>
+    public bool ShowLabel { get; init; } = true;
+
     internal override ViewNode ToProtocolNode()
     {
         var selected = Options.Single(option => option.IsSelected);
@@ -658,7 +661,7 @@ public sealed record SelectElement : WidgetElement
         {
             Id = Id,
             Kind = ViewNodeKind.Select,
-            Text = $"{Label}: {selected.Label}",
+            Text = ShowLabel ? $"{Label}: {selected.Label}" : selected.Label + "  ▾",
             AccessibilityLabel = AccessibilityLabel ?? Label,
             AccessibilityValue = selected.Label,
             SelectOptions = Options.Select(option => new WidgetSelectOption(

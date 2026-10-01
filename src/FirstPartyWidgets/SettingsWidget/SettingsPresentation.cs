@@ -27,7 +27,7 @@ internal sealed record SettingsPresentationState(
     SettingsHostFeatures? HostFeatures = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
-internal static class SettingsPresentation
+internal static partial class SettingsPresentation
 {
     public static bool TryRender(SettingsPresentationState state, out WidgetView view)
     {
@@ -47,7 +47,7 @@ internal static class SettingsPresentation
             SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy, state.Loading,
                 state.HostFeatures ?? new()),
             SettingsPage.Appearance => RenderAppearance(
-                header, state.Settings, state.Themes, state.Busy),
+                header, state.Settings, state.Themes, state.Busy, state.Display),
             SettingsPage.ThemePicker => RenderThemes(
                 header, state.Settings, state.Themes, state.ThemePickerFocusId, state.Busy),
             SettingsPage.ThemeVersion => RenderThemeVersion(header, state, confirmation: false),
@@ -59,6 +59,8 @@ internal static class SettingsPresentation
             SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy, state.Startup, state.Display,
                 state.HostFeatures ?? new()),
             SettingsPage.Controllers => ControllerSettingsPresentation.Render(state),
+            SettingsPage.ControllerHelp => ControllerSettingsPresentation.Render(state, details: true),
+            SettingsPage.About => RenderAbout(header),
             SettingsPage.Diagnostics => RenderDiagnostics(header, state),
             SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(header, state),
             SettingsPage.Reset => RenderReset(header, state.Busy),
@@ -89,12 +91,9 @@ internal static class SettingsPresentation
                     UI.Text("Settings", "settings.title", "Settings").Classes("home-title"))
                     .Classes("settings-header-row", "home-header")
                 : UI.Row("settings.header.row",
-                UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title", "header-title"),
-                UI.Button("Quit", "application.quit", "settings.quit")
-                    .Busy(state.Busy).FocusRight("settings.restart").Classes("header-action", "header-quit") with { AccessibilityLabel = "Quit WidgetRail" },
-                UI.Button("Restart", "application.restart", "settings.restart")
-                    .Busy(state.Busy).FocusLeft("settings.quit").Classes("header-action", "header-restart") with { AccessibilityLabel = "Restart WidgetRail" })
-                .Classes("settings-header-row"),
+                    UI.Button("‹ Back", "back", "settings.back").Classes("header-action") with { AccessibilityLabel = "Back" },
+                    UI.Text("Settings", "settings.title", "Settings").Classes("settings-title", "header-title"))
+                    .Classes("settings-header-row"),
         };
         if (state.Status != "Ready" && state.Status != "Settings load when this widget becomes visible")
             children.Add(UI.Toast("Settings",
@@ -112,27 +111,24 @@ internal static class SettingsPresentation
             shortcuts = container.Shortcuts;
             content = container with { InputScopeId = null, Shortcuts = [] };
         }
-        // Restored/selected focus may be in the middle of a page. Only the
-        // first available page button should lead Up to the fixed header.
-        string? FirstButton(WidgetElement element) => element switch
+        // Promote the authored page title into the stable header. Body content
+        // remains the same scroll owner and retains its control identities.
+        if (scope != "settings-root" && content is ContainerElement page)
         {
-            ButtonElement button when button.IsDisabled is not true || button.Id == initialFocus => button.Id,
-            ActionSurfaceElement surface when surface.IsDisabled is not true || surface.Id == initialFocus => surface.Id,
-            ContainerElement group => group.Children.Select(FirstButton).FirstOrDefault(id => id is not null),
-            _ => null,
-        };
-        var headerEntry = FirstButton(content);
-        var hasHeaderActions = FirstButton(header) is not null;
+            var heading = page.Children.OfType<TextElement>().FirstOrDefault(child => child.StyleClasses.Contains("page-heading"));
+            if (heading is not null)
+            {
+                header = header with { Children = header.Children.Select(child => child is RowElement row
+                    ? row with { Children = row.Children.Select(item => item.Id == "settings.title" ? heading : item).ToArray() }
+                    : child).ToArray() };
+                content = page with { Children = page.Children.Where(child => child != heading).ToArray() };
+            }
+            content = ArrangeSettingsRows((ContainerElement)content);
+        }
         WidgetElement Link(WidgetElement element)
         {
-            if (element is ButtonElement button)
-            {
-                if (hasHeaderActions && initialFocus is not null && element.Id is "settings.quit" or "settings.restart")
-                    return button.FocusDown(initialFocus);
-                if (hasHeaderActions && element.Id == headerEntry && button.FocusNeighbors?.Up is null) return button.FocusUp("settings.restart");
-            }
-            if (hasHeaderActions && element is ActionSurfaceElement surface && element.Id == headerEntry && surface.FocusNeighbors?.Up is null)
-                return surface.FocusUp("settings.restart");
+            if (element is ButtonElement button && button.Id == "settings.back" && initialFocus is not null && initialFocus != "settings.back")
+                return button.FocusDown(initialFocus);
             if (element is ContainerElement group) return group with { Children = group.Children.Select(Link).ToArray() };
             return element;
         }
@@ -192,10 +188,6 @@ internal static class SettingsPresentation
         bool loading,
         SettingsHostFeatures hostFeatures)
     {
-        var selectedTheme = themes.Themes.FirstOrDefault(entry => entry.IsValid &&
-            entry.Descriptor.Id == settings.Appearance.ThemeId &&
-            entry.CatalogVersion == settings.Appearance.ThemeVersion);
-        var themeDescription = selectedTheme is null ? "Themes, colors, and motion" : $"Theme: {selectedTheme.Descriptor.Name}";
         ActionSurfaceElement Card(string title, string description, string action, string id, string icon, WidgetGlyph fallback) =>
             UI.ActionSurface(action, id, $"{title}. {description}", ActionSurfaceOrientation.Horizontal,
                 UI.Icon(WidgetIcon.PackageSvg("settings." + icon, WidgetPackageIconColorMode.ThemeTint, fallback),
@@ -208,193 +200,45 @@ internal static class SettingsPresentation
 
         WidgetElement categories = UI.VerticalScroll("settings.categories",
             UI.ResponsiveGrid("settings.category-grid", 250, 2,
-                Card("Appearance", themeDescription, "open.appearance", "category.appearance", "appearance", WidgetGlyph.Settings),
-                Card("Accessibility", "Text, contrast, and motion", "open.accessibility", "category.accessibility", "accessibility", WidgetGlyph.Check),
-                Card("Overlay", hostFeatures.StartupRegistration ? "Scale, layout, and startup" : "Scale, layout, and animations",
+                Card("General", hostFeatures.StartupRegistration ? "Startup, position, and navigation" : "Position and navigation",
                     "open.overlay", "category.overlay", "overlay", WidgetGlyph.Fullscreen),
+                Card("Appearance", "Theme, size, backdrop, and animations", "open.appearance", "category.appearance", "appearance", WidgetGlyph.Settings),
+                Card("Accessibility", "Text, contrast, and motion", "open.accessibility", "category.accessibility", "accessibility", WidgetGlyph.Check),
                 Card("Controllers", hostFeatures.ExclusiveControllerControl ? "Input, shortcuts, and exclusive control" : "Controller shortcuts",
                     "open.controllers", "category.controllers", "controllers", WidgetGlyph.Connection),
                 Card("Widgets", "Install, update, and permissions", "open.installed-widgets", "category.installed-widgets", "widgets", WidgetGlyph.Settings),
-                Card("Diagnostics", "Status, logs, and troubleshooting", "open.diagnostics", "category.diagnostics", "diagnostics", WidgetGlyph.Connection))
+                Card("About & troubleshooting", "App information, diagnostics, and recovery", "open.about", "category.diagnostics", "diagnostics", WidgetGlyph.Connection))
                 .Classes("category-grid")).Classes("root-category-list");
         var utilities = UI.ResponsiveGrid("settings.home.utilities", 120, 4,
-            UI.Button("Refresh", "refresh", "settings.refresh").Busy(busy).Classes("home-utility"),
-            UI.Button("Reset", "open.reset", "category.reset").Busy(loading).Classes("home-utility", "danger-card"),
             UI.Button("Restart", "application.restart", "settings.restart").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Restart WidgetRail" },
             UI.Button("Quit", "application.quit", "settings.quit").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Quit WidgetRail" })
             .Classes("home-utilities");
         return RootView(header,
             UI.Stack("settings.home.body", categories, utilities).Classes("home-body"),
-            "category.appearance");
+            "category.overlay");
     }
 
-    private static WidgetView RenderAppearance(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        ThemeCatalogSnapshot themes,
-        bool busy)
-    {
-        var selected = themes.Themes.FirstOrDefault(entry =>
-            entry.IsValid && entry.Descriptor.Id == settings.Appearance.ThemeId &&
-            entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion);
-        var label = selected is null
-            ? $"Theme: unavailable ({settings.Appearance.ThemeId})"
-            : $"Theme: {selected.Descriptor.Name}";
-        var theme = UI.Button(label, "open.themes", "appearance.theme")
-            .FocusDown("appearance.animate-widget-switching")
-            .Busy(busy).Classes("setting-row");
-        var animateWidgetSwitching = UI.Switch(
-                "Animate widget switching",
-                settings.Appearance.AnimateWidgetSwitching,
-                "widget-switch-animation.toggle",
-                "appearance.animate-widget-switching")
-            .FocusUp("appearance.theme")
-            .Busy(busy).AddClasses("setting-row");
-        return View(header,
-            PageScope("appearance.page",
-                UI.Text("Appearance", "appearance.heading", "Appearance settings")
-                    .Classes("page-heading"),
-                theme,
-                animateWidgetSwitching,
-                UI.Text(
-                    "Choose a versioned theme package. Invalid packages remain visible but cannot be selected.",
-                    "appearance.help", "Theme picker help").Classes("page-help")),
-            "appearance.theme",
-            "appearance.page");
-    }
-
-    private static WidgetView RenderAccessibility(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        bool busy,
-        OverlayDisplayContext? display)
-    {
-        var scale = DisplayScalePolicy.Resolve(settings.Appearance, display?.Id);
-        var appearance = settings.Appearance with { TextScale = scale.TextScale };
-        var text = LinkStepper(
-            UI.Stepper("Text size", Percent(appearance.TextScale),
-                ScaleAction("text.decrease", display), ScaleAction("text.increase", display), "text.stepper",
-                appearance.TextScale > AppearanceSettings.MinimumTextScale,
-                appearance.TextScale < AppearanceSettings.MaximumTextScale),
-            up: null,
-            down: "motion.system",
-            busy || string.IsNullOrEmpty(display?.Id));
-        var system = UI.Switch(
-                "Follow Windows motion", appearance.Motion == MotionPreference.System,
-                "motion.system", "motion.system")
-            .FocusUp("text.stepper.decrement").FocusDown("motion.reduced").Busy(busy);
-        var reduced = UI.Switch(
-                "Reduced motion", appearance.Motion == MotionPreference.Reduced,
-                "motion.reduced", "motion.reduced")
-            .FocusUp("motion.system").FocusDown("accessibility.visual").Busy(busy);
-        var visual = UI.Button(
-                "Contrast and visibility", "open.visual-accessibility", "accessibility.visual")
-            .FocusUp("motion.reduced").Busy(busy).Classes("setting-row");
-        return View(header,
-            PageScope("accessibility.page",
-                UI.Text("Accessibility", "accessibility.heading", "Accessibility settings")
-                    .Classes("page-heading"),
-                DisplayHint(display), text,
-                UI.Text(
-                    "Changing text size can affect widget layouts in unintended ways. Use Interface size in Overlay settings to scale everything proportionally.",
-                    "text.layout-warning", "Text size layout warning")
-                    .Classes("page-help", "text-size-warning"),
-                system, reduced, visual),
-            "text.stepper.decrement",
-            "accessibility.page");
-    }
-
-    private static WidgetView RenderVisualAccessibility(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        bool busy)
-    {
-        var appearance = settings.Appearance;
-        var systemContrast = UI.Switch(
-                "Follow Windows high contrast", appearance.Contrast == ContrastPreference.System,
-                "contrast.system", "contrast.system")
-            .FocusDown("contrast.high").Busy(busy);
-        var highContrast = UI.Switch(
-                "High contrast", appearance.Contrast == ContrastPreference.High,
-                "contrast.high", "contrast.high")
-            .FocusUp("contrast.system").FocusDown("bold-text.toggle").Busy(busy);
-        var boldText = UI.Switch(
-                "Bold text", appearance.BoldText, "bold-text.toggle", "bold-text.toggle")
-            .FocusUp("contrast.high").FocusDown("transparency.reduced").Busy(busy);
-        var reducedTransparency = UI.Switch(
-                "Reduced transparency",
-                appearance.Transparency == TransparencyPreference.Reduced,
-                "transparency.reduced", "transparency.reduced")
-            .FocusUp("bold-text.toggle").Busy(busy);
-        return View(header,
-            PageScope("accessibility.visual.page",
-                UI.Text("Contrast and visibility", "accessibility.visual.heading",
-                    "Contrast and visibility settings").Classes("page-heading"),
-                systemContrast, highContrast, boldText, reducedTransparency,
-                UI.Text("Accessibility overrides every theme and widget style.",
-                    "accessibility.visual.help", "Accessibility policy help")
-                    .Classes("page-help")),
-            "contrast.system",
-            "accessibility.visual.page");
-    }
-
-    private static string ScaleAction(string action, OverlayDisplayContext? display) =>
-        action + "@" + (display?.Id ?? string.Empty);
-
-    private static WidgetElement DisplayHint(OverlayDisplayContext? display) =>
-        UI.Text(string.IsNullOrEmpty(display?.Id) ? "Display unavailable - sizing is temporarily unavailable." :
-            $"Sizes are saved for {display.Name}.", "settings.display", "Display for saved sizing")
-            .Classes("page-help");
-
-    private static WidgetView RenderOverlay(
-        StackElement header,
-        PlatformSettingsDocument settings,
-        bool busy,
-        StartupRegistrationStatus? startup,
-        OverlayDisplayContext? display,
-        SettingsHostFeatures hostFeatures)
+    private static WidgetView RenderAppearance(StackElement header, PlatformSettingsDocument settings,
+        ThemeCatalogSnapshot themes, bool busy, OverlayDisplayContext? display)
     {
         var scale = DisplayScalePolicy.Resolve(settings.Appearance, display?.Id);
         var appearance = settings.Appearance with { InterfaceScale = scale.InterfaceScale };
-        var interfaceScale = LinkStepper(
-            UI.Stepper("Interface size", Percent(appearance.InterfaceScale),
+        var selected = themes.Themes.FirstOrDefault(entry => entry.IsValid &&
+            entry.Descriptor.Id == appearance.ThemeId && entry.CatalogVersion == appearance.ThemeVersion);
+        return View(header, PageScope("appearance.page",
+            UI.Text("Appearance", "appearance.heading").Classes("page-heading"),
+            UI.Text("Theme and sizing", "appearance.visual.heading").Classes("section-heading"),
+            UI.Button("Theme: " + (selected?.Descriptor.Name ?? "Unavailable"), "open.themes", "appearance.theme").Busy(busy).Classes("setting-row"),
+            DisplayHint(display),
+            LinkStepper(UI.Stepper("Interface size", Percent(scale.InterfaceScale),
                 ScaleAction("interface.decrease", display), ScaleAction("interface.increase", display), "interface.stepper",
-                appearance.InterfaceScale > AppearanceSettings.MinimumInterfaceScale,
-                appearance.InterfaceScale < AppearanceSettings.MaximumInterfaceScale),
-            up: null,
-            down: "opacity.stepper.decrement",
-            busy || string.IsNullOrEmpty(display?.Id));
-        var opacity = LinkStepper(
-            UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity),
-                "opacity.decrease", "opacity.increase", "opacity.stepper",
-                appearance.BackdropOpacity > AppearanceSettings.MinimumBackdropOpacity,
-                appearance.BackdropOpacity < AppearanceSettings.MaximumBackdropOpacity),
-            up: "interface.stepper.decrement",
-            down: null,
-            busy);
-        return View(header,
-            PageScope("overlay.page", [
-                UI.Text("Overlay", "overlay.heading", "Overlay settings")
-                    .Classes("page-heading"),
-                UI.Text(hostFeatures.StartupRegistration ? "Choose how WidgetRail looks and when it starts." : "Choose how WidgetRail looks and moves.",
-                    "overlay.help", "Overlay settings help").Classes("page-help"),
-                DisplayHint(display), interfaceScale, opacity,
-                UI.Button($"Position: {settings.Appearance.OverlayPosition switch
-                    {
-                        OverlayPosition.BottomLeft => "Bottom left",
-                        OverlayPosition.BottomRight => "Bottom right",
-                        _ => "Center",
-                    }}", "overlay-position.cycle", "overlay.position")
-                    .Busy(busy).Classes("setting-row"),
-                UI.Text("Choose Center, Bottom left, or Bottom right. Corner layouts keep the outside edge fixed when widgets resize.",
-                    "overlay.position.help").Classes("page-help"),
-                UI.Button($"Widget switcher: {(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial ? "Radial + rail" : "Rail")}",
-                    "widget-switcher.toggle", "overlay.widget-switcher").FocusDown("overlay.focus-animation")
-                    .Busy(busy).Classes("setting-row"),
-                UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial
-                        ? "B at the widget's top level opens the radial.\nLeft stick previews widgets and their shortcuts; right stick changes pages without changing the preview. A enters, B returns.\nMove down past the widget's bottom row for the rail. B on the rail closes the overlay."
-                        : "Move down past the widget's bottom row, or press B at its top level, to enter the rail.\nLeft/right previews widgets and their shortcuts. A or Up enters the widget; B on the rail closes the overlay.",
-                    "overlay.widget-switcher.help").Classes("page-help", "widget-switcher-help"),
+                scale.InterfaceScale > AppearanceSettings.MinimumInterfaceScale, scale.InterfaceScale < AppearanceSettings.MaximumInterfaceScale),
+                null, null, busy || string.IsNullOrEmpty(display?.Id)),
+            LinkStepper(UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity), "opacity.decrease", "opacity.increase", "opacity.stepper",
+                appearance.BackdropOpacity > AppearanceSettings.MinimumBackdropOpacity, appearance.BackdropOpacity < AppearanceSettings.MaximumBackdropOpacity), null, null, busy),
+            UI.Text("Animations", "appearance.animations.heading").Classes("section-heading"),
+            UI.Text("Reduced motion in Accessibility overrides these effects.", "appearance.motion.help").Classes("page-help"),
+            UI.Switch("Animate widget switching", appearance.AnimateWidgetSwitching, "widget-switch-animation.toggle", "appearance.animate-widget-switching").Busy(busy),
                 UI.Select("Focus animation", new SelectOption[]
                 {
                     new("fade", "Fade", "focus-animation.fade", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Fade),
@@ -424,24 +268,101 @@ internal static class SettingsPresentation
                     new("lift", "Lift", "modal-animation.lift", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Lift),
                 }, "overlay.modal-animation", "Dialog animation")
                     .FocusUp("overlay.animate-dialogs").FocusDown("overlay.animation-speed.decrement")
-                    .Busy(busy).AddClasses("setting-row"),
+                    .Busy(busy).Disabled(!appearance.AnimateWidgetModals).AddClasses("setting-row"),
+                UI.Text(appearance.AnimateWidgetModals ? "Used when widget dialogs open and close." : "Turn on Animate widget dialogs to choose a style.", "appearance.dialog.help").Classes("page-help"),
                 LinkStepper(UI.Stepper("Widget animation speed",
                     appearance.WidgetAnimationSpeed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "×",
                     "widget-animation-speed.decrease", "widget-animation-speed.increase", "overlay.animation-speed",
                     appearance.WidgetAnimationSpeed > AppearanceSettings.MinimumWidgetAnimationSpeed,
                     appearance.WidgetAnimationSpeed < AppearanceSettings.MaximumWidgetAnimationSpeed),
                     "overlay.modal-animation", null, busy),
-                UI.Text("Section animations apply inside supported widgets. Speed ranges from 0.5× (slower) to 2× (faster). Reduced motion overrides focus, section and dialog animations.",
-                    "overlay.animations.help").Classes("page-help"),
-                .. hostFeatures.StartupRegistration ? new WidgetElement[] {
-                UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
-                    "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)
-                    .AddClasses("setting-row"),
-                UI.Text("Status — " + (startup?.Message ?? "Startup settings unavailable."),
-                    "overlay.startup.status", "Startup status").Classes("page-help") } : []]),
-            "interface.stepper.decrement",
-            "overlay.page");
+                UI.Text("0.5× is slower; 2× is faster. Applies to supported widget animations.",
+                    "overlay.animations.help").Classes("page-help")), "appearance.theme", "appearance.page");
     }
+
+    private static WidgetView RenderAccessibility(StackElement header, PlatformSettingsDocument settings,
+        bool busy, OverlayDisplayContext? display)
+    {
+        var appearance = settings.Appearance;
+        var scale = DisplayScalePolicy.Resolve(appearance, display?.Id);
+        return View(header, PageScope("accessibility.page",
+            UI.Text("Accessibility", "accessibility.heading").Classes("page-heading"),
+            UI.Text("Text", "accessibility.text.heading").Classes("section-heading"),
+            DisplayHint(display),
+            LinkStepper(UI.Stepper("Text size", Percent(scale.TextScale), ScaleAction("text.decrease", display),
+                ScaleAction("text.increase", display), "text.stepper", scale.TextScale > AppearanceSettings.MinimumTextScale,
+                scale.TextScale < AppearanceSettings.MaximumTextScale), null, null, busy || string.IsNullOrEmpty(display?.Id)),
+            UI.Text("For proportional sizing, use Interface size in Appearance.", "text.layout-warning").Classes("page-help"),
+            UI.Switch("Bold text", appearance.BoldText, "bold-text.toggle", "bold-text.toggle").Busy(busy),
+            UI.Text("Visibility and motion", "accessibility.visibility.heading").Classes("section-heading"),
+            UI.Select("Contrast", [
+                new("system", "Follow Windows", "contrast.choose.system", IsSelected: appearance.Contrast == ContrastPreference.System),
+                new("standard", "Standard", "contrast.choose.standard", IsSelected: appearance.Contrast == ContrastPreference.Standard),
+                new("high", "High", "contrast.choose.high", IsSelected: appearance.Contrast == ContrastPreference.High)
+            ], "contrast.preference").Busy(busy),
+            UI.Switch("Reduced transparency", appearance.Transparency == TransparencyPreference.Reduced,
+                "transparency.reduced", "transparency.reduced").Busy(busy),
+            UI.Select("Motion", [
+                new("system", "Follow Windows", "motion.choose.system", IsSelected: appearance.Motion == MotionPreference.System),
+                new("full", "Full", "motion.choose.full", IsSelected: appearance.Motion == MotionPreference.Full),
+                new("reduced", "Reduced", "motion.choose.reduced", IsSelected: appearance.Motion == MotionPreference.Reduced)
+            ], "motion.preference").Busy(busy),
+            UI.Text("Reduced motion overrides animation styles in Appearance.", "accessibility.motion.help").Classes("page-help")
+        ), "text.stepper.decrement", "accessibility.page");
+    }
+
+    private static WidgetView RenderVisualAccessibility(StackElement header, PlatformSettingsDocument settings, bool busy) =>
+        RenderAccessibility(header, settings, busy, null);
+
+    private static string ScaleAction(string action, OverlayDisplayContext? display) =>
+        action + "@" + (display?.Id ?? string.Empty);
+
+    private static WidgetElement DisplayHint(OverlayDisplayContext? display) =>
+        UI.Text(string.IsNullOrEmpty(display?.Id) ? "Display unavailable - sizing is temporarily unavailable." :
+            $"Sizes are saved for {display.Name}.", "settings.display", "Display for saved sizing")
+            .Classes("page-help");
+
+    private static WidgetView RenderOverlay(StackElement header, PlatformSettingsDocument settings, bool busy,
+        StartupRegistrationStatus? startup, OverlayDisplayContext? display, SettingsHostFeatures hostFeatures)
+    {
+        var appearance = settings.Appearance;
+        return View(header, PageScope("overlay.page", [
+            UI.Text("General", "overlay.heading").Classes("page-heading"),
+            UI.Text("Overlay", "overlay.layout.heading").Classes("section-heading"),
+            UI.Select("Position", [
+                new("center", "Center", "position.choose.center", IsSelected: appearance.OverlayPosition == OverlayPosition.Center),
+                new("left", "Bottom left", "position.choose.left", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomLeft),
+                new("right", "Bottom right", "position.choose.right", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomRight)
+            ], "overlay.position").Busy(busy),
+            UI.Text("Corner layouts keep the outside edge fixed as widgets resize.", "overlay.position.help").Classes("page-help"),
+            UI.Select("Widget switcher", [
+                new("radial", "Radial + rail", "switcher.choose.radial", IsSelected: appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial),
+                new("rail", "Rail", "switcher.choose.rail", IsSelected: appearance.WidgetSwitcher == WidgetSwitcherLayout.Rail)
+            ], "overlay.widget-switcher").Busy(busy),
+            UI.Text("B opens the switcher from a widget. A enters the selected widget.", "overlay.widget-switcher.help").Classes("page-help"),
+            .. hostFeatures.StartupRegistration ? new WidgetElement[] {
+                UI.Text("Startup", "overlay.startup.heading").Classes("section-heading"),
+                UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
+                    "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true),
+                UI.Text("Status — " + (startup?.Message ?? "Startup settings unavailable."), "overlay.startup.status").Classes("page-help")
+            } : []
+        ]), "overlay.position", "overlay.page");
+    }
+
+    private static readonly string ProductVersion = System.Reflection.CustomAttributeExtensions
+        .GetCustomAttributes<System.Reflection.AssemblyMetadataAttribute>(typeof(SettingsWidget).Assembly)
+        .First(attribute => attribute.Key == "WidgetRailVersion").Value!;
+
+    private static WidgetView RenderAbout(StackElement header) => View(header, PageScope("about.page",
+        UI.Text("About & troubleshooting", "about.heading").Classes("page-heading"),
+        UI.Text("WidgetRail", "about.name").Classes("section-heading"),
+        UI.Text("Version " + ProductVersion, "about.version").Classes("page-help"),
+        UI.Text("Controller-first widgets for your desktop and games.", "about.description").Classes("page-help"),
+        UI.Button("Diagnostics", "open.diagnostics", "about.diagnostics").Classes("setting-row"),
+        UI.Text("Inspect service status, widget failures, and recovery information.", "about.diagnostics.help").Classes("page-help"),
+        UI.Button("Reset settings…", "open.reset", "category.reset").Classes("danger-button"),
+        UI.Text("Review what will be reset before confirming.", "about.reset.help").Classes("page-help")
+    ), "about.diagnostics", "about.page");
 
     private static WidgetView RenderDiagnostics(
         StackElement header,
@@ -788,6 +709,9 @@ internal static class SettingsNavigationPolicy
     {
         target = actionId switch
         {
+            "open.controller-help" => SettingsPage.ControllerHelp,
+            "open.widget-technical" => SettingsPage.InstalledWidgetTechnical,
+            "open.about" => SettingsPage.About,
             "open.appearance" => SettingsPage.Appearance,
             "open.accessibility" => SettingsPage.Accessibility,
             "open.visual-accessibility" => SettingsPage.AccessibilityVisual,
@@ -799,11 +723,14 @@ internal static class SettingsNavigationPolicy
             "authority.recovery.cancel" => SettingsPage.Diagnostics,
             "open.reset" => SettingsPage.Reset,
             "open.themes" => SettingsPage.ThemePicker,
-            "reset.cancel" => SettingsPage.Root,
+            "reset.cancel" => SettingsPage.About,
             "back" => Parent(currentPage, packageCapabilitiesReturnPage),
             _ => currentPage,
         };
         return actionId is
+            "open.controller-help" or
+            "open.widget-technical" or
+            "open.about" or
             "open.appearance" or
             "open.accessibility" or
             "open.visual-accessibility" or
@@ -823,6 +750,9 @@ internal static class SettingsNavigationPolicy
         SettingsPage page,
         SettingsPage packageCapabilitiesReturnPage) => page switch
         {
+            SettingsPage.ControllerHelp => SettingsPage.Controllers,
+            SettingsPage.InstalledWidgetTechnical => SettingsPage.InstalledWidgetDetails,
+            SettingsPage.Diagnostics or SettingsPage.Reset => SettingsPage.About,
             SettingsPage.InstalledWidgetUpdate => SettingsPage.InstalledWidgetDetails,
             SettingsPage.InstalledWidgetVersionRemoval => SettingsPage.InstalledWidgetVersions,
             SettingsPage.ThemePicker => SettingsPage.Appearance,

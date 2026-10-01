@@ -18,7 +18,8 @@ They provide consistent focus, actions, and theme classes across widgets.
 
 The complete factories live in [`ModernComponents.cs`](../../src/WidgetSdk/ModernComponents.cs),
 [`TileComponents.cs`](../../src/WidgetSdk/TileComponents.cs),
-[`UI.cs`](../../src/WidgetSdk/UI.cs), and
+[`UI.cs`](../../src/WidgetSdk/UI.cs),
+[`SettingsField.cs`](../../src/WidgetSdk/SettingsField.cs), and
 [`ControllerGlyph.cs`](../../src/WidgetSdk/ControllerGlyph.cs). SDK Gallery shows them in the overlay.
 
 ## Controller symbols and hints
@@ -93,3 +94,22 @@ hints should remain readable without depending on the background image's color.
 See [Styling](../developers/styling.md), [Controller input](controller-input.md),
 and [Accessibility](accessibility.md). The [Audio Mixer source](../../src/FirstPartyWidgets/AudioMixerWidget/)
 is an example of settings rows and value controls in a real widget.
+
+
+### Consistent setting rows
+
+`UI.SettingsField(id, label, control, description)` pairs a noninteractive label and
+optional description with one control (or a stepper). It uses the host responsive
+Grid: two aligned columns when space permits, one column at narrow widths.
+The control keeps its ID, input scope and accessibility name across reflow.
+Use `SelectElement.ShowLabel = false` when the row already provides the visible
+label; the select retains its accessible name and value. Bind choices to exact
+set actions, so selecting the current value is harmless. Do not use two switches
+to represent one three-state preference. Style the `wrail-setting-row` and its
+`__copy`, `__label`, `__description`, `__control` classes through theme tokens.
+
+
+`UI.Switch` uses the shared command-button presentation. Its state comes from
+widget snapshots; the host does not optimistically invert it. Busy controls should
+use `.Busy(true)` without also becoming disabled: this blocks action admission
+while preserving focus. Disable a control when its capability is unavailable.

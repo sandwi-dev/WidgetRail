@@ -143,7 +143,7 @@ internal static class NetworkControlsPresentation
                     ? "Scanning for nearby Wi-Fi networks"
                     : "Scan for nearby Wi-Fi networks")
                 .Busy(state.ScanBusy)
-                .Disabled(!state.Interactive || state.ScanBusy || state.ControlBusy ||
+                .Disabled(!state.Interactive || state.ControlBusy ||
                     !NetworkControlsProviderPolicy.CanScan(status))
                 .FocusUp("network.wifi.radio")
                 .FocusLeft("network.wifi.scan")
@@ -332,7 +332,7 @@ internal static class NetworkControlsPresentation
         var toggle = UI.Switch(label, isOn, "wifi.radio.toggle", "network.wifi.radio")
             .Icon(WidgetGlyph.Wifi, label)
             .Busy(busy)
-            .Disabled(!interactive || busy || !radio.CanControl)
+            .Disabled(!interactive || !radio.CanControl)
             .FocusUp("network.tab.wifi")
             .FocusDown("network.wifi.scan")
             .FocusLeft("network.wifi.radio")
@@ -496,8 +496,7 @@ internal static class NetworkControlsPresentation
                 radioLabel, isOn, "bluetooth.radio.toggle", "network.bluetooth.radio")
             .Icon(WidgetGlyph.Connection, radioLabel)
             .Busy(state.BluetoothBusy)
-            .Disabled(!state.Interactive || state.BluetoothBusy ||
-                snapshot?.CanControlRadio != true)
+            .Disabled(!state.Interactive || snapshot?.CanControlRadio != true)
             .FocusUp("network.tab.bluetooth")
             .FocusLeft("network.bluetooth.radio")
             .FocusRight("network.bluetooth.radio")
@@ -518,7 +517,7 @@ internal static class NetworkControlsPresentation
             .Classes("network-radio-row", "network-bluetooth-row");
 
         var scan = UI.Button(state.BluetoothScanBusy ? "Scanning…" : "Scan for devices", "bluetooth.scan", "network.bluetooth.scan")
-            .Busy(state.BluetoothScanBusy).Disabled(!state.Interactive || state.BluetoothBusy || state.BluetoothScanBusy || !isOn)
+            .Busy(state.BluetoothScanBusy).Disabled(!state.Interactive || state.BluetoothBusy || !isOn)
             .FocusUp("network.bluetooth.radio").Classes("network-secondary-action");
         if (firstDeviceId is not null) scan = scan.FocusDown(firstDeviceId);
         yield return scan;

@@ -1106,3 +1106,9 @@ button:pressed, .wrail-action-surface:pressed, .wrail-choice-row:pressed {
   surface-shading: 0;
   shadow-color: transparent;
 }
+
+.wrail-setting-row { gap: 12px; padding: 12px; min-width: 0; }
+.wrail-setting-row__copy { gap: 4px; min-width: 0; justify: center; }
+.wrail-setting-row__label { font-weight: 600; color: var(--text); }
+.wrail-setting-row__description { color: var(--text-muted); }
+.wrail-setting-row__control { min-width: 0; justify: center; }
