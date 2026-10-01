@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Revert native switches and preserve radio focus — 2026-10-01, validated
+### Revert native switches and preserve radio focus — 2026-10-01, candidate running
 
 User rejected native toggle styling and reported state oscillation/focus loss in
 Wi-Fi. Restore the pre-preview.18 shared UI.Switch button renderer/SDK accessibility
@@ -26,7 +26,12 @@ Validation: Network 31/31, SDK 148/148, Settings 81/81, native switch-command
 Native synthetic checks cover Invoke semantics, no optimistic state, repeated busy
 snapshots, stable focus, blocked repeat/automation commands, authoritative completion
 and genuinely unavailable controls. Layout screenshot reviewed; scoped code review
-found no further issues. Preview.19 release folders are next; no installer requested.
+found no further issues. Preview.19 production/developer catalogs validated (8/12 widgets).
+Source commit 771b10c5. Production candidate launched with --show and the normal
+profile: frontend PID8540, own Bridge PID28364, Settings PID36100 and worker host
+PID34192, all from the preview.19 release root. No frontend errors for PID8540
+at startup. Candidate remains running for physical acceptance; no installer built
+and no system-setting controls exercised. Network Controls is version 0.1.4.
 
 
 ### Native toggles and widget-list rows — 2026-10-01, test candidate running
