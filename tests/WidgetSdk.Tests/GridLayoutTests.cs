@@ -154,7 +154,9 @@ internal static class GridLayoutTests
         try
         {
             using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "grid.indexed");
-            Equal(64, host.CurrentSnapshot.ProtocolVersion);
+            // Deferred templates advertise the current protocol because their
+            // item declarations are not evaluated until a range is acquired.
+            Equal(ProtocolConstants.CurrentVersion, host.CurrentSnapshot.ProtocolVersion);
             Equal(0, widget.RenderCount);
             using var lease = await host.AcquireAsync("items", 0, 1);
             Equal(1, widget.RenderCount);

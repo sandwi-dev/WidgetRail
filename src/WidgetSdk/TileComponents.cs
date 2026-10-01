@@ -145,6 +145,10 @@ public sealed record ActionSurfaceElement : WidgetElement
     }
 
     public string ActionId { get; init; }
+    public WidgetIntentRequest? Intent { get; init; }
+    /// <summary>Binds a host-routed intent to the surface's primary activation.</summary>
+    public ActionSurfaceElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload) =>
+        this with { Intent = WidgetIntentRequest.Create(contract, payload) };
     public string AccessibilityLabel { get; init; }
     public ActionSurfaceOrientation Orientation { get; init; }
     public ActionSurfacePresentation? Presentation { get; init; }
@@ -258,6 +262,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         Kind = ViewNodeKind.ActionSurface,
         AccessibilityLabel = AccessibilityLabel,
         ActionId = ActionId,
+        Intent = Intent,
         ContextActions = ContextActions,
         ContextMenuButton = ContextMenuButton,
         ActionSurfaceOrientation = Orientation,

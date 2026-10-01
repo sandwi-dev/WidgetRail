@@ -44,7 +44,7 @@ internal static class IntentResolutionPolicy
         {
             if (candidate is null || candidate.Contract is null) return Result(IntentResolutionKind.InvalidCatalog);
             if (!candidate.Enabled || candidate.Contract.Id != requested.Id || candidate.Contract.Version != requested.Version) continue;
-            if (!WidgetManifestValidator.IsValidPackageIdentity(candidate.WidgetId) || candidate.Generation < 1 || !owners.Add(candidate.WidgetId))
+            if (!ProtocolValidationIdentifierContext.IsSafeIdentifier(candidate.WidgetId) || candidate.Generation < 1 || !owners.Add(candidate.WidgetId))
                 return Result(IntentResolutionKind.InvalidCatalog);
             if (candidate.Contract.SchemaDigest != requested.SchemaDigest) return Result(IntentResolutionKind.SchemaConflict);
             matches.Add(candidate);

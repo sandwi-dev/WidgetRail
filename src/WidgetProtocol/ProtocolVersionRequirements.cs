@@ -140,6 +140,9 @@ internal sealed class ProtocolVersionRequirements
                 return;
 
             var scope = node.InputScopeId ?? inheritedScope;
+            if (node.Intent is not null)
+                Add("widget-intent", ProtocolConstants.WidgetIntentVersion, $"{path}.intent",
+                    "Declarative widget intents require protocol version 65 or later.");
             if (inferDeferredFocusGroupEntry &&
                 snapshot.FocusGroupEntryRequest is { } groupEntry &&
                 string.Equals(node.Id, groupEntry.GroupId, StringComparison.Ordinal) &&

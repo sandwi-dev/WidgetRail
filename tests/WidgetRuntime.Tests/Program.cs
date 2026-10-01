@@ -89,6 +89,9 @@ if (expectedRuntime is not null && !RuntimeEnvironment.GetRuntimeDirectory().Sta
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Intent delivery rejects duplicate and inactive requests", IntentDeliveryScenarios.DuplicateAndLifecycle),
+    ("Intent delivery does not replay cancelled or failed handlers", IntentDeliveryScenarios.CancellationAndFailure),
+    ("Intent IPC uses the exact running worker without recovery", IntentDeliveryScenarios.ProcessBoundary),
     ("Indexed lease IPC acquires invokes and releases captured rows", IndexedLeaseRuntimeScenarios.ClientRoundTrip),
     ("Indexed lease IPC artwork cancellation preserves input and worker", IndexedLeaseRuntimeScenarios.ArtworkCancellation),
     ("Indexed lease IPC release retires pending artwork", IndexedLeaseRuntimeScenarios.ReleaseDuringArtwork),
@@ -248,7 +251,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal) ||
         arguments.Contains("--gesture-adversarial-probe", StringComparer.Ordinal);
     var gestureProbe = usesGestureProbe ? new GestureProbeCapabilityClient() : null;
-    Widget widget = arguments.Contains("--indexed-lease-probe", StringComparer.Ordinal)
+    Widget widget = arguments.Contains("--intent-probe", StringComparer.Ordinal)
+        ? new IntentProbeWidget()
+        : arguments.Contains("--indexed-lease-probe", StringComparer.Ordinal)
         ? new IndexedLeaseProbeWidget()
         : arguments.Contains("--indexed-range-probe", StringComparer.Ordinal)
         ? new IndexedRangeProbeWidget()

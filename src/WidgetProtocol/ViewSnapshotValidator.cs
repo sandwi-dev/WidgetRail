@@ -754,6 +754,15 @@ public static class ViewSnapshotValidator
             }
             CheckString(node.AccessibilityLabel, $"{path}.accessibilityLabel");
             CheckString(node.AccessibilityValue, $"{path}.accessibilityValue");
+            if (node.Intent is { } intent)
+            {
+                if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.ActionSurface))
+                    Add($"{path}.intent", "intent_not_allowed", "Only primary button and action-surface activations may declare intents.");
+                if (!intent.IsWellFormed())
+                    Add($"{path}.intent", "invalid_intent", "Intent identity, schema digest or payload is invalid.");
+                if (string.IsNullOrEmpty(node.ActionId))
+                    Add($"{path}.intent", "intent_action_required", "An intent requires a stable action identity.");
+            }
             CheckString(node.ActionId, $"{path}.actionId",
                 ProtocolValidationIdentifierKind.Action);
             CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId",
@@ -1779,6 +1788,9 @@ public static class ViewSnapshotValidator
             {
                 var node = pending.Pop();
                 aggregateNodes++;
+                if (node.Intent is { } intent)
+                    aggregateStrings += StringLength(intent.ContractId) + StringLength(intent.SchemaDigest) +
+                        (intent.Payload.ValueKind == System.Text.Json.JsonValueKind.Undefined ? 0 : intent.Payload.GetRawText().Length);
                 aggregateStrings += StringLength(node.Id) + StringLength(node.Text) +
                     StringLength(node.AccessibilityLabel) + StringLength(node.AccessibilityValue) +
                     StringLength(node.ActionId) + StringLength(node.TextEntryValue) +

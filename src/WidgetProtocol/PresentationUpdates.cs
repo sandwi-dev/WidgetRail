@@ -87,6 +87,7 @@ public enum PresentationProperty
     CollectionLayout,
     GridLayout,
     GridCell,
+    Intent,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -155,7 +156,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionResetGeneration => PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
-        PresentationProperty.ContextMenuButton or PresentationProperty.ContextActions =>
+        PresentationProperty.Intent or PresentationProperty.ContextMenuButton or PresentationProperty.ContextActions =>
             PresentationPropertyImpact.Authority | PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,

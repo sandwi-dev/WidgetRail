@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\WidgetRuntime\WidgetIntentLane.cs" Link="Runtime\WidgetIntentLane.cs" />
     <ProjectReference Include="..\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
   <ItemGroup>

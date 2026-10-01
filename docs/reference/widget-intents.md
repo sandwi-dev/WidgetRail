@@ -1,7 +1,8 @@
 # Widget intents (in development)
 
-The contract/manifest and handler-selection foundation is implemented. Live
-request delivery, SDK invocation and frontend navigation are not connected yet.
+The contract/manifest, handler-selection policy, SDK action declarations and
+worker receiver transport are implemented. Bridge dispatch and frontend
+activation are not connected yet.
 Do not advertise intent handling in published packages until that integration
 and its compatibility gate are complete. Track progress in
 [the Game Help plan](../maintainers/game-help-implementation-plan.md).
@@ -96,8 +97,40 @@ resolve again and cannot automatically trigger another handler or fallback.
 
 The remaining dispatcher must bind every request to authenticated caller identity,
 manifest declaration, current user action and lifetime, then revalidate the target
-generation before delivery. The frontend owns activation and return navigation.
+generation before delivery. The frontend opens the destination as an ordinary
+widget; there is no return-to-sender stack or B remapping. Users return through
+the tray or pin the destination using existing behavior.
 These requirements are not satisfied merely by calling the pure resolver.
+
+## Declarative authoring and receiving
+
+Interactive requests attach to the displayed control so the host can validate
+the actual selected action and its payload. Protocol v65 is required; ordinary
+controls without intents retain their existing minimum protocol. For example:
+
+```csharp
+UI.Button("Read guide", "read-guide", "guide")
+    .OpenIntent(WidgetIntentContracts.Web,
+        JsonSerializer.SerializeToElement(new { url = "https://example.com/guide" }));
+```
+
+`ActionSurfaceElement` provides the same `OpenIntent` method. The manifest must
+declare the matching request contract. Payloads are validated and cloned when
+authored. Intent payload changes participate in atomic presentation updates and
+input-authority revalidation. Initial routing admits only primary activation
+(pointer/keyboard or controller A press); repeat/release and unrelated shortcuts
+do not gain intent authority. Indexed and pinned routing still require their
+respective lease/projection admission before activation is enabled there.
+
+Receivers override `Widget.OnIntentAsync(WidgetIntentRequest, CancellationToken)`
+and return true after accepting data into widget state. Use normal state/operation
+helpers for subsequent work. The default rejects unsupported requests. Receiver
+transport admits visible/interactive lifetime only, has one pending delivery per
+worker, rejects repeated/older IDs, and does not recover or start workers.
+Cancellation drains the original reply before releasing response correlation;
+an uncooperative receiver is terminated after the bounded drain deadline. A
+cancelled acknowledgement cannot roll back effects already performed by author
+code, so handlers should promptly accept navigation data and honor cancellation.
 
 ## Focused checks
 

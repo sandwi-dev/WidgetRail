@@ -392,6 +392,8 @@ public sealed record ViewNode
     /// <summary>A localized, human-readable value announced for value controls.</summary>
     public string? AccessibilityValue { get; init; }
     public string? ActionId { get; init; }
+    /// <summary>Host-routed intent for this button/action surface's primary activation.</summary>
+    public WidgetIntentRequest? Intent { get; init; }
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     public ControllerButton? ContextMenuButton { get; init; }
     public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];

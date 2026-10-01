@@ -49,6 +49,19 @@ internal sealed class WidgetWorkerAsyncLane<TKey, TRequest>(int capacity,
         if (!operation.Completing) operation.CancellationCompletion ??= operation.Cancellation.CancelAsync();
     }
 
+    internal async Task<bool> CancelAndDrainAsync(TKey key)
+    {
+        Task finished;
+        lock (gate)
+        {
+            if (!operations.TryGetValue(key, out var operation)) return false;
+            CancelLocked(operation);
+            finished = operation.Finished.Task;
+        }
+        await finished.ConfigureAwait(false);
+        return true;
+    }
+
     internal Task CloseAsync()
     {
         lock (gate)

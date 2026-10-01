@@ -69,7 +69,7 @@ are separate; initiating controller press/release cannot leak into the game.
 | Validated application context and ordered-window selection | Inferring game/location and helpful questions |
 | Authorized bounded capture, countdown and attachment references | Requesting context and attaching it to a conversation |
 | Inline native image/video elements and a preview modal composition | Pending question and Send/Retry/Discard workflow |
-| Intent contracts, handler selection, delivery, return navigation | Browser toolbar and YouTube playback handling |
+| Intent contracts, handler selection, delivery, normal widget activation | Browser toolbar and YouTube playback handling |
 | Native hosted web surface, controller input and pinning | Browser address/history |
 | Existing declarative UI plus reusable message/choice primitives if needed | Chat history, spoiler policy, follow-up selection |
 
@@ -103,15 +103,16 @@ ordinary dispatch path.
   game links. Migrate that consumer to the shared web intent; preserve its link
   validation. YouTube consumes the standard video contract including timestamps.
 
-### Return navigation and B
+### Normal navigation and B (revised user decision)
 
-Host navigation owns the return destination, including source focus/scroll state.
-Existing local handlers retain first refusal (dialogs, editing, page interaction).
-Unhandled B at the intent destination's root returns to the caller if the return
-destination remains valid, otherwise it follows the existing tray behavior.
-Manual widget selection retires the old return destination. Pinned/fullscreen
-exit behavior retains priority. Consume the entire gesture across transitions.
-Browser page history has its own Back control; it must not trap B indefinitely.
+An intent opens its destination as an ordinary widget. Do not create a return-to-
+sender stack or remap B. Existing local handlers retain first refusal (dialogs,
+editing, page interaction); unhandled B follows the existing tray behavior.
+Users may choose another widget or pin the destination for use while gaming.
+The sender retains ordinary widget state when users return manually. Existing
+pinned/fullscreen exit behavior retains priority. Consume the entire gesture
+across transitions. Browser page history has its own Back control; it must not
+trap B indefinitely. This supersedes the original return-destination proposal.
 
 ### Browser and local media preview
 
@@ -147,18 +148,20 @@ following sources. No game-memory access or autonomous game input.
 
 ## Ordered milestones
 
-### 1. Intent foundation and navigation
+### 1. Intent foundation and activation
 - [x] Bounded contracts and schema validation, including malformed/conflicting definitions.
 - [x] Manifest declarations and backward-compatible omission; uses existing manifest validation at package admission.
 - [x] Deterministic pure handler resolution policy and standard contracts (not live dispatch).
 - [ ] Authenticated Bridge transport, admission, cancellation and correlated delivery.
-- [ ] SDK request/receive APIs and worker lifetime integration.
-- [ ] Frontend activation, return destinations and B/gesture handling.
+- [x] Declarative SDK intent actions on buttons/action surfaces and versioned snapshot/update transport.
+- [x] Worker receiver API and exact-process delivery with cancellation, duplicate rejection and lifetime checks.
+- [ ] Wire SDK actions and receiver transport into Bridge admission and dispatch.
+- [ ] Frontend activation with ordinary B/tray/pinning behavior and gesture handling.
 - [ ] Fake sender/handler end-to-end tests and candidate for physical acceptance.
 
 ### 2. Browser and link consumers
 - [ ] Lazy host-owned web surface with controller cursor/scroll and toolbar.
-- [ ] Pinnable browser widget; normal/pinned/return focus qualification.
+- [ ] Pinnable browser widget; normal/pinned focus qualification.
 - [ ] Default-browser fallback through the standard intent.
 - [ ] Playnite link migration; YouTube handler with optional start time.
 
@@ -191,6 +194,9 @@ following sources. No game-memory access or autonomous game input.
   shell launch, and frontend B routing. Implementation begins with milestone 1.
 - 2026-10-01: User clarified that native media must also support inline widget
   placement. Updated milestone 4: reusable element first, modal composition second.
+- 2026-10-01: User removed automatic return-to-sender navigation. Intent destinations
+  open as normal widgets; preserve existing B/tray and pinning behavior. No return
+  stack is needed. Updated milestone 1 before implementing frontend routing.
 - 2026-10-01: Implemented contract compilation, closed bounded schema subset,
   canonical contract identity, manifest declarations, standard web/video schemas,
   and pure handler resolution. Added [contract reference](../reference/widget-intents.md).
@@ -203,15 +209,37 @@ following sources. No game-memory access or autonomous game input.
   Existing package/catalog checks also pass: 37/37
   (`artifacts/game-help/catalog-tests01.log`, `catalog-build01.binlog`).
 - Next: connect user-initiated SDK requests and handler delivery through the
-  authenticated worker/Bridge transport, then frontend return navigation. No
+  authenticated worker/Bridge transport, then normal frontend activation. No
   production transport or UI is enabled by the pure policy alone.
-- Current boundary: no intent transport, browser, capture recording, preview modal,
-  Gemini integration, or Game Help widget is enabled. Existing candidate untouched.
+- 2026-10-01: Added protocol-v65 intent action declarations, `.OpenIntent(...)` on
+  SDK buttons/action surfaces, atomic payload updates, and `Widget.OnIntentAsync`.
+  Source control declarations carry schema identity; displayed/current action
+  revalidation rejects changed payloads, disabled/busy owners, scope changes and
+  reused collection occurrence identities. Intents are user-activated declarations,
+  not unsolicited worker-to-worker messages.
+  SDK: 151/151 (`sdk-intents-tests02.log`); contract/authority: 19/19
+  (`intents-tests04.log`). Updated the SDK public API and native protocol artifact;
+  managed/native parity verifies 148 constants. Corrected one old indexed-template
+  fixture to expect CurrentVersion, as deferred templates advertise the current
+  protocol without evaluating item content.
+- 2026-10-01: Implemented host-to-worker receiver transport for both runtime
+  assemblies, using the existing bounded async worker lane. User cancellation
+  completes a separate cancel/drain handshake without truncating pipe frames or
+  abandoning response correlation. Delivery cannot launch/recover a worker or
+  target its replacement. Duplicate/older delivery IDs are consumed before author
+  code, including on failure. Intent runtime checks: 3/3 including a real fake-worker
+  IPC cancellation that keeps the worker usable (`runtime-intents-tests03.log`).
+  Shared indexed-lane IPC regressions: 7/7 (`runtime-indexed-regression01.log`).
+  WinUI review checklist applied to ownership/input/security; no new UI authored.
+- Current boundary: contracts, authoring and receiver transport exist; Bridge
+  request admission/dispatch and frontend intent activation are still pending.
+  Browser, capture recording, native media element/preview modal, Gemini integration
+  and Game Help widget are not enabled. Existing candidate untouched.
 
 ## Validation and delivery policy
 
 Use focused synthetic checks for contracts, malformed payloads, stale lifetimes,
-duplicate delivery, cancellation, fallback and focus return. Physical game input,
+duplicate delivery, cancellation, fallback and existing focus behavior. Physical game input,
 exclusive fullscreen and capture behavior are user acceptance checks. Do not alter
 system settings or start real playback as part of automated checks. Preserve the
 existing candidate while it is under test; coordinate restart for visible changes.

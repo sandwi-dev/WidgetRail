@@ -482,6 +482,7 @@ method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusLeft(string id) -> WidgetR
 method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusRight(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusUp(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.ActionSurfaceElement.OpenIntent(WidgetRail.WidgetProtocol.WidgetIntentContract contract, System.Text.Json.JsonElement payload) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.PersistFocusAs(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Selected(bool selected = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ActionSurfaceElement
@@ -505,6 +506,7 @@ method WidgetRail.WidgetSdk.ButtonElement.Icon(WidgetRail.WidgetProtocol.WidgetG
 method WidgetRail.WidgetSdk.ButtonElement.Icon(WidgetRail.WidgetSdk.WidgetIcon icon, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.LeadingArtwork(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.LeadingInlinePng(string pngBase64, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
+method WidgetRail.WidgetSdk.ButtonElement.OpenIntent(WidgetRail.WidgetProtocol.WidgetIntentContract contract, System.Text.Json.JsonElement payload) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.PersistFocusAs(string id) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Selected(bool selected = true) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ButtonElement
@@ -2164,6 +2166,7 @@ method virtual WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(Wi
 method virtual WidgetRail.WidgetSdk.Widget.OnActionAsync(WidgetRail.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual WidgetRail.WidgetSdk.Widget.OnEmbeddedMediaPlaybackEventAsync(WidgetRail.WidgetProtocol.EmbeddedMediaPlaybackEvent playbackEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method virtual WidgetRail.WidgetSdk.Widget.OnIntentAsync(WidgetRail.WidgetProtocol.WidgetIntentRequest request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnResolveArtworkAsync(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
@@ -2466,6 +2469,8 @@ property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ComponentAc
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.PickerOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.SelectOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ToastElement.Glyph { get; }
+property WidgetRail.WidgetProtocol.WidgetIntentRequest? WidgetRail.WidgetSdk.ActionSurfaceElement.Intent { get; set; }
+property WidgetRail.WidgetProtocol.WidgetIntentRequest? WidgetRail.WidgetSdk.ButtonElement.Intent { get; set; }
 property WidgetRail.WidgetProtocol.WidgetPackageIcon? WidgetRail.WidgetSdk.ButtonElement.PackageIcon { get; set; }
 property WidgetRail.WidgetProtocol.WidgetPackageIcon? WidgetRail.WidgetSdk.IconElement.PackageIcon { get; set; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints WidgetRail.WidgetSdk.PinnedLayoutHandle.Surface { get; }

@@ -73,6 +73,7 @@ internal sealed class WidgetWorkerServer
         WidgetWorkerNotificationLane? notifications = null;
         WidgetIndexedRangeLane? indexedRanges = null;
         WidgetIndexedArtworkLane? indexedArtwork = null;
+        WidgetIntentLane? intents = null;
         await using var pipe = new NamedPipeClientStream(
             ".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -116,6 +117,7 @@ internal sealed class WidgetWorkerServer
             }
             indexedRanges = new(_widget, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
             indexedArtwork = new(_widget, SendEncodedArtworkAsync, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
+            intents = new(_widget, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
             var pendingRequests = 0;
             var stopQueued = false;
             var processor = ProcessRequestsAsync(
@@ -160,6 +162,29 @@ internal sealed class WidgetWorkerServer
                                 new ErrorPayload("worker_stopping", "Worker shutdown is already queued."),
                                 requestLoopCancellation.Token)
                             .ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (request.Type is MessageTypes.DeliverIntent or MessageTypes.CancelIntent)
+                    {
+                        try
+                        {
+                            if (request.Type == MessageTypes.CancelIntent)
+                            {
+                                var cancel = RuntimeJson.FromElement<IntentCancellationPayload>(request.Payload);
+                                var cancelled = await intents.CancelAsync(cancel.DeliveryId).ConfigureAwait(false);
+                                await ReplyAsync(MessageTypes.Acknowledged, request.RequestId,
+                                    new { cancelled }, requestLoopCancellation.Token).ConfigureAwait(false);
+                            }
+                            else if (!intents.TryDeliver(request.RequestId, RuntimeJson.FromElement<IntentDeliveryPayload>(request.Payload)))
+                                await ReplyAsync(MessageTypes.IntentResult, request.RequestId,
+                                    new IntentDeliveryResultPayload(false), requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
+                        catch (Exception error) when (error is ArgumentException or JsonException)
+                        {
+                            await SendAsync(WidgetIndexedRangeLane.Error(request.RequestId, "intent_invalid", "Invalid intent delivery."),
+                                requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
                         continue;
                     }
 
@@ -277,7 +302,7 @@ internal sealed class WidgetWorkerServer
                     {
                         if (request.Type == MessageTypes.Stop)
                         {
-                            await Task.WhenAll(indexedRanges.CloseAsync(), indexedArtwork.CloseAsync()).ConfigureAwait(false);
+                            await Task.WhenAll(indexedRanges.CloseAsync(), indexedArtwork.CloseAsync(), intents.CloseAsync()).ConfigureAwait(false);
                             await ReplyAsync(
                                     MessageTypes.Acknowledged, request.RequestId, new { },
                                     loopCancellation.Token)
@@ -317,7 +342,8 @@ internal sealed class WidgetWorkerServer
             Exception? indexedDrainFailure = null;
             try
             {
-                await Task.WhenAll(indexedRanges?.CloseAsync() ?? Task.CompletedTask, indexedArtwork?.CloseAsync() ?? Task.CompletedTask).ConfigureAwait(false);
+                await Task.WhenAll(indexedRanges?.CloseAsync() ?? Task.CompletedTask, indexedArtwork?.CloseAsync() ?? Task.CompletedTask,
+                    intents?.CloseAsync() ?? Task.CompletedTask).ConfigureAwait(false);
             }
             catch (Exception exception) { indexedDrainFailure = exception; }
             try

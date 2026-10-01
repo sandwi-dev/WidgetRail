@@ -8,6 +8,9 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Intent actions carry versioned bounded owned payloads", WidgetIntentPresentationTests.Declarations),
+    ("Intent actions reject malformed and misplaced declarations", WidgetIntentPresentationTests.InvalidDeclarations),
+    ("Intent action changes preserve atomic presentation authority", WidgetIntentPresentationTests.Updates),
     ("WinUI author preflight diagnoses legacy declarations", WinUiPresentationContractTests.LegacyDeclarations),
     ("WinUI author preflight preserves native and protocol contracts", WinUiPresentationContractTests.NativeDeclarations),
     ("WinUI author preflight includes pinned and deferred subtrees", WinUiPresentationContractTests.NestedAndPinned),

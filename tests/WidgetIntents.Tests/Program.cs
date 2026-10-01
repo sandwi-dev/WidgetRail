@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -22,6 +23,8 @@ var tests = new (string Name, Action Run)[]
     ("Only the standard web contract gets external browser fallback", Fallback),
     ("Web routing rejects executable schemes credentials and malformed URLs", WebUrls),
     ("Handler catalogs are bounded and generation bearing", CatalogBounds),
+    ("Displayed intent authority survives unrelated snapshots but rejects changed payloads", DisplayedIntentAuthority),
+    ("Disabled busy and out-of-scope intent actions cannot be admitted", RejectedIntentAuthority),
 };
 var failures = 0;
 foreach (var (name, run) in tests)
@@ -213,7 +216,47 @@ static void CatalogBounds()
     Check(Resolve(Enumerable.Repeat(candidate, IntentResolutionPolicy.MaximumCandidates + 1).ToArray()).Kind == IntentResolutionKind.InvalidCatalog);
     Check(Resolve([null!]).Kind == IntentResolutionKind.InvalidCatalog);
     Check(Resolve([candidate]).Candidates.Single().Generation == 42);
+    Check(Resolve([Candidate("browser")]).Kind == IntentResolutionKind.Widget);
 }
+
+static void DisplayedIntentAuthority()
+{
+    var snapshot = IntentSnapshot();
+    var action = IntentAction();
+    var latest = snapshot with { Sequence = 5, Root = snapshot.Root with { Children =
+        [snapshot.Root.Children[0], new ViewNode { Id = "status", Kind = ViewNodeKind.Text, Text = "Updated" }] } };
+    Check(IntentActionAuthority.Revalidate(snapshot, latest, action) is not null);
+    var node = snapshot.Root.Children[0];
+    latest = snapshot with { Sequence = 2, Root = snapshot.Root with { Children = [node with { Intent = node.Intent! with
+        { Payload = Json("""{"url":"https://changed.example"}""") } }] } };
+    Check(IntentActionAuthority.Revalidate(snapshot, latest, action) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot with { WidgetInstanceId = "restarted" }, action) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { Phase = ControllerEventPhase.Released }) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { Phase = ControllerEventPhase.Repeated }) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { ControllerButton = ControllerButton.B }) is null);
+    var row = node with { CollectionItemKey = "old-row" };
+    var old = snapshot with { Root = snapshot.Root with { Children = [row] } };
+    var changed = snapshot with { Root = snapshot.Root with { Children = [row with { CollectionItemKey = "new-row" }] } };
+    Check(IntentActionAuthority.Revalidate(old, changed, action) is null);
+}
+
+static void RejectedIntentAuthority()
+{
+    var snapshot = IntentSnapshot(); var action = IntentAction(); var node = snapshot.Root.Children[0];
+    foreach (var blocked in new[] { node with { IsDisabled = true }, node with { IsBusy = true }, node with { ActionId = "other" },
+        node with { Intent = null }, node with { Kind = ViewNodeKind.Text } })
+        Check(IntentActionAuthority.Revalidate(snapshot, snapshot with { Root = snapshot.Root with { Children = [blocked] } }, action) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { InputScopeId = "other" }) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { RequestedValue = 1 }) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { CommittedText = "command" }) is null);
+    var nested = snapshot with { Root = snapshot.Root with { Children = [new ViewNode
+        { Id = "modal", Kind = ViewNodeKind.Stack, InputScopeId = "modal", Children = [node] }] } };
+    Check(IntentActionAuthority.Revalidate(nested, nested, action) is null);
+}
+
+static ViewSnapshot IntentSnapshot() => new WidgetView(UI.Stack("root", UI.Button("Guide", "open", "guide")
+    .OpenIntent(WidgetIntentContracts.Web, Json("""{"url":"https://example.com"}""")))).CreateSnapshot("intent.widget", 1);
+static WidgetActionEvent IntentAction() => new("open", "guide", ControllerButton.A, InputScopeId: "root");
 
 static IntentHandlerCandidate Candidate(string id) => new(id, 42, CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web), true);
 static IntentResolution Resolve(IReadOnlyList<IntentHandlerCandidate> candidates, string? preferred = null) =>

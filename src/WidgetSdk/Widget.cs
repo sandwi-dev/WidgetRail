@@ -690,6 +690,37 @@ public abstract partial class Widget
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Receives a host-admitted intent after this widget becomes visible. Return
+    /// true after accepting its data into widget state; start lengthy work through
+    /// the normal widget operation helpers. This callback grants no new capabilities.
+    /// </summary>
+    public virtual ValueTask<bool> OnIntentAsync(WidgetIntentRequest request,
+        CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
+
+    private readonly object _intentGate = new();
+    private long _lastIntentDelivery;
+
+    internal async ValueTask<bool> ApplyIntentAsync(long deliveryId, WidgetIntentRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (deliveryId <= 0 || !request.IsWellFormed()) throw new ArgumentException("Invalid intent delivery.");
+        lock (_intentGate)
+        {
+            if (!IsVisible(LifecycleState) || deliveryId <= _lastIntentDelivery) return false;
+            // Consume before invoking author code. Failure, cancellation or an
+            // unsupported result cannot replay the same delivery into this worker.
+            _lastIntentDelivery = deliveryId;
+        }
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ActiveCancellationToken);
+        lifetime.Token.ThrowIfCancellationRequested();
+        var accepted = await OnIntentAsync(request with { Payload = request.Payload.Clone() }, lifetime.Token).ConfigureAwait(false);
+        if (accepted) Invalidate();
+        return accepted;
+    }
+
     internal async ValueTask ApplyEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken)

@@ -462,6 +462,10 @@ public sealed record ButtonElement : WidgetElement
     }
 
     public string Label { get; init; }
+    public WidgetIntentRequest? Intent { get; init; }
+    /// <summary>Binds a host-routed intent to primary activation instead of invoking the widget's action handler.</summary>
+    public ButtonElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload) =>
+        this with { Intent = WidgetIntentRequest.Create(contract, payload) };
     public string ActionId { get; init; }
     public string? AccessibilityLabel { get; init; }
     public WidgetGlyph? Glyph { get; init; }
@@ -568,6 +572,7 @@ public sealed record ButtonElement : WidgetElement
     {
         Id = Id,
         Kind = ViewNodeKind.Button,
+        Intent = Intent,
         Text = Label,
         AccessibilityLabel = AccessibilityLabel,
         Glyph = Glyph,
