@@ -22,6 +22,7 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
+        if (ReceiveLocalInstall(frame)) return;
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); radialInput.Reset(); }
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
@@ -124,6 +125,7 @@ internal sealed partial class OverlayShellPage
             return;
         }
         if (retired || !visible) return;
+        if (LocalInstallActive) { localInstallDialog?.Handle(button, phase); return; }
         if (ReceiveStartupInput(button, phase) || switching && interactive) return;
         try
         {

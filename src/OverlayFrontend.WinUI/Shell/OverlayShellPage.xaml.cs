@@ -480,6 +480,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (retired || visible == value) return;
         retainingExitPresentation = !value && retainExitPresentation;
         ProductionRoot.IsHitTestVisible = value;
+        if (!value) localInstallCancellation?.Cancel();
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         if (!value) ExitPinnedInteraction(restoreMain: false);
         interactionAdmission.Invalidate();
@@ -596,7 +597,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void QueueEntryFocus()
     {
-        if (retired || !visible || startupPresentationPending) return;
+        if (retired || !visible || startupPresentationPending || LocalInstallActive) return;
         if (switching)
         {
             if (interactive && activeWidget == requestedWidget) surface?.RestoreRetainedFocusPresentation();
@@ -668,7 +669,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         {
             if (await EnsureInteractionAsync(request.Authority, lifetime.Token))
             {
-                if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
+                if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
+                    await InstallLocalWidgetAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
                 {
                     if (pinned is { Media: not null } mediaPin && mediaPin.WidgetId == request.Authority.WidgetId)
                         await UnpinAsync(save: true, mediaPin);
@@ -812,6 +815,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         interactionAdmission.Invalidate();
         retired = true;
+        localInstallCancellation?.Cancel();
         openingIndicator?.Dispose();
         ++startupPresentationVersion;
         startupIndicator?.Dispose();

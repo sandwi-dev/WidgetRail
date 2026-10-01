@@ -239,6 +239,8 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
             operationId, "failed", "", "",
             safeCode switch
             {
+                "invalid_archive" => "This file is not a valid widget package. Download the .wrwidget file again and retry.",
+                "source_unavailable" => "The selected file is no longer available or cannot be read. Choose it again.",
                 "approval_expired" => "Full-access review expired. Choose the package again. Nothing was installed.",
                 "update_wrong_widget" => "Choose an update file for the selected widget. Nothing was changed.",
                 "update_not_newer" => "Choose a newer version that is not already installed.",

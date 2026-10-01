@@ -7,6 +7,38 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### WinUI local widget installation — 2026-10-01, validated
+
+User chose the Windows file picker plus an in-overlay dialog; a controller file
+browser is deferred. The WinUI host had never intercepted host.install-local-widget,
+so Settings' host-only command reached a worker that intentionally did nothing.
+Restore the host flow for both Install local widget and Choose update file using
+Microsoft.Windows.Storage.Pickers.FileOpenPicker bound to the overlay WindowId.
+Selection remains mouse/keyboard. A themed ContentDialog provides progress, safe
+full-access review, cancellation and completion with controller navigation/A/B.
+Cancel is initially focused; controller buttons must return to neutral before a
+new dialog state can accept A. Native gamepad key routing remains suppressed by
+the existing boundary. The controller guide reflects this modal state. Original
+Settings focus returns after picker cancellation or dialog dismissal.
+
+The session validates the exact current Settings command before and after picking,
+retains update target identity, correlates a single install operation, buffers early
+completion, and races approval with terminal events (expiry/disconnect). Hiding or
+closing cancels the operation; stale approvals are rejected. Reuse the Bridge's
+source-locked validation/import and explicit full-trust approval; installs remain
+disabled. Windows picker ownership is covered by existing same-process foreground
+policy; no general foreground-dismissal exception was added. No filesystem access
+was added to Settings or community workers. Invalid archive/unreadable file errors
+now have readable messages.
+
+Validation: session/action/lifetime 50/50, Bridge local-package 5/5, native dialog
+7/7. Real picker opened/cancelled and rejected a deliberately invalid .wrwidget in
+an isolated test profile; focus restoration passed after the dialog's close motion.
+No user-profile widgets installed or system controls exercised. Evidence lives in
+artifacts/local-install, including binlogs, picker-flow-final.json and UI results.
+Scoped WinUI code review completed. Preview.21 candidate publication/relaunch next;
+no installer requested. Worktree cleanup must only happen on explicit user request.
+
 ### Settings usability accepted and integrated — 2026-10-01
 
 User accepted preview.20 and requested integration/closeout. Merge 9b96fb53 brings

@@ -14,7 +14,13 @@ internal sealed partial class OverlayShellPage
     {
         IReadOnlyList<ControllerGuideHint>? shell = null;
         object? shellContext = null;
-        if (pinnedAdjustment is not null || savingPinnedAdjustment)
+        if (LocalInstallActive)
+        {
+            shell = SystemFilePickerOpen ? Array.Empty<ControllerGuideHint>() : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A),
+                new(ControllerPrompt.B, localInstallDialog?.Finished == true ? "Done" : "Cancel", ControllerButton.B, Required: true)];
+            shellContext = ("local-install", SystemFilePickerOpen, localInstallDialog?.Finished);
+        }
+        else if (pinnedAdjustment is not null || savingPinnedAdjustment)
         { shell = ControllerGuideModel.WithHost(PinnedPlacementHints()); shellContext = "pin-placement"; }
         else if (trayMenu is not null || interactive && RecoveryVisible)
         {
