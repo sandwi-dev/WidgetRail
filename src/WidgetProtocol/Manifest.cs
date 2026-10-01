@@ -35,6 +35,9 @@ public sealed record WidgetManifest
         new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal);
     public IReadOnlyList<string> Permissions { get; init; } = [];
     public IReadOnlyList<string> OptionalPermissions { get; init; } = [];
+    /// <summary>Optional intent contracts. Declarations never grant platform permissions.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WidgetIntentDeclarations? Intents { get; init; }
     /// <summary>
     /// Legacy manifest-v1 spelling. <c>none</c> migrates to keep-alive and
     /// <c>suspend</c> migrates to suspend-when-hidden. New packages should use
@@ -204,6 +207,7 @@ public static partial class WidgetManifestValidator
     {
         ArgumentNullException.ThrowIfNull(manifest);
         var errors = new List<ManifestValidationError>();
+        WidgetIntentContracts.ValidateDeclarations(manifest.Intents, Add);
 
         if (manifest.FullWidgetPinningSupported && !manifest.PinningSupported)
             Add("$.fullWidgetPinningSupported", "pinning_required",
