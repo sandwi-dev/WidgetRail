@@ -2741,13 +2741,13 @@ internal sealed class RegistryTestClient(
     }
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
     internal List<WidgetIntentRequest> Intents { get; } = [];
-    internal Func<WidgetIntentRequest, CancellationToken, Task<bool>>? IntentHandler { get; set; }
-    public Task<bool> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken)
+    internal Func<WidgetIntentRequest, CancellationToken, Task<WidgetIntentResult>>? IntentHandler { get; set; }
+    public Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsRunning || Starts != expectedStartOrdinal) throw new WidgetInputWorkerRetiredException();
         Intents.Add(intent);
-        return IntentHandler?.Invoke(intent, cancellationToken) ?? Task.FromResult(true);
+        return IntentHandler?.Invoke(intent, cancellationToken) ?? Task.FromResult(WidgetIntentResult.Accepted);
     }
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }

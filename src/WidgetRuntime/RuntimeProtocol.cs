@@ -109,7 +109,7 @@ internal sealed record ErrorPayload(string Code, string Message);
 internal sealed record ControllerInputResultPayload(bool Handled);
 internal sealed record IntentDeliveryPayload(long DeliveryId, WidgetIntentRequest Intent);
 internal sealed record IntentCancellationPayload(long DeliveryId);
-internal sealed record IntentDeliveryResultPayload([property: JsonRequired] bool Accepted);
+internal sealed record IntentDeliveryResultPayload([property: JsonRequired] WidgetIntentResult Result);
 // Null means rejected before invoking any widget handler, never unhandled.
 internal sealed record RevalidatedControllerInputPayload(ControllerInputEvent Input, string? ActionId);
 internal sealed record RevalidatedControllerInputResultPayload(bool? Handled);

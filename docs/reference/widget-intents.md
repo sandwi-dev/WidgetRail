@@ -1,8 +1,9 @@
 # Widget intents (in development)
 
 The ordinary button/card path is implemented through contracts, manifests,
-Bridge dispatch, worker delivery and native frontend activation. Pinned/indexed
-source admission and passive delivery into existing pins are still being added.
+Bridge dispatch, worker delivery, native frontend activation and passive delivery
+into existing full-widget or authored-layout pins. Pinned/indexed source admission
+and compact embedded-media destinations are still being added.
 Do not advertise intent handling in published packages until the full integration
 and release compatibility gate are complete. Track progress in
 [the Game Help plan](../maintainers/game-help-implementation-plan.md).
@@ -11,6 +12,12 @@ and release compatibility gate are complete. Track progress in
 
 An optional `intents` manifest object contains `requests` and `handles` arrays.
 Each entry carries `id`, positive integer `version`, and `payloadSchema`.
+Handler entries additionally accept `supportsPassiveDelivery` (default `false`).
+This belongs to that exact contract ID/version mapping; it is invalid on request
+entries or on the enclosing `intents` object. In C#, author a handler using
+`new WidgetIntentHandler(contract) { SupportsPassiveDelivery = true }`.
+The presentation policy is independent of the payload schema digest: senders
+and receivers share the contract without needing identical presentation settings.
 Omission preserves existing manifest serialization. Empty lists default to empty;
 explicit null lists are invalid. There may be at most 16 declarations in total.
 Full-trust and sandboxed packages can describe contracts: neither declaration
@@ -107,10 +114,20 @@ Cancelling a delivery does not tear down the Bridge connection. A failed web
 handler can return a browser-fallback offer, which requires an explicit user
 choice and never automatically invokes a second handler.
 
-The planned presentation policy separates routing from placement: prefer an
-existing pinned surface when its handler opts into passive delivery, preserve
+The presentation policy separates routing from placement: prefer an
+existing pinned surface when that specific intent-handler mapping opts into
+passive delivery, preserve
 the sender's focus, and allow explicit sender/receiver requests for interaction.
-This is not yet enabled; see the working plan for that follow-up.
+The opt-in is per contract ID/version mapping, never widget-wide; one widget can
+handle different intents with different interaction requirements. Sender hints
+and receiver escalation are per invocation. A sender may pass
+`WidgetIntentPresentation.OpenWidget` as the third argument to `.OpenIntent(...)`
+to request ordinary activation. The default is `PreferExistingSurface`.
+Preference changes participate in displayed-action authority, like payload changes.
+The live host selection, projection lifetime, visibility, worker and mapping must
+all remain valid for passive delivery; persisted pin settings grant no authority.
+Unpinning cancels an in-flight delivery. Compact embedded-media destinations
+currently use ordinary widget activation rather than this projection path.
 
 ## Declarative authoring and receiving
 
@@ -133,8 +150,10 @@ do not gain intent authority. Indexed and pinned routing still require their
 respective lease/projection admission before activation is enabled there.
 
 Receivers override `Widget.OnIntentAsync(WidgetIntentRequest, CancellationToken)`
-and return true after accepting data into widget state. Use normal state/operation
-helpers for subsequent work. The default rejects unsupported requests. Receiver
+and return `WidgetIntentResult.Accepted` after accepting data into widget state,
+or `InteractionRequired` to ask the host to open that accepted state. The request
+is never delivered again when escalating to interaction. Return `Rejected` when
+unsupported. Use normal state/operation helpers for subsequent work. Receiver
 transport admits visible/interactive lifetime only, has one pending delivery per
 worker, rejects repeated/older IDs, and does not recover or start workers.
 Cancellation drains the original reply before releasing response correlation;

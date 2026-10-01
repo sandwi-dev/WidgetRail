@@ -23,7 +23,7 @@ internal static class BridgeIntentEndToEnd
         await session.SetLifecycleAsync(session.GetTarget("intent-source"), WidgetLifecycleState.Background, deadline.Token);
         var target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
         Check((await session.CommitIntentAsync(prepared, target, deadline.Token)).Accepted);
-        target = await session.RefreshAsync(target.Authority, deadline.Token);
+        target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
         Check(target.Snapshot.Root.Children[0].Text == "https://example.com/guide");
         Check(!(await session.CommitIntentAsync(prepared, target, deadline.Token)).Accepted);
 
@@ -43,6 +43,30 @@ internal static class BridgeIntentEndToEnd
         prepared = await session.PrepareIntentAsync(source, action, deadline.Token);
         target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
         Check((await session.CommitIntentAsync(prepared, target, deadline.Token)).Accepted);
+        // A live selection can receive while visible, without making its worker interactive.
+        source = await session.EstablishPresentationAsync(session.GetTarget("intent-source"), WidgetLifecycleState.Interactive, deadline.Token);
+        target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Visible, deadline.Token);
+        var projection = session.ResolvePinnedProjection(target, WidgetPinnedProjection.FullWidgetLayoutId);
+        var selection = await session.SelectPinnedLayoutAsync(projection, cancellationToken: deadline.Token);
+        prepared = await session.PrepareIntentAsync(source, action, deadline.Token);
+        Check((await session.CommitPinnedIntentAsync(prepared, selection, projection, deadline.Token)).Accepted);
+        target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Visible, deadline.Token);
+        projection = session.ResolvePinnedProjection(target, selection.LayoutId);
+        prepared = await session.PrepareIntentAsync(source, new("interaction", "interaction", ControllerButton.A, InputScopeId: "root"), deadline.Token);
+        var interaction = await session.CommitPinnedIntentAsync(prepared, selection, projection, deadline.Token);
+        Check(interaction.Accepted && interaction.RequiresInteraction);
+        var afterIntent = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Visible, deadline.Token);
+        var calls = afterIntent.Snapshot.Root.Children[1].Text;
+        target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
+        Check(target.Snapshot.Root.Children[1].Text == calls); // Showing state is not another delivery.
+        prepared = await session.PrepareIntentAsync(source, action, deadline.Token);
+        await session.ClearPinnedSelectionAsync(selection, target, cancellationToken: deadline.Token);
+        try
+        {
+            await session.CommitPinnedIntentAsync(prepared, selection, projection, deadline.Token);
+            throw new Exception("Retired pin accepted an intent.");
+        }
+        catch (WidgetPresentationSessionException error) when (error.Code == "pinned_input_stale") { }
         await session.DisposeAsync();
         await serving.WaitAsync(TimeSpan.FromSeconds(5));
     }
@@ -69,7 +93,7 @@ internal static class BridgeIntentEndToEnd
         Id = id, PackageId = "example." + id, PublisherId = "example.publisher", Name = handles ? "Intent destination" : "Intent source",
         InstanceId = id + ".instance", WorkerExecutable = Environment.ProcessPath!,
         WorkerFingerprint = new string(handles ? 'b' : 'a', 64), CatalogFingerprint = new string(handles ? 'b' : 'a', 64),
-        Intents = handles ? new() { Handles = [WidgetIntentContracts.Web] } : new() { Requests = [WidgetIntentContracts.Web] },
+        Intents = handles ? new() { Handles = [new(WidgetIntentContracts.Web) { SupportsPassiveDelivery = true }] } : new() { Requests = [WidgetIntentContracts.Web] },
         PinningSupported = true, FullWidgetPinningSupported = true,
     };
     private static void Check(bool value) { if (!value) throw new Exception("Intent end-to-end assertion failed."); }
@@ -78,19 +102,23 @@ internal static class BridgeIntentEndToEnd
 internal sealed class IntentBridgeProbeWidget(bool target) : Widget
 {
     private string current = "No intent received";
+    private int calls;
     public override WidgetView Render() => target
-        ? new(UI.Stack("root", UI.Text(current, "result"), UI.Button("Destination action", "noop", "noop")), "noop")
+        ? new(UI.Stack("root", UI.Text(current, "result"), UI.Text("Deliveries: " + calls, "calls"), UI.Button("Destination action", "noop", "noop")), "noop")
         : new(UI.Stack("root", Link("open", "Open guide", "guide"), Link("wait", "Cancellable request", "wait"),
-            Link("unsupported", "Unsupported guide", "unsupported")), "open");
+            Link("unsupported", "Unsupported guide", "unsupported"), Link("interaction", "Needs interaction", "interaction"),
+            Link("open-full", "Open full widget", "guide") with { Intent = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+                JsonSerializer.SerializeToElement(new { url = "https://example.com/guide" }), WidgetIntentPresentation.OpenWidget) }), "open");
     private static ButtonElement Link(string id, string label, string path) => UI.Button(label, id, id)
         .OpenIntent(WidgetIntentContracts.Web, JsonSerializer.SerializeToElement(new { url = "https://example.com/" + path }));
-    public override async ValueTask<bool> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
+    public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
-        if (!target) return false;
+        if (!target) return WidgetIntentResult.Rejected;
+        calls++;
         var url = request.Payload.GetProperty("url").GetString()!;
-        if (url.EndsWith("/unsupported", StringComparison.Ordinal)) return false;
+        if (url.EndsWith("/unsupported", StringComparison.Ordinal)) return WidgetIntentResult.Rejected;
         if (url.EndsWith("/wait", StringComparison.Ordinal)) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         current = url;
-        return true;
+        return url.EndsWith("/interaction", StringComparison.Ordinal) ? WidgetIntentResult.InteractionRequired : WidgetIntentResult.Accepted;
     }
 }

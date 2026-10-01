@@ -692,16 +692,17 @@ public abstract partial class Widget
 
     /// <summary>
     /// Receives a host-admitted intent after this widget becomes visible. Return
-    /// true after accepting its data into widget state; start lengthy work through
+    /// Accepted after accepting its data into widget state, or InteractionRequired
+    /// to open that state without redelivering the request. Start lengthy work through
     /// the normal widget operation helpers. This callback grants no new capabilities.
     /// </summary>
-    public virtual ValueTask<bool> OnIntentAsync(WidgetIntentRequest request,
-        CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
+    public virtual ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request,
+        CancellationToken cancellationToken = default) => ValueTask.FromResult(WidgetIntentResult.Rejected);
 
     private readonly object _intentGate = new();
     private long _lastIntentDelivery;
 
-    internal async ValueTask<bool> ApplyIntentAsync(long deliveryId, WidgetIntentRequest request,
+    internal async ValueTask<WidgetIntentResult> ApplyIntentAsync(long deliveryId, WidgetIntentRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -709,7 +710,7 @@ public abstract partial class Widget
         if (deliveryId <= 0 || !request.IsWellFormed()) throw new ArgumentException("Invalid intent delivery.");
         lock (_intentGate)
         {
-            if (!IsVisible(LifecycleState) || deliveryId <= _lastIntentDelivery) return false;
+            if (!IsVisible(LifecycleState) || deliveryId <= _lastIntentDelivery) return WidgetIntentResult.Rejected;
             // Consume before invoking author code. Failure, cancellation or an
             // unsupported result cannot replay the same delivery into this worker.
             _lastIntentDelivery = deliveryId;
@@ -717,7 +718,9 @@ public abstract partial class Widget
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ActiveCancellationToken);
         lifetime.Token.ThrowIfCancellationRequested();
         var accepted = await OnIntentAsync(request with { Payload = request.Payload.Clone() }, lifetime.Token).ConfigureAwait(false);
-        if (accepted) Invalidate();
+        lifetime.Token.ThrowIfCancellationRequested();
+        if (!Enum.IsDefined(accepted)) throw new InvalidOperationException("Invalid intent result.");
+        if (accepted != WidgetIntentResult.Rejected) Invalidate();
         return accepted;
     }
 

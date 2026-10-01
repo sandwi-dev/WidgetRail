@@ -44,6 +44,24 @@ internal static class BridgeIntentScenarios
         Check((await fixture.Registry.PrepareIntentAsync(request, default)).TicketId is not null);
     }
 
+    internal static async Task HandlerMappingPolicy()
+    {
+        // Both destinations expose both mappings, with opposite opt-ins. Only
+        // the requested web mapping may determine the preparation metadata.
+        var browser = Target("browser") with { Intents = new() { Handles =
+            [new(WidgetIntentContracts.Web) { SupportsPassiveDelivery = true }, new(WidgetIntentContracts.Video)] } };
+        var reader = Target("reader") with { Intents = new() { Handles =
+            [new(WidgetIntentContracts.Web), new(WidgetIntentContracts.Video) { SupportsPassiveDelivery = true }] } };
+        await using var fixture = Fixture([Source(), browser, reader]);
+        var prepared = await fixture.Registry.PrepareIntentAsync(await PrepareSource(fixture), default);
+        Check(prepared.Kind == WidgetIntentLaunchKind.ChooseHandler);
+        Check(prepared.Destinations.Single(item => item.WidgetId == "browser").SupportsPassiveDelivery);
+        Check(!prepared.Destinations.Single(item => item.WidgetId == "reader").SupportsPassiveDelivery);
+        Check(fixture.Clients.Count == 1); // Policy metadata must not activate a handler.
+        var restored = BridgeJson.FromElement<WidgetIntentPreparation>(BridgeJson.ToElement(prepared));
+        Check(restored.Destinations.SequenceEqual(prepared.Destinations));
+    }
+
     internal static async Task WidgetDelivery()
     {
         await using var fixture = Fixture([Source(), Target("browser")]);
@@ -60,6 +78,34 @@ internal static class BridgeIntentScenarios
         var client = fixture.Clients.Single(c => c.WidgetId == "browser");
         Check(client.Intents.Count == 1);
         Check(!(await fixture.Registry.CommitIntentAsync(commit, default)).Accepted && client.Intents.Count == 1);
+    }
+
+    internal static async Task PassiveDelivery()
+    {
+        foreach (var enabled in new[] { false, true })
+        foreach (var presentation in new[] { WidgetIntentPresentation.PreferExistingSurface, WidgetIntentPresentation.OpenWidget })
+        {
+            var receiver = Target("browser") with { PinningSupported = true, FullWidgetPinningSupported = true,
+                Intents = new() { Handles = [new(WidgetIntentContracts.Web) { SupportsPassiveDelivery = enabled }] } };
+            await using var fixture = Fixture([Source(), receiver], presentation: presentation);
+            var request = await PrepareSource(fixture);
+            await fixture.SetLifecycleAsync("browser", WidgetLifecycleState.Visible);
+            var target = await fixture.GetSnapshotAsync("browser");
+            var prepared = await fixture.Registry.PrepareIntentAsync(request, default);
+            Check(prepared.Presentation == presentation);
+            var commit = new BridgeIntentCommitRequest("source", prepared.TicketId!, "browser", target.WorkerRun,
+                new(WidgetRail.WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId, target.Snapshot.Sequence));
+            var expected = enabled && presentation == WidgetIntentPresentation.PreferExistingSurface;
+            Check((await fixture.Registry.CommitIntentAsync(commit, default)).Accepted == expected);
+            var client = fixture.Clients.Single(c => c.WidgetId == "browser");
+            Check(client.Intents.Count == (expected ? 1 : 0));
+            prepared = await fixture.Registry.PrepareIntentAsync(request, default);
+            Check(!(await fixture.Registry.CommitIntentAsync(commit with { TicketId = prepared.TicketId!,
+                PinnedTarget = new("missing-layout", target.Snapshot.Sequence) }, default)).Accepted);
+            prepared = await fixture.Registry.PrepareIntentAsync(request, default);
+            await fixture.SetLifecycleAsync("browser", WidgetLifecycleState.Background);
+            Check(!(await fixture.Registry.CommitIntentAsync(commit with { TicketId = prepared.TicketId! }, default)).Accepted);
+        }
     }
 
     internal static async Task ReplacementsAndChoice()
@@ -91,7 +137,7 @@ internal static class BridgeIntentScenarios
         var target = await fixture.GetSnapshotAsync("browser");
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Clients.Single(c => c.WidgetId == "browser").IntentHandler = async (_, token) =>
-        { entered.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, token); return true; };
+        { entered.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, token); return WidgetIntentResult.Accepted; };
         var pending = fixture.Registry.CommitIntentAsync(new("source", prepared.TicketId!, "browser", target.WorkerRun), default);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
         await fixture.Registry.CancelIntentAsync(new("wrong-source", prepared.TicketId!));
@@ -108,7 +154,7 @@ internal static class BridgeIntentScenarios
         await fixture.SetLifecycleAsync("browser", WidgetLifecycleState.Interactive);
         var target = await fixture.GetSnapshotAsync("browser");
         var client = fixture.Clients.Single(c => c.WidgetId == "browser");
-        client.IntentHandler = (_, _) => Task.FromResult(false);
+        client.IntentHandler = (_, _) => Task.FromResult(WidgetIntentResult.Rejected);
         var result = await fixture.Registry.CommitIntentAsync(new("source", prepared.TicketId!, "browser", target.WorkerRun), default);
         Check(!result.Accepted && result.ExternalUrl is null && result.BrowserFallbackUrl == "https://example.com/guide");
         Check(client.Intents.Count == 1);
@@ -121,18 +167,19 @@ internal static class BridgeIntentScenarios
         return new("source", snapshot.Snapshot.Sequence, snapshot.WorkerRun!, Action());
     }
     private static WidgetActionEvent Action() => new("guide", "guide", ControllerButton.A, InputScopeId: "root");
-    private static RegistryFixture Fixture(ConfiguredWidget[] widgets, Func<string>? url = null, Func<long>? now = null) =>
+    private static RegistryFixture Fixture(ConfiguredWidget[] widgets, Func<string>? url = null, Func<long>? now = null,
+        WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
         new(new(widgets), configure: (configured, client) => client.SnapshotFactory = sequence =>
             new WidgetView(UI.Stack("root", configured.Id == "source"
                 ? UI.Button("Guide", "guide", "guide").OpenIntent(WidgetIntentContracts.Web,
-                    JsonSerializer.SerializeToElement(new { url = url?.Invoke() ?? "https://example.com/guide" }))
+                    JsonSerializer.SerializeToElement(new { url = url?.Invoke() ?? "https://example.com/guide" }), presentation)
                 : UI.Button("Target", "target", "target"))).CreateSnapshot(configured.InstanceId, sequence), intentNow: now);
     private static ConfiguredWidget Source() => Target("source") with { Intents = new() { Requests = [WidgetIntentContracts.Web] } };
     private static ConfiguredWidget Target(string id) => new()
     {
         Id = id, PackageId = "example." + id, PublisherId = "example.publisher", Name = id, InstanceId = id + ".instance",
         WorkerExecutable = Environment.ProcessPath!, WorkerFingerprint = new string('a', 64), CatalogFingerprint = new string('b', 64),
-        Intents = new() { Handles = [WidgetIntentContracts.Web] },
+        Intents = new() { Handles = [new(WidgetIntentContracts.Web)] },
     };
     private static void Check(bool value, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(value))] string? expression = null)
     { if (!value) throw new Exception(expression); }

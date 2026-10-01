@@ -4,7 +4,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.WidgetBridge;
 
 internal sealed record IntentHandlerCandidate(string WidgetId, long Generation,
-    CompiledWidgetIntentContract Contract, bool Enabled);
+    CompiledWidgetIntentContract Contract, bool Enabled, bool SupportsPassiveDelivery = false);
 
 internal enum IntentResolutionKind
 {

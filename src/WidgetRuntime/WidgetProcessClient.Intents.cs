@@ -7,7 +7,7 @@ public sealed partial class WidgetProcessClient
     private long _intentDeliverySequence;
     private int _intentDeliveryPending;
 
-    internal async Task<bool> DeliverIntentAsync(WidgetIntentRequest intent,
+    internal async Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent,
         int expectedStartOrdinal, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(intent);
@@ -42,7 +42,9 @@ public sealed partial class WidgetProcessClient
                     throw new WidgetInputWorkerRetiredException();
                 if (response.Type != MessageTypes.IntentResult)
                     throw new WidgetProtocolViolationException("Expected an intent delivery result.");
-                return RuntimeJson.FromElement<IntentDeliveryResultPayload>(response.Payload).Accepted;
+                var result = RuntimeJson.FromElement<IntentDeliveryResultPayload>(response.Payload).Result;
+                if (!Enum.IsDefined(result)) throw new WidgetProtocolViolationException("Invalid intent delivery result.");
+                return result;
             }
             catch (OperationCanceledException)
             {

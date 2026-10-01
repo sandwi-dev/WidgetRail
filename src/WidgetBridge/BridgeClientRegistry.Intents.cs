@@ -42,7 +42,7 @@ internal sealed partial class BridgeClientRegistry
                 var candidates = _catalog.IntentWidgets.SelectMany(widget => (widget.Intents?.Handles ?? [])
                     .Where(item => item.Id == intent.ContractId && item.Version == intent.Version)
                     .Select(item => new IntentHandlerCandidate(widget.Id, _catalogRevision + 1,
-                        CompiledWidgetIntentContract.Create(item), true))).ToArray();
+                        CompiledWidgetIntentContract.Create(item), true, item.SupportsPassiveDelivery))).ToArray();
                 var resolution = IntentResolutionPolicy.Resolve(contract, intent.Payload, candidates);
                 var kind = resolution.Kind switch
                 {
@@ -64,7 +64,8 @@ internal sealed partial class BridgeClientRegistry
                     now, intent with { Payload = intent.Payload.Clone() }, kind,
                     destinations.ToDictionary(widget => widget.Id, widget => widget.CatalogFingerprint, StringComparer.Ordinal)));
                 return new(request.WidgetId, ticketId, kind,
-                    destinations.Select(widget => new WidgetIntentDestination(widget.Id, widget.Name)).ToArray());
+                    resolution.Candidates.Select(candidate => new WidgetIntentDestination(candidate.WidgetId,
+                        _catalog.GetConfigured(candidate.WidgetId).Name, candidate.SupportsPassiveDelivery)).ToArray(), intent.Presentation);
             }
         }
         finally { source.OperationGate.Release(); }
@@ -83,12 +84,12 @@ internal sealed partial class BridgeClientRegistry
             if (!_intentTickets.Remove(request.TicketId, out ticket!) || ticket.SourceId != request.WidgetId ||
                 !IntentFresh(ticket.CreatedAt, IntentNow()) || !IntentSourceCurrent(ticket)) return new(false);
             if (ticket.Kind == WidgetIntentLaunchKind.ExternalBrowser)
-                return request.TargetWidgetId is null && request.TargetWorkerRun is null
+                return request.TargetWidgetId is null && request.TargetWorkerRun is null && request.PinnedTarget is null
                     ? new(true, ticket.Request.Payload.GetProperty("url").GetString()) : new(false);
             if (request.TargetWidgetId is null || request.TargetWorkerRun is null ||
                 !ticket.Targets.TryGetValue(request.TargetWidgetId, out var fingerprint) ||
                 !_clients.TryGetValue(request.TargetWidgetId, out target!) || !IsCurrentLocked(target) ||
-                target.Configured.CatalogFingerprint != fingerprint || target.HostLifecycle != WidgetLifecycleState.Interactive ||
+                target.Configured.CatalogFingerprint != fingerprint || !IntentTargetPresented(target, ticket, request.PinnedTarget) ||
                 !target.HasCurrentSnapshotWorker || target.CachedWorkerRun != request.TargetWorkerRun) return new(false);
             operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _activeIntentDeliveries.Add(request.TicketId, new(request.WidgetId, operation));
@@ -105,17 +106,20 @@ internal sealed partial class BridgeClientRegistry
                     lock (_gate)
                     {
                         if (!IntentSourceCurrent(ticket) || !IsCurrentLocked(target) || target.CachedWorkerRun != request.TargetWorkerRun ||
-                            !target.HasCurrentSnapshotWorker || target.HostLifecycle != WidgetLifecycleState.Interactive ||
+                            !target.HasCurrentSnapshotWorker || !IntentTargetPresented(target, ticket, request.PinnedTarget) ||
                             !ticket.Targets.TryGetValue(target.Configured.Id, out var fingerprint) || target.Configured.CatalogFingerprint != fingerprint)
                             return new(false);
                     }
                     try
                     {
-                        var accepted = await ExecuteClientOperationAsync(target,
+                        var result = await ExecuteClientOperationAsync(target,
                             (client, token) => client.DeliverIntentAsync(ticket.Request, request.TargetWorkerRun!.StartOrdinal, token), operation.Token)
                             .ConfigureAwait(false);
                         operation.Token.ThrowIfCancellationRequested();
-                        return new(accepted, BrowserFallbackUrl: accepted ? null : BrowserFallback(ticket.Request));
+                        if (!Enum.IsDefined(result)) return new(false);
+                        var accepted = result != WidgetIntentResult.Rejected;
+                        return new(accepted, BrowserFallbackUrl: accepted ? null : BrowserFallback(ticket.Request),
+                            RequiresInteraction: result == WidgetIntentResult.InteractionRequired);
                     }
                     catch (BridgeWidgetRequestException)
                     { return new(false, BrowserFallbackUrl: BrowserFallback(ticket.Request)); }
@@ -151,6 +155,30 @@ internal sealed partial class BridgeClientRegistry
         _clients.TryGetValue(ticket.SourceId, out var source) && IsCurrentLocked(source) &&
         source.Configured.WorkerFingerprint == ticket.SourceFingerprint && source.HasCurrentSnapshotWorker &&
         source.CachedWorkerRun == ticket.SourceRun;
+
+    private static bool IntentTargetPresented(ClientRegistration target, IntentTicket ticket, BridgeIntentPinnedTarget? pin)
+    {
+        if (pin is null) return target.HostLifecycle == WidgetLifecycleState.Interactive;
+        // The authenticated presentation session owns the live selection. Never
+        // infer it from saved pin preferences; revalidate its exact displayed
+        // layout and worker here before permitting noninteractive delivery.
+        if (ticket.Request.Presentation != WidgetIntentPresentation.PreferExistingSurface ||
+            target.HostLifecycle is not (WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive) ||
+            !target.Configured.PinningSupported ||
+            pin.LayoutId == PinnedSurfaceContract.FullWidgetLayoutId && !target.Configured.FullWidgetPinningSupported ||
+            !ProtocolValidationIdentifierContext.IsSafeIdentifier(pin.LayoutId) || pin.SnapshotSequence <= 0 ||
+            target.Configured.Intents?.Handles.SingleOrDefault(item => item.Id == ticket.Request.ContractId &&
+                item.Version == ticket.Request.Version) is not { SupportsPassiveDelivery: true } ||
+            target.FindInputOriginSnapshot(pin.SnapshotSequence) is not { } origin || target.CachedSnapshot is not { } current)
+            return false;
+        try
+        {
+            _ = PinnedActionContract.Project(origin, pin.LayoutId, inheritRootless: true);
+            _ = PinnedActionContract.Project(current, pin.LayoutId, inheritRootless: true);
+            return true;
+        }
+        catch (InvalidOperationException) { return false; }
+    }
 
     // An offer for explicit user confirmation, never permission to auto-launch
     // a second handler after an uncertain or unsuccessful delivery.

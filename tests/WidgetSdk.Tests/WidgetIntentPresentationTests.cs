@@ -20,6 +20,9 @@ internal static class WidgetIntentPresentationTests
         using (var source = JsonDocument.Parse("""{"url":"https://example.com"}"""))
             button = button.OpenIntent(WidgetIntentContracts.Web, source.RootElement);
         Check(button.Intent!.IsWellFormed());
+        var explicitOpen = button.OpenIntent(WidgetIntentContracts.Web, button.Intent.Payload, WidgetIntentPresentation.OpenWidget);
+        Check(!button.Intent.Matches(explicitOpen.Intent));
+        Check(!(button.Intent with { Presentation = (WidgetIntentPresentation)999 }).IsWellFormed());
         return Task.CompletedTask;
     }
 

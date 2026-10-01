@@ -70,6 +70,25 @@ internal sealed partial class OverlayShellPage
                     Check(externalCalls == 0 && activeWidget == "intent-target", "Cancelling fallback keeps the ordinary destination and opens nothing");
                 }
                 finally { OpenExternalWebPageRequested = originalLauncher; }
+                await PinAsync("intent-target", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId);
+                await SelectAsync("intent-source");
+                await Until(() => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused && AutomationProperties.GetAutomationId(focused) == "Widget.wait");
+                var beforePassive = FocusManager.GetFocusedElement(XamlRoot);
+                var deliveries = pinned!.Presenter!.CurrentBinding!.Frame.Snapshot.Root.Children[1].Text;
+                await InvokeAsync(new(surface!.CurrentBinding!.Frame, new("open", "open", ControllerButton.A, InputScopeId: "root")));
+                await Until(() => pinned?.Presenter?.CurrentBinding?.Frame.Snapshot.Root.Children[1].Text != deliveries);
+                Check(activeWidget == "intent-source" && MainFocusEnabled && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), beforePassive),
+                    "Passive intent updates the visible pin and preserves the sender's exact focus");
+                Check(pinned!.Window.IsVisible && !pinned.Window.Interactive, "Passive intent does not activate the pinned window");
+                await InvokeAsync(new(surface.CurrentBinding!.Frame, new("interaction", "interaction", ControllerButton.A, InputScopeId: "root")));
+                await Until(() => activeWidget == "intent-target" && !switching && surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/interaction");
+                Check(surface!.CurrentBinding!.Frame.Snapshot.Root.Children[1].Text == "Deliveries: 4",
+                    "Receiver escalation opens the accepted request without duplicate delivery");
+                await SelectAsync("intent-source");
+                await InvokeAsync(new(surface!.CurrentBinding!.Frame, new("open-full", "open-full", ControllerButton.A, InputScopeId: "root")));
+                await Until(() => activeWidget == "intent-target" && !switching);
+                Check(interactive, "Sender can request normal activation even when a passive pin is available");
+                await UnpinAsync(save: true);
                 if (verifyWebHandoff is not null) checks.AddRange(await verifyWebHandoff());
             }
             catch (Exception failure) { error = failure.ToString(); }

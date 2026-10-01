@@ -33,7 +33,8 @@ items mean implemented and verified in their stated scope, not physical acceptan
 - When an intent destination is already pinned, prefer updating that surface
   without leaving Game Help, provided the receiver supports passive delivery.
   This is generic presentation policy, not a Browser/Game Help special case.
-  Authors retain explicit ways to request interactive presentation.
+  Passive-delivery support is declared per intent-handler mapping, never as a
+  widget-wide switch. Authors retain explicit ways to request interactive presentation.
 - No microphone or system audio in recordings. No automatic overlay reopening.
 - Preview capture inside the requesting widget, using a shared modal with
   Send/Retry/Discard; do not launch another widget to preview an attachment.
@@ -124,8 +125,12 @@ trap B indefinitely. This supersedes the original return-destination proposal.
 
 Separate routing/data from presentation. A request's default presentation hint
 should prefer an existing surface; a sender can explicitly request opening the
-full widget. Handlers opt into accepting intents while passively visible (default
-is interactive-only), rather than having this behavior imposed on every widget.
+full widget. Each handler mapping (contract ID + version within a widget) opts
+into accepting its intent while passively visible; the default for each mapping
+is interactive-only. There is no widget-wide passive-intents flag. A widget can,
+for example, accept `web.open` in its passive pin while a separate configuration
+intent requires interaction. Sender preferences and receiver escalation are per
+individual request, subject to the selected mapping's capability.
 
 If a compatible handler is already presented in the pin and accepts passive
 delivery, revalidate that exact live pinned projection/worker, deliver there,
@@ -261,8 +266,9 @@ following sources. No game-memory access or autonomous game input.
   Shared indexed-lane IPC regressions: 7/7 (`runtime-indexed-regression01.log`).
   WinUI review checklist applied to ownership/input/security; no new UI authored.
 - Current boundary: ordinary button/card intent activation is connected through
-  the Bridge, real workers and native shell. Pinned/indexed source support and
-  reuse of a pinned destination are pending. Browser, capture recording, native
+  the Bridge, real workers and native shell, including passive full-widget and
+  authored-layout pinned destinations. Pinned/indexed source support and compact
+  embedded-media destinations remain pending. Browser, capture recording, native
   media element/preview modal, Gemini integration and Game Help are not enabled.
   No updated user candidate has been staged yet.
 - 2026-10-01: Bridge prepare/commit/cancel messages and presentation-session APIs
@@ -297,6 +303,43 @@ following sources. No game-memory access or autonomous game input.
   the next intent task. Preserve sender focus by default when supported, without
   restricting authors who require interaction. Policy is documented above and
   is not claimed implemented by the ordinary-activation tests.
+- User clarification: passive-delivery capability is per intent-handler mapping
+  (contract ID/version), because a widget can expose several mappings with
+  different interaction requirements. Sender preference remains per invocation.
+- 2026-10-01: Implemented `WidgetIntentHandler.SupportsPassiveDelivery` on each
+  handler mapping, defaulting to false. Request contracts remain free of receiver
+  policy. Bridge resolution/preparation carries only the matched mapping's flag;
+  this does not activate a handler or relax the current interactive admission.
+  Regression checks cover mixed policies within a widget, version independence,
+  manifest and Bridge round trips, unchanged schema identity, and rejection of
+  widget-wide/request-side flags. Contract checks: 20/20
+  (`handler-mapping-contract-tests01.log`); Bridge checks: 8/8
+  (`handler-mapping-bridge-tests01.log`), under `artifacts/game-help`.
+  Live pin authority, passive dispatch and interaction escalation remain pending.
+- 2026-10-01: Connected live pinned-destination delivery for full-widget/authored
+  projections. Sender presentation preference is part of displayed-action
+  authority. The session validates its live selected projection; Bridge rechecks
+  visibility, worker, schema-bound catalog and per-mapping opt-in. Unpinning cancels
+  pending delivery. Receivers return Rejected/Accepted/InteractionRequired; the last
+  accepts data once and opens stored state without calling the handler again.
+  Contracts: 20/20 (`passive-intents-contract-tests01.log`),
+  SDK: 151/151 (`passive-intents-sdk-tests01.log`), runtime: 3/3
+  (`passive-intents-runtime-tests01.log`), Bridge: 9/9
+  (`passive-intents-bridge-tests02.log`). Native shell: 22/22
+  (`native-intents-01/result-passive03.json`), including exact noninitial sender
+  focus, passive pin visibility, one-time escalation, explicit opening preference,
+  and prior A/B/chooser/external-launch regressions. Updated the unshipped SDK API.
+  Test fixture initially expected initial focus rather than correctly restored
+  focus; corrected that assertion. Also replaced stale-authority refreshes in the
+  pipe test with current-target presentation reads. Review also kept late external
+  completion from clearing a newer intent's pinned-target ownership. Synthetic
+  shells PID24816 and PID9300 were closed normally. No website, real playback or
+  system-setting action was used.
+- Next source integration: pinned controls currently use `SendPinnedActionAsync`
+  in `WidgetViewPresenter.Binding.cs`; virtualized rows use their exact indexed
+  lease in `WidgetIndexedCollectionView.InvokeAsync`. Extend intent preparation
+  through these existing selection/lease authorities rather than fabricating an
+  ordinary frame or bypassing their scope/query retirement checks.
 - 2026-10-01: Carried preview.23 Settings/Spotify source fixes and release baseline
   into this branch with merge `81f292a1`; no merge conflicts. Existing worktrees
   retained. Isolated native fixtures were closed through normal owned WM_CLOSE;

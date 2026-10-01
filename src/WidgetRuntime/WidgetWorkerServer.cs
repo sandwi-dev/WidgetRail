@@ -178,7 +178,7 @@ internal sealed class WidgetWorkerServer
                             }
                             else if (!intents.TryDeliver(request.RequestId, RuntimeJson.FromElement<IntentDeliveryPayload>(request.Payload)))
                                 await ReplyAsync(MessageTypes.IntentResult, request.RequestId,
-                                    new IntentDeliveryResultPayload(false), requestLoopCancellation.Token).ConfigureAwait(false);
+                                    new IntentDeliveryResultPayload(WidgetIntentResult.Rejected), requestLoopCancellation.Token).ConfigureAwait(false);
                         }
                         catch (Exception error) when (error is ArgumentException or JsonException)
                         {

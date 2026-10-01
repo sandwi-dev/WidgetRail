@@ -12,6 +12,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private CancellationTokenSource? intentCancellation;
+    private PinnedSurface? intentPinnedTarget;
     private HostChoiceDialog? hostChoiceDialog;
     private bool HostChoiceActive => hostChoiceDialog is not null;
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternalWebPageRequested { get; set; }
@@ -33,6 +34,7 @@ internal sealed partial class OverlayShellPage
                 return;
             }
             WidgetPresentationFrame? target = null;
+            WidgetIntentCompletion? completion = null;
             if (prepared.Kind is WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler)
             {
                 var selected = prepared.Destinations[0].WidgetId;
@@ -43,13 +45,34 @@ internal sealed partial class OverlayShellPage
                     if (selected is null) return;
                 }
                 cancellation.Token.ThrowIfCancellationRequested();
-                await SelectAsync(selected, preserveIntent: true);
-                cancellation.Token.ThrowIfCancellationRequested();
-                if (retired || !visible || !foreground || activeWidget != selected || surface?.CurrentBinding is not { } destination)
-                    return;
-                target = destination.Frame;
+                if (prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
+                    prepared.Destinations.Single(item => item.WidgetId == selected).SupportsPassiveDelivery &&
+                    pinned is { IsCurrent: true, Window.IsVisible: true, Selection: { } selection, Presenter.CurrentBinding: { } binding } pin &&
+                    pin.WidgetId == selected)
+                {
+                    intentPinnedTarget = pin;
+                    var projection = session.ResolvePinnedProjection(binding.Frame, pin.LayoutId);
+                    completion = await session.CommitPinnedIntentAsync(prepared, selection, projection, cancellation.Token);
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    if (retired || !visible || !foreground || !ReferenceEquals(pinned, pin) || !pin.IsCurrent || !pin.Window.IsVisible) return;
+                    if (completion.RequiresInteraction)
+                    {
+                        // The receiver already stored this request. Open its
+                        // normal presentation without delivering it a second time.
+                        await SelectAsync(selected, preserveIntent: true);
+                        cancellation.Token.ThrowIfCancellationRequested();
+                    }
+                }
+                else
+                {
+                    await SelectAsync(selected, preserveIntent: true);
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    if (retired || !visible || !foreground || activeWidget != selected || surface?.CurrentBinding is not { } destination)
+                        return;
+                    target = destination.Frame;
+                }
             }
-            var completion = await session.CommitIntentAsync(prepared, target, cancellation.Token);
+            completion ??= await session.CommitIntentAsync(prepared, target, cancellation.Token);
             var external = completion.ExternalUrl;
             if (!completion.Accepted)
             {
@@ -66,6 +89,7 @@ internal sealed partial class OverlayShellPage
                 // The release-aware native handoff now owns visibility and cancellation.
                 // Its intentional hide must not cancel itself through SetVisible(false).
                 intentCancellation = null;
+                intentPinnedTarget = null;
                 if (!await open(new Uri(external), lifetime.Token) && !retired && visible && foreground)
                     await ShowHostChoiceAsync("Could not open browser", "Windows could not open this page. Please try again.", [], lifetime.Token);
             }
@@ -80,7 +104,8 @@ internal sealed partial class OverlayShellPage
         finally
         {
             if (prepared is not null) await session.CancelIntentAsync(prepared);
-            if (ReferenceEquals(intentCancellation, cancellation)) intentCancellation = null;
+            if (ReferenceEquals(intentCancellation, cancellation))
+            { intentCancellation = null; intentPinnedTarget = null; }
             PublishControllerGuide();
         }
     }

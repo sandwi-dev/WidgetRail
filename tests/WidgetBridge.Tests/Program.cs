@@ -73,6 +73,8 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Intent bridge end-to-end crosses both pipes and preserves cancellation", BridgeIntentEndToEnd.ThroughBothPipes),
     ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
+    ("Intent bridge exposes only the matched handler mapping presentation policy", BridgeIntentScenarios.HandlerMappingPolicy),
+    ("Intent bridge passive delivery requires live projection and per-mapping opt-in", BridgeIntentScenarios.PassiveDelivery),
     ("Intent bridge fallback tickets are bounded expiring and one-shot", BridgeIntentScenarios.FallbackTickets),
     ("Intent bridge delivery survives source hide without starting targets", BridgeIntentScenarios.WidgetDelivery),
     ("Intent bridge choice and replacement boundaries are explicit", BridgeIntentScenarios.ReplacementsAndChoice),

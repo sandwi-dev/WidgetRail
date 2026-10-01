@@ -27,7 +27,7 @@ public sealed partial class WidgetPresentationSession
             new BridgeIntentPrepareRequest(displayed.Authority.WidgetId, displayed.Authority.SnapshotSequence,
                 displayed.Authority.WorkerRun, action), BridgeMessageTypes.IntentPrepared, cancellationToken).ConfigureAwait(false);
         var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
-        if (result.SourceWidgetId != displayed.Authority.WidgetId || !Enum.IsDefined(result.Kind) || result.Destinations is null ||
+        if (result.SourceWidgetId != displayed.Authority.WidgetId || !Enum.IsDefined(result.Kind) || !Enum.IsDefined(result.Presentation) || result.Destinations is null ||
             result.Destinations.Count > 256 || result.Destinations.Any(item => item is null || !Safe(item.WidgetId) ||
                 string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 256) ||
             result.Destinations.Select(item => item.WidgetId).Distinct(StringComparer.Ordinal).Count() != result.Destinations.Count ||
@@ -55,12 +55,45 @@ public sealed partial class WidgetPresentationSession
                     throw OrdinaryInputStale("Intent destination changed.");
             }
         }
+        return await CommitIntentCoreAsync(prepared, target, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Delivers through a current host-selected pin without transferring focus.</summary>
+    public async Task<WidgetIntentCompletion> CommitPinnedIntentAsync(WidgetIntentPreparation prepared,
+        WidgetPinnedSelection selection, WidgetPinnedProjection projection, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(selection); ArgumentNullException.ThrowIfNull(projection);
+        if (!Safe(prepared.SourceWidgetId) || !Guid.TryParseExact(prepared.TicketId, "N", out _) ||
+            prepared.Presentation != WidgetIntentPresentation.PreferExistingSurface ||
+            !prepared.Destinations.Any(item => item.WidgetId == selection.WidgetId && item.SupportsPassiveDelivery))
+            throw PinnedStale("The intent does not support this pinned destination.");
+        using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            _ = DemandPinnedProjectionLocked(projection);
+            if (!IsPinnedSelectionCurrent(selection) || selection.WidgetId != projection.Frame.Authority.WidgetId ||
+                selection.LayoutId != projection.LayoutId || !ReferenceEquals(selection.Epoch, projection.Epoch) ||
+                projection.Frame.Authority.WorkerRun is null)
+                throw PinnedStale("The intent destination pin retired.");
+        }
+        var result = await CommitIntentCoreAsync(prepared, projection.Frame,
+            new(projection.LayoutId, projection.Frame.Authority.SnapshotSequence), cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+            if (!IsPinnedSelectionCurrent(selection)) throw PinnedStale("The intent destination pin retired during delivery.");
+        return result;
+    }
+
+    private async Task<WidgetIntentCompletion> CommitIntentCoreAsync(WidgetIntentPreparation prepared,
+        WidgetPresentationFrame? target, BridgeIntentPinnedTarget? pinnedTarget, CancellationToken cancellationToken)
+    {
         try
         {
             var response = await RequestAsync(BridgeMessageTypes.CommitIntent,
                 new BridgeIntentCommitRequest(prepared.SourceWidgetId, prepared.TicketId!, target?.Authority.WidgetId,
-                    target?.Authority.WorkerRun), BridgeMessageTypes.IntentCompleted, cancellationToken).ConfigureAwait(false);
+                    target?.Authority.WorkerRun, pinnedTarget), BridgeMessageTypes.IntentCompleted, cancellationToken).ConfigureAwait(false);
             var result = BridgeJson.FromElement<WidgetIntentCompletion>(response.Payload);
+            if (result.RequiresInteraction && (!result.Accepted || prepared.Kind is not (WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler)))
+                throw new BridgeProtocolException("Invalid intent interaction request.");
             if (result.ExternalUrl is { } url && (!result.Accepted || prepared.Kind != WidgetIntentLaunchKind.ExternalBrowser ||
                 url.Length > 2048 || url.Any(char.IsControl) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
                 uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo)))

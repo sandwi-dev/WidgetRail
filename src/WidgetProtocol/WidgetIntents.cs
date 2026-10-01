@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace WidgetRail.WidgetProtocol;
 
@@ -6,10 +7,25 @@ namespace WidgetRail.WidgetProtocol;
 public sealed record WidgetIntentDeclarations
 {
     public IReadOnlyList<WidgetIntentContract> Requests { get; init; } = [];
-    public IReadOnlyList<WidgetIntentContract> Handles { get; init; } = [];
+    public IReadOnlyList<WidgetIntentHandler> Handles { get; init; } = [];
 }
 
-public sealed record WidgetIntentContract(string Id, int Version, JsonElement PayloadSchema);
+public record WidgetIntentContract(string Id, int Version, JsonElement PayloadSchema);
+
+/// <summary>Receiver policy for one contract/version mapping, not for the widget as a whole.</summary>
+public sealed record WidgetIntentHandler : WidgetIntentContract
+{
+    [JsonConstructor]
+    public WidgetIntentHandler(string id, int version, JsonElement payloadSchema)
+        : base(id, version, payloadSchema) { }
+
+    public WidgetIntentHandler(WidgetIntentContract contract)
+        : this(contract.Id, contract.Version, contract.PayloadSchema) { }
+
+    /// <summary>Allows host-validated delivery into an existing passive surface without taking focus.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SupportsPassiveDelivery { get; init; }
+}
 
 public static class WidgetIntentContracts
 {

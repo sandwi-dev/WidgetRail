@@ -16,6 +16,7 @@ var tests = new (string Name, Action Run)[]
     ("Compiled schema outlives the source document", OwnedSchema),
     ("Absent intent declarations preserve legacy manifest serialization", LegacyManifest),
     ("Manifest declarations round trip without granting capabilities", ManifestRoundTrip),
+    ("Passive delivery belongs to one handler mapping and preserves contract identity", HandlerPresentationMapping),
     ("Duplicate conflicting reserved and malformed declarations fail closed", BadDeclarations),
     ("Handler choice is independent of enumeration order", HandlerSelection),
     ("Disabled and different-version handlers cannot claim delivery", HandlerEligibility),
@@ -140,7 +141,7 @@ static void LegacyManifest()
 
 static void ManifestRoundTrip()
 {
-    var original = Manifest() with { Intents = new() { Requests = [WidgetIntentContracts.Web], Handles = [WidgetIntentContracts.Video] } };
+    var original = Manifest() with { Intents = new() { Requests = [WidgetIntentContracts.Web], Handles = [new(WidgetIntentContracts.Video)] } };
     var restored = ManifestJson.Deserialize(ManifestJson.Serialize(original));
     Check(restored.Intents!.Requests.Single().Id == WidgetIntentContracts.OpenWebPage);
     Check(restored.Intents.Handles.Single().Id == WidgetIntentContracts.OpenVideo);
@@ -150,10 +151,41 @@ static void ManifestRoundTrip()
     Check(WidgetManifestValidator.Validate(fullTrust).Count == 0);
 }
 
+static void HandlerPresentationMapping()
+{
+    var web = new WidgetIntentHandler(WidgetIntentContracts.Web) { SupportsPassiveDelivery = true };
+    var video = new WidgetIntentHandler(WidgetIntentContracts.Video);
+    var custom = new WidgetIntentContract("example.guide.open", 1, CustomSchema());
+    var original = Manifest() with { Intents = new()
+    {
+        Requests = [WidgetIntentContracts.Web],
+        Handles = [web, video, new(custom) { SupportsPassiveDelivery = true }, new(custom with { Version = 2 })],
+    } };
+    var restored = ManifestJson.Deserialize(ManifestJson.Serialize(original));
+    Check(WidgetManifestValidator.Validate(restored).Count == 0);
+    var handlers = restored.Intents!.Handles;
+    Check(handlers[0].SupportsPassiveDelivery && !handlers[1].SupportsPassiveDelivery);
+    Check(handlers[2].SupportsPassiveDelivery && !handlers[3].SupportsPassiveDelivery);
+    Check(CompiledWidgetIntentContract.Create(handlers[0]).SchemaDigest ==
+        CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web).SchemaDigest);
+    CheckErrors(new() { Handles = [web, web with { SupportsPassiveDelivery = false }] }, "duplicate_intent");
+    var selected = Resolve([Candidate("example.browser") with { SupportsPassiveDelivery = true }]);
+    Check(selected.Candidates.Single().SupportsPassiveDelivery);
+    Check(!Resolve([Candidate("example.browser")]).Candidates.Single().SupportsPassiveDelivery);
+
+    // Neither senders nor the widget as a whole may declare the receiver opt-in.
+    var json = Encoding.UTF8.GetString(ManifestJson.Serialize(Manifest() with
+        { Intents = new() { Requests = [WidgetIntentContracts.Web] } }));
+    ThrowsJson(() => ManifestJson.Deserialize(Encoding.UTF8.GetBytes(json.Replace(
+        "\"version\": 1,", "\"version\": 1, \"supportsPassiveDelivery\": true,"))));
+    ThrowsJson(() => ManifestJson.Deserialize(Encoding.UTF8.GetBytes(json.Replace(
+        "\"handles\": []", "\"handles\": [], \"supportsPassiveDelivery\": true"))));
+}
+
 static void BadDeclarations()
 {
     CheckErrors(new() { Requests = [WidgetIntentContracts.Web, WidgetIntentContracts.Web] }, "duplicate_intent");
-    CheckErrors(new() { Requests = [WidgetIntentContracts.Web], Handles = [WidgetIntentContracts.Web with { PayloadSchema = CustomSchema() }] }, "conflicting_intent");
+    CheckErrors(new() { Requests = [WidgetIntentContracts.Web], Handles = [new(WidgetIntentContracts.Web) { PayloadSchema = CustomSchema() }] }, "conflicting_intent");
     CheckErrors(new() { Requests = [WidgetIntentContracts.Web with { Id = "widgetrail.unknown" }] }, "reserved_intent");
     CheckErrors(new() { Requests = [WidgetIntentContracts.Web with { Version = 2 }] }, "reserved_intent");
     CheckErrors(new() { Requests = null! }, "required");

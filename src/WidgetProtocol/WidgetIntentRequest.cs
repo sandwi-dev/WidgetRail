@@ -1,22 +1,35 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace WidgetRail.WidgetProtocol;
+
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentPresentation>))]
+public enum WidgetIntentPresentation { PreferExistingSurface, OpenWidget }
+
+/// <summary>InteractionRequired accepts the request once and asks the host to show its stored state.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentResult>))]
+public enum WidgetIntentResult { Rejected, Accepted, InteractionRequired }
 
 /// <summary>A declarative request bound to one displayed action, never an execution grant.</summary>
 public sealed record WidgetIntentRequest(string ContractId, int Version, string SchemaDigest, JsonElement Payload)
 {
-    public static WidgetIntentRequest Create(WidgetIntentContract contract, JsonElement payload)
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public WidgetIntentPresentation Presentation { get; init; }
+
+    public static WidgetIntentRequest Create(WidgetIntentContract contract, JsonElement payload,
+        WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface)
     {
+        if (!Enum.IsDefined(presentation)) throw new ArgumentOutOfRangeException(nameof(presentation));
         var compiled = CompiledWidgetIntentContract.Create(contract);
         if (!compiled.Accepts(payload)) throw new ArgumentException("Intent payload does not match its contract.", nameof(payload));
-        return new(compiled.Id, compiled.Version, compiled.SchemaDigest, payload.Clone());
+        return new(compiled.Id, compiled.Version, compiled.SchemaDigest, payload.Clone()) { Presentation = presentation };
     }
 
     public bool IsWellFormed()
     {
-        if (!WidgetIntentContracts.IsValidId(ContractId) || Version is < 1 or > 65535 ||
+        if (!Enum.IsDefined(Presentation) || !WidgetIntentContracts.IsValidId(ContractId) || Version is < 1 or > 65535 ||
             SchemaDigest is not { Length: 64 } || !SchemaDigest.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f') ||
             Payload.ValueKind != JsonValueKind.Object ||
             Encoding.UTF8.GetByteCount(Payload.GetRawText()) > CompiledWidgetIntentContract.MaximumPayloadBytes) return false;
@@ -24,7 +37,7 @@ public sealed record WidgetIntentRequest(string ContractId, int Version, string 
     }
 
     public bool Matches(WidgetIntentRequest? other) => other is not null &&
-        ContractId == other.ContractId && Version == other.Version && SchemaDigest == other.SchemaDigest &&
+        ContractId == other.ContractId && Version == other.Version && SchemaDigest == other.SchemaDigest && Presentation == other.Presentation &&
         IsWellFormed() && other.IsWellFormed() && Fingerprint(Payload) == Fingerprint(other.Payload);
 
     private static bool Check(JsonElement value, int depth)

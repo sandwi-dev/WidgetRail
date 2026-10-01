@@ -147,8 +147,9 @@ public sealed record ActionSurfaceElement : WidgetElement
     public string ActionId { get; init; }
     public WidgetIntentRequest? Intent { get; init; }
     /// <summary>Binds a host-routed intent to the surface's primary activation.</summary>
-    public ActionSurfaceElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload) =>
-        this with { Intent = WidgetIntentRequest.Create(contract, payload) };
+    public ActionSurfaceElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
+        WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
+        this with { Intent = WidgetIntentRequest.Create(contract, payload, presentation) };
     public string AccessibilityLabel { get; init; }
     public ActionSurfaceOrientation Orientation { get; init; }
     public ActionSurfacePresentation? Presentation { get; init; }
