@@ -15,9 +15,10 @@ internal sealed partial class OverlayShellPage
     private (long Selection, Exception Error)? preparationFailure;
     private readonly PlatformInputDiagnostics? switchDiagnostics;
 
-    private async Task SelectAsync(string id, bool enterWidget = true)
+    private async Task SelectAsync(string id, bool enterWidget = true, bool preserveIntent = false)
     {
         if (retired || owner is null) return;
+        if (!preserveIntent) intentCancellation?.Cancel();
         // Closing focused switcher chrome can synchronously give XAML focus to
         // the preview's first control. Capture/revoke before that happens so a
         // native fallback cannot replace the widget's remembered user target.

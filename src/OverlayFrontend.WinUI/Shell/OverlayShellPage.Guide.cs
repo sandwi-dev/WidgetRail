@@ -14,7 +14,12 @@ internal sealed partial class OverlayShellPage
     {
         IReadOnlyList<ControllerGuideHint>? shell = null;
         object? shellContext = null;
-        if (LocalInstallActive)
+        if (HostChoiceActive)
+        {
+            shell = (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
+            shellContext = "host-choice";
+        }
+        else if (LocalInstallActive)
         {
             shell = SystemFilePickerOpen ? Array.Empty<ControllerGuideHint>() : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A),
                 new(ControllerPrompt.B, localInstallDialog?.Finished == true ? "Done" : "Cancel", ControllerButton.B, Required: true)];

@@ -1,10 +1,10 @@
 # Widget intents (in development)
 
-The contract/manifest, handler-selection policy, SDK action declarations and
-worker receiver transport are implemented. Bridge dispatch and frontend
-activation are not connected yet.
-Do not advertise intent handling in published packages until that integration
-and its compatibility gate are complete. Track progress in
+The ordinary button/card path is implemented through contracts, manifests,
+Bridge dispatch, worker delivery and native frontend activation. Pinned/indexed
+source admission and passive delivery into existing pins are still being added.
+Do not advertise intent handling in published packages until the full integration
+and release compatibility gate are complete. Track progress in
 [the Game Help plan](../maintainers/game-help-implementation-plan.md).
 
 ## Package declarations
@@ -95,12 +95,22 @@ bounded to 256 entries. Eligible entries retain the host's generation so live
 delivery can reject replacements. A runtime handler failure is not a request to
 resolve again and cannot automatically trigger another handler or fallback.
 
-The remaining dispatcher must bind every request to authenticated caller identity,
+The dispatcher binds every ordinary request to authenticated caller identity,
 manifest declaration, current user action and lifetime, then revalidate the target
 generation before delivery. The frontend opens the destination as an ordinary
 widget; there is no return-to-sender stack or B remapping. Users return through
 the tray or pin the destination using existing behavior.
 These requirements are not satisfied merely by calling the pure resolver.
+Preparation creates a bounded, one-shot 60-second ticket; the host establishes
+the selected destination before committing it to that exact worker incarnation.
+Cancelling a delivery does not tear down the Bridge connection. A failed web
+handler can return a browser-fallback offer, which requires an explicit user
+choice and never automatically invokes a second handler.
+
+The planned presentation policy separates routing from placement: prefer an
+existing pinned surface when its handler opts into passive delivery, preserve
+the sender's focus, and allow explicit sender/receiver requests for interaction.
+This is not yet enabled; see the working plan for that follow-up.
 
 ## Declarative authoring and receiving
 

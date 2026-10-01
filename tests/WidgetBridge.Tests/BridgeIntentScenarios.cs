@@ -97,8 +97,21 @@ internal static class BridgeIntentScenarios
         await fixture.Registry.CancelIntentAsync(new("wrong-source", prepared.TicketId!));
         Check(!pending.IsCompleted);
         await fixture.Registry.CancelIntentAsync(new("source", prepared.TicketId!));
-        try { await pending; throw new Exception("Intent ignored cancellation."); } catch (OperationCanceledException) { }
+        Check(!(await pending).Accepted);
         Check(!(await fixture.Registry.CommitIntentAsync(new("source", prepared.TicketId!, "browser", target.WorkerRun), default)).Accepted);
+    }
+
+    internal static async Task FailureOffersFallback()
+    {
+        await using var fixture = Fixture([Source(), Target("browser")]);
+        var prepared = await fixture.Registry.PrepareIntentAsync(await PrepareSource(fixture), default);
+        await fixture.SetLifecycleAsync("browser", WidgetLifecycleState.Interactive);
+        var target = await fixture.GetSnapshotAsync("browser");
+        var client = fixture.Clients.Single(c => c.WidgetId == "browser");
+        client.IntentHandler = (_, _) => Task.FromResult(false);
+        var result = await fixture.Registry.CommitIntentAsync(new("source", prepared.TicketId!, "browser", target.WorkerRun), default);
+        Check(!result.Accepted && result.ExternalUrl is null && result.BrowserFallbackUrl == "https://example.com/guide");
+        Check(client.Intents.Count == 1);
     }
 
     private static async Task<BridgeIntentPrepareRequest> PrepareSource(RegistryFixture fixture)

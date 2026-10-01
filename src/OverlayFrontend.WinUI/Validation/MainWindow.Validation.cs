@@ -138,6 +138,8 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-intents") is { } intentResult)
+            page.EnableIntentValidation(intentResult, () => ValidateWebIntentHandoffAsync(page));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-preview-shutdown") is { } shutdownResult &&
             Shell.FrontendArguments.Value(arguments, "--preview-shutdown-peer") is { } shutdownPeer)
             page.EnablePreviewShutdownValidation(shutdownResult, shutdownPeer,

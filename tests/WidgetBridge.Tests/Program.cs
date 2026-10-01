@@ -19,6 +19,16 @@ using WidgetRail.Samples.SdkGalleryWidget;
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
+if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "intent-fixture.marker")))
+{
+    await BridgeIntentEndToEnd.ServeOwnedFixtureAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
+    return 0;
+}
+if (args is ["--serve-intent-validation", var intentPipe])
+{
+    await BridgeIntentEndToEnd.ServeAsync(intentPipe);
+    return 0;
+}
 
 if (args is ["--serve-pinned-validation", var pinnedPipe])
 {
@@ -61,11 +71,13 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Intent bridge end-to-end crosses both pipes and preserves cancellation", BridgeIntentEndToEnd.ThroughBothPipes),
     ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
     ("Intent bridge fallback tickets are bounded expiring and one-shot", BridgeIntentScenarios.FallbackTickets),
     ("Intent bridge delivery survives source hide without starting targets", BridgeIntentScenarios.WidgetDelivery),
     ("Intent bridge choice and replacement boundaries are explicit", BridgeIntentScenarios.ReplacementsAndChoice),
     ("Intent bridge cancellation is exact and cannot replay", BridgeIntentScenarios.Cancellation),
+    ("Intent bridge receiver rejection offers only explicit browser fallback", BridgeIntentScenarios.FailureOffersFallback),
     ("Dashboard input tolerates compatible publications without changing command", BridgeClientRegistryScenarios.DashboardRevalidatesCompatiblePublication),
     ("Task activation tickets are single-use bounded and owner-scoped", TaskActivationScenarios.TicketsAndWire),
     ("Task activation completion survives hiding but rejects retired workers", BridgeClientRegistryScenarios.TaskActivationSurvivesHideButNotWorkerReplacement),
@@ -356,7 +368,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => string.Equals(instance, "pinned-presenter.instance", StringComparison.Ordinal)
+        _ => instance is "intent-source.instance" or "intent-target.instance"
+            ? new IntentBridgeProbeWidget(instance == "intent-target.instance")
+            : string.Equals(instance, "pinned-presenter.instance", StringComparison.Ordinal)
             ? new PinnedPresenterBridgeWidget()
             : string.Equals(instance, "pinned-actions.instance", StringComparison.Ordinal)
             ? new PinnedActionBridgeWidget()

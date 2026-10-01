@@ -481,6 +481,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         retainingExitPresentation = !value && retainExitPresentation;
         ProductionRoot.IsHitTestVisible = value;
         if (!value) localInstallCancellation?.Cancel();
+        if (!value) intentCancellation?.Cancel();
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         if (!value) ExitPinnedInteraction(restoreMain: false);
         interactionAdmission.Invalidate();
@@ -544,6 +545,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetForeground(bool value)
     {
         if (foreground == value || retired) return;
+        if (!value) intentCancellation?.Cancel();
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
         foreground = value;
@@ -597,7 +599,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void QueueEntryFocus()
     {
-        if (retired || !visible || startupPresentationPending || LocalInstallActive) return;
+        if (retired || !visible || startupPresentationPending || LocalInstallActive || HostChoiceActive) return;
         if (switching)
         {
             if (interactive && activeWidget == requestedWidget) surface?.RestoreRetainedFocusPresentation();
@@ -682,6 +684,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     owner.Session.ValidateEmbeddedMediaBack(request.Displayed, request.Action);
                     PrepareRadialBackEntry(); SetInteractive(false); FocusTray();
                 }
+                else if (owner.Session.HasIntentAction(request.Displayed, request.Action)) await InvokeIntentAsync(request);
                 else await owner.Session.SendActionAsync(request.Displayed, request.Action, lifetime.Token);
             }
         }
@@ -817,6 +820,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         retired = true;
         localInstallCancellation?.Cancel();
         openingIndicator?.Dispose();
+        intentCancellation?.Cancel();
         ++startupPresentationVersion;
         startupIndicator?.Dispose();
         StopStartupReveal();

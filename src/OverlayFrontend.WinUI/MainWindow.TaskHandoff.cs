@@ -32,58 +32,60 @@ public sealed partial class MainWindow
                 handoff.Committed = true;
                 input?.SetVisible(false);
                 CompleteOverlayHide();
-            }, async () =>
-            {
-                handoff.Started = true;
-                handoff.Version = ++overlayVisibilityVersion;
-                overlayRequestedVisible = false;
-                overlayOpenPending = false;
-                ShellRoot.IsHitTestVisible = false;
-                page.SetVisible(false, retainExitPresentation: true);
-                // Keep native foreground/read ownership and XAML gamepad-key
-                // consumption until release. Logical widget actions are retired.
-                input?.TraceInput("Task handoff awaiting controller release");
-                if (input is not null && !await input.WaitForHandoffReleaseAsync().WaitAsync(handoff.Cancellation.Token)) return false;
-                if (!Current()) return false;
-                input?.TraceInput("Task handoff controller release observed");
-                handoff.MotionStarted = true;
-                _ = PlayOverlayVisibilityAsync(handoff.Version, opening: false);
-                await handoff.MotionFinished.Task.WaitAsync(handoff.Cancellation.Token);
-                // A new press during the animation must not cross the boundary
-                // either. Require the newest drained controller frame at commit.
-                if (input is not null && !await input.WaitForHandoffReleaseAsync().WaitAsync(handoff.Cancellation.Token)) return false;
-                if (!Current()) return false;
-                input?.TraceInput("Task handoff motion and release ready");
-                return true;
-            }, handoff.Cancellation.Token);
+            }, () => PrepareOverlayHandoffAsync(page, handoff), handoff.Cancellation.Token);
         }
         catch (OperationCanceledException) when (handoff.Cancellation.IsCancellationRequested)
         { input?.TraceInput("Task handoff cancelled"); }
         finally
         {
-            if (ReferenceEquals(taskHandoff, handoff))
+            FinishOverlayHandoff(page, handoff);
+        }
+    }
+
+    private async Task<bool> PrepareOverlayHandoffAsync(OverlayShellPage page, TaskHandoff handoff)
+    {
+        handoff.Started = true;
+        handoff.Version = ++overlayVisibilityVersion;
+        overlayRequestedVisible = false;
+        overlayOpenPending = false;
+        ShellRoot.IsHitTestVisible = false;
+        page.SetVisible(false, retainExitPresentation: true);
+        // Retain native input ownership until both the initiating gesture and
+        // any new press during closing have been released.
+        input?.TraceInput("Task handoff awaiting controller release");
+        if (input is not null && !await input.WaitForHandoffReleaseAsync().WaitAsync(handoff.Cancellation.Token)) return false;
+        if (!HandoffCurrent(handoff)) return false;
+        input?.TraceInput("Task handoff controller release observed");
+        handoff.MotionStarted = true;
+        _ = PlayOverlayVisibilityAsync(handoff.Version, opening: false);
+        await handoff.MotionFinished.Task.WaitAsync(handoff.Cancellation.Token);
+        if (input is not null && !await input.WaitForHandoffReleaseAsync().WaitAsync(handoff.Cancellation.Token)) return false;
+        if (!HandoffCurrent(handoff)) return false;
+        input?.TraceInput("Task handoff motion and release ready");
+        return true;
+    }
+
+    private bool HandoffCurrent(TaskHandoff handoff) => !cleanupStarted && !handoff.Cancellation.IsCancellationRequested &&
+        ReferenceEquals(taskHandoff, handoff) && handoff.Version == overlayVisibilityVersion &&
+        !overlayRequestedVisible && AppWindow.IsVisible && input?.IsForeground != false;
+
+    private void FinishOverlayHandoff(OverlayShellPage page, TaskHandoff handoff)
+    {
+        if (!ReferenceEquals(taskHandoff, handoff)) return;
+        taskHandoff = null;
+        input?.CancelHandoffRelease();
+        if (handoff.Started && !handoff.Committed && handoff.Version == overlayVisibilityVersion && !cleanupStarted && AppWindow.IsVisible)
+        {
+            if (input?.IsForeground == false) HideOverlayImmediately();
+            else
             {
-                taskHandoff = null;
-                input?.CancelHandoffRelease();
-                if (handoff.Started && !handoff.Committed && handoff.Version == overlayVisibilityVersion && !cleanupStarted && AppWindow.IsVisible)
-                {
-                    if (input?.IsForeground == false) HideOverlayImmediately();
-                    else
-                    {
-                        // Restore the still-owned presentation on expiry/cancel;
-                        // never show, activate or reopen a window that was hidden.
-                        overlayRequestedVisible = true;
-                        ++overlayVisibilityVersion;
-                        overlayMotion?.Snap(true);
-                        ShellRoot.IsHitTestVisible = true;
-                        page.SetVisible(true);
-                    }
-                }
+                overlayRequestedVisible = true;
+                ++overlayVisibilityVersion;
+                overlayMotion?.Snap(true);
+                ShellRoot.IsHitTestVisible = true;
+                page.SetVisible(true);
             }
         }
-        bool Current() => !cleanupStarted && !handoff.Cancellation.IsCancellationRequested &&
-            ReferenceEquals(taskHandoff, handoff) && handoff.Version == overlayVisibilityVersion &&
-            !overlayRequestedVisible && AppWindow.IsVisible && input?.IsForeground != false;
     }
 
     private void CancelTaskHandoff()

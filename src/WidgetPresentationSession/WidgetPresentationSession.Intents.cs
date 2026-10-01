@@ -67,6 +67,11 @@ public sealed partial class WidgetPresentationSession
                 throw new BridgeProtocolException("Invalid external intent result.");
             if (result.Accepted && prepared.Kind == WidgetIntentLaunchKind.ExternalBrowser && result.ExternalUrl is null)
                 throw new BridgeProtocolException("External intent result is missing its URL.");
+            if (result.BrowserFallbackUrl is { } fallback && (result.Accepted || result.ExternalUrl is not null ||
+                prepared.Kind is not (WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler) ||
+                fallback.Length > 2048 || fallback.Any(char.IsControl) || !Uri.TryCreate(fallback, UriKind.Absolute, out var fallbackUri) ||
+                fallbackUri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(fallbackUri.UserInfo)))
+                throw new BridgeProtocolException("Invalid browser fallback offer.");
             return result;
         }
         catch (OperationCanceledException)

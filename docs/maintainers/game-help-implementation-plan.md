@@ -28,6 +28,10 @@ items mean implemented and verified in their stated scope, not physical acceptan
   does not establish factual correctness. Do not invent source URLs/timestamps.
 - Browser is a lazy-created pinnable widget with a host-owned WebView2 surface.
   Default-browser fallback applies when no enabled handler is available.
+- When an intent destination is already pinned, prefer updating that surface
+  without leaving Game Help, provided the receiver supports passive delivery.
+  This is generic presentation policy, not a Browser/Game Help special case.
+  Authors retain explicit ways to request interactive presentation.
 - No microphone or system audio in recordings. No automatic overlay reopening.
 - Preview capture inside the requesting widget, using a shared modal with
   Send/Retry/Discard; do not launch another widget to preview an attachment.
@@ -114,6 +118,26 @@ pinned/fullscreen exit behavior retains priority. Consume the entire gesture
 across transitions. Browser page history has its own Back control; it must not
 trap B indefinitely. This supersedes the original return-destination proposal.
 
+### Existing pinned destination (additional user direction)
+
+Separate routing/data from presentation. A request's default presentation hint
+should prefer an existing surface; a sender can explicitly request opening the
+full widget. Handlers opt into accepting intents while passively visible (default
+is interactive-only), rather than having this behavior imposed on every widget.
+
+If a compatible handler is already presented in the pin and accepts passive
+delivery, revalidate that exact live pinned projection/worker, deliver there,
+and preserve the sender's focus and page. Do not create a new pin or rely only
+on persisted pin settings. With no usable pin, use normal widget activation.
+An explicit sender request to open the widget takes precedence over reuse.
+
+Allow a receiver to request interaction for a particular accepted request (for
+example sign-in). Escalating presentation must not invoke the intent twice:
+retain the already accepted data and change presentation. Window/focus ownership
+remains host-side, and a handler cannot gain foreground permission through a
+background event. This policy still needs implementation; current ordinary
+intent activation always opens the destination.
+
 ### Browser and local media preview
 
 Browser: Back/Forward, Reload/Stop, title/domain, Open externally; controller scroll
@@ -152,12 +176,15 @@ following sources. No game-memory access or autonomous game input.
 - [x] Bounded contracts and schema validation, including malformed/conflicting definitions.
 - [x] Manifest declarations and backward-compatible omission; uses existing manifest validation at package admission.
 - [x] Deterministic pure handler resolution policy and standard contracts (not live dispatch).
-- [ ] Authenticated Bridge transport, admission, cancellation and correlated delivery.
+- [x] Authenticated Bridge transport, admission, cancellation and correlated delivery for ordinary source controls.
 - [x] Declarative SDK intent actions on buttons/action surfaces and versioned snapshot/update transport.
 - [x] Worker receiver API and exact-process delivery with cancellation, duplicate rejection and lifetime checks.
-- [ ] Wire SDK actions and receiver transport into Bridge admission and dispatch.
-- [ ] Frontend activation with ordinary B/tray/pinning behavior and gesture handling.
-- [ ] Fake sender/handler end-to-end tests and candidate for physical acceptance.
+- [x] Wire ordinary SDK actions and receiver transport into Bridge admission and dispatch.
+- [x] Ordinary frontend activation with existing B/tray behavior and gesture handling.
+- [ ] Pinned/indexed source admission with the same lease/projection authority as ordinary actions.
+- [ ] Existing pinned destination reuse, sender presentation hints and receiver passive-delivery opt-in/escalation.
+- [x] Fake sender/handler end-to-end tests, including isolated native shell checks.
+- [ ] Include the completed intent feature in the final Game Help physical-check candidate.
 
 ### 2. Browser and link consumers
 - [ ] Lazy host-owned web surface with controller cursor/scroll and toolbar.
@@ -231,10 +258,11 @@ following sources. No game-memory access or autonomous game input.
   IPC cancellation that keeps the worker usable (`runtime-intents-tests03.log`).
   Shared indexed-lane IPC regressions: 7/7 (`runtime-indexed-regression01.log`).
   WinUI review checklist applied to ownership/input/security; no new UI authored.
-- Current boundary: contracts, authoring and receiver transport exist; Bridge
-  request admission/dispatch and frontend intent activation are still pending.
-  Browser, capture recording, native media element/preview modal, Gemini integration
-  and Game Help widget are not enabled. Existing candidate untouched.
+- Current boundary: ordinary button/card intent activation is connected through
+  the Bridge, real workers and native shell. Pinned/indexed source support and
+  reuse of a pinned destination are pending. Browser, capture recording, native
+  media element/preview modal, Gemini integration and Game Help are not enabled.
+  No updated user candidate has been staged yet.
 - 2026-10-01: Bridge prepare/commit/cancel messages and presentation-session APIs
   now connect the previously separate pieces. Verified package intent declarations
   enter the host catalog and its fingerprints. Preparation admits only matching
@@ -245,6 +273,28 @@ following sources. No game-memory access or autonomous game input.
   active delivery. Synthetic Bridge checks: 5/5 (`bridge-intents-tests01.log`),
   session build clean (`session-intents-build01.binlog`). Frontend wiring and real
   pipe end-to-end checks are next, so this is not yet a user-visible completion.
+- 2026-10-01: Connected frontend activation, a themed controller handler chooser,
+  explicit browser fallback offers after handler rejection, and external launch
+  through the existing release-aware close/handoff logic. B continues to open the
+  tray; no return stack was added. Extracted shared handoff preparation/cleanup
+  while retaining Task Switcher's ordering. Late browser-launch completion cannot
+  hide a newer overlay opening.
+  End-to-end Bridge checks: 7/7 (`bridge-intents-tests07.log`), including real
+  worker pipes. Native checks: 18/18
+  (`native-intents-01/result-focus-restore.json`, frontend build05 binlog).
+  All URLs/providers were synthetic; the native web launcher was replaced with
+  a fixture delegate, so no websites or system settings were opened.
+- Confirmed during validation: per-intent cancellation initially escaped as an
+  unhandled request cancellation and closed the Bridge. It now returns a terminal
+  rejected result and uses reserved cancellation transport capacity; a subsequent
+  intent succeeds on the same connection. Native dialog teardown also exposed an
+  unreliable raw-Control focus restore; the host dialog now saves/restores logical
+  widget presentation memory and requests native focus after teardown. The test
+  explicitly navigates to a noninitial control and verifies return to it.
+- Latest user direction: passive delivery into an already pinned destination is
+  the next intent task. Preserve sender focus by default when supported, without
+  restricting authors who require interaction. Policy is documented above and
+  is not claimed implemented by the ordinary-activation tests.
 
 ## Validation and delivery policy
 

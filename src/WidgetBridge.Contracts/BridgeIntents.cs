@@ -9,7 +9,7 @@ public enum WidgetIntentLaunchKind { Widget, ChooseHandler, ExternalBrowser, Una
 public sealed record WidgetIntentDestination(string WidgetId, string Name);
 public sealed record WidgetIntentPreparation(string SourceWidgetId, string? TicketId,
     WidgetIntentLaunchKind Kind, IReadOnlyList<WidgetIntentDestination> Destinations);
-public sealed record WidgetIntentCompletion(bool Accepted, string? ExternalUrl = null);
+public sealed record WidgetIntentCompletion(bool Accepted, string? ExternalUrl = null, string? BrowserFallbackUrl = null);
 
 internal sealed record BridgeIntentPrepareRequest(string WidgetId, long SnapshotSequence,
     BridgeWorkerRun WorkerRun, WidgetActionEvent Action);

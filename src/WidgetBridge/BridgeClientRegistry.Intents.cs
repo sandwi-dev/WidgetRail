@@ -109,13 +109,24 @@ internal sealed partial class BridgeClientRegistry
                             !ticket.Targets.TryGetValue(target.Configured.Id, out var fingerprint) || target.Configured.CatalogFingerprint != fingerprint)
                             return new(false);
                     }
-                    var accepted = await ExecuteClientOperationAsync(target,
-                        (client, token) => client.DeliverIntentAsync(ticket.Request, request.TargetWorkerRun!.StartOrdinal, token), operation.Token)
-                        .ConfigureAwait(false);
-                    operation.Token.ThrowIfCancellationRequested();
-                    return new(accepted);
+                    try
+                    {
+                        var accepted = await ExecuteClientOperationAsync(target,
+                            (client, token) => client.DeliverIntentAsync(ticket.Request, request.TargetWorkerRun!.StartOrdinal, token), operation.Token)
+                            .ConfigureAwait(false);
+                        operation.Token.ThrowIfCancellationRequested();
+                        return new(accepted, BrowserFallbackUrl: accepted ? null : BrowserFallback(ticket.Request));
+                    }
+                    catch (BridgeWidgetRequestException)
+                    { return new(false, BrowserFallbackUrl: BrowserFallback(ticket.Request)); }
                 }
                 finally { target.OperationGate.Release(); }
+            }
+            catch (OperationCanceledException) when (operation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                // Intent cancellation is not Bridge/session cancellation. Publish
+                // a terminal result so the reply remains correlated and usable.
+                return new(false);
             }
             finally { lock (_gate) _activeIntentDeliveries.Remove(request.TicketId); }
         }
@@ -140,4 +151,10 @@ internal sealed partial class BridgeClientRegistry
         _clients.TryGetValue(ticket.SourceId, out var source) && IsCurrentLocked(source) &&
         source.Configured.WorkerFingerprint == ticket.SourceFingerprint && source.HasCurrentSnapshotWorker &&
         source.CachedWorkerRun == ticket.SourceRun;
+
+    // An offer for explicit user confirmation, never permission to auto-launch
+    // a second handler after an uncertain or unsuccessful delivery.
+    private static string? BrowserFallback(WidgetIntentRequest request) =>
+        request.ContractId == WidgetIntentContracts.OpenWebPage && request.Version == 1
+            ? request.Payload.GetProperty("url").GetString() : null;
 }

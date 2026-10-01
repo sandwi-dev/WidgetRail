@@ -135,7 +135,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         var lane = type switch
         {
             BridgeMessageTypes.ReadIndexedRange or BridgeMessageTypes.AcquireIndexedRange or BridgeMessageTypes.ResolveIndexedArtwork => _providerCapacity,
-            BridgeMessageTypes.CancelIndexedRange or BridgeMessageTypes.CancelIndexedArtwork => _cancellationCapacity,
+            BridgeMessageTypes.CancelIntent or BridgeMessageTypes.CancelIndexedRange or BridgeMessageTypes.CancelIndexedArtwork => _cancellationCapacity,
             _ => _controlCapacity,
         };
         await lane.WaitAsync(admission.Token).ConfigureAwait(false);
