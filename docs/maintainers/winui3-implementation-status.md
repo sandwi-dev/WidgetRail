@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### WinUI local widget installation — 2026-10-01, validated
+### WinUI local widget installation — 2026-10-01, candidate running
 
 User chose the Windows file picker plus an in-overlay dialog; a controller file
 browser is deferred. The WinUI host had never intercepted host.install-local-widget,
@@ -36,8 +36,13 @@ Validation: session/action/lifetime 50/50, Bridge local-package 5/5, native dial
 an isolated test profile; focus restoration passed after the dialog's close motion.
 No user-profile widgets installed or system controls exercised. Evidence lives in
 artifacts/local-install, including binlogs, picker-flow-final.json and UI results.
-Scoped WinUI code review completed. Preview.21 candidate publication/relaunch next;
-no installer requested. Worktree cleanup must only happen on explicit user request.
+Scoped WinUI code review completed. Source commit d52a9c40 published preview.21;
+production/developer catalog checks passed (8/12 widgets). Production frontend
+PID30776 launched with --show --widget=settings and the normal user profile.
+Release-build Windows picker open/cancel and focus return passed without installing
+anything (release-picker-smoke.json). No PID30776 frontend errors recorded. Left
+running on Settings > Widgets for physical acceptance; no installer created.
+No merge/push performed. Worktree cleanup must only happen on explicit user request.
 
 ### Settings usability accepted and integrated — 2026-10-01
 
