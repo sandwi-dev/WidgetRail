@@ -7,6 +7,21 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Local widget installation accepted and integrated — 2026-10-01
+
+User accepted preview.22 and requested integration/closeout. Merge 6027699b brings
+the Windows package picker, themed controller-accessible full-trust review and
+completion dialogs, update-file handling, cancellation/focus restoration, and
+automatic Settings widget/permission-list refresh into local main. The missing
+host action handler caused the original no-op; toast-only package notification
+handling caused the stale Settings list. Both paths are now connected.
+Recorded validation: Settings 81/81, session/action/lifetime 50/50, Bridge import
+5/5, native dialog 7/7, release picker open/cancel/focus return and 8/12-widget
+release catalog checks. User performed final installation/refresh acceptance.
+Preview.22 PID2128 was closed normally for closeout. Worktrees, branches and all
+artifacts remain in place per user instruction. No installer or push performed.
+Main's unrelated docs/implementation-agent-goal.md edit remains byte-for-byte intact.
+
 ### Refresh Settings after package installation — 2026-10-01, candidate delivered
 
 The install completion already refreshed the Bridge catalog, but Settings consumed
