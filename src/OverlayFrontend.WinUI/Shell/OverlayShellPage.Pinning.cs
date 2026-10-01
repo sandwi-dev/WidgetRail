@@ -54,13 +54,13 @@ internal sealed partial class OverlayShellPage
     private bool PinnedInputActive => pinned is { Window.Interactive: true, HasForeground: true };
     private bool PinnedInteractionRequested => pinned?.Window.Interactive == true;
     private bool MainFocusEnabled => visible && interactive && foreground && !switching && activeWidget == requestedWidget &&
-        !PinnedInteractionRequested && !PinnedAdjustmentActive;
+        !PinnedInteractionRequested && !PinnedAdjustmentActive && !LocalInstallActive;
 
     private WidgetLifecycleState LifecycleFor(string id)
     {
         var main = !retired && visible && (id == activeWidget || switching && preparingSurface?.Descriptor.Id == id);
         var pin = !retired && pinned is { Window.IsVisible: true } current && current.WidgetId == id;
-        if (main && id == activeWidget && !switching && interactive && foreground && !PinnedInputActive || pin && PinnedInputActive)
+        if (main && id == activeWidget && !switching && interactive && (foreground || SystemFilePickerOpen) && !PinnedInputActive || pin && PinnedInputActive)
             return WidgetLifecycleState.Interactive;
         return main || pin || id == pendingPinWidget ? WidgetLifecycleState.Visible : WidgetLifecycleState.Background;
     }

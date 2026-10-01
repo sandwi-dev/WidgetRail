@@ -7,6 +7,63 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Refresh Settings after package installation — 2026-10-01, candidate delivered
+
+The install completion already refreshed the Bridge catalog, but Settings consumed
+its package notification only as toast text. Its cached widget/permission projections
+remained stale until a manual Refresh or lifecycle restart. On each nonempty terminal
+package notification, reload those two projections from one catalog read under the
+existing operation gate, then publish feedback. Empty status polls remain cheap.
+Also reconcile failed completions because update-selection failures may have already
+published a version. Do not perform the full settings/provider reload or expose a
+busy/disabled page; existing reconciliation retains page and selected package.
+Settings 0.1.7, preview.22. Settings 81/81 pass, with the install regression now
+publishing a package and consuming completion while remaining on Widgets, without
+refresh/restart, and checking that Install remains enabled and the new row disabled.
+Evidence: artifacts/install-refresh. Source commit d07e04ae published preview.22;
+production/developer catalog checks passed (8/12 widgets). Preview.21 closed normally.
+User explicitly took ownership of install-flow verification, so skip isolated live
+installation checks. Preview.22 launched with --show --widget=settings and the normal
+profile; candidate PID is recorded in artifacts/install-refresh/candidate-pid.txt.
+No installer, merge, push or worktree cleanup. Physical verification is pending user.
+
+### WinUI local widget installation — 2026-10-01, candidate running
+
+User chose the Windows file picker plus an in-overlay dialog; a controller file
+browser is deferred. The WinUI host had never intercepted host.install-local-widget,
+so Settings' host-only command reached a worker that intentionally did nothing.
+Restore the host flow for both Install local widget and Choose update file using
+Microsoft.Windows.Storage.Pickers.FileOpenPicker bound to the overlay WindowId.
+Selection remains mouse/keyboard. A themed ContentDialog provides progress, safe
+full-access review, cancellation and completion with controller navigation/A/B.
+Cancel is initially focused; controller buttons must return to neutral before a
+new dialog state can accept A. Native gamepad key routing remains suppressed by
+the existing boundary. The controller guide reflects this modal state. Original
+Settings focus returns after picker cancellation or dialog dismissal.
+
+The session validates the exact current Settings command before and after picking,
+retains update target identity, correlates a single install operation, buffers early
+completion, and races approval with terminal events (expiry/disconnect). Hiding or
+closing cancels the operation; stale approvals are rejected. Reuse the Bridge's
+source-locked validation/import and explicit full-trust approval; installs remain
+disabled. Windows picker ownership is covered by existing same-process foreground
+policy; no general foreground-dismissal exception was added. No filesystem access
+was added to Settings or community workers. Invalid archive/unreadable file errors
+now have readable messages.
+
+Validation: session/action/lifetime 50/50, Bridge local-package 5/5, native dialog
+7/7. Real picker opened/cancelled and rejected a deliberately invalid .wrwidget in
+an isolated test profile; focus restoration passed after the dialog's close motion.
+No user-profile widgets installed or system controls exercised. Evidence lives in
+artifacts/local-install, including binlogs, picker-flow-final.json and UI results.
+Scoped WinUI code review completed. Source commit d52a9c40 published preview.21;
+production/developer catalog checks passed (8/12 widgets). Production frontend
+PID30776 launched with --show --widget=settings and the normal user profile.
+Release-build Windows picker open/cancel and focus return passed without installing
+anything (release-picker-smoke.json). No PID30776 frontend errors recorded. Left
+running on Settings > Widgets for physical acceptance; no installer created.
+No merge/push performed. Worktree cleanup must only happen on explicit user request.
+
 ### Settings usability accepted and integrated — 2026-10-01
 
 User accepted preview.20 and requested integration/closeout. Merge 9b96fb53 brings

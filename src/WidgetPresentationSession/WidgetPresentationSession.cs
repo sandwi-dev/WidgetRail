@@ -531,6 +531,9 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         switch (envelope.Type)
         {
+        case BridgeMessageTypes.LocalWidgetPackageInstallCompleted:
+            HandleLocalInstallEvent(envelope.Payload);
+            break;
         case BridgeMessageTypes.Invalidation:
             RequireObjectProperties(envelope.Payload, "widgetId", "revision");
             var invalidation = new WidgetPresentationInvalidation(
@@ -1340,6 +1343,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
             if (_terminalFailure is not null) return;
             _terminalFailure = exception;
+            localInstallEvents?.Writer.TryComplete(exception);
             RetireIndexedRangesLocked();
             RetireMediaDocumentLocked();
             RetireWindowPreviewsLocked();

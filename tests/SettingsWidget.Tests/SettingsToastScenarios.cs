@@ -45,7 +45,7 @@ internal static class SettingsToastScenarios
         }
     }
 
-    private sealed class NotificationService : IPlatformDiagnosticsService
+    internal sealed class NotificationService : IPlatformDiagnosticsService
     {
         public PlatformWidgetPackageNotification Pending = PlatformWidgetPackageNotification.Empty;
         public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken token = default) => ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());

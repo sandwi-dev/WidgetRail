@@ -42,6 +42,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
     {
         if (Environment.GetCommandLineArgs().Contains("--directional-navigation-only"))
         { await DirectionalNavigationAsync(); return; }
+        if (Environment.GetCommandLineArgs().Contains("--local-install-only"))
+        { await LocalInstallDialogAsync(); return; }
         await AuthoringAdmissionAsync();
         if (Environment.GetCommandLineArgs().Contains("--switch-commands-only"))
         { await SwitchCommandsAsync(); return; }

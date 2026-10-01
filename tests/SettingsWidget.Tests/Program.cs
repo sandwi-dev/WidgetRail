@@ -1382,8 +1382,9 @@ static async Task LocalWidgetInstallationAction()
 {
     using var temp = new TemporaryDirectory();
     var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var notifications = new SettingsToastScenarios.NotificationService();
     var widget = CreateWithPermissions(temp.Path, catalogRoot,
-        new ConsentStore(Path.Combine(temp.Path, "consent")));
+        new ConsentStore(Path.Combine(temp.Path, "consent")), readinessDiagnostics: notifications);
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
 
@@ -1410,13 +1411,15 @@ static async Task LocalWidgetInstallationAction()
     await Action(widget, "host.install-local-widget", "forged.source");
     Assert.Equal(beforeForgery, JsonSerializer.Serialize(Snapshot(widget)));
 
-    // Model the accepted host operation boundary: publication happens outside
-    // the worker, remains disabled, and the next exact activation reloads it.
+    // Publication happens outside the worker. Its completion notification must
+    // reconcile the live list without refresh or a lifecycle restart.
     WriteInstalledWidget(catalogRoot, "dev.test.local-import", "dev.publisher.local",
         "Local import", [], []);
-    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
-    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
-    await widget.InitializationTask;
+    notifications.Pending = new("Widget installed. Review permissions before enabling it.");
+    await widget.ReadPackageNotificationAsync(default);
+    Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
+    Assert.True(Button(Snapshot(widget).Root, "installed.install-local").IsDisabled is not true,
+        "Refreshing the package list must not disable the focused Install button.");
     var refreshed = Snapshot(widget);
     Assert.Contains("Local import", Button(refreshed.Root, "installed.item.0").AccessibilityLabel!);
     Assert.Contains("Disabled", Button(refreshed.Root, "installed.item.0").AccessibilityLabel!);

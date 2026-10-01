@@ -295,7 +295,7 @@ public sealed class SettingsWidget : Widget
                 if (!await _operationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) continue;
                 try
                 {
-                    await ReadPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
+                    await ReadPackageNotificationCoreAsync(cancellationToken).ConfigureAwait(false);
                     if (CurrentPage is SettingsPage.Overlay or SettingsPage.Appearance or SettingsPage.Accessibility)
                         await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
                     if (CurrentPage is not (SettingsPage.Controllers or SettingsPage.ControllerHelp)) continue;
@@ -328,13 +328,27 @@ public sealed class SettingsWidget : Widget
 
     internal async Task ReadPackageNotificationAsync(CancellationToken cancellationToken)
     {
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { await ReadPackageNotificationCoreAsync(cancellationToken).ConfigureAwait(false); }
+        finally { _operationGate.Release(); }
+    }
+
+    // Called with the operation gate held. Refresh only after an actual package
+    // completion, never on the ordinary empty status poll or via a full reload.
+    private async Task ReadPackageNotificationCoreAsync(CancellationToken cancellationToken)
+    {
         try
         {
-            // A small non-blocking companion read; never enumerate catalogs or
-            // call external providers just to retrieve transient feedback.
             var notification = await _readinessDiagnosticsService.TakeWidgetPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
-            if (notification.Message.Length != 0)
-                SetOperation(notification.Message, false, notification.Failed);
+            if (notification.Message.Length == 0) return;
+            var catalogRead = SettingsReadinessRetry.CatalogAsync(_widgetCatalog.DiscoverAsync, cancellationToken);
+            var installedWarning = await ReloadInstalledWidgetsAsync(cancellationToken, catalogRead).ConfigureAwait(false);
+            var permissionWarning = await ReloadPermissionsAsync(cancellationToken, catalogRead).ConfigureAwait(false);
+            // Some failed updates can still publish a version (selection failed).
+            // Reconcile both projections for every terminal notification, preserving
+            // the current page, selected package and focus IDs through existing policy.
+            var warning = installedWarning ?? permissionWarning;
+            SetOperation(warning ?? notification.Message, false, notification.Failed || warning is not null);
         }
         catch (PlatformDiagnosticsException) { }
     }
