@@ -7,6 +7,25 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Settings usability accepted and integrated — 2026-10-01
+
+User accepted preview.20 and requested integration/closeout. Merge 9b96fb53 brings
+consistent Settings categories and editable rows, structured installed-widget rows,
+a dedicated Exclusive control page, original themed switch buttons, and stable
+Wi-Fi/Bluetooth radio and scan focus during busy operations into local main.
+Native ToggleSwitch experimentation below is superseded by the accepted rollback.
+Recorded validation remains Network 31/31, Settings 81/81, SDK 148/148, native switch
+16/16, Settings layout 253/253 and release catalog checks (8/12 widgets).
+No new code changes or expanded system-setting tests were needed for integration.
+The unrelated main docs/implementation-agent-goal.md edit was preserved byte-for-byte.
+Preview.20 PID34200 closed normally and its owned runtime processes exited. All
+candidate artifacts/evidence were preserved in the primary checkout beneath
+artifacts/accepted-settings-usability-20261001; earlier artifact paths below are
+historical and resolve beneath that preserved root. No installer built or push made.
+Codex refused to archive settings-usability because a pinned task/workspace protects
+it. Leave that worktree/branch intact rather than bypassing the protection. Work is
+integrated and closed; protected worktree retirement is the only cleanup limitation.
+
 ### Preserve network scan focus — 2026-10-01, candidate running
 
 Follow-up to preview.19: Wi-Fi and Bluetooth scan buttons still set disabled while
