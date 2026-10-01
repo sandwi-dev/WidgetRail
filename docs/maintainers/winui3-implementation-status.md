@@ -7,6 +7,22 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Refresh Settings after package installation — 2026-10-01, validated
+
+The install completion already refreshed the Bridge catalog, but Settings consumed
+its package notification only as toast text. Its cached widget/permission projections
+remained stale until a manual Refresh or lifecycle restart. On each nonempty terminal
+package notification, reload those two projections from one catalog read under the
+existing operation gate, then publish feedback. Empty status polls remain cheap.
+Also reconcile failed completions because update-selection failures may have already
+published a version. Do not perform the full settings/provider reload or expose a
+busy/disabled page; existing reconciliation retains page and selected package.
+Settings 0.1.7, preview.22. Settings 81/81 pass, with the install regression now
+publishing a package and consuming completion while remaining on Widgets, without
+refresh/restart, and checking that Install remains enabled and the new row disabled.
+Evidence: artifacts/install-refresh. User approved restart; candidate publication
+and live isolated install verification next. No installer or worktree cleanup.
+
 ### WinUI local widget installation — 2026-10-01, candidate running
 
 User chose the Windows file picker plus an in-overlay dialog; a controller file
