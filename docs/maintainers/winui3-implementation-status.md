@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Settings/Spotify control consistency — 2026-10-01, validated
+### Settings/Spotify control consistency — 2026-10-01, candidate running
 
 User requested parallel fixes from preview.22 screenshots. Implemented in
 codex/widget-control-consistency with three bounded subagents sharing this worktree.
@@ -34,10 +34,15 @@ Detail-only 57-check run/screenshots inspected. Evidence: artifacts/control-cons
 Native fixture required an explicit ViewNode[] cast for CsWinRT; corrected and built.
 All provider actions used fakes, no real Spotify/system-setting actions performed.
 Source review completed. Spotify 0.3.84 packaged via its full-trust package builder;
-Settings 0.1.8 and app preview.23 next. User approved close/validation/relaunch;
+Settings 0.1.8 and app preview.23 published from source commit 783182d6;
+production/developer package verification passed (8/12 widgets). User approved close/validation/relaunch;
 preview.22 PID5212 closed normally. Preserve worktrees and evidence; no installer,
 merge or push requested. Update the installed Spotify package before relaunch so the
 candidate exercises the new widget code, preserving existing enabled state.
+Delivered: CLI installed and selected Spotify 0.3.84, restored its enabled state
+and retained 0.3.83 for rollback. Preview.23 launched normally with --show as
+PID36128 with its owned Bridge; no PID36128 frontend errors recorded at startup.
+Candidate remains open for physical testing. No installer, merge/push or cleanup.
 
 ### Local widget installation accepted and integrated — 2026-10-01
 
