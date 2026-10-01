@@ -67,6 +67,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Fatal refresh failures select exact safe states", FatalRefreshFailuresSelectSafeState),
     ("Refresh polling cannot publish after the Active lifetime", RefreshPollingLifecycle),
     ("Devices expose trusted local playback and safe transfer actions", DeviceActions),
+    ("Pending local start and stop retain focus eligibility and reject duplicate operations", LocalDeviceBusyKeepsFocus),
+    ("Provider local startup remains focusable while unavailable states remain disabled", LocalDeviceUnavailableRemainsDisabled),
+    ("Pending setup buttons remain focusable without admitting competing actions", SetupBusyButtonsKeepFocus),
     ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
@@ -1236,6 +1239,125 @@ static async Task DeviceActions()
     await WaitUntil(() => harness.StartedPlayback.Count == expectedPlaybackCount);
     Assert.Equal("remote-device", harness.StartedPlayback[^1].DeviceId);
     await StopAsync(widget);
+}
+
+static async Task LocalDeviceBusyKeepsFocus()
+{
+    foreach (var stop in new[] { false, true })
+    {
+        var harness = SpotifyHarness.Ready();
+        if (stop) harness.LocalPlayback = harness.LocalPlayback with { State = SpotifyLocalPlaybackState.Active };
+        var completion = new TaskCompletionSource<SpotifyLocalPlaybackSummary>(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.LocalControlHandler = (_, token) => new(completion.Task.WaitAsync(token));
+        var widget = await StartAsync(harness);
+        try
+        {
+            await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+            await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.devices"));
+            const string id = "spotify.local.shared.action";
+            var readySnapshot = widget.RenderSnapshot("local-ready", 1);
+            WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture($"Spotify-DeviceBusy-{stop}-ready", readySnapshot);
+            var ready = Find(readySnapshot.Root, id);
+            var action = stop ? "spotify.local.stop" : "spotify.local.start";
+            Assert.Equal(action, ready.ActionId);
+            await widget.OnActionAsync(new(action, id));
+            await WaitUntil(() => harness.LocalCommands.Count == 1);
+            for (var index = 0; index < 3; index++)
+            {
+                var pendingSnapshot = widget.RenderSnapshot("local-pending", index + 2);
+                if (index == 0) WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture($"Spotify-DeviceBusy-{stop}-pending", pendingSnapshot);
+                var pending = Find(pendingSnapshot.Root, id);
+                Assert.True(pending.IsBusy == true && pending.IsDisabled != true,
+                    "A pending local command evicted the focused device action.");
+                Assert.Equal(action, pending.ActionId);
+                await widget.OnActionAsync(new(action, id));
+            }
+            Assert.Equal(1, harness.LocalCommands.Count);
+            completion.SetResult(harness.LocalPlayback with
+            { State = stop ? SpotifyLocalPlaybackState.Disabled : SpotifyLocalPlaybackState.Active });
+            await WaitUntil(() => Find(widget.RenderSnapshot("local-settled", 6).Root, id).IsBusy != true);
+            var settledSnapshot = widget.RenderSnapshot("local-settled", 7);
+            WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture($"Spotify-DeviceBusy-{stop}-settled", settledSnapshot);
+            var settled = Find(settledSnapshot.Root, id);
+            Assert.True(settled.IsDisabled != true, "Local completion disabled the retained action.");
+            Assert.Equal(stop ? "spotify.local.start" : "spotify.local.stop", settled.ActionId);
+        }
+        finally
+        {
+            completion.TrySetResult(harness.LocalPlayback);
+            await StopAsync(widget);
+        }
+    }
+}
+
+static async Task LocalDeviceUnavailableRemainsDisabled()
+{
+    foreach (var state in new[] { SpotifyLocalPlaybackState.Starting, SpotifyLocalPlaybackState.PremiumRequired, SpotifyLocalPlaybackState.Unavailable })
+    {
+        var harness = SpotifyHarness.Ready();
+        harness.LocalPlayback = harness.LocalPlayback with { State = state };
+        var widget = await StartAsync(harness);
+        try
+        {
+            await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+            await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.devices"));
+            var snapshot = widget.RenderSnapshot("local-availability", 1);
+            var action = Find(snapshot.Root, "spotify.local.shared.action");
+            Assert.True((action.IsDisabled == true) == (state != SpotifyLocalPlaybackState.Starting),
+                "Local playback confused temporary startup with genuine unavailability.");
+            if (state == SpotifyLocalPlaybackState.Starting)
+            {
+                Assert.True(action.IsBusy == true, "Provider startup did not block duplicate commands.");
+                Assert.Equal("spotify.local.shared.action", snapshot.InitialFocusId);
+            }
+        }
+        finally { await StopAsync(widget); }
+    }
+}
+
+static async Task SetupBusyButtonsKeepFocus()
+{
+    var harness = SpotifyHarness.Ready();
+    var completion = new TaskCompletionSource<SpotifyConfigurationSummary>(TaskCreationOptions.RunContinuationsAsynchronously);
+    harness.ConfigureClientHandler = (_, token) => new(completion.Task.WaitAsync(token));
+    var widget = await StartAsync(harness);
+    try
+    {
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        await widget.OnActionAsync(new("spotify.setup.open", "spotify.setup.open"));
+        var ready = widget.RenderSnapshot("setup-ready", 1);
+        var write = widget.OnActionAsync(new("spotify.setup.client-id", "spotify.setup.client-id")
+        { CommittedText = "ReplacementClient123456" }).AsTask();
+        await WaitUntil(() => harness.ConfigureClientCalls == 1);
+        var pending = widget.RenderSnapshot("setup-pending", 2);
+        Assert.Equal(ready.InitialFocusId, pending.InitialFocusId);
+        foreach (var id in new[] { "spotify.setup.dashboard", "spotify.setup.copy-redirect", "spotify.setup.done", "spotify.disconnect.setup" })
+        {
+            var button = Find(pending.Root, id);
+            Assert.True(button.IsBusy == true && button.IsDisabled != true,
+                "Pending setup removed focus eligibility from " + id);
+        }
+        Assert.True(Find(pending.Root, "spotify.setup.client-id").IsDisabled == true,
+            "The committed text entry must stay locked while its save is pending.");
+        Assert.True(Find(pending.Root, "spotify.setup.close").IsBusy != true,
+            "Setup should remain dismissible while pending.");
+        var reads = harness.ConfigurationCalls;
+        await widget.OnActionAsync(new("spotify.setup.done", "spotify.setup.done"));
+        await widget.OnActionAsync(new("spotify.disconnect", "spotify.disconnect.setup"));
+        Assert.Equal(reads, harness.ConfigurationCalls);
+        Assert.True(harness.Connected, "A competing disconnect was accepted during setup save.");
+        Assert.NotNull(Find(widget.RenderSnapshot("setup-still-pending", 3).Root, "spotify.setup.done"));
+        completion.SetException(new SpotifyApplicationException("configuration_write_failed", "Test save failed"));
+        await write;
+        foreach (var id in new[] { "spotify.setup.dashboard", "spotify.setup.copy-redirect", "spotify.setup.done", "spotify.disconnect.setup" })
+            Assert.True(Find(widget.RenderSnapshot("setup-terminal", 4).Root, id) is { IsBusy: not true, IsDisabled: not true },
+                "Setup did not restore its action after terminal failure.");
+    }
+    finally
+    {
+        completion.TrySetCanceled();
+        await StopAsync(widget);
+    }
 }
 
 static async Task MissingPlaybackDeviceGuidance()
@@ -2674,6 +2796,7 @@ internal sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocal
     public Func<CancellationToken, ValueTask<SpotifyLocalPlaybackSummary>>?
         LocalPlaybackHandler { get; set; }
     public SpotifyLocalPlaybackSummary? LocalControlResult { get; set; }
+    public Func<SpotifyLocalPlaybackCommand, CancellationToken, ValueTask<SpotifyLocalPlaybackSummary>>? LocalControlHandler { get; set; }
     public IReadOnlyList<SpotifyAuthorizationScope>? LastScopes { get; private set; }
     public List<SpotifyPlaybackCommand> Commands { get; } = [];
     public List<SpotifyLocalPlaybackCommand> LocalCommands { get; } = [];
@@ -2886,17 +3009,19 @@ internal sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocal
             : await LocalPlaybackHandler(cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask<SpotifyLocalPlaybackSummary> ControlLocalPlaybackAsync(
+    public async ValueTask<SpotifyLocalPlaybackSummary> ControlLocalPlaybackAsync(
         SpotifyLocalPlaybackCommand request,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         LocalCommands.Add(request);
-        LocalPlayback = LocalControlResult ??
+        LocalPlayback = LocalControlHandler is not null
+            ? await LocalControlHandler(request, cancellationToken).ConfigureAwait(false)
+            : LocalControlResult ??
             (request.Operation == SpotifyLocalPlaybackOperation.Stop
                 ? LocalPlayback with { State = SpotifyLocalPlaybackState.Disabled }
                 : LocalPlayback with { State = SpotifyLocalPlaybackState.Active });
-        return ValueTask.FromResult(LocalPlayback);
+        return LocalPlayback;
     }
 
     public ValueTask AddToQueueAsync(

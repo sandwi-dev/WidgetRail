@@ -233,9 +233,9 @@ internal static class SettingsInstalledWidgetPresentation
         var permissionPackageIds = permissionState.Projection.Packages
             .Select(item => item.Id)
             .ToArray();
-        static ButtonElement EnabledActionButton(string label, string actionId, bool enabled, bool canToggle, bool busy) =>
+        static ButtonElement EnabledActionButton(string label, string actionId, bool canToggle, bool busy) =>
             UI.Button(label, actionId, "installed.details.toggle")
-                .Disabled(!canToggle).Busy(busy).Classes(enabled ? "danger-button" : "primary-button");
+                .Disabled(!canToggle).Busy(busy).Classes("secondary-button");
         if (builtIn is not null && valid)
         {
             var builtInHasPermissions = permissionCatalogValid &&
@@ -254,7 +254,7 @@ internal static class SettingsInstalledWidgetPresentation
                         "installed.permissions.open", "installed.details.permissions")
                     .Disabled(!builtInHasPermissions).Busy(busy).Classes("setting-row"),
                 EnabledActionButton(enabled ? "Disable widget" : "Enable widget", "installed.builtin.toggle",
-                    enabled, builtIn.Id != BuiltInWidgetSettings.SettingsWidgetId, busy),
+                    builtIn.Id != BuiltInWidgetSettings.SettingsWidgetId, busy),
                 LocalDataButton(state, busy),
                 UI.Button("Back", "back", "installed.details.back").Classes("secondary-button"),
             };
@@ -346,12 +346,11 @@ internal static class SettingsInstalledWidgetPresentation
             .FocusUp("installed.details.versions")
             .FocusDown(canToggleNow ? "installed.details.toggle" : "installed.details.back")
             .Disabled(!valid || !hasPermissions).Busy(busy).Classes("setting-row");
-        var actionButton = EnabledActionButton(action, "installed.toggle", package.Enabled, canToggleNow, busy)
+        var actionButton = EnabledActionButton(action, "installed.toggle", canToggleNow, busy)
             .FocusUp("installed.details.permissions")
             .FocusDown("installed.details.local-data");
         var canUninstall = valid;
         var localDataButton = LocalDataButton(state, busy)
-            .Disabled(!valid)
             .FocusUp(canToggleNow ? "installed.details.toggle" : "installed.details.permissions")
             .FocusDown(canUninstall ? SettingsInstalledWidgetUninstallPolicy.FocusId :
                 "installed.details.back");
@@ -448,8 +447,12 @@ internal static class SettingsInstalledWidgetPresentation
         var beforeBack = items.FindIndex(item => item.Id == "installed.details.back");
         items.Insert(beforeBack < 0 ? items.Count : beforeBack,
             UI.Button("Technical details  ›", "open.widget-technical", "installed.details.technical").Classes("setting-row"));
-        return SettingsPresentation.PageScope("installed.details", items.ToArray());
+        return SettingsPresentation.PageScope("installed.details", DetailActions(items));
     }
+
+    private static WidgetElement[] DetailActions(IEnumerable<WidgetElement> items) =>
+        items.Select(item => item is ButtonElement button
+            ? button.AddClasses("widget-detail-action") : item).ToArray();
 
     private static WidgetView RenderUnusedInstalledCopy(
         StackElement header, bool busy, SettingsInstalledWidgetState state)
@@ -462,7 +465,7 @@ internal static class SettingsInstalledWidgetPresentation
         };
         if (package.Enabled)
             controls.Add(UI.Button("Disable unused copy", "installed.toggle", "installed.details.toggle")
-                .Disabled(!state.CatalogValid).Busy(busy).Classes("danger-button"));
+                .Disabled(!state.CatalogValid).Busy(busy).Classes("secondary-button"));
         controls.Add(LocalDataButton(state, busy));
         controls.Add(UI.Button($"Manage versions ({package.Versions.Count})", "installed.versions.open", "installed.details.versions")
             .Disabled(!state.CatalogValid).Busy(busy).Classes("setting-row"));
@@ -480,7 +483,7 @@ internal static class SettingsInstalledWidgetPresentation
                     "installed.details.version", "Widget versions").Classes("diagnostic-line"),
                 UI.Text("You can remove this extra copy without removing the built-in widget. Disable the extra copy first to manage its stored data or uninstall it.",
                     "installed.details.cleanup", "Unused copy cleanup").Classes("page-help"),
-                .. controls]),
+                .. DetailActions(controls)]),
             state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
                 ? SettingsInstalledWidgetUninstallPolicy.FocusId : "installed.details.builtin",
             "installed.details");
@@ -581,7 +584,7 @@ internal static class SettingsInstalledWidgetPresentation
             _ => $"Local data unavailable ({data.StatusCode})",
         };
         return UI.Button(label, "installed.local-data.open", "installed.details.local-data")
-            .Disabled(data is not { Exists: true, ConfirmationToken: not null })
+            .Disabled(!state.CatalogValid || data is not { Exists: true, ConfirmationToken: not null })
             .Busy(busy).Classes(data is { Exists: true } ? "danger-button" : "setting-row");
     }
 

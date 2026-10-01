@@ -567,9 +567,8 @@
   outline-offset: var(--focus-offset, -1.5px);
 }
 .spotify-playlist-row {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
+  width: 100%;
+  min-width: 0px;
   flex-grow: 0;
 }
 .spotify-local-feedback { width: 100%; min-width: 0px; }

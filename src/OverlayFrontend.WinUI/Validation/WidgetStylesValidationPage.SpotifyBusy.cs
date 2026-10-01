@@ -16,14 +16,16 @@ internal sealed partial class WidgetStylesValidationPage
     // this focus check, and the action callback is a local completion gate.
     private async Task NativeSpotifyBusyAsync(string directory)
     {
-        var readyFiles = Directory.GetFiles(directory, "Spotify-Busy-*-ready.renderer.json");
+        var readyFiles = Directory.GetFiles(directory, "Spotify-Busy-*-ready.renderer.json")
+            .Concat(Directory.GetFiles(directory, "Spotify-DeviceBusy-*-ready.renderer.json")).ToArray();
         if (readyFiles.Length == 0) throw new InvalidOperationException("No exported Spotify busy-state fixtures were found.");
         foreach (var path in readyFiles.Order(StringComparer.Ordinal))
         {
             var prefix = path[..^"ready.renderer.json".Length];
             var label = Path.GetFileName(prefix);
+            var device = label.StartsWith("Spotify-DeviceBusy-", StringComparison.Ordinal);
             var stages = new[] { "ready", "pending", "acknowledged", "settled" }.ToDictionary(stage => stage,
-                stage => Read(prefix + stage + ".renderer.json"));
+                stage => Read(prefix + (device && stage == "acknowledged" ? "pending" : stage) + ".renderer.json"));
             Apply(stages["ready"]);
             var id = Toggle(stages["ready"].Snapshot.Root).Id;
             await Wait(() => Find<Button>("Widget." + id) is { IsLoaded: true, IsEnabled: true });
@@ -64,7 +66,7 @@ internal sealed partial class WidgetStylesValidationPage
                 // An explicit move during the busy interval supersedes memory;
                 // completion must not drag focus back to the initiating button.
                 Apply(stages["pending"]);
-                if (!presenter.MoveFocus(FocusNavigationDirection.Right)) throw new InvalidOperationException("Spotify transport had no next focus target.");
+                if (!presenter.MoveFocus(device ? FocusNavigationDirection.Down : FocusNavigationDirection.Right)) throw new InvalidOperationException("Spotify transport had no next focus target.");
                 await Wait(() => !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button));
                 var moved = FocusManager.GetFocusedElement(XamlRoot);
                 Check(!ReferenceEquals(moved, button), label + " explicit navigation leaves the busy transport");
@@ -94,10 +96,15 @@ internal sealed partial class WidgetStylesValidationPage
             presenter.Width = snapshot.Surface?.PreferredWidth ?? 840;
             // The extracted row inherits this scope from the production root;
             // make that boundary explicit when testing the fragment alone.
+            if (target.Id == "spotify.local.shared.action")
+                row = new ViewNode { Id = "device-fragment", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[row,
+                    new() { Id = "next-device-action", Kind = ViewNodeKind.Button, Text = "Next action", ActionId = "next" }] };
             presenter.ApplyFragment(frame, row with { InputScopeId = snapshot.ActiveInputScopeId }, snapshot.ActiveInputScopeId);
         }
-        static ViewNode Toggle(ViewNode node) => FindToggle(node) ?? throw new InvalidOperationException("Spotify declaration has no play-toggle button.");
-        static ViewNode? FindToggle(ViewNode node) => node.Kind == ViewNodeKind.Button && node.ActionId == "spotify.play-toggle" ? node :
+        static ViewNode Toggle(ViewNode node) => FindLocal(node) ?? FindToggle(node) ?? throw new InvalidOperationException("Spotify declaration has no play-toggle button.");
+        static ViewNode? FindLocal(ViewNode node) => node.Id == "spotify.local.shared.action" ? node :
+            node.Children.Select(FindLocal).FirstOrDefault(value => value is not null);
+        static ViewNode? FindToggle(ViewNode node) => node.Kind == ViewNodeKind.Button && (node.Id == "spotify.local.shared.action" || node.ActionId == "spotify.play-toggle") ? node :
             node.Children.Select(FindToggle).FirstOrDefault(value => value is not null);
         static ViewNode? Parent(ViewNode node, string id) => node.Children.Any(child => child.Id == id) ? node :
             node.Children.Select(child => Parent(child, id)).FirstOrDefault(value => value is not null);

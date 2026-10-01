@@ -11,6 +11,16 @@ internal static class FocusSelectionThemeTests
         {
             var shared = Compile(new([], []));
             Check(shared, "button", [], []);
+            foreach (var role in new[] { "button", "select" })
+            {
+                var enabled = Resolve(shared, role, []);
+                var disabled = Resolve(shared, role, [], WrssPseudoState.Disabled);
+                Equal(null, disabled.Get("opacity")?.Text, theme.Descriptor.Id + " " + role + " avoids compound disabled opacity");
+                if (enabled.Get("color")?.Text == disabled.Get("color")?.Text)
+                    throw new InvalidOperationException(theme.Descriptor.Id + " " + role + " disabled ink must be distinct");
+            }
+            Equal(null, Resolve(shared, "button", ["wrail-action-surface"], WrssPseudoState.Disabled).Get("opacity")?.Text,
+                theme.Descriptor.Id + " compound disabled content avoids dimming");
             Check(shared, "tray-item", [], []);
             Check(shared, "button", ["wrail-segmented-tabs__tab"], ["wrail-segmented-tabs__tab--selected"], false);
             Check(shared, "button", ["wrail-navigation-shell__compact-item"], ["wrail-navigation-shell__item--selected"], false);

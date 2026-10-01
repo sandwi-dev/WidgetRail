@@ -359,6 +359,11 @@ public sealed class SpotifyWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
         var intent = SpotifyRouteActionPolicy.Classify(action);
+        // Pending setup work blocks competing actions without declaring their
+        // buttons unavailable (which would evict native keyboard/controller focus).
+        lock (_gate)
+            if (_setupBusy && intent.Kind is (SpotifyActionKind.SetupDone or
+                    SpotifyActionKind.Disconnect)) return;
         if (await TryHandleQueueAdditionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (await TryHandleSearchActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (TryHandleNavigationBack(action)) return;
