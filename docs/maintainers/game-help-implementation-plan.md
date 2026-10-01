@@ -2,8 +2,10 @@
 
 Status: implementation started; no new user-facing feature is enabled yet.
 Updated: 2026-10-01. Branch: `codex/game-help-foundation`.
-Baseline: local main `8ec3e93d`. The separately running preview.23 and its
-unmerged control-consistency changes are not modified by this work.
+Baseline: local main `8ec3e93d`. Merge `81f292a1` also carries the delivered
+preview.23 control-consistency fixes (`783182d6`, `55bc7d4d`) into this feature
+branch so the eventual candidate retains them. Main and the older worktrees
+have not been modified by this feature work.
 
 This is the working plan and progress record. Update it with each implementation
 slice: code delivered, evidence, limitations, and the next concrete step. Checked
@@ -295,6 +297,10 @@ following sources. No game-memory access or autonomous game input.
   the next intent task. Preserve sender focus by default when supported, without
   restricting authors who require interaction. Policy is documented above and
   is not claimed implemented by the ordinary-activation tests.
+- 2026-10-01: Carried preview.23 Settings/Spotify source fixes and release baseline
+  into this branch with merge `81f292a1`; no merge conflicts. Existing worktrees
+  retained. Isolated native fixtures were closed through normal owned WM_CLOSE;
+  no user candidate is currently staged with these unfinished prerequisites.
 
 ## Validation and delivery policy
 
