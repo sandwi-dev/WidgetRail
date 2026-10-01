@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Web browser documents are bounded versioned and updated atomically", WebBrowserPresentationTests.Contract),
     ("Intent actions carry versioned bounded owned payloads", WidgetIntentPresentationTests.Declarations),
     ("Intent actions reject malformed and misplaced declarations", WidgetIntentPresentationTests.InvalidDeclarations),
     ("Intent action changes preserve atomic presentation authority", WidgetIntentPresentationTests.Updates),

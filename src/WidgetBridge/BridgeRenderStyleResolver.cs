@@ -135,6 +135,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.Grid => "grid",
         ViewNodeKind.TextEntry => "textEntry",
         ViewNodeKind.MediaViewport => "mediaViewport",
+        ViewNodeKind.WebBrowser => "webBrowser",
         ViewNodeKind.BackgroundSurface => "backgroundSurface",
         ViewNodeKind.FocusPresentationSurface => "focusPresentationSurface",
         ViewNodeKind.Select => "select",

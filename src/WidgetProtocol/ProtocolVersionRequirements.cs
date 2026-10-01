@@ -336,6 +336,10 @@ internal sealed class ProtocolVersionRequirements
                         path,
                         $"MediaViewport requires protocol version {ProtocolConstants.MediaViewportVersion} or later.");
                     break;
+                case ViewNodeKind.WebBrowser:
+                    Add("web-browser", ProtocolConstants.WebBrowserVersion, path,
+                        "WebBrowser requires protocol version 66 or later.");
+                    break;
                 case ViewNodeKind.BackgroundSurface:
                     Add(
                         "background-surface",

@@ -197,6 +197,8 @@ following sources. No game-memory access or autonomous game input.
 - [ ] Include the completed intent feature in the final Game Help physical-check candidate.
 
 ### 2. Browser and link consumers
+
+- [x] Protocol-66 reusable browser document/element, atomic updates and lazy Browser intent receiver.
 - [ ] Lazy host-owned web surface with controller cursor/scroll and toolbar.
 - [ ] Pinnable browser widget; normal/pinned focus qualification.
 - [x] Default-browser fallback through the standard intent (synthetic launcher qualified; physical candidate pending).
@@ -379,6 +381,22 @@ following sources. No game-memory access or autonomous game input.
 - Browser implementation remains next. Inspected WinUI Gallery WebView2 and the
   existing media owner: arbitrary web navigation must be a separate host-owned
   surface, preserving the media adapter's sealed-document/origin restrictions.
+- 2026-10-01: Added the reusable `UI.WebBrowser(WebBrowserDocument, id)` SDK
+  declaration and protocol 66. Bounded HTTP(S) URL, document ID, navigation revision
+  and accessible name participate in snapshot validation and atomic resource/
+  authority updates. The Browser widget starts empty, handles web intents and
+  declares full-widget pinning. Rendering preserves its navigation revision;
+  only new accepted requests advance it, including reopening the same address.
+  SDK: 152/152 (`browser-contract-tests01.log`); Browser widget: 2/2
+  (`browser-widget-tests02.log`). SDK API regenerated; native protocol artifact
+  regenerated and parity verifies 149 constants. No native browser is enabled or
+  claimed complete: the WebView owner, rendering/input adapter, durable placement,
+  permission policy and native tests remain next. See
+  `docs/reference/widget-web-browser.md` for this boundary and authoring contract.
+  Browser's manual address input currently uses the existing 96-character SDK
+  entry limit; longer URLs work through intents. Expand the bounded text-entry
+  contract deliberately for browser addresses and Game Help questions before
+  releasing the physical-check candidate.
 - 2026-10-01: Carried preview.23 Settings/Spotify source fixes and release baseline
   into this branch with merge `81f292a1`; no merge conflicts. Existing worktrees
   retained. Isolated native fixtures were closed through normal owned WM_CLOSE;

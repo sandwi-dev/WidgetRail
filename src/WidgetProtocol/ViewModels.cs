@@ -27,6 +27,7 @@ public enum ViewNodeKind
     ControllerGlyph,
     ModalLayer,
     IndexedCollection,
+    WebBrowser,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>
@@ -394,6 +395,7 @@ public sealed record ViewNode
     public string? ActionId { get; init; }
     /// <summary>Host-routed intent for this button/action surface's primary activation.</summary>
     public WidgetIntentRequest? Intent { get; init; }
+    public WebBrowserDocument? WebBrowser { get; init; }
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     public ControllerButton? ContextMenuButton { get; init; }
     public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];
@@ -555,7 +557,7 @@ public sealed record ViewNode
     [JsonIgnore]
     public bool IsFocusable => Kind is
         ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or
-        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection;
+        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection or ViewNodeKind.WebBrowser;
 }
 
 public sealed record ViewSnapshot

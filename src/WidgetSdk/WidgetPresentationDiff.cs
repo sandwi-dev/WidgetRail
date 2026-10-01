@@ -370,6 +370,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.AccessibilityValue, before.AccessibilityValue, after.AccessibilityValue);
         Add(PresentationProperty.ActionId, before.ActionId, after.ActionId);
         Add(PresentationProperty.Intent, before.Intent, after.Intent);
+        Add(PresentationProperty.WebBrowser, before.WebBrowser, after.WebBrowser);
         Add(PresentationProperty.ContextActions, before.ContextActions, after.ContextActions);
         Add(PresentationProperty.ContextMenuButton, before.ContextMenuButton, after.ContextMenuButton);
         Add(PresentationProperty.SelectOptions, before.SelectOptions, after.SelectOptions);

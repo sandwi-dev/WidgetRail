@@ -88,6 +88,7 @@ public enum PresentationProperty
     GridLayout,
     GridCell,
     Intent,
+    WebBrowser,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -150,6 +151,8 @@ public static class PresentationPropertyMetadata
 {
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
+        PresentationProperty.WebBrowser => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Resource |
+            PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.Transition => PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.ShowScrollbar => PresentationPropertyImpact.MeasureLayout |

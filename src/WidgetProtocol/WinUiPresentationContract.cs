@@ -44,7 +44,7 @@ public static class WinUiPresentationContract
             ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or
             ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image or
             ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or
-            ViewNodeKind.Icon or ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview))
+            ViewNodeKind.Icon or ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser))
             Add("kind", "winui_node_kind", "This node kind has no WinUI control mapping.");
         if (node.CollectionLayout is not null && node.Kind != ViewNodeKind.IndexedCollection)
             Add("collectionLayout", "winui_legacy_collection_layout", "Use an indexed/discovered collection for virtualized rows, or UI.ResponsiveGrid for a small static grid.");

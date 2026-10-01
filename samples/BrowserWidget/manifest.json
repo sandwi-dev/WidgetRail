@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.samples.browser",
+  "publisher": "widgetrail.samples",
+  "name": "Browser",
+  "version": "0.1.0",
+  "pinningSupported": true,
+  "fullWidgetPinningSupported": true,
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/BrowserWidget.dll", "type": "WidgetRail.Samples.Browser.BrowserWidget" },
+  "presentation": { "icon": "connection" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "intents": {
+    "handles": [{
+      "id": "widgetrail.web.open", "version": 1, "supportsPassiveDelivery": true,
+      "payloadSchema": {
+        "type": "object", "additionalProperties": false,
+        "properties": { "url": { "type": "string", "minLength": 1, "maxLength": 2048 } },
+        "required": ["url"]
+      }
+    }]
+  },
+  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 300 },
+  "resourceRequest": { "memoryMb": 48, "updateHz": 4 },
+  "architectures": ["x64"]
+}

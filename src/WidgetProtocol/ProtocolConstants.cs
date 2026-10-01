@@ -21,7 +21,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 65;
+    public const int CurrentVersion = 66;
+    public const int WebBrowserVersion = 66;
     public const int WidgetIntentVersion = 65;
     public const int GridLayoutVersion = 64;
     public const int MaximumGridLayoutTracks = 64;

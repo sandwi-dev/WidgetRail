@@ -847,6 +847,10 @@ method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Deconstruct(out s
 method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.ToString() -> string
+method WidgetRail.WidgetSdk.WebBrowserElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.WebBrowserElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WebBrowserElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WebBrowserElement.ToString() -> string
 method WidgetRail.WidgetSdk.Widget.CreatePinnedLayoutHandle(string id, string name, WidgetRail.WidgetProtocol.WidgetSurfaceHints surface, string? initialFocusId = null, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.PinnedLayoutHandle
 method WidgetRail.WidgetSdk.Widget.RenderSnapshot(string widgetInstanceId, long sequence) -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetActionEvent.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionEvent
@@ -1820,9 +1824,12 @@ method static WidgetRail.WidgetSdk.UI.ToastWithIcon(WidgetRail.WidgetSdk.WidgetI
 method static WidgetRail.WidgetSdk.UI.ValueRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, string value, string id, string? description = null, string? valueAccessibilityLabel = null) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.ValueRow(string label, string value, string id, string? description = null, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? valueAccessibilityLabel = null) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.VerticalScroll(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ScrollElement
+method static WidgetRail.WidgetSdk.UI.WebBrowser(WidgetRail.WidgetProtocol.WebBrowserDocument document, string id) -> WidgetRail.WidgetSdk.WebBrowserElement
 method static WidgetRail.WidgetSdk.UI.WindowPreview(string windowId, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain, double aspectRatio = 1.7777777777777777) -> WidgetRail.WidgetSdk.WindowPreviewElement
 method static WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Equality(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
 method static WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Inequality(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
+method static WidgetRail.WidgetSdk.WebBrowserElement.op_Equality(WidgetRail.WidgetSdk.WebBrowserElement? left, WidgetRail.WidgetSdk.WebBrowserElement? right) -> bool
+method static WidgetRail.WidgetSdk.WebBrowserElement.op_Inequality(WidgetRail.WidgetSdk.WebBrowserElement? left, WidgetRail.WidgetSdk.WebBrowserElement? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetActionEvent.op_Equality(WidgetRail.WidgetSdk.WidgetActionEvent? left, WidgetRail.WidgetSdk.WidgetActionEvent? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetActionEvent.op_Inequality(WidgetRail.WidgetSdk.WidgetActionEvent? left, WidgetRail.WidgetSdk.WidgetActionEvent? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.op_Equality(WidgetRail.WidgetSdk.WidgetActionFailedEventArgs? left, WidgetRail.WidgetSdk.WidgetActionFailedEventArgs? right) -> bool
@@ -2163,6 +2170,8 @@ method virtual WidgetRail.WidgetSdk.TextEntryElement.Equals(WidgetRail.WidgetSdk
 method virtual WidgetRail.WidgetSdk.ToastElement.<Clone>$() -> WidgetRail.WidgetSdk.ToastElement
 method virtual WidgetRail.WidgetSdk.ToastElement.Equals(WidgetRail.WidgetSdk.ToastElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.WebBrowserElement.<Clone>$() -> WidgetRail.WidgetSdk.WebBrowserElement
+method virtual WidgetRail.WidgetSdk.WebBrowserElement.Equals(WidgetRail.WidgetSdk.WebBrowserElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.Widget.OnActionAsync(WidgetRail.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual WidgetRail.WidgetSdk.Widget.OnEmbeddedMediaPlaybackEventAsync(WidgetRail.WidgetProtocol.EmbeddedMediaPlaybackEvent playbackEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -2460,6 +2469,7 @@ property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetPinne
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScenarioRunResult.FinalSnapshot { get; set; }
 property WidgetRail.WidgetProtocol.VirtualCollectionWindowChange WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowChange { get; set; }
+property WidgetRail.WidgetProtocol.WebBrowserDocument WidgetRail.WidgetSdk.WebBrowserElement.Document { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.IconElement.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.NavigationShellDestination.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.WidgetIcon.FallbackGlyph { get; }
@@ -3253,6 +3263,7 @@ type sealed class WidgetRail.WidgetSdk.TextEntryElement : System.IEquatable<Widg
 type sealed class WidgetRail.WidgetSdk.TileArtwork
 type sealed class WidgetRail.WidgetSdk.ToastElement : System.IEquatable<WidgetRail.WidgetSdk.ToastElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest : System.IEquatable<WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest>
+type sealed class WidgetRail.WidgetSdk.WebBrowserElement : System.IEquatable<WidgetRail.WidgetSdk.WebBrowserElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.WidgetActionEvent : System.IEquatable<WidgetRail.WidgetSdk.WidgetActionEvent>
 type sealed class WidgetRail.WidgetSdk.WidgetAppLaunchObservation : System.IEquatable<WidgetRail.WidgetSdk.WidgetAppLaunchObservation>
 type sealed class WidgetRail.WidgetSdk.WidgetAppLibraryArtwork : System.IEquatable<WidgetRail.WidgetSdk.WidgetAppLibraryArtwork>

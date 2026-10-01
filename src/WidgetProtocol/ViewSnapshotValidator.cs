@@ -808,6 +808,15 @@ public static class ViewSnapshotValidator
             var isContainer = node.Kind is
                 ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection;
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
+            if (node.Kind == ViewNodeKind.WebBrowser)
+            {
+                if (node.WebBrowser is not { } document || !document.IsWellFormed() || node.AccessibilityLabel != document.AccessibleName ||
+                    node.Children.Count != 0 || node.ActionId is not null || node.ValueChangedActionId is not null ||
+                    node.Intent is not null || node.InputScopeId is not null || node.Shortcuts.Count != 0 || node.ContextActions.Count != 0)
+                    Add(path, "invalid_web_browser", "WebBrowser requires a bounded document and host-owned interaction, without child actions.");
+            }
+            else if (node.WebBrowser is not null)
+                Add(path, "web_browser_not_allowed", "Browser documents apply only to WebBrowser nodes.");
             if (node.Kind is ViewNodeKind.WindowPreview)
             {
                 CheckIdentifier(node.WindowId, $"{path}.windowId", "window ID");
