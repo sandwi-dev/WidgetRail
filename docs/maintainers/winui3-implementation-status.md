@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Refresh Settings after package installation — 2026-10-01, validated
+### Refresh Settings after package installation — 2026-10-01, candidate delivered
 
 The install completion already refreshed the Bridge catalog, but Settings consumed
 its package notification only as toast text. Its cached widget/permission projections
@@ -20,8 +20,12 @@ busy/disabled page; existing reconciliation retains page and selected package.
 Settings 0.1.7, preview.22. Settings 81/81 pass, with the install regression now
 publishing a package and consuming completion while remaining on Widgets, without
 refresh/restart, and checking that Install remains enabled and the new row disabled.
-Evidence: artifacts/install-refresh. User approved restart; candidate publication
-and live isolated install verification next. No installer or worktree cleanup.
+Evidence: artifacts/install-refresh. Source commit d07e04ae published preview.22;
+production/developer catalog checks passed (8/12 widgets). Preview.21 closed normally.
+User explicitly took ownership of install-flow verification, so skip isolated live
+installation checks. Preview.22 launched with --show --widget=settings and the normal
+profile; candidate PID is recorded in artifacts/install-refresh/candidate-pid.txt.
+No installer, merge, push or worktree cleanup. Physical verification is pending user.
 
 ### WinUI local widget installation — 2026-10-01, candidate running
 
