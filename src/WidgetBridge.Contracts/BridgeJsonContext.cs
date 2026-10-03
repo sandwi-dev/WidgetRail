@@ -4,6 +4,16 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.WidgetBridge;
 
 // Closed presentation transport roots; nested contracts are generated recursively.
+[JsonSerializable(typeof(BridgeProviderDocumentRequest))]
+[JsonSerializable(typeof(BridgeProviderDocument))]
+[JsonSerializable(typeof(BridgeMediaPlayerRequest))]
+[JsonSerializable(typeof(HostMediaPlayerSource))]
+[JsonSerializable(typeof(BridgeCaptureTake))]
+[JsonSerializable(typeof(BridgeCaptureReference))]
+[JsonSerializable(typeof(BridgeCaptureCurrent))]
+[JsonSerializable(typeof(BridgeCaptureAttachmentRequest))]
+[JsonSerializable(typeof(WidgetRail.PlatformBroker.HostCaptureCompletion))]
+[JsonSerializable(typeof(WidgetRail.PlatformBroker.HostCaptureAttachment))]
 [JsonSerializable(typeof(BridgeEnvelope))]
 [JsonSerializable(typeof(BridgeHello))]
 [JsonSerializable(typeof(WidgetRail.PlatformDiagnostics.ControllerControlStatus))]

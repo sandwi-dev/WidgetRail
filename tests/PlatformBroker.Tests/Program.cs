@@ -5,6 +5,12 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Restricted documents issue opaque references and discard revoke regrant and dispose exactly", ProviderDocumentBrokerTests.AttributionLifecycleAsync),
+    ("Restricted documents preserve multiline HTML through the broker pipe", ProviderDocumentBrokerTests.MultilinePipeAsync),
+    ("Provider attribution markup is bounded owner-scoped and retired", ProviderDocumentTests.RunAsync),
+    ("Window capture application metadata matches exact window identity", WindowCaptureTests.MetadataAsync),
+    ("Window capture ownership bounds expiry and attachment cleanup", WindowCaptureTests.RunAsync),
+    ("Window capture foreground selection needs capture permission but no window list", WindowCaptureTests.ForegroundAuthorityAsync),
     ("Display restore pipe deadlines and rollback events reach the client", DisplayRestorePipeTests.RunAsync),
     ("Task windows are permission gated and tokens stay broker scoped", TaskWindowBroker),
     ("Host activation effects require a successful authorized switch", HostActivationAuthorization),
@@ -79,7 +85,11 @@ var allTests = new (string Name, Func<Task> Run)[]
 
 var runningRegistrationOnly =
     args.Contains("--running-registration-only", StringComparer.Ordinal);
-var tests = args.Contains("--display-timeouts-only", StringComparer.Ordinal)
+var tests = args.Contains("--documents-only", StringComparer.Ordinal)
+    ? allTests.Where(test => test.Name.StartsWith("Restricted documents", StringComparison.Ordinal) || test.Name.StartsWith("Provider attribution", StringComparison.Ordinal)).ToArray()
+    : args.Contains("--capture-only", StringComparer.Ordinal)
+    ? allTests.Where(test => test.Name.StartsWith("Window capture", StringComparison.Ordinal)).ToArray()
+    : args.Contains("--display-timeouts-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name == "Display restore pipe deadlines and rollback events reach the client").ToArray()
     : runningRegistrationOnly
     ? allTests.Where(test => test.Name is
@@ -127,7 +137,7 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(8, rootFields.Count(field =>
+    Assert.Equal(10, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
@@ -140,6 +150,7 @@ static Task CapabilityDomainAuthorityIsSingular()
         typeof(MediaCapabilityDomain),
         typeof(PrivateSecretCapabilityDomain),
         typeof(PrivateStateCapabilityDomain),
+        typeof(WindowCaptureCapabilityDomain),
     ];
     foreach (var domainType in domainTypes)
     {
@@ -430,7 +441,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(40, PlatformCapabilities.All.Count);
+    Assert.Equal(42, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -476,7 +487,8 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(PlatformCapabilities.All
         .Where(capability => capability.Id != PlatformCapabilities.AppLibraryLaunchV1 &&
             capability.Id != PlatformCapabilities.TaskWindowsSwitchV1 &&
-            capability.Id != PlatformCapabilities.DisplaysControlV1)
+            capability.Id != PlatformCapabilities.DisplaysControlV1 &&
+            capability.Id != PlatformCapabilities.ProviderDocumentsV1)
         .All(capability => capability.InFlightContinuationOperations is null ||
             capability.InFlightContinuationOperations.Count == 0));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
@@ -3122,9 +3134,9 @@ static async Task RetiredConsentMigratesSafely()
     using var temp = new TemporaryDirectory();
     Directory.CreateDirectory(temp.Path);
     var documentPath = Path.Combine(temp.Path, "consent-v1.json");
-    var retiredSpotifyCapabilities = RetiredSpotifyCapabilities();
+    var retiredCapabilities = RetiredSpotifyCapabilities().Append("network.gemini.game-help.v1").ToArray();
     var retiredEntries = string.Join(",\n",
-        retiredSpotifyCapabilities.Select((capabilityId, index) =>
+        retiredCapabilities.Select((capabilityId, index) =>
             $$"""{"packageId":"dev.retired.widget.{{index % 3}}","publisherId":"dev.retired.publisher.{{index % 2}}","capabilityId":"{{capabilityId}}","decision":"{{(index % 2 == 0 ? "grant" : "deny")}}"}"""));
     await File.WriteAllTextAsync(documentPath,
         $$"""
@@ -3142,7 +3154,7 @@ static async Task RetiredConsentMigratesSafely()
     Assert.Equal(2, migrated.Entries.Count);
     Assert.True(!migrated.Entries.Any(entry =>
         entry.CapabilityId == "system.activity.recent.activate.v1"));
-    Assert.True(retiredSpotifyCapabilities.All(capabilityId =>
+    Assert.True(retiredCapabilities.All(capabilityId =>
         !migrated.Entries.Any(entry => entry.CapabilityId == capabilityId)));
     var identity = new BrokerWidgetIdentity("dev.test.widget", "dev.test.publisher", "test");
     Assert.Equal(ConsentDecision.Grant, await store.GetDecisionAsync(
@@ -3154,7 +3166,7 @@ static async Task RetiredConsentMigratesSafely()
         ConsentDecision.Grant);
     var persisted = await File.ReadAllTextAsync(documentPath);
     Assert.True(!persisted.Contains("system.activity.recent.activate.v1", StringComparison.Ordinal));
-    Assert.True(retiredSpotifyCapabilities.All(capabilityId =>
+    Assert.True(retiredCapabilities.All(capabilityId =>
         !persisted.Contains(capabilityId, StringComparison.Ordinal)));
     Assert.Equal(ConsentDecision.Grant, await store.GetDecisionAsync(
         identity, PlatformCapabilities.AudioSessionsReadV1));

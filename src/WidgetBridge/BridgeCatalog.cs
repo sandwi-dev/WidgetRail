@@ -940,11 +940,8 @@ public sealed class BridgeCatalog
             throw new BridgeCatalogException(
                 "incompatible_host",
                 $"Bundled widget '{source.Id}' is incompatible with this host.");
-        if (!string.Equals(manifest.Entrypoint.Runtime,
-                WidgetEntrypointRuntimes.DotNetWorker, StringComparison.Ordinal))
-            throw new BridgeCatalogException(
-                "unsupported_runtime",
-                $"Bundled widget '{source.Id}' must use the sandboxed worker runtime.");
+        var executionTrust = WidgetManifestTrust.Resolve(manifest);
+        var sandboxed = executionTrust == WidgetExecutionTrust.Sandboxed;
 
         var declaredCapabilities = manifest.Permissions
             .Concat(manifest.OptionalPermissions)
@@ -957,7 +954,7 @@ public sealed class BridgeCatalog
                 "unsupported_capability",
                 $"Bundled widget '{source.Id}' declares an unsupported capability.");
         var assembly = Path.GetFullPath(
-            manifest.Entrypoint.Assembly!.Replace('/', Path.DirectorySeparatorChar),
+            WidgetEntrypointRuntimes.ResolvePackagePath(manifest.Entrypoint).Replace('/', Path.DirectorySeparatorChar),
             packageRoot);
         if (!IsWithin(packageRoot, assembly) || !File.Exists(assembly))
             throw new BridgeCatalogException(
@@ -975,7 +972,7 @@ public sealed class BridgeCatalog
             PublisherId = manifest.Publisher,
             Name = manifest.Name,
             InstanceId = source.InstanceId,
-            WorkerExecutable = workerHost,
+            WorkerExecutable = sandboxed ? workerHost : assembly,
             StyleFile = styleFile,
         }, packageRoot, verification.WrssDigests);
         IReadOnlyDictionary<string, ResolvedPackageIconMetadata> iconAssets;
@@ -1005,20 +1002,21 @@ public sealed class BridgeCatalog
             PackageIcon = packageIcon,
             PinningSupported = manifest.PinningSupported,
             FullWidgetPinningSupported = manifest.FullWidgetPinningSupported,
-            WorkerExecutable = workerHost,
-            WorkerArguments =
+            WorkerExecutable = sandboxed ? workerHost : assembly,
+            WorkerArguments = sandboxed ?
             [
                 "--package-root", packageRoot,
                 "--widget-assembly", assembly,
                 "--widget-type", manifest.Entrypoint.Type!,
-            ],
+            ] : [],
             DeclaredCapabilities = declaredCapabilities,
             Intents = manifest.Intents,
-            RequiresAppContainer = true,
-            IsolationKey = BundledIsolationKey(manifest.Publisher, manifest.Id),
+            ExecutionTrust = executionTrust,
+            RequiresAppContainer = sandboxed,
+            IsolationKey = sandboxed ? BundledIsolationKey(manifest.Publisher, manifest.Id) : null,
             GrantsBundledPermissionDefaults = manifest.Publisher == "widgetrail.firstparty",
-            ReadOnlyPaths = [packageRoot],
-            UsesGenericWorkerHost = true,
+            ReadOnlyPaths = sandboxed ? [packageRoot] : [],
+            UsesGenericWorkerHost = sandboxed,
             StyleFile = styleFile,
             MemoryRequestMb = manifest.ResourceRequest.MemoryMb,
             ResidencyPolicy = residency,

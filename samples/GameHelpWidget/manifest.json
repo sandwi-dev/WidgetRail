@@ -1,0 +1,111 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.samples.game-help",
+  "publisher": "widgetrail.samples",
+  "name": "Game Help",
+  "version": "0.1.0",
+  "pinningSupported": true,
+  "fullWidgetPinningSupported": true,
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "full-trust-application-v1",
+    "executable": "payload/GameHelpApplication.exe"
+  },
+  "presentation": {
+    "icon": "connection"
+  },
+  "permissions": [
+    "system.apps.windows.capture.v1",
+    "presentation.documents.v1"
+  ],
+  "optionalPermissions": [],
+  "intents": {
+    "requests": [
+      {
+        "id": "widgetrail.web.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      {
+        "id": "widgetrail.video.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "videoId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "startTimeSeconds": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 604800
+            }
+          },
+          "required": [
+            "provider",
+            "videoId"
+          ]
+        }
+      },
+      {
+        "id": "widgetrail.video.search",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "provider",
+            "query"
+          ]
+        }
+      }
+    ]
+  },
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "keep-alive"
+  },
+  "resourceRequest": {
+    "memoryMb": 96,
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64"
+  ]
+}

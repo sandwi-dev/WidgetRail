@@ -71,42 +71,70 @@ internal sealed partial class OverlayShellPage
         pinnedPreferences = await pinnedStore.LoadAsync(lifetime.Token);
     }
 
-    private async Task RestorePinnedAsync()
+    private sealed record PinChoice(string Label, string AutomationId, string LayoutId, bool Media = false);
+
+    private List<PinChoice> GetPinChoices(BridgeWidgetDescriptor descriptor)
     {
-        if (pinnedPreferences.WidgetId is not { } widget || !pinnedPreferences.Placements.TryGetValue(widget, out var placement) ||
-            owner is null || catalogItems.FirstOrDefault(item => item.Id == widget) is not { PinningSupported: true } descriptor ||
-            placement.LayoutId == WidgetPinnedProjection.FullWidgetLayoutId && !descriptor.FullWidgetPinningSupported) return;
-        // A compact media preference never starts an unrequested document or playback.
-        // It is restored only after the user explicitly opens that media widget.
-        if (placement.LayoutId == CompactMediaLayout) { restoreCompactWidget = widget; TryRestoreCompact(); }
-        else await PinAsync(widget, placement.LayoutId, restoring: true);
+        var choices = new List<PinChoice>();
+        if (owner?.Session.GetState(descriptor.Id)?.LastGood is not { } frame) return choices;
+        if (descriptor.PinningSupported && mediaOwner?.CanPin(descriptor.Id, pinned?.Media) == true &&
+            frame.Snapshot.EmbeddedMediaSession?.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) == true)
+            choices.Add(new("Pin media", "Pin.Media", CompactMediaLayout, Media: true));
+        if (descriptor.PinningSupported)
+            foreach (var layout in frame.Snapshot.PinnedLayouts)
+                choices.Add(new("Pin " + layout.Name, "Pin." + layout.Id, layout.Id));
+        if (descriptor.FullWidgetPinningSupported && frame.Snapshot.EmbeddedMediaSession is null)
+            choices.Add(new("Pin full widget", "Pin.Full", WidgetPinnedProjection.FullWidgetLayoutId));
+        return choices;
     }
 
     private void AddPinnedCommands(BridgeWidgetDescriptor descriptor, Action<string, string, Func<Task>> add)
     {
+        var choices = GetPinChoices(descriptor);
         if (pinned is { } current)
         {
-            add("Interact with pinned widget", "Pin.Interact", EnterPinnedAsync);
-            add("Move / resize pinned widget", "Pin.Adjust", BeginPinnedAdjustmentAsync);
-            add($"Pinned opacity: {current.Window.OpacityPercent}%", "Pin.Opacity", () => BeginPinnedAdjustmentAsync(opacityOnly: true));
+            if (current.WidgetId != descriptor.Id && choices.Count > 0)
+                add("Replace pin", "Pin.Replace", () => ReplacePinAsync(descriptor, current));
             add("Unpin widget", "Pin.Remove", () => UnpinAsync(save: true));
+            add("Move / resize pinned widget", "Pin.Adjust", BeginPinnedAdjustmentAsync);
+            add($"Change pinned opacity: {current.Window.OpacityPercent}%", "Pin.Opacity", () => BeginPinnedAdjustmentAsync(opacityOnly: true));
+            add("Interact with pinned widget", "Pin.Interact", EnterPinnedAsync);
         }
-        else if (owner?.Session.GetState(descriptor.Id)?.LastGood is { } frame)
-        {
-            if (descriptor.PinningSupported && mediaOwner?.CanPin(descriptor.Id) == true &&
-                frame.Snapshot.EmbeddedMediaSession?.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) == true)
-                add("Pin media", "Pin.Media", () => PinMediaAsync(descriptor.Id));
-            if (descriptor.PinningSupported)
-                foreach (var layout in frame.Snapshot.PinnedLayouts)
-                    add("Pin " + layout.Name, "Pin." + layout.Id, () => PinAsync(descriptor.Id, layout.Id));
-            if (descriptor.FullWidgetPinningSupported && frame.Snapshot.EmbeddedMediaSession is null)
-                add("Pin full widget", "Pin.Full", () => PinAsync(descriptor.Id, WidgetPinnedProjection.FullWidgetLayoutId));
-        }
+        else
+            foreach (var choice in choices)
+                add(choice.Label, choice.AutomationId, () => ExecutePinChoiceAsync(descriptor.Id, choice));
     }
 
-    private async Task PinAsync(string widgetId, string layoutId, bool restoring = false)
+    private Task ExecutePinChoiceAsync(string widgetId, PinChoice choice, PinnedSurface? expected = null) =>
+        choice.Media ? PinMediaAsync(widgetId, expected) : PinAsync(widgetId, choice.LayoutId, expected);
+
+    private async Task ReplacePinAsync(BridgeWidgetDescriptor descriptor, PinnedSurface expected)
     {
-        if (owner is null || retired) return;
+        var originalOwner = owner;
+        var intent = pinIntent;
+        var selection = selectionVersion;
+        var visibleSession = visibleSince;
+        bool Current() => !retired && visible && foreground && visibleSince == visibleSession && selectionVersion == selection &&
+            ReferenceEquals(owner, originalOwner) && ReferenceEquals(pinned, expected) && pinIntent == intent &&
+            activeWidget == descriptor.Id && requestedWidget == descriptor.Id &&
+            owner?.Session.GetState(descriptor.Id)?.LastGood is { } latest && SameSurfaceOwner(descriptor, latest.Descriptor);
+        if (!Current()) return;
+        var choices = GetPinChoices(descriptor);
+        if (choices.Count == 0) return;
+        var selected = choices[0].AutomationId;
+        if (choices.Count > 1)
+            selected = await ShowHostChoiceAsync("Replace pin", $"Choose a pin layout for {descriptor.Name}.",
+                choices.Select(choice => new HostDialogChoice(choice.AutomationId, choice.Label)).ToArray(),
+                lifetime.Token, primaryButtonText: "Replace pin");
+        if (selected is null || !Current()) return;
+        // Layouts and media readiness can change while the chooser is open.
+        var choice = GetPinChoices(descriptor).FirstOrDefault(choice => choice.AutomationId == selected);
+        if (choice is not null) await ExecutePinChoiceAsync(descriptor.Id, choice, expected);
+    }
+
+    private async Task PinAsync(string widgetId, string layoutId, PinnedSurface? expected = null)
+    {
+        if (owner is null || retired || expected is not null && !ReferenceEquals(pinned, expected)) return;
         var intent = ++pinIntent;
         var failureCurrent = CapturePinIntentFailureGuard(intent);
         try
@@ -114,16 +142,15 @@ internal sealed partial class OverlayShellPage
             await transitions.WaitAsync(lifetime.Token);
             try
             {
-                if (retired || intent != pinIntent) return;
-                await RemovePinnedCoreAsync();
+                if (retired || intent != pinIntent || expected is not null && !ReferenceEquals(pinned, expected)) return;
                 pendingPinWidget = widgetId;
                 var frame = await owner.Session.EstablishPresentationAsync(owner.Session.GetTarget(widgetId), LifecycleFor(widgetId), lifetime.Token);
                 if (retired || intent != pinIntent) return;
-                // Apply the same full-widget media restriction as the tray's
-                // offered commands. A saved layout is a preference, not an
-                // admission to a media placement the new host cannot own.
-                if (restoring && layoutId == WidgetPinnedProjection.FullWidgetLayoutId && frame.Snapshot.EmbeddedMediaSession is not null) return;
                 var projection = owner.Session.ResolvePinnedProjection(frame, layoutId);
+                // Resolve first so a withdrawn layout cannot discard the current pin.
+                if (expected is not null && !ReferenceEquals(pinned, expected)) return;
+                await RemovePinnedCoreAsync();
+                if (retired || intent != pinIntent) return;
                 var selection = await owner.Session.SelectPinnedLayoutAsync(projection, cancellationToken: lifetime.Token);
                 // Selection can synchronously publish its demanded content. Use
                 // the latest genuine frame rather than the pre-selection shell.
@@ -146,7 +173,7 @@ internal sealed partial class OverlayShellPage
                     if (retired || intent != pinIntent || !selection.IsCurrent)
                         throw new WidgetPresentationSessionException("pinned_input_stale", "Pinned placement owner retired.");
                     var (placement, limits, displayId) = prepared;
-                    presenter = new() { Session = owner.Session };
+                    presenter = new() { Session = owner.Session, BrowserOwner = browserOwner };
                     presenter.SetAutomaticFocusEnabled(false);
                     presenter.SetPresentationInputEnabled(false);
                     await presenter.SetPresentationActiveAsync(false);
@@ -178,7 +205,7 @@ internal sealed partial class OverlayShellPage
                     if (owner.Session.GetState(widgetId) is { } currentState) ApplyPinnedState(currentState);
                     // Display clamping/DPI rounding on startup is temporary.
                     // Preserve the user's durable bounds until an explicit edit.
-                    if (!restoring) await SavePinnedAsync(surface);
+                    await SavePinnedAsync(surface);
                     UpdateDiagnostics();
                 }
                 catch
@@ -377,11 +404,7 @@ internal sealed partial class OverlayShellPage
             {
                 if (intent != pinIntent || !ReferenceEquals(owner, requestOwner) || !ReferenceEquals(pinned, expected)) return;
                 await RemovePinnedCoreAsync();
-                if (save && intent == pinIntent)
-                {
-                    pinnedPreferences = pinnedPreferences with { WidgetId = null };
-                    if (pinnedStore is not null) await pinnedStore.SaveAsync(pinnedPreferences, lifetime.Token);
-                }
+
             }
             finally { transitions.Release(); }
         }
@@ -416,7 +439,7 @@ internal sealed partial class OverlayShellPage
         if (values.Count >= ShellPreferences.MaximumWidgets && !values.ContainsKey(current.WidgetId)) values.Remove(values.Keys.First());
         values[current.WidgetId] = PinnedPlacementPolicy.Capture(current.Window.Bounds, current.Monitor, current.Limits,
             current.LayoutId, current.Window.OpacityPercent);
-        var next = new PinnedPreferences(1, current.WidgetId, values);
+        var next = new PinnedPreferences(1, values);
         if (required && pinnedStore is null) throw new InvalidOperationException("Pinned placement storage is unavailable.");
         if (pinnedStore is not null)
         {

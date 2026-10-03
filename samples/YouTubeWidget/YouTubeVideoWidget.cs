@@ -38,19 +38,39 @@ public sealed partial class YouTubeVideoWidget : Widget
     // one frame across the header, the transport, and the media session.
     public override WidgetView Render() => RenderApplication(_model.Value);
 
-    public override ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
+    public override async ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
+    {
+        var contract = CompiledWidgetIntentContract.Create(WidgetIntentContracts.VideoSearch);
+        if (!request.IsWellFormed() || request.ContractId != contract.Id || request.Version != contract.Version ||
+            request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload) ||
+            request.Payload.GetProperty("provider").GetString() != "youtube" ||
+            string.IsNullOrWhiteSpace(request.Payload.GetProperty("query").GetString())) return false;
+        return (await _application.GetConfigurationAsync(cancellationToken).ConfigureAwait(false)).IsConfigured;
+    }
+
+    public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.ContractId == WidgetIntentContracts.SearchVideo)
+        {
+            if (!IsActive || !await IsIntentAvailableAsync(request, cancellationToken).ConfigureAwait(false)) return WidgetIntentResult.Rejected;
+            cancellationToken.ThrowIfCancellationRequested();
+            var query = request.Payload.GetProperty("query").GetString()!.Trim();
+            _model.Update(state => state.WithConfigurationSummary(true).WithQueryDraft(query)
+                .WithRootSection(YouTubeRootSection.Discover, SearchFocusGroupId));
+            StartSearch();
+            return WidgetIntentResult.Accepted;
+        }
         var contract = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Video);
         if (!IsActive || !request.IsWellFormed() || request.ContractId != contract.Id || request.Version != contract.Version ||
             request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload) ||
             request.Payload.GetProperty("provider").GetString() != "youtube" ||
             request.Payload.GetProperty("videoId").GetString() is not { } videoId || !YouTubeLinkParser.IsVideoId(videoId))
-            return ValueTask.FromResult(WidgetIntentResult.Rejected);
+            return WidgetIntentResult.Rejected;
         var start = request.Payload.TryGetProperty("startTimeSeconds", out var value) ? value.GetDouble() : (double?)null;
-        if (start > 86_400) return ValueTask.FromResult(WidgetIntentResult.Rejected);
+        if (start > 86_400) return WidgetIntentResult.Rejected;
         RunPlaybackLatest(new(YouTubePlaybackIntent.OpenVideoIntent, VideoId: videoId, StartTimeSeconds: start));
-        return ValueTask.FromResult(WidgetIntentResult.Accepted);
+        return WidgetIntentResult.Accepted;
     }
 
     private WidgetView RenderPlayer(YouTubeWidgetState state)

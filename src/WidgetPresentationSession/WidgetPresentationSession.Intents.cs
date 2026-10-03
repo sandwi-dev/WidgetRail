@@ -8,7 +8,7 @@ public sealed partial class WidgetPresentationSession
 {
     public bool HasIntentAction(WidgetPresentationFrame displayed, WidgetActionEvent action)
     {
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (IntentActionAuthority.Revalidate(displayed.Snapshot, displayed.Snapshot, action) is null) return false;
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
@@ -33,7 +33,13 @@ public sealed partial class WidgetPresentationSession
             new BridgeIntentPrepareRequest(displayed.Authority.WidgetId, displayed.Authority.SnapshotSequence,
                 displayed.Authority.WorkerRun!, action, pinnedLayout, indexedItem), BridgeMessageTypes.IntentPrepared, cancellationToken).ConfigureAwait(false);
         var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
-        if (result.SourceWidgetId != displayed.Authority.WidgetId || !Enum.IsDefined(result.Kind) || !Enum.IsDefined(result.Presentation) || result.Destinations is null ||
+        ValidateIntentPreparation(result, displayed.Authority.WidgetId);
+        return result;
+    }
+
+    private static void ValidateIntentPreparation(WidgetIntentPreparation result, string sourceId)
+    {
+        if (result.SourceWidgetId != sourceId || !Enum.IsDefined(result.Kind) || !Enum.IsDefined(result.Presentation) || result.Destinations is null ||
             result.Destinations.Count > 256 || result.Destinations.Any(item => item is null || !Safe(item.WidgetId) ||
                 string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 256) ||
             result.Destinations.Select(item => item.WidgetId).Distinct(StringComparer.Ordinal).Count() != result.Destinations.Count ||
@@ -44,7 +50,6 @@ public sealed partial class WidgetPresentationSession
             result.Kind == WidgetIntentLaunchKind.ChooseHandler && result.Destinations.Count < 2 ||
             result.Kind == WidgetIntentLaunchKind.ExternalBrowser && result.Destinations.Count != 0)
             throw new BridgeProtocolException("Invalid intent preparation response.");
-        return result;
     }
 
     public async Task<WidgetIntentCompletion> CommitIntentAsync(WidgetIntentPreparation prepared,
@@ -54,7 +59,7 @@ public sealed partial class WidgetPresentationSession
             throw new ArgumentException("No intent ticket is available.", nameof(prepared));
         if (target is not null)
         {
-            lock (_gate)
+            using (_gate.Enter())
             {
                 _ = ValidateDisplayedOrdinaryFrameLocked(target, target.Snapshot.ActiveInputScopeId);
                 if (target.Authority.WorkerRun is null || !prepared.Destinations.Any(item => item.WidgetId == target.Authority.WidgetId))
@@ -74,7 +79,7 @@ public sealed partial class WidgetPresentationSession
             !prepared.Destinations.Any(item => item.WidgetId == selection.WidgetId && item.SupportsPassiveDelivery))
             throw PinnedStale("The intent does not support this pinned destination.");
         using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
-        lock (_gate)
+        using (_gate.Enter())
         {
             _ = DemandPinnedProjectionLocked(projection);
             if (!IsPinnedSelectionCurrent(selection) || selection.WidgetId != projection.Frame.Authority.WidgetId ||
@@ -84,9 +89,28 @@ public sealed partial class WidgetPresentationSession
         }
         var result = await CommitIntentCoreAsync(prepared, projection.Frame,
             new(projection.LayoutId, projection.Frame.Authority.SnapshotSequence), cancellationToken).ConfigureAwait(false);
-        lock (_gate)
+        using (_gate.Enter())
             if (!IsPinnedSelectionCurrent(selection)) throw PinnedStale("The intent destination pin retired during delivery.");
         return result;
+    }
+
+    /// <summary>Delivers to an existing host-owned compact player without moving source focus.</summary>
+    public async Task<WidgetIntentCompletion> CommitCompactMediaIntentAsync(WidgetIntentPreparation prepared,
+        WidgetMediaPresentation compact, CancellationToken cancellationToken = default)
+    {
+        WidgetPresentationFrame target;
+        using (_gate.Enter())
+        {
+            if (!Safe(prepared.SourceWidgetId) || !Guid.TryParseExact(prepared.TicketId, "N", out _) ||
+                prepared.Presentation != WidgetIntentPresentation.PreferExistingSurface || compact.Kind != MediaPresentationKind.CompactPinned ||
+                !IsMediaPresentationCurrent(compact) ||
+                !prepared.Destinations.Any(item => item.WidgetId == compact.Document.Authority.WidgetId && item.SupportsPassiveDelivery))
+                throw PinnedStale("The compact intent destination retired.");
+            target = _states[compact.Document.Authority.WidgetId].LastGood!;
+            if (target.Authority.WorkerRun is null) throw PinnedStale("The compact intent worker retired.");
+        }
+        return await CommitIntentCoreAsync(prepared, target,
+            new("host.embedded-media.compact", target.Authority.SnapshotSequence, compact.Document.SessionId), cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<WidgetIntentCompletion> CommitIntentCoreAsync(WidgetIntentPreparation prepared,
@@ -98,6 +122,13 @@ public sealed partial class WidgetPresentationSession
                 new BridgeIntentCommitRequest(prepared.SourceWidgetId, prepared.TicketId!, target?.Authority.WidgetId,
                     target?.Authority.WorkerRun, pinnedTarget), BridgeMessageTypes.IntentCompleted, cancellationToken).ConfigureAwait(false);
             var result = BridgeJson.FromElement<WidgetIntentCompletion>(response.Payload);
+            if (!Enum.IsDefined(result.Status)) throw new BridgeProtocolException("Invalid intent status.");
+            if (result.FollowUp is { } followUp)
+            {
+                if (result.Accepted || result.Status is not (WidgetIntentStatus.Unavailable or WidgetIntentStatus.Rejected))
+                    throw new BridgeProtocolException("Invalid intent follow-up.");
+                ValidateIntentPreparation(followUp, prepared.SourceWidgetId);
+            }
             if (result.RequiresInteraction && (!result.Accepted || prepared.Kind is not (WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler)))
                 throw new BridgeProtocolException("Invalid intent interaction request.");
             if (result.ExternalUrl is { } url && (!result.Accepted || prepared.Kind != WidgetIntentLaunchKind.ExternalBrowser ||

@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Media player sources are versioned bounded and source-specific", MediaPlayerPresentationTests.Contract),
     ("Web browser documents are bounded versioned and updated atomically", WebBrowserPresentationTests.Contract),
     ("Intent actions carry versioned bounded owned payloads", WidgetIntentPresentationTests.Declarations),
     ("Intent actions reject malformed and misplaced declarations", WidgetIntentPresentationTests.InvalidDeclarations),
@@ -305,7 +306,7 @@ static Task TextEntryRoundTrip()
     Assert.Equal(32, node.TextEntryMaximumLength);
     Assert.True(node.IsFocusable, "Text entry must be a controller focus target.");
     Assert.Throws<ArgumentOutOfRangeException>(() =>
-        UI.TextEntry("", "Search", "search.commit", "search", 97));
+        UI.TextEntry("", "Search", "search.commit", "search", 2049));
     var invalid = snapshot with
     {
         Root = snapshot.Root with
@@ -359,7 +360,7 @@ static Task TextEntryRoundTrip()
         "Sensitive text entry must reject an authored accessibility value.");
     Assert.Throws<ArgumentOutOfRangeException>(() =>
         UI.SensitiveTextEntry(
-            "Enter access key", "credential.commit", "credential.entry", 97));
+            "Enter access key", "credential.commit", "credential.entry", 2049));
     return Task.CompletedTask;
 }
 
@@ -3246,10 +3247,7 @@ static Task FullTrustEntrypointIsStrict()
         Encoding.UTF8.GetBytes(document.ToJsonString())));
 
     var withCapabilities = manifest with { Permissions = ["storage.own"] };
-    Assert.True(WidgetManifestValidator.Validate(withCapabilities).Any(error =>
-        error.Path == "$.permissions" &&
-        error.Code == "full_trust_capabilities_forbidden"),
-        "Full-trust packages accepted sandbox broker capabilities.");
+    Assert.Equal(0, WidgetManifestValidator.Validate(withCapabilities).Count);
     var mixedEntrypoint = manifest with
     {
         Entrypoint = manifest.Entrypoint with

@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.sdk-gallery",
   "publisher": "widgetrail.samples",
   "name": "SDK Gallery",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -22,10 +22,15 @@
     }
   },
   "iconAssets": {
-    "gallery.mark": { "path": "assets/icons/gallery-mark.svg" }
+    "gallery.mark": {
+      "path": "assets/icons/gallery-mark.svg"
+    }
   },
   "permissions": [],
-  "optionalPermissions": [],
+  "optionalPermissions": [
+    "presentation.documents.v1",
+    "system.apps.windows.capture.v1"
+  ],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "suspend-when-hidden"
@@ -37,5 +42,81 @@
   "architectures": [
     "x64",
     "arm64"
-  ]
+  ],
+  "fullWidgetPinningSupported": true,
+  "intents": {
+    "requests": [
+      {
+        "id": "widgetrail.web.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      {
+        "id": "widgetrail.video.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "videoId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "startTimeSeconds": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 604800
+            }
+          },
+          "required": [
+            "provider",
+            "videoId"
+          ]
+        }
+      },
+      {
+        "id": "widgetrail.video.search",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240
+            }
+          },
+          "required": [
+            "provider",
+            "query"
+          ]
+        }
+      }
+    ]
+  }
 }

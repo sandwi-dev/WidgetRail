@@ -2740,6 +2740,17 @@ internal sealed class RegistryTestClient(
         return Task.FromResult(RevalidatedHandled);
     }
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
+    internal Func<WidgetIntentRequest, WidgetIntentFeedback?, CancellationToken, Task<bool>>? IntentQuery { get; set; }
+    internal List<WidgetIntentFeedback> IntentFeedback { get; } = [];
+    internal int AvailabilityQueries { get; private set; }
+    public Task<bool> QueryIntentAsync(WidgetIntentRequest request, WidgetIntentFeedback? feedback, int? expectedStartOrdinal, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (expectedStartOrdinal is { } ordinal && (!IsRunning || Starts != ordinal)) throw new WidgetInputWorkerRetiredException();
+        EnsureStarted();
+        if (feedback is not null) IntentFeedback.Add(feedback); else AvailabilityQueries++;
+        return IntentQuery?.Invoke(request, feedback, token) ?? Task.FromResult(feedback is null);
+    }
     internal List<WidgetIntentRequest> Intents { get; } = [];
     internal Func<WidgetIntentRequest, CancellationToken, Task<WidgetIntentResult>>? IntentHandler { get; set; }
     public Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken)

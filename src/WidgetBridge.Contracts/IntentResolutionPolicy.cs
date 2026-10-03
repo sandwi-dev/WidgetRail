@@ -31,9 +31,15 @@ internal static class IntentResolutionPolicy
 
     internal static IntentResolution Resolve(CompiledWidgetIntentContract requested,
         JsonElement payload, IReadOnlyList<IntentHandlerCandidate> catalog,
-        string? preferredWidgetId = null)
+        string? preferredWidgetId = null, WidgetIntentRouting routing = WidgetIntentRouting.WidgetPreferred)
     {
+        if (!Enum.IsDefined(routing)) return Result(IntentResolutionKind.InvalidPayload);
         if (!requested.Accepts(payload)) return Result(IntentResolutionKind.InvalidPayload);
+        var web = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web);
+        var standardWeb = requested.Id == web.Id && requested.Version == web.Version && requested.SchemaDigest == web.SchemaDigest;
+        if (routing == WidgetIntentRouting.Windows)
+            return Result(!standardWeb ? IntentResolutionKind.Unavailable : IsWebUrl(payload)
+                ? IntentResolutionKind.ExternalBrowser : IntentResolutionKind.InvalidPayload);
         if (catalog.Count > MaximumCandidates) return Result(IntentResolutionKind.InvalidCatalog);
         if (requested.Id == WidgetIntentContracts.OpenWebPage && !IsWebUrl(payload))
             return Result(IntentResolutionKind.InvalidPayload);
@@ -56,8 +62,7 @@ internal static class IntentResolutionPolicy
         if (matches.Count > 1) return Result(IntentResolutionKind.ChooseHandler, matches.ToArray());
 
         // Only this built-in standard contract can fall back to a shell URL launch.
-        var web = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web);
-        return Result(requested.Id == web.Id && requested.Version == web.Version && requested.SchemaDigest == web.SchemaDigest
+        return Result(standardWeb
             ? IntentResolutionKind.ExternalBrowser : IntentResolutionKind.Unavailable);
     }
 

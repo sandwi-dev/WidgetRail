@@ -123,7 +123,8 @@ function Test-ReleaseInventory {
             if (!(Test-Path -LiteralPath (Join-Path $package $required) -PathType Leaf)) { throw "Bundled package missing $required" }
         }
         $packageManifest = Get-Content -LiteralPath (Join-Path $package 'manifest.json') -Raw | ConvertFrom-Json
-        $entry = Assert-ReleasePath (Join-Path $package $packageManifest.entrypoint.assembly) -Within $package
+        $entryPath = if ($packageManifest.entrypoint.runtime -eq 'full-trust-application-v1') { $packageManifest.entrypoint.executable } else { $packageManifest.entrypoint.assembly }
+        $entry = Assert-ReleasePath (Join-Path $package $entryPath) -Within $package
         if ($packageManifest.id -cne $widget.packageId -or !(Test-Path -LiteralPath $entry -PathType Leaf)) {
             throw "Bundled package identity or entrypoint differs: $($widget.id)"
         }

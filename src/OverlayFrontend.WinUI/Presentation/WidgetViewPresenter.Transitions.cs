@@ -94,7 +94,7 @@ internal sealed partial class WidgetViewPresenter
 
         static void Collect(ViewNode node, Action<string> visit)
         { visit(node.Id); foreach (var child in node.Children) Collect(child, visit); }
-        static bool HasLiveSurface(ViewNode node) => node.Kind is ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview || node.Children.Any(HasLiveSurface);
+        static bool HasLiveSurface(ViewNode node) => node.Kind is ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser or ViewNodeKind.CapturedMedia or ViewNodeKind.MediaPlayer || node.Children.Any(HasLiveSurface);
     }
 
     private bool TransitionVisible(Declaration declaration, IReadOnlyDictionary<string, Declaration> plan)

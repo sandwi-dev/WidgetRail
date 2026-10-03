@@ -28,6 +28,9 @@ public enum ViewNodeKind
     ModalLayer,
     IndexedCollection,
     WebBrowser,
+    CapturedMedia,
+    MediaPlayer,
+    RichText,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>
@@ -396,6 +399,8 @@ public sealed record ViewNode
     /// <summary>Host-routed intent for this button/action surface's primary activation.</summary>
     public WidgetIntentRequest? Intent { get; init; }
     public WebBrowserDocument? WebBrowser { get; init; }
+    public MediaPlayerDefinition? MediaPlayer { get; init; }
+    public CaptureAttachment? CapturedMedia { get; init; }
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     public ControllerButton? ContextMenuButton { get; init; }
     public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];
@@ -557,7 +562,7 @@ public sealed record ViewNode
     [JsonIgnore]
     public bool IsFocusable => Kind is
         ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or
-        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection or ViewNodeKind.WebBrowser;
+        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection or ViewNodeKind.WebBrowser or ViewNodeKind.CapturedMedia or ViewNodeKind.MediaPlayer;
 }
 
 public sealed record ViewSnapshot
@@ -574,6 +579,8 @@ public sealed record ViewSnapshot
     /// ID at most once for the current widget runtime and instance.
     /// </summary>
     public FocusGroupEntryRequest? FocusGroupEntryRequest { get; init; }
+    /// <summary>One-shot request to reveal a declared child in an ordinary scroll container without changing focus.</summary>
+    public ScrollRevealRequest? ScrollRevealRequest { get; init; }
     public IReadOnlyList<WidgetQuickAction> QuickActions { get; init; } = [];
     /// <summary>Versioned, host-clamped sizing hints for this exact view.</summary>
     public WidgetSurfaceHints? Surface { get; init; }
@@ -608,6 +615,8 @@ public sealed record FocusGroupEntryRequest
     /// <summary>Optional exact lazy occurrence; otherwise enter the group's remembered/default child.</summary>
     public IndexedCollectionFocusTarget? IndexedItem { get; init; }
 }
+
+public sealed record ScrollRevealRequest(long RequestId, string ScrollId, string TargetId);
 
 public enum EmbeddedMediaCommand
 {

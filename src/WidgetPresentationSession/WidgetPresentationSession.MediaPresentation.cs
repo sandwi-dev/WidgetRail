@@ -46,7 +46,7 @@ public sealed partial class WidgetPresentationSession
     {
         ArgumentNullException.ThrowIfNull(displayed);
         ArgumentNullException.ThrowIfNull(document);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, displayed.Authority.ActiveInputScopeId);
             if (!current.Descriptor.PinningSupported || !IsMediaDocumentCurrentLocked(document) ||
@@ -69,7 +69,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(displayed);
         ArgumentNullException.ThrowIfNull(action);
         ArgumentNullException.ThrowIfNull(document);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = ValidateDisplayedMediaActionLocked(displayed, action, EnterMediaFullscreenAction);
             if (!IsMediaDocumentCurrentLocked(document) || !SameMediaOwner(document.Authority, current.Authority) ||
@@ -83,7 +83,7 @@ public sealed partial class WidgetPresentationSession
     public void ValidateEmbeddedMediaBack(WidgetPresentationFrame displayed, WidgetActionEvent action)
     {
         ArgumentNullException.ThrowIfNull(displayed); ArgumentNullException.ThrowIfNull(action);
-        lock (_gate) _ = ValidateDisplayedMediaActionLocked(displayed, action, ExitMediaWidgetAction);
+        using (_gate.Enter()) _ = ValidateDisplayedMediaActionLocked(displayed, action, ExitMediaWidgetAction);
     }
 
     private WidgetPresentationFrame ValidateDisplayedMediaActionLocked(WidgetPresentationFrame displayed, WidgetActionEvent action, string expected)
@@ -103,7 +103,7 @@ public sealed partial class WidgetPresentationSession
     public bool IsMediaPresentationCurrent(WidgetMediaPresentation presentation)
     {
         ArgumentNullException.ThrowIfNull(presentation);
-        lock (_gate)
+        using (_gate.Enter())
             return ReferenceEquals(presentation.Owner, this) && IsMediaDocumentCurrentLocked(presentation.Document) &&
                 ((MediaDocumentEpoch)presentation.Document.Epoch).Presentations.TryGetValue(presentation.Kind, out var epoch) &&
                 ReferenceEquals(epoch, presentation.Epoch);
@@ -115,7 +115,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(displayed);
         ArgumentNullException.ThrowIfNull(input);
         ValidateDisplayedControllerOrigin(displayed, input);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, input.ActiveInputScopeId);
             var binding = ResolveDisplayedController(displayed.Snapshot, input);

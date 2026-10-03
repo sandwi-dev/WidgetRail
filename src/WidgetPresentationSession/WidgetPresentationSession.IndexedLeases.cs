@@ -35,7 +35,7 @@ public sealed partial class WidgetPresentationSession
 
     internal bool IsIndexedLeaseCurrent(WidgetPresentationIndexedLease lease)
     {
-        lock (_gate) return IsIndexedLeaseCurrentLocked(lease);
+        using (_gate.Enter()) return IsIndexedLeaseCurrentLocked(lease);
     }
 
     private bool IsIndexedLeaseCurrentLocked(WidgetPresentationIndexedLease lease) =>
@@ -50,7 +50,7 @@ public sealed partial class WidgetPresentationSession
 
     internal Task ReleaseIndexedLeaseAsync(WidgetPresentationIndexedLease lease)
     {
-        lock (_gate) RetireIndexedLeaseLocked(lease);
+        using (_gate.Enter()) RetireIndexedLeaseLocked(lease);
         return lease.Released.Task;
     }
 
@@ -103,7 +103,7 @@ public sealed partial class WidgetPresentationSession
             finally
             {
                 lease.Lifetime.Dispose();
-                lock (_gate) { _indexedLeaseRetirements.Remove(lease.Released.Task); _indexedLeaseRetiringItems -= lease.Range.Items.Count; }
+                using (_gate.Enter()) { _indexedLeaseRetirements.Remove(lease.Released.Task); _indexedLeaseRetiringItems -= lease.Range.Items.Count; }
                 lease.Released.TrySetResult();
             }
         });
@@ -115,7 +115,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(origin);
         var input = new IndexedCollectionInputRequest(new(lease.LeaseId, itemKey), button, phase);
         IndexedCollectionInputContract.ValidateInput(input);
-        lock (_gate)
+        using (_gate.Enter())
         {
             DemandIndexedLeaseLocked(lease);
             DemandPinnedIndexedInputLocked(lease);
@@ -145,7 +145,7 @@ public sealed partial class WidgetPresentationSession
         var exchangeOwnsDispatch = false;
         try
         {
-            lock (_gate)
+            using (_gate.Enter())
             {
                 DemandIndexedLeaseLocked(lease);
                 DemandPinnedIndexedInputLocked(lease);
@@ -200,7 +200,7 @@ public sealed partial class WidgetPresentationSession
             }
             finally
             {
-                lock (_gate) --_indexedInputExchanges;
+                using (_gate.Enter()) --_indexedInputExchanges;
                 if (pinnedDispatch) _pinnedDispatch.Release();
             }
         }
@@ -214,7 +214,7 @@ public sealed partial class WidgetPresentationSession
         IndexedCollectionInputContract.ValidateReference(reference);
         StableIdentifier.Validate(handle, nameof(handle));
         IndexedArtworkDemand operation;
-        lock (_gate)
+        using (_gate.Enter())
         {
             DemandIndexedLeaseLocked(lease);
             var item = lease.Range.Items.SingleOrDefault(value => value.Key == itemKey);
@@ -253,19 +253,19 @@ public sealed partial class WidgetPresentationSession
                 throw new BridgeProtocolException("WidgetBridge returned foreign indexed artwork authority.");
             if (payload.ContentType == string.Empty && payload.ContentBase64.IsEmpty)
             {
-                lock (_gate) { operation.Lifetime.Token.ThrowIfCancellationRequested(); DemandIndexedLeaseLocked(lease); }
+                using (_gate.Enter()) { operation.Lifetime.Token.ThrowIfCancellationRequested(); DemandIndexedLeaseLocked(lease); }
                 return null;
             }
             var type = WidgetEncodedArtworkContract.ParseContentType(payload.ContentType);
             if (type is null) throw new BridgeProtocolException("WidgetBridge returned unsupported indexed artwork.");
             var artwork = new WidgetEncodedArtwork(type.Value, payload.ContentBase64);
             if (!WidgetEncodedArtworkContract.IsValid(artwork)) throw new BridgeProtocolException("WidgetBridge returned invalid indexed artwork bytes.");
-            lock (_gate) { operation.Lifetime.Token.ThrowIfCancellationRequested(); DemandIndexedLeaseLocked(lease); }
+            using (_gate.Enter()) { operation.Lifetime.Token.ThrowIfCancellationRequested(); DemandIndexedLeaseLocked(lease); }
             return artwork;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
         {
-            lock (_gate)
+            using (_gate.Enter())
                 if (!IsIndexedLeaseCurrentLocked(lease))
                     throw new WidgetPresentationSessionException("indexed_retired", "The indexed artwork owner retired.");
             throw new WidgetPresentationSessionException("indexed_artwork_timeout", "Indexed artwork timed out.");
@@ -275,7 +275,7 @@ public sealed partial class WidgetPresentationSession
             try { if (reply is { IsCompleted: false }) await CancelIndexedArtworkDemandAsync(operation, reply).ConfigureAwait(false); }
             finally
             {
-                lock (_gate) _indexedArtworkDemands.Remove(operation.Request.DemandId);
+                using (_gate.Enter()) _indexedArtworkDemands.Remove(operation.Request.DemandId);
                 operation.Lifetime.Dispose(); operation.Done.TrySetResult();
             }
         }

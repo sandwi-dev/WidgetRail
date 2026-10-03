@@ -37,10 +37,15 @@
     <CsWinRTAotWarningLevel>1</CsWinRTAotWarningLevel>
     <EnableWidgetValidation Condition="'$(EnableWidgetValidation)' == '' and '$(Configuration)' == 'Debug'">true</EnableWidgetValidation>
     <EnableWidgetValidation Condition="'$(EnableWidgetValidation)' == ''">false</EnableWidgetValidation>
+    <DefineConstants Condition="'$(EnableWidgetValidation)' == 'true'">$(DefineConstants);ENABLE_WIDGET_VALIDATION</DefineConstants>
+    <DefineConstants Condition="'$(EnableTrimmedControlValidation)' == 'true'">$(DefineConstants);ENABLE_TRIMMED_CONTROL_VALIDATION</DefineConstants>
   </PropertyGroup>
   <ItemGroup Condition="'$(EnableWidgetValidation)' != 'true'">
     <Compile Remove="Validation\**\*.cs;MainPage.xaml.cs;Presentation\WidgetViewPresenter.FocusDiagnostics.cs" />
     <Page Remove="Validation\**\*.xaml;MainPage.xaml" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EnableTrimmedControlValidation)' == 'true' And '$(EnableWidgetValidation)' != 'true'">
+    <Compile Include="Validation\CapturedMediaView.Validation.cs" />
   </ItemGroup>
   <!-- Small trim-safe native smoke test; excluded from shipping and ordinary fixtures. -->
   <ItemGroup Condition="'$(EnableTrimmedControlValidation)' != 'true' Or '$(EnableWidgetValidation)' == 'true'">

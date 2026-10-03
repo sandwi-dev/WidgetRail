@@ -67,7 +67,7 @@ internal sealed partial class OverlayShellPage
             var previews = CreatePreviewRenderer();
             var presenter = new WidgetViewPresenter
             {
-                Session = owner.Session, MediaOwner = mediaOwner, WindowPreviews = previews,
+                Session = owner.Session, MediaOwner = mediaOwner, BrowserOwner = browserOwner, WindowPreviews = previews,
                 DispatchActionAsync = InvokeAsync, EnsureInteractionAsync = EnsureInteractionAsync,
                 Visibility = Visibility.Collapsed,
             };

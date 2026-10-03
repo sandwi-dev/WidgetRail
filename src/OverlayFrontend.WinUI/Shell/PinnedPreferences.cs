@@ -2,15 +2,14 @@ using System.Text.Json;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal sealed record PinnedPreferences(int Version, string? WidgetId, IReadOnlyDictionary<string, PinnedPlacement> Placements)
+internal sealed record PinnedPreferences(int Version, IReadOnlyDictionary<string, PinnedPlacement> Placements)
 {
-    internal static PinnedPreferences Empty => new(1, null, new Dictionary<string, PinnedPlacement>());
+    internal static PinnedPreferences Empty => new(1, new Dictionary<string, PinnedPlacement>());
     internal bool IsValid => Version == 1 && Placements is { Count: <= ShellPreferences.MaximumWidgets } &&
-        Placements.All(pair => ShellPreferences.ValidId(pair.Key) && pair.Value?.IsValid == true) &&
-        (WidgetId is null || ShellPreferences.ValidId(WidgetId) && Placements.ContainsKey(WidgetId));
+        Placements.All(pair => ShellPreferences.ValidId(pair.Key) && pair.Value?.IsValid == true);
 }
 
-/// <summary>Explicit-profile pinned preferences; interaction ownership is never persisted.</summary>
+/// <summary>Geometry preferences only. Pin selection and interaction ownership are session-only.</summary>
 internal sealed class PinnedPreferencesStore(string settingsRoot)
 {
     private const int MaximumBytes = 1024 * 1024;

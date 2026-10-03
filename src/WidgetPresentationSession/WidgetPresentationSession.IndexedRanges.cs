@@ -50,7 +50,7 @@ public sealed partial class WidgetPresentationSession
         string collectionId, IndexedCollectionDescriptor source, bool retry = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(selection); ArgumentNullException.ThrowIfNull(projection);
-        lock (_gate) _ = DemandPinnedInputLocked(selection, projection);
+        using (_gate.Enter()) _ = DemandPinnedInputLocked(selection, projection);
         _ = await ReadIndexedCoreAsync(projection.Frame.Authority, collectionId, source, source.Count, 0, projection.LayoutId, false,
             cancellationToken, retry ? IndexedCollectionRequestKind.Retry : IndexedCollectionRequestKind.Continue, selection).ConfigureAwait(false);
     }
@@ -67,7 +67,7 @@ public sealed partial class WidgetPresentationSession
             Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind };
         IndexedCollectionContract.ValidateRequest(range);
         IndexedDemand operation;
-        lock (_gate)
+        using (_gate.Enter())
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _ = ValidateAuthority(authority);
@@ -135,7 +135,7 @@ public sealed partial class WidgetPresentationSession
                     throw new BridgeProtocolException("WidgetBridge returned foreign indexed range authority.");
                 received = response.Range;
             }
-            lock (_gate)
+            using (_gate.Enter())
             {
                 operation.Lifetime.Token.ThrowIfCancellationRequested();
                 if (!IsIndexedDemandCurrentLocked(operation))
@@ -164,7 +164,7 @@ public sealed partial class WidgetPresentationSession
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
         {
-            lock (_gate)
+            using (_gate.Enter())
                 if (operation.Retirement is not null)
                     throw new WidgetPresentationSessionException("indexed_retired", "The indexed parent or surface retired.");
             throw new WidgetPresentationSessionException("indexed_timeout", "The indexed range demand timed out.");
@@ -179,7 +179,7 @@ public sealed partial class WidgetPresentationSession
             finally
             {
                 Task? retirement;
-                lock (_gate)
+                using (_gate.Enter())
                 {
                     _indexedDemands.Remove(range.DemandId); retirement = operation.Retirement;
                     if (acquire) { --_indexedLeaseReservations; _indexedLeaseReservedItems -= count; }
@@ -198,7 +198,7 @@ public sealed partial class WidgetPresentationSession
     public void CancelIndexedRanges(WidgetPresentationAuthority authority, string? pinnedLayoutId = null)
     {
         ArgumentNullException.ThrowIfNull(authority);
-        lock (_gate)
+        using (_gate.Enter())
             foreach (var demand in _indexedDemands.Values)
                 if (demand.Authority == authority && demand.Request.Range.PinnedLayoutId == pinnedLayoutId)
                     demand.Retirement ??= demand.Lifetime.CancelAsync();
@@ -266,7 +266,7 @@ public sealed partial class WidgetPresentationSession
 
     private long BeginIndexedLifecycle(WidgetPresentationTarget target, WidgetRail.WidgetSdk.WidgetLifecycleState state)
     {
-        lock (_gate)
+        using (_gate.Enter())
         {
             _ = ValidateTarget(target);
             var version = _indexedLifecycleVersions.GetValueOrDefault(target.Descriptor.Id) + 1;
@@ -285,7 +285,7 @@ public sealed partial class WidgetPresentationSession
     private void CompleteIndexedLifecycle(WidgetPresentationTarget target, long generation, long version,
         WidgetRail.WidgetSdk.WidgetLifecycleState state)
     {
-        lock (_gate)
+        using (_gate.Enter())
             if (state != WidgetRail.WidgetSdk.WidgetLifecycleState.Background &&
                 _sessionGenerations.GetValueOrDefault(target.Descriptor.Id) == generation &&
                 _indexedLifecycleVersions.GetValueOrDefault(target.Descriptor.Id) == version)

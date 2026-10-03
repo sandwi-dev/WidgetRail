@@ -11,7 +11,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     private readonly BridgePresentationTransport _transport;
     private readonly WidgetPresentationSessionOptions _options;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly object _gate = new();
+    private readonly PresentationGate _gate = new();
     private readonly Dictionary<string, BridgeWidgetDescriptor> _descriptors =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, WidgetPresentationState> _states =
@@ -72,8 +72,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     /// <summary>Signals a newer appearance revision; does not contain theme/settings values.</summary>
     public event EventHandler<WidgetRevisionChangedEventArgs>? AppearanceChanged;
 
-    public long LatestCatalogNotificationRevision { get { lock (_gate) return _notifiedCatalogRevision; } }
-    public long LatestAppearanceNotificationRevision { get { lock (_gate) return _notifiedAppearanceRevision; } }
+    public long LatestCatalogNotificationRevision { get { using (_gate.Enter()) return _notifiedCatalogRevision; } }
+    public long LatestAppearanceNotificationRevision { get { using (_gate.Enter()) return _notifiedAppearanceRevision; } }
 
     /// <summary>
     /// Rechecks worker membership after dispatching an effect to another thread. This
@@ -83,7 +83,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     public bool IsHostEffectAuthorityCurrent(WidgetHostEffectAuthority authority)
     {
         ArgumentNullException.ThrowIfNull(authority);
-        lock (_gate)
+        using (_gate.Enter())
             return !_disposed && _terminalFailure is null &&
                 _descriptors.TryGetValue(authority.WidgetId, out var descriptor) &&
                 descriptor.InstanceId == authority.WidgetInstanceId &&
@@ -109,20 +109,20 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         get
         {
-            lock (_gate) return _diagnostics.ToArray();
+            using (_gate.Enter()) return _diagnostics.ToArray();
         }
     }
 
     public WidgetPresentationState? GetState(string widgetId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
-        lock (_gate) return _states.GetValueOrDefault(widgetId);
+        using (_gate.Enter()) return _states.GetValueOrDefault(widgetId);
     }
 
     public WidgetPresentationTarget GetTarget(string widgetId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
-        lock (_gate)
+        using (_gate.Enter())
         {
             ThrowIfTerminalLocked();
             if (!_descriptors.TryGetValue(widgetId, out var descriptor))
@@ -159,7 +159,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 throw new BridgeProtocolException("WidgetBridge returned duplicate widget IDs.");
         }
         var startPublications = false;
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (revision < _catalogRevision)
                 throw new BridgeProtocolException("WidgetBridge returned a stale widget catalog.");
@@ -206,7 +206,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var sessionGeneration = ValidateTarget(target);
         var lifecycleVersion = BeginIndexedLifecycle(target, state);
         long invalidationBeforeEstablishment;
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (ValidateTarget(target) != sessionGeneration)
                 throw Stale("presentation_stale", target.Descriptor.Id, "The presentation session changed before activation.");
@@ -253,7 +253,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         CompleteIndexedLifecycle(target, lifecycleGeneration, lifecycleVersion, state);
         if (state == WidgetLifecycleState.Background)
         {
-            lock (_gate)
+            using (_gate.Enter())
             {
                 if (_states.TryGetValue(target.Descriptor.Id, out var current))
                     _ = CommitStateLocked(current with { Failure = null }, publish: false);
@@ -297,7 +297,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var state = response.Payload.GetProperty("state")
             .Deserialize(BridgeJson.TypeInfo<WidgetLifecycleState>());
         ValidatePresentationLifecycle(state);
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (_sessionGenerations.GetValueOrDefault(target.Descriptor.Id) != sessionGeneration)
                 throw Stale("presentation_stale", target.Descriptor.Id,
@@ -395,7 +395,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         var demandId = Guid.NewGuid().ToString("N");
         CancellationTokenSource demandLifetime;
-        lock (_gate)
+        using (_gate.Enter())
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (selection is not null && projection is not null) DemandPinnedArtworkLocked(selection, projection, artworkHandle);
@@ -413,7 +413,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var demandToken = demandLifetime.Token;
         var cancellationRegistration = demandToken.Register(() =>
         {
-            lock (_gate)
+            using (_gate.Enter())
                 if (_artwork.Remove(demandId, out var retired))
                     retired.Completion.TrySetCanceled(demandToken);
         });
@@ -453,7 +453,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         }
         finally
         {
-            lock (_gate) _artwork.Remove(demandId);
+            using (_gate.Enter()) _artwork.Remove(demandId);
             completion.TrySetCanceled();
             // Artwork retirement may finish via the local completion before IPC
             // admission. Cancel unsent lane waits before removing the timeout;
@@ -470,7 +470,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         _disposed = true;
         _lifetime.Cancel();
         Task[] indexed;
-        lock (_gate)
+        using (_gate.Enter())
         {
             _packageIcons.Clear(); _packageIconBytes = 0;
             RetireIndexedRangesLocked();
@@ -492,11 +492,11 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         }
         await _transport.DisposeAsync().ConfigureAwait(false);
         Task[] refreshes;
-        lock (_gate) refreshes = _refreshes.Values.Concat(_styleRefresh is { } styles ? [styles] : Array.Empty<Task>()).ToArray();
+        using (_gate.Enter()) refreshes = _refreshes.Values.Concat(_styleRefresh is { } styles ? [styles] : Array.Empty<Task>()).ToArray();
         try { await Task.WhenAll(refreshes).ConfigureAwait(false); }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
         PendingArtwork[] artwork;
-        lock (_gate)
+        using (_gate.Enter())
         {
             artwork = _artwork.Values.ToArray();
             _artwork.Clear();
@@ -540,7 +540,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 ReadString(envelope.Payload, "widgetId"),
                 ReadInt64(envelope.Payload, "revision", minimum: 0));
             WidgetPresentationState? changed = null;
-            lock (_gate)
+            using (_gate.Enter())
             {
                 if (_states.TryGetValue(invalidation.WidgetId, out var current) &&
                     invalidation.Revision > current.InvalidationRevision)
@@ -578,7 +578,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         RequireObjectProperties(payload, "revision");
         var revision = ReadInt64(payload, "revision", 0);
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (_disposed || _terminalFailure is not null) return;
             if (catalog)
@@ -620,7 +620,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             throw new BridgeProtocolException("An app-launch close effect cannot carry window targets.");
 
         WidgetHostEffectAuthority? authority = null;
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (_disposed || _terminalFailure is not null) return;
             if (sequence > _hostEffectSequence)
@@ -713,7 +713,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         }
 
         BridgeFailurePublication? publication;
-        lock (_gate)
+        using (_gate.Enter())
         {
             var state = _states.GetValueOrDefault(widgetId);
             if (!_descriptors.TryGetValue(widgetId, out var descriptor) ||
@@ -777,7 +777,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         WidgetPresentationState? committed = null;
         var startPublications = false;
-        lock (_gate)
+        using (_gate.Enter())
         {
             var hasState = _states.TryGetValue(publication.Descriptor.Id, out var current);
             var stateMatches = publication.StatePublicationRevision is { } stateRevision
@@ -817,7 +817,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         var startPublications = false;
         var committed = false;
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (_descriptors.ContainsKey(failure.WidgetId))
             {
@@ -858,7 +858,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var handle = ReadString(payload, "artworkHandle");
         var demandId = ReadOptionalString(payload, "demandId");
         PendingArtwork? pending;
-        lock (_gate)
+        using (_gate.Enter())
             pending = demandId is not null ? _artwork.GetValueOrDefault(demandId) : null;
         if (pending is null)
         {
@@ -875,7 +875,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             RecordDiagnostic("stale_artwork", "Artwork with mismatched demand authority was discarded.", widgetId);
             return;
         }
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (!TryAdmitArtworkCompletionLocked(demandId!, pending)) return;
         }
@@ -901,7 +901,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             throw new BridgeProtocolException("WidgetBridge returned invalid artwork.");
 
         WidgetPresentationArtwork result;
-        lock (_gate)
+        using (_gate.Enter())
         {
             // Decode happened outside the state lock. Cancellation or a replacement
             // snapshot may have retired the demand in the meantime.
@@ -943,7 +943,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
 
     private void StartInvalidationRefresh(string widgetId)
     {
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (_refreshes.ContainsKey(widgetId)) return;
             var task = RefreshInvalidationsAsync(widgetId);
@@ -962,7 +962,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             while (!_lifetime.IsCancellationRequested)
             {
                 RefreshPublication? publication;
-                lock (_gate)
+                using (_gate.Enter())
                 {
                     var state = _states.GetValueOrDefault(widgetId);
                     var inputRefresh = _inputRefreshRequested.Remove(widgetId);
@@ -1004,7 +1004,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         finally
         {
             var restart = false;
-            lock (_gate)
+            using (_gate.Enter())
             {
                 _refreshes.Remove(widgetId);
                 var current = _states.GetValueOrDefault(widgetId);
@@ -1028,7 +1028,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             publication.LastGood.Authority.RuntimeGeneration);
         WidgetPresentationState? committed = null;
         var startPublications = false;
-        lock (_gate)
+        using (_gate.Enter())
         {
             var capturedAuthority = publication.LastGood.Authority;
             if (_catalogRevision == publication.CatalogRevision &&
@@ -1108,7 +1108,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 AppearanceRevision = payload.TryGetProperty("appearanceRevision", out _) ? ReadInt64(payload, "appearanceRevision", 0) : 0 };
         WidgetPresentationState committed;
         var startPublications = false;
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (!_descriptors.TryGetValue(descriptor.Id, out var currentDescriptor) || currentDescriptor != descriptor)
                 throw Stale("presentation_stale", descriptor.Id,
@@ -1222,7 +1222,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         while (true)
         {
             WidgetPresentationState state;
-            lock (_gate)
+            using (_gate.Enter())
             {
                 if (_statePublications.Count == 0)
                 {
@@ -1256,7 +1256,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     private BridgeWidgetDescriptor ValidateAuthority(WidgetPresentationAuthority authority)
     {
         ArgumentNullException.ThrowIfNull(authority);
-        lock (_gate)
+        using (_gate.Enter())
         {
             ThrowIfTerminalLocked();
             if (!_descriptors.TryGetValue(authority.WidgetId, out var descriptor) ||
@@ -1279,7 +1279,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(target.Descriptor);
-        lock (_gate)
+        using (_gate.Enter())
         {
             ThrowIfTerminalLocked();
             if (target.CatalogRevision != _catalogRevision ||
@@ -1298,7 +1298,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         WidgetPresentationState cleared;
         var startPublications = false;
         long generation;
-        lock (_gate)
+        using (_gate.Enter())
         {
             ThrowIfTerminalLocked();
             if (target.CatalogRevision != _catalogRevision ||
@@ -1327,7 +1327,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             Bound(code),
             Bound(message),
             widgetId is null ? null : Bound(widgetId));
-        lock (_gate)
+        using (_gate.Enter())
         {
             while (_diagnostics.Count >= _options.MaximumRetainedDiagnostics)
                 _diagnostics.Dequeue();
@@ -1339,7 +1339,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     private void FailTerminal(Exception exception)
     {
         PendingArtwork[] artwork;
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (_terminalFailure is not null) return;
             _terminalFailure = exception;

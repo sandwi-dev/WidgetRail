@@ -14,6 +14,7 @@ internal sealed partial class OverlayShellPage
     private CancellationTokenSource? intentCancellation;
     private PinnedSurface? intentPinnedTarget;
     private TaskCompletionSource? intentForegroundAcquired;
+    private bool browserExternalPending;
     private HostChoiceDialog? hostChoiceDialog;
     private bool HostChoiceActive => hostChoiceDialog is not null;
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternalWebPageRequested { get; set; }
@@ -43,76 +44,97 @@ internal sealed partial class OverlayShellPage
             var sourcePin = request.PinnedSelection is not null ? pinned : null;
             if (request.PinnedSelection is not null && (sourcePin is null || !sourcePin.IsCurrent || !sourcePin.HasForeground ||
                 !ReferenceEquals(sourcePin.Selection, request.PinnedSelection))) return;
-            var staysInSourcePin = sourcePin is not null && prepared.Kind == WidgetIntentLaunchKind.Widget &&
-                prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
-                prepared.Destinations.Single() is { SupportsPassiveDelivery: true } only && only.WidgetId == sourcePin.WidgetId;
-            if (sourcePin is not null && !staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
-            if (prepared.Kind is WidgetIntentLaunchKind.Rejected or WidgetIntentLaunchKind.Unavailable)
+            for (var attempt = 0; attempt < 2; attempt++)
             {
-                await ShowHostChoiceAsync("Cannot open this item", "No compatible widget is available for this action.", [], cancellation.Token);
-                return;
-            }
-            WidgetPresentationFrame? target = null;
-            WidgetIntentCompletion? completion = null;
-            if (prepared.Kind is WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler)
-            {
-                var selected = prepared.Destinations[0].WidgetId;
-                if (prepared.Kind == WidgetIntentLaunchKind.ChooseHandler)
+                var staysInSourcePin = sourcePin is not null && prepared.Kind == WidgetIntentLaunchKind.Widget &&
+                    prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
+                    prepared.Destinations.Single() is { SupportsPassiveDelivery: true } only && only.WidgetId == sourcePin.WidgetId;
+                if (sourcePin is not null && !staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
+                if (prepared.Kind is WidgetIntentLaunchKind.Rejected or WidgetIntentLaunchKind.Unavailable)
                 {
-                    selected = await ShowHostChoiceAsync("Open with", "Choose a widget for this item.",
-                        prepared.Destinations.Select(item => new HostDialogChoice(item.WidgetId, item.Name)).ToArray(), cancellation.Token);
-                    if (selected is null) return;
+                    await ShowHostChoiceAsync("Cannot open this item", "No compatible widget is available for this action.", [], cancellation.Token);
+                    return;
                 }
-                cancellation.Token.ThrowIfCancellationRequested();
-                if (prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
-                    prepared.Destinations.Single(item => item.WidgetId == selected).SupportsPassiveDelivery &&
-                    pinned is { IsCurrent: true, Window.IsVisible: true, Selection: { } selection, Presenter.CurrentBinding: { } binding } pin &&
-                    pin.WidgetId == selected)
+                WidgetPresentationFrame? target = null;
+                WidgetIntentCompletion? completion = null;
+                if (prepared.Kind is WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler)
                 {
-                    intentPinnedTarget = pin;
-                    var projection = session.ResolvePinnedProjection(binding.Frame, pin.LayoutId);
-                    completion = await session.CommitPinnedIntentAsync(prepared, selection, projection, cancellation.Token);
-                    cancellation.Token.ThrowIfCancellationRequested();
-                    if (retired || !visible || !(foreground || staysInSourcePin && PinnedInputActive) || !ReferenceEquals(pinned, pin) || !pin.IsCurrent || !pin.Window.IsVisible) return;
-                    if (completion.RequiresInteraction)
+                    var selected = prepared.Destinations[0].WidgetId;
+                    if (prepared.Kind == WidgetIntentLaunchKind.ChooseHandler)
                     {
-                        // The receiver already stored this request. Open its
-                        // normal presentation without delivering it a second time.
-                        if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
+                        selected = await ShowHostChoiceAsync("Open with", "Choose a widget for this item.",
+                            prepared.Destinations.Select(item => new HostDialogChoice(item.WidgetId, item.Name)).ToArray(), cancellation.Token);
+                        if (selected is null) return;
+                    }
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    if (prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
+                        prepared.Destinations.Single(item => item.WidgetId == selected).SupportsPassiveDelivery &&
+                        pinned is { IsCurrent: true, Window.IsVisible: true, Selection: { } selection, Presenter.CurrentBinding: { } binding } pin &&
+                        pin.WidgetId == selected)
+                    {
+                        intentPinnedTarget = pin;
+                        var projection = session.ResolvePinnedProjection(binding.Frame, pin.LayoutId);
+                        completion = await session.CommitPinnedIntentAsync(prepared, selection, projection, cancellation.Token);
+                        cancellation.Token.ThrowIfCancellationRequested();
+                        if (retired || !visible || !(foreground || staysInSourcePin && PinnedInputActive) || !ReferenceEquals(pinned, pin) || !pin.IsCurrent || !pin.Window.IsVisible) return;
+                        if (completion.RequiresInteraction)
+                        {
+                            // The receiver already stored this request. Open its
+                            // normal presentation without delivering it a second time.
+                            if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
+                            await SelectAsync(selected, preserveIntent: true);
+                            cancellation.Token.ThrowIfCancellationRequested();
+                        }
+                    }
+                    else if (prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
+                        prepared.Destinations.Single(item => item.WidgetId == selected).SupportsPassiveDelivery &&
+                        pinned is { IsCurrent: true, Window.IsVisible: true, Media: { } compact } mediaPin && mediaPin.WidgetId == selected)
+                    {
+                        intentPinnedTarget = mediaPin;
+                        completion = await session.CommitCompactMediaIntentAsync(prepared, compact, cancellation.Token);
+                        cancellation.Token.ThrowIfCancellationRequested();
+                        if (retired || !visible || !foreground || !ReferenceEquals(pinned, mediaPin)) return;
+                        if (completion.RequiresInteraction) await SelectAsync(selected, preserveIntent: true);
+                    }
+                    else
+                    {
                         await SelectAsync(selected, preserveIntent: true);
                         cancellation.Token.ThrowIfCancellationRequested();
+                        if (retired || !visible || !foreground || activeWidget != selected || surface?.CurrentBinding is not { } destination)
+                            return;
+                        target = destination.Frame;
                     }
                 }
-                else
+                completion ??= await session.CommitIntentAsync(prepared, target, cancellation.Token);
+                if (completion.FollowUp is { } followUp)
                 {
-                    await SelectAsync(selected, preserveIntent: true);
+                    prepared = followUp;
+                    sourcePin = null;
+                    intentPinnedTarget = null;
+                    continue;
+                }
+                var external = completion.ExternalUrl;
+                if (!completion.Accepted)
+                {
+                    if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
+                    if (completion.BrowserFallbackUrl is { } fallback)
+                    {
+                        if (await ShowHostChoiceAsync("Could not open the link", "The selected widget could not open this page.",
+                            (HostDialogChoice[])[new("browser", "Open in default browser")], cancellation.Token) == "browser") external = fallback;
+                    }
+                    else await ShowHostChoiceAsync("Cannot open this item", "The destination is no longer available. Please try again.", [], cancellation.Token);
+                }
+                if (external is not null && OpenExternalWebPageRequested is { } open)
+                {
                     cancellation.Token.ThrowIfCancellationRequested();
-                    if (retired || !visible || !foreground || activeWidget != selected || surface?.CurrentBinding is not { } destination)
-                        return;
-                    target = destination.Frame;
+                    // The release-aware native handoff now owns visibility and cancellation.
+                    // Its intentional hide must not cancel itself through SetVisible(false).
+                    intentCancellation = null;
+                    intentPinnedTarget = null;
+                    if (!await open(new Uri(external), lifetime.Token) && !retired && visible && foreground)
+                        await ShowHostChoiceAsync("Could not open browser", "Windows could not open this page. Please try again.", [], lifetime.Token);
                 }
-            }
-            completion ??= await session.CommitIntentAsync(prepared, target, cancellation.Token);
-            var external = completion.ExternalUrl;
-            if (!completion.Accepted)
-            {
-                if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
-                if (completion.BrowserFallbackUrl is { } fallback)
-                {
-                    if (await ShowHostChoiceAsync("Could not open the link", "The selected widget could not open this page.",
-                        (HostDialogChoice[])[new("browser", "Open in default browser")], cancellation.Token) == "browser") external = fallback;
-                }
-                else await ShowHostChoiceAsync("Cannot open this item", "The destination is no longer available. Please try again.", [], cancellation.Token);
-            }
-            if (external is not null && OpenExternalWebPageRequested is { } open)
-            {
-                cancellation.Token.ThrowIfCancellationRequested();
-                // The release-aware native handoff now owns visibility and cancellation.
-                // Its intentional hide must not cancel itself through SetVisible(false).
-                intentCancellation = null;
-                intentPinnedTarget = null;
-                if (!await open(new Uri(external), lifetime.Token) && !retired && visible && foreground)
-                    await ShowHostChoiceAsync("Could not open browser", "Windows could not open this page. Please try again.", [], lifetime.Token);
+                break;
             }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested || retired) { }
@@ -144,13 +166,26 @@ internal sealed partial class OverlayShellPage
         finally { if (ReferenceEquals(intentForegroundAcquired, acquired)) intentForegroundAcquired = null; }
     }
 
-    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token)
+    private async Task<bool> OpenBrowserExternalAsync(Uri uri, CancellationToken token)
+    {
+        if (browserExternalPending || retired || !visible || OpenExternalWebPageRequested is not { } open) return false;
+        browserExternalPending = true;
+        try
+        {
+            if (PinnedInputActive) await ReturnIntentToMainAsync(token);
+            return foreground && await open(uri, token);
+        }
+        finally { browserExternalPending = false; }
+    }
+
+    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null)
     {
         if (HostChoiceActive || LocalInstallActive || retired || !visible || !foreground) return null;
         var original = surface;
         var originalFocus = FocusManager.GetFocusedElement(XamlRoot) as Control;
         var originalState = original?.CapturePresentationState();
         var dialog = new HostChoiceDialog(title, message, choices) { XamlRoot = XamlRoot };
+        if (primaryButtonText is not null) dialog.PrimaryButtonText = primaryButtonText;
         hostChoiceDialog = dialog;
         original?.SetPresentationInputEnabled(false);
         original?.SetAutomaticFocusEnabled(false);
@@ -170,14 +205,15 @@ internal sealed partial class OverlayShellPage
             if (!retired && visible && foreground && ReferenceEquals(surface, original))
             {
                 if (originalState is not null) original?.RestorePresentationState(originalState);
-                original?.SetPresentationInputEnabled(!switching && activeWidget == requestedWidget);
+                original?.SetPresentationInputEnabled(MainFocusEnabled);
                 original?.SetAutomaticFocusEnabled(MainFocusEnabled);
-                if (originalFocus is { IsLoaded: true, IsEnabled: true } && WithinOriginal(originalFocus))
+                if (MainFocusEnabled && originalFocus is { IsLoaded: true, IsEnabled: true } && WithinOriginal(originalFocus))
                     originalFocus.Focus(FocusState.Keyboard);
                 // Native dialog teardown can finish focus restoration after
                 // ShowAsync completes. Re-enter through the presenter's logical
                 // memory instead of relying on a possibly stale Control reference.
-                original?.Enter(restoreNativeFocus: true);
+                if (MainFocusEnabled) original?.Enter(restoreNativeFocus: true);
+                else if (!interactive) FocusTray();
             }
         }
 

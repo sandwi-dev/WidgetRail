@@ -7,6 +7,11 @@ Use this index to find one API family at a time. For a first project, start with
 
 | Topic | Start here |
 |---|---|
+| Rich text and inline intent links | [Native rich text](widget-rich-text.md) |
+| Browsing and provider surfaces | [Web browser](widget-web-browser.md) |
+| Native media playback | [Media player](widget-media-player.md) |
+| Capture and restricted documents | [Capture and Game Help](widget-capture-and-game-help.md) |
+| Widget-to-widget routing and feedback | [Intents](widget-intents.md) |
 | Describe a view | [UI elements](declarative-ui.md) |
 | Compose a navigation shell or custom header | [Presentation composition](presentation-composition.md) |
 | Buttons, sliders, settings rows, and menus | [Controller components](controller-ui-components.md) |

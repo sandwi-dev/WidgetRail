@@ -51,5 +51,11 @@
   "src/WidgetSdk/WidgetModal.cs": "docs/developers/navigation.md",
   "src/WidgetSdk/WidgetTesting.IndexedCollections.cs": "docs/developers/indexed-collections.md",
   "src/WidgetSdk/WidgetTransitions.cs": "docs/developers/navigation.md",
-  "src/WidgetSdk/SettingsField.cs": "docs/reference/controller-ui-components.md"
+  "src/WidgetSdk/SettingsField.cs": "docs/reference/controller-ui-components.md",
+  "src/WidgetSdk/CapturedMediaElement.cs": "docs/reference/widget-media-player.md",
+  "src/WidgetSdk/MediaPlayerElement.cs": "docs/reference/widget-media-player.md",
+  "src/WidgetSdk/ProviderDocuments.cs": "docs/reference/widget-capture-and-game-help.md",
+  "src/WidgetSdk/RichTextElement.cs": "docs/reference/widget-rich-text.md",
+  "src/WidgetSdk/WebBrowserElement.cs": "docs/reference/widget-web-browser.md",
+  "src/WidgetSdk/WindowCapture.cs": "docs/reference/widget-capture-and-game-help.md"
 }

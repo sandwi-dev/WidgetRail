@@ -9,6 +9,36 @@ namespace WidgetRail.YouTubeWidget.Tests;
 public sealed partial class YouTubeWidgetTests
 {
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task SearchIntentReadsConfigurationInBackgroundAndOpensDiscover(bool configured)
+    {
+        var service = new FakeApplicationService(configured);
+        var widget = WidgetTestHost.Attach(new YouTubeVideoWidget(service), new WidgetTestHostServicesBuilder().Build());
+        var search = WidgetIntentRequest.Create(WidgetIntentContracts.VideoSearch,
+            JsonSerializer.SerializeToElement(new { provider = "youtube", query = "  boss guide  " }));
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget);
+            Assert.AreEqual(configured, await widget.IsIntentAvailableAsync(search));
+            Assert.AreEqual(WidgetIntentResult.Rejected, await widget.OnIntentAsync(search));
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            Assert.AreEqual(configured ? WidgetIntentResult.Accepted : WidgetIntentResult.Rejected, await widget.OnIntentAsync(search));
+            var snapshot = widget.RenderSnapshot("search.intent", 1);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            if (configured)
+            {
+                Assert.IsTrue(Flatten(snapshot.Root).Any(node => node.TextEntryValue == "boss guide"));
+            }
+            var wrongProvider = search with { Payload = JsonSerializer.SerializeToElement(new { provider = "other", query = "boss guide" }) };
+            Assert.IsFalse(await widget.IsIntentAvailableAsync(wrongProvider));
+            Assert.AreEqual(WidgetIntentResult.Rejected, await widget.OnIntentAsync(wrongProvider));
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+        static IEnumerable<ViewNode> Flatten(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Flatten));
+    }
+
+    [TestMethod]
     public async Task VideoIntentLoadsValidatedVideoAtRequestedTime()
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
@@ -73,7 +103,7 @@ public sealed partial class YouTubeWidgetTests
     public void ManifestDeclaresMatchingVideoIntentHandler()
     {
         var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
-        var handler = manifest.Intents!.Handles.Single();
+        var handler = manifest.Intents!.Handles.Single(item => item.Id == WidgetIntentContracts.OpenVideo);
         Assert.AreEqual(WidgetIntentContracts.OpenVideo, handler.Id);
         Assert.IsTrue(handler.SupportsPassiveDelivery);
         Assert.AreEqual(CompiledWidgetIntentContract.Create(WidgetIntentContracts.Video).SchemaDigest,

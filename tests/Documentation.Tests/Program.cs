@@ -239,10 +239,12 @@ foreach (var retiredPath in new[]
     if (File.Exists(retiredPath))
         failures.Add($"{Relative(retiredPath)} is a retired product-owned domain path.");
 
-var frontendBuild = File.ReadAllText(Path.Combine(repository, "scripts", "Build-WinUiReleasePayload.ps1"));
-var freshOutputGuard = frontendBuild.IndexOf("Choose a fresh payload build directory", StringComparison.Ordinal);
+var frontendWrapper = File.ReadAllText(Path.Combine(repository, "scripts", "Build-WinUiReleasePayload.ps1"));
+var frontendBuild = File.ReadAllText(Path.Combine(repository, "scripts", "WinUiPublication.psm1"));
+var freshOutputGuard = frontendBuild.IndexOf("Choose a fresh publication directory.", StringComparison.Ordinal);
 var bridgePublish = frontendBuild.IndexOf("src/$($entry[0])/$($entry[0]).csproj", StringComparison.Ordinal);
-if (freshOutputGuard < 0 || bridgePublish <= freshOutputGuard ||
+if (!frontendWrapper.Contains("New-WinUiPublishedPayload -OutputDirectory $OutputDirectory", StringComparison.Ordinal) ||
+    freshOutputGuard < 0 || bridgePublish <= freshOutputGuard ||
     frontendBuild.Contains("src/OverlayHost", StringComparison.Ordinal))
     failures.Add("WinUI publication must reject reused payload roots before publishing services and must not build the retired renderer.");
 RequireLink(Path.Combine(repository, "README.md"), "docs/developers/widget-authoring-guide.md");

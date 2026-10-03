@@ -6,6 +6,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("Search and one declared fallback preserve authority and require protocol 72", SearchFeedback),
     ("Custom contracts require no host intent enumeration", CustomContract),
     ("Schema object and set ordering do not change identity", SchemaIdentity),
     ("Malformed unsupported and unbounded schemas fail closed", InvalidSchemas),
@@ -22,6 +23,7 @@ var tests = new (string Name, Action Run)[]
     ("Disabled and different-version handlers cannot claim delivery", HandlerEligibility),
     ("Conflicting handler schemas fail without browser fallback", HandlerConflict),
     ("Only the standard web contract gets external browser fallback", Fallback),
+    ("Explicit Windows routing bypasses handlers and rejects unsupported operations", WindowsRouting),
     ("Web routing rejects executable schemes credentials and malformed URLs", WebUrls),
     ("Handler catalogs are bounded and generation bearing", CatalogBounds),
     ("Displayed intent authority survives unrelated snapshots but rejects changed payloads", DisplayedIntentAuthority),
@@ -36,6 +38,21 @@ foreach (var (name, run) in tests)
 }
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} tests passed.");
 return failures == 0 ? 0 : 1;
+
+static void SearchFeedback()
+{
+    var fallback = WidgetIntentRequest.Create(WidgetIntentContracts.Web, Json("""{"url":"https://example.com"}"""));
+    var request = WidgetIntentRequest.Create(WidgetIntentContracts.VideoSearch, Json("""{"provider":"youtube","query":"boss guide"}""")) with { ReportsResult = true, Fallback = fallback };
+    Check(request.IsWellFormed());
+    Check(!request.Matches(request with { Fallback = fallback with { Routing = WidgetIntentRouting.Windows } }));
+    Check(!request.Matches(request with { ReportsResult = false, Fallback = null }));
+    Check(!(request with { Fallback = request }).IsWellFormed());
+    Check(!(request with { ReportsResult = false }).IsWellFormed());
+    var node = UI.Button("Search", "search", "search").OpenIntent(WidgetIntentContracts.VideoSearch, request.Payload).WithIntentFeedback(fallback);
+    var snapshot = new WidgetView(node).CreateSnapshot("search", 1);
+    Check(snapshot.ProtocolVersion == 72 && ViewSnapshotValidator.Validate(snapshot).Count == 0);
+    Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 71 }).Count > 0);
+}
 
 static void CustomContract()
 {
@@ -230,6 +247,23 @@ static void Fallback()
         Json("""{"provider":"youtube","videoId":"abcdefghijk"}"""), []).Kind == IntentResolutionKind.Unavailable);
     Check(IntentResolutionPolicy.Resolve(CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web with { Version = 2 }),
         Json("""{"url":"https://example.com"}"""), []).Kind == IntentResolutionKind.Unavailable);
+}
+
+static void WindowsRouting()
+{
+    var web = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web);
+    var payload = Json("""{"url":"https://example.com/signin"}""");
+    var candidates = new[] { new IntentHandlerCandidate("browser", 1, web, true, true) };
+    Check(IntentResolutionPolicy.Resolve(web, payload, candidates).Kind == IntentResolutionKind.Widget);
+    Check(IntentResolutionPolicy.Resolve(web, payload, candidates, routing: WidgetIntentRouting.Windows).Kind == IntentResolutionKind.ExternalBrowser);
+    Check(IntentResolutionPolicy.Resolve(Custom(), Json("""{"topic":"boss"}"""), [], routing: WidgetIntentRouting.Windows).Kind == IntentResolutionKind.Unavailable);
+    Check(IntentResolutionPolicy.Resolve(web, Json("""{"url":"file:///C:/test.exe"}"""), [], routing: WidgetIntentRouting.Windows).Kind == IntentResolutionKind.InvalidPayload);
+    var automatic = WidgetIntentRequest.Create(WidgetIntentContracts.Web, payload);
+    var windows = WidgetIntentRequest.Create(WidgetIntentContracts.Web, payload, WidgetIntentRouting.Windows);
+    Check(!automatic.Matches(windows));
+    var snapshot = new WidgetView(UI.Button("Sign in", "signin", "signin").OpenIntent(WidgetIntentContracts.Web, payload, routing: WidgetIntentRouting.Windows)).CreateSnapshot("fixture", 1);
+    Check(snapshot.ProtocolVersion == ProtocolConstants.WindowsIntentRoutingVersion);
+    Check(ViewSnapshotValidator.Validate(snapshot).Count == 0);
 }
 
 static void WebUrls()

@@ -24,6 +24,9 @@ internal sealed class ProtocolVersionRequirements
         ArgumentNullException.ThrowIfNull(snapshot);
         var requirements = new List<ProtocolVersionRequirement>();
         var nodes = 0;
+        if (snapshot.ScrollRevealRequest is not null)
+            Add("scroll-reveal", ProtocolConstants.ScrollRevealVersion, "$.scrollRevealRequest",
+                "Scroll reveal requires protocol version 70 or later.");
 
         if (snapshot.FocusGroupEntryRequest is not null)
         {
@@ -140,9 +143,21 @@ internal sealed class ProtocolVersionRequirements
                 return;
 
             var scope = node.InputScopeId ?? inheritedScope;
+            if (node.CapturedMedia?.SourceApplication is not null)
+                Add("capture-application-context", ProtocolConstants.CaptureApplicationContextVersion, $"{path}.capturedMedia",
+                    "Capture application context requires protocol version 74 or later.");
+            if (node.WebBrowser?.Url == WebBrowserDocument.StartPage)
+                Add("browser-start-page", ProtocolConstants.BrowserStartPageVersion, $"{path}.webBrowser",
+                    "Browser start pages require protocol version 73 or later.");
             if (node.Intent is not null)
                 Add("widget-intent", ProtocolConstants.WidgetIntentVersion, $"{path}.intent",
                     "Declarative widget intents require protocol version 65 or later.");
+            if (node.Intent?.Routing == WidgetIntentRouting.Windows)
+                Add("windows-intent-routing", ProtocolConstants.WindowsIntentRoutingVersion, $"{path}.intent.routing",
+                    "Windows intent routing requires protocol version 71 or later.");
+            if (node.Intent is { ReportsResult: true } or { ContractId: WidgetIntentContracts.SearchVideo })
+                Add("intent-feedback", ProtocolConstants.IntentFeedbackVersion, $"{path}.intent",
+                    "Intent feedback and search require protocol version 72 or later.");
             if (inferDeferredFocusGroupEntry &&
                 snapshot.FocusGroupEntryRequest is { } groupEntry &&
                 string.Equals(node.Id, groupEntry.GroupId, StringComparison.Ordinal) &&
@@ -277,6 +292,9 @@ internal sealed class ProtocolVersionRequirements
                             $"{path}.virtualCollectionWindow",
                             $"Virtual collection windows require protocol version {ProtocolConstants.VirtualCollectionWindowVersion} or later.");
                     break;
+                case ViewNodeKind.RichText:
+                    Add("rich-text", ProtocolConstants.RichTextVersion, path, "RichText requires protocol version 76 or later.");
+                    break;
                 case ViewNodeKind.Grid:
                     Add(
                         "responsive-grid",
@@ -305,6 +323,9 @@ internal sealed class ProtocolVersionRequirements
                             $"Slider interaction modes require protocol version {ProtocolConstants.SliderActivationVersion} or later.");
                     break;
                 case ViewNodeKind.TextEntry:
+                    if (node.TextEntryMaximumLength > ProtocolConstants.MaximumTextEntryLength)
+                        Add("extended-text-entry", ProtocolConstants.ExtendedTextEntryVersion, path,
+                            $"Extended text entry requires protocol version {ProtocolConstants.ExtendedTextEntryVersion} or later.");
                     Add(
                         "text-entry",
                         ProtocolConstants.TextEntryVersion,
@@ -336,7 +357,15 @@ internal sealed class ProtocolVersionRequirements
                         path,
                         $"MediaViewport requires protocol version {ProtocolConstants.MediaViewportVersion} or later.");
                     break;
+                case ViewNodeKind.MediaPlayer:
+                    Add("media-player", ProtocolConstants.MediaPlayerVersion, path, "MediaPlayer requires protocol version 75 or later.");
+                    break;
+                case ViewNodeKind.CapturedMedia:
+                    Add("captured-media", ProtocolConstants.CapturedMediaVersion, path, "CapturedMedia requires protocol version 67 or later.");
+                    break;
                 case ViewNodeKind.WebBrowser:
+                    if (node.WebBrowser?.ProviderDocument is not null)
+                        Add("provider-document", ProtocolConstants.ProviderDocumentVersion, path, "Restricted documents require protocol version 69 or later.");
                     Add("web-browser", ProtocolConstants.WebBrowserVersion, path,
                         "WebBrowser requires protocol version 66 or later.");
                     break;

@@ -42,13 +42,25 @@ internal sealed partial class HostChoiceDialog : ContentDialog
             }
             choices.SelectedIndex = 0;
             choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: int index }) Choose(index); };
-            content.Children.Add(choices);
-            PrimaryButtonText = "Open";
+            if (entries.Count > 1) content.Children.Add(choices);
+            PrimaryButtonText = entries.Count == 1 ? entries[0].Label : "Open";
             choices.SelectionChanged += (_, _) => IsPrimaryButtonEnabled = choices.SelectedIndex >= 0;
             PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(choices.SelectedIndex); };
         }
         Content = content;
-        Opened += (_, _) => (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
+        Opened += (_, _) =>
+        {
+            (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
+        };
+    }
+
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        // Theme application can replace the button after Opened. Keep the ID
+        // on the current template instance rather than the discarded control.
+        if (GetTemplateChild("PrimaryButton") is Control primary)
+            AutomationProperties.SetAutomationId(primary, "Host.Choice.Primary");
     }
 
     private void Choose(int index)

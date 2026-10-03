@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetPresentationSession;
@@ -111,7 +112,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         GotFocus += (_, _) => { RememberFocus(); NotifyControllerGuideChanged(); };
         GettingFocus += OnGettingFocus;
         PreviewKeyDown += DirectionalKeyDown;
-        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelGroupEntry()), true);
+        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { CancelGroupEntry(); CancelScrollReveal(); }), true);
+        AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, _) => CancelScrollReveal()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;
@@ -166,9 +168,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     && retained.Identity == declaration.Identity
                     && SameGridLayoutMode(declarations[declaration.Node.Id].Node, declaration.Node)
                     && SameSurfaceOwnership(declaration, plan)
+                    && IsInlineLink(declaration, plan) == IsInlineLink(declarations[declaration.Node.Id], declarations)
                     && declarations[declaration.Node.Id].Node.Transition?.Kind == declaration.Node.Transition?.Kind
                     && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
-                    ? retained : Create(declaration, IsModalDialog(declaration, plan)));
+                    ? retained : Create(declaration, IsModalDialog(declaration, plan), IsInlineLink(declaration, plan)));
             var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
             if (sameOwner) RetainBackgroundPaint(nextBindings, plan);
             var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
@@ -182,6 +185,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             else if (Content is FrameworkElement previousRoot && !ReferenceEquals(previousRoot, nextBindings[root.Id].LayoutElement)) Content = null;
             foreach (var (id, binding) in bindings)
             {
+                if (binding.Element is WidgetRichTextView rich)
+                    rich.DetachExcept(child => child.Tag is WidgetElementIdentity childIdentity &&
+                        plan.TryGetValue(childIdentity.Id, out var nextChild) && nextChild.ParentId == id &&
+                        nextBindings.TryGetValue(id, out var nextParent) && ReferenceEquals(nextParent, binding) &&
+                        ReferenceEquals(nextBindings[childIdentity.Id].LayoutElement, child));
                 if (transition.Retained.Contains(binding) || modalExit?.Retained.Contains(binding) == true) continue;
                 if (!nextBindings.TryGetValue(id, out var replacement) || !ReferenceEquals(binding, replacement)) Retire(binding);
                 if (binding.Children is null) continue;
@@ -200,6 +208,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             {
                 remembered.Clear();
                 ResetGroupFocus();
+                CancelScrollReveal(); lastScrollRevealRequest = 0;
                 ClearSurfaceState();
             }
             declarations = plan;
@@ -228,6 +237,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                         panel.Children.Insert(index, child);
                     }
             }
+            RefreshRichText();
             UpdateModalGeometry();
             if (motionStage is not null) { motionStage.SetCurrent(currentRoot); motionStage.SetModal(currentModal); Content = motionStage; }
             else Content = bindings[root.Id].LayoutElement;
@@ -246,6 +256,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ValidateSliderAdjustment();
         QueueMediaRefresh();
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
+        UpdateScrollReveal(nextPresentation.View);
         QueueSurfaceUpdate();
         if (presentationActive) { StartTransitions(transition); StartModalExit(modalExit); }
         else { SettleTransitions(); SettleModalExit(); }
@@ -310,6 +321,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         // No row is focused yet. Directions cannot use the parking container as
         // a spatial target or cancel the only pending route back to real content.
         if (FindIndexedCollection() is { IsFocusParked: true, IsEntryPending: true }) return true;
+        if (FocusedBrowser is { IsInteracting: true } browser && browser.MoveFocus(direction)) return true;
         if (!SettleScrollFocus()) return true;
         CancelGroupEntry();
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
@@ -327,8 +339,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect() || HandleSliderButton(ControllerButton.A, ControllerEventPhase.Pressed)) return;
         if (FocusedBinding() is { Identity.Kind: ViewNodeKind.Slider } slider && Eligible(slider))
         { _ = InvokeAsync(slider.Identity, slider.Token); return; }
+        if (FocusedBrowser is { } browser) { browser.Enter(); return; }
+        if (FocusedMediaPlayer is { } captured) { captured.ActivateFocusedControl(); return; }
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
-        if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
+        if (!applying && FocusedBinding() is { Element: ButtonBase { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
     }
 
@@ -355,9 +369,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     partial void TraceFocus(string phase);
     partial void ConfigureCollectionTrace(WidgetIndexedCollectionView collection);
 
-    private void RememberFocus()
+    private void RememberFocus(Binding? nativeTarget = null)
     {
-        if (!applying && automaticFocusEnabled && presentationInputEnabled && FocusedBinding() is { } binding && Navigable(binding))
+        if (!applying && automaticFocusEnabled && presentationInputEnabled && (nativeTarget ?? FocusedBinding()) is { } binding && Navigable(binding))
         {
             // A new native/pointer/automation focus choice after structural
             // reconciliation supersedes the pending low-priority restoration.
@@ -395,7 +409,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         catch (Exception error) { ReportFailure(error); }
     }
 
-    private Binding Create(Declaration declaration, bool modalDialog)
+    private Binding Create(Declaration declaration, bool modalDialog, bool inlineLink)
     {
         var node = declaration.Node;
         var token = new object();
@@ -454,12 +468,17 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = presentationOnly ? new TextBlock() : CreateSelect(declaration.Identity, token);
                 break;
             case ViewNodeKind.Button:
-                element = presentationOnly ? new TextBlock { TextWrapping = TextWrapping.Wrap } :
+                element = presentationOnly ? new TextBlock { TextWrapping = TextWrapping.Wrap } : inlineLink ?
+                    new HyperlinkButton { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions), UseSystemFocusVisuals = true } :
                     new Button { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
+            case ViewNodeKind.RichText: element = new WidgetRichTextView(); break;
             case ViewNodeKind.Slider: element = presentationOnly ? new TextBlock() : CreateSlider(declaration.Identity, token); break;
             case ViewNodeKind.Image: element = new WidgetArtworkView(); break;
             case ViewNodeKind.MediaViewport: element = new Media.WidgetMediaViewport(); break;
+            case ViewNodeKind.MediaPlayer:
+            case ViewNodeKind.CapturedMedia: element = new Media.MediaPlayerView(); break;
+            case ViewNodeKind.WebBrowser: element = new Browser.BrowserSlot(); break;
             case ViewNodeKind.WindowPreview: element = new Previews.WidgetWindowPreview(); break;
             case ViewNodeKind.Text: element = new TextBlock { TextWrapping = TextWrapping.Wrap }; break;
             case ViewNodeKind.Progress: element = new ProgressBar(); break;
@@ -468,6 +487,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             default: throw new NotSupportedException($"WinUI presentation for {node.Kind} is not implemented.");
         }
         element.Tag = declaration.Identity;
+        if (element is HyperlinkButton inlineControl) ConfigureInlineLinkInput(inlineControl);
         if (element is Button depthButton)
         {
             depthButton.Template = (ControlTemplate)Application.Current.Resources["WidgetDepthButtonTemplate"];
@@ -492,6 +512,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, node);
         ApplySizeAndTypography(element, node);
         if (element is Media.WidgetMediaViewport viewport) UpdateMediaViewport(viewport, node, binding.Identity.Scope);
+        if (element is Browser.BrowserSlot browser) UpdateBrowserSlot(browser, node, binding.Identity.Scope);
+        if (element is Media.MediaPlayerView captured) UpdateMediaPlayer(captured, node, binding.Identity.Scope);
         if (element is Previews.WidgetWindowPreview preview) preview.Configure(presentationOnly || !presentationActive ? null : WindowPreviews, frame!, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is WidgetValueButton valueButton)
@@ -511,6 +533,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
+        if (element is HyperlinkButton link) UpdateInlineLink(link, node.Text ?? string.Empty);
         if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) UpdateButtonLabel(entry, TextEntryLabel(node));
         if (element is ScrollViewer scroll)
         {

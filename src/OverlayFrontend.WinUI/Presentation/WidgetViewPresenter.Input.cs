@@ -20,6 +20,8 @@ internal sealed partial class WidgetViewPresenter
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Route widget input on its WinUI dispatcher.");
         if (!presentationInputEnabled || !presentationActive || disposed || applying || presentationOnly || frame is null) return false;
         if (textEntryPopup is { } edit) { edit.Dialog.Handle(button, phase); return true; }
+        if (FocusedBrowser is { } browser && browser.HandleButton(button, phase)) return true;
+        if (FocusedMediaPlayer?.Handle(button, phase) == true) return true;
         if (button == ControllerButton.A) UpdateControllerPressedStyle(phase);
         if (HasTransientControl)
         {

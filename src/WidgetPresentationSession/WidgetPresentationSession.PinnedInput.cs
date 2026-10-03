@@ -22,7 +22,7 @@ public sealed partial class WidgetPresentationSession
         cancellationToken.ThrowIfCancellationRequested();
         using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
         string? expectedAction;
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedInputLocked(selection, projection);
             ValidatePinnedInputOrigin(projection, input);
@@ -64,7 +64,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(selection); ArgumentNullException.ThrowIfNull(projection); ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
         OrdinaryInputBinding binding;
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedInputLocked(selection, projection);
             if (action.InputScopeId != projection.Snapshot.ActiveInputScopeId || action.InputScopeId != current.ActiveInputScopeId)
@@ -95,7 +95,7 @@ public sealed partial class WidgetPresentationSession
     {
         using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
         var input = new PinnedActionInput(PinnedActionContract.Version, projection.LayoutId, projection.Frame.Authority.SnapshotSequence, action);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedInputLocked(selection, projection);
             try

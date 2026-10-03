@@ -116,11 +116,14 @@ foreach($manifest in Get-ChildItem -LiteralPath (Join-Path $repository 'src/Firs
 $sources['widgetrail.samples.embedded-media']=Join-Path $repository 'samples/EmbeddedMediaWidget'
 function Package([string]$Source,[string]$Root,[string]$Relative,[string]$Name){
     $manifest=Get-Content -LiteralPath (Join-Path $Source 'manifest.json') -Raw | ConvertFrom-Json
-    $assembly=[IO.Path]::GetFileNameWithoutExtension($manifest.entrypoint.assembly)
+    $application=$manifest.entrypoint.runtime -eq 'full-trust-application-v1'
+    $entry=if($application){$manifest.entrypoint.executable}else{$manifest.entrypoint.assembly}
+    $assembly=[IO.Path]::GetFileNameWithoutExtension($entry)
+    $project=if($application){Join-Path $Source "Application/$assembly.csproj"}else{Join-Path $Source "$assembly.csproj"}
     $published=Join-Path $output "published/$Name";$package=Assert-ReleasePath (Join-Path $Root $Relative) -Within $Root
-    Publish ([IO.Path]::GetRelativePath($repository,(Join-Path $Source "$assembly.csproj"))) $published $Name
+    Publish ([IO.Path]::GetRelativePath($repository,$project)) $published $Name
     New-Item -ItemType Directory -Path (Join-Path $package 'payload') -Force | Out-Null
-    Copy-Publication $published (Join-Path $package 'payload') -Widget
+    Copy-Publication $published (Join-Path $package 'payload') -Widget:(!$application) -SkipAssets
     Copy-Assets $Source $package
     Seal $Root $package $Name
     return $manifest

@@ -32,7 +32,7 @@ internal static class PinnedActionContract
             action.FocusedElementId is { } focus && !Safe(focus) ||
             action.RequestedValue is not null || action.FocusedCollectionItem is not null ||
             action.VisibleCollectionKeys is not null || action.RetainedCollectionKeys is not null ||
-            action.CommittedText is { } text && (text.Length > ProtocolConstants.MaximumTextEntryLength || text.Any(char.IsControl)))
+            action.CommittedText is { } text && (text.Length > ProtocolConstants.MaximumExtendedTextEntryLength || text.Any(char.IsControl)))
             throw new ArgumentException("Invalid pinned action contract.");
     }
 

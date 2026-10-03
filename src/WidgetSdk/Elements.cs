@@ -463,10 +463,22 @@ public sealed record ButtonElement : WidgetElement
 
     public string Label { get; init; }
     public WidgetIntentRequest? Intent { get; init; }
-    /// <summary>Binds a host-routed intent to primary activation instead of invoking the widget's action handler.</summary>
+    /// <summary>Observe terminal routing feedback and optionally declare one sender-selected alternative.</summary>
+    public ButtonElement WithIntentFeedback(WidgetIntentRequest? fallback = null)
+    {
+        if (Intent is null) throw new InvalidOperationException("Declare an intent first.");
+        var intent = Intent with { ReportsResult = true, Fallback = fallback };
+        if (!intent.IsWellFormed()) throw new ArgumentException("Invalid intent fallback.", nameof(fallback));
+        return this with { Intent = intent };
+    }
+
     public ButtonElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
         WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
         this with { Intent = WidgetIntentRequest.Create(contract, payload, presentation) };
+    /// <summary>Explicit routing override. Windows routing never falls back to a widget handler.</summary>
+    public ButtonElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
+        WidgetIntentRouting routing, WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
+        this with { Intent = WidgetIntentRequest.Create(contract, payload, routing, presentation) };
     public string ActionId { get; init; }
     public string? AccessibilityLabel { get; init; }
     public WidgetGlyph? Glyph { get; init; }
@@ -716,7 +728,7 @@ public sealed record TextEntryElement : WidgetElement
     {
         ArgumentNullException.ThrowIfNull(value);
         ArgumentNullException.ThrowIfNull(placeholder);
-        if (maximumLength is < 1 or > ProtocolConstants.MaximumTextEntryLength)
+        if (maximumLength is < 1 or > ProtocolConstants.MaximumExtendedTextEntryLength)
             throw new ArgumentOutOfRangeException(nameof(maximumLength));
         if (value.Length > maximumLength)
             throw new ArgumentException("The text-entry value exceeds its maximum length.", nameof(value));

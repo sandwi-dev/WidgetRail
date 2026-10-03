@@ -12,6 +12,8 @@ internal sealed partial class WidgetViewPresenter
     {
         if (presentationInputEnabled && !enabled) RememberFocus();
         presentationInputEnabled = enabled;
+        RefreshBrowsers();
+        RefreshMediaPlayers();
         RefreshContextIndicators();
         IsHitTestVisible = enabled && presentationActive;
         if (!enabled)

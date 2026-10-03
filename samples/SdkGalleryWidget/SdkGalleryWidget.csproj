@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="assets\media\sample.mp4" Link="media\sample.mp4" CopyToOutputDirectory="PreserveNewest" />
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
     <EmbeddedResource Include="assets\background-default.png"

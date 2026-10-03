@@ -183,7 +183,7 @@ public static partial class UI
     public static SpacerElement Spacer(string id) => new(id);
 
     /// <summary>Displays an isolated host browser; grants no page-content or scripting access to widget code.</summary>
-    public static WebBrowserElement WebBrowser(WebBrowserDocument document, string id) => new(document, id);
+    public static WebBrowserElement WebBrowser(WebBrowserDocument document, BrowserInteractionMode interactionMode, string id) => new(document, interactionMode, id);
 
     /// <summary>
     /// Places one declared embedded-media session inside the ordinary native

@@ -56,19 +56,41 @@ public sealed class PinnedPlacementTests
         {
             var store = new PinnedPreferencesStore(path);
             var placement = new PinnedPlacement("display", .25, .75, 480, 270, "compact", 45);
-            var first = new PinnedPreferences(1, "widget", new Dictionary<string, PinnedPlacement> { ["widget"] = placement });
-            var last = first with { WidgetId = null };
+            var first = new PinnedPreferences(1, new Dictionary<string, PinnedPlacement> { ["widget"] = placement });
+            var last = first with { Placements = new Dictionary<string, PinnedPlacement> { ["widget"] = placement with { OpacityPercent = 70 } } };
             await Task.WhenAll(store.SaveAsync(first), store.SaveAsync(last));
             var loaded = await store.LoadAsync();
-            Assert.IsNull(loaded.WidgetId);
-            Assert.AreEqual(placement, loaded.Placements["widget"]);
+            Assert.AreEqual(placement with { OpacityPercent = 70 }, loaded.Placements["widget"]);
+            Assert.IsFalse((await File.ReadAllTextAsync(Path.Combine(path, "winui-pinned-state.json"))).Contains("WidgetId"));
             Assert.AreEqual(0, Directory.GetFiles(path, "*.tmp").Length);
             Assert.AreEqual(0, (await new PinnedPreferencesStore(Path.Combine(path, "other")).LoadAsync()).Placements.Count);
             await File.WriteAllTextAsync(Path.Combine(path, "winui-pinned-state.json"), "{\"Version\":1,\"WidgetId\":\"missing\",\"Placements\":{}}");
-            Assert.IsNull((await store.LoadAsync()).WidgetId);
+            Assert.AreEqual(0, (await store.LoadAsync()).Placements.Count);
             await File.WriteAllTextAsync(Path.Combine(path, "winui-pinned-state.json"), new string('x', 1024 * 1024 + 1));
             Assert.AreEqual(0, (await store.LoadAsync()).Placements.Count);
         }
         finally { Directory.Delete(path, recursive: true); }
     }
+    [TestMethod]
+    public async Task LegacyActivePinIsIgnoredButGeometrySurvives()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "wrail-pin-legacy-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        try
+        {
+            var placement = new PinnedPlacement("display", .25, .75, 480, 270, "compact", 45);
+            var store = new PinnedPreferencesStore(path);
+            await store.SaveAsync(new(1, new Dictionary<string, PinnedPlacement> { ["widget"] = placement }));
+            var file = Path.Combine(path, "winui-pinned-state.json");
+            var json = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(file))!;
+            json["WidgetId"] = "widget";
+            await File.WriteAllTextAsync(file, json.ToJsonString());
+            var loaded = await store.LoadAsync();
+            Assert.AreEqual(placement, loaded.Placements["widget"]);
+            await store.SaveAsync(loaded);
+            Assert.IsFalse((await File.ReadAllTextAsync(file)).Contains("WidgetId"));
+        }
+        finally { Directory.Delete(path, recursive: true); }
+    }
+
 }

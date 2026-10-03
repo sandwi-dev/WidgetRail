@@ -12,6 +12,7 @@ internal static class PinnedSurfaceContract
                 ActiveInputScopeId = snapshot.Root.Children[0].InputScopeId!,
                 InitialFocusId = null,
                 FocusGroupEntryRequest = null,
+                ScrollRevealRequest = null,
                 QuickActions = [],
             }
             : snapshot;
@@ -21,7 +22,16 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 66;
+    public const int CurrentVersion = 76;
+    public const int RichTextVersion = 76;
+    public const int MediaPlayerVersion = 75;
+    public const int CaptureApplicationContextVersion = 74;
+    public const int BrowserStartPageVersion = 73;
+    public const int IntentFeedbackVersion = 72;
+    public const int WindowsIntentRoutingVersion = 71;
+    public const int ScrollRevealVersion = 70;
+    public const int ProviderDocumentVersion = 69;
+    public const int CapturedMediaVersion = 67;
     public const int WebBrowserVersion = 66;
     public const int WidgetIntentVersion = 65;
     public const int GridLayoutVersion = 64;
@@ -124,6 +134,8 @@ public static class ProtocolConstants
     public const int MaximumPendingPresentationUpdates = 4;
     public const int MaximumPendingPresentationUpdateBytes = 512 * 1024;
     public const int MaximumTextEntryLength = 96;
+    public const int MaximumExtendedTextEntryLength = 2048;
+    public const int ExtendedTextEntryVersion = 66;
     public const int MaximumCursorCollectionItems = 256;
     public const int MaximumVirtualCollectionItems = 1_000_000;
     public const long MaximumVirtualCollectionRequestGeneration = 9_007_199_254_740_991;

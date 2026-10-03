@@ -19,7 +19,7 @@ public sealed partial class WidgetPresentationSession
     // the picker/review returns. Filesystem access is never delegated to a widget.
     public void ValidateLocalWidgetInstall(WidgetPresentationFrame displayed, WidgetActionEvent action)
     {
-        lock (_gate) _ = LocalInstallOriginLocked(displayed, action);
+        using (_gate.Enter()) _ = LocalInstallOriginLocked(displayed, action);
     }
 
     private BridgeLocalWidgetPackageOrigin LocalInstallOriginLocked(WidgetPresentationFrame displayed, WidgetActionEvent action)
@@ -48,7 +48,7 @@ public sealed partial class WidgetPresentationSession
         var events = Channel.CreateBounded<BridgeLocalWidgetPackageInstallCompleted>(4);
         var id = Guid.NewGuid().ToString("N");
         BridgeLocalWidgetPackageOrigin origin;
-        lock (_gate)
+        using (_gate.Enter())
         {
             origin = LocalInstallOriginLocked(displayed, action);
             if (localInstallId is not null) throw new InvalidOperationException("A widget installation is already active.");
@@ -104,14 +104,14 @@ public sealed partial class WidgetPresentationSession
                     BridgeMessageTypes.Acknowledged, cleanup.Token); }
                 catch (Exception error) when (error is OperationCanceledException or IOException or ObjectDisposedException or WidgetPresentationSessionException or BridgeProtocolException) { }
             }
-            lock (_gate) { if (localInstallId == id) { localInstallId = null; localInstallEvents = null; } }
+            using (_gate.Enter()) { if (localInstallId == id) { localInstallId = null; localInstallEvents = null; } }
         }
     }
 
     private void HandleLocalInstallEvent(JsonElement payload)
     {
         var result = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallCompleted>(payload);
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (result.OperationId != localInstallId) return; // Late completion of a cancelled operation.
             if (result.Status is not ("approval-required" or "installed-disabled" or "cancelled" or "failed") ||

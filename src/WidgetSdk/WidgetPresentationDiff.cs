@@ -77,6 +77,8 @@ internal static class WidgetPresentationDiff
             return Checkpoint("embedded_media_changed");
         if (!SameJson(previous.FocusGroupEntryRequest, current.FocusGroupEntryRequest))
             return Checkpoint("focus_group_entry_request_changed");
+        if (!SameJson(previous.ScrollRevealRequest, current.ScrollRevealRequest))
+            return Checkpoint("scroll_reveal_request_changed");
 
         var operations = new List<PresentationUpdateOperation>();
         AddDocumentChanges(previous, current, operations);
@@ -371,6 +373,8 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ActionId, before.ActionId, after.ActionId);
         Add(PresentationProperty.Intent, before.Intent, after.Intent);
         Add(PresentationProperty.WebBrowser, before.WebBrowser, after.WebBrowser);
+        Add(PresentationProperty.MediaPlayer, before.MediaPlayer, after.MediaPlayer);
+        Add(PresentationProperty.CapturedMedia, before.CapturedMedia, after.CapturedMedia);
         Add(PresentationProperty.ContextActions, before.ContextActions, after.ContextActions);
         Add(PresentationProperty.ContextMenuButton, before.ContextMenuButton, after.ContextMenuButton);
         Add(PresentationProperty.SelectOptions, before.SelectOptions, after.SelectOptions);

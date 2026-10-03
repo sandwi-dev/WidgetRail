@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="RuntimeProtocol.cs" />
+    <Compile Remove="WorkerCapabilityConnection.cs" />
+    <Compile Remove="BrokerWidgetCapabilityClient.cs" />
     <Compile Remove="WidgetWorkerNotificationLane.cs" />
     <Compile Remove="WidgetWorkerServer.cs" />
     <Compile Remove="WidgetIndexedRangeLane.cs" />

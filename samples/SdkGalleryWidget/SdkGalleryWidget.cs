@@ -4,7 +4,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.SdkGalleryWidget;
 
-public enum GalleryPage { Overview, Controls, Tiles, Backgrounds, Utilities }
+public enum GalleryPage { Overview, Controls, Tiles, Backgrounds, Text, Surfaces, Utilities }
 public enum GalleryModal { None, Picker, ActionSheet }
 public enum GalleryRoute
 {
@@ -13,12 +13,14 @@ public enum GalleryRoute
     Tiles,
     Backgrounds,
     Utilities,
+    Text,
+    Surfaces,
     Picker,
     ActionSheet,
 }
 
 /// <summary>
-/// Copyable, capability-free reference for the public controller-first SDK.
+/// Copyable, public-SDK reference for the public controller-first SDK.
 /// It intentionally has no custom worker, broker calls, or host-only helpers.
 /// </summary>
 public sealed partial class SdkGalleryWidget : Widget
@@ -52,6 +54,8 @@ public sealed partial class SdkGalleryWidget : Widget
         new("gallery.tab.controls", "Controls", "gallery.tab.controls", WidgetGlyph.Settings),
         new("gallery.tab.tiles", "Tiles", "gallery.tab.tiles", WidgetGlyph.Connection),
         new("gallery.tab.backgrounds", "Backgrounds", "gallery.tab.backgrounds", WidgetGlyph.Music),
+        new("gallery.tab.text", "Text", "gallery.tab.text", WidgetGlyph.Settings),
+        new("gallery.tab.surfaces", "Web & media", "gallery.tab.surfaces", WidgetGlyph.Play),
         new("gallery.tab.utilities", "Utilities", "gallery.tab.utilities", WidgetGlyph.Warning),
     ];
     private static readonly GalleryRoute[] RootRoutes =
@@ -60,6 +64,8 @@ public sealed partial class SdkGalleryWidget : Widget
         GalleryRoute.Controls,
         GalleryRoute.Tiles,
         GalleryRoute.Backgrounds,
+        GalleryRoute.Text,
+        GalleryRoute.Surfaces,
         GalleryRoute.Utilities,
     ];
     private readonly WidgetNavigator<GalleryRoute> _navigation;
@@ -69,7 +75,10 @@ public sealed partial class SdkGalleryWidget : Widget
     private bool _showToast;
     private int _toastGeneration;
 
-    public SdkGalleryWidget() => _navigation = CreateNavigatorWithOptions(
+    public SdkGalleryWidget()
+    {
+        _demo = CreateModel(new DemoState());
+        _navigation = CreateNavigatorWithOptions(
         Ids.Id("navigation"),
         GalleryRoute.Overview,
         new WidgetNavigatorOptions<GalleryRoute>
@@ -77,6 +86,7 @@ public sealed partial class SdkGalleryWidget : Widget
             SharedRootScopeId = Ids.Id("root-scope"),
             RootRoutes = RootRoutes,
         });
+    }
 
     public GalleryPage Page => PageFor(_navigation.Value.RootRoute);
     public GalleryModal Modal => ModalFor(_navigation.Value.Route);
@@ -132,7 +142,7 @@ public sealed partial class SdkGalleryWidget : Widget
             .UseFocusedDescendantArtwork()
             .AddClasses("gallery-root-background");
 
-        return new WidgetView(
+        var view = new WidgetView(
             root,
             InitialFocusId: InitialFocus(navigation),
             QuickActions:
@@ -153,7 +163,10 @@ public sealed partial class SdkGalleryWidget : Widget
             })
         {
             FocusGroupEntryRequest = navigation.FocusGroupEntryRequest,
+            ScrollRevealRequest = page == GalleryPage.Text ? _demo.Value.Reveal : null,
+            PinnedLayouts = PinExamples(),
         };
+        return ApplyDemoModal(view);
     }
 
     public override ValueTask OnActionAsync(
@@ -162,6 +175,8 @@ public sealed partial class SdkGalleryWidget : Widget
     {
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (TryDemoAction(action)) return ValueTask.CompletedTask;
 
         if (_navigation.TryHandleBack(action, action.FocusedElementId))
             return ValueTask.CompletedTask;
@@ -180,6 +195,8 @@ public sealed partial class SdkGalleryWidget : Widget
             case "gallery.tab.backgrounds":
                 ActivatePage(GalleryRoute.Backgrounds);
                 return ValueTask.CompletedTask;
+            case "gallery.tab.text": ActivatePage(GalleryRoute.Text); return ValueTask.CompletedTask;
+            case "gallery.tab.surfaces": ActivatePage(GalleryRoute.Surfaces); return ValueTask.CompletedTask;
             case "gallery.tab.utilities":
                 ActivatePage(GalleryRoute.Utilities);
                 return ValueTask.CompletedTask;
@@ -265,7 +282,7 @@ public sealed partial class SdkGalleryWidget : Widget
         "SDK Gallery",
         "gallery.header",
         eyebrow: "COMMUNITY REFERENCE",
-        description: "Public components, real focus behavior, zero privileged APIs.",
+        description: "Public components, real focus behavior, optional host-service demos.",
         trailing: UI.StatusBadge("Public SDK", StatusTone.Success, "gallery.header.status"))
         .AddClasses("gallery-header");
 
@@ -277,6 +294,8 @@ public sealed partial class SdkGalleryWidget : Widget
             GalleryPage.Controls => ControlsPage(),
             GalleryPage.Tiles => TilesPage(),
             GalleryPage.Backgrounds => BackgroundsPage(),
+            GalleryPage.Text => TextPage(),
+            GalleryPage.Surfaces => SurfacesPage(),
             _ => UtilitiesPage(),
         }).RememberChildFocus(PageInitialFocus(page));
         return UI.VerticalScroll("gallery.page-scroll", content)
@@ -363,6 +382,7 @@ public sealed partial class SdkGalleryWidget : Widget
             status: "Local state",
             statusTone: StatusTone.Info,
             glyph: WidgetGlyph.Settings),
+        ModernControls(),
         UI.Switch("Compact controls", _compactMode, "gallery.compact.toggle", "gallery.controls.switch"),
         UI.Select(
             "Density",
@@ -499,6 +519,7 @@ public sealed partial class SdkGalleryWidget : Widget
         .AddClasses("gallery-page");
 
     private StackElement UtilitiesPage() => UI.Stack("gallery.utilities",
+        IntentExamples(),
         UI.SectionHeader(
             "Feedback and diagnostics",
             "gallery.utilities.header",
@@ -649,6 +670,8 @@ public sealed partial class SdkGalleryWidget : Widget
         GalleryPage.Controls => "gallery.controls.compact.action",
         GalleryPage.Tiles => "gallery.media",
         GalleryPage.Backgrounds => "gallery.backgrounds.warm",
+        GalleryPage.Text => "gallery.text.entry",
+        GalleryPage.Surfaces => "gallery.surfaces.choose",
         _ => "gallery.utilities.toast-button",
     };
 
@@ -703,6 +726,8 @@ public sealed partial class SdkGalleryWidget : Widget
         GalleryPage.Controls => "gallery.tab.controls",
         GalleryPage.Tiles => "gallery.tab.tiles",
         GalleryPage.Backgrounds => "gallery.tab.backgrounds",
+        GalleryPage.Text => "gallery.tab.text",
+        GalleryPage.Surfaces => "gallery.tab.surfaces",
         _ => "gallery.tab.utilities",
     };
 
@@ -713,6 +738,8 @@ public sealed partial class SdkGalleryWidget : Widget
         GalleryRoute.Tiles => GalleryPage.Tiles,
         GalleryRoute.Backgrounds => GalleryPage.Backgrounds,
         GalleryRoute.Utilities => GalleryPage.Utilities,
+        GalleryRoute.Text => GalleryPage.Text,
+        GalleryRoute.Surfaces => GalleryPage.Surfaces,
         _ => throw new InvalidOperationException("A nested Gallery route cannot be rendered as a root page."),
     };
 
@@ -729,6 +756,8 @@ public sealed partial class SdkGalleryWidget : Widget
         GalleryPage.Controls => "gallery.controls",
         GalleryPage.Tiles => "gallery.tiles",
         GalleryPage.Backgrounds => "gallery.backgrounds",
+        GalleryPage.Text => "gallery.text",
+        GalleryPage.Surfaces => "gallery.surfaces",
         _ => "gallery.utilities",
     };
 

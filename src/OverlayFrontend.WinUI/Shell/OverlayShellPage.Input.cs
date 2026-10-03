@@ -57,7 +57,9 @@ internal sealed partial class OverlayShellPage
         if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
         { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var radialNavigation = ReceiveRadialNavigation(frame);
-        var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
+        var browserPointer = !radialNavigation && (PinnedInputActive ? pinned!.Presenter : interactive ? surface : null)
+            ?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true;
+        var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : browserPointer ? default : frame.StickNavigation;
         var next = direction.Direction switch
         {
             NavigationDirection.Left => FocusNavigationDirection.Left,
@@ -171,6 +173,7 @@ internal sealed partial class OverlayShellPage
             if (!handled && button == ControllerButton.B && phase == ControllerEventPhase.Pressed &&
                 !retired && visible && version == selectionVersion && ReferenceEquals(target, surface))
             {
+                shellOwnedReleases.Add(button);
                 PrepareRadialBackEntry();
                 SetInteractive(false);
                 ResetInputPresentation();

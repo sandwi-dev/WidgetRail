@@ -1,6 +1,8 @@
 # Host capabilities
 
-A capability grants a sandboxed widget access to one kind of host service.
+A capability grants a widget access to one kind of host service. Sandboxed and
+full-trust application widgets use the same declarations, consent and lifecycle
+checks. Full-trust approval does not bypass host-service permission checks.
 Reading audio state does not automatically grant permission to change it.
 
 ## Declare and review access

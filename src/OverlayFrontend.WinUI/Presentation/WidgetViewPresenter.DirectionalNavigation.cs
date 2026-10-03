@@ -12,7 +12,8 @@ internal sealed partial class WidgetViewPresenter
     private void DirectionalKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (args.Handled || presentationOnly || XamlRoot is null || Input.GamepadKeyBoundary.Owns(this, args) || HasTransientControl ||
-            FocusManager.GetFocusedElement(XamlRoot) is TextBox or PasswordBox or RichEditBox) return;
+            FocusManager.GetFocusedElement(XamlRoot) is TextBox or PasswordBox or RichEditBox ||
+            FocusedBrowser?.Surface?.HasNativeKeyboardFocus == true) return;
         var direction = args.Key switch
         {
             Windows.System.VirtualKey.Up => FocusNavigationDirection.Up, Windows.System.VirtualKey.Down => FocusNavigationDirection.Down,
@@ -27,6 +28,8 @@ internal sealed partial class WidgetViewPresenter
 
     private bool MoveDirectionalFocus(FocusNavigationDirection direction, bool isRepeat)
     {
+        CancelScrollReveal();
+        if (FocusedMediaPlayer?.MoveFocus(direction) == true) return true;
         if (FocusedBinding() is not { } origin || !NavigationTarget(origin) ||
             presentation?.IsCurrent != true) return true; // No current geometry is not a root exit.
         if (ReverseDirectionalScroll(origin, direction, isRepeat)) return true;

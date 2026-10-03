@@ -197,7 +197,7 @@ public static class IndexedCollectionContract
                     ?? throw new ArgumentException("Indexed request refers to an undeclared pinned projection.", nameof(request));
                 if (layout.Root is { } root)
                     projection = parent with { Root = root, ActiveInputScopeId = layout.ActiveInputScopeId ?? root.InputScopeId ?? root.Id,
-                        InitialFocusId = layout.InitialFocusId, FocusGroupEntryRequest = null, QuickActions = [], PinnedLayouts = [] };
+                        InitialFocusId = layout.InitialFocusId, FocusGroupEntryRequest = null, ScrollRevealRequest = null, QuickActions = [], PinnedLayouts = [] };
                 else projection = PinnedSurfaceContract.WithoutModal(parent);
             }
         }

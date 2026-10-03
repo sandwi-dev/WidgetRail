@@ -389,3 +389,6 @@
 .wrail-toast__copy { min-width: 0px; flex-grow: 1; gap: 2px; }
 .wrail-toast__title { color: var(--text); font-size: 12px; font-weight: 500; max-lines: 1; }
 .wrail-toast__message { color: var(--text-muted); font-size: 10px; max-lines: 2; }
+
+.gallery-live-surface { width: 100%; height: 380px; min-width: 0px; min-height: 240px; }
+.gallery-inline-citation { font-size: 11px; color: var(--accent); }

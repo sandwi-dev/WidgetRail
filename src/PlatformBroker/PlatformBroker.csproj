@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\WidgetProtocol\WidgetProtocol.csproj" /></ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\AppLibraryArtworkHandle.cs" Link="Internal\AppLibraryArtworkHandle.cs" />
     <Compile Include="..\Shared\CommunityPlatformContractLimits.cs"

@@ -11,8 +11,9 @@ internal sealed partial class EmbeddedMediaOwner
     private bool compactInput;
     internal event Action? CompactChanged;
     internal WidgetMediaPresentation? CompactPresentation => compact;
-    internal bool CanPin(string widgetId) => !retired && compact is null && visible && activeWidget == widgetId &&
-        IsReady(widgetId) && MatchingViewport(widgetId) is not null;
+    internal bool CanPin(string widgetId, WidgetMediaPresentation? replacing = null) => !retired &&
+        (compact is null || ReferenceEquals(compact, replacing) && compact.Document.Authority.WidgetId != widgetId) &&
+        visible && activeWidget == widgetId && IsReady(widgetId) && MatchingViewport(widgetId) is not null;
     internal WidgetPresentationEmbeddedMediaState? CompactState => compact is not null && session.IsMediaPresentationCurrent(compact)
         ? session.GetEmbeddedMediaState(compact.Document) : null;
     internal EmbeddedMediaPlaybackEvent? CompactPlayback => compact is not null

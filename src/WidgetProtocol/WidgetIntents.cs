@@ -25,6 +25,10 @@ public sealed record WidgetIntentHandler : WidgetIntentContract
     /// <summary>Allows host-validated delivery into an existing passive surface without taking focus.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool SupportsPassiveDelivery { get; init; }
+
+    /// <summary>Query this handler's current readiness before presenting or delivering an intent.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool HasDynamicAvailability { get; init; }
 }
 
 public static class WidgetIntentContracts
@@ -32,6 +36,14 @@ public static class WidgetIntentContracts
     public const int MaximumDeclarations = 16;
     public const string OpenWebPage = "widgetrail.web.open";
     public const string OpenVideo = "widgetrail.video.open";
+    public const string SearchVideo = "widgetrail.video.search";
+
+    public static WidgetIntentContract VideoSearch { get; } = new(SearchVideo, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "provider":{"type":"string","minLength":1,"maxLength":64},
+          "query":{"type":"string","minLength":1,"maxLength":240}
+        },"required":["provider","query"]}
+        """));
 
     public static WidgetIntentContract Web { get; } = new(OpenWebPage, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{
@@ -84,7 +96,7 @@ public static class WidgetIntentContracts
                     if (contracts.TryGetValue(key, out var digest) && digest != compiled.SchemaDigest)
                         add(path, "conflicting_intent", "The same intent version has conflicting schemas.");
                     contracts[key] = compiled.SchemaDigest;
-                    var standard = compiled.Id switch { OpenWebPage => Web, OpenVideo => Video, _ => null };
+                    var standard = compiled.Id switch { OpenWebPage => Web, OpenVideo => Video, SearchVideo => VideoSearch, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||
                          compiled.SchemaDigest != CompiledWidgetIntentContract.Create(standard).SchemaDigest))

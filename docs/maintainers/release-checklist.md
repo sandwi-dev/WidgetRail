@@ -30,7 +30,7 @@ From a clean committed checkout with the [development tools](building.md):
 pwsh -NoProfile -File .\scripts\Build-Release.ps1
 pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
 pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
-  -ReleaseRoot .\artifacts\releases\0.1.0-preview.14 `
+  -ReleaseRoot .\artifacts\releases\0.1.0-preview.24 `
   -CompilerPath .\artifacts\tools\installer-compiler\package\tools\ISCC.exe
 ```
 

@@ -13,12 +13,16 @@ internal enum BrokerCapabilityDomain
     Loopback,
     PrivateSecrets,
     PrivateState,
+    WindowCapture,
+    ProviderDocuments,
 }
 
 internal static class BrokerCapabilityDomains
 {
     internal static BrokerCapabilityDomain Resolve(string capabilityId)
     {
+        if (capabilityId == PlatformCapabilities.ProviderDocumentsV1) return BrokerCapabilityDomain.ProviderDocuments;
+        if (capabilityId == PlatformCapabilities.WindowCaptureV1) return BrokerCapabilityDomain.WindowCapture;
         if (capabilityId is PlatformCapabilities.DisplaysReadV1 or PlatformCapabilities.DisplaysControlV1)
             return BrokerCapabilityDomain.Displays;
         if (capabilityId is PlatformCapabilities.PowerReadV1 or PlatformCapabilities.PowerControlV1)

@@ -36,7 +36,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(origin);
         var input = new IndexedCollectionInputRequest(new(lease.LeaseId, key), button, phase);
         IndexedCollectionInputContract.ValidateInput(input);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var owners = ValidateDisplayedIndexedInputLocked(lease, origin);
             var item = lease.Range.Items.SingleOrDefault(item => item.Key == key)

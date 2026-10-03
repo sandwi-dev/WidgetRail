@@ -23,7 +23,10 @@ window handles, arbitrary drawing commands or executable styles.
 
 Full-trust packages can access resources available to the Windows user. Their
 UI can use the shared SDK, but the UI contract does not turn the application's
-code into a sandboxed process.
+code into a sandboxed process. They can also use shared host capabilities through
+the authenticated application bootstrap; declaration, consent, lifecycle and
+resource ownership still apply to those calls. Revocation does not restrict their
+independent Windows APIs or recall data already read by the application.
 
 ## Sandboxed widgets and capabilities
 

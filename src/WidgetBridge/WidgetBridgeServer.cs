@@ -350,6 +350,19 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(BridgeMessageTypes.CompleteTaskActivation, request.RequestId,
                 activationResponse, cancellationToken).ConfigureAwait(false);
             return;
+        case BridgeMessageTypes.ResolveProviderDocument:
+            await HandleProviderDocumentAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        case BridgeMessageTypes.ResolveMediaPlayer:
+            await HandleMediaPlayerAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        case BridgeMessageTypes.TakeCapture:
+        case BridgeMessageTypes.CheckCapture:
+        case BridgeMessageTypes.RecordingCapture:
+        case BridgeMessageTypes.CompleteCapture:
+        case BridgeMessageTypes.ResolveCaptureAttachment:
+            await HandleCaptureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
         case BridgeMessageTypes.WindowPreviewPermissions:
             var previewRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
             var (previewCatalog, _) = _registry.CatalogSnapshot();
@@ -1102,10 +1115,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                         : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
             IsolationKey = configured.IsolationKey,
             ReadOnlyPaths = configured.ReadOnlyPaths,
-            CompanionSessionFactory = configured.ExecutionTrust ==
-                WidgetExecutionTrust.FullTrustCurrentUser
-                    ? null
-                : IsTrustedSettings(configured)
+            CompanionSessionFactory = IsTrustedSettings(configured)
                 ? context => new DiagnosticsWidgetProcessCompanion(
                     CreateDiagnosticsAsync,
                     _authorityRecovery.RetryAsync,

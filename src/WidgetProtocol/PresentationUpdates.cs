@@ -89,6 +89,8 @@ public enum PresentationProperty
     GridCell,
     Intent,
     WebBrowser,
+    CapturedMedia,
+    MediaPlayer,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -151,6 +153,8 @@ public static class PresentationPropertyMetadata
 {
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
+        PresentationProperty.MediaPlayer or PresentationProperty.CapturedMedia => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Resource |
+            PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility | PresentationPropertyImpact.MeasureLayout,
         PresentationProperty.WebBrowser => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.Transition => PresentationPropertyImpact.Paint |

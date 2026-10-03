@@ -6,6 +6,14 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
+    internal object ScrollRevealDiagnostics() => new
+    {
+        lastScrollRevealRequest, pending = pendingScrollReveal?.Request, activeScope, presentationActive, presentationOnly, HasTransientControl,
+        targets = bindings.Values.Where(binding => binding.Identity.Id is "gallery.page-scroll" or "gallery.message.1" or "gallery.message.2")
+            .Select(binding => new { binding.Identity, binding.Element.IsLoaded, binding.Element.ActualHeight,
+                nativeScroll = NearestScroll(binding.LayoutElement) is { } scroll ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(scroll) : null }).ToArray(),
+    };
+
     internal Action<string>? FocusTrace { get; set; }
 
     partial void ConfigureCollectionTrace(WidgetIndexedCollectionView collection) =>

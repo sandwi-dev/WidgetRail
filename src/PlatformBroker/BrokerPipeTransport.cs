@@ -364,10 +364,14 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     /// </summary>
     public void BindExpectedIsolatedClientProcess(int processId)
     {
+        if (_isolatedClientAppContainerSid is null) throw new InvalidOperationException("Endpoint is not isolated.");
+        BindExpectedClientProcess(processId);
+    }
+
+    /// <summary>Bind a capability channel to the exact host-launched process before accepting it.</summary>
+    public void BindExpectedClientProcess(int processId)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_isolatedClientAppContainerSid is null)
-            throw new InvalidOperationException(
-                "Only an isolated broker endpoint accepts a worker process binding.");
         if (processId <= 0) throw new ArgumentOutOfRangeException(nameof(processId));
         if (Volatile.Read(ref _runStarted) != 0 ||
             Interlocked.CompareExchange(
@@ -429,7 +433,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             accept.CancelAfter(_options.AcceptTimeout);
             await _pipe.WaitForConnectionAsync(accept.Token).ConfigureAwait(false);
         }
-        if (_isolatedClientAppContainerSid is not null)
+        if (expectedIsolatedClientProcessId > 0)
             WindowsIsolatedPipeFactory.VerifyClientProcess(
                 _pipe,
                 expectedIsolatedClientProcessId);

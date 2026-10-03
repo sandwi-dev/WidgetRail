@@ -165,7 +165,7 @@ internal sealed class WidgetWorkerServer
                         continue;
                     }
 
-                    if (request.Type is MessageTypes.DeliverIntent or MessageTypes.CancelIntent)
+                    if (request.Type is MessageTypes.DeliverIntent or MessageTypes.IntentControl or MessageTypes.CancelIntent)
                     {
                         try
                         {
@@ -732,7 +732,7 @@ internal sealed class WidgetWorkerServer
              !focusedElementId.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))
             throw new WidgetProtocolViolationException("Action focused element ID is invalid.");
         if (action.CommittedText is { } committed &&
-            (committed.Length > ProtocolConstants.MaximumTextEntryLength ||
+            (committed.Length > ProtocolConstants.MaximumExtendedTextEntryLength ||
              committed.Any(char.IsControl)))
             throw new WidgetProtocolViolationException("Committed text is invalid or too long.");
     }

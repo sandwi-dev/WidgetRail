@@ -37,10 +37,14 @@ internal sealed partial class WidgetViewPresenter
 
     private void Retire(Binding binding)
     {
+        RetireInlineLink(binding);
+        if (binding.Element is WidgetRichTextView rich) rich.DetachExcept(_ => false);
         RetireSlider(binding);
         if (artworkReveals.Remove(binding, out var reveal)) reveal.Dispose();
         if (ReferenceEquals(waitingEntry, binding)) ClearEntryLayoutWait();
         RetireMediaViewport(binding);
+        if (binding.Element is Media.MediaPlayerView captured) captured.Dispose();
+        if (binding.Element is Browser.BrowserSlot browser) { BrowserOwner?.Unbind(browser); browser.Retire(); }
         if (binding.Element is Previews.WidgetWindowPreview preview) preview.Dispose();
         RetireComputedStyles(binding);
         if (buttonIcons.Remove(binding, out var buttonIcon)) buttonIcon.Dispose();
@@ -205,6 +209,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        CancelScrollReveal();
         directionalScroll = null;
         ResetSliderValues();
         DisposeSurfaceClip();
@@ -216,7 +221,9 @@ internal sealed partial class WidgetViewPresenter
         WidgetControllerPrompts.Changed -= ControllerPromptsChanged;
         DismissTransientControl();
         ClearSurfaceState();
+        var browserSlots = bindings.Values.Select(binding => binding.Element).OfType<Browser.BrowserSlot>().ToArray();
         foreach (var binding in bindings.Values) Retire(binding);
+        if (BrowserOwner is { } browsers) await browsers.ReleaseSlotsAsync(browserSlots);
         motionStage?.SetModal(null);
         motionStage?.SetCurrent(null);
         Content = null;

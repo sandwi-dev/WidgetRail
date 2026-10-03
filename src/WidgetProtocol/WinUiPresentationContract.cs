@@ -41,10 +41,10 @@ public static class WinUiPresentationContract
         List<ProtocolValidationError>? errors = null;
         if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or
             ViewNodeKind.Button or ViewNodeKind.ActionSurface or ViewNodeKind.Slider or ViewNodeKind.ModalLayer or
-            ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or
+            ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.RichText or ViewNodeKind.Progress or
             ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image or
             ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or
-            ViewNodeKind.Icon or ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser))
+            ViewNodeKind.Icon or ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser or ViewNodeKind.CapturedMedia or ViewNodeKind.MediaPlayer))
             Add("kind", "winui_node_kind", "This node kind has no WinUI control mapping.");
         if (node.CollectionLayout is not null && node.Kind != ViewNodeKind.IndexedCollection)
             Add("collectionLayout", "winui_legacy_collection_layout", "Use an indexed/discovered collection for virtualized rows, or UI.ResponsiveGrid for a small static grid.");

@@ -143,6 +143,7 @@ public static class ViewSnapshotValidator
                 ActiveInputScopeId = layout.ActiveInputScopeId ?? string.Empty,
                 InitialFocusId = layout.InitialFocusId,
                 FocusGroupEntryRequest = null,
+                ScrollRevealRequest = null,
                 QuickActions = [],
                 PinnedLayouts = [],
                 EmbeddedMediaSession = null,
@@ -198,6 +199,18 @@ public static class ViewSnapshotValidator
                 ProtocolValidationIdentifierKind.ElementReference,
                 ProtocolValidationIdentifierState.Missing, activeInputScopeId);
 
+        if (snapshot.ScrollRevealRequest is { } reveal)
+        {
+            if (reveal.RequestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId)
+                Add("$.scrollRevealRequest.requestId", "out_of_range", "Scroll reveal requires a positive bounded request ID.");
+            CheckIdentifier(reveal.ScrollId, "$.scrollRevealRequest.scrollId", "scroll ID", ProtocolValidationIdentifierKind.ElementReference);
+            CheckIdentifier(reveal.TargetId, "$.scrollRevealRequest.targetId", "target ID", ProtocolValidationIdentifierKind.ElementReference);
+            if (errors.Count == 0 &&
+                (!ids.TryGetValue(reveal.ScrollId, out var scroll) || scroll.Node.Kind != ViewNodeKind.Scroll || scroll.Node.CollectionLayout is not null || scroll.Node.VirtualCollectionWindow is not null ||
+                 !ids.TryGetValue(reveal.TargetId, out var target) || !hasActiveScope || scroll.ScopeKey != activeScopeKey || target.ScopeKey != activeScopeKey ||
+                 !WithinScroll(scroll.Node, reveal.TargetId)))
+                Add("$.scrollRevealRequest", "invalid_scroll_reveal", "Reveal must target a declared child of an ordinary scroll container in the active scope.");
+        }
         if (snapshot.FocusGroupEntryRequest is { } groupEntry)
         {
             if (groupEntry.RequestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId)
@@ -808,6 +821,22 @@ public static class ViewSnapshotValidator
             var isContainer = node.Kind is
                 ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection;
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
+            if (node.Kind == ViewNodeKind.MediaPlayer)
+            {
+                if (node.MediaPlayer?.IsWellFormed() != true || string.IsNullOrWhiteSpace(node.AccessibilityLabel) ||
+                    node.Children.Count != 0 || node.ActionId is not null || node.ValueChangedActionId is not null ||
+                    node.Intent is not null || node.InputScopeId is not null || node.Shortcuts.Count != 0 || node.ContextActions.Count != 0)
+                    Add(path, "invalid_media_player", "MediaPlayer requires a valid source and host-owned playback controls.");
+            }
+            else if (node.MediaPlayer is not null) Add(path, "media_player_not_allowed", "Media sources apply only to MediaPlayer nodes.");
+            if (node.Kind == ViewNodeKind.CapturedMedia)
+            {
+                if (node.CapturedMedia is not { } capture || !capture.IsWellFormed() || string.IsNullOrWhiteSpace(node.AccessibilityLabel) ||
+                    node.Children.Count != 0 || node.ActionId is not null || node.ValueChangedActionId is not null ||
+                    node.Intent is not null || node.InputScopeId is not null || node.Shortcuts.Count != 0 || node.ContextActions.Count != 0)
+                    Add(path, "invalid_captured_media", "CapturedMedia requires a host-issued attachment and host-owned playback controls.");
+            }
+            else if (node.CapturedMedia is not null) Add(path, "captured_media_not_allowed", "Capture attachments apply only to CapturedMedia nodes.");
             if (node.Kind == ViewNodeKind.WebBrowser)
             {
                 if (node.WebBrowser is not { } document || !document.IsWellFormed() || node.AccessibilityLabel != document.AccessibleName ||
@@ -1295,9 +1324,9 @@ public static class ViewSnapshotValidator
                 if (node.TextEntryInputKind is { } inputKind && !Enum.IsDefined(inputKind))
                     Add($"{path}.textEntryInputKind", "invalid_text_entry_input_kind",
                         "The text-entry input kind is not supported.");
-                if (node.TextEntryMaximumLength is not (>= 1 and <= ProtocolConstants.MaximumTextEntryLength))
+                if (node.TextEntryMaximumLength is not (>= 1 and <= ProtocolConstants.MaximumExtendedTextEntryLength))
                     Add($"{path}.textEntryMaximumLength", "invalid_text_entry_limit",
-                        $"Text entry maximum length must be 1-{ProtocolConstants.MaximumTextEntryLength}.");
+                        $"Text entry maximum length must be 1-{ProtocolConstants.MaximumExtendedTextEntryLength}.");
                 if (node.TextEntryValue is null ||
                     node.TextEntryValue.Length > (node.TextEntryMaximumLength ?? 0) ||
                     node.TextEntryValue.Any(char.IsControl))
@@ -1514,6 +1543,16 @@ public static class ViewSnapshotValidator
             if (node.Kind is ViewNodeKind.Button && node.Glyph is not null && !Enum.IsDefined(node.Glyph.Value))
                 Add($"{path}.glyph", "invalid_glyph", "The semantic glyph is not supported.");
             var children = node.Children ?? [];
+            if (node.Kind == ViewNodeKind.RichText)
+            {
+                if (children.Count is < 1 or > 512 || children.Any(child => child is null ||
+                    child.Kind is not (ViewNodeKind.Text or ViewNodeKind.Button) || child.Children is not { Count: 0 } ||
+                    child.Kind == ViewNodeKind.Button && (child.Intent is null || string.IsNullOrWhiteSpace(child.Text)) || child.Transition is not null ||
+                    child.GridCell is not null || child.VisibleWhen is not (null or ResponsiveVisibility.Always) ||
+                    child.InputScopeId is not null || child.ContextActions is not { Count: 0 } || child.Shortcuts is not { Count: 0 } ||
+                    child.Glyph is not null || child.PackageIcon is not null || child.ImageSource is not null || child.ArtworkHandle is not null))
+                    Add(path, "invalid_rich_text", "RichText requires 1-512 plain Text or intent Button spans, without independent layout, images or nested interaction.");
+            }
             var shortcuts = node.Shortcuts ?? [];
             var styleClasses = node.StyleClasses ?? [];
             if (node.Children is null)
@@ -1549,7 +1588,7 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
                 ViewNodeKind.ActionSurface or ViewNodeKind.Grid or ViewNodeKind.BackgroundSurface or
-                ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ModalLayer) &&
+                ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ModalLayer or ViewNodeKind.RichText) &&
                 !(materializedIndexedCollections && node.Kind == ViewNodeKind.IndexedCollection) && children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection or
@@ -1924,6 +1963,9 @@ public static class ViewSnapshotValidator
                 Add(path, code, message);
         }
     }
+
+    private static bool WithinScroll(ViewNode node, string targetId) => node.Children.Any(child =>
+        child.Id == targetId || child.Kind is not (ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection) && WithinScroll(child, targetId));
 
     private static bool IsNormalizedPackageAssetPath(string? value)
     {

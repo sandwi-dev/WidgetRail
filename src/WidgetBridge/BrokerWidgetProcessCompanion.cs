@@ -65,7 +65,7 @@ internal sealed class BrokerWidgetProcessCompanion :
 
     public void BindWorkerProcess(int processId)
     {
-        if (_isolated) _server.BindExpectedIsolatedClientProcess(processId);
+        _server.BindExpectedClientProcess(processId);
     }
 
     public Task RunAsync(CancellationToken cancellationToken) =>

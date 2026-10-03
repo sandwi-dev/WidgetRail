@@ -12,12 +12,12 @@ public sealed record WidgetIntentPreparation(string SourceWidgetId, string? Tick
     WidgetIntentLaunchKind Kind, IReadOnlyList<WidgetIntentDestination> Destinations,
     WidgetIntentPresentation Presentation = WidgetIntentPresentation.PreferExistingSurface);
 public sealed record WidgetIntentCompletion(bool Accepted, string? ExternalUrl = null, string? BrowserFallbackUrl = null,
-    bool RequiresInteraction = false);
+    bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null);
 
 internal sealed record BridgeIntentPrepareRequest(string WidgetId, long SnapshotSequence,
     BridgeWorkerRun WorkerRun, WidgetActionEvent Action, string? PinnedLayoutId = null,
     IndexedCollectionItemReference? IndexedItem = null);
 internal sealed record BridgeIntentCommitRequest(string WidgetId, string TicketId,
     string? TargetWidgetId = null, BridgeWorkerRun? TargetWorkerRun = null, BridgeIntentPinnedTarget? PinnedTarget = null);
-internal sealed record BridgeIntentPinnedTarget(string LayoutId, long SnapshotSequence);
+internal sealed record BridgeIntentPinnedTarget(string LayoutId, long SnapshotSequence, string? MediaSessionId = null);
 internal sealed record BridgeIntentCancelRequest(string WidgetId, string TicketId);

@@ -10,12 +10,26 @@ A full-access package declares the `full-trust-application-v1` runtime and its
 executable entrypoint. That executable uses `WidgetApplicationBootstrap.RunAsync`
 with its widget factory and host-provided arguments.
 
-The bootstrap establishes the overlay session. It does not connect the application
-to the sandbox capability broker. The application owns any direct provider,
-network, credential, or process integrations permitted by its Windows user token.
+The bootstrap establishes both the overlay session and the authenticated host-service
+connection supplied by WidgetRail. Use the same typed `HostServices` APIs as a
+sandboxed widget. Required and optional host permissions are declared in the
+manifest and require the same consent, lifecycle, and resource-ownership checks.
+Full-trust approval does not automatically grant those permissions.
 
-Do not copy host-side launch code, parse private pipe arguments yourself, or
-reference `PlatformBroker` to impersonate a sandboxed client.
+The application also owns direct network, credential, or process integrations
+permitted by its Windows user token. Provider-specific clients belong in that
+application, not in the host. Game Help, for example, owns its Gemini client while
+using shared window enumeration, capture and restricted document presentation.
+
+Use the bootstrap rather than parsing private pipe arguments or connecting to
+broker internals yourself. The host binds the service channel to the process it
+launched and retires its resources when that process ends. The overload accepting
+`Func<WidgetHostServices, Widget>` supports constructor injection; the ordinary
+factory continues to attach services through the widget's protected property.
+
+Host permission revocation prevents further host-service access. It is not a
+sandbox around a full-trust application's own Windows or network APIs, and cannot
+recall bytes the application has already read.
 
 ## Review and distribution
 

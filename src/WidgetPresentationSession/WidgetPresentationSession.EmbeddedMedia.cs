@@ -36,7 +36,7 @@ public sealed partial class WidgetPresentationSession
         MediaDocumentEpoch epoch;
         CancellationToken lifetimeToken;
         EmbeddedMediaSession declaration;
-        lock (_gate)
+        using (_gate.Enter())
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _ = ValidateAuthority(authority);
@@ -55,20 +55,20 @@ public sealed partial class WidgetPresentationSession
         {
             await _mediaResolveSlots.WaitAsync(deadline.Token).ConfigureAwait(false);
             entered = true;
-            lock (_gate) { DemandMediaEpochLocked(authority.WidgetId, epoch); _ = ValidateAuthority(authority); }
+            using (_gate.Enter()) { DemandMediaEpochLocked(authority.WidgetId, epoch); _ = ValidateAuthority(authority); }
             var response = await MediaRequestAsync(BridgeMessageTypes.ResolveEmbeddedMedia,
                 new BridgeEmbeddedMediaRequest(authority.WidgetId, authority.WidgetInstanceId,
                     authority.RuntimeGeneration, authority.PresentationGeneration, authority.SnapshotSequence, declaration.Id),
                 BridgeMessageTypes.EmbeddedMediaSession, deadline.Token).ConfigureAwait(false);
             var resources = ValidateMediaBundle(response.Payload, authority, declaration);
             deadline.Token.ThrowIfCancellationRequested();
-            lock (_gate) DemandMediaEpochLocked(authority.WidgetId, epoch);
+            using (_gate.Enter()) DemandMediaEpochLocked(authority.WidgetId, epoch);
             return new(this, epoch, authority, declaration.Id, declaration.EntryAsset, Array.AsReadOnly(resources));
         }
         finally
         {
             if (entered) _mediaResolveSlots.Release();
-            lock (_gate) --_pendingMediaResolves;
+            using (_gate.Enter()) --_pendingMediaResolves;
         }
     }
 
@@ -81,7 +81,7 @@ public sealed partial class WidgetPresentationSession
     public WidgetPresentationEmbeddedMediaState? GetEmbeddedMediaState(WidgetPresentationEmbeddedMediaDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (!IsMediaDocumentCurrentLocked(document)) return null;
             var frame = _states[document.Authority.WidgetId].LastGood!;
@@ -105,7 +105,7 @@ public sealed partial class WidgetPresentationSession
         ValidateMediaEvent(playbackEvent);
         MediaDocumentEpoch epoch;
         CancellationToken lifetimeToken;
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (!IsMediaDocumentCurrentLocked(document)) throw RetiredMedia(document.Authority.WidgetId);
             epoch = (MediaDocumentEpoch)document.Epoch;
@@ -121,7 +121,7 @@ public sealed partial class WidgetPresentationSession
             await epoch.Events.WaitAsync(deadline.Token).ConfigureAwait(false);
             entered = true;
             WidgetPresentationAuthority authority;
-            lock (_gate)
+            using (_gate.Enter())
             {
                 DemandMediaEpochLocked(document.Authority.WidgetId, epoch);
                 var frame = _states[document.Authority.WidgetId].LastGood!;
@@ -139,12 +139,12 @@ public sealed partial class WidgetPresentationSession
                     authority.RuntimeGeneration, authority.PresentationGeneration, authority.SnapshotSequence, playbackEvent, authority.WorkerRun),
                 BridgeMessageTypes.Acknowledged, deadline.Token).ConfigureAwait(false);
             deadline.Token.ThrowIfCancellationRequested();
-            lock (_gate) DemandMediaEpochLocked(document.Authority.WidgetId, epoch);
+            using (_gate.Enter()) DemandMediaEpochLocked(document.Authority.WidgetId, epoch);
         }
         finally
         {
             if (entered) epoch.Events.Release();
-            lock (_gate) --epoch.PendingEvents;
+            using (_gate.Enter()) --epoch.PendingEvents;
         }
     }
 

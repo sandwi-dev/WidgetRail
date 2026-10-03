@@ -139,3 +139,9 @@ Added `--shell-no-controller --validate-pinned-restore=<result>` read-only start
 Added opt-in native Spotify transport verification via `--validate-styles --spotify-busy-fixtures=<directory>`. It consumes the real RendererFixtureExporter format (snapshot + resolved styles), renders the original transport row as a fragment, and uses a local completion gate instead of any provider action. Expected file sets are `Spotify-Busy-<case>-{ready,pending,acknowledged,settled}.renderer.json`; widget owner exports main and compact-pin cases. Checks include pending native IPC, real busy declarations, post-ack state, exact button/focus retention, busy rejection and explicit navigation surviving completion. No runtime widget dependencies were added to the frontend. Awaiting widget fixture export naming/final source and root's combined build/native run.
 
 Restore edge-case detail: absent YT Current => no authored compact layout, and removed layouts, are already rejected as pinned_input_stale and consumed quietly by PinAsync. Disabled/uninstalled entries are absent from the current catalog and skipped. The new early capability guard avoids starting an unsupported widget just to discover rejection. The startup validation can be run against cloned profiles for those cases; no user profile was touched.
+
+
+2026-10-01 policy update: saved active-pin restoration described above is retired
+at the user's request. Geometry and opacity remain preferences for the next
+explicit pin action; no ordinary, Browser, or compact-media surface is recreated
+on application startup. Overlay hide/show within a session retains its live pin.

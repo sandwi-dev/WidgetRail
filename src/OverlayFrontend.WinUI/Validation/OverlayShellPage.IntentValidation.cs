@@ -110,7 +110,79 @@ internal sealed partial class OverlayShellPage
                     surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/indexed/1");
                 Check(interactive, "A virtualized pinned item preserves its lease and hands off input once");
                 await UnpinAsync(save: true);
+                await SelectAsync("intent-source", enterWidget: false);
+                var sourceDescriptor = surface!.CurrentBinding!.Frame.Descriptor;
+                var pinCommands = PinCommands(sourceDescriptor);
+                Check(pinCommands.Select(command => command.Id).SequenceEqual(new[] { "Pin.links-pin", "Pin.Full" }),
+                    "Without an existing pin, authored and full-widget choices retain their order");
+                await PinAsync("intent-target", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId);
+                var oldPin = pinned!;
+                pinCommands = PinCommands(sourceDescriptor);
+                Check(pinCommands[0].Id == "Pin.Replace" && pinCommands[0].Label == "Replace pin",
+                    "A different pinnable widget offers Replace pin first");
+                Check(pinCommands.Select(command => command.Id).SequenceEqual(new[]
+                    { "Pin.Replace", "Pin.Remove", "Pin.Adjust", "Pin.Opacity", "Pin.Interact" }),
+                    "Pin commands without shortcuts precede Interact in the requested order");
+                await ShowTrayMenuAsync(sourceDescriptor);
+                await Until(() => trayMenu?.Items[0].IsLoaded == true);
+                var actualMenu = trayMenu!;
+                Check(actualMenu.Items.Take(4).All(item => item.Icon is null), "Pin management commands have no invented shortcut hints");
+                Check(actualMenu.Items[4].Icon is FontIcon && AutomationProperties.GetHelpText(actualMenu.Items[4]).Contains("Tray shortcut:"),
+                    "Interact exposes its controller shortcut and accessible help");
+                Check(actualMenu.Items[5].Icon is FontIcon && actualMenu.Items[6].Icon is FontIcon &&
+                    actualMenu.Items[6].KeyboardAcceleratorTextOverride == "Hold",
+                    "Reorder and restart show controller glyphs with an explicit hold hint");
+                CloseTrayMenu(true);
+                Check(PinCommands(sourceDescriptor with { PinningSupported = false, FullWidgetPinningSupported = false })
+                    .All(command => command.Id != "Pin.Replace"), "A nonpinnable widget offers no replacement");
+                var replacing = pinCommands[0].Action();
+                await Until(() => hostChoiceDialog is { IsLoaded: true });
+                Check(hostChoiceDialog!.PrimaryButtonText == "Replace pin", "Multiple layouts use a clearly labelled replacement chooser");
+                hostChoiceDialog.ControllerArmed = true;
+                hostChoiceDialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+                await replacing;
+                Check(ReferenceEquals(pinned, oldPin) && oldPin.IsCurrent, "Cancelling a replacement preserves the live original pin");
+                Check(!interactive && !MainFocusEnabled && !HostChoiceActive,
+                    "Replacement chooser returns to tray mode without enabling widget input");
+                replacing = PinCommands(sourceDescriptor)[0].Action();
+                await Until(() => hostChoiceDialog is { IsLoaded: true });
+                ++pinIntent;
+                ChooseFirstPinLayout();
+                await replacing;
+                Check(ReferenceEquals(pinned, oldPin), "An intervening pin operation invalidates the open chooser");
+                replacing = PinCommands(sourceDescriptor)[0].Action();
+                await Until(() => hostChoiceDialog is { IsLoaded: true });
+                ChooseFirstPinLayout();
+                await replacing;
+                Check(pinned is { WidgetId: "intent-source", LayoutId: "links-pin", IsCurrent: true } && !oldPin.IsCurrent,
+                    "Choosing an authored layout replaces and revokes the old pin");
+                Check(PinCommands(sourceDescriptor).All(command => command.Id != "Pin.Replace"),
+                    "The already pinned widget does not offer Replace pin");
+                var replacement = pinned;
+                await PinAsync("intent-target", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId, oldPin);
+                Check(ReferenceEquals(pinned, replacement), "A stale replacement cannot remove a newer pin");
+                await SelectAsync("intent-target", enterWidget: false);
+                await PinCommands(surface!.CurrentBinding!.Frame.Descriptor)[0].Action();
+                Check(pinned is { WidgetId: "intent-target", IsCurrent: true } && !HostChoiceActive && !replacement!.IsCurrent,
+                    "A single available layout replaces directly without a chooser");
+                await UnpinAsync(save: true);
                 if (verifyWebHandoff is not null) checks.AddRange(await verifyWebHandoff());
+
+                List<(string Label, string Id, Func<Task> Action)> PinCommands(WidgetRail.WidgetBridge.BridgeWidgetDescriptor descriptor)
+                {
+                    var result = new List<(string, string, Func<Task>)>();
+                    AddPinnedCommands(descriptor, (label, id, action) => result.Add((label, id, action)));
+                    return result;
+                }
+                void ChooseFirstPinLayout()
+                {
+                    var picker = hostChoiceDialog!;
+                    var items = Walk(picker).OfType<ListView>().Single();
+                    items.SelectedIndex = 0;
+                    ((ListViewItem)items.Items[0]).Focus(FocusState.Keyboard);
+                    picker.ControllerArmed = true;
+                    picker.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+                }
             }
             catch (Exception failure) { error = failure.ToString(); }
             await File.WriteAllTextAsync(resultPath, JsonSerializer.Serialize(new { pid = Environment.ProcessId, passed = error is null, checks, error }));

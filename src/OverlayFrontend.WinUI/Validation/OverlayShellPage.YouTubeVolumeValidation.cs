@@ -23,7 +23,6 @@ internal sealed partial class OverlayShellPage
             try
             {
                 if (startup is not null) await startup;
-                restoreCompactWidget = null;
                 await UnpinAsync(save: true);
                 await SelectAsync("widgetrail.samples.youtube-video", true);
                 await Until(() => surface?.CurrentBinding is not null);

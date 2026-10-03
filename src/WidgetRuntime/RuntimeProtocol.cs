@@ -45,6 +45,7 @@ internal static class MessageTypes
     public const string RevalidatedControllerInput = "revalidated-controller-input";
     public const string RevalidatedControllerInputResult = "revalidated-controller-input-result";
     public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
+    public const string IntentControl = "intent-control-v1";
     public const string DeliverIntent = "deliver-intent-v1";
     public const string CancelIntent = "cancel-intent-v1";
     public const string IntentResult = "intent-result-v1";
@@ -107,9 +108,9 @@ internal sealed record ControllerActionFailurePayload(
     string Message);
 internal sealed record ErrorPayload(string Code, string Message);
 internal sealed record ControllerInputResultPayload(bool Handled);
-internal sealed record IntentDeliveryPayload(long DeliveryId, WidgetIntentRequest Intent);
+internal sealed record IntentDeliveryPayload(long DeliveryId, WidgetIntentRequest Intent, bool Control = false, WidgetIntentFeedback? Feedback = null);
 internal sealed record IntentCancellationPayload(long DeliveryId);
-internal sealed record IntentDeliveryResultPayload([property: JsonRequired] WidgetIntentResult Result);
+internal sealed record IntentDeliveryResultPayload([property: JsonRequired] WidgetIntentResult Result, bool ControlResult = false);
 // Null means rejected before invoking any widget handler, never unhandled.
 internal sealed record RevalidatedControllerInputPayload(ControllerInputEvent Input, string? ActionId);
 internal sealed record RevalidatedControllerInputResultPayload(bool? Handled);

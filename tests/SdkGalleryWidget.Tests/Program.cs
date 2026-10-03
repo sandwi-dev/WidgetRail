@@ -7,6 +7,8 @@ using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Modern gallery examples preserve state, lazy surfaces, and intent contracts", ModernExamples),
+    ("Optional host demos use typed services and keep capture local", HostExamples),
     ("Every gallery page publishes a valid responsive component tree", PageCoverage),
     ("Controls preserve stable state and requested scrub values", ControlState),
     ("Explicit Grid uses native tracks and stable cells across proportion updates", NativeGrid),
@@ -16,7 +18,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Trusted artwork preserves provider-neutral encoded bytes", TrustedArtwork),
     ("Background gallery proves package artwork fits focus ownership and fallback", BackgroundGallery),
     ("Top-level pages retain one root scope and exact header identities", TopLevelPagesShareRootScope),
-    ("Manifest and project use the generic capability-free community path", PackageContract),
+    ("Manifest and project use the generic community path with optional host permissions", PackageContract),
     ("Gallery WRSS is valid, responsive, and theme-token based", StyleContract),
 };
 
@@ -81,9 +83,9 @@ static async Task PageCoverage()
     Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
     Assert.Equal(ResponsiveVisibility.ExpandedOnly, expandedNavigation.VisibleWhen);
     Assert.Equal(1, Nodes(overview.Root).Count(node => node.Id == "gallery.page-scroll"));
-    Assert.Equal(7, compactNavigation.Children.Count);
-    Assert.Equal(5, compactNavigation.Children.Count(node => node.ActionId is not null));
-    Assert.Equal(5, expandedNavigation.Children.Count);
+    Assert.Equal(9, compactNavigation.Children.Count);
+    Assert.Equal(7, compactNavigation.Children.Count(node => node.ActionId is not null));
+    Assert.Equal(7, expandedNavigation.Children.Count);
     var previousSection = compactNavigation.Children[0];
     var nextSection = compactNavigation.Children[^1];
     Assert.Equal("gallery.hint.section.previous", previousSection.Id);
@@ -640,6 +642,106 @@ static async Task TopLevelPagesShareRootScope()
     await WidgetTestHost.DestroyAsync(bumperWidget);
 }
 
+static async Task ModernExamples()
+{
+    var widget = new SdkGalleryWidget();
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    await Act(widget, "gallery.tab.text");
+    var text = Snapshot(widget, 1);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(text).Count);
+    Assert.Equal(ViewNodeKind.RichText, Find(text, "gallery.rich").Kind);
+    Assert.True(Find(text, "gallery.rich.link").Intent is { Presentation: WidgetIntentPresentation.PreferExistingSurface });
+    await widget.OnActionAsync(new("gallery.text.commit", "gallery.text.entry") { CommittedText = "Hello controller" });
+    await widget.OnActionAsync(new("gallery.secret.commit", "gallery.secret") { CommittedText = "dummy-never-echo" });
+    await Act(widget, "gallery.details");
+    await Act(widget, "gallery.message");
+    var updated = Snapshot(widget, 2);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(updated).Count);
+    Assert.Equal("Hello controller", Find(updated, "gallery.text.entry").TextEntryValue);
+    Assert.Equal("", Find(updated, "gallery.secret").TextEntryValue);
+    Assert.False(Nodes(updated.Root).Any(node => node.Text?.Contains("dummy-never-echo") == true));
+    Assert.True(Nodes(updated.Root).Any(node => node.Id == "gallery.details.body"));
+    Assert.Equal("gallery.message.1", updated.ScrollRevealRequest!.TargetId);
+    Assert.Equal(updated.ScrollRevealRequest, Snapshot(widget, 3).ScrollRevealRequest);
+    await Act(widget, "gallery.tab.controls");
+    await Act(widget, "gallery.busy");
+    Assert.True(Find(Snapshot(widget, 4), "gallery.busy").IsBusy == true);
+    await widget.OnActionAsync(new("gallery.level", "gallery.level.direct", RequestedValue: 75));
+    Assert.Equal(75d, Find(Snapshot(widget, 5), "gallery.level.explicit").Value);
+    Assert.Equal(2, widget.Render().PinnedLayouts!.Count);
+    await Act(widget, "gallery.tab.surfaces");
+    Assert.False(Nodes(Snapshot(widget, 6).Root).Any(node => node.Kind is ViewNodeKind.WebBrowser or ViewNodeKind.MediaPlayer));
+    await Act(widget, "gallery.surface.browser");
+    Assert.Equal(BrowserInteractionMode.ActivateToInteract, Find(Snapshot(widget, 7), "gallery.browser").WebBrowser!.InteractionMode);
+    await Act(widget, "gallery.browser.mode");
+    Assert.Equal(BrowserInteractionMode.InteractOnFocus, Find(Snapshot(widget, 8), "gallery.browser").WebBrowser!.InteractionMode);
+    await Act(widget, "gallery.surface.player");
+    var player = Snapshot(widget, 9);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(player).Count);
+    Assert.False(Nodes(player.Root).Any(node => node.Kind == ViewNodeKind.WebBrowser));
+    var media = Find(player, "gallery.player").MediaPlayer!;
+    Assert.Equal(MediaPlayerSourceKind.PackageAsset, media.Source.Kind);
+    Assert.False(media.Options.AutoPlay);
+    await Act(widget, "gallery.media.modal.open");
+    var modal = Snapshot(widget, 90);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(modal).Count);
+    Assert.Equal(ViewNodeKind.ModalLayer, modal.Root.Kind);
+    Assert.Equal(1, Nodes(modal.Root).Count(node => node.Kind == ViewNodeKind.MediaPlayer));
+    await Act(widget, "gallery.media.modal.close");
+    await Act(widget, "gallery.media.loop");
+    var loop = Find(Snapshot(widget, 10), "gallery.player").MediaPlayer!;
+    Assert.True(loop.Options.Loop && loop.Revision > media.Revision);
+    await widget.OnActionAsync(new("gallery.media.url", "gallery.media.url") { CommittedText = "file:///C:/test.mp4" });
+    Assert.Equal(MediaPlayerSourceKind.PackageAsset, Find(Snapshot(widget, 11), "gallery.player").MediaPlayer!.Source.Kind);
+    await Act(widget, "gallery.tab.utilities");
+    var intents = Snapshot(widget, 12);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(intents).Count);
+    Assert.Equal(WidgetIntentRouting.Windows, Find(intents, "gallery.intent.windows").Intent!.Routing);
+    var search = Find(intents, "gallery.intent.search").Intent!;
+    Assert.True(search.Fallback is not null && search.ReportsResult);
+    Assert.True(await widget.OnIntentCompletedAsync(new("test", search, WidgetIntentStatus.Unavailable)));
+    Assert.False(await widget.OnIntentCompletedAsync(new("test", search, WidgetIntentStatus.Failed)));
+    await WidgetTestHost.DestroyAsync(widget);
+}
+
+static async Task HostExamples()
+{
+    var calls = 0;
+    var reference = new ProviderDocumentReference(new string('a', 32), ProviderDocumentReference.RestrictedHtml);
+    var ticket = new WindowCaptureTicket(new string('b', 32));
+    var capture = new CaptureAttachment(new string('c', 32), "image/png", 320, 180, 100, 0, DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds());
+    var services = new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetDocumentCapabilities.Create, (request, token) => { calls++; return ValueTask.FromResult(reference); })
+        .WithResponse(WidgetDocumentCapabilities.Discard, new WidgetCapabilityAcknowledgement(true))
+        .WithHandler(WidgetCaptureCapabilities.Request, (request, token) => { calls++; return ValueTask.FromResult(ticket); })
+        .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(ticket.RequestId, WindowCapturePhase.Ready, capture))
+        .WithResponse(WidgetCaptureCapabilities.Discard, new WidgetCapabilityAcknowledgement(true)).Build();
+    var widget = WidgetTestHost.Attach(new SdkGalleryWidget(), services);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    await Act(widget, "gallery.tab.surfaces");
+    await Act(widget, "gallery.surface.document");
+    Assert.Equal(0, calls);
+    await Act(widget, "gallery.document.create");
+    await WaitUntil(() => Find(Snapshot(widget, 90), "gallery.document.create").IsBusy != true);
+    var document = Snapshot(widget, 1);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(document).Count);
+    Assert.Equal(reference, Find(document, "gallery.document").WebBrowser!.ProviderDocument);
+    await Act(widget, "gallery.surface.capture");
+    Assert.Equal(1, calls);
+    await Act(widget, "gallery.capture.image");
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    await WaitUntil(() => Find(Snapshot(widget, 91), "gallery.capture.image").IsBusy != true);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    var preview = Snapshot(widget, 2);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(preview).Count);
+    Assert.Equal(capture, Find(preview, "gallery.capture.image-preview").CapturedMedia);
+    await Act(widget, "gallery.capture.discard");
+    await WaitUntil(() => Find(Snapshot(widget, 91), "gallery.capture.image").IsBusy != true);
+    Assert.False(Nodes(Snapshot(widget, 3).Root).Any(node => node.CapturedMedia is not null));
+    Assert.Equal(2, calls);
+    await WidgetTestHost.DestroyAsync(widget);
+}
+
 static Task PackageContract()
 {
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(
@@ -647,12 +749,13 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.25", manifest.Version);
+    Assert.Equal("0.1.26", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
     Assert.Equal(0, manifest.Permissions.Count);
-    Assert.Equal(0, manifest.OptionalPermissions.Count);
+    Assert.Equal(2, manifest.OptionalPermissions.Count);
+    Assert.True(manifest.FullWidgetPinningSupported);
     Assert.Equal("suspend-when-hidden", manifest.ResidencyPolicy!.Mode);
     Assert.Equal(WidgetGlyph.Settings, manifest.Presentation.Icon);
     Assert.Equal("gallery.mark", manifest.Presentation.PackageIcon?.AssetId);

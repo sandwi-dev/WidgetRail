@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
     <ProjectReference Include="..\PlatformDiagnostics\PlatformDiagnostics.csproj" />
     <ProjectReference Include="..\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\WidgetProtocol\WidgetProtocol.csproj" />

@@ -201,16 +201,21 @@ internal sealed partial class OverlayShellPage
             openedMenu = menu;
             Input.GamepadKeyBoundary.ObserveFlyout(menu.Flyout, anchor);
             trayMenu = menu;
-            AddPinnedCommands(descriptor, Add);
-            Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; });
-            Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection));
+            AddPinnedCommands(descriptor, (label, id, action) => Add(label, id, action,
+                id == "Pin.Interact" ? ControllerButton.View : null));
+            Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y);
+            Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true);
             var quickActionStart = menu.Flyout.Items.Count;
             if (DashboardFrame(descriptor) is { } displayed)
                 foreach (var action in displayed.Snapshot.QuickActions)
                     Add(action.Label, "Dashboard." + action.Button,
-                        () => InvokeDashboardButtonAsync(descriptor, action.Button, ControllerInputOrigin.AccessibilityAutomation));
+                        () => InvokeDashboardButtonAsync(descriptor, action.Button, ControllerInputOrigin.AccessibilityAutomation),
+                        TrayShortcutAvailable(action.Button) ? action.Button : null);
             foreach (var action in descriptor.QuickActions)
-                Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection));
+                Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection),
+                    action.ControllerButton is { } button && TrayShortcutAvailable(button) &&
+                    DashboardFrame(descriptor)?.Snapshot.QuickActions.Any(item => item.Button == button) != true
+                        ? button : null);
             if (menu.Flyout.Items.Count > quickActionStart)
                 menu.Flyout.Items.Insert(quickActionStart, new MenuFlyoutSeparator());
             menu.Flyout.Opened += (_, _) => OnTrayMenuOpened(menu);
@@ -227,7 +232,10 @@ internal sealed partial class OverlayShellPage
             menu.Theme = NativePopupTheme.Menu(menu.Flyout, this);
             menu.Flyout.ShowAt(anchor);
 
-            void Add(string label, string id, Func<Task> action)
+            bool TrayShortcutAvailable(ControllerButton button) => button is not (ControllerButton.A or ControllerButton.B or ControllerButton.Y or ControllerButton.Menu) &&
+                (button != ControllerButton.View || pinned is null);
+
+            void Add(string label, string id, Func<Task> action, ControllerButton? shortcut = null, bool hold = false)
             {
                 var command = new AsyncRelayCommand(async () =>
                 {
@@ -236,6 +244,7 @@ internal sealed partial class OverlayShellPage
                     await action();
                 });
                 var item = new MenuFlyoutItem { Text = label, Command = command };
+                if (shortcut is { } button) ApplyTrayCommandShortcut(item, button, hold);
                 AutomationProperties.SetAutomationId(item, "Overlay.TrayCommand." + id);
                 var index = menu.Items.Count;
                 item.GotFocus += (_, _) => menu.FocusIndex = index;
@@ -244,6 +253,33 @@ internal sealed partial class OverlayShellPage
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { ReportTrayMenuFailure(error, request, openedMenu, failureCurrent); }
+    }
+
+    private static void ApplyTrayCommandShortcut(MenuFlyoutItem item, ControllerButton button, bool hold)
+    {
+        var prompt = ControllerGuideModel.Prompt(button);
+        var icon = new FontIcon();
+        item.Icon = icon;
+        item.KeyboardAcceleratorTextOverride = hold ? "Hold" : string.Empty;
+        void Update()
+        {
+            WidgetGlyphs.Apply(icon, new() { Id = "tray.shortcut", Kind = ViewNodeKind.ControllerGlyph,
+                ControllerPrompt = prompt }, WidgetControllerPrompts.PlayStation);
+            AutomationProperties.SetAccessibilityView(icon, AccessibilityView.Raw);
+            AutomationProperties.SetHelpText(item, "Tray shortcut: " + (hold ? "Hold " : string.Empty) +
+                WidgetGlyphs.AccessibleName(prompt, WidgetControllerPrompts.PlayStation) + ".");
+        }
+        var subscribed = false;
+        item.Loaded += (_, _) =>
+        {
+            if (!subscribed) { WidgetControllerPrompts.Changed += Update; subscribed = true; }
+            Update();
+        };
+        item.Unloaded += (_, _) =>
+        {
+            if (subscribed) { WidgetControllerPrompts.Changed -= Update; subscribed = false; }
+        };
+        Update();
     }
 
     private void OnTrayMenuOpened(TrayMenu menu)

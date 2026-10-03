@@ -23,7 +23,7 @@ public sealed partial class WidgetPresentationSession
     public void RequestInputRefresh(WidgetPresentationFrame origin)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        lock (_gate)
+        using (_gate.Enter())
         {
             if (_disposed || _terminalFailure is not null || !_publishedInputFrames.TryGetValue(origin, out _) ||
                 _states.GetValueOrDefault(origin.Authority.WidgetId)?.LastGood is not { } current ||

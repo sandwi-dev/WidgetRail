@@ -8,6 +8,10 @@ internal sealed partial class WidgetViewPresenter
     {
         if (!presentationInputEnabled || !presentationActive || disposed || applying || presentationOnly ||
             presentation is not { IsCurrent: true } displayed || HasTransientControl || textEntryPopup is not null) return null;
+        if (FocusedMediaPlayer is { IsVideo: true, Definition: { } definition } media && button is ControllerButton.LeftTrigger or ControllerButton.RightTrigger)
+            return ((media, definition, button), true);
+        if (FocusedBrowser is { } browser)
+            return browser.Surface?.CaptureZoomGesture(button) is { } gesture ? ((displayed.Frame.Authority, gesture), true) : null;
         var focused = FocusedBinding();
         var path = ControllerFocusPath(includeUnavailable: true);
         if (path.Count == 0) return null;

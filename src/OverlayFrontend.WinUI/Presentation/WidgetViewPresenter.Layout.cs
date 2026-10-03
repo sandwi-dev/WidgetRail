@@ -20,6 +20,9 @@ internal sealed partial class WidgetViewPresenter
 
     private void ApplySizeAndTypography(FrameworkElement element, ViewNode node)
     {
+        // RichText's inline controls are sized by the native paragraph, never by
+        // ordinary button box defaults (including during responsive remeasurement).
+        if (element is HyperlinkButton) return;
         // ProgressRing's animated visual needs a finite box even when its parent
         // measures an Auto row/column without a bound. Preserve the declaration's
         // intrinsic indicator size instead of erasing it during style projection.
@@ -84,7 +87,7 @@ internal sealed partial class WidgetViewPresenter
             surface.ConfigureFocusLayout(horizontal, ComputedStyle(node, "justify")?.Text, ComputedStyle(node, "align")?.Text,
                 (horizontal ? gap?.Right : gap?.Top) ?? 12, grows);
         }
-        if (binding.Element is Grid layout && layout is not (WidgetModalLayer or WidgetPosterPanel or WidgetArtworkView)) UpdateLayout(layout, node);
+        if (binding.Element is Grid layout && layout is not (WidgetModalLayer or WidgetPosterPanel or WidgetArtworkView or WidgetRichTextView)) UpdateLayout(layout, node);
         if (node.Kind == ViewNodeKind.ActionSurface && binding.Children is Grid content &&
             content is not WidgetPosterPanel && !ReferenceEquals(content, binding.Element)) UpdateLayout(content, node);
     }
@@ -188,5 +191,6 @@ internal sealed partial class WidgetViewPresenter
             { "start" => HorizontalAlignment.Left, "center" => HorizontalAlignment.Center, "end" => HorizontalAlignment.Right, _ => HorizontalAlignment.Stretch };
     }
     private bool FillsAxis(ViewNode node, string property) => ComputedStyle(node, property) is { Unit: "%", Number: 100 };
-    private static bool NeedsConstrainedViewport(ViewNode node) => node.Kind is ViewNodeKind.IndexedCollection or ViewNodeKind.Scroll or ViewNodeKind.ModalLayer or ViewNodeKind.MediaViewport || node.Children.Any(NeedsConstrainedViewport);
+    private static bool NeedsConstrainedViewport(ViewNode node) => node.Kind is ViewNodeKind.IndexedCollection or ViewNodeKind.Scroll or ViewNodeKind.ModalLayer or ViewNodeKind.MediaViewport ||
+        node.Kind == ViewNodeKind.WebBrowser && node.WebBrowser?.ProviderDocument is null || node.Children.Any(NeedsConstrainedViewport);
 }

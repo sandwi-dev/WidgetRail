@@ -337,10 +337,6 @@ public static partial class WidgetManifestValidator
                 $"A manifest may declare at most {ProtocolConstants.MaximumManifestPermissionCount} required and optional permissions in total.");
         CheckPermissions(permissions, "$.permissions");
         CheckPermissions(optionalPermissions, "$.optionalPermissions");
-        if (WidgetEntrypointRuntimes.IsFullTrust(manifest.Entrypoint?.Runtime) &&
-            (permissions.Count != 0 || optionalPermissions.Count != 0))
-            Add("$.permissions", "full_trust_capabilities_forbidden",
-                "Full-trust applications use ordinary current-user APIs and cannot request sandboxed host capabilities.");
         var validationLimit = ProtocolConstants.MaximumManifestPermissionCount + 1;
         var required = permissions.Take(validationLimit)
             .Where(permission => permission is not null)

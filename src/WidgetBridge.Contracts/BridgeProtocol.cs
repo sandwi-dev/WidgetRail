@@ -24,6 +24,13 @@ internal static class BridgeMessageTypes
     public const string GetPlatformAppearance = "get-platform-appearance";
     public const string ControllerControl = "controller-control";
     public const string WindowPreviewPermissions = "window-preview-permissions";
+    public const string TakeCapture = "capture-take";
+    public const string CheckCapture = "capture-check";
+    public const string RecordingCapture = "capture-recording";
+    public const string CompleteCapture = "capture-complete";
+    public const string ResolveProviderDocument = "provider-document";
+    public const string ResolveMediaPlayer = "media-player-source";
+    public const string ResolveCaptureAttachment = "capture-attachment";
     public const string ApplicationControl = "application-control";
     public const string CompleteTaskActivation = "complete-task-activation";
     public const string PlatformAppearance = "platform-appearance";

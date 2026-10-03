@@ -154,3 +154,16 @@ before launch, and invoke the returned current opaque `AppId` exactly once.
 | Before/after | Replace `UI.Text("RT", "next")` with `UI.ControllerGlyph(ControllerButton.RightTrigger, "next", "Next section")`. Replace misleading scroll hints using `ControllerButton.RightStick` with `ControllerPrompt.RightStickMove`. |
 | Template and release unit | ControllerWidget template version 2 stays supported: its source contract is unchanged. SDK, CLI, generated packages and API baseline advance together to 0.4.0-dev. |
 | Validation | SDK/protocol, public-API/CLI/template compatibility, migrated widget suites, native parsing/rendering/accessibility, controller-family repaint and font fallback checks. |
+
+
+## Game Help presentation primitives (0.4.1-dev)
+
+This additive SDK/CLI release includes declared intents and delivery feedback,
+Windows routing, foreground capture, restricted provider documents, native
+media playback, reusable browser surfaces, rich text/inline links, and scroll
+reveal. See the current API baseline and the intent, capture, media-player,
+web-browser, and rich-text references. The presentation protocol supports 1-76.
+No API from the preceding main release is removed. New browser elements require
+an explicit BrowserInteractionMode so their A/B behavior is part of the authored
+contract; full-trust widgets can use the same permission-gated host services as
+sandboxed widgets. The ControllerWidget template remains version 2.

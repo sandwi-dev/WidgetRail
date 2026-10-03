@@ -8,21 +8,12 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private const string CompactMediaLayout = "host.embedded-media.compact";
-    private string? restoreCompactWidget;
     private static readonly WidgetSurfaceHints CompactMediaHints = new()
     { PreferredWidth = 480, PreferredHeight = 270, MinimumWidth = 320, MinimumHeight = 180 };
 
-    private void TryRestoreCompact()
+    private async Task PinMediaAsync(string widgetId, PinnedSurface? expected = null)
     {
-        if (restoreCompactWidget is not { } id || retired || !visible || switching || activeWidget != id ||
-            pinned is not null || mediaOwner?.IsReady(id) != true) return;
-        restoreCompactWidget = null;
-        DispatcherQueue.TryEnqueue(() => _ = PinMediaAsync(id, restoring: true));
-    }
-
-    private async Task PinMediaAsync(string widgetId, bool restoring = false)
-    {
-        if (retired || owner is null || mediaOwner is null) return;
+        if (retired || owner is null || mediaOwner is null || expected is not null && !ReferenceEquals(pinned, expected)) return;
         var intent = ++pinIntent;
         try
         {
@@ -30,7 +21,10 @@ internal sealed partial class OverlayShellPage
             try
             {
                 if (retired || intent != pinIntent || widgetId != activeWidget ||
-                    owner.Session.GetState(widgetId)?.LastGood is not { } frame || !mediaOwner.IsReady(widgetId)) return;
+                    expected is not null && !ReferenceEquals(pinned, expected) ||
+                    owner.Session.GetState(widgetId)?.LastGood is not { } frame || !mediaOwner.IsReady(widgetId) ||
+                    !mediaOwner.CanPin(widgetId, expected?.Media) || !frame.Descriptor.PinningSupported ||
+                    frame.Snapshot.EmbeddedMediaSession?.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) != true) return;
                 await RemovePinnedCoreAsync();
                 var saved = pinnedPreferences.Placements.GetValueOrDefault(widgetId);
                 var window = new PinnedWidgetWindow(frame.Descriptor.Name);
@@ -84,7 +78,7 @@ internal sealed partial class OverlayShellPage
                     pinned = current;
                     ApplyPinnedAppearance(current); RefreshCompactView();
                     await owner.Session.SetLifecycleAsync(owner.Session.GetTarget(widgetId), LifecycleFor(widgetId), lifetime.Token);
-                    if (!restoring) await SavePinnedAsync(current);
+                    await SavePinnedAsync(current);
                     UpdateTrayHelp(); UpdateDiagnostics();
                 }
                 finally

@@ -11,6 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private EmbeddedMediaOwner? mediaOwner;
+    private Browser.BrowserOwner? browserOwner;
     private readonly MediaFullscreenView fullscreenView = new();
     private readonly HashSet<ControllerButton> fullscreenOwnedButtons = [];
     internal bool IsMediaFullscreen => mediaOwner?.FullscreenWidgetId is not null;
@@ -26,6 +27,8 @@ internal sealed partial class OverlayShellPage
     private void InitializeMediaOwner()
     {
         if (owner is null || mediaOwner is not null || retired) return;
+        browserOwner = new(owner.Session, MediaParking, options.SettingsRoot)
+        { OpenExternal = OpenBrowserExternalAsync };
         mediaOwner = new(owner.Session, MediaParking)
         {
             Diagnostic = (widget, code) =>
@@ -42,7 +45,6 @@ internal sealed partial class OverlayShellPage
         mediaOwner.SetFullscreenHost(fullscreenView.SurfaceHost);
         mediaOwner.FullscreenChanged += RefreshFullscreenView;
         mediaOwner.CompactChanged += RefreshCompactView;
-        mediaOwner.Changed += TryRestoreCompact;
         ReconcileMediaHostState();
     }
 

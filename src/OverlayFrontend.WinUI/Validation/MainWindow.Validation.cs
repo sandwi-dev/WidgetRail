@@ -73,6 +73,20 @@ public sealed partial class MainWindow
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is { } documentResult)
+        {
+            AppWindow.Resize(new(1100, 900));
+            RootFrame.Content = new Validation.ProviderDocumentValidationPage(documentResult);
+        }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is { } mediaResult)
+        {
+            AppWindow.Resize(new(1400, 1050));
+            RootFrame.Content = new Validation.CapturedMediaValidationPage(mediaResult,
+                Shell.FrontendArguments.Value(arguments, "--capture-png") ?? throw new ArgumentException("Missing synthetic PNG."),
+                Shell.FrontendArguments.Value(arguments, "--capture-mp4") ?? throw new ArgumentException("Missing synthetic MP4."));
+        }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-context-capture") is { } captureResult)
+            RootFrame.Content = new Validation.ContextCaptureValidationPage(captureResult);
         else if (validateWindowPreview) RootFrame.Content = new Validation.WindowPreviewValidationPage();
         else if (arguments.Contains("--validate-shell-status")) RootFrame.Content = new Validation.ShellStatusValidationPage();
         else if (arguments.Contains("--validate-production-shell"))
@@ -138,6 +152,12 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-game-help") is { } helpResult)
+            page.EnableGameHelpValidation(helpResult, ShowOverlay, () => !AppWindow.IsVisible && taskHandoff is null);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-browser") is { } browserResult)
+            page.EnableBrowserValidation(browserResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-browser-desktop") is { } desktopResult)
+            page.EnableBrowserDesktopValidation(desktopResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-intents") is { } intentResult)
             page.EnableIntentValidation(intentResult, () => ValidateWebIntentHandoffAsync(page));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-preview-shutdown") is { } shutdownResult &&

@@ -135,6 +135,7 @@ public sealed partial class MainWindow : Window
         // Confirmed launch effects must hand foreground off without waiting for
         // decorative exit motion. Guide, keyboard and gap dismissal animate.
         page.HideRequested += HideOverlay;
+        page.HideForCaptureRequested = token => HideForCaptureAsync(page, token);
         page.ImmediateHideRequested += HideOverlayImmediately;
         page.MotionPolicyChanged += RefreshOverlayMotionPolicy;
         page.WindowActivationDiagnostic = message =>

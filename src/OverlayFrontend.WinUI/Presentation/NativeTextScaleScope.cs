@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Documents;
 using WidgetRail.PlatformSettings;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -10,6 +11,14 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed class NativeTextScaleScope
 {
     private static readonly ConditionalWeakTable<FrameworkElement, NativeTextScaleScope> roots = new();
+    // A styled text span is projected into a Run rather than inserted as a TextBlock.
+    // Resolve its scale through the paragraph that owns it.
+    private static readonly ConditionalWeakTable<FrameworkElement, FrameworkElement> spanParents = new();
+    internal static void SetSpanParent(FrameworkElement span, FrameworkElement? paragraph)
+    {
+        spanParents.Remove(span);
+        if (paragraph is not null) spanParents.Add(span, paragraph);
+    }
     internal double Value { get; private set; } = 1;
     internal event Action? Changed;
     internal static void Set(FrameworkElement root, double value)
@@ -23,7 +32,13 @@ internal sealed class NativeTextScaleScope
     internal static NativeTextScaleScope? Find(FrameworkElement element)
     {
         for (DependencyObject? current = element; current is not null;
-            current = current is FrameworkElement { Parent: { } parent } ? parent : VisualTreeHelper.GetParent(current))
+            current = current switch
+            {
+                FrameworkElement span when spanParents.TryGetValue(span, out var paragraph) => paragraph,
+                TextElement text => text.ElementStart.VisualParent,
+                FrameworkElement { Parent: { } parent } => parent,
+                _ => VisualTreeHelper.GetParent(current),
+            })
             if (current is FrameworkElement candidate && roots.TryGetValue(candidate, out var scope)) return scope;
         return null;
     }

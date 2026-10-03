@@ -3,7 +3,7 @@ using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
-internal static class BridgeIntentScenarios
+internal static partial class BridgeIntentScenarios
 {
     internal static async Task Admission()
     {
@@ -23,6 +23,14 @@ internal static class BridgeIntentScenarios
 
     internal static async Task FallbackTickets()
     {
+        await using (var windows = Fixture([Source(), Target("browser")], routing: WidgetIntentRouting.Windows))
+        {
+            var preparation = await windows.Registry.PrepareIntentAsync(await PrepareSource(windows), default);
+            Check(preparation.Kind == WidgetIntentLaunchKind.ExternalBrowser && preparation.Destinations.Count == 0);
+            var completion = await windows.Registry.CommitIntentAsync(new("source", preparation.TicketId!), default);
+            Check(completion.Accepted && completion.ExternalUrl == "https://example.com/guide");
+            Check(windows.Clients.Count == 1); // Browser worker was never started.
+        }
         long clock = 0;
         await using var fixture = Fixture([Source()], now: () => clock);
         var request = await PrepareSource(fixture);
@@ -108,6 +116,34 @@ internal static class BridgeIntentScenarios
         }
     }
 
+    internal static async Task CompactMediaDelivery()
+    {
+        var receiver = Target("browser") with { PinningSupported = true,
+            Intents = new() { Handles = [new(WidgetIntentContracts.Web) { SupportsPassiveDelivery = true }] } };
+        await using var fixture = Fixture([Source(), receiver]);
+        var request = await PrepareSource(fixture);
+        await fixture.SetLifecycleAsync("browser", WidgetLifecycleState.Visible);
+        var client = fixture.Clients.Single(c => c.WidgetId == "browser");
+        var original = client.SnapshotFactory!;
+        var media = new EmbeddedMediaSession { Id = "player", AccessibleName = "Player", EntryAsset = "index.html",
+            Surface = new(), AspectRatio = 16d/9, SupportedPresentations = [MediaPresentationKind.CompactPinned] };
+        client.SnapshotFactory = sequence => original(sequence) with { EmbeddedMediaSession = media };
+        var frame = await fixture.GetSnapshotAsync("browser");
+        foreach (var id in new[] { "wrong", "player" })
+        {
+            var prepared = await fixture.Registry.PrepareIntentAsync(request, default);
+            var result = await fixture.Registry.CommitIntentAsync(new("source", prepared.TicketId!, "browser", frame.WorkerRun,
+                new("host.embedded-media.compact", frame.Snapshot.Sequence, id)), default);
+            Check(result.Accepted == (id == "player"));
+        }
+        var stale = await fixture.Registry.PrepareIntentAsync(request, default);
+        media = media with { EntryAsset = "replacement.html" };
+        _ = await fixture.GetSnapshotAsync("browser");
+        Check(!(await fixture.Registry.CommitIntentAsync(new("source", stale.TicketId!, "browser", frame.WorkerRun,
+            new("host.embedded-media.compact", frame.Snapshot.Sequence, "player")), default)).Accepted);
+        Check(client.Intents.Count == 1);
+    }
+
     internal static async Task ReplacementsAndChoice()
     {
         await using var fixture = Fixture([Source(), Target("browser"), Target("reader")]);
@@ -168,11 +204,11 @@ internal static class BridgeIntentScenarios
     }
     private static WidgetActionEvent Action() => new("guide", "guide", ControllerButton.A, InputScopeId: "root");
     private static RegistryFixture Fixture(ConfiguredWidget[] widgets, Func<string>? url = null, Func<long>? now = null,
-        WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
+        WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface, WidgetIntentRouting routing = WidgetIntentRouting.WidgetPreferred) =>
         new(new(widgets), configure: (configured, client) => client.SnapshotFactory = sequence =>
             new WidgetView(UI.Stack("root", configured.Id == "source"
                 ? UI.Button("Guide", "guide", "guide").OpenIntent(WidgetIntentContracts.Web,
-                    JsonSerializer.SerializeToElement(new { url = url?.Invoke() ?? "https://example.com/guide" }), presentation)
+                    JsonSerializer.SerializeToElement(new { url = url?.Invoke() ?? "https://example.com/guide" }), routing, presentation)
                 : UI.Button("Target", "target", "target"))).CreateSnapshot(configured.InstanceId, sequence), intentNow: now);
     private static ConfiguredWidget Source() => Target("source") with { Intents = new() { Requests = [WidgetIntentContracts.Web] } };
     private static ConfiguredWidget Target(string id) => new()

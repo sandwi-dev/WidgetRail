@@ -8,7 +8,7 @@ public sealed partial class WidgetPresentationSession
 {
     public bool HasPinnedIntentAction(WidgetPinnedSelection selection, WidgetPinnedProjection projection, WidgetActionEvent action)
     {
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedInputLocked(selection, projection);
             if (IntentActionAuthority.Revalidate(projection.Snapshot, projection.Snapshot, action) is null) return false;
@@ -30,7 +30,7 @@ public sealed partial class WidgetPresentationSession
     public WidgetActionEvent? ResolveIndexedIntentAction(WidgetPresentationIndexedLease lease,
         WidgetPresentationFrame displayed, string itemKey)
     {
-        lock (_gate)
+        using (_gate.Enter())
         {
             var owners = ValidateDisplayedIndexedInputLocked(lease, displayed);
             var item = lease.Range.Items.SingleOrDefault(item => item.Key == itemKey)

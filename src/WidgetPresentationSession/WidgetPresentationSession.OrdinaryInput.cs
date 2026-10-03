@@ -17,7 +17,7 @@ public sealed partial class WidgetPresentationSession
             input.FocusedElementId is not null || input.RequestedValue is not null || input.PinnedLayoutId is not null ||
             input.IsPinnedLayoutSelected is not null || input.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated))
             throw OrdinaryInputStale("Dashboard input origin is invalid.");
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, input.ActiveInputScopeId);
             var original = displayed.Snapshot.QuickActions.SingleOrDefault(action => action.Button == input.Button);
@@ -45,7 +45,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(displayed);
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
             var originBinding = ResolveDisplayedAction(displayed.Snapshot, action);
@@ -71,7 +71,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
         ValidateDisplayedControllerOrigin(displayed, input);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, input.ActiveInputScopeId);
             if (ResolveDisplayedController(displayed.Snapshot, input) != ResolveDisplayedController(current.Snapshot, input))

@@ -23,12 +23,14 @@ function Fails([scriptblock]$Action, [string]$Message) {
 }
 function Make-Package([string]$Root, [string]$Id, [string]$Runtime) {
     $package = Join-Path $Root "runtime/$Runtime"
-    Put (Join-Path $package 'payload/Widget.dll') 'fixture assembly'
+    $application = $Id -eq 'game-help'
+    $entry = if ($application) { 'payload/Widget.exe' } else { 'payload/Widget.dll' }
+    Put (Join-Path $package $entry) 'fixture entrypoint'
     Put (Join-Path $package 'styles/default.wrss') '.root { gap: 4px; }'
     Put (Join-Path $package '.wrail-integrity.json') '{}'
     Write-ReleaseJson (Join-Path $package 'manifest.json') ([ordered]@{
         id = "widgetrail.test.$Id"; version = '0.1.0'
-        entrypoint = @{ assembly = 'payload/Widget.dll' }
+        entrypoint = $(if ($application) { @{ runtime = 'full-trust-application-v1'; executable = $entry } } else { @{ runtime = 'dotnet-worker'; assembly = $entry } })
     })
     return [ordered]@{ id = $Id; packageId = "widgetrail.test.$Id"; instanceId = "$Id.default"; packageRoot = "runtime/$Runtime"; icon = 'settings'; quickActions = @() }
 }
@@ -77,7 +79,7 @@ $dev = Join-Path $first 'WidgetRail-Developer-0.1.0-preview.1-win-x64'
 $prodCatalog = Get-Content (Join-Path $production 'widget-catalog.json') -Raw | ConvertFrom-Json
 $devCatalog = Get-Content (Join-Path $dev 'widget-catalog.json') -Raw | ConvertFrom-Json
 Check (@($prodCatalog.bundledWidgets).Count -eq 7) 'Production catalog differs.'
-Check (@($devCatalog.bundledWidgets).Count -eq 11) 'Developer catalog differs.'
+Check (@($devCatalog.bundledWidgets).Count -eq 13) 'Developer catalog differs.'
 Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1 -and
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1) 'Display Profiles is missing from an edition.'
 Check (!(Test-Path (Join-Path $production 'runtime/embedded-media-sample'))) 'Developer content leaked into Production.'

@@ -19,7 +19,7 @@ public sealed partial class WidgetPresentationSession
     public WidgetPinnedSelection? GetPinnedSelection(WidgetPresentationFrame displayed)
     {
         ArgumentNullException.ThrowIfNull(displayed);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedFrameLocked(displayed);
             if (current.Authority.SnapshotSequence != displayed.Authority.SnapshotSequence)
@@ -31,7 +31,7 @@ public sealed partial class WidgetPresentationSession
     public WidgetPinnedProjection ResolvePinnedProjection(WidgetPresentationFrame displayed, string layoutId)
     {
         ArgumentNullException.ThrowIfNull(displayed);
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedFrameLocked(displayed);
             if (!Safe(layoutId) || !_pinnedFrames.TryGetValue(displayed, out var origins) ||
@@ -55,7 +55,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(projection);
         cancellationToken.ThrowIfCancellationRequested();
         WidgetPinnedSelection selected;
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedProjectionLocked(projection);
             if (current.Authority.SnapshotSequence != projection.Frame.Authority.SnapshotSequence ||
@@ -72,7 +72,7 @@ public sealed partial class WidgetPresentationSession
         try
         {
             using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
-            lock (_gate)
+            using (_gate.Enter())
                 if (DemandPinnedProjectionLocked(projection).Authority.SnapshotSequence != projection.Frame.Authority.SnapshotSequence ||
                     !ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.WidgetId), selected) ||
                     _indexedHiddenWidgets.Contains(selected.WidgetId))
@@ -86,7 +86,7 @@ public sealed partial class WidgetPresentationSession
                 SnapshotSequence: projection.Frame.Authority.SnapshotSequence)
             { PinnedLayoutId = full ? null : projection.LayoutId, IsPinnedLayoutSelected = !full };
             var acknowledged = await SendPinnedWireAsync(projection.Frame, input, null, null, dispatch, cancellationToken).ConfigureAwait(false);
-            lock (_gate)
+            using (_gate.Enter())
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DemandPinnedProjectionLocked(projection);
@@ -97,7 +97,7 @@ public sealed partial class WidgetPresentationSession
                 return selected;
             }
         }
-        finally { lock (_gate) _pinnedSelectionPending.Remove(selected.WidgetId); }
+        finally { using (_gate.Enter()) _pinnedSelectionPending.Remove(selected.WidgetId); }
     }
 
     /// <summary>Revokes local input immediately. The genuine current frame notifies the same worker of demand removal.</summary>
@@ -106,7 +106,7 @@ public sealed partial class WidgetPresentationSession
     {
         ArgumentNullException.ThrowIfNull(selection); ArgumentNullException.ThrowIfNull(displayed);
         cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
+        using (_gate.Enter())
         {
             var current = DemandPinnedFrameLocked(displayed);
             if (!ReferenceEquals(selection.Owner, this) || !ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection) ||
@@ -120,7 +120,7 @@ public sealed partial class WidgetPresentationSession
         try
         {
             using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
-            lock (_gate)
+            using (_gate.Enter())
                 if (DemandPinnedFrameLocked(displayed).Authority.SnapshotSequence != displayed.Authority.SnapshotSequence)
                     throw PinnedStale("The deselection frame changed before notification.");
             var input = new ControllerInputEvent(ControllerButton.View, ControllerEventPhase.Pressed,
@@ -131,16 +131,16 @@ public sealed partial class WidgetPresentationSession
             // both states without targeting a replacement local selection.
             { PinnedLayoutId = null, IsPinnedLayoutSelected = false };
             var handled = await SendPinnedWireAsync(displayed, input, null, null, dispatch, cancellationToken).ConfigureAwait(false);
-            lock (_gate) if (ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection)) _pinnedSelections.Remove(selection.WidgetId);
+            using (_gate.Enter()) if (ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection)) _pinnedSelections.Remove(selection.WidgetId);
             return handled;
         }
-        finally { lock (_gate) _pinnedSelectionPending.Remove(selection.WidgetId); }
+        finally { using (_gate.Enter()) _pinnedSelectionPending.Remove(selection.WidgetId); }
     }
 
     public bool IsPinnedSelectionCurrent(WidgetPinnedSelection selection)
     {
         ArgumentNullException.ThrowIfNull(selection);
-        lock (_gate) return !_disposed && _terminalFailure is null && ReferenceEquals(selection.Owner, this) && selection.Active &&
+        using (_gate.Enter()) return !_disposed && _terminalFailure is null && ReferenceEquals(selection.Owner, this) && selection.Active &&
             !_indexedHiddenWidgets.Contains(selection.WidgetId) && ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection) &&
             ReferenceEquals(_pinnedEpochs.GetValueOrDefault(selection.WidgetId)?.GetValueOrDefault(selection.LayoutId), selection.Epoch);
     }
@@ -187,7 +187,7 @@ public sealed partial class WidgetPresentationSession
             ?? throw PinnedStale("The pinned layout is not declared.");
         if (layout.Root is not { } root) return (parent with { PinnedLayouts = [], QuickActions = [], Surface = layout.Surface }, false);
         return (frame.Snapshot with { Root = root, ActiveInputScopeId = layout.ActiveInputScopeId!, InitialFocusId = layout.InitialFocusId,
-            Surface = layout.Surface, PinnedLayouts = [], QuickActions = [], FocusGroupEntryRequest = null }, true);
+            Surface = layout.Surface, PinnedLayouts = [], QuickActions = [], FocusGroupEntryRequest = null, ScrollRevealRequest = null }, true);
     }
 
     private void ReconcilePinnedProjectionsLocked(WidgetPresentationState state)

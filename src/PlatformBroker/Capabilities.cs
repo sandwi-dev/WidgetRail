@@ -29,8 +29,12 @@ public sealed record BrokerCapabilityDefinition(
     IReadOnlySet<string>? ReadOperations = null,
     BrokerCapabilityAccessPolicy AccessPolicy = BrokerCapabilityAccessPolicy.ManifestConsent,
     bool AllowsBackground = false,
-    IReadOnlySet<string>? InFlightContinuationOperations = null)
+    IReadOnlySet<string>? InFlightContinuationOperations = null,
+    IReadOnlySet<string>? BackgroundOperations = null)
 {
+    public bool AllowsBackgroundForOperation(string? operation) => AllowsBackground &&
+        (BackgroundOperations is null || operation is not null && BackgroundOperations.Contains(operation));
+
     public BrokerCapabilityKind KindForOperation(string operation) =>
         ReadOperations?.Contains(operation) == true ? BrokerCapabilityKind.Read : Kind;
 
@@ -94,6 +98,15 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothManageV1 = "system.network.bluetooth.manage.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
     public const string AppLibraryReadV1 = "system.apps.library.read.v1";
+    public const string ProviderDocumentsV1 = "presentation.documents.v1";
+    public const string ProviderDocumentCreate = "document.create";
+    public const string ProviderDocumentDiscard = "document.discard";
+    public const string WindowCaptureV1 = "system.apps.windows.capture.v1";
+    public const string WindowCaptureRequest = "capture.request";
+    public const string WindowCaptureStatus = "capture.status";
+    public const string WindowCaptureCancel = "capture.cancel";
+    public const string WindowCaptureDiscard = "capture.discard";
+    public const string WindowCaptureRead = "capture.read";
     public const string TaskWindowsPreviewV1 = "system.apps.windows.preview.v1";
     public const string TaskWindowsReadV1 = "system.apps.windows.read.v1";
     public const string TaskWindowsSwitchV1 = "system.apps.windows.switch.v1";
@@ -242,6 +255,13 @@ public static class PlatformCapabilities
             [AppLibraryReadV1] = new(AppLibraryReadV1, 1,
                 BrokerCapabilityKind.Read,
                 Set(AppLibraryList, AppLibraryResolveSaved), Set()),
+            [ProviderDocumentsV1] = new(ProviderDocumentsV1, 1, BrokerCapabilityKind.Control,
+                Set(ProviderDocumentCreate, ProviderDocumentDiscard), Set(), AllowsBackground: true,
+                BackgroundOperations: Set(ProviderDocumentCreate, ProviderDocumentDiscard)),
+            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
+                Set(WindowCaptureRequest, WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead), Set(),
+                ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead), AllowsBackground: true,
+                BackgroundOperations: Set(WindowCaptureStatus, WindowCaptureRead, WindowCaptureCancel, WindowCaptureDiscard)),
             [TaskWindowsPreviewV1] = new(TaskWindowsPreviewV1, 1, BrokerCapabilityKind.Read, Set(), Set()),
             [TaskWindowsReadV1] = new(TaskWindowsReadV1, 1, BrokerCapabilityKind.Read,
                 Set(TaskWindowsList), Set()),

@@ -429,6 +429,8 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
+        PlatformCapabilities.ProviderDocumentsV1 => "Display restricted HTML documents",
+        PlatformCapabilities.WindowCaptureV1 => "Capture an application window",
         PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
         PlatformCapabilities.PowerReadV1 => "Check available PC power options",
         PlatformCapabilities.DisplaysReadV1 => "See display setups and saved profiles",
@@ -527,6 +529,10 @@ internal static class SettingsPermissionPresentation
             "Save and manage display profiles, and restore a setup with an automatic confirmation timeout. Windows scaling stays unchanged.",
         PlatformCapabilities.PowerControlV1 =>
             "Allow this widget to shut down, restart or put your PC to sleep when you use it.",
+        PlatformCapabilities.ProviderDocumentsV1 =>
+            "Display this widget's HTML documents with scripts, forms and background network access blocked.",
+        PlatformCapabilities.WindowCaptureV1 =>
+            "Request a screenshot or silent five-second video of the foreground application after a countdown. The host asks for confirmation before each capture.",
         PlatformCapabilities.TaskWindowsReadV1 =>
             "See open application windows and their titles. Window handles and process IDs stay private to the host.",
         PlatformCapabilities.TaskWindowsSwitchV1 =>

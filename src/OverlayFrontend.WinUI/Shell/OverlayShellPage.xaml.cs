@@ -125,7 +125,6 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private async Task StartAsync()
     {
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
-        var startupPinIntent = pinIntent;
         void Phase(string phase) => switchDiagnostics?.Write($"startup phase={phase} elapsedMs={System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1}");
         try
         {
@@ -152,10 +151,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             owner.Session.AppearanceChanged += AppearanceChanged;
             owner.Session.HostEffectReceived += HostEffectReceived;
             applicationControlPump = PumpApplicationControlAsync();
+            capturePump = PumpCaptureAsync();
             if (ControllerControlStatusRequested is not null) controllerControlPump = PumpControllerControlAsync();
             BridgeReady?.Invoke();
             Phase("bridge-notifications-queued");
-            await InitializeStartupCatalogAsync(startupPinIntent, Phase);
+            await InitializeStartupCatalogAsync(Phase);
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error)
@@ -166,7 +166,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         }
     }
 
-    private async Task InitializeStartupCatalogAsync(long startupPinIntent, Action<string> Phase)
+    private async Task InitializeStartupCatalogAsync(Action<string> Phase)
     {
         var startupOwner = owner ?? throw new InvalidOperationException("The widget service is not connected.");
         WidgetPresentationCatalog catalog;
@@ -220,7 +220,6 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             SetCatalog(catalog);
             Phase("catalog-complete");
         }
-        if (pinIntent == startupPinIntent) await RestorePinnedAsync();
     }
 
     private void SetCatalog(WidgetPresentationCatalog catalog)
@@ -707,7 +706,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             BeginStartupPresentation();
             try
             {
-                startup = owner is null ? StartAsync() : InitializeStartupCatalogAsync(pinIntent, _ => { });
+                startup = owner is null ? StartAsync() : InitializeStartupCatalogAsync(_ => { });
                 await startup;
             }
             catch (OperationCanceledException) when (retired) { }
@@ -837,6 +836,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (startup is not null) await startup;
         if (applicationControlPump is not null) await applicationControlPump;
         if (controllerControlPump is not null) await controllerControlPump;
+        if (capturePump is not null) await capturePump;
+        if (capturing is not null) await capturing;
         await SavePreferencesAsync();
         await transitions.WaitAsync();
         try
@@ -855,11 +856,15 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             }
             finally
             {
-                try { if (mediaOwner is not null) await mediaOwner.DisposeAsync(); }
+                try { if (browserOwner is not null) await browserOwner.DisposeAsync(); }
                 finally
                 {
-                    try { if (previewCaptures is not null) await previewCaptures.DisposeAsync(); }
-                    finally { if (owner is not null) await owner.DisposeAsync(); }
+                    try { if (mediaOwner is not null) await mediaOwner.DisposeAsync(); }
+                    finally
+                    {
+                        try { if (previewCaptures is not null) await previewCaptures.DisposeAsync(); }
+                        finally { if (owner is not null) await owner.DisposeAsync(); }
+                    }
                 }
             }
         }

@@ -47,7 +47,6 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             password = new PasswordBox { MaxLength = maximumLength, PasswordRevealMode = PasswordRevealMode.Hidden,
                 Header = node.TextEntryPlaceholder ?? "Private text" };
             password.PasswordChanged += (_, _) => secretCaret = password.Password.Length;
-            password.Paste += (_, args) => args.Handled = true;
             body.Children.Add(password);
         }
         else
@@ -89,7 +88,11 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;
-            if (HandleKeyboardKey(args.Key)) args.Handled = true;
+            var control = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control) &
+                Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+            var shift = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift) &
+                Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+            if (HandleKeyboardKey(args.Key, control, shift)) args.Handled = true;
         }), true);
         CharacterReceived += (_, args) =>
         {
@@ -99,11 +102,21 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         };
     }
 
-    internal bool HandleKeyboardKey(Windows.System.VirtualKey key)
+    internal bool HandleKeyboardKey(Windows.System.VirtualKey key, bool control = false, bool shift = false)
     {
         if (completed) return false;
         if (key == Windows.System.VirtualKey.Escape) { Complete(false); return true; }
         var editorFocused = ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
+        // The controller keyboard owns initial focus. A physical paste shortcut
+        // should still reach the native editor, without reading or logging the
+        // clipboard ourselves. Focused editors retain native paste/selection behavior.
+        if (!editorFocused && (control && key == Windows.System.VirtualKey.V || shift && key == Windows.System.VirtualKey.Insert))
+        {
+            ((Control?)text ?? password!).Focus(FocusState.Keyboard);
+            if (text is not null) text.PasteFromClipboard();
+            else password!.PasteFromClipboard();
+            return true;
+        }
         // Focused virtual keys retain native Enter/Space activation, including
         // Cancel. The commit shortcut applies only within the native editor.
         if (key == Windows.System.VirtualKey.Enter && editorFocused) { Complete(true); return true; }

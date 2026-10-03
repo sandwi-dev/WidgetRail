@@ -14,10 +14,11 @@ internal sealed class WidgetIntentLane
             RuntimeEnvelope response;
             try
             {
-                var accepted = await widget.ApplyIntentAsync(request.DeliveryId, request.Intent, demand).ConfigureAwait(false);
+                var controlResult = request.Control && await widget.ApplyIntentControlAsync(request.Intent, request.Feedback, demand).ConfigureAwait(false);
+                var accepted = request.Control ? WidgetRail.WidgetProtocol.WidgetIntentResult.Rejected : await widget.ApplyIntentAsync(request.DeliveryId, request.Intent, demand).ConfigureAwait(false);
                 demand.ThrowIfCancellationRequested();
                 response = new() { Type = MessageTypes.IntentResult, RequestId = requestId,
-                    Payload = RuntimeJson.ToElement(new IntentDeliveryResultPayload(accepted)) };
+                    Payload = RuntimeJson.ToElement(new IntentDeliveryResultPayload(accepted, controlResult)) };
             }
             catch (OperationCanceledException)
             { response = WidgetIndexedRangeLane.Error(requestId, "intent_cancelled", "Intent delivery was cancelled."); }

@@ -1,0 +1,39 @@
+.help-root { width: 100vw; height: 100vh; min-width: 0px; min-height: 0px; padding: 16px; color: var(--text); }
+.help-title { font-size: 24px; font-weight: 600; }
+.help-hero { font-size: 28px; font-weight: 600; line-height: 1.2; }
+.help-section-title { font-size: 16px; font-weight: 600; }
+.help-caption { color: var(--text-muted); font-size: 13px; line-height: 1.4; }
+.help-muted { color: var(--text-muted); line-height: 1.45; }
+.help-setup-card { padding: 28px; gap: 20px; corner-radius: 16px; background: var(--surface); border-color: var(--border, var(--text-muted)); border-width: 1px; }
+.help-setup-scroll { min-height: 0px; }
+.help-setup-stage { padding: 32px 4px; }
+.help-secondary { min-width: 80px; padding: 8px 12px; }
+.help-section { gap: 10px; padding: 16px; corner-radius: 12px; background: var(--surface); border-color: var(--border, var(--text-muted)); border-width: 1px; }
+.help-conversation { min-width: 0px; min-height: 0px; padding: 8px; background: var(--surface); border-color: var(--border, var(--text-muted)); border-width: 1px; corner-radius: 16px; }
+.help-context-bar { padding: 12px 16px; background: var(--surface-raised); corner-radius: 10px; }
+.help-context-summary { gap: 4px; min-width: 0px; }
+.help-context-button { text-align: start; min-width: 0px; padding: 8px 12px; max-lines: 1; text-overflow: ellipsis; }
+.help-eyebrow { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.help-section-heading { gap: 8px; }
+.help-empty { gap: 24px; }
+.help-starter-section { gap: 12px; }
+.help-prompt { padding: 16px; min-height: 88px; text-align: start; corner-radius: 10px; background: var(--surface-raised); }
+.help-prompt-copy { gap: 6px; min-width: 0px; align: start; }
+.help-transcript { min-height: 0px; min-width: 0px; padding: 12px 8px; }
+.help-messages { gap: 20px; min-width: 0px; }
+.help-message-user { background: var(--surface-raised); border-color: var(--border, var(--text-muted)); border-width: 1px; padding: 16px 20px; gap: 8px; corner-radius: 12px; }
+.help-message-answer { padding: 16px 8px; gap: 14px; }
+.help-answer-section { padding: 16px; gap: 10px; background: var(--surface-raised); corner-radius: 10px; }
+.help-author { color: var(--text-muted); font-size: 13px; font-weight: 600; }
+.help-message-text { line-height: 1.5; }
+.help-link { text-align: start; min-width: 0px; padding: 8px 12px; }
+.help-followup { text-align: start; padding: 12px 16px; }
+.help-context-choice { padding: 16px; gap: 12px; background: var(--surface); border-color: var(--border, var(--text-muted)); border-width: 1px; corner-radius: 12px; }
+.help-status { padding: 12px 16px; gap: 8px; }
+.help-footer { gap: 8px; padding: 12px; corner-radius: 10px; background: var(--surface-raised); }
+.help-composer { min-width: 0px; min-height: 52px; }
+.help-hints { gap: 20px; justify: start; align: center; }
+.help-error-panel { padding: 12px; gap: 6px; background: var(--surface); border-color: var(--border, var(--text-muted)); border-width: 1px; corner-radius: 8px; }
+.help-dialog { gap: 16px; min-width: 0px; }
+.help-preview-media { height: 280px; min-height: 160px; min-width: 0px; }
+.help-attribution { min-height: 64px; max-height: 640px; min-width: 0px; }

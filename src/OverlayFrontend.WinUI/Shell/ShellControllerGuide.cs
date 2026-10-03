@@ -138,7 +138,9 @@ internal sealed partial class ShellControllerGuide : ContentControl, IDisposable
         {
             var primary = i < current.Count && current[i].Prompt == ControllerPrompt.A;
             var cell = cells[i];
-            cell.Fill.Color = primary ? colors.Selected : colors.Item;
+            var fill = primary ? colors.Selected : colors.Surface;
+            fill.A = colors.HighContrast || motionAppearance.Transparency == TransparencyPreference.Reduced ? byte.MaxValue : (byte)216;
+            cell.Fill.Color = fill;
             cell.Ink.Color = primary ? colors.SelectedText : colors.Text;
             var edge = cell.Ink.Color; edge.A = colors.HighContrast ? byte.MaxValue : (byte)64;
             cell.Edge.Color = edge;

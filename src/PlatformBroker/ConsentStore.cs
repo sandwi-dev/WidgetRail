@@ -40,6 +40,7 @@ public sealed class ConsentStore
         "external.spotify.playback.read.v1",
         "external.spotify.playlists.read.v1",
         "system.activity.recent.activate.v1",
+        "network.gemini.game-help.v1",
     };
     private readonly string _root;
     private readonly string _documentFile;

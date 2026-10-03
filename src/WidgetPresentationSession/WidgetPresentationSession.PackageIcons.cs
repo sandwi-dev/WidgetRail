@@ -29,7 +29,7 @@ public sealed partial class WidgetPresentationSession
         var descriptor = target.Descriptor;
         BridgePackageIconAssetDescriptor asset;
         PackageIconKey key;
-        lock (_gate)
+        using (_gate.Enter())
         {
             _ = ValidateTarget(target);
             if (descriptor.IconAssets is null || descriptor.IconAssets.Count > ProtocolConstants.MaximumPackageIconAssetCount ||
@@ -50,7 +50,7 @@ public sealed partial class WidgetPresentationSession
         try
         {
             await _packageIconSlots.WaitAsync(deadline.Token).ConfigureAwait(false); admitted = true;
-            lock (_gate)
+            using (_gate.Enter())
             {
                 _ = ValidateTarget(target);
                 if (_packageIcons.TryGetValue(key, out var cached)) return new(assetId, asset.NormalizedSha256, cached.ToArray());
@@ -79,7 +79,7 @@ public sealed partial class WidgetPresentationSession
             if (bytes.Length != asset.NormalizedBytes || !Convert.ToHexString(SHA256.HashData(bytes)).Equals(asset.NormalizedSha256, StringComparison.OrdinalIgnoreCase))
                 throw new BridgeProtocolException("Package icon payload does not match admitted bytes and hash.");
             deadline.Token.ThrowIfCancellationRequested();
-            lock (_gate)
+            using (_gate.Enter())
             {
                 _ = ValidateTarget(target);
                 // Aggregate session retention is bounded independently of widget count.
@@ -92,7 +92,7 @@ public sealed partial class WidgetPresentationSession
             }
             return new(assetId, asset.NormalizedSha256, bytes.ToArray());
         }
-        finally { if (admitted) _packageIconSlots.Release(); lock (_gate) --_pendingPackageIcons; }
+        finally { if (admitted) _packageIconSlots.Release(); using (_gate.Enter()) --_pendingPackageIcons; }
     }
 
     private static void ValidatePackageIconMetadata(BridgeWidgetDescriptor descriptor, BridgePackageIconAssetDescriptor asset)

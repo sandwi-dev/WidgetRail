@@ -71,6 +71,31 @@ internal static class BridgeIntentEndToEnd
         await serving.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    internal static async Task SearchFeedbackThroughBothPipes()
+    {
+        var pipe = "intent-feedback-" + Guid.NewGuid().ToString("N");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var server = new WidgetBridgeServer(pipe, Catalog());
+        var serving = server.RunAsync(TimeSpan.FromSeconds(3), deadline.Token);
+        await using var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token);
+        _ = await session.ListWidgetsAsync(deadline.Token);
+        var source = await session.EstablishPresentationAsync(session.GetTarget("intent-source"), WidgetLifecycleState.Interactive, deadline.Token);
+        var prepared = await session.PrepareIntentAsync(source, new("search", "search", ControllerButton.A, InputScopeId: "root"), deadline.Token);
+        Check(prepared.Kind == WidgetIntentLaunchKind.Widget && prepared.Destinations.Single().WidgetId == "intent-target");
+        source = await session.EstablishPresentationAsync(session.GetTarget("intent-source"), WidgetLifecycleState.Interactive, deadline.Token);
+        Check(source.Snapshot.Root.Children.Single(node => node.Id == "feedback").Text == "Unavailable");
+        await session.SetLifecycleAsync(session.GetTarget("intent-source"), WidgetLifecycleState.Background, deadline.Token);
+        var target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
+        Check(target.Snapshot.Root.Children.Single(node => node.Id == "readiness").Text == "Background");
+        Check((await session.CommitIntentAsync(prepared, target, deadline.Token)).Accepted);
+        target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
+        Check(target.Snapshot.Root.Children[0].Text == "https://example.com/search-fallback");
+        source = await session.EstablishPresentationAsync(session.GetTarget("intent-source"), WidgetLifecycleState.Interactive, deadline.Token);
+        Check(source.Snapshot.Root.Children.Single(node => node.Id == "feedback").Text == "Accepted");
+        await session.DisposeAsync();
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     internal static async Task ServeAsync(string pipe)
     {
         await using var server = new WidgetBridgeServer(pipe, Catalog());
@@ -143,7 +168,7 @@ internal static class BridgeIntentEndToEnd
         Id = id, PackageId = "example." + id, PublisherId = "example.publisher", Name = handles ? "Intent destination" : "Intent source",
         InstanceId = id + ".instance", WorkerExecutable = Environment.ProcessPath!,
         WorkerFingerprint = new string(handles ? 'b' : 'a', 64), CatalogFingerprint = new string(handles ? 'b' : 'a', 64),
-        Intents = handles ? new() { Handles = [new(WidgetIntentContracts.Web) { SupportsPassiveDelivery = true }] } : new() { Requests = [WidgetIntentContracts.Web] },
+        Intents = handles ? new() { Handles = [new(WidgetIntentContracts.Web) { SupportsPassiveDelivery = true }, new(WidgetIntentContracts.VideoSearch) { HasDynamicAvailability = true }] } : new() { Requests = [WidgetIntentContracts.Web, WidgetIntentContracts.VideoSearch] },
         PinningSupported = true, FullWidgetPinningSupported = true,
     };
     private static void Check(bool value) { if (!value) throw new Exception("Intent end-to-end assertion failed."); }
@@ -166,13 +191,30 @@ internal sealed class IntentBridgeProbeWidget : Widget
     }
     private string current = "No intent received";
     private int calls;
+    private string feedback = "None";
+    private string readiness = "None";
+    public override ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
+    {
+        readiness = LifecycleState.ToString();
+        return ValueTask.FromResult(false);
+    }
+    public override ValueTask<bool> OnIntentCompletedAsync(WidgetIntentFeedback result, CancellationToken cancellationToken = default)
+    {
+        feedback = result.Status.ToString();
+        Invalidate();
+        return ValueTask.FromResult(true);
+    }
     public override WidgetView Render() => target
-        ? new(UI.Stack("root", UI.Text(current, "result"), UI.Text("Deliveries: " + calls, "calls"), UI.Button("Destination action", "noop", "noop")), "noop")
+        ? new(UI.Stack("root", UI.Text(current, "result"), UI.Text("Deliveries: " + calls, "calls"), UI.Button("Destination action", "noop", "noop"), UI.Text(readiness, "readiness")), "noop")
         : new(UI.Stack("root", Link("open", "Open guide", "guide"), Link("wait", "Cancellable request", "wait"),
             Link("unsupported", "Unsupported guide", "unsupported"), Link("interaction", "Needs interaction", "interaction"),
             Link("open-full", "Open full widget", "guide") with { Intent = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
                 JsonSerializer.SerializeToElement(new { url = "https://example.com/guide" }), WidgetIntentPresentation.OpenWidget) },
-            UI.CollectionList("links", links, 52, "Guide links")), "open")
+            UI.CollectionList("links", links, 52, "Guide links"),
+            UI.Text(feedback, "feedback"), UI.Button("Search", "search", "search").OpenIntent(WidgetIntentContracts.VideoSearch,
+                JsonSerializer.SerializeToElement(new { provider = "youtube", query = "boss guide" }))
+                .WithIntentFeedback(WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+                    JsonSerializer.SerializeToElement(new { url = "https://example.com/search-fallback" })) with { ReportsResult = true })), "open")
         { PinnedLayouts = [WidgetView.PinnedLayout("links-pin", "Pinned links", new(),
             UI.Stack("pin-root", Link("pin-open", "Pinned guide", "pinned"), UI.CollectionList("pin-links", links, 52, "Pinned links")).InputScope("pin-scope"),
             initialFocusId: "pin-open", activeInputScopeId: "pin-scope")] };

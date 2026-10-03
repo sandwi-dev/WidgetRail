@@ -8,28 +8,51 @@ namespace WidgetRail.WidgetProtocol;
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentPresentation>))]
 public enum WidgetIntentPresentation { PreferExistingSurface, OpenWidget }
 
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentRouting>))]
+public enum WidgetIntentRouting { WidgetPreferred, Windows }
+
 /// <summary>InteractionRequired accepts the request once and asks the host to show its stored state.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentResult>))]
 public enum WidgetIntentResult { Rejected, Accepted, InteractionRequired }
+
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentStatus>))]
+public enum WidgetIntentStatus { Accepted, Unavailable, Rejected, Cancelled, Failed }
+
+/// <summary>A terminal routing result. Accepted means the receiver accepted the action, not that its network work succeeded.</summary>
+public sealed record WidgetIntentFeedback(string RequestId, WidgetIntentRequest Request, WidgetIntentStatus Status);
 
 /// <summary>A declarative request bound to one displayed action, never an execution grant.</summary>
 public sealed record WidgetIntentRequest(string ContractId, int Version, string SchemaDigest, JsonElement Payload)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public WidgetIntentPresentation Presentation { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public WidgetIntentRouting Routing { get; init; }
+    /// <summary>Ask the originating worker to observe this request's terminal result.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ReportsResult { get; init; }
+    /// <summary>One declared alternative; the sender may select it only after unavailable or rejected.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WidgetIntentRequest? Fallback { get; init; }
 
     public static WidgetIntentRequest Create(WidgetIntentContract contract, JsonElement payload,
         WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface)
+        => Create(contract, payload, WidgetIntentRouting.WidgetPreferred, presentation);
+
+    public static WidgetIntentRequest Create(WidgetIntentContract contract, JsonElement payload,
+        WidgetIntentRouting routing, WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface)
     {
         if (!Enum.IsDefined(presentation)) throw new ArgumentOutOfRangeException(nameof(presentation));
+        if (!Enum.IsDefined(routing)) throw new ArgumentOutOfRangeException(nameof(routing));
         var compiled = CompiledWidgetIntentContract.Create(contract);
         if (!compiled.Accepts(payload)) throw new ArgumentException("Intent payload does not match its contract.", nameof(payload));
-        return new(compiled.Id, compiled.Version, compiled.SchemaDigest, payload.Clone()) { Presentation = presentation };
+        return new(compiled.Id, compiled.Version, compiled.SchemaDigest, payload.Clone()) { Presentation = presentation, Routing = routing };
     }
 
     public bool IsWellFormed()
     {
-        if (!Enum.IsDefined(Presentation) || !WidgetIntentContracts.IsValidId(ContractId) || Version is < 1 or > 65535 ||
+        if (Fallback is { } fallback && (!ReportsResult || fallback.Fallback is not null || !fallback.IsWellFormed())) return false;
+        if (!Enum.IsDefined(Presentation) || !Enum.IsDefined(Routing) || !WidgetIntentContracts.IsValidId(ContractId) || Version is < 1 or > 65535 ||
             SchemaDigest is not { Length: 64 } || !SchemaDigest.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f') ||
             Payload.ValueKind != JsonValueKind.Object ||
             Encoding.UTF8.GetByteCount(Payload.GetRawText()) > CompiledWidgetIntentContract.MaximumPayloadBytes) return false;
@@ -37,7 +60,8 @@ public sealed record WidgetIntentRequest(string ContractId, int Version, string 
     }
 
     public bool Matches(WidgetIntentRequest? other) => other is not null &&
-        ContractId == other.ContractId && Version == other.Version && SchemaDigest == other.SchemaDigest && Presentation == other.Presentation &&
+        ContractId == other.ContractId && Version == other.Version && SchemaDigest == other.SchemaDigest && Presentation == other.Presentation && Routing == other.Routing && ReportsResult == other.ReportsResult &&
+        (Fallback is null ? other.Fallback is null : Fallback.Matches(other.Fallback)) &&
         IsWellFormed() && other.IsWellFormed() && Fingerprint(Payload) == Fingerprint(other.Payload);
 
     private static bool Check(JsonElement value, int depth)

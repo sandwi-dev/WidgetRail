@@ -126,6 +126,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly MediaCapabilityDomain _mediaDomain;
     private readonly PrivateSecretCapabilityDomain _privateSecretDomain;
     private readonly PrivateStateCapabilityDomain _privateStateDomain;
+    private readonly WindowCaptureCapabilityDomain _captureDomain;
+    private readonly ProviderDocumentCapabilityDomain _documentDomain;
     private readonly object _gate = new();
     private readonly List<BrokerEventSubscription> _subscriptions = [];
     private readonly HashSet<RequestLease> _requestLeases = [];
@@ -184,6 +186,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _mediaDomain = new MediaCapabilityDomain(_backend);
         _privateSecretDomain = new PrivateSecretCapabilityDomain(_backend, _identity);
         _privateStateDomain = new PrivateStateCapabilityDomain(_backend, _identity);
+        _captureDomain = new(_identity);
+        _documentDomain = new(_identity);
         _backend.EventPublished += OnBackendEvent;
     }
 
@@ -339,6 +343,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         var requestToken = lease.Token;
         return BrokerCapabilityDomains.Resolve(request.CapabilityId) switch
         {
+            BrokerCapabilityDomain.ProviderDocuments => _documentDomain.Execute(request.Operation, request.Payload, requestToken),
+            BrokerCapabilityDomain.WindowCapture => _captureDomain.Execute(request.Operation, request.Payload, requestToken),
             BrokerCapabilityDomain.Displays =>
                 await _displayProfilesDomain.ExecuteAsync(request.Operation, request.Payload, _identity, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Power =>
@@ -445,6 +451,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
         }
         foreach (var lease in canceled) lease.SignalCancellation();
+        if (!granted.Contains(PlatformCapabilities.WindowCaptureV1)) _captureDomain.Dispose();
+        if (!granted.Contains(PlatformCapabilities.ProviderDocumentsV1)) _documentDomain.Revoke();
     }
 
     internal void RevokeSubscriptions()
@@ -463,6 +471,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             ClearDashboardGestureAuthoritiesLocked();
         }
         foreach (var lease in canceled) lease.SignalCancellation();
+        _captureDomain.Dispose();
+        _documentDomain.Revoke();
     }
 
     private async Task<BrokerCapabilityDefinition> AuthorizeAsync(
@@ -494,9 +504,9 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private static void DemandLifecycle(
         BrokerCapabilityDefinition capability,
         BrokerCapabilityKind kind,
-        BrokerLifecycleState lifecycle)
+        BrokerLifecycleState lifecycle, string? operation = null)
     {
-        var allowed = capability.AllowsBackground
+        var allowed = capability.AllowsBackgroundForOperation(operation)
             ? lifecycle is BrokerLifecycleState.Background or
                 BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive
             : kind == BrokerCapabilityKind.Control
@@ -557,10 +567,10 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
             else
             {
-                DemandLifecycle(capability, operationKind, _lifecycle);
+                DemandLifecycle(capability, operationKind, _lifecycle, request.Operation);
             }
             var lease = new RequestLease(
-                this, capability.Id, operationKind, capability.AllowsBackground,
+                this, capability.Id, operationKind, capability.AllowsBackgroundForOperation(request.Operation),
                 capability.AllowsInFlightContinuationForOperation(request.Operation),
                 dashboardGestureAuthorized,
                 callerCancellation);
@@ -818,6 +828,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         }
         foreach (var lease in canceled) lease.SignalCancellation();
         _appLibraryDomain.Dispose();
+        _captureDomain.Dispose();
+        _documentDomain.Dispose();
         return ValueTask.CompletedTask;
     }
 }

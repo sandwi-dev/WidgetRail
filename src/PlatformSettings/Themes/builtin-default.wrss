@@ -1119,3 +1119,6 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
   color: var(--text-subdued);
   border-color: var(--border);
 }
+
+/* Inline intent links share the theme accent; native focus supplies the outline. */
+.wrail-inline-link { color: var(--accent); }

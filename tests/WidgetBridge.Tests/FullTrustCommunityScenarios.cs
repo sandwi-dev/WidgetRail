@@ -432,7 +432,7 @@ internal static partial class FullTrustCommunityScenarios
 
         CheckFilesEqual(
             Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", "SettingsWidget.Worker",
-                "bin", VerificationInstallation.Configuration, "net8.0-windows10.0.19041.0", "win-x64", "SettingsWidget.Worker.dll"),
+                "bin", VerificationInstallation.Configuration, "net8.0", "win-x64", "SettingsWidget.Worker.dll"),
             Path.Combine(runtimeRoot, "Settings", "SettingsWidget.Worker.dll"));
         CheckFilesEqual(
             Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", "SettingsWidget",

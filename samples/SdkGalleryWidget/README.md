@@ -1,10 +1,10 @@
 # SDK Gallery community addon
 
-This capability-free reference widget demonstrates the public controller-first
+This sandboxed reference widget demonstrates the public controller-first
 `WidgetSdk` exactly as an independent addon can use it. It is intentionally not
 part of the built-in tray: install it only when developing or reviewing UI.
 
-The five pages cover:
+The seven pages cover:
 
 - icon buttons, cards, section headers, status badges, alerts, and empty states;
 - a manifest-declared package SVG used unchanged for original-color tray and
@@ -27,7 +27,7 @@ The five pages cover:
 
 The sample is also the production-style reference for the public responsive
 navigation and stable-ID coordination APIs. `UI.NavigationShellParts(...).WithTransitions().Compose()` renders one
-five-destination model as compact tabs or an expanded rail around one shared
+seven-destination model as compact tabs or an expanded rail around one shared
 page subtree. Compact and rail controls receive distinct stable element IDs but
 share one protocol-v13 focus-persistence identity per logical destination. The
 host uses only that explicit identity to preserve focus across responsive
@@ -61,11 +61,11 @@ two-row repeated-content preview, with explicit current gap and padding values,
 without changing the Select focus identity. Overview includes presentational
 controller hints for navigation, A Select, B Back, Y example actions, and
 right-stick scrolling. The compact header places full-height, centered LB/RB
-key badges at the left and right ends of its five destinations; their spoken
+key badges at the left and right ends of its seven destinations; their spoken
 labels identify Previous section and Next section, while the footer does not
 duplicate them. The surface prefers 760 by 600 logical DIPs and still accepts
 host work-area, DPI, text-scale, and minimum-size clamping. One
-`WidgetNavigator<GalleryRoute>` owns the five flat roots and the nested Picker
+`WidgetNavigator<GalleryRoute>` owns the seven flat roots and the nested Picker
 and ActionSheet routes. The roots share one stable scope; each page root is a
 distinct remembered-child group with its own default child. A on a compact or
 expanded header changes the page without an entry request and retains that
@@ -81,8 +81,10 @@ shortcuts are absent from nested scopes, and routine renders cannot replay a
 consumed group-entry request. The focused suite is intentionally run after the
 packaged physical navigation verdict.
 
-The sample has no permissions, custom executable worker, native provider, or
-host-only escape hatch. Its manifest selects `dotnet-worker`, so an installed
+The sample has no required permissions, custom executable worker, native provider,
+or host-only escape hatch. Document and capture demos declare optional permissions
+and request services only after an explicit button press. Grant those permissions
+in Settings to run those two demos; the rest works without them. Its manifest selects `dotnet-worker`, so an installed
 package is loaded by the host's generic Community AppContainer worker. The
 WRSS uses semantic `wrail-*` hooks plus local `gallery-*` classes and no fixed
 pixel window assumptions. Copy the relevant method and its related rules rather
@@ -93,8 +95,8 @@ than copying the entire gallery into a production widget.
 From the repository root:
 
 ```powershell
-dotnet build .\samples\SdkGalleryWidget\SdkGalleryWidget.csproj -c Release
-dotnet run --project .\tests\SdkGalleryWidget.Tests\SdkGalleryWidget.Tests.csproj -c Release
+dotnet build .\samples\SdkGalleryWidget\SdkGalleryWidget.csproj -c Release -bl:{{}}
+dotnet run --project .\tests\SdkGalleryWidget.Tests\SdkGalleryWidget.Tests.csproj -c Release -bl:{{}}
 ```
 
 The focused suite constructs and validates the sample's semantic snapshots in
@@ -127,7 +129,7 @@ version, or pass `-Catalog <directory>` to test against an isolated catalog.
 - D-pad, left stick, keyboard arrows, pointer, and `A`/Enter remain host-routed.
 - `X` is a dashboard quick action published by this widget; no shell mapping is
   assumed.
-- `LB` and `RB` wrap through the five root sections and enter that section's
+- `LB` and `RB` wrap through the seven root sections and enter that section's
   remembered content group. `A` on a header keeps the header focused.
 - `Y` opens the nested example ActionSheet from the currently focused control;
   `SourceElementId` remains the shortcut owner while `FocusedElementId` supplies
@@ -155,3 +157,41 @@ See the [widget authoring guide](../../docs/developers/widget-authoring-guide.md
 [declarative UI reference](../../docs/reference/declarative-ui.md), and
 [controller component guide](../../docs/reference/controller-ui-components.md) for the
 full contracts and design rationale.
+
+
+## Current SDK examples (0.1.26)
+
+| Page | Examples and source |
+| --- | --- |
+| Controls | `UI.SettingsField`, direct and A-to-adjust sliders, focus-preserving `Busy` versus `Disabled`, alongside existing Switch/Select/Picker/Scrubber examples. |
+| Text | Ordinary and sensitive text entry, `UI.RichText` with focusable `UI.InlineLink`, expandable content, `ScrollRevealRequest`, and scrolling beyond the last focusable control. |
+| Web & media | One selected live surface: `UI.WebBrowser` with both explicit interaction modes; `UI.MediaPlayer` inline or in `WidgetView.WithModal`; `UI.ProviderContent`; screenshot/video capture previews. |
+| Utilities | Web intents, Windows-browser override, direct YouTube playback, YouTube search with result feedback and a declared web fallback; authored Summary and Level controls pins plus full-widget pinning. |
+
+The new copyable examples are in `SdkGalleryWidget.Modern.cs`. Existing layout,
+artwork, focus-group, modal-route, and controller navigation examples remain in
+`SdkGalleryWidget.cs` and `SdkGalleryWidget.NativeGrid.cs`.
+
+The native player starts paused and uses the repository's existing 103 KB sample
+clip, copied into `payload/media/sample.mp4`. It also accepts an explicit direct
+HTTP(S) media URL. Media URLs are different from browser page URLs. Full-trust
+local-file playback is intentionally not exposed by this sandboxed gallery.
+The separate `samples/EmbeddedMediaWidget` remains the provider/player-adapter
+example; the native media player does not require an embedded WebView adapter.
+
+Provider HTML is issued through `HostServices.Documents`, never forged as a
+reference. Capture uses `HostServices.Capture` and the host confirmation/countdown;
+it does not select or activate another application, read capture bytes, or upload
+anything. Capture operations use widget lifetime so hiding the overlay does not
+cancel an approved recording. Discard removes the current attachment. Optional
+permission errors are shown in the page rather than crashing the widget.
+
+Inline links and intent buttons declare their requested contracts in the manifest.
+`PreferExistingSurface` is the default; `Routing.Windows` is explicit. Search uses
+`ReportsResult` and a declared fallback only for Unavailable/Rejected, not ambiguous
+Failed results. The gallery is a sender, so it does not register itself as an
+alternative Browser/YouTube intent receiver.
+
+Sensitive-entry examples retain only a boolean indicating that dummy input arrived;
+the committed string is never placed in a snapshot or persistent state. Ordinary
+text and all demo preferences are session-local, resetting when the worker restarts.

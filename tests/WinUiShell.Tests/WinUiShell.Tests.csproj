@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserAddressInput.cs" Link="BrowserAddressInput.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserLibraryStore.cs" Link="BrowserLibraryStore.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\DirectionalFocusPolicy.cs" Link="DirectionalFocusPolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\DevelopmentLaunchOptions.cs" Link="DevelopmentLaunchOptions.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ForegroundDismissalPolicy.cs" Link="ForegroundDismissalPolicy.cs" />

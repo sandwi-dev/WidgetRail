@@ -54,6 +54,7 @@ internal sealed partial class WidgetViewPresenter
     {
         FrameworkElement target = binding.Element switch
         {
+            WidgetRichTextView rich => rich.Document,
             WidgetPresentationSurface surface => surface.StylePanel,
             WidgetIndexedCollectionView collection => collection.NativeView,
             WidgetModalLayer layer => (FrameworkElement)layer.Chrome,
@@ -71,10 +72,10 @@ internal sealed partial class WidgetViewPresenter
         adapter.RoundedContent = binding.Children as WidgetPosterPanel;
         adapter.DepthSlotsFactory = (binding.Element is Panel or Border or WidgetPresentationSurface || binding.MotionHost?.SelectionSurface is not null) && binding.MotionHost is { } depthHost
             ? depthHost.EnsureDepthSlots : null;
-        adapter.TextContent = node.Kind is ViewNodeKind.Button or ViewNodeKind.Select or ViewNodeKind.TextEntry && binding.Element is Button button
+        adapter.TextContent = node.Kind is ViewNodeKind.Button or ViewNodeKind.Select or ViewNodeKind.TextEntry && binding.Element is ButtonBase button
             ? button.Content switch { TextBlock label => label, Grid panel => panel.Children.OfType<TextBlock>().SingleOrDefault(), _ => null } : null;
         adapter.Update(presentation?.RenderStyles.GetValueOrDefault(node.Id),
-            typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId,
+            typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId || binding.Element is HyperlinkButton,
             interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction : null);
         if (binding.Identity.Scope != activeScope) adapter.SetControllerPressed(false);
     }
@@ -343,6 +344,19 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             Put(TextBlock.CharacterSpacingProperty, CharacterSpacing(style, fontSize ?? text.FontSize));
             if (!typographyOnly) Put(TextBlock.PaddingProperty, Spacing(style, "padding"));
             else Put(TextBlock.PaddingProperty, null);
+        }
+        else if (element is RichTextBlock rich)
+        {
+            Put(RichTextBlock.ForegroundProperty, Brush(style, "color", contrast, false));
+            Put(RichTextBlock.FontSizeProperty, fontSize);
+            Put(RichTextBlock.FontWeightProperty, Weight(style));
+            Put(RichTextBlock.FontFamilyProperty, Family(style));
+            Put(RichTextBlock.CharacterSpacingProperty, CharacterSpacing(style, fontSize ?? rich.FontSize));
+            Put(RichTextBlock.PaddingProperty, Spacing(style, "padding"));
+            Put(RichTextBlock.TextAlignmentProperty, Alignment(style));
+            var lineHeight = Number(style, "line-height") is { } ratio ? Math.Clamp(ratio, .8, 3) * (fontSize ?? rich.FontSize) : (double?)null;
+            Put(RichTextBlock.LineHeightProperty, lineHeight);
+            Put(RichTextBlock.LineStackingStrategyProperty, lineHeight is null ? null : LineStackingStrategy.MaxHeight);
         }
         else if (element is FontIcon icon)
         {

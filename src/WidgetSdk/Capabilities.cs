@@ -257,6 +257,8 @@ public sealed class WidgetHostServices
         Power = new WidgetPowerService(capabilityClient);
         DisplayProfiles = new WidgetDisplayProfilesService(capabilityClient);
         TaskSwitcher = new WidgetTaskSwitcherService(capabilityClient);
+        Capture = new WidgetCaptureService(capabilityClient);
+        Documents = new WidgetDocumentService(capabilityClient);
         Media = new WidgetMediaService(capabilityClient);
         Loopback = new WidgetLoopbackHttpService(capabilityClient);
         PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
@@ -271,6 +273,8 @@ public sealed class WidgetHostServices
     public WidgetPowerService Power { get; }
     public WidgetDisplayProfilesService DisplayProfiles { get; }
     public WidgetTaskSwitcherService TaskSwitcher { get; }
+    public WidgetCaptureService Capture { get; }
+    public WidgetDocumentService Documents { get; }
     public WidgetMediaService Media { get; }
     public WidgetLoopbackHttpService Loopback { get; }
     public WidgetPrivateSecretService PrivateSecrets { get; }

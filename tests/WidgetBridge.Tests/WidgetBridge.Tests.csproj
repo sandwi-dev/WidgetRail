@@ -23,5 +23,7 @@
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\Application\PlayniteLibraryApplication.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" />
+    <ProjectReference Include="..\..\samples\BrowserWidget\BrowserWidget.csproj" />
+    <ProjectReference Include="..\..\samples\GameHelpWidget\GameHelpWidget.csproj" />
   </ItemGroup>
 </Project>

@@ -69,7 +69,7 @@ foreach ($generatedDirectory in @($stagingRoot, $publishRoot)) {
     }
 }
 New-Item -ItemType Directory -Force -Path $payloadRoot, `
-    (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons') | Out-Null
+    (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons'), (Join-Path $stagingRoot 'payload\media') | Out-Null
 Assert-NoReparsePoint -Path $stagingRoot
 Assert-NoReparsePoint -Path $publishRoot
 
@@ -86,8 +86,11 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\gallery-mark.svg') `
     -Destination (Join-Path $stagingRoot 'assets\icons\gallery-mark.svg') -Force
 
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\media\sample.mp4') -Destination (Join-Path $stagingRoot 'payload\media\sample.mp4') -Force
+
 $expectedFiles = @(
     'manifest.json',
+    'payload\media\sample.mp4',
     'assets\icons\gallery-mark.svg',
     'payload\SdkGalleryWidget.dll',
     'styles\default.wrss'

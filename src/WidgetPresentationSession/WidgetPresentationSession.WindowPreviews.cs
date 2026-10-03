@@ -27,7 +27,7 @@ public sealed partial class WidgetPresentationSession
         cancellationToken.ThrowIfCancellationRequested();
         Dictionary<string, WindowPreviewEpoch> captured;
         CancellationToken lifetime;
-        lock (_gate)
+        using (_gate.Enter())
         {
             DemandPreviewFrameLocked(displayed);
             if (_previewPermissionsPending) throw PreviewStale("Window preview permission refresh is already pending.");
@@ -58,7 +58,7 @@ public sealed partial class WidgetPresentationSession
                     !ProtocolValidationIdentifierContext.IsSafeIdentifier(id) || !allowed.Add(id))
                     throw new BridgeProtocolException("Window preview permission identity is invalid or duplicated.");
             }
-            lock (_gate)
+            using (_gate.Enter())
             {
                 deadline.Token.ThrowIfCancellationRequested();
                 DemandPreviewFrameLocked(displayed);
@@ -74,7 +74,7 @@ public sealed partial class WidgetPresentationSession
         }
         finally
         {
-            lock (_gate)
+            using (_gate.Enter())
             {
                 _previewPermissionsPending = false;
                 if (!completed) _windowPreviewPermissions.Remove(displayed.Authority.WidgetId);
@@ -85,7 +85,7 @@ public sealed partial class WidgetPresentationSession
     public bool IsWindowPreviewCurrent(WidgetWindowPreviewGrant grant, string windowId)
     {
         ArgumentNullException.ThrowIfNull(grant);
-        lock (_gate)
+        using (_gate.Enter())
             return !_disposed && _terminalFailure is null && ReferenceEquals(grant.Owner, this) &&
                 Stopwatch.GetElapsedTime(grant.IssuedAt) < PreviewGrantLifetime &&
                 ReferenceEquals(_windowPreviewPermissions.GetValueOrDefault(grant.Authority.WidgetId), grant.PermissionEpoch) &&

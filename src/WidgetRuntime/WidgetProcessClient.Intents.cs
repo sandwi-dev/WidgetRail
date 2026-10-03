@@ -8,7 +8,15 @@ public sealed partial class WidgetProcessClient
     private int _intentDeliveryPending;
 
     internal async Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent,
-        int expectedStartOrdinal, CancellationToken cancellationToken)
+        int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        (await InvokeIntentAsync(intent, expectedStartOrdinal, false, null, cancellationToken).ConfigureAwait(false)).Result;
+
+    internal async Task<bool> QueryIntentAsync(WidgetIntentRequest intent, WidgetIntentFeedback? feedback,
+        int? expectedStartOrdinal, CancellationToken cancellationToken) =>
+        (await InvokeIntentAsync(intent, expectedStartOrdinal, true, feedback, cancellationToken).ConfigureAwait(false)).ControlResult;
+
+    private async Task<IntentDeliveryResultPayload> InvokeIntentAsync(WidgetIntentRequest intent,
+        int? expectedStartOrdinal, bool control, WidgetIntentFeedback? feedback, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(intent);
         if (!intent.IsWellFormed()) throw new ArgumentException("Invalid intent request.", nameof(intent));
@@ -17,7 +25,9 @@ public sealed partial class WidgetProcessClient
             throw new InvalidOperationException("An intent delivery is already pending.");
         try
         {
-            var session = DemandInputWorker(expectedStartOrdinal);
+            if (expectedStartOrdinal is null) await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+            var ordinal = expectedStartOrdinal ?? Starts;
+            var session = DemandInputWorker(ordinal);
             var deliveryId = Interlocked.Increment(ref _intentDeliverySequence);
             using var pending = session.PendingRequests.Register(MessageTypes.DeliverIntent);
             using (var writeDeadline = CancellationTokenSource.CreateLinkedTokenSource(session.CancellationToken))
@@ -26,8 +36,8 @@ public sealed partial class WidgetProcessClient
                 try
                 {
                     // User cancellation cannot interrupt a partially written frame.
-                    await session.WriteAsync(new RuntimeEnvelope { Type = MessageTypes.DeliverIntent,
-                        RequestId = pending.RequestId, Payload = RuntimeJson.ToElement(new IntentDeliveryPayload(deliveryId, intent)) },
+                    await session.WriteAsync(new RuntimeEnvelope { Type = control ? MessageTypes.IntentControl : MessageTypes.DeliverIntent,
+                        RequestId = pending.RequestId, Payload = RuntimeJson.ToElement(new IntentDeliveryPayload(deliveryId, intent, control, feedback)) },
                         writeDeadline.Token).ConfigureAwait(false);
                 }
                 catch { session.Terminate(); throw; }
@@ -38,12 +48,12 @@ public sealed partial class WidgetProcessClient
             {
                 var response = await pending.Response.WaitAsync(deadline.Token).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!ReferenceEquals(session, Volatile.Read(ref _session)) || session.IsTerminal || Starts != expectedStartOrdinal)
+                if (!ReferenceEquals(session, Volatile.Read(ref _session)) || session.IsTerminal || Starts != ordinal)
                     throw new WidgetInputWorkerRetiredException();
                 if (response.Type != MessageTypes.IntentResult)
                     throw new WidgetProtocolViolationException("Expected an intent delivery result.");
-                var result = RuntimeJson.FromElement<IntentDeliveryResultPayload>(response.Payload).Result;
-                if (!Enum.IsDefined(result)) throw new WidgetProtocolViolationException("Invalid intent delivery result.");
+                var result = RuntimeJson.FromElement<IntentDeliveryResultPayload>(response.Payload);
+                if (!Enum.IsDefined(result.Result)) throw new WidgetProtocolViolationException("Invalid intent delivery result.");
                 return result;
             }
             catch (OperationCanceledException)

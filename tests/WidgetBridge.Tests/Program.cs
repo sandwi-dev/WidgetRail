@@ -17,8 +17,21 @@ using WidgetRail.WidgetStyling;
 using WidgetRail.WindowsCommunityProvider;
 using WidgetRail.Samples.SdkGalleryWidget;
 
+if (args is ["--export-gallery-scroll", var galleryDirectory, var galleryStylePath])
+{ await GalleryScrollFixture.ExportAsync(galleryDirectory, galleryStylePath); return 0; }
+
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
+if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "game-help-fixture.marker")))
+{
+    await BridgeGameHelpFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
+    return 0;
+}
+if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "browser-fixture.marker")))
+{
+    await BridgeBrowserFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
+    return 0;
+}
 if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "intent-fixture.marker")))
 {
     await BridgeIntentEndToEnd.ServeOwnedFixtureAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
@@ -71,6 +84,16 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Media player source crosses both pipes for inline and pinned projections", MediaPlayerScenarios.ThroughPipes),
+    ("Media player resolves sealed assets URLs and authorized local files", MediaPlayerScenarios.Sources),
+    ("Media player source resolution rejects forged and stale declarations", MediaPlayerScenarios.Authority),
+    ("Capture application metadata crosses host pipe without trusting caller labels", CaptureApplicationMetadataScenarios.ThroughHostPipe),
+    ("Intent bridge search readiness and background feedback cross both pipes", BridgeIntentEndToEnd.SearchFeedbackThroughBothPipes),
+    ("Intent bridge search missing key and no handler report unavailable with one fallback", BridgeIntentScenarios.SearchUnavailableFeedback),
+    ("Intent bridge search rechecks readiness and reports rejection while source is hidden", BridgeIntentScenarios.SearchRecheckAndRejectedFeedback),
+    ("Intent bridge search success failure cancellation and worker replacement never duplicate", BridgeIntentScenarios.SearchSuccessFailureAndCancellation),
+    ("Intent bridge search fallback cannot outlive its displayed action", BridgeIntentScenarios.SearchFallbackAuthority),
+    ("Intent bridge compact media requires the same live media declaration", BridgeIntentScenarios.CompactMediaDelivery),
     ("Intent bridge end-to-end crosses both pipes and preserves cancellation", BridgeIntentEndToEnd.ThroughBothPipes),
     ("Intent bridge pinned and indexed sources cross both pipes with exact leases", BridgeIntentEndToEnd.SourceProjections),
     ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
@@ -159,6 +182,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipelined requests preserve per-widget receive order", PipelinedWidgetRequestsStayOrdered),
     ("Duplicate pending request IDs fail the bridge session closed", DuplicatePendingRequestIdsFailClosed),
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
+    ("Full-trust services preserve consent undeclared denial and restart identity", FullTrustHostServicesTests.RunAsync),
     ("Two unrelated full-trust applications use one ordinary runtime", FullTrustCommunityScenarios.TwoApplicationsUseTheOrdinaryRuntime),
     ("Packaged Spotify uses the ordinary full-trust runtime", FullTrustCommunityScenarios.SpotifyUsesTheOrdinaryRuntime),
     ("Packaged Playnite Library uses the ordinary full-trust runtime", FullTrustCommunityScenarios.PlayniteLibraryUsesTheOrdinaryRuntime),
@@ -369,9 +393,18 @@ static Task ConfiguredWorkerIcons()
 static async Task<int> RunWorkerAsync(string[] arguments)
 {
     var instance = RequiredValue(arguments, "--widget-instance");
+    if (instance == "fulltrust-services.instance")
+        return await WidgetApplicationBootstrap.RunAsync(arguments, () => new FullTrustHostServicesTests.ProbeWidget());
+    if (instance == "game-help.instance")
+        return await WidgetApplicationBootstrap.RunAsync(arguments, services =>
+            new WidgetRail.Samples.GameHelp.GameHelpWidget(new BridgeGameHelpFixture.FakeGemini(() => services)));
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => instance is "intent-source.instance" or "intent-target.instance"
+        services => instance == "game-help.instance" ? new WidgetRail.Samples.GameHelp.GameHelpWidget(new BridgeGameHelpFixture.FakeGemini(() => services))
+            : instance == "media-player.instance" ? new MediaPlayerScenarios.Probe()
+            : instance == "browser.instance" ? new WidgetRail.Samples.Browser.BrowserWidget()
+            : instance == "browser-modes.instance" ? new ActivationBrowserFixture()
+            : instance is "intent-source.instance" or "intent-target.instance"
             ? new IntentBridgeProbeWidget(instance == "intent-target.instance")
             : string.Equals(instance, "pinned-presenter.instance", StringComparison.Ordinal)
             ? new PinnedPresenterBridgeWidget()

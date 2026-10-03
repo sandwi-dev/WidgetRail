@@ -45,6 +45,7 @@ public sealed class WindowsCommunityPlatformBackend :
         _privateState = privateState ?? new WindowsPrivateStateStore(DefaultPrivateStateRoot());
     }
 
+
     public Task<PrivateStateSnapshotSummary> ReadPrivateStateAsync(
         BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
         _privateState.ReadAsync(identity, cancellationToken);

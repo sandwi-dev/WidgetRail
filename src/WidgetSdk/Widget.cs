@@ -29,6 +29,8 @@ public sealed record WidgetView(
     /// focus group. Authors must advance RequestId for each new request.
     /// </summary>
     public FocusGroupEntryRequest? FocusGroupEntryRequest { get; init; }
+    /// <summary>Reveal a child at the start of its scroll viewport. Advance RequestId for each user-requested reveal.</summary>
+    public ScrollRevealRequest? ScrollRevealRequest { get; init; }
 
     /// <summary>
     /// Creates one bounded pinned layout. Omitting <paramref name="root"/>
@@ -96,6 +98,7 @@ public sealed record WidgetView(
             InitialFocusId = modal.InitialFocusId,
             QuickActions = [],
             FocusGroupEntryRequest = null,
+            ScrollRevealRequest = null,
         };
     }
 
@@ -112,6 +115,7 @@ public sealed record WidgetView(
             ActiveInputScopeId = ActiveInputScopeId ?? RootScopeId(Root),
             InitialFocusId = InitialFocusId,
             FocusGroupEntryRequest = FocusGroupEntryRequest,
+            ScrollRevealRequest = ScrollRevealRequest,
             QuickActions = QuickActions?.ToArray() ?? [],
             Surface = Surface,
             PinnedLayouts = PinnedLayouts?.ToArray() ?? [],
@@ -700,6 +704,26 @@ public abstract partial class Widget
         CancellationToken cancellationToken = default) => ValueTask.FromResult(WidgetIntentResult.Rejected);
 
     private readonly object _intentGate = new();
+    /// <summary>Read-only readiness for an opted-in handler. May run while the widget is in Background.</summary>
+    public virtual ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request,
+        CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+
+    /// <summary>Receives a terminal routing result, including while Background. Return true to use the declared fallback
+    /// after Unavailable or Rejected. No arbitrary request or recursive fallback can be launched here.</summary>
+    public virtual ValueTask<bool> OnIntentCompletedAsync(WidgetIntentFeedback feedback,
+        CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
+
+    internal async ValueTask<bool> ApplyIntentControlAsync(WidgetIntentRequest request, WidgetIntentFeedback? feedback,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (LifecycleState is WidgetLifecycleState.Created or WidgetLifecycleState.Destroying) return false;
+        var result = feedback is null
+            ? await IsIntentAvailableAsync(request, cancellationToken).ConfigureAwait(false)
+            : await OnIntentCompletedAsync(feedback, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
     private long _lastIntentDelivery;
 
     internal async ValueTask<WidgetIntentResult> ApplyIntentAsync(long deliveryId, WidgetIntentRequest request,

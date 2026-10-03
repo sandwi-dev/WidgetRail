@@ -21,7 +21,6 @@ internal sealed partial class OverlayShellPage
             try
             {
                 if (startup is not null) await startup;
-                restoreCompactWidget = null;
                 await UnpinAsync(save: true);
                 await SelectAsync(id, true);
                 await Until(() => mediaOwner?.IsReady(id) == true);

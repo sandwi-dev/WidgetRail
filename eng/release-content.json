@@ -28,6 +28,18 @@
   ],
   "developerWidgets": [
     {
+      "id": "browser",
+      "project": "samples/BrowserWidget",
+      "assembly": "BrowserWidget",
+      "runtime": "Browser"
+    },
+    {
+      "id": "game-help",
+      "project": "samples/GameHelpWidget",
+      "assembly": "GameHelpWidget",
+      "runtime": "GameHelp"
+    },
+    {
       "id": "sdk-gallery",
       "project": "samples/SdkGalleryWidget",
       "assembly": "SdkGalleryWidget",

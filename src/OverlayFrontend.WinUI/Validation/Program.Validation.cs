@@ -6,6 +6,9 @@ internal static partial class Program
     // production switch/replay diagnostics still elect their real settings profile.
     static partial void IsValidationLaunch(IReadOnlyList<string> arguments, ref bool fixture)
     {
+        if (Shell.FrontendArguments.Value(arguments, "--validate-context-capture") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is not null) { fixture = true; return; }
         string[] early = ["--validate-controller", "--replay-controller", "--validate-window-preview",
             "--validate-shell-status", "--validate-production-shell", "--validate-gamepad-boundary",
             "--validate-embedded-media", "--validate-package-icons", "--validate-shell-sizing",

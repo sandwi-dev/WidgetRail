@@ -21,9 +21,11 @@ internal sealed partial class WidgetViewPresenter
                 UpdateContainerLayout(binding, declaration.Node);
                 if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, declaration.Node);
                 ApplySizeAndTypography(binding.Element, declaration.Node);
+                if (binding.Element is Microsoft.UI.Xaml.Controls.HyperlinkButton link) UpdateInlineLink(link, declaration.Node.Text ?? string.Empty);
                 ApplyComputedStyles(binding, declaration.Node);
                 ApplyMotionGeometry(binding);
             }
+            RefreshRichText();
             UpdateModalGeometry();
             UpdateNativeNeighbors();
         }

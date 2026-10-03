@@ -23,6 +23,7 @@ internal sealed partial class WidgetViewPresenter
         if (active && !suspension.IsCompletedSuccessfully) throw new InvalidOperationException("Presentation suspension failed.", suspension.Exception);
         if (!active) RememberFocus();
         presentationActive = active;
+        RefreshMediaPlayers();
         RefreshContextIndicators();
         IsHitTestVisible = active && presentationInputEnabled;
         // Preview controls configure against the renderer's admitted frame.
@@ -31,6 +32,7 @@ internal sealed partial class WidgetViewPresenter
         var work = new List<Task>();
         if (!active)
         {
+            CancelScrollReveal();
             directionalScroll = null;
             foreach (var reveal in artworkReveals.Values) reveal.Cancel();
             SettleWidgetResize();
@@ -48,6 +50,7 @@ internal sealed partial class WidgetViewPresenter
             if (!active && binding.Element is WidgetPresentationSurface { Fragment: { } fragment }) work.Add(fragment.SetPresentationActiveAsync(false));
             if (!active)
             {
+                if (binding.Element is Browser.BrowserSlot browser) { browser.Active = false; browser.AcceptsInput = false; BrowserOwner?.Unbind(browser); }
                 if (binding.Element is Media.WidgetMediaViewport viewport)
                 {
                     MediaOwner?.Unbind(viewport);

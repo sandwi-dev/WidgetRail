@@ -164,6 +164,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
             throwOnCommit = false; failure = null;
             await VerifyPopupScalingAsync();
             await VerifyKeyboardActivationAsync();
+            await VerifyPasteAsync();
             await Open(); await presenter.DisposeAsync(); await Closed(); Check(!presenter.HasTransientControl, "disposal retires keyboard");
             status.Text = $"Passed {checks.Count} TextEntry checks"; Write(new { result = "passed", checks });
         }

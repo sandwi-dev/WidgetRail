@@ -3,16 +3,45 @@
 Button/card actions, pinned controls and virtualized row actions are implemented
 through contracts, manifests, Bridge dispatch, worker delivery, native frontend
 activation and passive delivery into existing full-widget or authored-layout pins.
-Compact embedded-media destinations are still being added.
+Compact embedded-media destinations also support passive delivery.
 Do not advertise intent handling in published packages until the full integration
 and release compatibility gate are complete. Track progress in
 [the Game Help plan](../maintainers/game-help-implementation-plan.md).
+
+## Routing an action through Windows
+
+Normal web intents prefer enabled widget handlers and use the default browser only
+when none is available. Sign-in/account pages can explicitly bypass widget handlers:
+
+```csharp
+UI.Button("Sign in", "signin", "signin")
+    .OpenIntent(WidgetIntentContracts.Web,
+        JsonSerializer.SerializeToElement(new { url = "https://example.com/signin" }),
+        routing: WidgetIntentRouting.Windows);
+```
+
+This protocol-71 per-request override is separate from the receiver's placement
+policy and does not alter the payload schema or manifest declaration. Currently,
+only the standard web contract maps to Windows HTTP(S) URL handling. Unsupported
+Windows mappings return unavailable; they do not fall back to a widget. There is
+no arbitrary protocol/command execution. Routing is part of action identity, so a
+stale action cannot change routes while it is being dispatched. WidgetRail's intent
+registry is independent of Windows protocol associations.
+
+Handlers may opt into `hasDynamicAvailability: true` on an individual mapping.
+The Bridge calls `Widget.IsIntentAvailableAsync(request, token)` before listing the
+handler and rechecks its exact worker before delivery. The callback can run after
+initialization in Background; it must be read-only and bounded. It may inspect its
+own key/account configuration but must not activate a window or perform the action.
+No availability cache is used. Existing handlers without the opt-in remain static.
+YouTube opts in for search only; known-video playback needs no search API key.
 
 ## Package declarations
 
 An optional `intents` manifest object contains `requests` and `handles` arrays.
 Each entry carries `id`, positive integer `version`, and `payloadSchema`.
-Handler entries additionally accept `supportsPassiveDelivery` (default `false`).
+Handler entries additionally accept `supportsPassiveDelivery` and
+`hasDynamicAvailability` (both default `false`).
 This belongs to that exact contract ID/version mapping; it is invalid on request
 entries or on the enclosing `intents` object. In C#, author a handler using
 `new WidgetIntentHandler(contract) { SupportsPassiveDelivery = true }`.
@@ -84,6 +113,46 @@ Standard definitions live in `WidgetIntentContracts`:
 - `widgetrail.video.open`, version 1: `provider` (1â€“64 characters), `videoId`
   (1â€“256), optional `startTimeSeconds` (0â€“604800). The receiving provider must
   additionally validate its own video identifier and supported playback range.
+
+## Search and sender feedback (protocol 72)
+
+`widgetrail.video.search`, version 1, accepts `provider` (1–64 characters) and
+`query` (1–240). This is an action contract, not a destination package ID. YouTube
+Video accepts provider `youtube` when its search API key is configured, opens
+Discover, and runs the normal search collection. Accepted means the query was
+accepted into state; network results may still fail later in the receiver.
+
+```csharp
+UI.Button("Search YouTube", "search", "search")
+    .OpenIntent(WidgetIntentContracts.VideoSearch,
+        JsonSerializer.SerializeToElement(new { provider = "youtube", query }))
+    .WithIntentFeedback(WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+        JsonSerializer.SerializeToElement(new {
+            url = "https://www.youtube.com/results?search_query=" + Uri.EscapeDataString(query)
+        })));
+```
+
+`WithIntentFeedback()` is also usable without a fallback. Override
+`OnIntentCompletedAsync(WidgetIntentFeedback feedback, CancellationToken token)`
+to receive the correlated request ID, original request and terminal routing status:
+`Accepted`, `Unavailable`, `Rejected`, `Cancelled` or `Failed`. Return true only
+when the sender wants the originally declared fallback. The host honors this only
+for Unavailable/Rejected. A callback cannot supply a new request. Both requests
+must be declared by the source manifest. No nested fallback is allowed. Returning
+false leaves the normal host feedback in place when the action cannot open.
+
+The callback may run while the source is Background. Feedback is best-effort to
+the same living worker; it never restarts a retired source or delivers an old
+result to a replacement. Cancellation, an uncertain timeout, a worker failure or
+an invalidated displayed action cannot authorize automatic fallback. Bounded
+runtime operations retain correlation while draining cancellation. Each ticket is
+consumed once; fallback revalidates the original action and current source.
+
+Game Help chooses its existing results-page web intent only after search is
+unavailable or rejected. The fallback uses normal widget-preferred web routing,
+including eligible visible browser pins, then Windows if no web handler exists.
+For external-browser routing, Accepted means the validated URL was handed to the
+frontend; Windows launch failures are reported by the frontend's normal dialog.
 
 ## Host resolution boundary
 
@@ -171,13 +240,18 @@ Playnite Library's game-details links declare `widgetrail.web.open`. The host
 opens an eligible browser widget or uses the default-browser fallback; the widget
 no longer launches a browser from its companion process. Link identity and URL
 are validated against the displayed/current control.
+Playnite Library 0.2.115 is installed and enabled in the current test profile;
+game-details links can now exercise the Browser receiver in the candidate.
 
 YouTube Video handles `widgetrail.video.open` with provider `youtube`, an exact
 11-character YouTube video ID, and an optional timestamp. The embedded player
 currently supports timestamps from 0 through 86,400 seconds; larger standard-
 contract values are rejected without replacing existing playback. Loading keeps
 the established cue behavior and saved volume. It does not require a search API
-key. Package staging and physical playback verification remain pending.
+key. YouTube Video 0.3.38 is installed and enabled in the current test profile;
+physical playback verification remains pending. Compact pinned players can
+receive passive intents using their live media-document authority, without
+transferring source focus.
 
 ## Focused checks
 

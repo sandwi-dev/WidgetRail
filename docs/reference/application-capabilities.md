@@ -1,7 +1,7 @@
 # Application capabilities
 
 Declare the capability in the manifest, obtain user approval, then use its typed
-service. See [Capabilities](capabilities.md) for consent, lifecycle, and error behavior.
+service. Both sandboxed and full-trust application widgets use these APIs. See [Capabilities](capabilities.md) for consent, lifecycle, and error behavior.
 
 | Capability | SDK operation | Availability |
 |---|---|---|
@@ -13,6 +13,8 @@ service. See [Capabilities](capabilities.md) for consent, lifecycle, and error b
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
 | `system.apps.windows.read.v1` | `HostServices.TaskSwitcher.GetWindowsAsync` | Visible or Interactive |
+| `system.apps.windows.capture.v1` | `HostServices.Capture` | Interactive confirmation; owned status/read/discard can continue in background |
+| `presentation.documents.v1` | `HostServices.Documents.CreateAsync` / `DiscardAsync`, `UI.ProviderContent` | Owned restricted HTML; scripts/forms/network blocked; background publication allowed |
 | `system.apps.windows.preview.v1` | Host-rendered `UI.WindowPreview` | A current window and preview permission |
 | `system.apps.windows.switch.v1` | `HostServices.TaskSwitcher.SwitchAsync` | Interactive |
 | `system.apps.windows.close.v1` | `HostServices.TaskSwitcher.CloseAsync` | Interactive |

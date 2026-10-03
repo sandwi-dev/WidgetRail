@@ -32,7 +32,7 @@ public sealed partial class WidgetPresentationSession
             WidgetPresentationIndexedLease? lease = null;
             long revision;
             CancellationToken token;
-            lock (_gate)
+            using (_gate.Enter())
             {
                 revision = _notifiedAppearanceRevision;
                 if (_disposed || _terminalFailure is not null) { _styleRefreshRunning = false; return; }
@@ -78,7 +78,7 @@ public sealed partial class WidgetPresentationSession
         var styles = BridgeRenderStyleContract.ValidateAndFreeze(value.RenderStyles,
             BridgeRenderStyleContract.SnapshotNodeIds(frame.Snapshot), requireComplete: true);
         var startPublications = false;
-        lock (_gate)
+        using (_gate.Enter())
         {
             token.ThrowIfCancellationRequested();
             if (_disposed || _terminalFailure is not null || !_states.TryGetValue(authority.WidgetId, out var current) ||
@@ -103,7 +103,7 @@ public sealed partial class WidgetPresentationSession
             throw new BridgeProtocolException("Style refresh returned foreign or older indexed authority.");
         var styles = BridgeRenderStyleContract.ValidateAndFreeze(value.RenderStyles,
             BridgeRenderStyleContract.RangeNodeIds(lease.Range), requireComplete: true);
-        lock (_gate)
+        using (_gate.Enter())
         {
             token.ThrowIfCancellationRequested();
             if (!IsIndexedLeaseCurrentLocked(lease) || value.AppearanceRevision < _notifiedAppearanceRevision ||
