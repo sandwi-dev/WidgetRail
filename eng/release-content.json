@@ -24,7 +24,9 @@
     "audio-mixer",
     "network-controls",
     "power",
-    "display-profiles"
+    "display-profiles",
+    "browser",
+    "game-help"
   ],
   "developerWidgets": [
     {

@@ -145,7 +145,8 @@ function Copy-WidgetRailEditionRuntime {
     if (@($baseCatalog.widgets).Count -ne 1 -or $baseCatalog.widgets[0].id -ne 'settings') {
         throw 'Release requires exactly the trusted Settings widget.'
     }
-    $all = @($baseCatalog.bundledWidgets)
+    # Publication location is independent of edition membership.
+    $all = @($baseCatalog.bundledWidgets) + @($extraCatalog)
     $requested = @($Content.productionWidgets) + @($Content.developerExistingWidgets)
     foreach ($id in $requested) {
         if (@($all | Where-Object id -CEQ $id).Count -ne 1) { throw "Missing or duplicate configured widget: $id" }
@@ -171,15 +172,17 @@ function Copy-WidgetRailEditionRuntime {
             $selected += @($Content.developerExistingWidgets | ForEach-Object { $id = $_; $all | Where-Object id -CEQ $id })
         }
         foreach ($widget in $selected) {
-            $source = Assert-ReleasePath (Join-Path $build $widget.packageRoot) -Within $build
+            $sourceRoot = if ($widget.id -cin @($extraCatalog.id)) { $developer } else { $build }
+            $source = Assert-ReleasePath (Join-Path $sourceRoot $widget.packageRoot) -Within $sourceRoot
             Copy-ReleaseTree $source (Join-Path $root $widget.packageRoot) $root -SealedPackage
         }
         if ($edition -eq 'developer') {
-            foreach ($widget in $extraCatalog) {
+            $remaining = @($extraCatalog | Where-Object { $_.id -cnotin @($selected.id) })
+            foreach ($widget in $remaining) {
                 $source = Assert-ReleasePath (Join-Path $developer $widget.packageRoot) -Within $developer
                 Copy-ReleaseTree $source (Join-Path $root $widget.packageRoot) $root -SealedPackage
             }
-            $selected += @($extraCatalog)
+            $selected += $remaining
         }
         Copy-ReleaseTree (Join-Path $developer 'tools/wrail') (Join-Path $root 'tools/wrail') $root
         [IO.File]::WriteAllText((Join-Path $root 'wrail.cmd'), '@echo off' + "`r`n" + '"%~dp0dotnet\dotnet.exe" "%~dp0tools\wrail\wrail.dll" %*' + "`r`n")

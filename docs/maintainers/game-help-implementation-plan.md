@@ -1,7 +1,7 @@
 # Game Help: prerequisites, decisions, and implementation progress
 
 Status: Implementation accepted by the user on 2026-10-03; final automated closeout passed.
-Release: application 0.1.0-preview.24, SDK/CLI 0.4.1-dev. Local main integration and
+Release: application 0.1.0-preview.25, SDK/CLI 0.4.1-dev. Local main integration and
 Inno installer generation are authorized; build provenance records their exact source commit.
 Updated: 2026-10-03. Branch: `codex/game-help-foundation`.
 Baseline: local main `8ec3e93d`. Merge `81f292a1` also carries the delivered
@@ -1780,3 +1780,15 @@ Implementation update (2026-10-02):
   run manifests), final-native-closeout.log, closeout-spotify-runtime.log.
   Installer and release inventories/checksums are written by the standard build
   scripts from the clean committed source. Installation itself remains user-owned.
+
+
+### Production edition correction (2026-10-03)
+
+- User clarified that Browser and Game Help belong in Production as well as
+  Developer. Edition selection now resolves package sources independently from
+  publication location and avoids duplicate inclusion in Developer.
+- Production contains Settings plus nine bundled widgets; Developer remains
+  Settings plus thirteen, including SDK Gallery and the development samples.
+- Preview.25 (file version 0.1.0.24) replaces preview.24 for installation; SDK/CLI
+  remains 0.4.1-dev. Regression checks require Browser and Game Help exactly once
+  in each edition, with identical manifests, while Gallery stays Developer-only.

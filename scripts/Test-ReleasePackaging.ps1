@@ -56,7 +56,9 @@ Put (Join-Path $build 'runtime/WidgetWorkerHost/WidgetWorkerHost.exe') 'worker'
 Put (Join-Path $build 'runtime/Settings/SettingsWidget.Worker.exe') 'settings'
 Write-ReleaseJson (Join-Path $build 'runtime/Settings/manifest.json') @{ id = 'widgetrail.firstparty.settings'; version = '0.1.0' }
 $baseWidgets = @(
-    foreach ($id in @($content.productionWidgets) + @($content.developerExistingWidgets)) { Make-Package $build $id $id }
+    foreach ($id in @($content.productionWidgets) + @($content.developerExistingWidgets)) {
+        if ($id -cnotin @($content.developerWidgets.id)) { Make-Package $build $id $id }
+    }
 )
 Write-ReleaseJson (Join-Path $build 'widget-catalog.json') ([ordered]@{
     catalogVersion = 1; genericWorkerExecutable = 'runtime/WidgetWorkerHost/WidgetWorkerHost.exe'
@@ -78,10 +80,19 @@ $production = Join-Path $first 'WidgetRail-0.1.0-preview.1-win-x64'
 $dev = Join-Path $first 'WidgetRail-Developer-0.1.0-preview.1-win-x64'
 $prodCatalog = Get-Content (Join-Path $production 'widget-catalog.json') -Raw | ConvertFrom-Json
 $devCatalog = Get-Content (Join-Path $dev 'widget-catalog.json') -Raw | ConvertFrom-Json
-Check (@($prodCatalog.bundledWidgets).Count -eq 7) 'Production catalog differs.'
+Check (@($prodCatalog.bundledWidgets).Count -eq 9) 'Production catalog differs.'
 Check (@($devCatalog.bundledWidgets).Count -eq 13) 'Developer catalog differs.'
 Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1 -and
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1) 'Display Profiles is missing from an edition.'
+foreach ($id in @('browser', 'game-help')) {
+    $prodWidget = @($prodCatalog.bundledWidgets | Where-Object id -CEQ $id)
+    $devWidget = @($devCatalog.bundledWidgets | Where-Object id -CEQ $id)
+    Check ($prodWidget.Count -eq 1 -and $devWidget.Count -eq 1) "$id must occur exactly once in both editions."
+    $prodManifest = Join-Path $production "$($prodWidget[0].packageRoot)/manifest.json"
+    $devManifest = Join-Path $dev "$($devWidget[0].packageRoot)/manifest.json"
+    Check ((Get-FileHash $prodManifest).Hash -ceq (Get-FileHash $devManifest).Hash) "$id edition payloads differ."
+}
+Check (@($prodCatalog.bundledWidgets | Where-Object id -CEQ 'sdk-gallery').Count -eq 0) 'SDK Gallery leaked into Production.'
 Check (!(Test-Path (Join-Path $production 'runtime/embedded-media-sample'))) 'Developer content leaked into Production.'
 foreach ($editionRoot in @($production, $dev)) {
     foreach ($fontFile in @('xbox.ttf', 'playstation.ttf', 'guide.ttf')) {

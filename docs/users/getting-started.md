@@ -7,7 +7,7 @@ You can use a controller, with keyboard navigation available as a fallback.
 
 | Edition | Choose it when… |
 |---|---|
-| Production | You want the everyday PC, audio, media, network, and app widgets. |
+| Production | You want the everyday PC, audio, media, network, app, Browser, and Game Help widgets. |
 | Developer | You also want SDK Gallery and sample widgets to explore the framework. |
 
 Both include the `wrail` CLI and widget templates. They use the same application
