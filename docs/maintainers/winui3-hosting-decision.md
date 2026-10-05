@@ -1,5 +1,10 @@
 # WinUI overlay hosting decision
 
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
 Status: implementation direction; runtime capability proof outstanding. Researched
 2026-09-27 against Microsoft documentation, NuGet metadata, official samples, and
 the current WidgetRail checkout. No window was launched for this research.

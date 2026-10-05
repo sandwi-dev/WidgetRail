@@ -3,7 +3,7 @@
 For current control mapping, working C# examples and native-frontend differences,
 start with [WinUI authoring](../../docs/reference/winui-authoring.md).
 
-For the WinUI migration branch, see the [indexed collection authoring contract](../../docs/developers/indexed-collections.md).
+For the production WinUI frontend, see the [indexed collection authoring contract](../../docs/developers/indexed-collections.md).
 It defines exact-count queries, occurrence identity, captured row actions, focus
 return and publication rules. Existing cursor declarations are not automatically
 converted into indexed queries.
@@ -278,8 +278,8 @@ commands. It emits one nonfocusable Text node with `.wrail-code-text`, preserves
 whitespace, and caps content/accessibility text at 4,096 characters. It does
 not create selection, a copy command, scope, shortcut, or background work;
 provide a separate explicit Button when copying matters. The built-in theme
-uses single-family `Consolas` with up to eight wrapped lines. Native WRSS does
-not yet implement CSS font fallback stacks or packaged font loading.
+uses single-family `Consolas` with up to eight wrapped lines. The WinUI adapter passes the resolved family to XAML FontFamily; it does not
+implement a browser CSS font resolver or load packaged font files.
 
 For indeterminate work that lasts long enough to be visible, use
 `UI.LoadingIndicator(id, accessibilityLabel, size)`. It is a protocol-v5,
@@ -305,7 +305,7 @@ ActionSurface. Preserve generated `id.artwork`, `id.content`, `id.title`,
 Use `UI.PosterTile` for a portrait, fixed-aspect card whose optional image
 fills the complete surface with bounded `Cover` placement. Protocol v37 keeps
 the same `ActionSurface` focus, activation, state, shortcut, contextual-action,
-and accessibility owner while the native renderer layers the generated
+and accessibility owner while the WinUI presenter layers the generated
 `id.artwork` behind `id.scrim`/`id.content`. The default theme reserves fixed
 rows for the optional subtitle, two-line ellipsized title, metadata, and state;
 visible copy therefore never changes the outer card geometry, while the
@@ -1018,7 +1018,7 @@ The guide fits complete hints to the measured available width with no fixed
 hint-count limit. If both LT/RT or both LB/RB have available labeled shortcuts,
 the host treats them as a pair for fitting; lone bindings remain eligible.
 This applies to both focused action surfaces and visible container menus.
-Only the focused action surface gets a small themed ellipsis indicator. It is
+Only the focused action surface gets a small themed controller-button glyph. It is
 decorative, does not resize the tile or add a focus stop, and disappears when
 focus moves or all menu actions become unavailable. No extra authored hint is
 required. Changing context actions requests a paint update so the cue stays current.
@@ -1047,7 +1047,7 @@ navigation movement with its content. In custom layouts, use
 elements can use `TransitionLayout` with the same group/key/order. Stable keys
 prevent data refreshes and cursor loading from replaying navigation. These
 optional declarations require protocol 58 and preserve existing input scopes.
-The Windows host animates separate DirectComposition layers, so section motion
+The WinUI host animates dedicated Microsoft.UI.Composition layers, so section motion
 does not require per-frame widget rendering. Its default slide effect moves
 pages without a section-wide fade; host presets can change that effect without
 changing widget code. Reduced motion and hosts without

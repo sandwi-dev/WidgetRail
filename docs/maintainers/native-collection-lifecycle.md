@@ -1,5 +1,10 @@
 # Native collection lifecycle
 
+> Historical native-renderer investigation. That renderer and its build/probe
+> commands are retired. The measurements and source paths below describe the
+> recorded revision, not production WinUI. Use [current platform status](current-platform-status.md),
+> [WinUI authoring](../reference/winui-authoring.md) and [current build commands](building.md).
+
 Implementation begins with an internal logical geometry model in
 `CollectionLayoutState` and the protocol-v59 declaration below. The declaration is
 validated end to end on the task branch. Renderer realization, logical navigation,

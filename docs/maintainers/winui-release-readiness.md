@@ -1,22 +1,25 @@
 # WinUI Release readiness
 
-## Unpackaged Inno direction — 2026-10-01
+## Current unpackaged Inno release — 2026-10-03
 
-Inno Setup installs the unpackaged WinUI frontend with self-contained .NET 10 and
-Windows App SDK runtime files, plus private .NET 8 widget services. The Start menu,
-CLI and startup entry launch its executable directly. Application MSIX identity,
-certificate trust, package registration and the deployment helper are retired.
+The accepted main build is `0.1.0-preview.25`. Both real Inno installers have been
+compiled, with release inventories and checksums verified. Production has Settings
+plus nine widgets, including Browser and Game Help; Developer has Settings plus
+thirteen widgets. The frontend includes self-contained .NET and Windows App SDK
+files, with private .NET 8 service runtimes. Start menu, CLI and startup launch
+the WinUI executable directly. No application MSIX, identity registration,
+certificate trust or deployment helper is required.
 
-Synthetic release assembly and inventory checks, installer ownership contracts,
-and compilation of the actual Inno Pascal with placeholder files pass. Those
-checks do not qualify actual installation, prerequisite provisioning or startup.
-Use [release preparation](release-checklist.md) for current build commands.
-Clean-machine install, upgrade, edition switch and uninstall acceptance remain
-separate checks; old package registration evidence does not establish them.
+See [current platform status](current-platform-status.md) and the
+[accepted closeout](game-help-implementation-plan.md) for exact scope and evidence.
+Clean-machine provisioning, upgrade, edition switch, rollback and uninstall remain
+separate physical checks. Successful compilation and catalog checks do not prove
+those workflows. Use [release preparation](release-checklist.md) for current steps.
 
-The older entries below are historical evidence from superseded packaging routes.
-Current unpackaged runtime results belong in the
-[implementation status](winui3-implementation-status.md).
+The sections below preserve publication and deployment investigations in time
+order. Their temporary registrations, older inventories and intermediate failures
+are historical. The targeted linker workaround below remains relevant until its
+documented removal criteria are met.
 
 ## Historical external-content boundary — 2026-09-30
 

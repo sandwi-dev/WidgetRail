@@ -34,7 +34,7 @@ The sample requests no capabilities and performs no filesystem, network, or
 process operations. Both sandboxed and full-trust workers use this same SDK
 collection contract. This sample remains the sandboxed AppContainer example.
 
-Use a migration-branch host and rebuilt SDK feed that support indexed collections.
+Use the current WinUI host and its matching SDK feed for indexed collections.
 The old installed native renderer is not a compatible target for this updated
 sample; exporting it from an older `wrail` feed cannot supply the new SDK types.
 

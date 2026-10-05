@@ -1,5 +1,10 @@
 # WinUI embedded media
 
+> Implementation and validation record. Pending work, candidate state and test
+> counts describe the checkpoint where they appear; later integration may
+> supersede them. Use [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the current release contract.
+
 The sample and provider adapters keep the existing SDK contract: a sealed entry
 document and resource inventory, allowed provider origins, typed commands and
 correlated playback observations. No arbitrary URL, script or browser controller

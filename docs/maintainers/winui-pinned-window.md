@@ -41,8 +41,8 @@ binlogs. The fixture is `--validate-pinned-window`; the batch driver is
 
 The production Pin command now uses this foundation; see
 [production coordination](winui-production-pinning.md). Genuine projections,
-shared lifecycle/controller ownership, layout selection and persisted passive
-restoration are integrated. Remaining work includes move/resize/opacity controls,
-live monitor and per-display scale reconciliation, compact-media transfer and
-physical/provider acceptance. Earlier fixture evidence above covers the window
-primitive; it does not establish complete production pin parity.
+shared lifecycle/controller ownership, layout selection, move/resize/opacity,
+per-display appearance and compact-media transfer are integrated. Only placement
+preferences persist; active pin restoration across restart has been removed.
+Physical/provider acceptance remains specific to the tested workflow. Earlier
+fixture evidence above covers the window primitive, not every production pin flow.

@@ -116,8 +116,8 @@ Standard definitions live in `WidgetIntentContracts`:
 
 ## Search and sender feedback (protocol 72)
 
-`widgetrail.video.search`, version 1, accepts `provider` (1–64 characters) and
-`query` (1–240). This is an action contract, not a destination package ID. YouTube
+`widgetrail.video.search`, version 1, accepts `provider` (1â€“64 characters) and
+`query` (1â€“240). This is an action contract, not a destination package ID. YouTube
 Video accepts provider `youtube` when its search API key is configured, opens
 Discover, and runs the normal search collection. Accepted means the query was
 accepted into state; network results may still fail later in the receiver.
@@ -240,16 +240,16 @@ Playnite Library's game-details links declare `widgetrail.web.open`. The host
 opens an eligible browser widget or uses the default-browser fallback; the widget
 no longer launches a browser from its companion process. Link identity and URL
 are validated against the displayed/current control.
-Playnite Library 0.2.115 is installed and enabled in the current test profile;
-game-details links can now exercise the Browser receiver in the candidate.
+Playnite game-details links use this shared route. Install and enable the
+compatible Playnite package to exercise it with the bundled Browser receiver.
 
 YouTube Video handles `widgetrail.video.open` with provider `youtube`, an exact
 11-character YouTube video ID, and an optional timestamp. The embedded player
 currently supports timestamps from 0 through 86,400 seconds; larger standard-
 contract values are rejected without replacing existing playback. Loading keeps
 the established cue behavior and saved volume. It does not require a search API
-key. YouTube Video 0.3.38 is installed and enabled in the current test profile;
-physical playback verification remains pending. Compact pinned players can
+key. Install and enable a compatible YouTube Video package to use the handler;
+provider playback verification is separate from synthetic routing checks. Compact pinned players can
 receive passive intents using their live media-document authority, without
 transferring source focus.
 

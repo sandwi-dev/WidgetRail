@@ -1,12 +1,13 @@
 # WinUI collection data contracts
 
-Status: updated 2026-09-28. The indexed SDK, worker/bridge range protocol and native
-adapter are implemented on the migration branch. Playnite, YouTube Music and
-Games & Apps have adopted captured indexed queries for their suitable surfaces;
-see [implementation status](winui3-implementation-status.md) for current validation.
-The original design sections below retain the rationale and explicitly separate
-indexed sources from the unresolved general discovered-cursor path. Authors should
-use the current [indexed collection contract](../developers/indexed-collections.md).
+Current status: indexed and discovered sources are implemented in the production
+WinUI frontend. Playnite Home/Library, YouTube Music and Games & Apps use captured
+queries for their suitable surfaces. Authors should use the current
+[collection contract](../developers/indexed-collections.md).
+
+The sections below preserve the design and staged implementation history from
+2026-09-28 onward. References to a migration branch or an unresolved discovered
+path describe their checkpoint; see [current platform status](current-platform-status.md).
 
 ## Two different addressing models
 

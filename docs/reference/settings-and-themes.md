@@ -13,28 +13,36 @@ The Widgets section distinguishes bundled widgets from separately installed
 packages. Bundled widgets update with WidgetRail. Community packages have their
 own versions, permissions, and update files.
 
-Installing a package shows a toast; it does not automatically move the user
-to permission review or enable the widget. A manual update validates the new
-package before replacing the selection, then requires review and enablement.
-The older version remains available until it is removed.
+Install and Update from file use a Windows file picker followed by themed
+overlay dialogs for full-trust approval, progress and completion. The picker
+requires mouse/keyboard; the overlay dialogs support controller navigation.
+Completion refreshes the widget and permission lists. Installation does not
+automatically enable a community package. Review its permissions before enabling.
+A manual update validates the new package before replacing the selection; the
+older version remains available until it is removed.
 
 Uninstall and unused-version removal require confirmation. Cancelling an
 uninstall does not disable a working widget. The selected version cannot be
-removed as an unused version. Saved widget data is preserved by widget removal.
+removed as an unused version. Saved widget data is preserved by widget removal. **Clear local data** is a
+separate confirmed operation for overlay-owned private state, with worker restart;
+it excludes credentials, provider data and ordinary user files.
 See [Package and share](../developers/publishing-and-installation.md).
 
 ## Controller settings
 
 The user chooses one opening shortcut: View + Menu or Guide. View + Menu is the
-default. Optional Exclusive control has its own status below the toggle, and
-its changes may require restarting affected applications. It can produce
+default. Controllers links to a dedicated Exclusive control page containing the
+toggle, status, driver setup and help. Changes may require restarting affected
+applications. Exclusive control can produce
 duplicate input in some Windows surfaces; see [Compatibility](../users/known-limitations.md).
 
 ## Application settings
 
 Quit and Restart in the header affect WidgetRail. Sign-in startup uses the
 installed application's per-user registration and launches hidden. Windows can
-disable that entry through Startup Apps; WidgetRail respects that state.
+disable that entry through Startup Apps; WidgetRail respects that state. Inno
+exposes startup selection. The current WinUI session does not advertise the
+Settings startup control even though the trusted registration backend exists.
 
 The installed edition and source development copies share application data.
 The installer controls which installed executable the registration points to.

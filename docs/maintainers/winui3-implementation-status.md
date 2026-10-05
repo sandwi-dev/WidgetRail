@@ -1,11 +1,25 @@
 # WinUI migration implementation status
 
-Updated 2026-10-01. Accepted migration checkpoint merged into main. Remaining qualification and deferred improvements below remain tracked.
-The user reversed the full-MSIX direction on 2026-10-01. Distribution is now an
-unpackaged WinUI application with Inno; neither full MSIX nor a signed identity
-package may be required. Earlier MSIX entries below are historical evidence only.
+Updated 2026-10-03. WinUI migration and the accepted Game Help prerequisites are
+integrated into local main. The current release is `0.1.0-preview.25`; Production
+and Developer Inno installers include Browser and Game Help. No MSIX identity or
+application signing certificate is required.
 
 ## Current summary
+
+See [Current platform status](current-platform-status.md) for the implemented
+frontend, edition contents, validation boundaries and remaining qualification.
+The [Game Help progress record](game-help-implementation-plan.md) records the final
+accepted feature closeout and preview.25 packaging correction. Worktrees remain
+preserved; the final test candidate was closed. No push or preview.25 installation
+was performed during closeout.
+
+## Historical implementation log
+
+The entries below are dated evidence. Candidate PIDs, branch state, pending tests,
+and statements such as "no merge" describe their recorded checkpoint, not current
+status. Full-MSIX and identity-package work was superseded by unpackaged Inno.
+Preserve these records for diagnosis; do not use them as current deployment steps.
 
 ### Settings/Spotify control consistency — 2026-10-01, candidate running
 

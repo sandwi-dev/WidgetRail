@@ -29,28 +29,32 @@ realized collection items. Logical focus stays remembered; no native/XAML focus
 operation is performed on exit, and content remains enabled and mounted.
 Explicit interactive entry restores focus presentation on the retained target.
 Unpinning retires the presenter and native window, then revokes the selected
-worker demand. Shutdown preserves the chosen layout and placement for the next
-launch, but never saves an interactive state. Catalog removal, incarnation
+worker demand. Shutdown preserves placement preferences only. Selected widget,
+layout, interaction and playback state are session-only and are not restored. Catalog removal, incarnation
 replacement and failed pin publications retire the corresponding surface.
 
 ## Persistence and placement
 
-`winui-pinned-state.json` belongs to the explicit settings profile. It records the
-chosen widget/layout and bounded logical dimensions, monitor identity, relative
-work-area position and opacity. Existing placement policy clamps restored bounds
-to the available monitor. The pin uses the shell palette, authored surface
-appearance, high-contrast policy and interface zoom.
+`winui-pinned-state.json` belongs to the explicit settings profile. It records
+bounded placement entries: logical dimensions, monitor identity, relative
+work-area position and opacity. `PinnedPreferences` contains only a version and
+placement dictionary, not a selected widget/layout. Creating a new pin can reuse
+its placement; starting WidgetRail does not recreate a pin.
 
-Restoration uses the new runtime's current catalog and a freshly established
-frame/selection. Missing or disabled widgets, revoked pin capabilities and
-temporarily absent authored layouts are skipped; saved data never supplies
-action authority. Full-widget embedded-media restoration follows the same
-exclusion as the tray until its ownership transfer is supported. Starting the
-host does not rewrite the stored bounds when current displays or zoom require
-temporary clamping. Explicit pin/placement edits remain the persistence boundary.
-No input or playback command is serialized in the pin preference file.
+Placement is clamped to the available monitor and uses that monitor's appearance
+settings. Explicit edits persist geometry. Browser and embedded-media owners
+retain their own single live surface and transfer it through the host's placement
+policy; ordinary pinned roots use separate XAML presentation. A visible Browser
+pin retains the page when its main widget opens, showing a notice in the main
+view instead of moving the page twice.
 
-## Validation and remaining work
+Move/resize and opacity adjustments retain the underlying radial context. Ending
+adjustment restores the prior valid UI owner instead of unconditionally focusing
+the tray. The tray offers Replace pin first for an eligible different widget,
+followed by Unpin, Move/resize, Change opacity and Interact. Multiple authored
+layouts use the chooser; cancellation and stale selections preserve the old pin.
+
+## Historical validation checkpoints
 
 `Test-WinUiProductionPin.ps1` drives the actual shell menu and peer window using
 an isolated bundled Now Playing workspace. It covers creation, native focus
@@ -59,7 +63,9 @@ playback. Presenter-specific control/action coverage is separate in
 `Test-WinUiPinnedWidget.ps1`; click-through/opacity checks are in
 `Test-WinUiPinnedWindow.ps1`.
 
-This coordinator checkpoint is not complete pin feature parity. Compact media
+The initial coordinator checkpoint below predates media transfer, placement
+controls and the removal of cross-restart pin restoration. Its passive-restore
+result does not describe the current contract. At that checkpoint: Compact media
 transfer, opacity controls and
 per-pin display-specific appearance resolution remain. Full-widget pinning is
 not offered for an embedded-media session until its transfer ownership exists.
@@ -94,12 +100,14 @@ the old monitor scale. Monitor/work-area changes cancel an active preview and
 resolve its anchor on the remaining displays. Interface zoom refreshes the
 authored size limits without introducing a second scaling transform.
 
-The opt-in `--validate-pinned-placement=<path>` requires `--shell-no-controller`
-and an isolated profile with a saved pin. It exercises the real coordinator,
-native bounds, Save/Cancel, profile persistence, same selection, passive input,
-subsequent rail navigation and hide cancellation. It restores the original
-placement afterward. Source is ready; consult the specialized-surfaces progress
-document for the coordinated build/native result and remaining physical checks.
+The recorded `--validate-pinned-placement=<path>` probe required `--shell-no-controller`
+and an isolated profile with a saved pin. Its startup-pin
+assumption predates the session-only policy and is not a current launch recipe.
+That probe exercised the real coordinator, native bounds, Save/Cancel, profile
+persistence, same selection, passive input, subsequent rail navigation and hide
+cancellation, then restored the original placement. Consult the
+specialized-surfaces progress document for those historical results and the
+subsequent removal of startup-pin restoration.
 
 ## Independent display appearance (2026-09-30)
 

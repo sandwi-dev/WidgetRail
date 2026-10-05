@@ -1,5 +1,10 @@
 # Preserve widget interaction during page replacement
 
+> Implementation and validation record. Pending work, candidate state and test
+> counts describe the checkpoint where they appear; later integration may
+> supersede them. Use [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the current release contract.
+
 The production shell reproduced an unintended Home-to-Library transfer on the
 physically tested `f1f5557e` base: WinUI focused the Playnite tray item and shell
 diagnostics changed `interactive` to false. This disabled the new widget page's

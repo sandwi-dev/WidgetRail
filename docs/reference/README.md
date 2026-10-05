@@ -14,6 +14,9 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Identity and input helpers](identity-and-input.md), [pinned layout handles](pinned-layouts.md), and [widget tests](widget-tests.md)
 - [Collections](collections.md), [routes](routes.md), and [asynchronous work](async-work.md)
 - [Visual content](visual-content.md) and [accessibility](accessibility.md)
+- [WinUI authoring](winui-authoring.md) and [rich text with inline links](widget-rich-text.md)
+- [Browser and provider documents](widget-web-browser.md), [native media player](widget-media-player.md), and [capture](widget-capture-and-game-help.md)
+- [Widget intents, availability and delivery feedback](widget-intents.md)
 - [WRSS properties and cascade](wrss.md)
 - [Controller input](controller-input.md) and [read fallback](controller-read-fallback.md)
 - [Widget lifecycle](widget-residency.md) and [display sizing](display-and-resolution.md)
@@ -32,6 +35,7 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 ## Built-in widgets and examples
 
 - [Settings and themes](settings-and-themes.md)
+- [Browser](widget-web-browser.md) and [Game Help](widget-capture-and-game-help.md) (both installer editions)
 - [Audio device selection](audio-device-selection.md) and [spatial sound](spatial-audio-controls.md)
 - [Games & Apps](games-and-apps.md), [Task Switcher](task-switcher.md), and [Power](power-widget.md)
 - [Network Controls](network-controls.md) and [tray status](tray-status.md)

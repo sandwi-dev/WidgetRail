@@ -1,5 +1,10 @@
 # WinUI performance observation
 
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
 Use actual widget workloads and record the build, profile, display scale, motion
 settings, foreground state and cache state. A native fixture pass or a successful
 UIA command does not prove smooth displayed motion.

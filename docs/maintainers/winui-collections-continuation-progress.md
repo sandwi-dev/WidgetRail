@@ -1,5 +1,10 @@
 # WinUI collection continuation — 2026-09-29
 
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
 Scope: collection lifecycle and smoothness audit for the continued WinUI migration.
 The existing native `ListView`/`GridView`, `IItemsRangeInfo`, and bounded indexed
 source remain the right ownership split: WinUI realizes/layouts/scrolls containers;

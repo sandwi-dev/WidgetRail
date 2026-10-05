@@ -1,6 +1,15 @@
 # Playnite indexed adoption boundary
 
-2026-09-28 implementation checkpoint. Browse now uses the indexed SDK source in
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
+Current correction (2026-10-03): Home and Library both publish indexed sources.
+Descriptions use native text with preserved paragraphs and bullets; the provider-
+document experiment was reverted. See the [Playnite guide](../reference/playnite-library.md).
+
+Historical 2026-09-28 implementation checkpoint: Browse now uses the indexed SDK source in
 the production widget. Home still uses its existing cursor rail. This does not yet
 claim native UI acceptance, complete WinUI styling, or measured performance parity.
 

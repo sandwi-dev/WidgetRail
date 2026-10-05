@@ -10,34 +10,35 @@ A list normally has more than a success state. Plan for loading, empty results,
 an error, and a retry action. If you already have useful data, consider keeping
 it visible while refreshing instead of replacing the whole page with a spinner.
 
-`WidgetResource<TValue>` helps own an asynchronous result. Use it for a device
-list or another result that can be loaded as one value. For continuous browsing,
-use `WidgetCursorResource<TItem>` to fetch pages as people scroll. For a UI that
-replaces one page with the next, use `WidgetPagedResource<TItem>` when the provider
-supports offsets and a total count. An already-loaded list can be divided into
-pages locally without either resource. See [Collections](../reference/collections.md).
+`WidgetResource<TValue>` owns a bounded asynchronous result, such as a device
+list. For virtualized browsing, publish an immutable query through
+`CreateIndexedCollection` when the count is known, or `CreateDiscoveredCollection`
+when the provider exposes continuation tokens. Use `UI.CollectionList` or
+`UI.CollectionGrid` to display the source.
 
-## A cursor is a loaded window into a collection
+`WidgetCursorResource<TItem>` and `WidgetPagedResource<TItem>` remain provider-side
+helpers. Their legacy eager `Present`/`Paginate` metadata does not drive WinUI
+virtualization. Capture their data in an indexed/discovered source or render a
+small explicit page. See [Collections](../reference/collections.md).
 
-Imagine a library with hundreds of games. The cursor keeps the pages currently
-needed around the viewport instead of eagerly loading the whole library.
-The collection supplies stable item identities and information about whether
-more pages exist. The host supplies viewport and navigation demand.
+## Query lifetime and viewport demand
 
-Loading the next page continues the same collection. Refreshing or changing
-the query starts a fresh collection at the beginning. Keep the scroll container's
-identity stable; do not rename it on every render to force scrolling to reset.
+A query freezes item membership, ordering and the values needed to render its
+items. WinUI owns realized controls and range demand. `ReadRange` serves bounded
+positions, honors cancellation and does not publish a new parent tree for every
+scroll step. Discovered collections append admitted results while retaining the
+current query; changing filters or sorting publishes a new query.
 
-Stable keys identify items; they do not freeze their contents or dimensions.
-Publish updated text, styles and actions normally, including changes to an existing
-key. The native host validates measurement inputs and constraints before reusing
-layout work across page arrivals. Widgets do not invalidate native caches, supply
-measurement revisions, or schedule rendering frames. Use the resource's reset
-contract for a new query rather than manufacturing new IDs for unchanged items.
+Keep the collection ID and stable occurrence keys across compatible updates.
+Use `UpdateContent` when membership and ordering stay the same, and `PublishQuery`
+when they change. Do not rename unchanged items to force a refresh. Modal scopes
+and parent collection focus/scroll memory are independent.
 
-The retention target is a preference, not permission to remove visible items.
-A wide viewport may need more items than that target. The cursor and host work
-together to retain the range currently in use and compensate for removed pages.
+UI virtualization does not bound all provider memory. A source may retain data
+for items with no realized XAML control. Choose query and cache limits explicitly,
+and release retired query leases and provider resources. The detailed
+[indexed collection guide](indexed-collections.md) covers discovery, cancellation,
+artwork demand, keyed focus and range retirement.
 
 ## Run work at the right time
 

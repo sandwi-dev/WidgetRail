@@ -1,5 +1,10 @@
 # YouTube Music WinUI validation
 
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
 The standalone service returns a bounded complete page (generally up to 500
 entries). The migration publishes that page as an immutable indexed query, with
 contiguous Home section metadata over one grouped grid. Library, search, details

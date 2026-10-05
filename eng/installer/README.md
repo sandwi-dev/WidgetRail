@@ -76,12 +76,15 @@ remain unsigned until release signing is configured.
 
 ## Startup and process lifetime
 
-The checkbox and Settings > Overlay share `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WidgetRail`.
+The installer checkbox owns `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\WidgetRail`.
+The trusted Settings backend uses the same entry, but its control is currently
+hidden because the WinUI session does not advertise startup-registration support.
 Its value is the quoted active `OverlayFrontend.WinUI.exe` path plus `--hidden`.
 Fresh installation defaults off; upgrades read the actual entry instead of a
 saved installer task choice. Windows-owned StartupApproved values are never
-written or deleted, including on uninstall. Settings reports known disabled
-states and treats unrecognized approval data as unknown.
+written or deleted, including on uninstall. The backend can report known disabled
+states and treats unrecognized approval data as unknown; this does not imply
+the control is exposed in the current Settings UI.
 
 Only the trusted Settings worker gets this service; the public widget capability
 surface does not gain registry access. The service checks that the worker's

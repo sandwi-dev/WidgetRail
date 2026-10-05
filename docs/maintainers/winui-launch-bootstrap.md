@@ -35,25 +35,20 @@ Evidence: `artifacts/winui-shell/config-free-startup-02/`,
 another process in foreground; the adapter recorded failed acquisition and correctly
 denied interaction. That attempt is not a passing replay or a bootstrap diagnosis.
 
-## Deployment work still required
+## Current deployment
 
-This resolves launch roots. Installer registration, update/rollback and runtime
-provisioning remain open; quiet startup and process activation are recorded below.
-The default-root path still needs a complete, staged payload qualification.
+Inno installs a coherent versioned unpackaged payload with the WinUI frontend,
+native libraries, Bridge, workers and application-local runtimes. Start menu,
+CLI and startup launch the executable directly. There is no identity package,
+MSIX registration or startup extraction cache. See
+[release preparation](release-checklist.md) and
+[installer ownership](../../eng/installer/README.md).
 
-Do not simply move every runtime into a protected full MSIX installation directory.
-`WidgetProcessClient` calls `WindowsAppContainer.GrantReadAndExecute` on worker and
-runtime directories, and that implementation writes per-profile DACL entries. The
-deployment choice must preserve sandboxed community workers and those ownership
-rules. The existing per-user mutable versioned payload is a useful constraint.
-
-The next executable deployment comparison should evaluate self-contained
-unpackaged WinUI against an identity package with external content, preserving
-that payload boundary. A fully protected MSIX layout would require a separate
-runtime/permission design. Microsoft's
-[external-location identity guidance](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/grant-identity-to-nonpackaged-apps)
-documents the identity-package alternative. No packaging model, certificate,
-installed startup entry or installed native application was changed by this work.
+`WidgetProcessClient` and `WindowsAppContainer` still require the installed
+sandbox runtime/worker access boundary. The previous protected-WindowsApps and
+external-content identity experiments are historical; they are not alternatives
+that current installers need to implement. Validate installation, runtime
+provisioning and rollback separately from publication/inventory checks.
 
 ## Quiet startup and one configuration per process
 
@@ -92,7 +87,8 @@ retain their installed-runtime behavior.
 The Bridge's existing sandbox runtime admission uses the runtime actually
 hosting the Bridge, then grants its AppContainer worker access to that owned
 runtime. It does not grant access to an arbitrary inherited/global runtime.
-251 session tests pass. The trimmed external-content probe verifies the loaded
+Historical runtime evidence: the 251-test checkpoint and trimmed external-content
+probe verified the loaded
 `coreclr.dll` module of both the real Bridge and its AppContainer worker under
 `external/dotnet/shared/Microsoft.NETCore.App/8.0.31/`. Source archives/hashes and
 Microsoft signatures were verified by `Get-ReleaseRuntimes.ps1`; nothing was
@@ -110,7 +106,7 @@ builds their own intermediate trees). After launch, run
 and inspect real visible widget controls plus frontend errors. Process liveness
 and Bridge lifecycle success alone do not prove a usable widget.
 
-Do not use project-mode winapp --manifest with another identity as a way to run
+Historical tooling caution: do not use project-mode winapp --manifest with another identity as a way to run
 fixtures alongside the resident: the September 29 attempt updated the original
 registration despite returning the requested alternate AUMID. The live candidate
 was interrupted. Normal project-mode deployment needs an intentionally released

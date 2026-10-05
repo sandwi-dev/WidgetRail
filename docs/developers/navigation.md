@@ -51,11 +51,12 @@ D-pad and left-stick navigation move focus and reveal the target control.
 Right-stick scrolling moves the viewport; focus settles after scrolling stops
 instead of jumping with every arriving page.
 
-Users can enable **Hold D-pad to scroll** in Settings → Controllers. Taps still
-move focus normally; holding Up/Down scrolls the active container and release
-lands on a visible item in the originating column where possible. The host owns this gesture,
-including its loading-boundary and scope handling. Widgets need no repeat loop
-or additional capability. See the [collection contract](../reference/collections.md#rendering-and-controller-scrolling-contract).
+When there is no further focusable control in the requested direction but the
+current container has more content, D-pad/left-stick navigation scrolls that
+content. Reversing scrolls back toward the remembered control. Editors, menus,
+and sliders being adjusted keep their own input. This works without a widget
+repeat loop or an extra permission. The legacy **Hold D-pad to scroll** setting
+is not exposed by the WinUI host. See [WinUI navigation](../reference/winui-authoring.md#native-control-mapping).
 
 Scroll positions belong to the widget instance, the container's own input scope,
 and its stable ID. Changing the active scope to a modal does not reset the parent
@@ -68,14 +69,13 @@ Use `with { ShowScrollbar = false }` on a scroll element to hide it for that
 container and release its reserved gutter. Scrolling and focus-follow remain enabled.
 See [Scroll indicators](../reference/declarative-ui.md#scroll-indicators).
 
-For long lists and responsive grids, use the cursor resource and matching
-collection metadata. The host can ask for adjacent pages near an edge or when
-loaded items do not yet fill the viewport. A responsive grid may need more
-items after a resize, so a fixed item threshold is not a substitute for viewport demand.
-
-The shared collection can show a loading indicator while fetching. Page eviction
-must not remove the visible range just to meet a preferred retention count.
-See [Data and lifecycle](data-and-lifecycle.md) before building a custom paging loop.
+For long lists and grids, publish an indexed source with a known count or a
+discovered source with an opaque continuation token. WinUI realizes items around
+the viewport and requests ranges or discovery as needed, including after resize.
+Keep collection IDs and occurrence keys stable. Provider-side cursor helpers
+remain available, but their legacy eager pagination metadata is not a WinUI
+presentation contract. See [Collections](../reference/collections.md) and
+[Data and lifecycle](data-and-lifecycle.md).
 
 For API signatures and detailed targeting rules, see
 [Controller components](../reference/controller-ui-components.md),
@@ -111,147 +111,63 @@ completion and loading-state updates keep the same key and do not restart it.
 The first committed presentation snaps into place. A section needing data can
 show its loading content immediately; navigation never waits for a provider.
 
-The default Slide preset moves full pages horizontally without a crossfade.
-At normal speed, sections share a 208 ms timeline with gentle acceleration and
-deceleration. Paging is an alternative: the incoming page rises from below while
-the outgoing page recedes to 96% of its size and moves slightly upward. Both pages
-keep their original opacity, with coordinated reveal clipping to prevent old
-content showing through transparent incoming content. The themed selection surface moves
-behind stationary labels; the labels and their input targets do not move merely
-because selection changed. Actual layout position changes use the same clock.
-Rapid navigation retargets from the
-visible presentation. The destination owns input immediately; retained outgoing
-pixels have no actions, accessibility nodes or focus memory. Existing scopes and
-cursor restoration remain authoritative. The host paints content into separate
-DirectComposition layers and submits position and opacity curves together.
-Animation frames do not rerun widget layout, paint, or upload pixels. Content
-updates repaint the affected scene without restarting its timeline. An interrupted
-section transition captures its current appearance once before retargeting.
-Motion uses final layout geometry, so focus-follow cannot compensate for a slide.
-Pointer input is mapped through the current incoming transform; outgoing pixels
-are never interactive. Native context menus and dropdowns snap motion while open
-so their anchors remain stationary.
+The host applies section motion after native layout. The default Slide preset
+moves pages horizontally; Paging, Vertical slide, Reveal, Cover slide and None
+are also available. Moving section presets use 208 ms at normal speed. Widget
+code declares semantic groups and keys, not animation frames.
 
-Content motion clips to its container. Use a stack, row, grid or
-focus-presentation surface. Content transition containers cannot be nested; each
-group has one content container and at most one selected surface per responsive mode. A presentation supports
-seven section groups and 64 moving layout elements. Pixel retention uses a
-64 MiB source-scene budget and a bounded reusable capture pool. Source pixels plus
-retained outgoing pixels are also checked against 64 MiB; exceeding that budget
-snaps motion. Oversized scenes fall back to ordinary rendering. Graphics failures
-use the host's graphics recovery path. Live embedded-media
-and window-preview subtrees are not captured. Colors, typography and surfaces
-come from the ordinary theme; no animation-specific color palette is introduced.
-Reduced motion snaps to the destination and drops retained transition pixels.
-Hiding, replacing runtime authority, resizing/scaling or losing the graphics
-device retires obsolete motion. Hosts without composition render the destination
-immediately. Section declarations require protocol 58; animation presets do not
-change the widget API.
+The presenter retains outgoing XAML presentation only for the transition,
+revokes its input/accessibility ownership, and gives the incoming page authority.
+It disposes the retained controls when the transition finishes or is superseded.
+Same-key content updates do not start another transition. A subtree with a live
+browser, media or window-preview surface does not participate in retained section
+content motion; its independent surface owner keeps placement and input authority.
+Header and selection motion can still run.
+
+Content transition containers cannot be nested. Each group has one content
+container and at most one selected surface per responsive mode. Keep persistent
+players and toolbars outside the changing content container. Reduced motion,
+owner retirement and invalidated layout settle or retire obsolete motion.
 
 ### Host animation policy
 
-`WidgetAnimationPolicy.h` owns animation recipes: incoming/outgoing geometry,
-opacity, reveal clips, duration and easing. The compositor presenter owns the
-visual resources and lifecycle, without embedding preset-specific movement.
-CPU sampling and DirectComposition polynomial emission share the same curve;
-interruption capture and pointer mapping use the same transform definition.
+`WidgetMotionPolicy` and `WidgetCompositionMotion` in the WinUI frontend own
+recipes and their Microsoft.UI.Composition execution. There is no retired native
+renderer, pixel-capture pool, or per-frame widget rendering in this path.
+See [WinUI motion](../maintainers/winui-motion.md) for implementation ownership.
 
-`DeclarativeRenderOptions.widgetAnimations` carries host preferences into each
-scene. Section presets have stable settings IDs: `slide` (default), `paging`,
-`verticalslide`, `reveal`, `coverslide`, and `none`. All moving section presets
-use 208 ms smoothstep timing at normal speed, without page-wide fading.
-Slide and Vertical slide push both pages in navigation order; Paging lifts the
-new page while the old page recedes. Reveal clips stationary pages, while Cover
-slide moves the incoming page over the stationary outgoing page. Complementary
-clips prevent translucent incoming content from exposing the old page beneath it.
-The policy parser defaults unknown IDs to Slide; settings validation and bridge admission reject
-unsupported values. The options also allow modal motion to be disabled independently.
-Changing preferences settles the current scene and discards old motion. Reduced
-motion takes precedence over every preset. **Settings Ã¢â€ â€™ Overlay** exposes the
-Focus animation, Section animation and Dialog animation dropdowns and Animate widget dialogs switch.
-The platform settings document persists `appearance.sectionAnimation`,
-`appearance.modalAnimation` (`Lift` or `Zoom`), and `appearance.animateWidgetModals`.
-Missing values default to Slide, Zoom and enabled dialog motion;
-explicit saved choices remain respected. `appearance.widgetAnimationSpeed`
-is a global multiplier from 0.5 to 2, defaulting to 1. Duration is divided by this
-value for sections, navigation and modals together; invalid values are rejected.
-The bridge publishes the section choice using its stable
-lowercase ID and delivers updates through the existing appearance-revision path.
-Widgets continue to declare semantic transitions rather than choosing host effects.
+Settings exposes focus, section and dialog animation choices. The defaults are
+Settle, Slide and Zoom. Dialog animation is enabled by default. Existing saved
+choices remain respected. `appearance.widgetAnimationSpeed` ranges from 0.5 to 2
+and divides animation duration; reduced motion settles immediately.
 
 ### Focus movement
 
-The native host animates themed focus decorations using DirectComposition.
-Widgets need no transition declaration. Settings offers Fade (default), Settle
-and None for focus highlights. Focus changes stay attached to their control;
-text and artwork do not travel with the highlight. Legacy focus Slide settings
-migrate to Fade without changing section animations or other preferences.
+Settle (default), Fade and None affect the themed focus decoration. Settle grows
+the outline from an inset of up to 6 DIPs over 220 ms, starting at 65% opacity.
+Fade changes opacity over 240 ms. These timings precede the global speed setting.
+Text and artwork do not move with the decoration. `WidgetFocusMotion` connects
+native focus events to the composition owner and retires resources on unload.
+Reduced motion and None present the destination without interpolation.
 
-Settle expands the destination outline from up to 6 DIPs inside the control over
-220 ms and raises its opacity from 65% to full. The inset is bounded for small
-controls. It remains visible even when a row clips exactly to the control's bounds;
-content, layout and clipping stay stationary. The resolved background fades on the same clock.
-Existing WRSS scale remains a parent transform, so scaling and outline settling
-compose without competing layout changes. A rapid return to a fading outline resumes
-its sampled pose rather than restarting its expansion. Controller hints remain immediate.
-Fade uses a 240 ms smooth in-place transition for outgoing/incoming outlines and supported
-resolved focus surfaces. Surface colors are interpolated with premultiplied
-alpha, preserving translucent themes. Controller hints appear immediately and
-retain their control's scale. Rapid changes sample the current fade weight;
-removed or moved cursor items cannot retain an outgoing outline. None snaps
-highlight changes; authored control scaling and pressed feedback remain independent.
-
-`WidgetInteractionMotion.h` owns the in-place focus recipes. The scene carries a
-bounded list of visible focus identities and geometry, without retaining widget
-nodes or cursor pages. Removed, recycled, scrolled or reflowed controls retire
-outgoing decoration. Same-target updates do not restart the clock. The focus
-layer does not change input mapping or publish an animation repaint timer.
-Live external media surfaces retain their stationary fallback.
-
-Focus surface separation uses final resolved styles, not widget IDs or selector
-names. Fade and Settle support background, shading, soft shadows, border color
-and rounded-shape changes. Both states use the same shadow-expanded capture bounds
-so translucent pixels interpolate consistently. Background blur, border-width/layout
-changes and semantic navigation-selection surfaces retain their ordinary surface
-painting. Poster surfaces remain underneath full-bleed artwork; their borders
-are not lifted above that artwork.
+Focus borders on Browser and provider-document elements indicate navigation
+focus before interaction; they are hidden while the user interacts with the page.
+Controller hints update with the current action authority.
 
 ### Authored control scaling
 
-WRSS `scale` is the sole opt-in for visual size changes; there is no second SDK
-flag or host zoom preset. On buttons and action surfaces, supported scaling runs
-as one compositor transform containing the background, text, artwork and focus
-decoration. Focus decoration remains attached to the same scaled control. Base,
-focused and pressed styles resolve through the existing cascade;
-pressed scale replaces focused scale rather than multiplying another transform.
-The platform gives buttons and action surfaces a `:pressed` scale of `0.96`.
-If a package overrides `scale` in its base or focused styles, it must also author
-its pressed value: package layers take precedence over platform rules. Disabled
-and busy controls cannot acquire the pressed state. Releasing, changing focus,
-replacing a snapshot or closing the surface clears it without delaying actions.
-Layout and input rectangles stay fixed. Authors must provide room inside ancestor
-clips for enlargement; paint order and clipping are preserved.
-Focus-follow reveals the final scaled bounds without chasing animation frames.
-Trailing item margins remain part of the scroll extent, so that reserved room is
-reachable at the end of a list or rail. Right-stick free scrolling still suppresses
-focus-follow.
+WRSS `scale` controls visual enlargement without changing layout or input bounds.
+On buttons and action surfaces, one transform contains the control and its focus
+decoration. Pressed scale replaces focused scale rather than multiplying it.
+Busy and disabled controls cannot acquire the pressed state. Keep room for
+enlargement inside ancestor clips.
 
-Host context menus and dropdowns share a separate compositor surface above their
-content or tray layer. A new opening grows from 92% to full size over 160 ms at
-1x, anchored toward the triggering control, without changing opacity. Option
-highlights and content updates repaint that surface without restarting its clock.
-Pointer coordinates follow the current transform; controller navigation and
-accessibility retain their existing semantic targets. Dismissal removes the
-surface immediately. Resize or animation-policy changes snap, Reduced Motion
-disables entry motion, and capture failure falls back to ordinary popup paint.
-
-Use `transition-duration` and `transition-easing` with `scale`. Linear, ease-out
-and ease-in-out control-scale curves run in the compositor and honor the widget
-animation speed preference. Spring retains its existing renderer evaluator.
-Reduced Motion snaps to the authored scale. First frames, cursor identity/scope
-changes and geometry changes also snap, while rapid focus/press changes retarget
-from the currently displayed transform. Focused width/height overrides do not
-change the native base-style layout contract.
+`WidgetControlScaleMotion` supports linear, ease-out, ease-in-out and bounded
+spring curves in the compositor. `transition-duration` is capped at two seconds
+before the global speed multiplier. Initial placement, unload, size and policy
+changes settle the transform; subsequent changes retarget from the displayed
+scale. Reduced motion snaps immediately. Native popups have their own WinUI
+ownership and are not old renderer capture surfaces.
 
 ## Widget modals
 
@@ -259,15 +175,11 @@ Use `WidgetView.WithModal(new WidgetModal(...))` for a dialog above the current
 page (presentation protocol 55). Retain the page and its stable element IDs;
 return it without `WithModal` when the dismiss action runs.
 
-The host fades the themed backdrop and slides the panel by 14 DIP on the same
-260 ms smoothstep timeline at normal speed when opening or closing. The optional
-Zoom preset also grows the panel from 90% to full size, centered horizontally,
-and reverses that motion on closing. The backdrop never moves or scales.
-Closing changes input authority
-immediately; only panel pixels survive until the exit finishes. Reopening during
-exit continues from the displayed opacity. A modal already present on the first
-frame after resuming or resizing does not replay its entrance. No worker timers
-or new modal API are needed, and reduced motion disables these transitions.
+The host owns modal motion and applies the global dialog preset, speed and
+reduced-motion settings. Opening uses a 260 ms recipe at normal speed; Zoom
+combines translation and scale, while Lift uses translation. The scrim does not
+scale. The presenter owns dismissal and focus restoration; widgets return the
+underlying page instead of running an exit timer.
 
 ```csharp
 var page = new WidgetView(BuildLibrary(), "library.first");

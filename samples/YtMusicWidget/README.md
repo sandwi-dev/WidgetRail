@@ -7,7 +7,7 @@ Search, your Library, a local Queue, and a compact pinned player.
 Collections scroll continuously as you browse.
 Your selected playback volume is remembered across widget and application restarts.
 
-On the WinUI migration branch, each returned service page is an exact-count
+In the WinUI frontend, each returned service page is an exact-count
 indexed collection. Home uses grouped native grids; lists request only needed
 rows. This does not add remote continuation beyond the service's bounded result.
 Row actions retain captured occurrences, including repeated songs; playback ticks

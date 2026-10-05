@@ -1,9 +1,9 @@
-# Indexed collections on the WinUI migration branch
+# Indexed collections
 
 Use an indexed collection when a captured query has an exact item count and a
 stable order. The widget owns data and actions; WinUI owns realized controls,
 measurement, scrolling and presentation. A large collection does not require a
-large parent UI tree. This contract is implemented on the migration branch;
+large parent UI tree. This contract is implemented in the production frontend;
 the installed native frontend is not being switched by these instructions.
 
 ## Authoring

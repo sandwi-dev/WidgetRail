@@ -1,5 +1,10 @@
 # WinUI shell navigation and preferences
 
+> Implementation and validation record. Pending work, candidate state and test
+> counts describe the checkpoint where they appear; later integration may
+> supersede them. Use [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the current release contract.
+
 ## Controller delivery ownership
 
 The platform adapter may sample a visible overlay's controller while another

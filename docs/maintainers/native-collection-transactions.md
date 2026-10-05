@@ -1,5 +1,10 @@
 # Collection preparation and frame transactions
 
+> Historical native-renderer investigation. That renderer and its build/probe
+> commands are retired. The measurements and source paths below describe the
+> recorded revision, not production WinUI. Use [current platform status](current-platform-status.md),
+> [WinUI authoring](../reference/winui-authoring.md) and [current build commands](building.md).
+
 This correction follows the [page-admission review](native-page-admission-review.md).
 It keeps Direct2D/DirectWrite/DirectComposition and the existing SDK contract.
 No scheduler allowance, cache-window size or animation setting is increased.

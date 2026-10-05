@@ -12,7 +12,14 @@ watching a video beside a game or keeping compact playback information nearby.
 
 Follow the controller hints in the pin controls as you make adjustments. Later,
 you can manage or remove the existing pin from another tray icon too; you do not
-have to find the icon that originally created it.
+have to find the icon that originally created it. A pinnable widget offers
+**Replace pin** when another widget is pinned. The tray menu places Replace pin,
+Unpin, Move/resize and Change opacity before Interact.
+
+Pins last for the current application session. Restarting WidgetRail does not
+restore the pinned selection or its playback state; placement preferences remain.
+Returning from move/resize or opacity restores the pin controls instead of
+forcing focus back to the tray.
 
 ## Why layouts differ
 

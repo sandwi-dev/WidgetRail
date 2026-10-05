@@ -1,5 +1,10 @@
 # WinUI host controls and Settings audit
 
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
 Updated 2026-09-30. Branch: `codex/winui3-frontend`. No merge to main.
 
 ## Implemented
@@ -9,7 +14,7 @@ Updated 2026-09-30. Branch: `codex/winui3-frontend`. No merge to main.
 - Quit follows the existing asynchronous cleanup path. Restart waits for window/worker/media/input cleanup and releases profile election, then calls Windows App SDK `AppInstance.Restart` with Windows-quoted original arguments. It removes `--hidden` so explicit Restart reopens visibly. No raw packaged executable launch or second restart helper.
 - The Bridge hello explicitly advertises exclusive controller control, held D-pad scrolling, and startup-registration support. The trusted Settings companion passes those immutable host features to Settings; they are not persisted preferences or community-widget capabilities. Native hello omission retains its implemented features; managed frontends must opt in.
 - WinUI now advertises exclusive control when its input consumer is attached, through the original native controller engine and shared status/preference exchange. Held D-pad controls remain omitted. Unsupported stale actions cannot mutate preferences or invoke their provider. Ordinary Guide/View+Menu shortcut remains available. See the 2026-09-30 restoration entry in the implementation status for recovery and initialization evidence.
-- Audit found that existing Settings startup registration writes the native `OverlayHost.exe` Run entry. WinUI does not yet own a packaged startup backend, so that control and its startup wording are omitted through the same feature contract. This avoids exposing a control that could start the wrong frontend. Implement packaged startup registration during deployment work, then opt in.
+- Current correction (2026-10-03): `StartupRegistration` now targets `OverlayFrontend.WinUI.exe --hidden` and Inno owns the installed Run entry. The WinUI session still does not opt into the Settings startup feature, so that control remains omitted. Held-D-pad preference/action scaffolding also remains in source without an active WinUI consumer. Installer startup selection is supported; these feature flags are not proof of an exposed Settings control.
 
 ## Appearance and accessibility consumer audit
 

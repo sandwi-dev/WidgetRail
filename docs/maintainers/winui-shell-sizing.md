@@ -63,13 +63,12 @@ zoom, surface hints, admitted extent and measured chrome for diagnosis.
   within the same work area. Both screenshots inspected; all test processes
   closed. No installed profile or Windows display setting changed.
 
-## Remaining work
+## Historical checkpoint limits
 
-TextScale is resolved and forwarded in appearance and affects the surface reflow
-allowance; the presentation adapter still needs full typography scale projection.
-Surface appearance overrides, desktop scrim, fixed tray/window arrangement,
-radial/reorder/pinning, media surfaces and controller guide are separate shell
-work. A full physical mixed-monitor Guide sequence, monitor unplug/replug, taskbar
+The early sizing probe did not cover typography projection, surface appearance,
+desktop scrim, tray/radial/reorder/pinning, media or the guide. Those features are
+now implemented; see [current platform status](current-platform-status.md).
+The limits of the recorded physical evidence still apply: A full physical mixed-monitor Guide sequence, monitor unplug/replug, taskbar
 relocation, and Playnite cursor/modal acceptance at scale are not covered by these
 checks. A wide FillAvailable widget now really fills an ultrawide work area;
 authored content can still choose its own narrower maximum width.

@@ -7,6 +7,10 @@ for common validation and renderer-integration problems. The separate
 implemented widget-local language from the global cascade and data-only theme
 package workflow.
 
+Parser acceptance does not guarantee a WinUI mapping. Follow the
+[WinUI authoring contract](winui-authoring.md) for supported layout and control
+properties; `wrail validate` reports known unsupported layout declarations.
+
 WRSS is the safe, renderer-neutral styling language for the overlay and host-rendered widgets. The production parser/model lives in `src/WidgetStyling`; the `wrail validate` command consumes the same library.
 
 ```css
@@ -132,31 +136,26 @@ Values are typed before reaching a renderer. Dimensions, spacing, scale, opacity
 Per-edge borders are additive overrides, not a second box model. An omitted
 edge inherits the computed uniform border color/width; an authored edge replaces
 only that side. Widths are bounded to 0–16 logical DIPs and colors use the same
-safe color grammar as the uniform border. The native renderer resolves and
-paints all four sides independently, including transparent/zero-width sides,
+safe color grammar as the uniform border. The WinUI style adapter applies supported edge colors and widths, including
+transparent/zero-width sides,
 without changing focus geometry or rounded clipping. Themes can therefore use
 one-sided dividers without nesting extra surfaces.
 
-`font-family` is a bounded family-name field, not browser font loading. The
-current native renderer passes one resolved family name to DirectWrite; although
-the parser accepts comma-separated names for compatibility, they do not form a
-native fallback stack today. The semantic `.wrail-code-text` default therefore
-uses the single Windows-baseline `Consolas` family. `UI.CodeText(...)` adds that
-class to bounded nonfocusable diagnostics/command text. Package paths, URLs,
-generic browser keywords, and arbitrary font bytes remain unsupported.
+`font-family` is a bounded family-name field, not browser font loading. The WinUI
+adapter removes quote delimiters and passes the resolved value to XAML
+`FontFamily`; font resolution belongs to WinUI. WidgetRail does not implement a
+CSS font resolver or permit package paths, URLs or arbitrary font bytes here.
+Use a known installed family such as `Consolas` for `.wrail-code-text`.
+`UI.CodeText(...)` adds that class to bounded nonfocusable diagnostics/command text.
 
-`transition-duration` and `transition-easing` participate in parsing, cascade,
-computed styles, reduced-motion policy, and native rendering. When a stable
-declarative node's computed target changes, the host can interpolate its
-paint-only `opacity` and `scale` values. The first observation snaps to the
-authored target; later changes retarget from the currently presented value.
-Durations are capped at 2 seconds, at most 1,024 nodes are tracked, and settled
-content schedules no animation work. Reduced motion snaps immediately and
-cancels outstanding transitions. Layout, colors, borders, shadows, blur,
-progress width, shell placement, and widget replacement are not interpolated
-by these WRSS transitions. Host window resizing and background-surface transitions use separate animation paths.
+`transition-duration` and `transition-easing` are parsed and resolved by WRSS.
+The WinUI adapter uses them for supported control-scale motion. This is not a
+general CSS transition engine: do not assume that changing opacity, colors,
+layout, borders, shadows or blur starts a WRSS animation. Focus decorations,
+section changes, modal motion and surface resizing have separate host owners.
+Reduced motion settles supported transitions immediately.
 
-For buttons and action surfaces, `scale` with linear, ease-out or ease-in-out
+For buttons and action surfaces, `scale` with linear, ease-out, ease-in-out or spring
 easing uses one compositor transform for the whole control, including text and
 artwork. It keeps layout and hit targets fixed and follows the global widget
 animation speed setting. There is no additional SDK scale setting. Put the
@@ -170,14 +169,16 @@ duration on the base rule so both focus entry and exit animate:
 
 Leave space for the enlargement inside the parent's clip. Pressed scale replaces
 focused scale; the values do not multiply. Reduced motion snaps to the final
-scale. Spring and surfaces with live media keep the existing renderer path.
+scale. The bounded spring curve is submitted as compositor keyframes; it does
+not use the retired renderer or a per-frame managed evaluator.
 Focus-state `width` and `height` do not resize the native layout; use `scale`
 for visual enlargement.
 
-Separately, the host can fade focus-specific backgrounds, border colors,
-shading, shadows and outlines in place for fixed-size controls. This uses the final resolved styles
-from every WRSS layer and preserves persistent `:selected` styling. Unsupported
-decoration combinations use a stationary fallback. See
+Separately, the host animates the focus outline through its Settle/Fade policy.
+Resolved background, border, shading and shadow styles update through the native
+style adapter; do not assume they share the outline's animation. Persistent
+`:selected` styling is independent. Unsupported decoration combinations use a
+stationary fallback. See
 [focus movement](../developers/navigation.md#focus-movement).
 
 Untrusted input is bounded before publication: source bytes/characters,
@@ -252,7 +253,7 @@ without polling, debounces changes, globally layers widget snapshots, and
 publishes bounded shell appearance revisions. The native host consumes those
 revisions and applies supported shell styles, interface scale, backdrop, and
 motion while retaining its last good value on failure. It also multiplies shell
-DirectWrite role sizes by platform text scale. The host applies supported
+WinUI text sizes by platform text scale. The host applies supported
 accessibility policy after shell/widget style resolution: bounded text scale
 adjusts font size/letter spacing and layout without compounding inherited `em`
 values; reduced motion removes transitions; reduced transparency removes blur

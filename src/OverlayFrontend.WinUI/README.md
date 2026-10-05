@@ -12,8 +12,10 @@ frontend with those exact binaries. It neither launches nor registers an app.
 See [Building from source](../../docs/maintainers/building.md) for prerequisites
 and [Build execution](../../docs/maintainers/build-execution.md) for audited restore.
 
-A development launch uses `winapp run` in project mode with `--arch x64` and
-`-p Platform=x64`. Only one controller-owning overlay may run at a time.
+Launch the complete unpackaged payload directly, or use the local workspace
+`dotnet run` workflow in [Building from source](../../docs/maintainers/building.md).
+No project-mode package registration is required. Only one controller-owning
+overlay may run at a time.
 Use `--shell-no-controller` for synthetic UI validation. Development fixtures
 require a build with `EnableWidgetValidation=true`; release publication disables them.
 

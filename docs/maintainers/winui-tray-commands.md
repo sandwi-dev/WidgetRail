@@ -1,5 +1,10 @@
 # Native tray commands
 
+> Implementation and validation record. Pending work, candidate state and test
+> counts describe the checkpoint where they appear; later integration may
+> supersede them. Use [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the current release contract.
+
 The rail keeps native ListView focus/selection and uses MenuFlyout for its command
 surface. Pointer context request or controller Menu opens commands for the exact
 catalog identity. Quick actions retain their existing dashboard bridge route under

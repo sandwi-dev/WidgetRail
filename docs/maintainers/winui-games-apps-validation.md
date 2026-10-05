@@ -1,5 +1,10 @@
 # Games & Apps native validation
 
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
 Library and Running use the SDK's captured indexed queries. Catalog retains its
 explicit provider page controls. The integrated managed suite passes 92 tests,
 including captured action identity, stale queued commands, curation/CAS behavior,

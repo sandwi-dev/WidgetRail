@@ -1,5 +1,10 @@
 # WinUI widget-local modal checkpoint
 
+> Implementation and validation record. Pending work, candidate state and test
+> counts describe the checkpoint where they appear; later integration may
+> supersede them. Use [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the current release contract.
+
 ## Current automation scope — 2026-09-30
 
 The stable WidgetMotionStage keeps parent and modal as visual siblings. Its native

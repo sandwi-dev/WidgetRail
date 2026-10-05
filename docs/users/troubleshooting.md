@@ -100,5 +100,7 @@ It is replaced on the next attempt. Do not run another MSI over an active update
 
 ## WidgetRail no longer starts when I sign in
 
-Check both the WidgetRail setting and Windows Settings → Apps → Startup. Windows
-can disable a startup entry independently; WidgetRail respects that choice.
+Check Windows Settings → Apps → Startup. Windows can disable a startup entry
+independently; WidgetRail respects that choice. If no entry exists, rerun the
+WidgetRail installer and select startup at sign-in. The current WinUI Settings
+widget does not expose a startup switch.

@@ -1,6 +1,6 @@
 # Customization
 
-Open Settings to adjust the overlay. Changes to Quit, Restart, or startup here
+Open Settings to adjust the overlay. Quit and Restart here
 refer to **WidgetRail**, not shutting down or restarting Windows. PC power
 actions live in the Power widget.
 
@@ -24,9 +24,9 @@ while the previous page recedes; **Vertical slide** moves pages up or down;
 **Reveal** uncovers stationary content; **Cover slide** moves the new page over
 the previous page; **None** changes pages immediately.
 **Animate widget dialogs** independently controls opening and closing motion.
-**Focus animation** offers **Fade** (default), **Settle**, and **None**.
-Settle expands the outline from up to 6 DIPs inside the control over 220 ms, starting at 65% opacity;
-the background fades on the same timeline. Fade changes opacity over 240 ms without
+**Focus animation** offers **Settle** (default), **Fade**, and **None**.
+Settle expands the outline from up to 6 DIPs inside the control over 220 ms,
+starting at 65% opacity. Fade changes outline opacity over 240 ms without
 outline movement. These effects leave the control geometry unchanged. Existing
 WRSS scale and press feedback still apply to the whole control, including its outline.
 Controller hints appear immediately with Settle and Fade. Animation speed and reduced
@@ -41,7 +41,7 @@ together. These preferences apply immediately and survive restarts. Reduced moti
 including the Windows preference when followed, overrides both without changing
 your saved choices. Tray widget-switch animation remains in **Settings → Appearance**.
 
-Focus normally fades in place using a thin theme-accent edge and surface emphasis.
+Focus normally settles in place using a thin theme-accent edge and surface emphasis.
 Panels, controls and dialogs use subtle shading and shadows to show depth.
 Old focus Slide preferences migrate to Fade; section Slide remains available.
 High contrast retains
@@ -78,10 +78,11 @@ you do not use, including built-in widgets other than Settings.
 **Settings → Widgets** is the place to review permissions, enable or disable a
 widget, install packages, and manage versions.
 
-- **Install:** choose a `.wrwidget` file. A toast explains where to review permissions and enable it.
+- **Install:** choose a `.wrwidget` file in the Windows file picker (mouse/keyboard). The overlay shows controller-accessible approval and completion dialogs and refreshes the widget list after installation. Review permissions and enable the installed widget.
 - **Update:** use **Update from file** in the widget's details. A successful update needs review and enablement; new permissions are not granted automatically.
 - **Remove old versions:** use the version controls to remove an unused version. The current version is protected.
 - **Uninstall:** remove a community widget from its details. If it is enabled, confirm **Disable and uninstall**. Its saved data is kept.
+- **Clear local data:** separately clear the selected widget's overlay-owned private state and restart its worker. Credentials, provider data and ordinary user files are excluded.
 
 Built-in widgets belong to the application release. Disable them if you do not
 want them; they are not separately uninstalled or updated from a package file.
@@ -94,7 +95,10 @@ the extra copy separately. Local Data controls apply only to the copy you select
 ## Permissions
 
 Enable only the Windows capabilities you want a widget to use. A permission
-describes access such as reading audio devices or switching windows.
+describes access such as reading audio devices or switching windows. Built-in
+widgets receive their declared host capabilities by default; explicit user
+denials are preserved. Installed community packages still require review. See
+[capabilities](../reference/capabilities.md) for the exact trust boundary.
 
 A **full-access** widget runs as an ordinary Windows application and can do more
 than a sandboxed widget. Review its source and publisher before enabling it.
@@ -102,11 +106,10 @@ An integrity checksum detects changed bytes; it does not establish who wrote the
 
 ## Controller options
 
-**Hold D-pad to scroll** is off by default. Enable it to scroll vertically by
-holding Up or Down. A short tap still moves focus normally. Release to land on a
-visible item in the same column where possible. The right stick remains available for scrolling.
-Focus also settles when scrolling reaches the loaded edge. If more items are
-loading, continuing to hold resumes scrolling when they become available.
+D-pad and left stick normally move focus. If there are no more controls in that
+direction but the container can still scroll, navigation scrolls the remaining
+content. The right stick scrolls directly. The old **Hold D-pad to scroll**
+preference is not exposed by the WinUI frontend.
 
 Choose either **View + Menu** or **Guide** as the opening shortcut. Optional
 Exclusive control has separate driver requirements and compatibility limits.

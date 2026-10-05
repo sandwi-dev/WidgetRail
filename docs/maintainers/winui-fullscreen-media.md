@@ -1,5 +1,10 @@
 # WinUI host-owned fullscreen media
 
+> Implementation and validation record. Pending work, candidate state and test
+> counts describe the checkpoint where they appear; later integration may
+> supersede them. Use [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the current release contract.
+
 The existing SDK action `host.embeddedMediaSession.enterFullscreen` remains the
 entry declaration. The widget declares `OverlayFullscreen` capability; it does
 not hold fullscreen state. A trusted host presentation moves the existing admitted

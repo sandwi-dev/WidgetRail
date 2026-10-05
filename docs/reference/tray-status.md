@@ -17,5 +17,5 @@ Screen readers can read the full status without minute-by-minute announcements.
 Windows status discovery runs in the background at most once every five seconds
 while visible, with at most one pending request. Stale results become unknown
 after 30 seconds. Clock checks use the existing one-second host timer and change
-pixels only when the displayed time or status changes. DirectComposition updates
-only the tray layer, preserving widget content, guide, and background frames.
+the WinUI status controls only when the displayed time or status changes.
+Status updates do not request a new widget snapshot or rebuild widget content.

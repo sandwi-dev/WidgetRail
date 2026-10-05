@@ -1,5 +1,10 @@
 # Specialized WinUI surfaces migration progress
 
+> Implementation record: checkpoint dates, temporary candidates, former source
+> paths and pending-work statements below describe the stage recorded, not current
+> release status. See [current platform status](current-platform-status.md) and
+> [WinUI authoring](../reference/winui-authoring.md) for the implemented contract.
+
 Updated 2026-09-29. Owner: specialized-surfaces agent; work stays on codex/winui3-frontend.
 
 ## Current checkpoint

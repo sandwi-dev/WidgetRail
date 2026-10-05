@@ -48,48 +48,33 @@ Shared classes are `wrail-window-preview` and `wrail-preview-poster`. The
 default, Neon Circuit and Arcade Rush themes provide semantic colors. Poster
 copy uses the existing `wrail-tile__*` classes.
 
-## Native implementation
+## WinUI implementation
 
-The backend is Windows Graphics Capture, using the documented Win32
-`IGraphicsCaptureItemInterop::CreateForWindow` entry point. A synthetic offscreen
-window probe verifies the capture texture can be consumed by Direct2D on the
-overlay's existing D3D device. DWM thumbnail registration targets an HWND,
-rather than an arbitrary visual in our DirectComposition scene; it cannot
-directly participate in the renderer's masks and retained widget transforms.
+Windows Graphics Capture uses the documented Win32
+`IGraphicsCaptureItemInterop::CreateForWindow` entry point. The shell-owned
+`WindowPreviewCaptureService` shares a native GPU owner across widget renderers.
+`WindowPreviewSurface` binds a published DXGI composition surface to a WinUI
+`SpriteVisual`; XAML owns layout, clipping, transforms and z order.
 
-The native host imports capture frames as GPU bitmaps. No CPU readback, image
-encoding, artwork decoding, remote-image cache entry or widget snapshot is
-involved in frame delivery. A 33 ms host timer polls for newer available frames
-and requests retained paints for their visible clipped regions through the
-existing damage planner. The renderer applies its normal rounding, fit, opacity,
-focus ordering, background composition and popup ordering. Source applications
-and Windows determine when new frames exist; there is no source frame-rate
-guarantee.
+Capture, native drawing, resizing and teardown run off the UI thread. Frame
+callbacks signal readiness rather than dispatching into WinUI or closing capture
+objects themselves. No CPU screenshot encoding, artwork cache or widget snapshot
+is involved in live frame delivery. Hiding, unloading, scrolling offscreen or
+losing a grant revokes demand. A blocked dispatcher does not extend native
+permission: expired content is safety-blanked by the native owner.
 
-Capture setup and teardown run from the preview timer after drawing completes.
-Windows capture calls can dispatch window messages, so they must not run between
-a composition surface's BeginDraw and EndDraw. Reentrant updates retain their own
-source list and discard work if visibility or source authority changes.
+The current native budget is eight capture slots and 192 MiB of accounted image
+storage, with an allowance for retiring output surfaces. Output is bounded to
+960 by 540 pixels; sources exceeding 4096 × 2160 pixels of content are rejected.
+This bounds owned allocations, not all Windows/driver overhead. Capture failure,
+minimized/protected sources or exhausted capacity leave a fallback. Windows may
+display capture borders; the host does not bypass capture restrictions.
 
-Live previews update while the widget is visible, including while focus is on
-the tray. They do not require entering the widget. Only visible preview demands
-are retained. Scrolling offscreen, hiding the
-overlay, switching widget instances or losing source authority retires resources.
-Minimized sources pause capture and show a fallback; restoration can resume
-capture. Resizing uses the frame's actual ContentSize and recreates its pool
-under the same resource budget.
-
-There are at most eight active source sessions, two frame-pool buffers per source,
-and an aggregate 16-megapixel source budget. Individual sources are bounded to
-4096 x 2160 pixels worth of content. A conservative bound allowing an additional
-retained frame is 192 MiB of preview frame storage, excluding Windows compositor
-and driver overhead. Duplicate posters for one window share its capture.
-Oversized sources and unsupported rendering targets show the fallback.
-
-Windows controls capture availability and may display a capture border.
-Protected content may be unavailable or blank. WidgetRail does not remove these
-OS restrictions. Preview capture currently belongs to the ordinary overlay;
-pinned-only presentations show the fallback.
+Production preview admission covers ordinary widget roots. Indexed-range and
+pinned/focus-fragment preview slots require their own admitted inventory and
+lifecycle and currently remain placeholders. See the
+[GPU preview implementation](../maintainers/winui-window-preview-renderer.md)
+for ownership, limits, shutdown and device recovery.
 
 ## Authority
 
@@ -107,24 +92,18 @@ preview support in their hello. Other presentation clients retain their previous
 response shape. Changes to this metadata invalidate preview
 pixels even if the public document is unchanged. Native capture revalidates the
 window, owning process lifetime and class, and respects display-affinity policy.
-While previews are visible, the host independently checks current preview grants and broker-owned source IDs
-on its one-second control-plane timer. Denial, broker retirement or an unavailable permission result
-stops capture, including for widgets that publish no further snapshots. Regranting
-requests a fresh publication. This check does not invoke widget code or read pixels.
+While previews have demand, the renderer renews permission through the session
+on its 400 ms control-plane cadence. Grants expire within two seconds; renewal
+failure, denial or changed ownership invalidates the prior authority. Renewal
+does not invoke widget code or read pixels. See
+[session admission](../maintainers/winui-window-previews.md).
 
 ## Verification
 
-- SDK tests cover protocol versioning, view-only behavior, malformed declarations
-  and compatibility with existing poster callers.
-- Broker/bridge tests cover hidden native metadata, identity scoping, current
-  snapshot membership, manifest consent, revocation and retirement.
-- Native renderer tests cover aspect ratio, visible demand, retained painting,
-  focus-follow and offscreen retirement.
-- `WindowPreviewCaptureTests` captures only its own synthetic offscreen window.
-  It imports a frame into Direct2D, rejects a wrong process lifetime and checks
-  closure/retirement. It saves no pixel files. Windows may freeze this offscreen
-  source after its first frame, so live animation remains a physical candidate
-  check.
-- Physical acceptance: enable preview permission for Task Switcher, inspect a
-  changing source window, navigate/scroll, switch/close windows, minimize/restore,
-  resize the source and open/close the overlay.
+SDK, broker and session tests cover declaration validation, hidden native
+metadata, identity scoping, consent and retirement. Native policy tests cover
+budgets and lifecycle rules. WinUI preview validation exercises actual XAML
+surface binding, permission expiry, resize, demand and shutdown using synthetic
+windows. See [build and validation](../maintainers/winui-window-preview-renderer.md#build-and-validation).
+These checks do not establish compatibility with every protected or exclusive-
+fullscreen application.

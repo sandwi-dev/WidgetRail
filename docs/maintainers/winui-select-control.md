@@ -22,9 +22,9 @@ controller routing. It does not add another command queue.
   unload its content.
 - Host foreground restoration goes through `Enter(restoreNativeFocus: true)`;
   the current popup option receives focus before parent entry policy.
-- A fragment presenter within a collection needs the same popup precedence in
-  its input owner. The existing indexed action router does not yet provide that
-  integration; this checkpoint validates top-level Select controls.
+- Fragment presenters within indexed collections use the same popup precedence
+  through the normalized controller entry. Their open popup consumes navigation
+  and B before parent shortcuts or collection input.
 
 An unchanged snapshot preserves an open popup. Runtime/instance ownership,
 active scope, opener lifetime, enabled state or option declarations changing
@@ -55,7 +55,8 @@ execution is pending coordinated deployment in the integration worktree.
 This is control correctness coverage, not production widget performance,
 physical controller acceptance, high-contrast visual acceptance, or complete
 popup feature parity. The real worker action transport and indexed-fragment
-popup routing still need integrated evidence.
+popup routing were not covered at this early checkpoint; subsequent evidence
+is recorded below.
 
 ## Integrated validation and input entry
 
@@ -71,7 +72,8 @@ read controllers or create another worker action queue. The real bridge/worker p
 passes release suppression, ordinary shortcut entry and indexed ancestor dispatch while
 retaining the focused row. Evidence: artifacts/winui-surfaces/input-route-result.json.
 
-Production shell wiring, full popup icons and context menus remain separate work.
+The production shell now uses the shared popup/controller entry and themed
+context menus. The preceding counts record the initial integration checkpoint.
 
 ## Accessible current selection
 

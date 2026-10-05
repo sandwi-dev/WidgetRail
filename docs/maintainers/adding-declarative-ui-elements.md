@@ -30,17 +30,20 @@ Update the public SDK and protocol types, materialization, serializers, and
 validators as needed. A new feature must have the appropriate protocol version
 requirement, while older supported views keep their existing behavior.
 
-The managed bridge and native parser must agree on accepted values and limits.
+The SDK/protocol validators, Bridge/session admission and WinUI presenter must
+agree on accepted values and limits.
 Do not accept a shape on one side that the other cannot safely represent.
 
-## 3. Add layout and drawing
+## 3. Add WinUI presentation
 
 Give the element sensible measurements and theme defaults. Check text constraints,
 clipping, scroll offsets, DPI, and responsive layouts. Invalid dimensions and
 missing artwork need a usable fallback.
 
 Classify presentation changes correctly. Paint-only changes should not force
-whole-tree preparation. Retained text, images, and styles need correct invalidation.
+a whole-tree rebuild. Reconcile retained XAML controls, update only the affected
+properties and retire native resources when their owner changes. Add a UI
+Automation peer/pattern and a theme mapping where appropriate.
 
 ## 4. Connect input and accessibility
 

@@ -75,12 +75,12 @@ D-pad and left-stick movement choose a focus target and reveal it. Navigation
 uses layout geometry, collection context, and any explicit links. Offscreen
 items can still be candidates within their scroll collection.
 
-The optional **Hold D-pad to scroll** preference changes sustained vertical
-D-pad input in an active scroll container into continuous scrolling. Taps and
-left-stick navigation keep their normal behavior. The host owns the hold timer,
-loading-boundary handling and same-column landing; widgets do not implement a
-raw-input repeat loop. The gesture cannot cross input scopes or survive a
-collection reset, widget replacement, or loss of input authority.
+When no further focusable target exists in a direction but the current container
+can still scroll, directional navigation scrolls the remaining content. Reversing
+can scroll back toward the remembered control. Editors, sliders being adjusted
+and open popups keep their own input. The legacy `HoldDpadToScroll` preference
+and gated Settings action remain in code, but the WinUI session does not advertise
+or consume that feature. It is not a prerequisite for this navigation behavior.
 
 Right-stick scrolling moves the viewport and settles focus after scrolling
 stops. See [Collections](collections.md) rather than writing a second paging

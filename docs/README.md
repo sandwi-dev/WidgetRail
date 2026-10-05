@@ -42,12 +42,16 @@ ideas; reference pages document the details.
 Common destinations: [UI elements](reference/declarative-ui.md),
 [WRSS properties](reference/wrss.md), [capabilities](reference/capabilities.md),
 [local companions](reference/community-companion-services.md), and
-[SDK compatibility](developers/widget-sdk-compatibility.md).
+[SDK compatibility](developers/widget-sdk-compatibility.md),
+[intents](reference/widget-intents.md), [browser](reference/widget-web-browser.md),
+[media player](reference/widget-media-player.md), and
+[capture and Game Help](reference/widget-capture-and-game-help.md).
 
 ## Work on the platform
 
 [Contributing](../CONTRIBUTING.md) explains the project layout and review workflow.
-Start with [Building from source](maintainers/building.md), then
+Start with [Current platform status](maintainers/current-platform-status.md),
+[Building from source](maintainers/building.md), then
 [Architecture](maintainers/platform-architecture.md).
 Use [Build execution and diagnostics](maintainers/build-execution.md) for restore
 requirements and build-log guidance.

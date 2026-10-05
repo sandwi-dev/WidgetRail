@@ -245,7 +245,7 @@ cache key includes the global revision.
 The native client consumes the initial platform appearance and later revision
 events, coalesces the latest announced revision, ignores stale values, and
 retains its last good state after a failed refresh. It applies supported shell
-styles, interface geometry, shell DirectWrite text scale, backdrop opacity, and
+styles, interface geometry, shell WinUI text scale, backdrop opacity, and
 motion without launching or restarting widget workers. It also passes bounded
 platform text scale through the native post-style accessibility policy into
 generic declarative widget text and layout, preserving non-compounding `em`

@@ -1,5 +1,10 @@
 # Page arrival, reversal and preparation consistency
 
+> Historical native-renderer investigation. That renderer and its build/probe
+> commands are retired. The measurements and source paths below describe the
+> recorded revision, not production WinUI. Use [current platform status](current-platform-status.md),
+> [WinUI authoring](../reference/winui-authoring.md) and [current build commands](building.md).
+
 Review baseline: `ca9e8088` (integration `bf5be092`), following physical PID 40476.
 This delivery adds a reference review and an opt-in diagnostic regression only.
 It does not change the renderer, scheduler, SDK, widgets or running candidate.

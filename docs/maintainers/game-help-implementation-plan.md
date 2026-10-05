@@ -2,7 +2,9 @@
 
 Status: Implementation accepted by the user on 2026-10-03; final automated closeout passed.
 Release: application 0.1.0-preview.25, SDK/CLI 0.4.1-dev. Local main integration and
-Inno installer generation are authorized; build provenance records their exact source commit.
+Inno installer generation are complete at `0d047517`; build provenance records
+the exact source commit. Both editions include Browser and Game Help. See
+[current platform status](current-platform-status.md) for the consolidated state.
 Updated: 2026-10-03. Branch: `codex/game-help-foundation`.
 Baseline: local main `8ec3e93d`. Merge `81f292a1` also carries the delivered
 preview.23 control-consistency fixes (`783182d6`, `55bc7d4d`) into this feature

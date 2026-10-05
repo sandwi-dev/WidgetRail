@@ -1,8 +1,8 @@
-# Hosted browser (physical qualification pending)
+# Hosted browser
 
-The protocol, SDK declaration, Browser intent receiver and native WebView owner
-are implemented. The Browser is included in the developer candidate for physical
-qualification before further Game Help work.
+The protocol, SDK declaration, Browser intent receiver and host-owned WebView2
+surface are implemented. Browser ships in both Production and Developer editions.
+It is also a reusable SDK element; widgets do not implement their own WebView.
 
 ```csharp
 UI.WebBrowser(new WebBrowserDocument(

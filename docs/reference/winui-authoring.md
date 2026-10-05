@@ -1,6 +1,6 @@
 # Authoring widgets for the WinUI frontend
 
-This guide describes the implemented migration-branch contract. Widgets publish
+This guide describes the current production WinUI contract. Widgets publish
 C# declarations; the trusted frontend creates and retains WinUI controls. Both
 sandboxed and full-trust workers use this boundary. Neither loads XAML objects,
 passes a `UIElement` across processes, nor owns a window or compositor.

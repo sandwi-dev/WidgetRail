@@ -6,8 +6,8 @@ limitations, see [publishing and installation](../../docs/developers/publishing-
 Global-theme authors should use [theme packaging and
 distribution](../../docs/developers/theme-packaging.md).
 
-The prototype CLI makes the controller-widget development loop usable before
-the graphical simulator exists. It has no third-party runtime dependencies.
+The CLI supports widget scaffolding, validation, packaging, installation and
+preview through the WinUI frontend. Its managed runtime must accompany the tool.
 The complete build output is one portable local artifact: copy `wrail.exe`, its
 sibling runtime/assembly files, and `templates\ControllerWidget` together. A
 copied output can scaffold and package an external widget without this checkout;

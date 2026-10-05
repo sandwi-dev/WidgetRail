@@ -22,10 +22,9 @@ bounds remain unchanged.
 For an unsigned Community package, the AppContainer profile identity includes
 the verified content digest. Changed package bytes therefore receive a new
 local-data namespace; exact reviewed bytes recover only their own namespace.
-Uninstall/profile cleanup, disk quotas, backup, migration between content
-generations, and a user-facing clear-local-data workflow are not implemented
-contracts. Applications must tolerate absent local data and keep their own file
-formats bounded and recoverable.
+AppContainer profile cleanup, disk quotas, backup and migration between content
+generations are not supported storage contracts. Applications must tolerate absent
+local data and keep their own file formats bounded and recoverable.
 
 ## No manifest permission
 
@@ -130,9 +129,12 @@ different state namespace even if the manifest repeats publisher, package, and
 version text. Exact verified bytes recover their previous namespace. A future
 signed publisher authority can provide intentional update continuity.
 
-Uninstall currently retains private state and tombstones. Reinstalling the same
-authenticated authority can recover them. A user-facing per-widget clear-local-
-data action is not implemented yet; uninstall must not be documented as data
+Uninstall retains private state and tombstones. Reinstalling the same
+authenticated authority can recover them. Settings provides a separate **Clear
+local data** action for overlay-owned private state. It stops the selected widget,
+clears that state and starts a fresh worker generation. It does not remove
+credentials, provider data, packages, themes, settings, arbitrary user files or
+the AppContainer filesystem profile described above. Uninstall alone is not data
 deletion.
 
 ## Bounds and storage guarantees

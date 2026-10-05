@@ -24,7 +24,7 @@ release notes for features available in each downloadable preview.
 2. **Open the overlay.** Launch WidgetRail from the Start menu, then press **View + Menu** together (the default shortcut) or **F1** on a keyboard. Press again to hide it. Use the D-pad or left stick to navigate and A to select, or use the mouse.
 3. **Allow widget permissions.** Open **Settings → Widgets** and select a widget you want to use. If it requests access, open **Permissions & configuration** and allow the permissions it needs, such as audio controls for Audio Mixer. Enable the widget if it is disabled.
 4. **Disable widgets you do not need.** From a widget's details, choose **Disable widget** to remove it from the tray. You can enable it again later; Settings itself remains available.
-5. **Adjust the overlay.** Open **Settings → Overlay** and check **Interface size**, **Position**, and **Widget switcher**. Adjust the size to fit your display, choose the layout you prefer, and enable startup at sign-in if needed.
+5. **Adjust the overlay.** Open **Settings → Overlay** and check **Interface size**, **Position**, and **Widget switcher**. Adjust the size to fit your display, and choose the layout you prefer. Startup at sign-in is offered by the installer.
 
 Before using WidgetRail in games, review the [recommended setup](#recommended-setup)
 for Windows controller shortcuts and display mode. See the
@@ -37,12 +37,12 @@ left stick. The right stick scrolls content, and a contextual guide shows the
 actions available for the current selection. Text fields support an on-screen
 controller keyboard.
 
-Enable **Settings → Controllers → Hold D-pad to scroll** for continuous vertical
-scrolling on a held press. Taps keep normal navigation; releasing lands on a
-visible item in the same column where possible.
+When no further control is available in a direction but its container can still
+scroll, D-pad/left-stick navigation scrolls the remaining content. The right
+stick also scrolls directly.
 
 When a selection has additional actions, the guide shows **Options** with its
-controller button. Tiles also show a small **⋯** indicator while focused.
+controller button. Focused tiles also show the glyph for their options button.
 
 - **Controller support:** Xbox-compatible controllers and native DualSense input over USB or Bluetooth. Controller hints use Xbox or PlayStation glyphs according to the detected input.
 - **Keyboard navigation:** arrows, Enter, and Escape provide focus, selection, and Back actions.
@@ -91,7 +91,9 @@ Both installer editions include the following widgets:
 | **Network Controls** | Toggle Wi-Fi and Bluetooth radios and view connection details. Connect or disconnect Wi-Fi, manage saved networks and automatic connection, and scan, pair, or remove Bluetooth devices. |
 | **Display Profiles** | Save the current monitor setup and restore it later. Confirm with Keep changes or let the previous setup restore automatically. |
 | **Power** | Sleep, restart, or shut down Windows. |
-| **Settings** | Configure layout, appearance, accessibility, controllers, startup, widgets, permissions, and diagnostics. |
+| **[Browser](docs/reference/widget-web-browser.md)** | Browse with a controller pointer, drag, zoom and text entry; open URLs or Google searches, use bookmarks/history and pin the page. |
+| **[Game Help](docs/reference/widget-capture-and-game-help.md)** | Ask Gemini about a game, attach a screenshot or five-second silent clip, expand detailed solutions and open suggested links. Requires the user's Gemini API key. |
+| **Settings** | Configure layout, appearance, accessibility, controllers, widgets, permissions, and diagnostics. |
 
 The tray displays local time, internet connectivity over Wi-Fi or Ethernet,
 and Bluetooth radio status. Available controls depend on Windows permissions,
@@ -129,7 +131,7 @@ display; they do not change Windows display scaling.
 | **Animations** | Choose Slide (default), Paging, Vertical slide, Reveal, Cover slide, or None for widget sections; choose Zoom (default) or Lift for dialogs; adjust widget animation speed from 0.5× to 2×; toggle dialog and widget-switch animations; follow Windows motion preferences or select Reduced motion. |
 | **Contrast and readability** | Follow Windows high contrast, enable High contrast, use Bold text, or reduce transparency. |
 | **Backdrop** | Adjust backdrop opacity from 0% to 80%. |
-| **Startup** | Start WidgetRail quietly when signing in to Windows. |
+| **Startup (installer)** | Start WidgetRail quietly when signing in to Windows; manage Windows disablement through Startup Apps. |
 | **Tray organization** | Reorder widget icons and reload a widget from its tray controls. |
 
 New installations use **Neon Circuit**, **Radial + rail**, centered placement,

@@ -1,5 +1,10 @@
 # Local preparation and structural publication
 
+> Historical native-renderer investigation. That renderer and its build/probe
+> commands are retired. The measurements and source paths below describe the
+> recorded revision, not production WinUI. Use [current platform status](current-platform-status.md),
+> [WinUI authoring](../reference/winui-authoring.md) and [current build commands](building.md).
+
 WIDGE-294 extends the existing native impact vocabulary and retained scene; it
 does not change the public SDK or permit widgets to authorize cache reuse.
 

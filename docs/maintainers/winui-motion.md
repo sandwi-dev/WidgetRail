@@ -6,8 +6,8 @@ It does not add widget settings or reinterpret declarations.
 `WidgetMotionOptions.From(appearance, systemAnimationsEnabled)` resolves System,
 Full and Reduced motion. Full overrides the OS preference; System follows it.
 Speed retains the existing 0.5–2 multiplier. Sections use 208 ms, dialogs 260 ms,
-focus Fade 240 ms and Settle 220 ms before applying speed. Slide and Zoom remain
-the defaults. Disabled/reduced motion commits the target immediately.
+focus Fade 240 ms and Settle 220 ms before applying speed. Slide, Zoom and Settle are
+the section, dialog and focus defaults. Disabled/reduced motion commits the target immediately.
 
 `WidgetMotionPolicy` compiles those preferences into presentation recipes:
 
@@ -85,10 +85,10 @@ Presenter integration requires explicit lifecycle hooks:
    never replay a same-key page. Cancel on owner retirement and dispose motion
    groups **before** targets and before dispatcher shutdown.
 
-This foundation deliberately does not retain old widget controls, semantic leases,
-or draw trees. The presenter must implement that ownership boundary before content
-transitions are enabled. Section transitions and focus decoration integration remain
-unfinished; applying them to a whole button would repeat the former color/text bug.
+The motion foundation does not itself own widget bindings. The presenter now
+implements outgoing XAML lifetime and input retirement through
+`WidgetViewPresenter.Transitions`; section, focus and modal-exit integration are
+described below. Focus decoration remains separate from button text/artwork.
 
 `WidgetDialogMotion` now connects actual presenter dialog openings to the existing
 native recipe and one scoped batch for panel and scrim. The host calls
@@ -99,8 +99,8 @@ policy changes and retirement settle/cancel motion. The surrounding widget-local
 modal layer retains clipping and input authority; its parent viewport does not move.
 The unclipped target factory is restricted to dialog-owned surfaces whose ancestor
 already clips them. It rejects inset recipes and does not overwrite that ancestor clip.
-Dialog dismissal remains immediate; retaining an inert outgoing surface for exit
-motion is part of the remaining transition-lifetime work.
+Dialog dismissal revokes input immediately. The presenter retains an inert
+outgoing dialog/scrim until exit completes; see Widget-local modal exit below.
 
 `WidgetFocusMotion(control, decoration, appearance, systemAnimationsEnabled)` is
 the concrete native-control adapter. Put its `Adornment` in the control's layout
@@ -128,7 +128,7 @@ those still require integrated desktop evidence.
 
 Grounded samples: `winapp find-ui --id gallery-xamlcompinterop-1`,
 `gallery-xamlcompinterop-3`, `gallery-implicittransition-1` (WinUI Gallery).
-Existing behavior references: `OverlayHost/WidgetAnimationPolicy.h`,
+Historical native-renderer behavior references: `OverlayHost/WidgetAnimationPolicy.h`,
 `WidgetInteractionMotion.h`, `WidgetProtocol/WidgetTransition.cs` and
 `winui-feature-contracts.md`.
 

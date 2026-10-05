@@ -1,13 +1,13 @@
 # WinUI 3 migration plan
 
-Status: active migration reference, updated 2026-09-29. WinUI 3 is the selected
-frontend; current implementation and evidence live in
-[the progress document](winui3-implementation-status.md). The user authorizes
-implementation off main and prioritizes complete feature/visual parity, smooth
-interaction, and good C# widget authoring over compatibility with old internal
-mechanisms. This document guides decisions; it is not a frozen checklist or a
-requirement to carry the native renderer into WinUI. The
-[Compose plan](compose-migration-plan.md) remains a historical alternative.
+Status: migration design record, superseded by the implemented production WinUI
+frontend on main. Reviewed 2026-10-03. The objectives, proposed projects and early
+gates below preserve the original plan; they are not remaining work assignments.
+See [Current platform status](current-platform-status.md) for current behavior,
+[WinUI authoring](../reference/winui-authoring.md) for the SDK contract and
+[release preparation](release-checklist.md) for unpackaged Inno distribution.
+The [implementation log](winui3-implementation-status.md) and
+[Compose alternative](compose-migration-plan.md) preserve historical evidence.
 
 ## Objective and constraints
 

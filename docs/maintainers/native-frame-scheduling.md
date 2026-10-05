@@ -1,5 +1,10 @@
 # Native frame scheduling and incremental composition (WIDGE-299)
 
+> Historical native-renderer investigation. That renderer and its build/probe
+> commands are retired. The measurements and source paths below describe the
+> recorded revision, not production WinUI. Use [current platform status](current-platform-status.md),
+> [WinUI authoring](../reference/winui-authoring.md) and [current build commands](building.md).
+
 Baseline: native integration `06fb530b`. The compositor spinner was physically
 smooth, but ordinary scrolling still cost about 10 ms of host CPU work and the
 last physical sample's page-change frames cost 21.7 ms median. Those observations

@@ -1,5 +1,10 @@
 # Native painting reuse
 
+> Historical native-renderer investigation. That renderer and its build/probe
+> commands are retired. The measurements and source paths below describe the
+> recorded revision, not production WinUI. Use [current platform status](current-platform-status.md),
+> [WinUI authoring](../reference/winui-authoring.md) and [current build commands](building.md).
+
 WIDGE-295 keeps Direct2D/DirectWrite/DirectComposition. It applies bounded resource
 reuse and immutable preparation; no graphics-library or SDK contract changes.
 
