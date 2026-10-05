@@ -12,6 +12,7 @@
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ForegroundDismissalPolicy.cs" Link="ForegroundDismissalPolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\StartupCatalogPolicy.cs" Link="StartupCatalogPolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\HeldActionRepeat.cs" Link="HeldActionRepeat.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\TextEntryRepeat.cs" Link="TextEntryRepeat.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Diagnostics\FrontendFailureLog.cs" Link="FrontendFailureLog.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\TextEntryEditing.cs" Link="TextEntryEditing.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\SliderValueState.cs" Link="SliderValueState.cs" />

@@ -11,6 +11,8 @@ internal sealed partial class WidgetViewPresenter
     private sealed record TextEntryPopup(Binding Owner, WidgetPresentationBinding Presentation, ViewNode Declaration, WidgetTextEntryDialog Dialog);
     private TextEntryPopup? textEntryPopup;
     private Task? textEntryLifetime;
+    internal WidgetTextEntryDialog? ControllerTextEntry => presentationInputEnabled && presentationActive && !disposed
+        ? textEntryPopup?.Dialog ?? FocusedBrowser?.Surface?.ControllerTextEntry : null;
 
     private static string TextEntryLabel(ViewNode node) =>
         (node.TextEntryInputKind == TextEntryInputKind.Sensitive || string.IsNullOrEmpty(node.TextEntryValue)
@@ -31,6 +33,7 @@ internal sealed partial class WidgetViewPresenter
         DismissTransientControl();
         var node = declarations[identity.Id].Node;
         var dialog = new WidgetTextEntryDialog(node, commit => _ = CompleteTextEntryAsync(commit));
+        dialog.GuideChanged = NotifyControllerGuideChanged;
         dialog.SetBinding(RequestedThemeProperty, new Microsoft.UI.Xaml.Data.Binding { Source = this, Path = new PropertyPath(nameof(ActualTheme)), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
         dialog.BindRoot(XamlRoot);
         dialog.ThemeLease = NativePopupTheme.Dialog(dialog, this);

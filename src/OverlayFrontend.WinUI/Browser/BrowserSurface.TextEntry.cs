@@ -8,6 +8,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal sealed partial class BrowserSurface
 {
     private WidgetTextEntryDialog? editDialog;
+    internal WidgetTextEntryDialog? ControllerTextEntry => input && interacting && !retired ? editDialog : null;
     private bool editPending;
     private long pageEpoch, editGeneration;
     internal bool HasDialog => editPending || editDialog is not null || libraryDialog is not null;
@@ -55,6 +56,7 @@ internal sealed partial class BrowserSurface
                 TextEntryPlaceholder = addressEntry ? "Search Google or enter a URL" : "Selected text field" },
                 commit => { accepted = commit; dialog!.Hide(); });
             dialog.BindRoot(XamlRoot);
+            dialog.GuideChanged = () => InteractionChanged?.Invoke();
             dialog.ThemeLease = NativePopupTheme.Dialog(dialog, this);
             editDialog = dialog; editPending = false;
             await dialog.ShowAsync();

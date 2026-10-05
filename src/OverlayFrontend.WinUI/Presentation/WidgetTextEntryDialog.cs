@@ -27,8 +27,13 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     private bool completed;
     private bool needsInitialFocus = true;
     private int secretCaret;
+    private readonly Input.TextEntryRepeat repeat = new();
+    private Button? rememberedKey;
     private Action<bool>? finish;
     internal IDisposable? ThemeLease { get; set; }
+    internal bool IsSensitive => password is not null;
+    internal bool PasswordVisible { get; private set; }
+    internal Action? GuideChanged { get; set; }
 
     internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish)
     {
@@ -66,23 +71,33 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             var key = AddKey("", "Key." + index, index / 10, index % 10, 1, () => Insert(Character(position)));
             characters.Add(key);
         }
-        AddKey("Shift", "Shift", 4, 0, 3, ToggleShift, ControllerPrompt.LeftTrigger);
-        AddKey("Symbols", "Symbols", 4, 3, 3, () => { symbols = !symbols; RefreshCharacters(); });
-        AddKey("Space", "Space", 4, 6, 4, () => Insert(" "));
-        AddKey("Backspace", "Backspace", 5, 0, 3, Backspace, ControllerPrompt.X);
-        AddKey("Clear", "Clear", 5, 3, 3, Clear, ControllerPrompt.Y);
+        AddKey("Left", "CaretLeft", 4, 0, 2, () => MoveCaret(-1), ControllerPrompt.LeftBumper);
+        AddKey("Right", "CaretRight", 4, 2, 2, () => MoveCaret(1), ControllerPrompt.RightBumper);
+        AddKey("Shift", "Shift", 4, 4, 2, ToggleShift, ControllerPrompt.LeftTrigger);
+        AddKey("Symbols", "Symbols", 4, 6, 2, () => { repeat.Reset(); symbols = !symbols; RefreshCharacters(); });
+        spaceKey = AddKey("Space", "Space", 4, 8, 2, () => Insert(" "));
+        AddKey("Backspace", "Backspace", 5, 0, IsSensitive ? 2 : 3, Backspace, ControllerPrompt.X);
+        AddKey("Clear", "Clear", 5, IsSensitive ? 2 : 3, IsSensitive ? 2 : 3, Clear, ControllerPrompt.Y);
+        if (IsSensitive) AddKey("Show", "Reveal", 5, 4, 2, TogglePassword, ControllerPrompt.RightStickPress);
         AddKey("Cancel", "Cancel", 5, 6, 2, () => Complete(false), ControllerPrompt.B);
         AddKey("Done", "Commit", 5, 8, 2, () => Complete(true), ControllerPrompt.RightTrigger);
         WidgetControllerPrompts.Changed += RefreshPrompts;
         RefreshPrompts();
         RefreshCharacters();
         body.Children.Add(keys);
+        InitializeCaret();
         Content = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         ApplyPopupMetrics(1, 16, new() { Weight = 400 }, null);
         GettingFocus += (_, args) =>
         {
             if (needsInitialFocus && !completed && args.TrySetNewFocusedElement(characters[10])) needsInitialFocus = false;
+        };
+        GotFocus += (_, _) =>
+        {
+            if (FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key))
+            { if (!ReferenceEquals(rememberedKey, key)) repeat.CancelCharacter(); rememberedKey = key; }
+            RefreshCaret();
         };
         Closing += (_, _) => { if (!completed) Complete(false); };
         AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
@@ -105,6 +120,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     internal bool HandleKeyboardKey(Windows.System.VirtualKey key, bool control = false, bool shift = false)
     {
         if (completed) return false;
+        repeat.Reset();
         if (key == Windows.System.VirtualKey.Escape) { Complete(false); return true; }
         var editorFocused = ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
         // The controller keyboard owns initial focus. A physical paste shortcut
@@ -121,6 +137,8 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         // Cancel. The commit shortcut applies only within the native editor.
         if (key == Windows.System.VirtualKey.Enter && editorFocused) { Complete(true); return true; }
         if (key == Windows.System.VirtualKey.Back && !editorFocused) { Backspace(); return true; }
+        if (!editorFocused && !control && !shift && key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right)
+        { MoveCaret(key == Windows.System.VirtualKey.Left ? -1 : 1); return true; }
         return false;
     }
 
@@ -129,6 +147,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         XamlRoot = root;
         root.Changed += RootChanged;
         ConstrainWidth();
+        ApplyCaretMetrics();
     }
     private void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ConstrainWidth();
     private void ConstrainWidth()
@@ -172,14 +191,18 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             else label.FontFamily = family;
         }
         ConstrainWidth();
+        ApplyCaretMetrics();
     }
     internal string TakeValue() => text?.Text ?? password?.Password ?? string.Empty;
     internal void Erase()
     {
+        repeat.Reset();
+        RetireCaret();
         ThemeLease?.Dispose(); ThemeLease = null;
         completed = true;
         if (XamlRoot is { } root) root.Changed -= RootChanged;
         finish = null;
+        GuideChanged = null;
         WidgetControllerPrompts.Changed -= RefreshPrompts;
         if (text is not null) text.Text = string.Empty;
         if (password is not null) password.Password = string.Empty;
@@ -194,8 +217,23 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     {
         if (completed) return;
         if (FocusManager.GetFocusedElement(XamlRoot) is not Button key || !commands.ContainsKey(key))
-        { characters[10].Focus(FocusState.Keyboard); return; }
-        FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = keys });
+        { (rememberedKey ?? characters[10]).Focus(FocusState.Keyboard); return; }
+        var row = Grid.GetRow(key);
+        Button? target = null;
+        if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right)
+        {
+            var peers = commands.Keys.Where(item => Grid.GetRow(item) == row).OrderBy(Grid.GetColumn).ToArray();
+            var index = Array.IndexOf(peers, key);
+            target = peers[(index + peers.Length + (direction == FocusNavigationDirection.Left ? -1 : 1)) % peers.Length];
+        }
+        else if (direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down)
+        {
+            var nextRow = (row + keys.RowDefinitions.Count + (direction == FocusNavigationDirection.Up ? -1 : 1)) % keys.RowDefinitions.Count;
+            var center = Grid.GetColumn(key) + Grid.GetColumnSpan(key) / 2d;
+            target = commands.Keys.Where(item => Grid.GetRow(item) == nextRow)
+                .OrderBy(item => Math.Abs(Grid.GetColumn(item) + Grid.GetColumnSpan(item) / 2d - center)).FirstOrDefault();
+        }
+        target?.Focus(FocusState.Keyboard);
     }
     internal void Activate()
     {
@@ -204,10 +242,13 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
     {
         if (completed || phase == ControllerEventPhase.Released) return;
-        if (phase == ControllerEventPhase.Repeated && button is not (ControllerButton.X or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.DPadUp or ControllerButton.DPadDown or ControllerButton.DPadLeft or ControllerButton.DPadRight)) return;
+        if (phase == ControllerEventPhase.Repeated && button is not (ControllerButton.A or ControllerButton.X or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.DPadUp or ControllerButton.DPadDown or ControllerButton.DPadLeft or ControllerButton.DPadRight)) return;
+        if (button is ControllerButton.X or ControllerButton.LeftBumper or ControllerButton.RightBumper) FocusControllerKey();
         switch (button)
         {
-            case ControllerButton.A: Activate(); break;
+            case ControllerButton.A:
+                if (phase != ControllerEventPhase.Repeated || CharacterRepeatIdentity is not null) Activate();
+                break;
             case ControllerButton.B: Complete(false); break;
             case ControllerButton.X: Backspace(); break;
             case ControllerButton.Y: Clear(); break;
@@ -215,6 +256,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             case ControllerButton.RightTrigger: Complete(true); break;
             case ControllerButton.LeftBumper: MoveCaret(-1); break;
             case ControllerButton.RightBumper: MoveCaret(1); break;
+            case ControllerButton.RightStick: TogglePassword(); break;
             case ControllerButton.DPadUp: MoveFocus(FocusNavigationDirection.Up); break;
             case ControllerButton.DPadDown: MoveFocus(FocusNavigationDirection.Down); break;
             case ControllerButton.DPadLeft: MoveFocus(FocusNavigationDirection.Left); break;
@@ -248,22 +290,52 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             WidgetGlyphs.Apply(icon, new ViewNode { Id = "keyboard.prompt", Kind = ViewNodeKind.ControllerGlyph, ControllerPrompt = prompt }, WidgetControllerPrompts.PlayStation);
             AutomationProperties.SetName(key, label + ", " + WidgetGlyphs.AccessibleName(prompt, WidgetControllerPrompts.PlayStation));
         }
+        RefreshRevealLabel();
+    }
+    private void TogglePassword()
+    {
+        if (completed || password is null) return;
+        repeat.Reset();
+        PasswordVisible = !PasswordVisible;
+        password.PasswordRevealMode = PasswordVisible ? PasswordRevealMode.Visible : PasswordRevealMode.Hidden;
+        RefreshRevealLabel(); RefreshCaret(); GuideChanged?.Invoke();
+    }
+    private void RefreshRevealLabel()
+    {
+        foreach (var (key, _, prompt, _) in prompts)
+            if (prompt == ControllerPrompt.RightStickPress)
+            {
+                var label = PasswordVisible ? "Hide" : "Show";
+                ((TextBlock)((StackPanel)key.Content).Children[1]).Text = label;
+                AutomationProperties.SetName(key, label + " password, " + WidgetGlyphs.AccessibleName(prompt, WidgetControllerPrompts.PlayStation));
+                AutomationProperties.SetItemStatus(key, PasswordVisible ? "Visible" : "Hidden");
+            }
     }
     private string Character(int index) => symbols ? Symbols[index % Symbols.Length].ToString() :
         uppercase ? char.ToUpperInvariant(Letters[index]).ToString() : Letters[index].ToString();
     private void RefreshCharacters()
     {
         for (var index = 0; index < characters.Count; ++index) characters[index].Content = Character(index);
+        foreach (var (key, _, prompt, label) in prompts)
+            if (prompt == ControllerPrompt.LeftTrigger)
+            {
+                ((TextBlock)((StackPanel)key.Content).Children[1]).Text = uppercase && !symbols ? "ABC" : "Shift";
+                AutomationProperties.SetItemStatus(key, uppercase && !symbols ? "Uppercase" : "Lowercase");
+            }
+        var symbolKey = commands.Keys.FirstOrDefault(key => AutomationProperties.GetAutomationId(key) == "Widget.TextEntry.Symbols");
+        if (symbolKey is not null) { symbolKey.Content = symbols ? "ABC" : "Symbols"; AutomationProperties.SetItemStatus(symbolKey, symbols ? "Symbols" : "Letters"); }
     }
-    private void ToggleShift() { uppercase = !uppercase; symbols = false; RefreshCharacters(); }
+    private void ToggleShift() { repeat.Reset(); uppercase = !uppercase; symbols = false; RefreshCharacters(); }
     private void Complete(bool commit)
     {
         if (completed) return;
         completed = true;
+        repeat.Reset();
         finish?.Invoke(commit);
     }
     private void Clear()
     {
+        repeat.Reset();
         if (text is not null) text.Text = string.Empty;
         if (password is not null) password.Password = string.Empty;
     }
@@ -271,6 +343,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     {
         if (text is not null) text.Select(TextEntryEditing.Move(text.Text, text.SelectionStart, text.SelectionLength, delta), 0);
         else if (password is not null) secretCaret = TextEntryEditing.Move(password.Password, secretCaret, 0, delta);
+        RefreshCaret();
     }
     private void Insert(string value)
     {
@@ -286,6 +359,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             password.Password = edit.Value;
             secretCaret = edit.Caret;
         }
+        RefreshCaret();
     }
     private void Backspace()
     {
@@ -299,5 +373,22 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             var edit = TextEntryEditing.Backspace(password.Password, secretCaret, 0);
             password.Password = edit.Value; secretCaret = edit.Caret;
         }
+        RefreshCaret();
+    }
+
+    private readonly Button spaceKey;
+    private object? CharacterRepeatIdentity => FocusManager.GetFocusedElement(XamlRoot) is Button key &&
+        (characters.Contains(key) || ReferenceEquals(key, spaceKey)) ? (key, key.Content) : null;
+    internal void ResetRepeat() => repeat.Reset();
+    internal void SampleHeldButtons(ushort down, ushort pressed, long now)
+    {
+        if (completed) { repeat.Reset(); return; }
+        if (repeat.Sample(down, pressed, CharacterRepeatIdentity, now) is { } button)
+            Handle(button, ControllerEventPhase.Repeated);
+    }
+    private void FocusControllerKey()
+    {
+        if (FocusManager.GetFocusedElement(XamlRoot) is not Button key || !commands.ContainsKey(key))
+            (rememberedKey ?? characters[10]).Focus(FocusState.Keyboard);
     }
 }

@@ -40,6 +40,18 @@ internal sealed partial class WidgetViewPresenter
     internal IReadOnlyList<ControllerGuideHint> CaptureControllerGuide()
     {
         if (disposed || applying || presentationOnly || !presentationActive || presentation is null) return [];
+        if (ControllerTextEntry is { } keyboard)
+            return (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Navigate"),
+                new(ControllerPrompt.A, "Type (hold to repeat)", ControllerButton.A),
+                new(ControllerPrompt.X, "Delete (hold to repeat)", ControllerButton.X),
+                new(ControllerPrompt.LeftBumper, "Caret left", ControllerButton.LeftBumper),
+                new(ControllerPrompt.RightBumper, "Caret right", ControllerButton.RightBumper),
+                new(ControllerPrompt.LeftTrigger, "Shift", ControllerButton.LeftTrigger),
+                new(ControllerPrompt.Y, "Clear", ControllerButton.Y),
+                new(ControllerPrompt.RightTrigger, "Done", ControllerButton.RightTrigger),
+                new(ControllerPrompt.B, "Cancel", ControllerButton.B),
+                .. (keyboard.IsSensitive ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress,
+                    keyboard.PasswordVisible ? "Hide password" : "Show password", ControllerButton.RightStick)] : [])];
         if (HasTransientControl) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)];
         if (FocusedMediaPlayer is { HasDialog: true, CanControl: false })
             return (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)];

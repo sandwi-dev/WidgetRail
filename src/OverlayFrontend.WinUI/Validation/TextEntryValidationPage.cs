@@ -23,6 +23,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
     private long sequence;
     private long owner = 1;
     private string value = "ab";
+    private int maximumLength = 4;
     private string action = "commit";
     private bool sensitive;
     private bool disabled;
@@ -46,7 +47,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
         Loaded += (_, _) =>
         {
             if (Environment.GetCommandLineArgs().Contains("--text-entry-preview"))
-            { Apply(); status.Text = "Text entry preview — activate the field"; }
+            { maximumLength = 256; value = "Keyboard preview — move the caret with LB/RB"; Apply(); status.Text = "Text entry preview — activate the field"; }
             else run ??= RunAsync();
         };
     }
@@ -82,8 +83,18 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
             presenter.MoveFocus(FocusNavigationDirection.Right);
             Check(FocusedId == "Widget.TextEntry.Key.11", "controller navigation uses native keyboard geometry");
             presenter.MoveFocus(FocusNavigationDirection.Left);
-            for (var i = 0; i < 8; ++i) presenter.MoveFocus(FocusNavigationDirection.Up);
-            Check(FocusedId == "Widget.TextEntry.Key.0", "controller boundary stays inside virtual keyboard");
+            presenter.MoveFocus(FocusNavigationDirection.Left);
+            Check(FocusedId == "Widget.TextEntry.Key.19", "left edge wraps to the final key in the same row");
+            presenter.MoveFocus(FocusNavigationDirection.Right);
+            Check(FocusedId == "Widget.TextEntry.Key.10", "right edge wraps back to the first key");
+            presenter.MoveFocus(FocusNavigationDirection.Up);
+            presenter.MoveFocus(FocusNavigationDirection.Up);
+            Check(FocusedId == "Widget.TextEntry.Backspace", "top edge wraps to aligned bottom action");
+            presenter.MoveFocus(FocusNavigationDirection.Left);
+            Check(FocusedId == "Widget.TextEntry.Commit", "action row wraps at its own width");
+            presenter.MoveFocus(FocusNavigationDirection.Down);
+            Check(FocusedId == "Widget.TextEntry.Key.8", "bottom edge wraps to aligned top character");
+            ((Control)FindDialog("Widget.TextEntry.Key.0")!).Focus(FocusState.Keyboard);
             presenter.MoveFocus(FocusNavigationDirection.Down);
             presenter.SetControllerFamily(WidgetRail.OverlayPlatformClient.ControllerFamily.PlayStation);
             Check(AutomationProperties.GetName(FindDialog("Widget.TextEntry.Commit")!) == "Done, R2 trigger", "open keyboard follows controller prompt family");
@@ -165,6 +176,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
             await VerifyPopupScalingAsync();
             await VerifyKeyboardActivationAsync();
             await VerifyPasteAsync();
+            await VerifyControllerEditingAsync();
             await Open(); await presenter.DisposeAsync(); await Closed(); Check(!presenter.HasTransientControl, "disposal retires keyboard");
             status.Text = $"Passed {checks.Count} TextEntry checks"; Write(new { result = "passed", checks });
         }
@@ -251,7 +263,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
         var snapshot = new ViewSnapshot { WidgetInstanceId = "text.instance", Sequence = ++sequence,
             ActiveInputScopeId = otherScope ? "other" : "page", InitialFocusId = otherScope ? "other.button" : "entry",
             Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
-                new() { Id = "entry", Kind = ViewNodeKind.TextEntry, AccessibilityLabel = "Text entry", TextEntryValue = value, TextEntryPlaceholder = "Enter text", TextEntryMaximumLength = 4,
+                new() { Id = "entry", Kind = ViewNodeKind.TextEntry, AccessibilityLabel = "Text entry", TextEntryValue = value, TextEntryPlaceholder = "Enter text", TextEntryMaximumLength = maximumLength,
                     TextEntryInputKind = sensitive ? TextEntryInputKind.Sensitive : null, ActionId = action, IsDisabled = disabled },
                 new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "other.button", Kind = ViewNodeKind.Button, Text = "Other", ActionId = "other" }] }

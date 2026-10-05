@@ -18,6 +18,36 @@ with F1, enable **Settings → Controllers → F1 keyboard shortcut**. This is o
 default, leaving F1 available to other applications until enabled.
 Text fields can use the built-in controller keyboard.
 
+## Controller keyboard
+
+The D-pad and left stick wrap around the keyboard's rows and top/bottom edges.
+Use A/Cross to type the selected character or activate an action.
+
+| Input | Keyboard action |
+|---|---|
+| Hold A/Cross on a character or Space | Repeat that character |
+| X/Square (hold to repeat) | Delete before the caret |
+| LB/RB (L1/R1; hold to repeat) | Move the caret left/right |
+| LT/L2 | Toggle uppercase letters |
+| Y/Triangle | Clear the draft |
+| RT/R2 | Submit the draft |
+| B/Circle | Cancel |
+| R3, for private text | Show/hide the password |
+
+Repeats begin after 400 ms and continue every 90 ms. Moving to another key or
+changing the character layer cancels a held character. Actions such as Clear,
+Done, Cancel, Shift and Show/Hide never repeat.
+
+The caret remains visible while controller keys have focus. Private text starts
+hidden whenever an editor opens. Switching from native mouse/keyboard editing
+of a password back to controller editing starts the controller caret at the end;
+use LB/RB to position it. Ordinary text retains its native selection.
+
+Physical keyboard paste remains available, including Ctrl+V and Shift+Insert.
+When a virtual key has focus, physical Left/Right move the text caret; Enter and
+Space activate the selected key. Enter submits when the text editor has focus.
+Hiding the overlay or leaving the widget cancels an unsubmitted edit.
+
 ## Choose a widget switcher
 
 In **Settings → Overlay → Widget switcher**, choose **Radial + rail** (the default

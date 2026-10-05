@@ -22,6 +22,24 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
+        var keyboard = (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
+        var delivered = false;
+        try { ReceiveCore(frame, out delivered); }
+        finally
+        {
+            var current = (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
+            if (keyboard is not null)
+            {
+                if (delivered && (foreground || PinnedInputActive) && ReferenceEquals(keyboard, current))
+                    keyboard.SampleHeldButtons(frame.State.Buttons, frame.PressedButtons, Environment.TickCount64);
+                else keyboard.ResetRepeat();
+            }
+        }
+    }
+
+    private void ReceiveCore(ControllerFrame frame, out bool delivered)
+    {
+        delivered = false;
         if (ReceiveLocalInstall(frame)) return;
         if (ReceiveHostChoice(frame)) return;
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
@@ -102,6 +120,7 @@ internal sealed partial class OverlayShellPage
         if (frame.RightTriggerPressed != 0) BeginTrigger(ControllerButton.RightTrigger);
         if (frame.RightTriggerReleased != 0) _ = RouteButtonAsync(ControllerButton.RightTrigger, ControllerEventPhase.Released);
         PumpHeldAction(frame);
+        delivered = true;
     }
 
     private void FocusDirectionalTray()

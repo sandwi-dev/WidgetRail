@@ -552,7 +552,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         // The main HWND also deactivates when focus transfers to the pinned
         // peer. That peer owns its activation/loss notifications; treating
         // main deactivation as pin loss would cancel the handoff itself.
-        if (!value) { heldAction.Reset(); ResetTrayInteraction(); }
+        if (!value) { heldAction.Reset(); surface?.ControllerTextEntry?.ResetRepeat(); ResetTrayInteraction(); }
         surface?.SetAutomaticFocusEnabled(MainFocusEnabled);
         ReconcileMediaHostState();
         _ = ReconcileLifecycleAsync(restore: false);
