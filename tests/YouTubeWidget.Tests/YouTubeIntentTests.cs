@@ -11,6 +11,32 @@ public sealed partial class YouTubeWidgetTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
+    public async Task SearchIntentFromPlayerMovesRouteAndFocusTogether(bool hasVideo)
+    {
+        var widget = await CreateConfiguredSearchWidgetAsync();
+        try
+        {
+            await widget.OnActionAsync(new("youtube.section.next", "youtube.section.next"));
+            if (hasVideo) await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+            var before = widget.RenderSnapshot("intent-route", 1);
+            Assert.AreEqual("youtube.player.page", before.FocusGroupEntryRequest?.GroupId);
+            var request = WidgetIntentRequest.Create(WidgetIntentContracts.VideoSearch,
+                JsonSerializer.SerializeToElement(new { provider = "youtube", query = "boss guide" }));
+            Assert.AreEqual(WidgetIntentResult.Accepted, await widget.OnIntentAsync(request));
+            var after = widget.RenderSnapshot("intent-route", 2);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(after).Count,
+                string.Join("; ", ViewSnapshotValidator.Validate(after).Select(error => error.ToString())));
+            Assert.AreEqual("youtube.search.page", after.FocusGroupEntryRequest?.GroupId);
+            Assert.IsTrue(after.FocusGroupEntryRequest!.RequestId > before.FocusGroupEntryRequest!.RequestId);
+            Assert.IsTrue(Descendants(after.Root).Any(node => node.TextEntryValue == "boss guide"));
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+        static IEnumerable<ViewNode> Descendants(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Descendants));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
     public async Task SearchIntentReadsConfigurationInBackgroundAndOpensDiscover(bool configured)
     {
         var service = new FakeApplicationService(configured);

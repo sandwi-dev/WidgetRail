@@ -40,6 +40,7 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
     private bool parked;
     private long snapshotSequence;
     private int resolveCount;
+    private bool rejectRefresh;
     private readonly Dictionary<string, EmbeddedMediaSession?> publishedMedia = [];
     private readonly Dictionary<string, long> publishedSequences = [];
     private bool retired;
@@ -74,6 +75,12 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
             status.Text = "Connecting fixture session";
             session = await PresentationSession.ConnectAsync(pipeName);
             await session.ListWidgetsAsync();
+            if (Environment.GetCommandLineArgs().Contains("--validate-media-failure-admission"))
+            {
+                await CheckFailedSnapshotAdmissionAsync();
+                Write(new { passed = true, phase = "failure-admission", checks, diagnostics, resolveCount });
+                return;
+            }
             status.Text = "Admitting sealed media document";
             var frame = await SnapshotAsync();
             var document = await session.ResolveEmbeddedMediaAsync(frame.Authority);
@@ -295,6 +302,12 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                 case "stop":
                     await ReplyAsync(request.RequestId, type, body); return;
                 case "set-widget-lifecycle": case "get-snapshot":
+                    if (rejectRefresh && request.Type == "get-snapshot")
+                    {
+                        type = "error";
+                        body = new { code = "worker_protocol_validation_failed", message = "Fixture rejected a stale focus target." };
+                        break;
+                    }
                     type = "snapshot";
                     var snapshotWidget = request.Payload.GetProperty("widgetId").GetString()!;
                     var snapshotDescriptor = FixtureDescriptors().Single(value => value.Id == snapshotWidget);

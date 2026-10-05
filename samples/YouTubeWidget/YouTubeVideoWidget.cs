@@ -56,8 +56,10 @@ public sealed partial class YouTubeVideoWidget : Widget
             if (!IsActive || !await IsIntentAvailableAsync(request, cancellationToken).ConfigureAwait(false)) return WidgetIntentResult.Rejected;
             cancellationToken.ThrowIfCancellationRequested();
             var query = request.Payload.GetProperty("query").GetString()!.Trim();
-            _model.Update(state => state.WithConfigurationSummary(true).WithQueryDraft(query)
-                .WithRootSection(YouTubeRootSection.Discover, SearchFocusGroupId));
+            // Move route and focus before configuration can select Search for
+            // an empty player; otherwise its old Player focus request survives.
+            _model.Update(state => state.WithRootSection(YouTubeRootSection.Discover, SearchFocusGroupId)
+                .WithConfigurationSummary(true).WithQueryDraft(query));
             StartSearch();
             return WidgetIntentResult.Accepted;
         }

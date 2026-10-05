@@ -171,7 +171,10 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     {
         if (!visible || widgetId != activeWidget || !viewports.TryGetValue(widgetId, out var candidate) ||
             candidate.Element.Retired || !candidate.Element.IsLoaded || !AncestorsVisible(candidate.Element)) return null;
-        var frame = session.GetState(widgetId)?.LastGood;
+        // LastGood may be retained for error presentation after a failed refresh.
+        // It is not fresh media admission authority. Retiring and recreating an
+        // entry from it would synchronously retry the same rejected document.
+        var frame = session.GetState(widgetId) is { Failure: null } state ? state.LastGood : null;
         // Compatible publication must not park/reparent live pixels before the
         // presenter applies it. Epoch authority still retires changed documents;
         // native layout owns placement of this surviving logical viewport.
