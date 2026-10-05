@@ -98,6 +98,8 @@ $requiredFiles = @(
     'payload\YouTubeApplication.dll',
     'payload\YouTubeWidget.dll',
     'payload\WidgetApplicationRuntime.dll',
+    # Shared host-service client protocol used by WidgetApplicationRuntime.
+    'payload\PlatformBroker.dll',
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
     'payload\media\adapter.html',
@@ -110,7 +112,7 @@ $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEac
 $missingFiles = @($requiredFiles | Where-Object { $_ -notin $stagedFiles })
 $forbiddenFiles = @($stagedFiles | Where-Object {
     $_ -match '\.(pdb|xml)$' -or
-    $_ -match '(^|\\)(PlatformBroker|WindowsSpotifyProvider|PlatformSettings)\.dll$'
+    $_ -match '(^|\\)(WindowsSpotifyProvider|PlatformSettings)\.dll$'
 })
 if ($forbiddenFiles.Count -ne 0 -or $missingFiles.Count -ne 0) {
     throw "Staged package graph mismatch. Forbidden: [$($forbiddenFiles -join ', ')]; missing: [$($missingFiles -join ', ')]."

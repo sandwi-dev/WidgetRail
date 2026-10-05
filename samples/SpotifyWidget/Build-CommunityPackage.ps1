@@ -211,6 +211,8 @@ $requiredFiles = @(
     'payload\SpotifyPlaybackProtocol.dll',
     'payload\SpotifyWidget.dll',
     'payload\WidgetApplicationRuntime.dll',
+    # Shared host-service client protocol used by WidgetApplicationRuntime.
+    'payload\PlatformBroker.dll',
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
     'payload\WebView2Loader.dll',
@@ -221,7 +223,7 @@ if ($missingFiles.Count -ne 0) {
     throw "Staged Spotify application is incomplete. Missing: [$($missingFiles -join ', ')]."
 }
 $forbiddenFiles = @($stagedFiles | Where-Object {
-    $_ -match '(^|\\)(PlatformBroker|WindowsSpotifyProvider|PlatformSettings)\.dll$' -or
+    $_ -match '(^|\\)(WindowsSpotifyProvider|PlatformSettings)\.dll$' -or
     $_ -match '\.(pdb|xml)$'
 })
 if ($forbiddenFiles.Count -ne 0) {
