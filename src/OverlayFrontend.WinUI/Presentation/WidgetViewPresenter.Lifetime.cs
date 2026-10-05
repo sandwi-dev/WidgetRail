@@ -62,6 +62,9 @@ internal sealed partial class WidgetViewPresenter
         }
         if (active)
         {
+            foreach (var icon in buttonIcons.Values) icon.RetryTransientFailure();
+            foreach (var binding in bindings.Values)
+                if (binding.Element is WidgetPackageIconView icon) icon.RetryTransientFailure();
             QueueSurfaceUpdate(); QueueMediaRefresh();
         }
         else work.AddRange(retirements.ToArray());

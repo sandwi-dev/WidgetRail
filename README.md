@@ -21,7 +21,7 @@ preview software; this README describes the current source version. Check the
 release notes for features available in each downloadable preview.
 
 1. **Install WidgetRail.** Download an installer from [GitHub Releases](https://github.com/sandwi-dev/WidgetRail/releases). Choose **Production** for everyday use or **Developer** for additional SDK examples. Both editions include the CLI and widget templates.
-2. **Open the overlay.** Launch WidgetRail from the Start menu, then press **View + Menu** together (the default shortcut) or **F1** on a keyboard. Press again to hide it. Use the D-pad or left stick to navigate and A to select, or use the mouse.
+2. **Open the overlay.** Launch WidgetRail from the Start menu, then press **View + Menu** together (the default shortcut). Press again to hide it. Optional **F1** keyboard opening can be enabled in **Settings → Controllers → F1 keyboard shortcut**; it is off by default. Use the D-pad or left stick to navigate and A to select, or use the mouse.
 3. **Allow widget permissions.** Open **Settings → Widgets** and select a widget you want to use. If it requests access, open **Permissions & configuration** and allow the permissions it needs, such as audio controls for Audio Mixer. Enable the widget if it is disabled.
 4. **Disable widgets you do not need.** From a widget's details, choose **Disable widget** to remove it from the tray. You can enable it again later; Settings itself remains available.
 5. **Adjust the overlay.** Open **Settings → Overlay** and check **Interface size**, **Position**, and **Widget switcher**. Adjust the size to fit your display, and choose the layout you prefer. Startup at sign-in is offered by the installer.
@@ -287,4 +287,3 @@ You can reuse the examples and choose a license for your own widgets.
 Third-party dependencies retain their respective licenses.
 
 [Contributing](CONTRIBUTING.md) · [Issue tracker](https://github.com/sandwi-dev/WidgetRail/issues) · [Licensing](LICENSING.md)
-

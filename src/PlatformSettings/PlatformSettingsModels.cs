@@ -152,6 +152,8 @@ public enum ControllerOpenShortcut { Guide, ViewMenu }
 
 public sealed record ControllerSettings
 {
+    /// <summary>Opt-in global F1 overlay toggle. Missing values remain disabled.</summary>
+    public bool F1ShortcutEnabled { get; init; }
     public bool ExclusiveControl { get; init; }
     public long Revision { get; init; }
     public ControllerOpenShortcut OpenShortcut { get; init; } = ControllerOpenShortcut.ViewMenu;

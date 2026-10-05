@@ -4,7 +4,7 @@ using WinUIEx.Messaging;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Input;
 
-/// <summary>Window-owned global F1 fallback; independent of controller settings and widget lifetime.</summary>
+/// <summary>Window-owned global F1 toggle, created only while the user's shortcut preference is enabled.</summary>
 internal sealed partial class OverlayKeyboardShortcut : IDisposable
 {
     private const int HotkeyId = 1;

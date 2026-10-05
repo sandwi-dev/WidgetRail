@@ -13,7 +13,9 @@ current focus. A widget can provide its own shortcuts.
 | Menu on the tray | Open widget/pinning options |
 | Y on the tray | Reorder widgets; hold to reload the selected widget |
 
-With a keyboard, use arrows, Enter and Escape to navigate. F1 toggles the overlay.
+With a keyboard, use arrows, Enter and Escape to navigate. To toggle the overlay
+with F1, enable **Settings → Controllers → F1 keyboard shortcut**. This is off by
+default, leaving F1 available to other applications until enabled.
 Text fields can use the built-in controller keyboard.
 
 ## Choose a widget switcher

@@ -2,7 +2,8 @@
 
 ## The overlay does not open
 
-Use **View + Menu** together on one controller, or try **F1** with a keyboard.
+Use **View + Menu** together on one controller, or try **F1** with a keyboard if
+you enabled **Settings → Controllers → F1 keyboard shortcut** (off by default).
 The opening shortcut can be changed to Guide in Settings. Release both buttons
 after reconnecting a controller before trying the shortcut again.
 

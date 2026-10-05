@@ -7,6 +7,41 @@ using WidgetRail.WidgetSdk;
 
 internal static class ControllerSettingsScenarios
 {
+    public static async Task F1ShortcutPreference()
+    {
+        if (new ControllerSettings().F1ShortcutEnabled || JsonSerializer.Deserialize<ControllerSettings>("{}")!.F1ShortcutEnabled)
+            throw new Exception("Fresh and existing profiles must leave F1 available to other applications by default.");
+        var root = Path.Combine(Path.GetTempPath(), "wrail-f1-settings-" + Guid.NewGuid().ToString("N"));
+        var store = new PlatformSettingsStore(new(root));
+        var widget = new SettingsWidget(store: store);
+        try
+        {
+            await widget.InitializeAsync(default);
+            await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
+            await widget.InitializationTask;
+            await widget.OnActionAsync(new("controllers.f1-shortcut.toggle", "controllers.f1-shortcut"));
+            if ((await store.LoadAsync()).Controllers.F1ShortcutEnabled)
+                throw new Exception("A stale F1 setting action outside Controllers must not change the preference.");
+            await widget.OnActionAsync(new("open.controllers", "test"));
+            var before = (await store.LoadAsync()).Controllers;
+            var snapshot = widget.Render().CreateSnapshot("settings", 1);
+            if (!JsonSerializer.Serialize(snapshot).Contains("controllers.f1-shortcut") || ViewSnapshotValidator.Validate(snapshot).Count != 0)
+                throw new Exception("Controllers must expose a valid F1 setting.");
+            await widget.OnActionAsync(new("controllers.f1-shortcut.toggle", "controllers.f1-shortcut"));
+            var saved = (await new PlatformSettingsStore(new(root)).LoadAsync()).Controllers;
+            if (!saved.F1ShortcutEnabled || saved with { F1ShortcutEnabled = false } != before)
+                throw new Exception("F1 opt-in must persist independently of controller shortcut, scrolling, and isolation.");
+            await widget.OnActionAsync(new("controllers.f1-shortcut.toggle", "controllers.f1-shortcut"));
+            if ((await store.LoadAsync()).Controllers.F1ShortcutEnabled)
+                throw new Exception("F1 opt-in must be reversible.");
+        }
+        finally
+        {
+            await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
     public static async Task HostFeatures()
     {
         var root = Path.Combine(Path.GetTempPath(), "wrail-host-features-" + Guid.NewGuid().ToString("N"));

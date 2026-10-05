@@ -48,7 +48,8 @@ These choices are optional. WidgetRail does not change these Windows settings fo
 
 Press **View + Menu** together. Press the same shortcut again to hide it.
 You can choose **Guide** instead in **Settings → Controllers → Controller shortcut**;
-both the Xbox Guide button and PlayStation PS button are supported. **F1** is the keyboard fallback.
+both the Xbox Guide button and PlayStation PS button are supported. For keyboard
+opening, enable **Settings → Controllers → F1 keyboard shortcut**. It is off by default.
 
 The row of widget icons is the **tray**. Choose an icon to open its widget.
 Use the on-screen controller guide to discover the actions available at your

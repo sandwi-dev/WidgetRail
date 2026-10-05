@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.game-help",
   "publisher": "widgetrail.samples",
   "name": "Game Help",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "pinningSupported": true,
   "fullWidgetPinningSupported": true,
   "hostApi": {
@@ -15,7 +15,16 @@
     "executable": "payload/GameHelpApplication.exe"
   },
   "presentation": {
-    "icon": "connection"
+    "icon": "connection",
+    "packageIcon": {
+      "assetId": "game-help.mark",
+      "colorMode": "originalColor"
+    }
+  },
+  "iconAssets": {
+    "game-help.mark": {
+      "path": "assets/icons/game-help.svg"
+    }
   },
   "permissions": [
     "system.apps.windows.capture.v1",

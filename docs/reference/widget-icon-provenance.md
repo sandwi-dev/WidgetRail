@@ -4,7 +4,7 @@ WidgetRail package icons are sealed package resources admitted through the publi
 `presentation.packageIcon` and `iconAssets` manifest contract. Every icon keeps
 the manifest's semantic `presentation.icon` as its deterministic fallback.
 
-The following WIDGE-207 icons are original WidgetRail project artwork. They were
+The following icons are original WidgetRail project artwork. They were
 authored as small static SVG silhouettes for original-color presentation and do
 not derive from an external icon library:
 
@@ -18,6 +18,8 @@ not derive from an external icon library:
 | Playnite Library | `playnite-library.mark` | `samples/PlayniteLibraryWidget/assets/icons/playnite-library.svg` |
 | Clock | `clock.mark` | `samples/ClockWidget/assets/icons/clock.svg` |
 | Full Application Reference | `full-application.mark` | `samples/FullApplicationWidget/assets/icons/full-application.svg` |
+| Browser | `browser.mark` | `samples/BrowserWidget/assets/icons/browser.svg` |
+| Game Help | `game-help.mark` | `samples/GameHelpWidget/assets/icons/game-help.svg` |
 
 YouTube Music uses `ytmusic.mark` from
 `samples/YtMusicWidget/assets/icons/yt-music.svg`: a project-authored geometric

@@ -12,8 +12,13 @@ meaningful actions for the currently active view.
 | Open widget | Focus, controls, scoped shortcuts, and Back operate within the widget |
 | Pin controls | Placement and size actions follow the pin-control guide |
 
-F1 is the desktop toggle fallback. Settings lets the user choose one controller
-opening shortcut at a time; View + Menu is the default.
+F1 is an optional desktop toggle, disabled by default. Enable it in
+**Settings → Controllers → F1 keyboard shortcut**. The preference is persisted
+as `controllers.f1ShortcutEnabled`; profiles that omit it also default to off.
+The WinUI window registers F1 only while enabled, including hidden startup, and
+releases the registration when disabled. Changes apply without restarting.
+Settings also lets the user choose one controller opening shortcut at a time;
+View + Menu is the default.
 
 When options are available, the guide shows **Options** beside the button that
 opens them (Menu, X or Y, with the current controller's glyph). Focused tiles also

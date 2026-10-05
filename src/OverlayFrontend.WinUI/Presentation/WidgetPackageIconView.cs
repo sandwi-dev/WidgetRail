@@ -15,7 +15,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
     private readonly WidgetNativePackageIcon icon;
     private readonly List<(Shell.OverlayScaleRoot Root, long Token)> zoomRoots = [];
     private XamlRoot? rasterRoot;
-    private bool rasterQueued, disposed;
+    private bool rasterQueued, disposed, hostVisible;
     internal WidgetPackageIconView()
     {
         IsTabStop = false; IsHitTestVisible = false;
@@ -39,7 +39,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
             UpdateSizing();
         }, () => XamlRoot);
         SizeChanged += (_, _) => UpdateSizing();
-        Loaded += (_, _) => UpdateSizing();
+        Loaded += (_, _) => { ObserveRoot(); icon.RetryTransientFailure(); UpdateSizing(); };
         Unloaded += (_, _) => DetachRasterObservers();
         RegisterPropertyChangedCallback(FontSizeProperty, (_, _) => { InvalidateMeasure(); UpdateSizing(); });
     }
@@ -98,11 +98,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
     private void UpdateRasterSize()
     {
         if (XamlRoot is not { } root || Content is not (Image or ImageIcon)) return;
-        if (!ReferenceEquals(rasterRoot, root))
-        {
-            if (rasterRoot is not null) rasterRoot.Changed -= RasterRootChanged;
-            rasterRoot = root; root.Changed += RasterRootChanged;
-        }
+        ObserveRoot();
         var roots = new List<Shell.OverlayScaleRoot>();
         for (DependencyObject? parent = this; parent is not null; parent = VisualTreeHelper.GetParent(parent))
             if (parent is Shell.OverlayScaleRoot zoom) roots.Add(zoom);
@@ -125,7 +121,19 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
         }
         else if (Content is ImageIcon image) NativePackageIconTint.For(image)?.RefreshSize(pixels / root.RasterizationScale);
     }
-    private void RasterRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => QueueRasterSize();
+    private void ObserveRoot()
+    {
+        if (XamlRoot is not { } root || ReferenceEquals(rasterRoot, root)) return;
+        if (rasterRoot is not null) rasterRoot.Changed -= RasterRootChanged;
+        rasterRoot = root; hostVisible = root.IsHostVisible; root.Changed += RasterRootChanged;
+    }
+    private void RasterRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+    {
+        var reopened = !hostVisible && sender.IsHostVisible;
+        hostVisible = sender.IsHostVisible;
+        if (reopened) icon.RetryTransientFailure();
+        QueueRasterSize();
+    }
     private void DetachRasterObservers()
     {
         if (rasterRoot is not null) rasterRoot.Changed -= RasterRootChanged;
@@ -139,6 +147,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
         icon.Update(node.Glyph!.Value, node.PackageIcon, node.AccessibilityLabel, resolver, generation, diagnostic);
         UpdateSizing();
     }
+    internal void RetryTransientFailure() => icon.RetryTransientFailure();
     public void Dispose() { disposed = true; DetachRasterObservers(); icon.Dispose(); }
 }
 
@@ -154,6 +163,11 @@ internal sealed class WidgetNativePackageIcon : IDisposable
     private OriginalPackageIconRaster? original;
     private CancellationTokenSource? lifetime;
     private string? identity;
+    private IconElement? displayed;
+    private Func<Task>? retry;
+    private bool loading, retryable, succeeded;
+    private Func<string, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolve;
+    private string? accessibleName;
     private bool disposed;
     // Theme-tinted masks retain their square raster contract. Original-color SVGs
     // use their admitted viewBox so wordmarks can fill a rectangular author slot.
@@ -163,9 +177,23 @@ internal sealed class WidgetNativePackageIcon : IDisposable
     internal void Update(WidgetGlyph fallback, WidgetPackageIcon? asset, string? name,
         Func<string, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolver, string generation, Action<string>? diagnostic)
     {
-        var next = $"{generation}|{fallback}|{asset?.AssetId}|{asset?.ColorMode}|{name}";
-        if (disposed || identity == next) return;
+        // Labels and semantic fallback changes do not invalidate admitted SVG
+        // bytes. Preserve the live native surface on those compatible updates.
+        var next = $"{generation}|{asset?.AssetId}|{asset?.ColorMode}|{(asset is null ? fallback.ToString() : string.Empty)}";
+        if (disposed) return;
+        var resolverBecameAvailable = resolve is null && resolver is not null;
+        resolve = resolver;
+        accessibleName = name ?? fallback.ToString();
+        if (identity == next)
+        {
+            if (displayed is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(displayed, accessibleName);
+            if (displayed is FontIcon placeholder)
+                WidgetGlyphs.Apply(placeholder, new() { Id = "package-icon", Kind = ViewNodeKind.Icon, Glyph = fallback, AccessibilityLabel = name }, false);
+            if (resolverBecameAvailable) RetryTransientFailure();
+            return;
+        }
         identity = next;
+        retry = null; loading = false; retryable = false; succeeded = false;
         AspectRatio = 1;
         original?.Dispose(); original = null;
         tint?.Dispose(); tint = null;
@@ -173,48 +201,92 @@ internal sealed class WidgetNativePackageIcon : IDisposable
         var token = lifetime.Token;
         var icon = new FontIcon();
         WidgetGlyphs.Apply(icon, new() { Id = "package-icon", Kind = ViewNodeKind.Icon, Glyph = fallback, AccessibilityLabel = name }, false);
-        publish(icon);
+        displayed = icon; publish(icon);
         if (asset is null) return;
-        if (resolver is null) { diagnostic?.Invoke("package_icon_resolver_unavailable"); return; }
+        retry = LoadAsync;
         _ = LoadAsync();
         async Task LoadAsync()
         {
+            if (disposed || loading || succeeded || token.IsCancellationRequested || identity != next) return;
+            loading = true; retryable = false;
             try
             {
-                var payload = await resolver(asset.AssetId, token);
-                if (asset.ColorMode == WidgetPackageIconColorMode.ThemeTint)
+                for (var attempt = 0; attempt < 4; ++attempt)
                 {
-                    await WaitLoadedAsync(icon, token);
-                    var root = rasterRoot() ?? throw new InvalidOperationException("Icon raster root is unavailable.");
-                    var cache = NativePackageIconTintCache.For(root);
-                    var lease = await cache.AcquireAsync(payload, 128, token);
-                    if (disposed || token.IsCancellationRequested || identity != next) { lease.Dispose(); return; }
-                    var tinted = new ImageIcon { Width = 20, Height = 20, IsHitTestVisible = false };
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tinted, name ?? fallback.ToString());
-                    tint = new(tinted, lease, cache, payload, root);
-                    publish(tinted);
-                    return;
+                    try { await PrepareAsync(); return; }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+                    catch (Exception error)
+                    {
+                        if (disposed || token.IsCancellationRequested || identity != next) return;
+                        retryable = IsTransient(error);
+                        if (retryable && attempt < 3)
+                        {
+                            await Task.Delay(150 * (1 << attempt), token);
+                            continue;
+                        }
+                        var code = error is WidgetPresentationSessionException sessionError ? sessionError.Code : "package_icon_unavailable";
+                        diagnostic?.Invoke(code);
+                        // No payloads, labels, paths or exception messages. Keep
+                        // enough detail to distinguish native/authority/capacity failures.
+                        Diagnostics.FrontendFailureLog.Current.Write("package-icon", null,
+                            $"code={code} asset={asset.AssetId} failure={error.GetType().Name} hresult=0x{error.HResult:X8} attempts={attempt + 1} retryable={retryable}");
+                        return;
+                    }
                 }
-                var bytes = payload.NormalizedSvg.ToArray();
-                var aspect = ReadAspectRatio(bytes);
-                token.ThrowIfCancellationRequested();
-                using var stream = new InMemoryRandomAccessStream();
-                await stream.WriteAsync(bytes.AsBuffer()).AsTask(token); stream.Seek(0);
-                var source = new SvgImageSource { RasterizePixelWidth = Math.Max(1, 64 * Math.Min(1, aspect)),
-                    RasterizePixelHeight = Math.Max(1, 64 / Math.Max(1, aspect)) };
-                if (await source.SetSourceAsync(stream).AsTask(token) != SvgImageSourceLoadStatus.Success)
-                { diagnostic?.Invoke("package_icon_decode_failed"); return; }
-                if (disposed || token.IsCancellationRequested || identity != next) return;
-                AspectRatio = aspect;
-                var image = new ImageIcon { Source = source, Width = 20, Height = 20, IsHitTestVisible = false };
-                original = new(image, bytes, aspect, token, diagnostic);
-                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(image, name ?? fallback.ToString());
-                publish(image);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-            catch (Exception) { if (!disposed && !token.IsCancellationRequested) diagnostic?.Invoke("package_icon_unavailable"); }
+            finally { if (identity == next && !token.IsCancellationRequested) loading = false; }
+        }
+        async Task PrepareAsync()
+        {
+            if (resolve is not { } currentResolver)
+                throw new WidgetPresentationSessionException("package_icon_resolver_unavailable", "Icon resolver is not ready.");
+            var payload = await currentResolver(asset.AssetId, token);
+            token.ThrowIfCancellationRequested();
+            if (identity != next || disposed) return;
+            if (asset.ColorMode == WidgetPackageIconColorMode.ThemeTint)
+            {
+                await WaitLoadedAsync(icon, token);
+                var root = rasterRoot() ?? throw new InvalidOperationException("Icon raster root is unavailable.");
+                var cache = NativePackageIconTintCache.For(root);
+                var lease = await cache.AcquireAsync(payload, 128, token);
+                if (disposed || token.IsCancellationRequested || identity != next) { lease.Dispose(); return; }
+                var tinted = new ImageIcon { Width = 20, Height = 20, IsHitTestVisible = false };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tinted, accessibleName);
+                try { tint = new(tinted, lease, cache, payload, root); }
+                catch { lease.Dispose(); throw; }
+                displayed = tinted; publish(tinted); succeeded = true; retryable = false;
+                return;
+            }
+            var bytes = payload.NormalizedSvg.ToArray();
+            var aspect = ReadAspectRatio(bytes);
+            token.ThrowIfCancellationRequested();
+            using var stream = new InMemoryRandomAccessStream();
+            await stream.WriteAsync(bytes.AsBuffer()).AsTask(token); stream.Seek(0);
+            var source = new SvgImageSource { RasterizePixelWidth = Math.Max(1, 64 * Math.Min(1, aspect)),
+                RasterizePixelHeight = Math.Max(1, 64 / Math.Max(1, aspect)) };
+            if (await source.SetSourceAsync(stream).AsTask(token) != SvgImageSourceLoadStatus.Success)
+                throw new InvalidDataException("Native SVG decode failed.");
+            if (disposed || token.IsCancellationRequested || identity != next) return;
+            AspectRatio = aspect;
+            var image = new ImageIcon { Source = source, Width = 20, Height = 20, IsHitTestVisible = false };
+            original = new(image, bytes, aspect, token, diagnostic);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(image, accessibleName);
+            displayed = image; publish(image); succeeded = true; retryable = false;
         }
     }
+    internal void RetryTransientFailure()
+    {
+        // Reentering presentation rearms one bounded batch; ordinary snapshots
+        // do not spin on permanently invalid assets or an exhausted retry batch.
+        if (!disposed && retryable && !loading && !succeeded && retry is { } start) _ = start();
+    }
+    private static bool IsTransient(Exception error) => error switch
+    {
+        WidgetPresentationSessionException failure => failure.Code is "catalog_stale" or "package_icon_saturated" or "package_icon_resolver_unavailable",
+        TimeoutException or OperationCanceledException or System.Runtime.InteropServices.COMException or InvalidOperationException => true,
+        _ => false,
+    };
     internal void RequestOriginalRaster(double pixels) => original?.Request(pixels);
     private static double ReadAspectRatio(byte[] normalizedSvg)
     {
@@ -242,7 +314,7 @@ internal sealed class WidgetNativePackageIcon : IDisposable
         try { if (!element.IsLoaded) await ready.Task.WaitAsync(TimeSpan.FromSeconds(3), token); }
         finally { element.Loaded -= Loaded; }
     }
-    public void Dispose() { if (disposed) return; disposed = true; lifetime?.Cancel(); lifetime?.Dispose(); tint?.Dispose(); tint = null; original?.Dispose(); original = null; }
+    public void Dispose() { if (disposed) return; disposed = true; lifetime?.Cancel(); lifetime?.Dispose(); tint?.Dispose(); tint = null; original?.Dispose(); original = null; retry = null; resolve = null; displayed = null; }
 }
 
 /// <summary>One SVG demand, one visible raster and at most one bounded upgrade.</summary>

@@ -18,7 +18,10 @@ public sealed partial class MainWindow
             {
                 await page.WaitForNativeStartupAsync().WaitAsync(TimeSpan.FromSeconds(40));
                 await Until(() => overlayMotion?.Playback is { IsCompleted: true } && input?.IsForeground == true);
-                Check(keyboardShortcut?.IsRegistered == true, "production window owns the global F1 registration");
+                ApplyKeyboardShortcutSettings(new());
+                Check(keyboardShortcut is null, "default settings do not register global F1");
+                ApplyKeyboardShortcutSettings(new() { F1ShortcutEnabled = true });
+                Check(keyboardShortcut?.IsRegistered == true, "enabled preference registers global F1");
                 // No widget actions: the only injected key is confirmed registered
                 // to this owned window, so Windows routes it even while hidden.
                 var before = overlayVisibilityVersion;
@@ -40,12 +43,12 @@ public sealed partial class MainWindow
                 Check(input?.IsActive == true, "global F1 reopens the hidden overlay and restores controller admission");
                 await Until(() => overlayMotion?.Playback is { IsCompleted: true });
 
-                keyboardShortcut!.Dispose();
-                Check(!keyboardShortcut.IsRegistered, "shortcut disposal retires its message admission");
+                ApplyKeyboardShortcutSettings(new());
+                Check(keyboardShortcut is null, "disabling F1 retires its message admission immediately");
                 var reclaimed = ValidationRegisterHotKey(0, 77, 0x4000, 0x70) != 0;
                 try { Check(reclaimed, "shortcut disposal releases the operating-system registration"); }
                 finally { if (reclaimed) ValidationUnregisterHotKey(0, 77); }
-                InitializeKeyboardShortcut();
+                ApplyKeyboardShortcutSettings(new() { F1ShortcutEnabled = true });
                 Check(keyboardShortcut!.IsRegistered, "a fresh owner can register F1 after orderly retirement");
                 Write(true, null);
             }

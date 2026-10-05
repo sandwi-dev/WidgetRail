@@ -221,6 +221,16 @@ existing parent session. Native glyph fallback appears immediately; removal,
 rebind, popup dismissal and catalog replacement revoke pending publication.
 Native controller-family fonts and accessible labels retain their prior meaning.
 
+Icon bytes have a dedicated session cache (128 entries/2 MiB), separate from
+artwork. Exact-authority concurrent requests share one fetch; canceling one
+view does not cancel other waiters. The session admits 16 distinct pending
+demands and at most four concurrent Bridge reads. Failures do not populate it.
+Native controls retry transient availability/capacity/timeouts in bounded batches;
+presentation reentry can rearm a failed batch. Malformed bytes and revoked
+authority remain failures. Compatible label updates retain the ready SVG, while
+asset or authority replacement clears it. Terminal failures record a bounded
+reason/type/HRESULT in frontend diagnostics for tray, radial and widget icons.
+
 ThemeTint uses WinUI's SVG renderer and `RenderTargetBitmap` on a noninteractive,
 clipped preparation layer. Native PNG encoding transfers the unchanged raster
 alpha to `LoadedImageSurface`; a compositor mask applies the current foreground.
@@ -263,4 +273,3 @@ was blank; the PNG mask and solid control painted green. A non-null mask brush
 alone is not a passing rendering assertion. The comparison screenshot is retained
 in local `artifacts/winui-shell/native-svg-mask-baselines.png`. This records the
 observed capability boundary, not a claim about every future WinUI version.
-

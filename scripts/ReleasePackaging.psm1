@@ -245,7 +245,7 @@ function New-WidgetRailReleaseFolders {
             "WidgetRail $Version - $edition edition"
             ''
             'Install with WidgetRail setup, then launch WidgetRail. Keep this complete folder together.'
-            'View + Menu toggles the overlay by default; F1 is the keyboard fallback.'
+            'View + Menu toggles the overlay by default. Optional F1 keyboard opening is off by default; enable it in Settings > Controllers.'
             'Review widget permissions in Settings before using Windows controls.'
             ''
             'The WinUI frontend includes its own .NET and Windows App SDK runtimes; widget services use the private dotnet folder.'

@@ -157,6 +157,7 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
             await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: Image });
             await Until(() => tintView.ActualHeight <= tintView.FontSize + 1);
             Check(true, "removing explicit icon size restores intrinsic bounds without retaining old child size");
+            await RecoveryAsync();
             catalogPreview = await CatalogIconValidation.RunAsync((StackPanel)Content, Check);
             status.Text = $"Passed {checks.Count} package icon checks"; Write(new { result = "passed", checks });
         }

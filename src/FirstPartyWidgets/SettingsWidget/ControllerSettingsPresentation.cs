@@ -44,6 +44,10 @@ internal static class ControllerSettingsPresentation
                     new("view-menu", "View + Menu", "controllers.open-shortcut.view-menu", IsSelected: state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.ViewMenu)
                 ], "controllers.open-shortcut").Busy(state.Busy),
                 UI.Text("Open and close the overlay with the selected shortcut.", "controllers.open-help").Classes("page-help"),
+                UI.Switch("F1 keyboard shortcut", state.Settings.Controllers.F1ShortcutEnabled,
+                    "controllers.f1-shortcut.toggle", "controllers.f1-shortcut").Busy(state.Busy),
+                UI.Text("Use F1 to open and close WidgetRail from any application. Off by default.",
+                    "controllers.f1-shortcut.help").Classes("page-help"),
             };
             if (features.HeldDpadScroll) navigation.AddRange([
                 UI.Text("Input behavior", "controllers.input-heading").Classes("section-heading"),

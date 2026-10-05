@@ -9,6 +9,7 @@ public sealed partial class MainWindow : Window
     private readonly Microsoft.UI.System.ThemeSettings themeSettings;
     private Input.PlatformInputPump? input;
     private Input.OverlayKeyboardShortcut? keyboardShortcut;
+    private int keyboardSettingsVersion;
     private readonly Input.ControllerInputTrace? controllerTrace;
     private readonly Input.GamepadKeyBoundary? gamepadKeys;
     private bool closingAfterCleanup;
@@ -177,7 +178,38 @@ public sealed partial class MainWindow : Window
             catch (Exception error) { ReportInputFailure(page, error); }
         }
         InitializeOverlaySizing(page);
-        InitializeKeyboardShortcut();
+        page.ControllerSettingsLoaded += ApplyKeyboardShortcutSettings;
+        _ = LoadKeyboardShortcutSettingsAsync(options.SettingsRoot);
+    }
+
+    private async Task LoadKeyboardShortcutSettingsAsync(string root)
+    {
+        var version = keyboardSettingsVersion;
+        try
+        {
+            // A hidden startup does not load the shell yet; its saved shortcut
+            // must still be registered without opening the overlay or a widget.
+            var settings = await new WidgetRail.PlatformSettings.PlatformSettingsStore(new(root)).LoadAsync();
+            if (!cleanupStarted && version == keyboardSettingsVersion)
+                ApplyKeyboardShortcutSettings(settings.Controllers);
+        }
+        catch (Exception error) { Diagnostics.FrontendFailureLog.Current.Write("f1-settings", error); }
+    }
+
+    private void ApplyKeyboardShortcutSettings(WidgetRail.PlatformSettings.ControllerSettings settings)
+    {
+        ++keyboardSettingsVersion;
+        if (cleanupStarted) return;
+        if (!settings.F1ShortcutEnabled)
+        {
+            keyboardShortcut?.Dispose();
+            keyboardShortcut = null;
+        }
+        else if (keyboardShortcut?.IsRegistered != true)
+        {
+            keyboardShortcut?.Dispose();
+            InitializeKeyboardShortcut();
+        }
     }
 
     private void InitializeKeyboardShortcut()
@@ -185,7 +217,7 @@ public sealed partial class MainWindow : Window
         keyboardShortcut = new(WinRT.Interop.WindowNative.GetWindowHandle(this), () =>
         {
             if (cleanupStarted) return;
-            input?.TraceInput("F1 fallback toggle received");
+            input?.TraceInput("F1 shortcut toggle received");
             ToggleOverlay();
         });
     }

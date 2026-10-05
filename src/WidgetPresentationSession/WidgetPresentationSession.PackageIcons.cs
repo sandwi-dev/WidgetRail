@@ -12,7 +12,7 @@ public sealed partial class WidgetPresentationSession
     private readonly record struct PackageIconKey(string WidgetId, string Runtime, string Presentation, string Digest, string AssetId, string SourceHash, string Hash);
     private readonly Dictionary<PackageIconKey, byte[]> _packageIcons = [];
     private int _packageIconBytes;
-    private int _pendingPackageIcons;
+    private readonly Dictionary<(long CatalogRevision, PackageIconKey Icon), TaskCompletionSource<byte[]>> _packageIconDemands = [];
     private readonly SemaphoreSlim _packageIconSlots = new(4, 4);
 
     /// <summary>
@@ -29,6 +29,8 @@ public sealed partial class WidgetPresentationSession
         var descriptor = target.Descriptor;
         BridgePackageIconAssetDescriptor asset;
         PackageIconKey key;
+        TaskCompletionSource<byte[]> demand;
+        CancellationTokenSource? deadline = null;
         using (_gate.Enter())
         {
             _ = ValidateTarget(target);
@@ -41,27 +43,68 @@ public sealed partial class WidgetPresentationSession
             ValidatePackageIconMetadata(descriptor, asset);
             key = new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, descriptor.PackageContentDigest, assetId, asset.SourceSha256, asset.NormalizedSha256);
             if (_packageIcons.TryGetValue(key, out var cached)) return new(assetId, asset.NormalizedSha256, cached.ToArray());
-            if (_pendingPackageIcons >= 16) throw new WidgetPresentationSessionException("package_icon_saturated", "Package icon demand capacity is full.");
-            ++_pendingPackageIcons;
+            if (!_packageIconDemands.TryGetValue((target.CatalogRevision, key), out demand!))
+            {
+                if (_packageIconDemands.Count >= 16)
+                    throw new WidgetPresentationSessionException("package_icon_saturated", "Package icon demand capacity is full.");
+                demand = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                // A canceled view only stops its own wait. Other views can still need this icon.
+                deadline = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+                deadline.CancelAfter(_options.ArtworkTimeout);
+                _packageIconDemands.Add((target.CatalogRevision, key), demand);
+                _ = demand.Task.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
         }
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
-        deadline.CancelAfter(_options.ArtworkTimeout);
+        if (deadline is not null) _ = CompletePackageIconDemandAsync(target, asset, key, demand, deadline);
+        var bytes = await demand.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        using (_gate.Enter())
+        {
+            _ = ValidateTarget(target);
+            return new(assetId, asset.NormalizedSha256, bytes.ToArray());
+        }
+    }
+
+    private async Task CompletePackageIconDemandAsync(WidgetPresentationTarget target, BridgePackageIconAssetDescriptor asset,
+        PackageIconKey key, TaskCompletionSource<byte[]> demand, CancellationTokenSource deadline)
+    {
+        byte[]? bytes = null;
+        Exception? failure = null;
+        try { bytes = await LoadPackageIconAsync(target, asset, key, deadline.Token).ConfigureAwait(false); }
+        catch (Exception exception) { failure = exception; }
+        finally
+        {
+            // Retire before notifying waiters, so a failed load can immediately be retried.
+            using (_gate.Enter()) _packageIconDemands.Remove((target.CatalogRevision, key));
+            deadline.Dispose();
+        }
+        if (failure is OperationCanceledException canceled) demand.TrySetCanceled(canceled.CancellationToken);
+        else if (failure is not null) demand.TrySetException(failure);
+        else demand.TrySetResult(bytes!);
+    }
+
+    private async Task<byte[]> LoadPackageIconAsync(WidgetPresentationTarget target, BridgePackageIconAssetDescriptor asset,
+        PackageIconKey key, CancellationToken cancellationToken)
+    {
+        var descriptor = target.Descriptor;
+        var assetId = asset.AssetId;
         var admitted = false;
         try
         {
-            await _packageIconSlots.WaitAsync(deadline.Token).ConfigureAwait(false); admitted = true;
+            await _packageIconSlots.WaitAsync(cancellationToken).ConfigureAwait(false); admitted = true;
             using (_gate.Enter())
             {
                 _ = ValidateTarget(target);
-                if (_packageIcons.TryGetValue(key, out var cached)) return new(assetId, asset.NormalizedSha256, cached.ToArray());
+                if (_packageIcons.TryGetValue(key, out var cached)) return cached;
             }
             var exchange = RequestAsync(BridgeMessageTypes.ResolvePackageIcon,
                 new BridgePackageIconRequest(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
                     descriptor.PackageContentDigest, assetId, asset.SourceSha256, asset.NormalizedSha256),
-                BridgeMessageTypes.PackageIcon, deadline.Token);
+                BridgeMessageTypes.PackageIcon, cancellationToken);
             _ = exchange.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            var reply = await exchange.WaitAsync(deadline.Token).ConfigureAwait(false);
+            var reply = await exchange.WaitAsync(cancellationToken).ConfigureAwait(false);
             var payload = reply.Payload;
             RequireObjectProperties(payload, "widgetId", "runtimeGeneration", "presentationGeneration", "packageContentDigest",
                 "assetId", "sourceSha256", "normalizedSha256", "normalizedSvgBase64");
@@ -78,7 +121,7 @@ public sealed partial class WidgetPresentationSession
             catch (FormatException) { throw new BridgeProtocolException("Package icon payload is not valid base64."); }
             if (bytes.Length != asset.NormalizedBytes || !Convert.ToHexString(SHA256.HashData(bytes)).Equals(asset.NormalizedSha256, StringComparison.OrdinalIgnoreCase))
                 throw new BridgeProtocolException("Package icon payload does not match admitted bytes and hash.");
-            deadline.Token.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
             using (_gate.Enter())
             {
                 _ = ValidateTarget(target);
@@ -90,9 +133,9 @@ public sealed partial class WidgetPresentationSession
                     _packageIcons.Add(key, bytes); _packageIconBytes += bytes.Length;
                 }
             }
-            return new(assetId, asset.NormalizedSha256, bytes.ToArray());
+            return bytes;
         }
-        finally { if (admitted) _packageIconSlots.Release(); using (_gate.Enter()) --_pendingPackageIcons; }
+        finally { if (admitted) _packageIconSlots.Release(); }
     }
 
     private static void ValidatePackageIconMetadata(BridgeWidgetDescriptor descriptor, BridgePackageIconAssetDescriptor asset)

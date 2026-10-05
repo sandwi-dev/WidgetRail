@@ -113,7 +113,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
         var target = GetForegroundWindow();
         if (!IsForegroundProcess()) session?.ObserveForegroundTarget((nuint)target, target != 0 && IsWindow(target) != 0);
         RecordWindowState("PrepareShow");
-        // F1/keyboard must keep Settings reachable while native recovery is
+        // Enabled keyboard shortcuts must keep Settings reachable while native recovery is
         // required. A neutral-input timeout simply cancels this opening attempt.
         if (controllerRecoveryBlocked) return true;
         try { session?.PrepareVisible(); return true; }
@@ -227,7 +227,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
         {
             controllerRecoveryBlocked = true;
             navigationTimer.Stop(); guideTimer.Stop(); inputOwnership.Reset();
-            diagnostics.Write("Controller recovery required; F1 and Settings recovery remain available.");
+            diagnostics.Write("Controller recovery required; Settings recovery and any enabled keyboard shortcut remain available.");
         }
         catch (Exception error)
         {

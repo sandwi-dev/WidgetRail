@@ -1,7 +1,8 @@
 # Current platform status
 
-Updated 2026-10-03 against local main `0d047517` (application
-`0.1.0-preview.25`, SDK/CLI `0.4.1-dev`, presentation protocol 76).
+Updated 2026-10-05 for application `0.1.0-preview.26` (SDK/CLI `0.4.1-dev`,
+presentation protocol 76). The user accepted the SVG recovery, optional F1
+shortcut and Browser/Game Help icons for main integration and public release.
 This page describes the implemented product. Migration reports preserve the
 decisions and evidence from earlier stages; their pending work and candidate
 process states are not current release status.
@@ -26,6 +27,16 @@ process states are not current release status.
   upgrade, rollback or every system-provider workflow has been physically qualified.
 
 ## Implemented authoring and behavior
+
+F1 keyboard opening is optional and off by default, including profiles that do
+not contain the new setting. Settings > Controllers applies it immediately;
+disabling it releases the global registration. SVG icon loading coalesces requests,
+retries transient failures in bounded batches and preserves ready artwork across
+compatible label updates. Settings is 0.1.9, Browser 0.1.4 and Game Help 0.1.1.
+Validation passed 54 native SVG checks, nine native F1 checks, 14 icon-session
+tests, 83 Settings tests and 37 catalog checks, plus trimmed Release publication.
+The first F1 fixture attempt lacked its required activation flag and timed out
+before its assertions; the corrected fixture invocation passed.
 
 Use the [WinUI authoring contract](../reference/winui-authoring.md) and
 [indexed/discovered collections](../developers/indexed-collections.md). The legacy
