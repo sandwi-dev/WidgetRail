@@ -29,7 +29,7 @@ public sealed class ControllerControlSessionTests
         await using var server = new ScriptedBridgeServer();
         var expected = new[]
         {
-            new ControllerSettings { ExclusiveControl = true, Revision = 12, OpenShortcut = ControllerOpenShortcut.Guide },
+            new ControllerSettings { ExclusiveControl = true, Revision = 12, OpenShortcut = ControllerOpenShortcut.Guide, F1ShortcutEnabled = true },
             new ControllerSettings { Revision = 0, OpenShortcut = ControllerOpenShortcut.ViewMenu },
         };
         var status = new ControllerControlStatus(ControllerControlState.Off, true, true, true);
@@ -63,6 +63,9 @@ public sealed class ControllerControlSessionTests
     [TestMethod]
     [DataRow("{}")]
     [DataRow("null")]
+    [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false,\"f1ShortcutEnabled\":\"false\"}")]
+    [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false,\"f1ShortcutEnabled\":null}")]
+    [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false,\"f1ShortcutEnabled\":true,\"f1ShortcutEnabled\":false}")]
     [DataRow("{\"exclusiveControl\":true,\"revision\":-1,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false}")]
     [DataRow("{\"exclusiveControl\":true,\"revision\":0.5,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false}")]
     [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"Unknown\",\"holdDpadToScroll\":false}")]
@@ -89,6 +92,28 @@ public sealed class ControllerControlSessionTests
             await Assert.ThrowsExactlyAsync<BridgeProtocolException>(() =>
                 session.ExchangeControllerControlAsync(ControllerControlStatus.Unavailable));
             Assert.AreEqual(0, effects);
+        }
+        await service.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [TestMethod]
+    public async Task LegacyReplyWithoutF1PreservesControllerPreferenceAndDefaultsKeyboardShortcutOff()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var service = server.RunAuthenticatedAsync(async channel =>
+        {
+            var report = await channel.ReadAsync(default);
+            await ReplyAsync(channel, report, new { exclusiveControl = true, revision = 9, openShortcut = "guide", holdDpadToScroll = false });
+            await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName,
+            new() { ExclusiveControllerControl = true }))
+        {
+            var result = await session.ExchangeControllerControlAsync(new(ControllerControlState.Active, true, true, true));
+            Assert.IsTrue(result.ExclusiveControl);
+            Assert.AreEqual(9L, result.Revision);
+            Assert.AreEqual(ControllerOpenShortcut.Guide, result.OpenShortcut);
+            Assert.IsFalse(result.F1ShortcutEnabled);
         }
         await service.WaitAsync(TimeSpan.FromSeconds(5));
     }

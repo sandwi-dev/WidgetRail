@@ -1,11 +1,18 @@
 # Current platform status
 
-Updated 2026-10-05 for application `0.1.0-preview.26` (SDK/CLI `0.4.1-dev`,
+Updated 2026-10-05 for application `0.1.0-preview.27` (SDK/CLI `0.4.1-dev`,
 presentation protocol 76). The user accepted the SVG recovery, optional F1
 shortcut and Browser/Game Help icons for main integration and public release.
 This page describes the implemented product. Migration reports preserve the
 decisions and evidence from earlier stages; their pending work and candidate
 process states are not current release status.
+
+Preview.27 corrects the controller preference reply validator after F1 was added.
+Preview.26 rejected the new Boolean field, stopped status exchange and let driver
+readiness expire, displaying installed drivers as unavailable. Current and older
+reply formats now validate explicitly; malformed/unknown fields remain rejected.
+All 330 presentation-session checks pass. The user requested publication without
+waiting for CI; other CI failures remain separate follow-up work.
 
 ## Frontend and distribution
 

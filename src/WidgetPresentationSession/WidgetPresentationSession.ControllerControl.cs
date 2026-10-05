@@ -8,6 +8,8 @@ namespace WidgetRail.WidgetPresentationSession;
 public sealed partial class WidgetPresentationSession
 {
     private readonly SemaphoreSlim _controllerControlExchange = new(1, 1);
+    private static readonly IReadOnlySet<string> ControllerPreferenceProperties = new HashSet<string>(StringComparer.Ordinal)
+        { "exclusiveControl", "revision", "openShortcut", "holdDpadToScroll", "f1ShortcutEnabled" };
 
     /// <summary>
     /// Reports the native controller adapter's actual status and reads the next
@@ -37,10 +39,15 @@ public sealed partial class WidgetPresentationSession
     {
         var response = await RequestAsync(BridgeMessageTypes.ControllerControl, status,
             BridgeMessageTypes.ControllerControl, CancellationToken.None).ConfigureAwait(false);
-        RequireObjectProperties(response.Payload, "exclusiveControl", "revision", "openShortcut", "holdDpadToScroll");
+        RequireAllowedProperties(response.Payload, ControllerPreferenceProperties,
+            "exclusiveControl", "revision", "openShortcut", "holdDpadToScroll");
         // Deserialization defaults must not silently turn malformed data into an
         // instruction to disable control or change the opening shortcut.
-        if (response.Payload.EnumerateObject().Count() != 4 ||
+        // Older bridges omit F1; its model default is false. Newer replies must
+        // carry a real Boolean, just like the other controller preferences.
+        var hasF1 = response.Payload.TryGetProperty("f1ShortcutEnabled", out var f1);
+        if (response.Payload.EnumerateObject().Count() != (hasF1 ? 5 : 4) ||
+            hasF1 && f1.ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
             response.Payload.GetProperty("exclusiveControl").ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
             response.Payload.GetProperty("holdDpadToScroll").ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
             response.Payload.GetProperty("revision").ValueKind != JsonValueKind.Number ||
