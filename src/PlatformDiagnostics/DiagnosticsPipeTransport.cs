@@ -24,6 +24,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
     private readonly Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? _packageNotification;
     private readonly Func<OverlayDisplayContext>? _overlayDisplay;
+    private readonly Func<CancellationToken, ValueTask<SupportBundleExportResult>>? _supportExport;
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
     private readonly Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? _exclusiveControl;
@@ -63,13 +64,15 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null,
         Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? builtInLocalDataInspection = null,
         Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? builtInLocalDataClear = null,
-        Func<OverlayDisplayContext>? overlayDisplay = null)
+        Func<OverlayDisplayContext>? overlayDisplay = null,
+        Func<CancellationToken, ValueTask<SupportBundleExportResult>>? supportExport = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
         _pipeName = pipeName;
         _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
         _overlayDisplay = overlayDisplay;
+        _supportExport = supportExport;
         _exclusiveControl = exclusiveControl;
         _applicationControl = applicationControl;
         _packageNotification = packageNotification;
@@ -190,6 +193,18 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 var result = _packageNotification is null ? PlatformWidgetPackageNotification.Empty :
                     await _packageNotification(cancellationToken).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
                 ValidatePackageNotification(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = request.Operation;
+                break;
+            }
+            case "export-support-bundle":
+            {
+                if (request.ConfirmationToken is not null || request.WidgetId is not null ||
+                    request.PublisherId is not null || request.ActiveVersion is not null || request.ExclusiveControl is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                var result = _supportExport is null ? new SupportBundleExportResult(SupportBundleExportStatus.Unavailable) :
+                    await _supportExport(cancellationToken).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidateSupportExport(result);
                 await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
                 receiptOperation = request.Operation;
                 break;
@@ -378,6 +393,17 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             throw new PlatformDiagnosticsException("client_identity_mismatch");
     }
 
+    internal static void ValidateSupportExport(SupportBundleExportResult result)
+    {
+        if (result is null || !Enum.IsDefined(result.Status) ||
+            (result.Status == SupportBundleExportStatus.Saved
+                ? result.FileName is null || !IsToken(result.FileName, 128) ||
+                    !result.FileName.StartsWith("WidgetRail-support-", StringComparison.Ordinal) ||
+                    !result.FileName.EndsWith(".zip", StringComparison.Ordinal)
+                : result.FileName is not null))
+            throw new PlatformDiagnosticsException("malformed_support_export");
+    }
+
     internal static void ValidateSnapshot(PlatformDiagnosticsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -400,7 +426,9 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             if (worker is null || !IsToken(worker.WidgetId, 128) || !ids.Add(worker.WidgetId) ||
                 string.IsNullOrWhiteSpace(worker.WidgetName) || worker.WidgetName.Length > 160 ||
                 worker.WidgetName.IndexOfAny(['\r', '\n']) >= 0 || worker.Starts < 0 ||
-                worker.LastFailureCode is { } failure && !IsToken(failure, 64))
+                worker.LastFailureCode is { } failure && !IsToken(failure, 64) ||
+                worker.LastFailureAtUtc is { } timestamp &&
+                    (worker.LastFailureCode is null || timestamp.Offset != TimeSpan.Zero || timestamp.Year < 2020))
                 throw new PlatformDiagnosticsException("invalid_snapshot");
         }
 
@@ -645,6 +673,11 @@ public sealed class PlatformDiagnosticsPipeClient(
         : throw new ArgumentOutOfRangeException(nameof(expectedServerProcessId));
     private readonly TimeSpan _timeout = PlatformDiagnosticsPipeServer.ValidateTimeout(
         timeout ?? TimeSpan.FromSeconds(2), nameof(timeout));
+
+    public async ValueTask<SupportBundleExportResult> ExportSupportBundleAsync(CancellationToken cancellationToken = default) =>
+        await ExecuteAsync<SupportBundleExportResult>(new DiagnosticsRequest("export-support-bundle"),
+            "export-support-bundle", PlatformDiagnosticsPipeServer.ValidateSupportExport,
+            cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default)

@@ -1231,8 +1231,11 @@ internal static class BridgeClientRegistryScenarios
         var first = fixture.Clients.Single();
         first.RaiseInvalidated(7);
         first.RaiseActionFailed("old-action");
+        var failureStartedAt = DateTimeOffset.UtcNow;
         first.RaiseFailure();
         await fixture.Registry.DrainNotificationsAsync(initial.Id);
+        var recordedFailureAt = fixture.Registry.DiagnosticsSnapshot().Workers.Single().LastFailureAtUtc;
+        RegistryAssert.True(recordedFailureAt >= failureStartedAt && recordedFailureAt <= DateTimeOffset.UtcNow);
         RegistryAssert.Equal(1, fixture.Invalidations.Count);
         RegistryAssert.Equal(1, fixture.ActionFailures.Count);
         RegistryAssert.Equal(1, fixture.Failures.Count);
@@ -1247,6 +1250,7 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(1, fixture.Clients.Count);
         var compatible = fixture.Registry.DiagnosticsSnapshot();
         RegistryAssert.Equal("Renamed alpha", compatible.Workers.Single().Name);
+        RegistryAssert.Equal(recordedFailureAt, compatible.Workers.Single().LastFailureAtUtc);
         RegistryAssert.Equal(1L, compatible.CatalogRevision);
 
         var replacement = presentationOnly with

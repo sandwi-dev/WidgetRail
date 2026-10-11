@@ -42,7 +42,7 @@ public enum SettingsPage
     Reset,
 }
 
-public sealed class SettingsWidget : Widget
+public sealed partial class SettingsWidget : Widget
 {
     public const int InstalledWidgetsPerPage = 5;
     public const int InstalledVersionsPerPage = 5;
@@ -161,6 +161,8 @@ public sealed class SettingsWidget : Widget
         bool loading;
         bool error;
         bool settingsValid;
+        bool diagnosticDetails;
+        string? supportExportFile;
         PlatformDiagnosticsSnapshot diagnostics;
         SettingsInstalledWidgetState installedState;
         SettingsPermissionState permissionState;
@@ -181,6 +183,8 @@ public sealed class SettingsWidget : Widget
             busy = _busy || loading;
             error = _error;
             settingsValid = _settingsValid;
+            diagnosticDetails = _diagnosticDetails;
+            supportExportFile = _supportExportFile;
             diagnostics = _diagnostics;
             installedState = _installedState;
             permissionState = _permissionState;
@@ -201,7 +205,8 @@ public sealed class SettingsWidget : Widget
             busy,
             error,
             selectedTheme,
-            themePickerFocusId, startupStatus, display, loading, _hostFeatures);
+            themePickerFocusId, startupStatus, display, loading, _hostFeatures,
+            diagnosticDetails, supportExportFile);
         if (SettingsPresentation.TryRender(presentation, out var view))
             return SettingsPresentation.AnimatePage(view, page, loading);
         var header = SettingsPresentation.Header(presentation);
@@ -445,6 +450,15 @@ public sealed class SettingsWidget : Widget
             }
             switch (action.ActionId)
             {
+                case "diagnostics.details.toggle":
+                    if (CurrentPage != SettingsPage.Diagnostics) return;
+                    lock (_stateLock) _diagnosticDetails = !_diagnosticDetails;
+                    Invalidate();
+                    break;
+                case "diagnostics.export":
+                    if (CurrentPage != SettingsPage.Diagnostics) return;
+                    await ExportSupportBundleAsync(cancellationToken).ConfigureAwait(false);
+                    break;
                 case "startup.toggle":
                     if (!_hostFeatures.StartupRegistration) return;
                     var startup = _startup.Read();

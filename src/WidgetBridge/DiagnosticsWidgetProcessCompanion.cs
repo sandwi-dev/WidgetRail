@@ -1,3 +1,4 @@
+using System.Reflection;
 using WidgetRail.PlatformDiagnostics;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
@@ -101,6 +102,16 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             exclusiveControl: exclusiveControl,
             applicationControl: applicationControl,
             packageNotification: packageNotification,
+            supportExport: async token =>
+            {
+                var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                if (string.IsNullOrEmpty(documents)) return new(SupportBundleExportStatus.Unavailable);
+                var snapshot = await snapshotProvider(token).ConfigureAwait(false);
+                return await SupportBundle.ExportAsync(snapshot,
+                    Path.Combine(documents, "WidgetRail", "Support"),
+                    typeof(DiagnosticsWidgetProcessCompanion).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown",
+                    token).ConfigureAwait(false);
+            },
             overlayDisplay: overlayDisplay,
             builtInLocalDataInspection: builtInLocalDataInspection,
             builtInLocalDataClear: builtInLocalDataClear);

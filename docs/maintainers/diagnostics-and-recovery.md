@@ -6,7 +6,7 @@ authority boundaries used by the rest of the platform.
 
 ## What the snapshot contains
 
-The bridge produces a bounded schema-2 snapshot with these typed areas:
+The bridge produces a bounded schema-3 snapshot with these typed areas:
 
 - bridge session connectivity;
 - last-good widget-catalog revision, widget count, and bounded warning state;
@@ -15,7 +15,7 @@ The bridge produces a bounded schema-2 snapshot with these typed areas:
 - whether the audio/network provider composition is configured;
 - consent-store revision, total decisions, and denied-decision count;
 - one bounded worker row per catalog widget: public widget ID/name, running
-  state, start count, last stable failure code, and whether on-demand restart is
+  state, start count, last stable failure code and optional UTC event timestamp, and whether on-demand restart is
   still allowed;
 - up to 64 sanitized authority-recovery rows with an opaque recovery ID, safe
   display label, closed status, and an exact host-owned confirmation token only
@@ -87,10 +87,21 @@ security boundary against another process already running as the same user.
 
 ## Controller behavior
 
-Open **Settings → Diagnostics**. Focus starts on **Refresh diagnostics**. D-pad
-or the left stick moves between **Refresh diagnostics** and **Back**; `A`
-activates the focused action; `B` returns to the Settings root through the
-Diagnostics page's nested input scope. Guide remains host-owned.
+Open **Settings → About & troubleshooting → Diagnostics**. Focus starts on
+**Refresh diagnostics**, or the first pending authority recovery. D-pad or the
+left stick navigates export, applicable recovery links, expandable service
+details, refresh and back. `A` activates; `B` returns to the About page.
+Guide remains host-owned. Busy operations retain their focusable buttons.
+
+The summary distinguishes current failures from recovered failures and absent
+host telemetry. Latest per-widget failures show local timestamps; technical
+codes are available with service details. The list shows at most 16 failures and
+explains when the support report contains more.
+
+**Export support report** saves an allowlisted ZIP in Documents/WidgetRail/Support
+using the same trusted channel. It does not copy logs, settings or arbitrary
+files. See [Support reports](../reference/support-reports.md) for the data
+contract, privacy boundary, cancellation and export-result semantics.
 
 Refresh performs one bounded reload of settings, themes, installed catalog,
 permissions, and the bridge diagnostics snapshot. It does not create a polling
@@ -98,8 +109,8 @@ loop or restart healthy workers.
 
 ## Recovery policy
 
-Diagnostics remains read-only except for one narrow AppContainer authority-
-recovery operation. A pending host journal record appears with a sanitized
+Apart from the explicit local support export, Diagnostics remains read-only
+except for one narrow AppContainer authority-recovery operation. A pending host journal record appears with a sanitized
 package/generation label and an opaque recovery ID. Selecting it opens an
 explicit confirmation whose initial focus is **Cancel**. Settings never renders
 or speaks the 32-character current or 64-character legacy confirmation token.
@@ -156,9 +167,12 @@ lines, and logging failure cannot affect capability transport.
 Run the focused suites from the repository root:
 
 ```powershell
-dotnet run --project .\tests\PlatformDiagnostics.Tests\PlatformDiagnostics.Tests.csproj -c Release
-dotnet run --project .\tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj -c Release
-dotnet run --project .\tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj -c Release
+dotnet build .\tests\PlatformDiagnostics.Tests\PlatformDiagnostics.Tests.csproj -c Release "-bl:artifacts/diagnostics/transport-$([guid]::NewGuid()).binlog"
+dotnet .\tests\PlatformDiagnostics.Tests\bin\Release\net8.0\PlatformDiagnostics.Tests.dll
+dotnet build .\tests\SettingsWidget.Tests\SettingsWidget.Tests.csproj -c Release "-bl:artifacts/diagnostics/settings-$([guid]::NewGuid()).binlog"
+dotnet .\tests\SettingsWidget.Tests\bin\Release\net8.0\SettingsWidget.Tests.dll
+dotnet build .\tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj -c Release "-bl:artifacts/diagnostics/bridge-$([guid]::NewGuid()).binlog"
+dotnet .\tests\WidgetBridge.Tests\bin\Release\net8.0-windows10.0.19041.0\win-x64\WidgetBridge.Tests.dll --test-prefix Diagnostics
 ```
 
 The transport suite covers authenticated process-bound delivery, wrong-nonce
@@ -168,3 +182,5 @@ state, exact-token retry, stale/failed/unavailable results, and cancellation
 versus commit. The Settings suite covers nested controller scope, rejected
 catalog/theme state, permission denial summary, worker failure rendering,
 explicit refresh, token-hidden confirmation, and every closed retry result.
+Support-report tests verify excluded private fields, timestamp round trips,
+authenticated export, malformed results, cancellation and file-system failure.

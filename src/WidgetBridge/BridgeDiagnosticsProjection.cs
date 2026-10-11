@@ -115,7 +115,7 @@ internal sealed class BridgeDiagnosticsProjection(
                 worker.IsRunning,
                 Math.Max(0, worker.Starts),
                 worker.FailureCode is null ? null : SafeCode(worker.FailureCode),
-                worker.CanRestart))
+                worker.CanRestart) { LastFailureAtUtc = worker.LastFailureAtUtc })
             .ToArray();
 
         var catalogWarnings = Math.Clamp(input.CatalogDiagnosticCount, 0, 64);

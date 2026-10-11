@@ -53,6 +53,10 @@ internal static class BridgeDiagnosticsScenarios
             "Malformed worker input was not omitted from the bounded projection.");
         Equal("Safe widget", first.Workers[0].WidgetName,
             "The safe worker projection changed unexpectedly.");
+        Equal(new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero), first.Workers[0].LastFailureAtUtc!.Value,
+            "The actual failure time was lost during projection.");
+        Equal(first.Workers[0].LastFailureAtUtc!.Value, second.Workers[0].LastFailureAtUtc!.Value,
+            "Reading diagnostics changed the failure timestamp.");
         var authority = first.AuthorityRecoveries.Single();
         Equal("Community widget 2.1.0", authority.DisplayName,
             "Unsafe catalog text escaped the recovery-label fallback.");
@@ -277,7 +281,8 @@ internal static class BridgeDiagnosticsScenarios
             catalog,
             4,
             [
-                new BridgeClientWorkerStatus("safe-widget", "Safe widget", true, 2, null, false),
+                new BridgeClientWorkerStatus("safe-widget", "Safe widget", true, 2, "ProcessExited", false)
+                    { LastFailureAtUtc = new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero) },
                 new BridgeClientWorkerStatus("unsafe widget", "bad\r\nname", false, -1,
                     "C:\\private\\failure", true),
             ],

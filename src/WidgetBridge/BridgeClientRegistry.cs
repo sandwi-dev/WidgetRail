@@ -30,7 +30,10 @@ internal sealed record BridgeClientWorkerStatus(
     bool IsRunning,
     int Starts,
     string? FailureCode,
-    bool CanRestart);
+    bool CanRestart)
+{
+    internal DateTimeOffset? LastFailureAtUtc { get; init; }
+}
 
 internal sealed record BridgeClientRegistrySnapshot(
     BridgeCatalog Catalog,
@@ -491,7 +494,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                     registration is { IsRetiring: false } && registration.Client.IsRunning,
                     registration?.Client.Starts ?? 0,
                     failure?.Code,
-                    failure?.CanRestart ?? false);
+                    failure?.CanRestart ?? false) { LastFailureAtUtc = failure?.AtUtc };
             }).ToArray();
             return new BridgeClientRegistrySnapshot(
                 _catalog, _catalogRevision, workers, _residentBudget.Snapshot);
@@ -2798,7 +2801,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             ref _lastFailure,
             new WorkerFailureDiagnostic(
                 failure.DiagnosticCode ?? failure.Reason.ToString(),
-                failure.CanRestart));
+                failure.CanRestart, DateTimeOffset.UtcNow));
 
         internal void BeginRetirementLocked()
         {
@@ -2935,5 +2938,5 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
-    private sealed record WorkerFailureDiagnostic(string Code, bool CanRestart);
+    private sealed record WorkerFailureDiagnostic(string Code, bool CanRestart, DateTimeOffset AtUtc);
 }

@@ -6,6 +6,10 @@ using WidgetRail.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Support reports exclude private data and leave no partial file", () => SupportBundleScenarios.ExportPrivacyAndFailureAsync(HealthySnapshot(21))),
+    ("Health distinguishes recovered failures from missing telemetry", () => SupportBundleScenarios.Health(HealthySnapshot(22))),
+    ("Support export is authenticated and validates the returned basename", SupportExportRoundTrip),
+    ("Failure timestamps survive reads and reject malformed combinations", FailureTimestampRoundTrip),
     ("Overlay display context is authenticated bounded and session-local", DisplayContextRoundTrip),
     ("Package notifications use bounded authenticated one-shot delivery", PackageNotificationRoundTrip),
     ("Trusted application controls request quit and restart without OS actions", ApplicationControlRoundTrip),
@@ -46,6 +50,36 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task SupportExportRoundTrip()
+{
+    var calls = 0;
+    var result = new SupportBundleExportResult(SupportBundleExportStatus.Saved, "WidgetRail-support-test.zip");
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)),
+        supportExport: _ => { calls++; return ValueTask.FromResult(result); });
+    var wrong = new PlatformDiagnosticsPipeClient(harness.PipeName, new string('0', 64), Environment.ProcessId);
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() => wrong.ExportSupportBundleAsync().AsTask());
+    Assert.Equal(0, calls);
+    Assert.Equal(result, await harness.Client.ExportSupportBundleAsync());
+    Assert.Equal(1, calls);
+    result = new(SupportBundleExportStatus.Saved, "../private.zip");
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() => harness.Client.ExportSupportBundleAsync().AsTask());
+    result = new(SupportBundleExportStatus.Failed);
+    Assert.Equal(result, await harness.Client.ExportSupportBundleAsync());
+}
+
+static async Task FailureTimestampRoundTrip()
+{
+    var time = DateTimeOffset.UtcNow.AddMinutes(-5);
+    var worker = new PlatformWorkerDiagnostic("test.widget", "Widget", false, 1, "unexpected-exit", true)
+        { LastFailureAtUtc = time };
+    var snapshot = HealthySnapshot(1) with { Workers = [worker] };
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(snapshot));
+    Assert.Equal(time, (await harness.Client.GetSnapshotAsync()).Workers[0].LastFailureAtUtc!.Value);
+    Assert.Equal(time, (await harness.Client.GetSnapshotAsync()).Workers[0].LastFailureAtUtc!.Value);
+    snapshot = snapshot with { Workers = [worker with { LastFailureCode = null }] };
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() => harness.Client.GetSnapshotAsync().AsTask());
+}
 
 static async Task PackageNotificationRoundTrip()
 {
@@ -806,12 +840,13 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null,
         Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? inspectBuiltIn = null,
         Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? clearBuiltIn = null,
-        Func<OverlayDisplayContext>? overlayDisplay = null)
+        Func<OverlayDisplayContext>? overlayDisplay = null,
+        Func<CancellationToken, ValueTask<SupportBundleExportResult>>? supportExport = null)
     {
         PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
-            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification, inspectBuiltIn, clearBuiltIn, overlayDisplay);
+            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification, inspectBuiltIn, clearBuiltIn, overlayDisplay, supportExport);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

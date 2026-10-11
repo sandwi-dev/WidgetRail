@@ -80,6 +80,19 @@ current preview. Web media may require the WebView2 runtime and provider setup.
 
 ## Report a reproducible problem
 
+Open **Settings → About & troubleshooting → Diagnostics**. The summary separates
+current problems from recovered widget failures. Expand **Show service details**
+for service status and technical codes. Missing overlay/Guide telemetry is not
+itself evidence of an input failure. Failure times describe the latest recorded
+failure for each widget in the running session; they are not a permanent history.
+
+Select **Export support report** to save a ZIP under **Documents → WidgetRail →
+Support**. Its filename remains visible on the diagnostics page. The report
+contains app/Windows versions, service states, widget identifiers, controller
+readiness, and failure categories/timestamps. It excludes raw logs, paths,
+credentials, chat, captures, browsing history, and recovery tokens. Nothing is
+uploaded by WidgetRail. Review the ZIP before sharing it.
+
 Include the exact build or commit, Windows version, controller/device and
 connection type, relevant settings, and the shortest reproduction sequence.
 Say whether restarting the widget or overlay changes the behavior.

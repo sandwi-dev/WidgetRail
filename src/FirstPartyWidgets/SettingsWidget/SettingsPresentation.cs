@@ -24,7 +24,9 @@ internal sealed record SettingsPresentationState(
     StartupRegistrationStatus? Startup = null,
     OverlayDisplayContext? Display = null,
     bool Loading = false,
-    SettingsHostFeatures? HostFeatures = null);
+    SettingsHostFeatures? HostFeatures = null,
+    bool DiagnosticDetails = false,
+    string? SupportExportFile = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static partial class SettingsPresentation
@@ -363,112 +365,6 @@ internal static partial class SettingsPresentation
         UI.Button("Reset settings…", "open.reset", "category.reset").Classes("danger-button"),
         UI.Text("Review what will be reset before confirming.", "about.reset.help").Classes("page-help")
     ), "about.diagnostics", "about.page");
-
-    private static WidgetView RenderDiagnostics(
-        StackElement header,
-        SettingsPresentationState state)
-    {
-        var diagnostics = state.Diagnostics;
-        var invalidThemes = state.Themes.Themes.Count(theme => !theme.IsValid);
-        var runningWorkers = diagnostics.Workers.Count(worker => worker.IsRunning);
-        var failedWorkers = diagnostics.Workers.Count(worker => worker.LastFailureCode is not null);
-        var areas = new[]
-        {
-            diagnostics.Bridge,
-            diagnostics.Catalog,
-            diagnostics.Appearance,
-            diagnostics.Providers,
-            diagnostics.Consent,
-            diagnostics.Overlay,
-            diagnostics.Guide,
-        };
-        var children = new List<WidgetElement>
-        {
-            UI.Text("Diagnostics", "diagnostics.heading", "Settings diagnostics")
-                .Classes("page-heading"),
-            UI.Text(
-                state.SettingsValid
-                    ? "Settings file: valid"
-                    : "Settings file: invalid; defaults shown",
-                "diagnostics.settings", "Settings file status")
-                .Classes(state.SettingsValid ? "diagnostic-ok" : "diagnostic-error"),
-            UI.Text($"Theme packages: {state.Themes.Themes.Count} total, {invalidThemes} invalid",
-                "diagnostics.themes", "Theme package status")
-                .Classes(invalidThemes == 0 ? "diagnostic-ok" : "diagnostic-error"),
-            UI.CodeText(
-                    $"Schema: {state.Settings.SchemaVersion}; runtime snapshot {diagnostics.Revision}",
-                    "diagnostics.schema", "Settings and runtime diagnostics schema")
-                .AddClasses("diagnostic-line"),
-        };
-        children.AddRange(areas.Select(area => UI.Text(
-            $"{DiagnosticPrefix(area.State)} {area.Label}: {area.Summary}",
-            $"diagnostics.area.{area.Id}",
-            $"{area.Label} diagnostic: {area.State}; {area.Summary}").Classes(
-                area.State == PlatformDiagnosticState.Healthy
-                    ? "diagnostic-ok"
-                    : "diagnostic-error").AddClasses("diagnostic-area")));
-        children.Add(UI.Text(
-            $"Workers: {runningWorkers}/{diagnostics.Workers.Count} running; " +
-            $"{failedWorkers} with a recorded failure",
-            "diagnostics.workers", "Widget worker status").Classes(
-                failedWorkers == 0 ? "diagnostic-ok" : "diagnostic-error"));
-        foreach (var worker in diagnostics.Workers
-                     .Where(worker => worker.LastFailureCode is not null)
-                     .Take(3))
-        {
-            children.Add(UI.CodeText(
-                $"{worker.WidgetName}: {worker.LastFailureCode}; " +
-                (worker.IsRunning
-                    ? "running after the recorded failure"
-                    : worker.CanRestart ? "will restart on demand" : "restart limit reached"),
-                $"diagnostics.worker.{worker.WidgetId}",
-                $"{worker.WidgetName} worker failure").AddClasses("diagnostic-error"));
-        }
-        var recoveryOrder = SettingsAuthorityRecoveryPolicy.OrderedIndexes(diagnostics);
-        children.Add(UI.Text(
-            recoveryOrder.Length == 0
-                ? "Content authority recovery: no pending records"
-                : $"Content authority recovery: {recoveryOrder.Length} " +
-                  (recoveryOrder.Length == 1
-                      ? "record requires review"
-                      : "records require review"),
-            "diagnostics.authority.summary",
-            recoveryOrder.Length == 0
-                ? "No content authority recovery records are pending"
-                : $"{recoveryOrder.Length} content authority recovery " +
-                  (recoveryOrder.Length == 1
-                      ? "record requires review"
-                      : "records require review"))
-            .Classes(recoveryOrder.Length == 0 ? "diagnostic-ok" : "diagnostic-error"));
-        for (var displayIndex = 0; displayIndex < recoveryOrder.Length; displayIndex++)
-        {
-            var recovery = diagnostics.AuthorityRecoveries[recoveryOrder[displayIndex]];
-            children.Add(UI.Button(
-                    $"Review recovery · {recovery.DisplayName} · {recovery.State}",
-                    $"authority.recovery.select.{displayIndex}",
-                    $"diagnostics.authority.item.{displayIndex}")
-                .Busy(state.Busy)
-                .Classes(recovery.CanRetry ? "danger-button" : "secondary-button") with
-                {
-                    AccessibilityLabel =
-                        $"Review content authority recovery {recovery.DisplayName}, " +
-                        $"state {recovery.State}, status {recovery.StatusCode}, " +
-                        (recovery.CanRetry ? "retry available" : "retry unavailable"),
-                });
-        }
-        children.Add(UI.Button("Refresh diagnostics", "refresh", "diagnostics.refresh")
-            .Icon(WidgetGlyph.Refresh, "Refresh diagnostics")
-            .Busy(state.Busy).Classes("primary-button"));
-        children.Add(UI.Button("Back", "back", "diagnostics.back")
-            .Classes("secondary-button"));
-        LinkVertical(children);
-        return View(header,
-            PageScope("diagnostics.page", children.ToArray()),
-            recoveryOrder.Length == 0
-                ? "diagnostics.refresh"
-                : "diagnostics.authority.item.0",
-            "diagnostics.page");
-    }
 
     private static WidgetView RenderAuthorityRecovery(
         StackElement header,

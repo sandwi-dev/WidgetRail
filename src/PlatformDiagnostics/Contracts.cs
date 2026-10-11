@@ -19,7 +19,10 @@ public sealed record PlatformWorkerDiagnostic(
     bool IsRunning,
     int Starts,
     string? LastFailureCode,
-    bool CanRestart);
+    bool CanRestart)
+{
+    public DateTimeOffset? LastFailureAtUtc { get; init; }
+}
 
 /// <summary>
 /// Sanitized host-owned recovery state. Raw profile names, SIDs, filesystem
@@ -184,6 +187,11 @@ public sealed record PlatformDiagnosticsSnapshot(
 
 public sealed record ApplicationControlResult(bool Accepted);
 
+public enum SupportBundleExportStatus { Saved, Unavailable, Failed }
+
+// A basename only: the trusted host chooses Documents/WidgetRail/Support.
+public sealed record SupportBundleExportResult(SupportBundleExportStatus Status, string? FileName = null);
+
 public sealed record PlatformWidgetPackageNotification(string Message, bool Failed = false)
 {
     public static PlatformWidgetPackageNotification Empty { get; } = new(string.Empty);
@@ -196,6 +204,9 @@ public sealed record OverlayDisplayContext(string Id, string Name)
 
 public interface IPlatformDiagnosticsService
 {
+    ValueTask<SupportBundleExportResult> ExportSupportBundleAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new SupportBundleExportResult(SupportBundleExportStatus.Unavailable));
+
     ValueTask<OverlayDisplayContext> GetOverlayDisplayAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(OverlayDisplayContext.Unavailable);
 

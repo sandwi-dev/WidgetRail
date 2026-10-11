@@ -45,6 +45,7 @@ if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Diagnostics export stays focusable and retains its saved location", DiagnosticsExportScenarios.ExportRetainsFocusAndResult),
     ("Installed rows separate visible fields and preserve one action", StructuredInstalledRows),
     ("Settings pages have distinct ownership and valid focus paths", SettingsUsabilityScenarios.PagesHaveConsistentOwnershipAndFocus),
     ("Explicit preference choices are idempotent", SettingsUsabilityScenarios.ExplicitChoicesAreIdempotent),
@@ -444,6 +445,8 @@ static async Task ControllerScrollSurface()
     Assert.Equal(ScrollAxis.Vertical, page.ScrollAxis);
     Assert.Equal("diagnostics.page", diagnostics.Root.InputScopeId);
     Assert.Equal<string?>(null, page.InputScopeId);
+    await Action(widget, "diagnostics.details.toggle");
+    diagnostics = Snapshot(widget);
     Assert.True(Nodes(diagnostics.Root).Single(node => node.Id == "diagnostics.schema")
             .StyleClasses.Contains("wrail-code-text", StringComparer.Ordinal),
         "Diagnostics schema should use semantic code text styling.");
@@ -886,6 +889,9 @@ static async Task InvalidThemeDiagnostics()
     await Activate(widget);
     await Action(widget, "open.diagnostics");
     var snapshot = Snapshot(widget);
+    Assert.Contains("attention", Text(snapshot.Root, "diagnostics.health").Text!);
+    await Action(widget, "diagnostics.details.toggle");
+    snapshot = Snapshot(widget);
     Assert.Contains("1 invalid", Text(snapshot.Root, "diagnostics.themes").Text!);
     Assert.Valid(snapshot);
 }
@@ -935,6 +941,10 @@ static async Task RuntimeDiagnosticsRecovery()
     Assert.Equal("diagnostics.page", initial.ActiveInputScopeId);
     Assert.Equal("diagnostics.refresh", initial.InitialFocusId);
     Assert.HasShortcut(initial.Root, "diagnostics.page", ControllerButton.B, "back");
+    Assert.True(!Nodes(initial.Root).Any(node => node.Id == "diagnostics.area.catalog"), "Technical details should start collapsed.");
+    Assert.Contains("attention", Text(initial.Root, "diagnostics.health").Text!);
+    await Action(widget, "diagnostics.details.toggle");
+    initial = Snapshot(widget);
     Assert.Contains("retained last good", Text(initial.Root, "diagnostics.area.catalog").Text!);
     Assert.Contains("1 denied", Text(initial.Root, "diagnostics.area.consent").Text!);
     Assert.Contains("not reported", Text(initial.Root, "diagnostics.area.guide").Text!);
