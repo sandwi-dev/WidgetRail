@@ -19,6 +19,7 @@
     "Performance"
   ],
   "productionWidgets": [
+    "marketplace",
     "capture-library",
     "performance-monitor",
     "media-sessions",

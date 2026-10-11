@@ -17,6 +17,7 @@ internal enum BrokerCapabilityDomain
     ProviderDocuments,
     Performance,
     Permissions,
+    Marketplace,
 }
 
 internal static class BrokerCapabilityDomains
@@ -24,6 +25,7 @@ internal static class BrokerCapabilityDomains
     internal static BrokerCapabilityDomain Resolve(string capabilityId)
     {
         if (capabilityId == PlatformCapabilities.WidgetPermissionsV1) return BrokerCapabilityDomain.Permissions;
+        if (capabilityId == PlatformCapabilities.WidgetMarketplaceV1) return BrokerCapabilityDomain.Marketplace;
         if (capabilityId is PlatformCapabilities.PerformanceReadV1 or PlatformCapabilities.PerformanceFpsControlV1)
             return BrokerCapabilityDomain.Performance;
         if (capabilityId == PlatformCapabilities.ProviderDocumentsV1) return BrokerCapabilityDomain.ProviderDocuments;

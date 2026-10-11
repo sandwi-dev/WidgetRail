@@ -13,7 +13,7 @@ namespace WidgetRail.WidgetBridge;
 internal sealed record CuratedWidget(string Id, string Publisher, string Name, string Description, IReadOnlyList<string> Screenshots);
 
 /// <summary>
-/// Private Settings jobs. Downloads and mutations never execute in the short
+/// Shared trusted-UI jobs. Downloads and mutations never execute in the short
 /// diagnostics request. Review tokens name exact write-locked package streams.
 /// </summary>
 internal sealed class BridgeWidgetMarketplace : IAsyncDisposable

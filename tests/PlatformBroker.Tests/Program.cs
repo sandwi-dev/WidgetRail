@@ -5,6 +5,7 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Marketplace management is intrinsic narrow and cannot smuggle mutations through reads", MarketplaceBrokerTests.Authority),
     ("Permission requests bind declarations and persist only explicit host decisions", PermissionRequestTests.ConsentAsync),
     ("Permission prompts expire and cancel on interaction loss and worker retirement", PermissionRequestTests.LifetimeAsync),
     ("Intrinsic permission service cannot prompt in background or self-declare", PermissionRequestTests.BrokerAsync),
@@ -143,7 +144,7 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(12, rootFields.Count(field =>
+    Assert.Equal(13, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
@@ -160,6 +161,7 @@ static Task CapabilityDomainAuthorityIsSingular()
         typeof(MediaCapabilityDomain),
         typeof(PrivateSecretCapabilityDomain),
         typeof(PrivateStateCapabilityDomain),
+        typeof(MarketplaceCapabilityDomain),
         typeof(WindowCaptureCapabilityDomain),
     ];
     foreach (var domainType in domainTypes)
@@ -451,7 +453,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(48, PlatformCapabilities.All.Count);
+    Assert.Equal(49, PlatformCapabilities.All.Count);
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceReadV1, out var performanceRead));
     Assert.Equal(BrokerCapabilityKind.Read, performanceRead.KindForOperation(PlatformCapabilities.PerformanceGet));
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceFpsControlV1, out var performanceControl));

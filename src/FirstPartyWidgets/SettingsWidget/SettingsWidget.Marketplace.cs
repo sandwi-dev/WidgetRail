@@ -1,4 +1,5 @@
 using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.FirstPartyWidgets.Settings;

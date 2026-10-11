@@ -5,4 +5,6 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../WidgetProtocol/WidgetProtocol.csproj" /></ItemGroup>
+  <ItemGroup><Using Include="WidgetRail.WidgetProtocol" /></ItemGroup>
 </Project>

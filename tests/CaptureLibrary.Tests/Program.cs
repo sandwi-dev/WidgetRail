@@ -30,12 +30,21 @@ var tests = new (string Name, Func<Task> Run)[]
     ("High-entropy thumbnails stream within broker bounds and honor library-read revocation", ThumbnailTransport),
     ("Missing library permission offers a scoped Settings intent without prompting", PermissionLink),
     ("Capture action waits for permission then continues without a widget reload", PermissionContinuation),
+    ("Capture Library theme compiles with supported logical text alignment", Style),
 };
 var failures = 0;
 foreach (var test in tests) try { await test.Run(); Console.WriteLine("PASS " + test.Name); } catch (Exception error) { failures++; Console.WriteLine("FAIL " + test.Name + ": " + error); }
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} passed"); return failures == 0 ? 0 : 1;
 
 static void Check(bool value, string message = "Assertion failed") { if (!value) throw new Exception(message); }
+static Task Style()
+{
+    var parsed=WidgetRail.WidgetStyling.WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"fixture/capture.wrss")),"capture.wrss");
+    Check(parsed.IsValid);
+    var compiled=WidgetRail.WidgetStyling.WrssThemeCompiler.Compile([parsed.Document]);
+    Check(compiled.IsValid,string.Join("; ",compiled.Diagnostics.Select(d=>d.Message)));
+    return Task.CompletedTask;
+}
 static async Task Reject(Func<Task> action) { try { await action(); } catch (Exception error) when (error is BrokerException or IOException) { return; } throw new Exception("Operation should have been refused"); }
 static async Task Persistence()
 {

@@ -26,7 +26,7 @@ internal sealed record ConfiguredWidget
     public bool FullWidgetPinningSupported { get; init; }
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
-    /// <summary>Optional sealed icon package for a host-configured dedicated worker.</summary>
+    /// <summary>Optional sealed package supplying icons and intent declarations for a host-configured dedicated worker.</summary>
     public string? IconPackageRoot { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
     public IReadOnlyList<string> DeclaredCapabilities { get; init; } = [];
@@ -362,7 +362,7 @@ public sealed class BridgeCatalog
                 if (!File.Exists(executable))
                     throw new BridgeCatalogException($"Worker executable for '{source.Id}' does not exist.");
                 var style = CompileTheme(source, directory);
-                widgets.Add(source.Id, WithFingerprints(LoadConfiguredIcons(source with
+                widgets.Add(source.Id, WithFingerprints(LoadConfiguredPackageMetadata(source with
                 {
                     WorkerExecutable = executable,
                     CompiledTheme = style.Theme,
@@ -835,7 +835,7 @@ public sealed class BridgeCatalog
         }
     }
 
-    private static ConfiguredWidget LoadConfiguredIcons(ConfiguredWidget source, string catalogDirectory)
+    private static ConfiguredWidget LoadConfiguredPackageMetadata(ConfiguredWidget source, string catalogDirectory)
     {
         if (source.IconPackageRoot is null) return source;
         if (!IsSafePackageRelativePath(source.IconPackageRoot, allowDirectory: true))
@@ -864,6 +864,7 @@ public sealed class BridgeCatalog
             VerifiedPackageFiles = verification.VerifiedFiles,
             PackageContentDigest = verification.ContentDigest,
             PackageIconAssets = metadata.Available,
+            Intents = manifest.Intents,
             DeclaredPackageIconAssetIds = manifest.IconAssets.Keys.ToHashSet(StringComparer.Ordinal),
             PackageIconAdmissionFailure = metadata.Unavailable.Values.FirstOrDefault(),
         };

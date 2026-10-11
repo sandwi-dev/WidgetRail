@@ -371,6 +371,8 @@ static async Task SettingsIntents()
         Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
         Assert.Equal(WidgetIntentResult.Rejected, await widget.OnIntentAsync(missing with { SchemaDigest = new string('0',64) }));
         Assert.Equal(0, (await consent.LoadAsync()).Entries.Count);
+        await Action(widget, "open.installed-widgets");
+        Assert.Equal(WidgetIntentContracts.OpenMarketplace, Button(Snapshot(widget).Root,"installed.marketplace").Intent!.ContractId);
     }
     finally { await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default); }
 }

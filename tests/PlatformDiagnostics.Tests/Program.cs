@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetProtocol;
 
 var tests = new (string Name, Func<Task> Run)[]
 {

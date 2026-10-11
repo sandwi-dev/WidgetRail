@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1, "id": "widgetrail.firstparty.marketplace", "publisher": "widgetrail.firstparty",
+  "name": "Marketplace", "version": "0.1.0", "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/MarketplaceWidget.dll", "type": "WidgetRail.FirstPartyWidgets.Marketplace.MarketplaceWidget" },
+  "presentation": { "icon": "settings", "packageIcon": { "assetId": "marketplace.mark", "colorMode": "themeTint" } },
+  "iconAssets": { "marketplace.mark": { "path": "assets/icons/marketplace.svg" } },
+  "permissions": [], "optionalPermissions": [],
+  "intents": {
+    "requests": [{ "id": "widgetrail.settings.widget.open", "version": 1,
+      "payloadSchema": { "type": "object", "additionalProperties": false, "properties": { "packageId": { "type": "string", "minLength": 3, "maxLength": 128 } }, "required": ["packageId"] } }],
+    "handles": [{ "id": "widgetrail.marketplace.open", "version": 1,
+      "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} } }]
+  },
+  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 120 },
+  "resourceRequest": { "memoryMb": 48, "updateHz": 2 }, "architectures": ["x64"]
+}

@@ -166,6 +166,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Package SVG icons resolve lazily with exact catalog authority and no worker",
         PackageSvgIconsResolveLazily),
     ("Configured worker icons admit only their sealed package declarations", ConfiguredWorkerIcons),
+    ("Marketplace management requires sealed bundled marketplace provenance", MarketplaceAuthority),
     ("Configured Settings icons resolve from the built host catalog", ConfiguredSettingsIcons),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
     ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
@@ -353,7 +354,8 @@ static Task ConfiguredWorkerIcons()
 {
     const string id = "dev.test.configured-icons";
     using var fixture = TemporaryBundledCatalog.Create(
-        new TemporaryBundledWidgetDefinition(id, "Configured icons", InvalidStyle: false, PackageIcon: true));
+        new TemporaryBundledWidgetDefinition(id, "Configured icons", InvalidStyle: false, PackageIcon: true,
+            Intents: new() { Handles = [new(WidgetIntentContracts.WidgetSettings)] }));
     void WriteCatalog(string root = "packages/package-1", string publisher = "dev.test") =>
         File.WriteAllText(fixture.Path, JsonSerializer.Serialize(new
         {
@@ -370,6 +372,7 @@ static Task ConfiguredWorkerIcons()
     Assert.Equal(WidgetGlyph.Settings, configured.Icon);
     Assert.True(configured.PackageIcon is null, "Content icons must not replace the dedicated worker's tray glyph.");
     Assert.True(configured.DeclaredPackageIconAssetIds.SetEquals(["test.mark"]), "Configured worker lost its icon declarations.");
+    Assert.Equal(WidgetIntentContracts.OpenWidgetSettings, configured.Intents!.Handles.Single().Id);
     var descriptor = configured.PublicDescriptor();
     var icon = descriptor.IconAssets.Single();
     _ = catalog.ResolvePackageIcon(id, descriptor.PresentationGeneration, icon.AssetId, icon.NormalizedSha256);
@@ -389,6 +392,19 @@ static Task ConfiguredWorkerIcons()
     WriteCatalog();
     File.AppendAllText(Path.Combine(fixture.Root, "packages", "package-1", "assets", "mark.svg"), "tampered");
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(fixture.Path));
+    return Task.CompletedTask;
+}
+
+static Task MarketplaceAuthority()
+{
+    using var fixture = TemporaryBundledCatalog.Create(new TemporaryBundledWidgetDefinition("marketplace", "Marketplace",false,
+        PackageId: "widgetrail.firstparty.marketplace",Publisher: "widgetrail.firstparty"));
+    var configured = BridgeCatalog.Load(fixture.Path).GetConfigured("marketplace");
+    Assert.True(WidgetBridgeServer.IsTrustedMarketplace(configured), "Verified bundled marketplace was not admitted.");
+    Assert.True(!WidgetBridgeServer.IsTrustedMarketplace(configured with { GrantsBundledPermissionDefaults = false }), "Installed name spoof gained marketplace management.");
+    Assert.True(!WidgetBridgeServer.IsTrustedMarketplace(configured with { PackageId = "widgetrail.firstparty.other" }), "Another built-in gained marketplace management.");
+    Assert.True(!WidgetBridgeServer.IsTrustedMarketplace(configured with { RequiresAppContainer = false }), "Unisolated worker gained marketplace management.");
+    Assert.True(!WidgetBridgeServer.IsTrustedMarketplace(configured with { PackageContentDigest = "" }), "Unverified content gained marketplace management.");
     return Task.CompletedTask;
 }
 
@@ -7418,7 +7434,8 @@ file sealed record TemporaryBundledWidgetDefinition(
     bool OverAggregatePackageIcons = false,
     string Publisher = "dev.test",
     IReadOnlyList<string>? Permissions = null,
-    IReadOnlyList<string>? OptionalPermissions = null);
+    IReadOnlyList<string>? OptionalPermissions = null,
+    WidgetIntentDeclarations? Intents = null);
 
 file sealed class TemporaryBundledCatalog : IDisposable
 {
@@ -7525,6 +7542,7 @@ file sealed class TemporaryBundledCatalog : IDisposable
                 iconAssets,
                 permissions = widget.Permissions ?? [],
                 optionalPermissions = widget.OptionalPermissions ?? [],
+                intents = widget.Intents,
                 residencyPolicy = new
                 {
                     schemaVersion = 1,
@@ -7533,7 +7551,7 @@ file sealed class TemporaryBundledCatalog : IDisposable
                 },
                 resourceRequest = new { memoryMb = 32, updateHz = 1 },
                 architectures = new[] { "x64" },
-            });
+            }, new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
             File.WriteAllText(System.IO.Path.Combine(packageRoot, "manifest.json"), manifest);
             InstalledPackageIntegrity.Seal(root, packageRoot, new WidgetCatalogOptions());
             packageRoots[widget.Id] = packageRoot;

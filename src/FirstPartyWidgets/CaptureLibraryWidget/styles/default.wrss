@@ -1,7 +1,7 @@
 .capture-library { padding: 16px; gap: 12px; background: var(--surface); color: var(--text); }
 .capture-title { font-size: 24px; font-weight: 600; }
-.capture-heading { font-size: 17px; font-weight: 600; text-align: left; }
-.capture-help { font-size: 13px; color: var(--text-muted); text-align: left; }
+.capture-heading { font-size: 17px; font-weight: 600; text-align: start; }
+.capture-help { font-size: 13px; color: var(--text-muted); text-align: start; }
 .capture-entry { padding: 12px; corner-radius: 8px; background: var(--surface-raised); }
 .capture-entry-copy { gap: 4px; }
 .capture-preview { height: 320px; }

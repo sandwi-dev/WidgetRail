@@ -24,7 +24,7 @@ Previous delivery and evidence: `platform-feature-roadmap.md`.
 - [x] Reusable SDK graphs, bounded 60-second histories, FPS/average/1% low and
   frame-time graph from individual frames; system CPU/GPU/memory histories.
   Clear gaps/target changes, compact pin without Automatic; retain PresentMon FPS.
-- [ ] Dedicated official marketplace widget, Settings entry and installed-widget
+- [x] Dedicated official marketplace widget, Settings entry and installed-widget
   management; shared host-controlled distribution/review authority. No custom repos.
 - [ ] Settings details/permissions intents and explicit host-owned SDK permission
   dialog, clear outcomes, continuation after approval, no background prompting.
@@ -60,8 +60,9 @@ review/save/upload. Permissions stay declared and host-authorized.
 
 ## Next concrete action
 
-Continue permission integration review (including pinned-source dialog placement),
-then implement the dedicated marketplace widget and shared management channel.
+Finish marketplace integration gates and checkpoint. Continue pinned-source
+permission handling and audio qualification, then assemble and launch the complete
+candidate after native layout review.
 Hardware silent recording is qualified; audio remains outstanding. Final complete
 candidate assembly and visual/physical acceptance remain pending.
 
@@ -376,3 +377,63 @@ of these new changes. No scope item is complete solely because it is planned.
   every recording stops at maximum duration, and reopening can finish it early.
   SDK StopAsync remains the independent lifecycle operation for widget authors.
   This changes no previously released capture constructor or legacy request API.
+
+## Dedicated marketplace checkpoint
+
+- Added a normal sandboxed Marketplace widget with catalog cards, updates filter,
+  Y refresh, X filter, B back with selected-card restoration, LB/RB screenshots,
+  progress/cancellation and review-before-install. Registered in both editions.
+  Settings Browse marketplace and SDK Gallery use a declared marketplace intent;
+  installed management returns to exact Settings details through its intent.
+- Shared marketplace DTOs/validation now live in WidgetProtocol. The existing
+  Settings diagnostics service and new scoped broker service share the unchanged
+  BridgeWidgetMarketplace engine. Extracted a shared review presentation; exact
+  archive tokens, full-trust acknowledgement and disabled installation remain.
+- Management authority is intrinsic and granted only after sealed bundled
+  marketplace admission, AppContainer/generic-worker checks and exact package/
+  publisher matching. An installed name/publisher spoof cannot acquire it.
+  Reads require Visible/Interactive; mutations require Interactive. Command action
+  must match the operation so read admission cannot smuggle a mutation.
+- Integration found configured dedicated workers (Settings) loaded sealed icon
+  metadata but omitted manifest intents. They now load verified intent declarations
+  into the existing worker/catalog fingerprints too; no arbitrary catalog-JSON
+  intent authority was introduced.
+- Marketplace view tests 4/4 (`marketplace-ui-tests-03.log`); engine 7/7
+  (`marketplace-engine-tests-01.log`); role provenance and configured intent tests
+  each 1/1 (`marketplace-authority-tests-01.log`, `marketplace-configured-intents-01.log`);
+  broker 77/77 (`marketplace-broker-tests-01.log`); diagnostics 28/28
+  (`marketplace-diagnostics-tests-01.log`); Settings 87/87
+  (`marketplace-settings-tests-01.log`).
+- Theme compilation caught unsupported `text-align: left` in new Marketplace and
+  Capture Library styles and a missing danger fallback. Corrected to logical start
+  alignment and the existing Settings fallback. Capture Library now 22/22 with a
+  theme compile regression (`marketplace-capture-style-tests-01.log`).
+- API compatibility 17/17 (`marketplace-api-tests-01.log`), reviewed additive
+  baseline 3633 symbols; Gallery 13/13 (`marketplace-gallery-tests-01.log`); Release
+  frontend clean (`marketplace-frontend-release-01.log`). Settings rerun 87/87
+  (`marketplace-settings-tests-02.log`) explicitly checks its marketplace intent.
+  Added marketplace engine/widget gates to the verification manifest.
+- Native/assembled marketplace validation remains part of final candidate assembly;
+  no actual user package installation or user profile change was performed. Engine
+  tests install synthetic packages in isolated temp roots.
+
+### Next qualification work
+
+- For the first optional audio increment, investigate Windows process-loopback
+  capture scoped to the fixed captured process/tree, muxed as AAC with the existing
+  H.264 writer. Keep audio off by default; do not advertise system/microphone modes
+  simply because they exist in the enum. Use a bounded event-driven PCM queue and
+  a shared QPC timeline, and include audio in byte-budget validation.
+- Qualify with generated tones from a synthetic captured application, a separate
+  competing tone to prove process exclusion, decode/duration/synchronization checks,
+  silence, stop/cancel/reuse and measured overhead. Update capability probes and
+  confirmation/indicator text only after the actual path works. This paragraph is
+  implementation direction, not evidence of implemented audio.
+- Pinned permission prompts need root/focus/size handling; normal main-surface
+  dialogs pass native checks. Avoid introducing application switching or a custom
+  widget return stack. Revisit the existing pinned text-entry/popup patterns.
+- Final candidate must use complete edition assembly, with current generic worker,
+  Bridge, native encoder DLL (without test fixture), Marketplace, Capture Library,
+  Performance, Browser and Game Help. Verify real sandboxed marketplace service
+  admission and Settings intent routing there, plus native capture-grid/settings
+  layout. Raw frontend build output remains insufficient for handoff.

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/FirstPartyWidgets/MarketplaceWidget/MarketplaceWidget.csproj" /><ProjectReference Include="../../src/WidgetStyling/WidgetStyling.csproj" /></ItemGroup>
+  <ItemGroup><None Include="../../src/FirstPartyWidgets/MarketplaceWidget/manifest.json" Link="fixture/manifest.json" CopyToOutputDirectory="PreserveNewest" /><None Include="../../src/FirstPartyWidgets/MarketplaceWidget/styles/default.wrss" Link="fixture/default.wrss" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+</Project>

@@ -1,6 +1,7 @@
 # Widget marketplace and updates
 
-Open **Settings → Widgets → Browse marketplace**. The initial curated catalog
+Open **Marketplace** from the widget tray, or use **Settings → Widgets → Browse marketplace**.
+It is included in both app editions. The initial curated catalog
 contains Playnite Library, Spotify, YouTube Video, and YouTube Music. Built-in
 widgets are distributed with the app; the marketplace does not replace them.
 
@@ -18,6 +19,11 @@ the screenshot buttons change the preview. YouTube Music has no screenshots in
 the initial catalog. Screenshot URLs are pinned to a repository commit so they
 do not change underneath a published app.
 
+**Y** checks for updates; **X** switches between all listings and available updates.
+**B** returns from details to the previously selected card. From the catalog, B
+keeps its ordinary tray behavior. Navigation remains available while a download
+runs, and its progress/cancel action remains visible even when viewing another listing.
+
 **Download for review** (or **Download update for review**) verifies SHA-256 and
 validates the archive before offering installation. Downloading changes no
 installed widget. The review shows host/architecture compatibility, required and
@@ -26,7 +32,7 @@ execution model. Full-access widgets explicitly warn that they run with the
 user's Windows-account access. The controller-native dialog starts on **Cancel**.
 
 Installing requires this exact review. The new version remains **disabled**.
-Use **Manage in Widgets** to review permissions and enable it. Updates retain
+Use **Manage in Settings** to open that exact widget's details, review permissions and enable it. Updates retain
 older versions and widget data. Existing **Versions** controls select a previous
 version while the widget is disabled. Up-to-date listings and versions already
 saved after a rollback open management rather than downloading the same version
@@ -37,7 +43,7 @@ are no accounts, payments, ratings or public submissions in this version.
 
 ## Jobs and recovery
 
-Downloads and installs run as Bridge-owned jobs; short Settings requests only
+Downloads and installs run as Bridge-owned jobs; short management requests only
 start, inspect, approve or cancel them. Navigation stays available during a
 download. The primary action remains focusable while busy. Returning to a listing
 shows its existing job. Explicit cancellation stops pending network work; a
@@ -74,9 +80,22 @@ digest. Failure to save optional CLI source metadata does not undo installation.
 - `BridgeWidgetMarketplace` owns jobs and archive handles. Its only mutations
   call the existing catalog install/update transactions. It does not enable
   widgets or grant permissions.
-- The private diagnostics companion exposes typed marketplace commands only to
-  the exact trusted Settings worker. This is not a community SDK capability;
-  workers cannot supply URLs, filesystem paths or arbitrary install approvals.
+- Marketplace commands and validation are shared protocol contracts; Settings'
+  private diagnostics channel and the dedicated marketplace call the same Bridge
+  service. The review UI is shared too. There is no second installation pipeline.
+- `HostServices.Marketplace` is a reserved, host-granted service attached only to
+  the sealed, bundled `widgetrail.firstparty.marketplace` running in AppContainer.
+  Installed packages cannot acquire it by claiming the same name/publisher or
+  declaring `widgets.marketplace.v1`. It is not requestable through consent.
+  Read/status operations require a visible widget; download/install/cancel require
+  interaction. The operation and command action must agree, preventing a read call
+  from carrying an installation command. URLs and paths are never accepted.
+- Other widgets should open the marketplace using `WidgetIntentContracts.Marketplace`
+  (`widgetrail.marketplace.open`, version 1, empty object payload). Declare the
+  empty-object schema with `additionalProperties: false` and `properties: {}`.
+  Settings and SDK Gallery demonstrate this route. Marketplace uses Settings'
+  widget-details intent for installed management.
+- Additional GitHub repositories and private-source authentication are deferred.
 
 Automated tests cover shared CLI behavior, consent/review/replay/expiry, staged
 update and rollback, cancellation, identity mismatches, private transport and

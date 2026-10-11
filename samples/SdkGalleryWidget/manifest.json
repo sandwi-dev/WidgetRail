@@ -47,6 +47,10 @@
   "intents": {
     "requests": [
       {
+        "id": "widgetrail.marketplace.open", "version": 1,
+        "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+      },
+      {
         "id": "widgetrail.web.open",
         "version": 1,
         "payloadSchema": {

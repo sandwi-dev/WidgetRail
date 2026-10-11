@@ -71,6 +71,12 @@ UI.Button("Open permissions", "unused", "permissions")
 
 ### Manifest format
 
+The standard `widgetrail.marketplace.open` contract (`WidgetIntentContracts.Marketplace`)
+opens the dedicated Marketplace with an empty object payload. Its schema is
+`{"type":"object","additionalProperties":false,"properties":{}}`. Request
+`OpenWidget` presentation. This navigation contract does not grant installation
+authority to its sender; users still review and approve each package in Marketplace.
+
 An optional `intents` manifest object contains `requests` and `handles` arrays.
 Each entry carries `id`, positive integer `version`, and `payloadSchema`.
 Handler entries additionally accept `supportsPassiveDelivery` and

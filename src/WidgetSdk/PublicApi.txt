@@ -468,6 +468,7 @@ field const string WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Permission = 
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.CapabilityPrefix = "network.loopback:"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.GetJsonOperation = "loopback.http.get-json"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.PostJsonOperation = "loopback.http.post-json"
+field const string WidgetRail.WidgetSdk.WidgetMarketplaceCapabilities.Service = "widgets.marketplace.v1"
 field const string WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Service = "widget.permissions.v1"
 field const string WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.CapabilityId = "storage.private-secrets.v1"
 field const string WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.PreviewPermission = "system.apps.windows.preview.v1"
@@ -1300,6 +1301,7 @@ method WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.<Clone>$() -> WidgetRai
 method WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetMarketplaceService.ExecuteAsync(WidgetRail.WidgetProtocol.MarketplaceCommand command, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.MarketplaceSnapshot>
 method WidgetRail.WidgetSdk.WidgetMediaService.ControlAsync(string sessionId, WidgetRail.WidgetSdk.WidgetMediaSessionCommand command, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetMediaService.GetSessionsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetMediaSession>>
 method WidgetRail.WidgetSdk.WidgetMediaService.OpenSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetMediaSessionsChanged>>
@@ -2060,6 +2062,7 @@ method static WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse.op_Equality(Widget
 method static WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse.op_Inequality(WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse? left, WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.op_Equality(WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions? left, WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.op_Inequality(WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions? left, WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetMarketplaceCapabilities.Command(string action) -> WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.MarketplaceCommand,WidgetRail.WidgetProtocol.MarketplaceSnapshot>
 method static WidgetRail.WidgetSdk.WidgetMediaSession.op_Equality(WidgetRail.WidgetSdk.WidgetMediaSession? left, WidgetRail.WidgetSdk.WidgetMediaSession? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetMediaSession.op_Inequality(WidgetRail.WidgetSdk.WidgetMediaSession? left, WidgetRail.WidgetSdk.WidgetMediaSession? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.op_Equality(WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? left, WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? right) -> bool
@@ -2692,6 +2695,7 @@ property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.PickerOption.Icon
 property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.SelectOption.Icon { get; set; }
 property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.ToastElement.Icon { get; }
 property WidgetRail.WidgetSdk.WidgetLoopbackHttpService WidgetRail.WidgetSdk.WidgetHostServices.Loopback { get; }
+property WidgetRail.WidgetSdk.WidgetMarketplaceService WidgetRail.WidgetSdk.WidgetHostServices.Marketplace { get; }
 property WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus WidgetRail.WidgetSdk.WidgetMediaSession.PlaybackStatus { get; set; }
 property WidgetRail.WidgetSdk.WidgetMediaService WidgetRail.WidgetSdk.WidgetHostServices.Media { get; }
 property WidgetRail.WidgetSdk.WidgetMediaSessionCommand WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Command { get; set; }
@@ -3515,6 +3519,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetLoopbackHttpService
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest>
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse>
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions>
+type sealed class WidgetRail.WidgetSdk.WidgetMarketplaceService
 type sealed class WidgetRail.WidgetSdk.WidgetMediaService
 type sealed class WidgetRail.WidgetSdk.WidgetMediaSession : System.IEquatable<WidgetRail.WidgetSdk.WidgetMediaSession>
 type sealed class WidgetRail.WidgetSdk.WidgetMediaSessionsChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetMediaSessionsChanged>
@@ -3603,6 +3608,7 @@ type static class WidgetRail.WidgetSdk.WidgetDocumentCapabilities
 type static class WidgetRail.WidgetSdk.WidgetFocusTargetLookup
 type static class WidgetRail.WidgetSdk.WidgetIds
 type static class WidgetRail.WidgetSdk.WidgetLoopbackCapabilities
+type static class WidgetRail.WidgetSdk.WidgetMarketplaceCapabilities
 type static class WidgetRail.WidgetSdk.WidgetMediaCapabilities
 type static class WidgetRail.WidgetSdk.WidgetNetworkCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPerformanceCapabilities

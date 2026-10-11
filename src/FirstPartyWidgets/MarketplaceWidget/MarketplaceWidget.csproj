@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../WidgetSdk/WidgetSdk.csproj" /><ProjectReference Include="../../PlatformBroker/PlatformBroker.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../Shared/MarketplaceReviewPresentation.cs" Link="MarketplaceReviewPresentation.cs" /></ItemGroup>
+  <ItemGroup><None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" /><None Include="styles/default.wrss" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+</Project>

@@ -1,5 +1,6 @@
 using System.Reflection;
 using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
 

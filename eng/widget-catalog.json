@@ -27,6 +27,11 @@
   ],
   "bundledWidgets": [
     {
+      "id": "marketplace", "packageId": "widgetrail.firstparty.marketplace",
+      "instanceId": "marketplace.default", "packageRoot": "runtime/Marketplace",
+      "icon": "settings", "quickActions": []
+    },
+    {
       "id": "capture-library",
       "packageId": "widgetrail.firstparty.capture-library",
       "instanceId": "capture-library.default",

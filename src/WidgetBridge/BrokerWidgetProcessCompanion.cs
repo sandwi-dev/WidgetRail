@@ -1,6 +1,7 @@
 using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetBridge;
 
@@ -26,12 +27,15 @@ internal sealed class BrokerWidgetProcessCompanion :
         WidgetProcessCompanionContext context,
         AppLibraryArtworkRegistry? artworkRegistry = null,
         Action<BrokerHostEffect>? hostEffectSink = null,
-        Action<BrokerCapabilityDiagnostic>? diagnosticSink = null)
+        Action<BrokerCapabilityDiagnostic>? diagnosticSink = null,
+        Func<MarketplaceCommand,CancellationToken,ValueTask<MarketplaceSnapshot>>? marketplace = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         var identity = new BrokerWidgetIdentity(packageId, publisherId, instanceId);
         _hostEffects = new DeferredHostEffectCoordinator(hostEffectSink);
         _isolated = context.IsolationPolicy == WidgetWorkerIsolationPolicy.RequireAppContainer;
+        if (marketplace is not null && !_isolated)
+            throw new InvalidOperationException("Marketplace management requires the verified sandboxed marketplace worker.");
         if (_isolated && string.IsNullOrWhiteSpace(context.AppContainerSid))
             throw new InvalidOperationException(
                 "An isolated widget broker requires the runtime AppContainer SID.");
@@ -44,11 +48,13 @@ internal sealed class BrokerWidgetProcessCompanion :
             backend,
             artworkRegistry ?? new AppLibraryArtworkRegistry(),
             isolatedClientAppContainerSid: context.AppContainerSid,
-            hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1],
+            hostGrantedCapabilities: marketplace is null ? [PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1] :
+                [PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetMarketplaceV1],
             hostEffectSink: null,
             diagnosticSink: diagnosticSink,
             contextualHostEffectSink: _hostEffects.Register,
-            actionExecutionAdmission: _hostEffects.Admit);
+            actionExecutionAdmission: _hostEffects.Admit,
+            marketplace: marketplace);
         WorkerArguments =
         [
             "--broker-pipe", pipeName,

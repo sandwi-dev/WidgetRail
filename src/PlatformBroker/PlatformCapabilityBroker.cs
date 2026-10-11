@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Threading.Channels;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.PlatformBroker;
 
@@ -130,6 +131,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly WindowCaptureCapabilityDomain _captureDomain;
     private readonly ProviderDocumentCapabilityDomain _documentDomain;
     private readonly PermissionCapabilityDomain _permissionDomain;
+    private readonly MarketplaceCapabilityDomain _marketplaceDomain;
     private readonly object _gate = new();
     private readonly List<BrokerEventSubscription> _subscriptions = [];
     private readonly HashSet<RequestLease> _requestLeases = [];
@@ -161,7 +163,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         IPlatformBrokerBackend backend,
         IEnumerable<string>? hostGrantedCapabilities,
         IAppLibrarySavedIdIssuer appLibrarySavedIdIssuer,
-        AppLibraryArtworkRegistry.AppLibraryArtworkSession? appLibraryArtwork = null)
+        AppLibraryArtworkRegistry.AppLibraryArtworkSession? appLibraryArtwork = null,
+        Func<MarketplaceCommand,CancellationToken,ValueTask<MarketplaceSnapshot>>? marketplace = null)
     {
         _identity = authenticatedIdentity ?? throw new ArgumentNullException(nameof(authenticatedIdentity));
         _identity.Validate();
@@ -192,6 +195,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _captureDomain = new(_identity, _backend.CaptureLibrary);
         _documentDomain = new(_identity);
         _permissionDomain = new(_identity, _declaredCapabilities, _consentStore, RefreshConsentAsync);
+        _marketplaceDomain = new(marketplace);
         _backend.EventPublished += OnBackendEvent;
     }
 
@@ -349,6 +353,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return BrokerCapabilityDomains.Resolve(request.CapabilityId) switch
         {
             BrokerCapabilityDomain.Permissions => await _permissionDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
+            BrokerCapabilityDomain.Marketplace => await _marketplaceDomain.ExecuteAsync(request.Operation,request.Payload,requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Performance => await _performanceDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.ProviderDocuments => _documentDomain.Execute(request.Operation, request.Payload, requestToken),
             BrokerCapabilityDomain.WindowCapture => await _captureDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),

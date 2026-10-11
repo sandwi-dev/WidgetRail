@@ -312,7 +312,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         Action<BrokerHostEffect>? hostEffectSink = null,
         Action<BrokerCapabilityDiagnostic>? diagnosticSink = null,
         Action<BrokerHostEffect, long?, long?>? contextualHostEffectSink = null,
-        Func<long, long?>? actionExecutionAdmission = null)
+        Func<long, long?>? actionExecutionAdmission = null,
+        Func<WidgetRail.WidgetProtocol.MarketplaceCommand,CancellationToken,ValueTask<WidgetRail.WidgetProtocol.MarketplaceSnapshot>>? marketplace = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -340,7 +341,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         {
             _broker = new PlatformCapabilityBroker(
                 _identity, _declaredCapabilities, consentStore, backend,
-                _hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared, artworkSession);
+                _hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared, artworkSession, marketplace);
         }
         catch
         {

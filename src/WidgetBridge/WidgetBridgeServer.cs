@@ -1103,6 +1103,12 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         string.Equals(configured.PackageId, "widgetrail.firstparty.settings", StringComparison.Ordinal) &&
         string.Equals(configured.PublisherId, "widgetrail.firstparty", StringComparison.Ordinal);
 
+    internal static bool IsTrustedMarketplace(ConfiguredWidget configured) =>
+        configured.GrantsBundledPermissionDefaults && configured.RequiresAppContainer && configured.UsesGenericWorkerHost &&
+        configured.ExecutionTrust == WidgetExecutionTrust.Sandboxed && configured.VerifiedPackageFiles.Count > 0 &&
+        configured.PackageContentDigest.Length == 64 && configured.PackageId == "widgetrail.firstparty.marketplace" &&
+        configured.PublisherId == "widgetrail.firstparty";
+
     private IBridgeWidgetClient CreateWidgetClient(
         ConfiguredWidget configured,
         Func<IDisposable> processLeaseFactory)
@@ -1319,7 +1325,14 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             hostEffectSink: effect => PublishHostEffect(
                 configured.Id, configured.WorkerFingerprint, effect),
             diagnosticSink: diagnostic =>
-                _capabilityDiagnosticSink?.Invoke(configured.Id, diagnostic));
+                _capabilityDiagnosticSink?.Invoke(configured.Id, diagnostic),
+            marketplace: IsTrustedMarketplace(configured) && _marketplace is not null ? HandleMarketplaceWidgetAsync : null);
+    }
+
+    private async ValueTask<MarketplaceSnapshot> HandleMarketplaceWidgetAsync(MarketplaceCommand command,CancellationToken token)
+    {
+        try { return _marketplace is null ? MarketplaceSnapshot.Unavailable : await _marketplace.HandleAsync(command,token).ConfigureAwait(false); }
+        catch (PlatformDiagnosticsException error) { throw new BrokerException(error.Code,"Marketplace could not complete the request."); }
     }
 
     private void PublishHostEffect(

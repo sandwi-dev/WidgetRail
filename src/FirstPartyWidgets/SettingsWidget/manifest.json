@@ -24,7 +24,10 @@
   },
   "permissions": [],
   "optionalPermissions": [],
-  "intents": { "handles": [
+  "intents": { "requests": [
+    { "id": "widgetrail.marketplace.open", "version": 1,
+      "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} } }
+  ], "handles": [
     { "id": "widgetrail.settings.widget.open", "version": 1,
       "payloadSchema": { "type": "object", "additionalProperties": false,
         "properties": { "packageId": { "type": "string", "minLength": 3, "maxLength": 128 } }, "required": ["packageId"] } },

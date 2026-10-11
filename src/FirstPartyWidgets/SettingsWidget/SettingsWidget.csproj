@@ -19,5 +19,6 @@
   </ItemGroup>
   <ItemGroup>
     <AssemblyMetadata Include="WidgetRailVersion" Value="$(WidgetRailReleaseVersion)" />
+    <Compile Include="../../Shared/MarketplaceReviewPresentation.cs" Link="MarketplaceReviewPresentation.cs" />
   </ItemGroup>
 </Project>
