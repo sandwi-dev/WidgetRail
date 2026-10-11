@@ -107,6 +107,7 @@ public static class PlatformCapabilities
     public const string ProviderDocumentCreate = "document.create";
     public const string ProviderDocumentDiscard = "document.discard";
     public const string CaptureLibraryReadV1 = "media.capture-library.read.v1";
+    public const string WidgetPermissionsV1 = "widget.permissions.v1";
     public const string CaptureLibrarySaveV1 = "media.capture-library.save.v1";
     public const string CaptureLibraryManageV1 = "media.capture-library.manage.v1";
     public const string WindowCaptureV1 = "system.apps.windows.capture.v1";
@@ -317,6 +318,11 @@ public static class PlatformCapabilities
                 ReadOperations: Set(PrivateStateRead),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
                 AllowsBackground: true),
+            [WidgetPermissionsV1] = new(WidgetPermissionsV1, 1, BrokerCapabilityKind.Control,
+                Set("permissions.check", "permissions.request", "permissions.status", "permissions.cancel"), Set(),
+                ReadOperations: Set("permissions.check", "permissions.status"),
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true,
+                BackgroundOperations: Set("permissions.check", "permissions.status", "permissions.cancel")),
         };
 
     public static IReadOnlyCollection<BrokerCapabilityDefinition> All { get; } =

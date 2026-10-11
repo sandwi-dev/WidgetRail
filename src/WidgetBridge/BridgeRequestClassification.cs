@@ -13,6 +13,7 @@ internal enum BridgeRequestKind
     CompleteTaskActivation,
     WindowPreviewPermissions,
     Capture,
+    Permissions,
     GetSnapshot,
     ReadIndexedRange,
     CancelIndexedRange,
@@ -158,6 +159,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
                 BridgeMessageTypes.CaptureCapabilities or BridgeMessageTypes.TakeCapture or BridgeMessageTypes.CheckCapture or BridgeMessageTypes.RecordingCapture or
                     BridgeMessageTypes.CompleteCapture or BridgeMessageTypes.ResolveMediaPlayer or BridgeMessageTypes.ResolveCaptureAttachment or BridgeMessageTypes.ResolveProviderDocument => BridgeRequestKey.Global(BridgeRequestKind.Capture),
+                BridgeMessageTypes.TakePermission or BridgeMessageTypes.CheckPermission or BridgeMessageTypes.CompletePermission => BridgeRequestKey.Global(BridgeRequestKind.Permissions),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
                 BridgeMessageTypes.ReadIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.ReadIndexedRange),

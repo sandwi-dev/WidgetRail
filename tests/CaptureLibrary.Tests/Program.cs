@@ -29,6 +29,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Capture settings persist, retain unsupported quality, and reject oversized clips before capture", SettingsFlow),
     ("High-entropy thumbnails stream within broker bounds and honor library-read revocation", ThumbnailTransport),
     ("Missing library permission offers a scoped Settings intent without prompting", PermissionLink),
+    ("Capture action waits for permission then continues without a widget reload", PermissionContinuation),
 };
 var failures = 0;
 foreach (var test in tests) try { await test.Run(); Console.WriteLine("PASS " + test.Name); } catch (Exception error) { failures++; Console.WriteLine("FAIL " + test.Name + ": " + error); }
@@ -318,6 +319,7 @@ static async Task WidgetFlow()
     var saveGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var client = new WidgetTestHostServicesBuilder()
         .WithPrivateState(new())
+        .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
         .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))
         .WithHandler(WidgetCaptureLibraryCapabilities.List, (_, _) => ValueTask.FromResult(page))
         .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => {
@@ -356,6 +358,7 @@ static async Task SettingsFlow()
         [new("1080p30-hardware", 1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)], [CaptureAudioMode.None], true, 120);
     var client = new WidgetTestHostServicesBuilder()
         .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([],0,0,0))
+        .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
         .WithPrivateState(savedState)
         .WithHandler(WidgetCaptureCapabilities.Capabilities, (_, _) => ValueTask.FromResult(capabilities))
         .WithHandler(WidgetCaptureCapabilities.Validate, (request, _) => ValueTask.FromResult(capabilities.Validate(request)))
@@ -407,6 +410,40 @@ static async Task PermissionLink()
         var intent = Walk(view.Root).Single(n => n.Id == "capture-library.permissions").Intent!;
         Check(intent.ContractId == WidgetIntentContracts.OpenWidgetPermissions && intent.Payload.GetProperty("packageId").GetString() == "widgetrail.firstparty.capture-library");
         Check(intent.Presentation == WidgetIntentPresentation.OpenWidget && ViewSnapshotValidator.Validate(view).Count == 0);
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+static async Task PermissionContinuation()
+{
+    var requests = 0; var starts = 0; var polls = 0; var outcome = WidgetPermissionOutcome.Denied;
+    var id = new string('a',32); var media = new CaptureAttachment(new string('b',32),"image/png",64,48,128,0,long.MaxValue);
+    var client = new WidgetTestHostServicesBuilder().WithPrivateState(new())
+        .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([],0,0,0))
+        .WithHandler(WidgetPermissionCapabilities.Request, (request, _) => { requests++; Check(request.CapabilityIds.SequenceEqual([WidgetCaptureCapabilities.Permission]));
+            return ValueTask.FromResult(new WidgetPermissionRequestState(outcome, outcome == WidgetPermissionOutcome.Pending ? id : null)); })
+        .WithHandler(WidgetPermissionCapabilities.Status, (_, _) => { polls++; return ValueTask.FromResult(new WidgetPermissionRequestState(outcome,id)); })
+        .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))
+        .WithHandler(WidgetCaptureCapabilities.Start, (_, _) => { starts++; return ValueTask.FromResult(new WindowCaptureTicket(id)); })
+        .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(id,WindowCapturePhase.Ready,media)).Build();
+    var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(),client);
+    IEnumerable<ViewNode> Walk(ViewNode n) => new[] { n }.Concat(n.Children.SelectMany(Walk));
+    ViewNode? Node(string id) => Walk(widget.RenderSnapshot("permission-flow",1).Root).FirstOrDefault(n => n.Id == id);
+    async Task Until(Func<bool> ready) { using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)); while (!ready()) await Task.Delay(10,deadline.Token); }
+    try
+    {
+        await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);
+        await Until(() => Node("capture-library.empty") is not null && Node("capture-library.photo")?.IsBusy != true);
+        Check(requests == 0, "Activation prompted for access");
+        await widget.OnActionAsync(new("capture-library.photo","capture-library.photo"));
+        await Until(() => requests == 1 && Node("capture-library.photo")?.IsBusy != true);
+        Check(starts == 0 && Node("capture-library.permissions") is not null, "Denied capture ran anyway or hid recovery");
+        outcome = WidgetPermissionOutcome.Pending;
+        await widget.OnActionAsync(new("capture-library.photo","capture-library.photo"));
+        await Until(() => polls > 0);
+        Check(starts == 0 && Node("capture-library.photo")?.IsBusy == true, "Capture ran before consent");
+        outcome = WidgetPermissionOutcome.Granted;
+        await Until(() => Node("capture-library.save") is not null && Node("capture-library.save")?.IsBusy != true);
+        Check(starts == 1 && requests == 2, "Approved action failed to continue exactly once");
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }

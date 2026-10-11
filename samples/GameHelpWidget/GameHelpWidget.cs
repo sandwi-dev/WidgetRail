@@ -177,6 +177,7 @@ public sealed partial class GameHelpWidget : Widget
             WindowCaptureTicket? ticket=null; var complete=false;
             try
             {
+                await RequirePermissionAsync(WidgetCaptureCapabilities.Permission, context.CancellationToken);
                 if(model.Value.Preview is { } prior) { await HostServices.Capture.DiscardAsync(prior,context.CancellationToken); model.Update(s => s with { Preview = null, Context = s.Context == prior ? null : s.Context }); }
                 RecordingOptions? recording = null;
                 if (kind == WindowCaptureKind.Video)

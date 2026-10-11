@@ -20,7 +20,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     internal string? SelectedId { get; private set; }
     internal bool ControllerArmed { get; set; }
 
-    internal HostChoiceDialog(string title, string message, IReadOnlyList<HostDialogChoice> entries)
+    internal HostChoiceDialog(string title, string message, IReadOnlyList<HostDialogChoice> entries, bool directDecisionButtons = false)
     {
         this.entries = entries;
         Input.GamepadKeyBoundary.ObserveDialog(this);
@@ -31,7 +31,15 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         DefaultButton = ContentDialogButton.Close;
         var content = new StackPanel { Spacing = 12, MaxWidth = 480 };
         if (!string.IsNullOrWhiteSpace(message)) content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
-        if (entries.Count > 0)
+        if (directDecisionButtons)
+        {
+            if (entries.Count != 2) throw new ArgumentException("Direct decisions require two choices.", nameof(entries));
+            PrimaryButtonText = entries[0].Label;
+            SecondaryButtonText = entries[1].Label;
+            PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(0); };
+            SecondaryButtonClick += (_, args) => { args.Cancel = true; Choose(1); };
+        }
+        else if (entries.Count > 0)
         {
             for (var index = 0; index < entries.Count; index++)
             {
@@ -61,6 +69,8 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         // on the current template instance rather than the discarded control.
         if (GetTemplateChild("PrimaryButton") is Control primary)
             AutomationProperties.SetAutomationId(primary, "Host.Choice.Primary");
+        if (GetTemplateChild("SecondaryButton") is Control secondary)
+            AutomationProperties.SetAutomationId(secondary, "Host.Choice.Secondary");
     }
 
     private void Choose(int index)

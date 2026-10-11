@@ -78,6 +78,11 @@ public sealed partial class MainWindow
             AppWindow.Resize(new(900, 600));
             RootFrame.Content = new Validation.LineGraphValidationPage(graphResult);
         }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-permission-dialog") is { } permissionResult)
+        {
+            AppWindow.Resize(new(1000, 1000));
+            RootFrame.Content = new Validation.PermissionDialogValidationPage(permissionResult);
+        }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is { } documentResult)
         {
             AppWindow.Resize(new(1100, 900));

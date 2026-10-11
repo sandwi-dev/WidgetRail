@@ -16,6 +16,7 @@ public sealed class GameHelpTests
         var media = new CaptureAttachment(new string('A', 32), "image/png", 1920, 1080, 1000, 0, long.MaxValue) { Origin = CaptureAttachmentOrigin.SavedLibrary };
         var id = new string('B', 32); var requested = CaptureImageResolution.Original;
         var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
             .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([new(id, media, 1)], 0, 1, 1000))
             .WithHandler(WidgetCaptureLibraryCapabilities.Open, (request, _) => { requested = request.Resolution; return ValueTask.FromResult(media); })
             .WithResponse(WidgetCaptureLibraryCapabilities.Release, new WidgetCapabilityAcknowledgement(true)).Build());
@@ -293,6 +294,7 @@ public sealed class GameHelpTests
         var data=new byte[32];var attachment=new CaptureAttachment(new string('b',32),"image/png",64,48,data.Length,0,DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeMilliseconds())
             { SourceApplication = new("007 First Light", "007FirstLight"), Properties = new(64,48) };
         var host=new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
             .WithHandler(WidgetCaptureCapabilities.Start, (request, _) =>
             {
                 Assert.AreEqual(new ScreenshotOptions(1920, 1080), request.Screenshot);
@@ -356,6 +358,7 @@ public sealed class GameHelpTests
             Properties = new(1280,720,15,75,0,expected) };
         RecordingOptions? requested = null;
         var host = new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
             .WithResponse(WidgetCaptureCapabilities.Capabilities, new CaptureCapabilities(true,[CaptureImageFormat.Png],profiles,[CaptureAudioMode.None],true,120))
             .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => { requested = request.Recording; return ValueTask.FromResult(ticket); })
             .WithResponse(WidgetCaptureCapabilities.Status,new WindowCaptureStatus(ticket.RequestId,WindowCapturePhase.Ready,media))

@@ -89,6 +89,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Media player source resolution rejects forged and stale declarations", MediaPlayerScenarios.Authority),
     ("Capture application metadata crosses host pipe without trusting caller labels", CaptureApplicationMetadataScenarios.ThroughHostPipe),
     ("Capture capabilities cross host pipe only after an explicit discovery request", CaptureApplicationMetadataScenarios.DiscoveryThroughHostPipe),
+    ("Permission prompts cross host pipe and approval unlocks the same broker", PermissionScenarios.HostPipe),
     ("Intent bridge search readiness and background feedback cross both pipes", BridgeIntentEndToEnd.SearchFeedbackThroughBothPipes),
     ("Intent bridge search missing key and no handler report unavailable with one fallback", BridgeIntentScenarios.SearchUnavailableFeedback),
     ("Intent bridge search rechecks readiness and reports rejection while source is hidden", BridgeIntentScenarios.SearchRecheckAndRejectedFeedback),
@@ -3079,7 +3080,7 @@ static async Task PrivateStateAuthorityIsHostSynthesized()
         "dev.example.widget", "dev.example", "default", [],
         new ConsentStore(temporary.Path), new SimulatedPlatformBrokerBackend(), context);
     Assert.Equal(0, companion.DeclaredCapabilities.Count);
-    Assert.SequenceEqual([PlatformCapabilities.PrivateStateV1],
+    Assert.SequenceEqual([PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1],
         companion.HostGrantedCapabilities);
     Assert.True(companion.WorkerArguments.Contains("--broker-pipe", StringComparer.Ordinal),
         "The host-granted state service did not create an authenticated broker channel.");

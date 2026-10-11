@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Permission requests wait for consent and clean up abandoned prompts", PermissionServiceTests.Contract),
     ("Media player sources are versioned bounded and source-specific", MediaPlayerPresentationTests.Contract),
     ("Line graphs preserve immutable samples and incremental protocol updates", LineGraphPresentationTests.Contract),
     ("Configured capture separates options lifecycle and bounded streaming", ConfiguredCaptureTests.Contract),

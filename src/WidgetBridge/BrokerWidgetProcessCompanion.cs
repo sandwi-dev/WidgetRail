@@ -44,7 +44,7 @@ internal sealed class BrokerWidgetProcessCompanion :
             backend,
             artworkRegistry ?? new AppLibraryArtworkRegistry(),
             isolatedClientAppContainerSid: context.AppContainerSid,
-            hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1],
+            hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1],
             hostEffectSink: null,
             diagnosticSink: diagnosticSink,
             contextualHostEffectSink: _hostEffects.Register,

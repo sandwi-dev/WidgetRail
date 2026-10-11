@@ -1,0 +1,189 @@
+namespace WidgetRail.PlatformBroker;
+
+/// <summary>Trusted, shared permission labels used by Settings and host consent dialogs.</summary>
+public static class CapabilityPresentation
+{
+    public static string CapabilityName(string id)
+    {
+        if (PlatformCapabilities.TryGetLoopbackPort(id, out var port))
+            return $"Access local app on port {port}";
+        return id switch
+        {
+        PlatformCapabilities.AudioSessionsReadV1 => "Read audio sessions",
+        PlatformCapabilities.AudioSessionsControlV1 => "Control audio sessions",
+        PlatformCapabilities.AudioOutputReadV1 => "Read master output state",
+        PlatformCapabilities.AudioOutputControlV1 => "Control master output",
+        PlatformCapabilities.AudioDevicesReadV1 => "Read audio device names",
+        PlatformCapabilities.AudioSpatialReadV1 => "Read spatial sound settings",
+        PlatformCapabilities.AudioSpatialControlV1 => "Change spatial sound",
+        PlatformCapabilities.AudioDevicesControlV1 => "Change speakers and microphone",
+        PlatformCapabilities.AudioInputReadV1 => "Read microphone level",
+        PlatformCapabilities.AudioInputControlV1 => "Control microphone level",
+        PlatformCapabilities.NetworkReadV1 => "Read network status",
+        PlatformCapabilities.NetworkDetailsReadV1 => "Read current connection details",
+        PlatformCapabilities.NetworkSavedProfileSwitchV1 => "Switch saved network profile",
+        PlatformCapabilities.NetworkWifiReadV1 => "Find nearby Wi-Fi networks",
+        PlatformCapabilities.NetworkWifiConnectV1 => "Connect to visible Wi-Fi",
+        PlatformCapabilities.NetworkWifiManageV1 => "Manage Wi-Fi connections and saved networks",
+        PlatformCapabilities.NetworkWifiRadioReadV1 => "Read Wi-Fi radio state",
+        PlatformCapabilities.NetworkWifiRadioControlV1 => "Turn Wi-Fi on or off",
+        PlatformCapabilities.NetworkBluetoothReadV1 => "See Bluetooth devices",
+        PlatformCapabilities.NetworkBluetoothRadioControlV1 => "Turn Bluetooth on or off",
+        PlatformCapabilities.NetworkBluetoothPairV1 => "Pair Bluetooth devices",
+        PlatformCapabilities.NetworkBluetoothUnpairV1 => "Remove Bluetooth pairings",
+        PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
+        PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
+        PlatformCapabilities.AppLibraryReadV1 => "See your app library",
+        PlatformCapabilities.ProviderDocumentsV1 => "Display restricted HTML documents",
+        PlatformCapabilities.WindowCaptureV1 => "Capture an application window",
+        PlatformCapabilities.CaptureLibraryReadV1 => "Browse and read your saved captures",
+        PlatformCapabilities.CaptureLibrarySaveV1 => "Save captures to your library",
+        PlatformCapabilities.CaptureLibraryManageV1 => "Delete and export saved captures",
+        PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
+        PlatformCapabilities.PerformanceReadV1 => "Read system usage, game frame rates and open window titles",
+        PlatformCapabilities.PerformanceFpsControlV1 => "Request Windows approval to enable FPS collection",
+        PlatformCapabilities.PowerReadV1 => "Check available PC power options",
+        PlatformCapabilities.DisplaysReadV1 => "See display setups and saved profiles",
+        PlatformCapabilities.DisplaysControlV1 => "Save and restore display profiles",
+        PlatformCapabilities.PowerControlV1 => "Shut down, restart or sleep this PC",
+        PlatformCapabilities.TaskWindowsReadV1 => "See open windows and their titles",
+        PlatformCapabilities.TaskWindowsSwitchV1 => "Switch to open windows",
+        PlatformCapabilities.TaskWindowsCloseV1 => "Close open windows",
+        PlatformCapabilities.AppRunningReadV1 => "See visible running apps",
+        PlatformCapabilities.AppRunningRegisterV1 => "Remember running apps",
+        PlatformCapabilities.AppLibraryLaunchV1 => "Launch app library items",
+        PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
+        PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
+        PlatformCapabilities.PrivateSecretsV1 => "Store private connection secrets",
+        _ => "Unsupported capability",
+        };
+    }
+
+    public static string CapabilityDescription(string id)
+    {
+        if (PlatformCapabilities.TryGetLoopbackPort(id, out var port))
+            return $"Exchange bounded JSON with only 127.0.0.1:{port}. GET works while the " +
+                "widget is visible; POST requires an interactive widget or a host-issued dashboard " +
+                "gesture. The widget cannot choose another host or port, use DNS, follow redirects, " +
+                "configure a proxy, or open raw sockets.";
+        return id switch
+        {
+        PlatformCapabilities.AudioSessionsReadV1 =>
+            "See sanitized audio-session names, volume, mute, and activity state.",
+        PlatformCapabilities.AudioSessionsControlV1 =>
+            "Change volume or mute for an opaque audio-session ID while the widget is interactive.",
+        PlatformCapabilities.AudioOutputReadV1 =>
+            "See volume and mute for the current default multimedia output; no device identity.",
+        PlatformCapabilities.AudioOutputControlV1 =>
+            "Change master volume or mute for the current default multimedia output while interactive. It cannot switch devices.",
+        PlatformCapabilities.AudioSpatialReadV1 => "See the current spatial sound format and formats supported by your output device.",
+        PlatformCapabilities.AudioSpatialControlV1 => "Choose spatial sound for your output device. Some formats require a separate license.",
+        PlatformCapabilities.AudioDevicesControlV1 =>
+            "Choose the speakers, headphones, or microphone Windows uses by default. Devices used specifically for calls stay unchanged.",
+        PlatformCapabilities.AudioDevicesReadV1 =>
+            "See sanitized names for active audio outputs and inputs and which devices are currently default. Raw endpoint IDs are never exposed.",
+        PlatformCapabilities.AudioInputReadV1 =>
+            "See volume and mute state for the current default multimedia microphone. It does not capture or inspect microphone audio.",
+        PlatformCapabilities.AudioInputControlV1 =>
+            "Change volume or mute for the current default multimedia microphone while the widget is interactive. It cannot record audio or switch devices.",
+        PlatformCapabilities.NetworkReadV1 =>
+            "See sanitized connectivity and saved-profile summaries without credentials.",
+        PlatformCapabilities.NetworkDetailsReadV1 =>
+            "See bounded current IP, default-gateway, and DNS display values for one preferred " +
+            "connection. It does not expose adapter IDs, MAC addresses, routes, traffic, Wi-Fi " +
+            "identity, or public location.",
+        PlatformCapabilities.NetworkSavedProfileSwitchV1 =>
+            "Switch to an existing saved profile by opaque ID. It cannot create profiles or read passwords.",
+        PlatformCapabilities.NetworkWifiReadV1 =>
+            "Let Network Controls run a short scan and show nearby network names, signal strength, " +
+            "security, and connection state. Windows precise-location permission must also be enabled; " +
+            "the overlay cannot bypass that Windows setting.",
+        PlatformCapabilities.NetworkWifiManageV1 =>
+            "Disconnect Wi-Fi, forget saved networks, and change automatic connection settings.",
+        PlatformCapabilities.NetworkWifiConnectV1 =>
+            "Let Network Controls connect to a visible saved or open network while you are using it. " +
+            "It cannot read saved passwords. Password entry and enterprise sign-in remain in Windows.",
+        PlatformCapabilities.NetworkWifiRadioReadV1 =>
+            "See whether Wi-Fi is on, off, unavailable, or disabled by a hardware switch. No adapter identity is exposed.",
+        PlatformCapabilities.NetworkWifiRadioControlV1 =>
+            "Turn the Wi-Fi software radio on or off while Network Controls is interactive. " +
+            "It cannot override a hardware switch or Windows policy.",
+        PlatformCapabilities.NetworkBluetoothReadV1 =>
+            "See sanitized names and paired, connected, and nearby state for Bluetooth devices. " +
+            "Widgets never receive Bluetooth addresses, Windows device IDs, or handles.",
+        PlatformCapabilities.NetworkBluetoothRadioControlV1 =>
+            "Turn the Bluetooth software radio on or off while Network Controls is interactive. " +
+            "Windows permission, hardware switches, and device policy can block a change.",
+        PlatformCapabilities.NetworkBluetoothPairV1 =>
+            "Pair one currently visible device by its opaque ID while Network Controls is interactive. " +
+            "Windows owns the pairing ceremony; the widget never receives an address or native device ID and cannot claim the device is connected.",
+        PlatformCapabilities.NetworkBluetoothUnpairV1 =>
+            "Remove one currently paired device after explicit confirmation while Network Controls is interactive. " +
+            "The widget receives only an opaque ID; Windows owns the pairing and the refreshed device list determines success.",
+        PlatformCapabilities.NetworkBluetoothManageV1 =>
+            "Open the Windows Bluetooth device settings page after an explicit controller action. " +
+            "No device identifier is placed in the settings URI and Windows remains responsible for connect, disconnect, and profile-specific setup.",
+        PlatformCapabilities.RecentActivityReadV1 =>
+            "See a bounded list of privacy-filtered running applications observed after you allow access. " +
+            "Widgets receive only display names, app kinds, state, and opaque IDs—never process IDs, paths, command lines, or window handles.",
+        PlatformCapabilities.AppLibraryReadV1 =>
+            "See a bounded app library of current installed applications and this package's explicitly remembered apps, using conservative kinds and opaque IDs. " +
+            "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
+        PlatformCapabilities.CaptureLibraryReadV1 =>
+            "Browse and read captures you explicitly saved, including captures saved by other widgets. This does not permit new screen recordings or deletion.",
+        PlatformCapabilities.CaptureLibrarySaveV1 =>
+            "Keep this widget's temporary captures in your shared library across restarts. Saving is explicit and does not upload media.",
+        PlatformCapabilities.CaptureLibraryManageV1 =>
+            "Delete saved originals and export copies to Pictures/WidgetRail/Captures. Previously exported copies are not deleted with the library item.",
+        PlatformCapabilities.TaskWindowsPreviewV1 =>
+            "Display window contents inside the overlay. Previews are view-only.",
+        PlatformCapabilities.PerformanceReadV1 =>
+            "Reads CPU/GPU usage, memory usage, frame rates and open application names for performance monitoring. It does not capture screen content.",
+        PlatformCapabilities.PerformanceFpsControlV1 =>
+            "Allows an explicit Enable FPS action to request Windows approval for a dedicated frame-rate collector. WidgetRail itself remains unelevated.",
+        PlatformCapabilities.PowerReadV1 =>
+            "Check whether this PC supports shutdown, restart and sleep.",
+        PlatformCapabilities.DisplaysReadV1 =>
+            "Read monitor names, resolutions, arrangement and saved display profiles.",
+        PlatformCapabilities.DisplaysControlV1 =>
+            "Save and manage display profiles, and restore a setup with an automatic confirmation timeout. Windows scaling stays unchanged.",
+        PlatformCapabilities.PowerControlV1 =>
+            "Allow this widget to shut down, restart or put your PC to sleep when you use it.",
+        PlatformCapabilities.ProviderDocumentsV1 =>
+            "Display this widget's HTML documents with scripts, forms and background network access blocked.",
+        PlatformCapabilities.WindowCaptureV1 =>
+            "Request a screenshot or recording of the foreground application with supported capture settings and preparation. The host asks for confirmation before each capture.",
+        PlatformCapabilities.TaskWindowsReadV1 =>
+            "See open application windows and their titles. Window handles and process IDs stay private to the host.",
+        PlatformCapabilities.TaskWindowsSwitchV1 =>
+            "Bring an existing application window to the foreground after you choose it.",
+        PlatformCapabilities.TaskWindowsCloseV1 =>
+            "Ask an application window to close normally. The app can ask you to save work or refuse to close.",
+        PlatformCapabilities.AppRunningReadV1 =>
+            "On request, see bounded visible applications that match the current catalog or can be explicitly remembered. " +
+            "Widgets receive only names, kinds, sources, and opaque saved IDs—never process or window identity.",
+        PlatformCapabilities.AppRunningRegisterV1 =>
+            "After an explicit action, remember one exact visible application for this widget package. " +
+            "The trusted provider privately stores and later rechecks its executable path and Windows file identity; " +
+            "widgets receive only an opaque saved ID and cannot supply paths, arguments, working directories, or elevation. " +
+            "Forgetting removes only this package's portable record; installed catalog entries are unchanged.",
+        PlatformCapabilities.AppLibraryLaunchV1 =>
+            "Launch one current app-library item by its opaque ID while the widget is interactive. " +
+            "The trusted host rechecks the exact registration before asking Windows to open it; widgets cannot " +
+            "supply paths, arguments, working directories, elevation, or foreground-window commands.",
+        PlatformCapabilities.MediaSessionsReadV1 =>
+            "See sanitized app, title, artist, playback, progress, and supported-control state from " +
+            "Windows media sessions. Widgets never receive package IDs, process IDs, paths, handles, or native objects.",
+        PlatformCapabilities.MediaSessionsControlV1 =>
+            "Use only the play, pause, previous, and next actions that Windows reports as supported " +
+            "while the widget is interactive. It cannot automate an app or access its account.",
+        PlatformCapabilities.PrivateSecretsV1 =>
+            "Create, replace, inspect metadata for, or delete package-scoped secrets in Windows " +
+            "Credential Manager. Stored values are never returned to widget code; an exact-port " +
+            "loopback request can ask the trusted host to inject one as a Bearer value. Secrets " +
+            "remain available to authenticated updates from the same package publisher.",
+        _ => "This capability is not supported.",
+        };
+    }
+
+}

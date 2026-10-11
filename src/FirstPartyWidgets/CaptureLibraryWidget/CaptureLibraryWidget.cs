@@ -38,6 +38,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         { ChangeSetting(action.ActionId); return ValueTask.CompletedTask; }
         switch (action.ActionId)
         {
+            case "capture-library.allow": Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureCapabilities.Permission, WidgetCaptureLibraryCapabilities.SavePermission], token); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             case "capture-library.settings":
                 model.Update(s => s with { Settings = true });
                 Work(LoadSettingsAsync); break;
@@ -49,13 +50,13 @@ public sealed partial class CaptureLibraryWidget : Widget
             case "capture-library.back":
                 Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = false, ConfirmDelete = false }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             case "capture-library.save" when state.Preview is { } preview:
-                Work(async token => { var item = await HostServices.CaptureLibrary.SaveAsync(preview, token); model.Update(s => s with { SelectedId = item.Id, Message = "Saved to your library. The original stays here across restarts." }); }); break;
+                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.SavePermission], token); var item = await HostServices.CaptureLibrary.SaveAsync(preview, token); model.Update(s => s with { SelectedId = item.Id, Message = "Saved to your library. The original stays here across restarts." }); }); break;
             case "capture-library.export" when state.SelectedId is { } id:
-                Work(async token => { var file = await HostServices.CaptureLibrary.ExportAsync(id, token); model.Update(s => s with { Message = "Exported to Pictures → WidgetRail → Captures: " + file.FileName }); }); break;
+                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); var file = await HostServices.CaptureLibrary.ExportAsync(id, token); model.Update(s => s with { Message = "Exported to Pictures → WidgetRail → Captures: " + file.FileName }); }); break;
             case "capture-library.delete" when state.SelectedId is not null: model.Update(s => s with { ConfirmDelete = true }); break;
             case "capture-library.delete.cancel": model.Update(s => s with { ConfirmDelete = false }); break;
             case "capture-library.delete.confirm" when state.ConfirmDelete && state.SelectedId is { } deleted:
-                Work(async token => { await HostServices.CaptureLibrary.DeleteAsync(deleted, token); await ReleaseAsync(state, token); model.Update(s => s with { SelectedId = null, Preview = null, Detail = false, ConfirmDelete = false, Message = "Removed from the library. Previously exported copies are unchanged." }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
+                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.DeleteAsync(deleted, token); await ReleaseAsync(state, token); model.Update(s => s with { SelectedId = null, Preview = null, Detail = false, ConfirmDelete = false, Message = "Removed from the library. Previously exported copies are unchanged." }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             default:
                 if (action.ActionId.StartsWith("capture-library.open.", StringComparison.Ordinal))
                 {
@@ -96,6 +97,7 @@ public sealed partial class CaptureLibraryWidget : Widget
             try
             {
                 await LoadPreferencesAsync(context.CancellationToken);
+                await RequirePermissionsAsync([WidgetCaptureCapabilities.Permission], context.CancellationToken);
                 if (kind == WindowCaptureKind.Video) await LoadSettingsAsync(context.CancellationToken);
                 var settings = model.Value.Preferences ?? throw new WidgetCapabilityException("capture_preferences_invalid", "Invalid saved settings.");
                 var request = settings.Request(kind);
@@ -203,7 +205,11 @@ public sealed partial class CaptureLibraryWidget : Widget
         if (state.Message is { } message)
         {
             items.Add(UI.Text(message, "capture-library.status").Classes("capture-help"));
-            if (message == Explain("permission_denied")) items.Add(PermissionsButton());
+            if (message == Explain("permission_denied"))
+            {
+                items.Add(UI.Button("Allow capture and library access", "capture-library.allow", "capture-library.allow").Busy(state.Busy));
+                items.Add(PermissionsButton());
+            }
         }
         var root = UI.VerticalScroll("capture-library.page", items.ToArray()).InputScope("capture-library.page").Classes("capture-library");
         if (state.Preview is not null || state.Detail) root = root.Shortcut(ControllerButton.B, "capture-library.back", label: "Library");
@@ -231,6 +237,8 @@ public sealed partial class CaptureLibraryWidget : Widget
     {
         "capture_preferences_invalid" => "Saved capture settings could not be read. Open Capture settings and reset them to supported defaults.",
         "capture_preferences_conflict" or "private_state_revision_conflict" => "Capture settings changed elsewhere. Reopen Capture settings and try again.",
+        "permission_cancelled" => "Permission request cancelled. Nothing was changed.",
+        "permission_unavailable" => "Permission approval is unavailable right now. Return to this widget and try again, or manage access in Settings.",
         "permission_denied" or "capability_not_declared" => "Allow Capture Library's required permissions in Settings → Widgets. Deleting and exporting also need its optional manage permission.",
         "capture_library_linked_path" => "This storage location uses a link that WidgetRail cannot follow. Your existing data was not changed.",
         "capture_library_full" => "Your library is full. Export or delete saved captures before saving another.",
@@ -241,4 +249,10 @@ public sealed partial class CaptureLibraryWidget : Widget
         "capture_library_invalid_media" or "capture_library_not_found" => "This saved capture is missing or damaged. Its original was not changed.",
         _ => "The operation could not finish. Check permissions and free disk space, then retry. Keep your application visible during capture.",
     };
+    private async Task RequirePermissionsAsync(IReadOnlyList<string> ids, CancellationToken token)
+    {
+        var outcome = await HostServices.Permissions.RequestAsync(ids, token);
+        if (outcome != WidgetPermissionOutcome.Granted) throw new WidgetCapabilityException(outcome switch {
+            WidgetPermissionOutcome.Cancelled => "permission_cancelled", WidgetPermissionOutcome.Denied => "permission_denied", _ => "permission_unavailable" }, "Permission was not granted.");
+    }
 }

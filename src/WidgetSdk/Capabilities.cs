@@ -265,6 +265,7 @@ public sealed class WidgetHostServices
         Loopback = new WidgetLoopbackHttpService(capabilityClient);
         PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
         PrivateState = new WidgetPrivateStateService(capabilityClient);
+        Permissions = new WidgetPermissionService(capabilityClient);
     }
 
     public IWidgetCapabilityClient Capabilities { get; }
@@ -287,6 +288,7 @@ public sealed class WidgetHostServices
     /// manifest permission and never stores authentication secrets.
     /// </summary>
     public WidgetPrivateStateService PrivateState { get; }
+    public WidgetPermissionService Permissions { get; }
 
     internal static WidgetHostServices Unavailable { get; } =
         new(UnavailableWidgetCapabilityClient.Instance);

@@ -129,6 +129,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly PrivateStateCapabilityDomain _privateStateDomain;
     private readonly WindowCaptureCapabilityDomain _captureDomain;
     private readonly ProviderDocumentCapabilityDomain _documentDomain;
+    private readonly PermissionCapabilityDomain _permissionDomain;
     private readonly object _gate = new();
     private readonly List<BrokerEventSubscription> _subscriptions = [];
     private readonly HashSet<RequestLease> _requestLeases = [];
@@ -190,6 +191,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _privateStateDomain = new PrivateStateCapabilityDomain(_backend, _identity);
         _captureDomain = new(_identity, _backend.CaptureLibrary);
         _documentDomain = new(_identity);
+        _permissionDomain = new(_identity, _declaredCapabilities, _consentStore, RefreshConsentAsync);
         _backend.EventPublished += OnBackendEvent;
     }
 
@@ -207,6 +209,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 throw new BrokerException("invalid_lifecycle", "Destroying broker cannot transition.");
             if (_lifecycle != lifecycle) ClearDashboardGestureAuthoritiesLocked();
             _lifecycle = lifecycle;
+            _permissionDomain.SetLifecycle(lifecycle);
             foreach (var subscription in _subscriptions) subscription.SetLifecycle(lifecycle);
             foreach (var lease in _requestLeases)
             {
@@ -345,6 +348,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         var requestToken = lease.Token;
         return BrokerCapabilityDomains.Resolve(request.CapabilityId) switch
         {
+            BrokerCapabilityDomain.Permissions => await _permissionDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Performance => await _performanceDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.ProviderDocuments => _documentDomain.Execute(request.Operation, request.Payload, requestToken),
             BrokerCapabilityDomain.WindowCapture => await _captureDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
@@ -477,6 +481,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         foreach (var lease in canceled) lease.SignalCancellation();
         _captureDomain.Dispose();
         _documentDomain.Revoke();
+        _permissionDomain.CancelPending();
     }
 
     private async Task<BrokerCapabilityDefinition> AuthorizeAsync(
@@ -834,6 +839,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _appLibraryDomain.Dispose();
         _captureDomain.Dispose();
         _documentDomain.Dispose();
+        _permissionDomain.Dispose();
         return ValueTask.CompletedTask;
     }
 }

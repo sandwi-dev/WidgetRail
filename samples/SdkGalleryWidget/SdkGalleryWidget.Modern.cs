@@ -109,6 +109,10 @@ public sealed partial class SdkGalleryWidget
                 break;
             case "capture":
                 content.Add(UI.Text("Requires the optional capture permission. The host explains and confirms capture before hiding the overlay. Reopen it to review the result. Nothing is uploaded.", "gallery.capture.help"));
+                content.Add(UI.Row("gallery.capture.permissions",
+                    UI.Button("Check access", "gallery.permission.check", "gallery.permission.check").Busy(Operations.IsBusy("gallery.service")),
+                    UI.Button("Request access", "gallery.permission.request", "gallery.permission.request").Busy(Operations.IsBusy("gallery.service"))));
+                content.Add(UI.Text(_demo.Value.Status, "gallery.capture.status"));
                 content.Add(UI.Row("gallery.capture.actions",
                     UI.Button("Take screenshot", "gallery.capture.image", "gallery.capture.image").Busy(Operations.IsBusy("gallery.service")),
                     UI.Button("Record five seconds", "gallery.capture.video", "gallery.capture.video").Busy(Operations.IsBusy("gallery.service"))));
@@ -199,6 +203,12 @@ public sealed partial class SdkGalleryWidget
                 { Invalidate(); try { await Task.Delay(2000, context.CancellationToken); } finally { Invalidate(); } });
                 break;
             case "gallery.document.create": RunService(CreateDocumentAsync); break;
+            case "gallery.permission.check": RunService(async token => {
+                var states = await HostServices.Permissions.CheckAsync([WidgetCaptureCapabilities.Permission], token);
+                _demo.Update(s => s with { Status = "Capture access: " + states.Single().State + ". Checking never opens a dialog." }); }); break;
+            case "gallery.permission.request": RunService(async token => {
+                var outcome = await HostServices.Permissions.RequestAsync([WidgetCaptureCapabilities.Permission], token);
+                _demo.Update(s => s with { Status = "Permission request: " + outcome + ". This does not start a capture." }); }); break;
             case "gallery.capture.image": RunService(token => CaptureAsync(WindowCaptureKind.Screenshot, token)); break;
             case "gallery.capture.video": RunService(token => CaptureAsync(WindowCaptureKind.Video, token)); break;
             case "gallery.capture.discard": RunService(DiscardCaptureAsync); break;

@@ -178,13 +178,13 @@ internal sealed partial class OverlayShellPage
         finally { browserExternalPending = false; }
     }
 
-    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null)
+    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null, bool directDecisionButtons = false)
     {
         if (HostChoiceActive || LocalInstallActive || retired || !visible || !foreground) return null;
         var original = surface;
         var originalFocus = FocusManager.GetFocusedElement(XamlRoot) as Control;
         var originalState = original?.CapturePresentationState();
-        var dialog = new HostChoiceDialog(title, message, choices) { XamlRoot = XamlRoot };
+        var dialog = new HostChoiceDialog(title, message, choices, directDecisionButtons) { XamlRoot = XamlRoot };
         if (primaryButtonText is not null) dialog.PrimaryButtonText = primaryButtonText;
         hostChoiceDialog = dialog;
         original?.SetPresentationInputEnabled(false);

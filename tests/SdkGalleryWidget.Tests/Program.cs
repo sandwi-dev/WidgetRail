@@ -714,6 +714,8 @@ static async Task HostExamples()
     var capture = new CaptureAttachment(new string('c', 32), "image/png", 320, 180, 100, 0, DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds());
     var services = new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetDocumentCapabilities.Create, (request, token) => { calls++; return ValueTask.FromResult(reference); })
+        .WithResponse(WidgetPermissionCapabilities.Check, new WidgetPermissionStatuses([new(WidgetCaptureCapabilities.Permission, WidgetPermissionState.NotDecided)]))
+        .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
         .WithResponse(WidgetDocumentCapabilities.Discard, new WidgetCapabilityAcknowledgement(true))
         .WithHandler(WidgetCaptureCapabilities.Request, (request, token) => { calls++; return ValueTask.FromResult(ticket); })
         .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(ticket.RequestId, WindowCapturePhase.Ready, capture))
@@ -729,6 +731,13 @@ static async Task HostExamples()
     Assert.Equal(0, ViewSnapshotValidator.Validate(document).Count);
     Assert.Equal(reference, Find(document, "gallery.document").WebBrowser!.ProviderDocument);
     await Act(widget, "gallery.surface.capture");
+    Assert.Equal(1, calls);
+    await Act(widget, "gallery.permission.check");
+    await WaitUntil(() => Find(Snapshot(widget, 91), "gallery.permission.check").IsBusy != true);
+    Assert.True(Find(Snapshot(widget, 91), "gallery.capture.status").Text!.Contains("NotDecided"));
+    await Act(widget, "gallery.permission.request");
+    await WaitUntil(() => Find(Snapshot(widget, 91), "gallery.permission.request").IsBusy != true);
+    Assert.True(Find(Snapshot(widget, 91), "gallery.capture.status").Text!.Contains("Granted"));
     Assert.Equal(1, calls);
     await Act(widget, "gallery.capture.image");
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);

@@ -373,6 +373,11 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.ResolveCaptureAttachment:
             await HandleCaptureAsync(request, cancellationToken).ConfigureAwait(false);
             return;
+        case BridgeMessageTypes.TakePermission:
+        case BridgeMessageTypes.CheckPermission:
+        case BridgeMessageTypes.CompletePermission:
+            await HandlePermissionAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
         case BridgeMessageTypes.WindowPreviewPermissions:
             var previewRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
             var (previewCatalog, _) = _registry.CatalogSnapshot();

@@ -60,8 +60,8 @@ review/save/upload. Permissions stay declared and host-authorized.
 
 ## Next concrete action
 
-Implement shared permission requests (Settings navigation intents are done), then
-marketplace extraction.
+Continue permission integration review (including pinned-source dialog placement),
+then implement the dedicated marketplace widget and shared management channel.
 Hardware silent recording is qualified; audio remains outstanding. Final complete
 candidate assembly and visual/physical acceptance remain pending.
 
@@ -316,3 +316,56 @@ of these new changes. No scope item is complete solely because it is planned.
   automatically. First-party explicit actions can request and resume their action
   after approval. Implement tests for lifecycle, foreign/undeclared IDs, expiration,
   cancellation/retirement, duplicate/prompt bounds, and grant before continuation.
+
+## Explicit permission service checkpoint
+
+- Added host-granted `HostServices.Permissions.CheckAsync` and `RequestAsync` for
+  sandboxed/full-trust workers. Broker-bound declarations, short RPC tickets,
+  one active prompt, 16-result bound, two-minute deadline and one-minute retention.
+  Reads never prompt; only Interactive requests can create consent. Leaving
+  interaction, expiry, cancellation or retirement invalidates the request.
+- Host resolves current catalog identity and permission labels, and persists only
+  the displayed missing permissions. Grant reconciles the same live broker before
+  allowing continuation. No full-trust/UAC/driver approval through this service.
+- Extracted shared permission labels/descriptions from Settings to PlatformBroker.
+  Capture Library explicit capture/save/manage actions and Game Help context actions
+  request access; activation/polling remain silent. SDK Gallery has Check/Request
+  access examples. Main-surface native dialog is implemented; pinned-source dialog
+  placement/focus needs review before final completion.
+- Broker 76/76 (`permissions-broker-tests-03.log`), SDK 156/156
+  (`permissions-sdk-tests-01.log`), Game Help 46/46 (`permissions-gamehelp-01.log`),
+  Library 20/20 (`permissions-library-tests-01.log`), Settings 87/87
+  (`permissions-settings-tests-01.log`), Gallery 13/13
+  (`permissions-gallery-tests-01.log`), API compatibility 17/17
+  (`permissions-api-tests-01.log`); additive SDK baseline now 3627 symbols.
+- Real host-pipe permission test (`permissions-bridge-tests-03.log`) passes grant,
+  exact labels/identity, same-broker operation, replay rejection and lifecycle loss.
+  Fixed missing bridge request classification. Added generated JSON metadata for
+  permissions and also the prior BridgeCaptureCapabilities wrapper, which was
+  missing from trimmed frontend contracts despite reflection-mode tests passing.
+- Native permission dialog now uses direct native Allow/Deny/Cancel buttons rather
+  than the generic handler list plus Confirm. Existing handler dialogs are unchanged.
+  `permission-native-05/result.json` passes 18 checks: three consecutive dialogs,
+  exact outcomes, default Cancel focus, unarmed A suppression, native buttons and
+  eight-permission viewport fit at 686×624 DIPs. Earlier fixture runs exposed the
+  generic list's initial-focus behavior during consecutive Opened/Loaded transitions;
+  no timer/focus polling workaround was added to production.
+- Final Library 21/21 (`permissions-library-tests-02.log`) additionally proves
+  activation never requests permission, denial starts no capture, and approval
+  resumes the original action exactly once without reloading. Host-pipe rerun with
+  an initially revoked live broker passes (`permissions-bridge-tests-04.log`), as
+  does host-only capability synthesis (`permissions-host-authority-01.log`).
+- Debug frontend (`permissions-frontend-build-09.log`) and normal Release
+  (`permissions-frontend-release-02.log`) build cleanly. Native fixture PID 60028
+  closed normally. No user consent, driver, provider API, or personal media changed.
+- Review found consent invalidation must cancel pending prompts without changing
+  the still-Interactive broker lifecycle; added CancelPending separately from
+  lifecycle loss. A later valid request can recover without reloading.
+  Final broker rerun passes 76/76 (`permissions-broker-final-01.log`).
+- Remaining integration review: pinned sources currently receive Unavailable
+  rather than a main-window prompt; preserve the intended foreground/focus policy
+  when addressing this. Also remove or give real semantics to the Capture Library
+  Stop recording selector: StopManually currently does not change recording behavior
+  (all recordings stop on reopen or maximum duration), so do not ship a no-op option.
+  Marketplace, audio qualification, complete candidate assembly, native layout review
+  and launch remain outstanding. No whole-goal completion has been claimed.

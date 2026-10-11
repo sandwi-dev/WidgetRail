@@ -7,6 +7,7 @@ internal static partial class Program
     static partial void IsValidationLaunch(IReadOnlyList<string> arguments, ref bool fixture)
     {
         if (Shell.FrontendArguments.Value(arguments, "--validate-line-graph") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-permission-dialog") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-context-capture") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is not null) { fixture = true; return; }

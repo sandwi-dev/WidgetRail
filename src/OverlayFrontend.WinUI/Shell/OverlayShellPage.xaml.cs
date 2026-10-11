@@ -152,6 +152,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             owner.Session.HostEffectReceived += HostEffectReceived;
             applicationControlPump = PumpApplicationControlAsync();
             capturePump = PumpCaptureAsync();
+            permissionPump = PumpPermissionsAsync();
             if (ControllerControlStatusRequested is not null) controllerControlPump = PumpControllerControlAsync();
             BridgeReady?.Invoke();
             Phase("bridge-notifications-queued");
@@ -838,6 +839,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (controllerControlPump is not null) await controllerControlPump;
         if (capturePump is not null) await capturePump;
         if (capturing is not null) await capturing;
+        if (permissionPump is not null) await permissionPump;
+        if (permissionPrompt is not null) await permissionPrompt;
         await SavePreferencesAsync();
         await transitions.WaitAsync();
         try

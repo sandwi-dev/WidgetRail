@@ -22,11 +22,13 @@ public sealed partial class GameHelpWidget
             {
                 try
                 {
+                    await RequirePermissionAsync(WidgetCaptureLibraryCapabilities.ReadPermission, context.CancellationToken);
                     var page = await HostServices.CaptureLibrary.ListAsync(offset, context.CancellationToken);
                     if (context.IsCurrent) model.Update(s => s with { LibraryPage = page, LibraryFocusRequest = Interlocked.Increment(ref nextFocusRequest) });
                 }
                 catch (OperationCanceledException) { }
-                catch (WidgetCapabilityException) { if (context.IsCurrent) model.Update(s => s with { Error = "Saved captures are unavailable. Allow Game Help's optional library access in Settings → Widgets → Permissions." }); }
+                catch (WidgetCapabilityException error) { if (context.IsCurrent) model.Update(s => s with { Error = Friendly(error) }); }
+                catch (GameHelpException error) { if (context.IsCurrent) model.Update(s => s with { Error = Friendly(error) }); }
                 finally { if (context.IsCurrent) model.Update(s => s with { LibraryBusy = false }); }
             }, WidgetOperationLifetime.Widget);
         }

@@ -468,6 +468,7 @@ field const string WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Permission = 
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.CapabilityPrefix = "network.loopback:"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.GetJsonOperation = "loopback.http.get-json"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.PostJsonOperation = "loopback.http.post-json"
+field const string WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Service = "widget.permissions.v1"
 field const string WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.CapabilityId = "storage.private-secrets.v1"
 field const string WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.PreviewPermission = "system.apps.windows.preview.v1"
 field static readonly System.TimeSpan WidgetRail.WidgetSdk.UI.DefaultToastDuration
@@ -1494,6 +1495,8 @@ method WidgetRail.WidgetSdk.WidgetPerformanceTarget.Deconstruct(out string Id, o
 method WidgetRail.WidgetSdk.WidgetPerformanceTarget.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetPerformanceTarget.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetPerformanceTarget.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetPermissionService.CheckAsync(System.Collections.Generic.IReadOnlyList<string> capabilityIds, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetPermissionStatus>>
+method WidgetRail.WidgetSdk.WidgetPermissionService.RequestAsync(System.Collections.Generic.IReadOnlyList<string> capabilityIds, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetPermissionOutcome>
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.ReplaceSnapshotAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.ViewSnapshot>
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RestoreAsync(string layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RevokeAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
@@ -2720,6 +2723,7 @@ property WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem> WidgetRail.Widg
 property WidgetRail.WidgetSdk.WidgetPagedResourceStatus WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Status { get; set; }
 property WidgetRail.WidgetSdk.WidgetPagedResourceStatus WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Status { get; set; }
 property WidgetRail.WidgetSdk.WidgetPerformanceService WidgetRail.WidgetSdk.WidgetHostServices.Performance { get; }
+property WidgetRail.WidgetSdk.WidgetPermissionService WidgetRail.WidgetSdk.WidgetHostServices.Permissions { get; }
 property WidgetRail.WidgetSdk.WidgetPowerService WidgetRail.WidgetSdk.WidgetHostServices.Power { get; }
 property WidgetRail.WidgetSdk.WidgetPrivateSecretService WidgetRail.WidgetSdk.WidgetHostServices.PrivateSecrets { get; }
 property WidgetRail.WidgetSdk.WidgetPrivateStateService WidgetRail.WidgetSdk.WidgetHostServices.PrivateState { get; }
@@ -2985,6 +2989,10 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Start { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Request { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionStatuses> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Check { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionTicket,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Status { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionTicket,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Cancel { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.OriginalScreenshot { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureTicket,WidgetRail.WidgetProtocol.WindowCaptureStatus> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Status { get; }
@@ -3540,6 +3548,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetPerformanceRequest : System.IEquata
 type sealed class WidgetRail.WidgetSdk.WidgetPerformanceService
 type sealed class WidgetRail.WidgetSdk.WidgetPerformanceSnapshot : System.IEquatable<WidgetRail.WidgetSdk.WidgetPerformanceSnapshot>
 type sealed class WidgetRail.WidgetSdk.WidgetPerformanceTarget : System.IEquatable<WidgetRail.WidgetSdk.WidgetPerformanceTarget>
+type sealed class WidgetRail.WidgetSdk.WidgetPermissionService
 type sealed class WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost
 type sealed class WidgetRail.WidgetSdk.WidgetPowerAvailability : System.IEquatable<WidgetRail.WidgetSdk.WidgetPowerAvailability>
 type sealed class WidgetRail.WidgetSdk.WidgetPowerService
@@ -3597,6 +3606,7 @@ type static class WidgetRail.WidgetSdk.WidgetLoopbackCapabilities
 type static class WidgetRail.WidgetSdk.WidgetMediaCapabilities
 type static class WidgetRail.WidgetSdk.WidgetNetworkCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPerformanceCapabilities
+type static class WidgetRail.WidgetSdk.WidgetPermissionCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPowerCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities
 type static class WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities
