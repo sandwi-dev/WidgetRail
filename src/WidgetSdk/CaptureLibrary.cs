@@ -9,6 +9,7 @@ public static class WidgetCaptureLibraryCapabilities
     public const string ManagePermission = "media.capture-library.manage.v1";
     public static WidgetCapabilityOperation<CaptureLibraryListRequest, CaptureLibraryPage> List { get; } = new(ReadPermission, "capture-library.list");
     public static WidgetCapabilityOperation<CaptureLibraryOpenRequest, CaptureAttachment> Open { get; } = new(ReadPermission, "capture-library.open");
+    public static WidgetCapabilityOperation<CaptureLibraryThumbnailRequest, CaptureLibraryThumbnailChunk> Thumbnail { get; } = new(ReadPermission, "capture-library.thumbnail");
     public static WidgetCapabilityOperation<CaptureReadRequest, CaptureReadChunk> Read { get; } = new(ReadPermission, "capture-library.read");
     public static WidgetCapabilityOperation<CaptureAttachmentRequest, WidgetCapabilityAcknowledgement> Release { get; } = new(ReadPermission, "capture-library.release");
     public static WidgetCapabilityOperation<CaptureLibrarySaveRequest, CaptureLibraryItem> Save { get; } = new(SavePermission, "capture-library.save");
@@ -21,6 +22,26 @@ public sealed class WidgetCaptureLibraryService
 {
     private readonly IWidgetCapabilityClient client;
     internal WidgetCaptureLibraryService(IWidgetCapabilityClient client) => this.client = client;
+    /// <summary>Returns bounded PNG artwork without importing an original or consuming a temporary capture slot.</summary>
+    public async ValueTask<CaptureLibraryThumbnail> GetThumbnailAsync(string id, CancellationToken cancellationToken = default)
+    {
+        DemandId(id);
+        byte[]? bytes = null; var offset = 0; var width = 0; var height = 0;
+        do
+        {
+            var chunk = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.Thumbnail, new(id, offset), cancellationToken).ConfigureAwait(false);
+            if (chunk is null || chunk.TotalBytes is < 24 or > CaptureLibraryLimits.MaximumThumbnailBytes || chunk.Offset != offset ||
+                chunk.Width is <= 0 or > CaptureLibraryLimits.ThumbnailWidth || chunk.Height is <= 0 or > CaptureLibraryLimits.ThumbnailHeight ||
+                chunk.Bytes is not { Length: > 0 and <= CaptureLimits.ChunkBytes } || offset + chunk.Bytes.Length > chunk.TotalBytes ||
+                chunk.Bytes.Length != Math.Min(CaptureLimits.ChunkBytes, chunk.TotalBytes - offset)) throw Malformed();
+            if (bytes is null) { bytes = new byte[chunk.TotalBytes]; width = chunk.Width; height = chunk.Height; }
+            else if (bytes.Length != chunk.TotalBytes || width != chunk.Width || height != chunk.Height) throw Malformed();
+            chunk.Bytes.CopyTo(bytes, offset); offset += chunk.Bytes.Length;
+        } while (offset < bytes.Length);
+        var result = new CaptureLibraryThumbnail(width, height, bytes);
+        if (!result.IsWellFormed()) throw Malformed();
+        return result;
+    }
     public async ValueTask<CaptureLibraryPage> ListAsync(int offset = 0, CancellationToken cancellationToken = default)
     {
         if (offset is < 0 or > CaptureLibraryLimits.MaximumItems) throw new ArgumentOutOfRangeException(nameof(offset));

@@ -27,6 +27,13 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
             switch (operation)
             {
                 case "capture-library.list": return BrokerJson.ToElement(await library.ListAsync(BrokerJson.ParsePayload<CaptureLibraryListRequest>(payload).Offset, token).ConfigureAwait(false));
+                case "capture-library.thumbnail":
+                    var thumbnailRequest = BrokerJson.ParsePayload<CaptureLibraryThumbnailRequest>(payload);
+                    if (thumbnailRequest.Offset is < 0 or >= CaptureLibraryLimits.MaximumThumbnailBytes) throw new BrokerException("invalid_payload", "Invalid thumbnail offset.");
+                    var thumbnail = await library.ThumbnailAsync(thumbnailRequest.Id, token).ConfigureAwait(false);
+                    if (thumbnailRequest.Offset >= thumbnail.Bytes.Length) throw new BrokerException("invalid_payload", "Invalid thumbnail offset.");
+                    return BrokerJson.ToElement(new CaptureLibraryThumbnailChunk(thumbnail.Width, thumbnail.Height, thumbnail.Bytes.Length, thumbnailRequest.Offset,
+                        thumbnail.Bytes.AsSpan(thumbnailRequest.Offset, Math.Min(CaptureLimits.ChunkBytes, thumbnail.Bytes.Length - thumbnailRequest.Offset)).ToArray()));
                 case "capture-library.save":
                     var save = BrokerJson.ParsePayload<CaptureLibrarySaveRequest>(payload);
                     if (save.Attachment is null || !save.Attachment.IsWellFormed()) throw new BrokerException("invalid_payload", "Invalid capture reference.");

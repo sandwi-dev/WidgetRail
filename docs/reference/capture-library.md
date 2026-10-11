@@ -1,18 +1,25 @@
 # Capture Library
 
 Capture Library is included in both installer editions. It keeps screenshots and
-five-second clips only when you explicitly save them. There is no automatic game
+configurable clips only when you explicitly save them. There is no automatic game
 recording, upload, or eviction of saved media.
 
 ## Controller flow
 
-- **Y / Take screenshot** requests a full-resolution window screenshot.
-- **X / Record 5 seconds** uses the existing short, silent clip format.
+- **Y / Take screenshot** uses the saved image settings (original resolution by default).
+- **X / Record clip** uses the saved recording settings. On first use, prefer
+  qualified hardware 1080p30, otherwise another supported profile; default duration
+  is five seconds and audio is off.
+- **Capture settings** groups screenshot resolution/format, recording quality,
+  bitrate, duration, stop behavior, audio, preparation delay/countdown and cursor.
+  Settings persist privately across restarts. Unavailable saved settings remain
+  intact and fail with an explanation; recording never silently downgrades.
 - Confirm the host dialog, let WidgetRail hide, and bring your application forward.
-  A five-second countdown precedes capture. Reopen the overlay to review it.
+  The configured countdown precedes capture (five seconds by default). Reopen the
+  overlay to finish a recording early and review it. Reopening during preparation cancels.
 - Preview uses the shared native media player. Choose **Save to library** or
   **Discard**. Leaving an unsaved capture does not retain it across worker restarts.
-- Browse saved items by application, date and media type, with 20 items per page.
+- Browse a responsive thumbnail grid by application, date and media type, with 20 items per page.
   Open an item to preview, export, or delete. Delete starts on Cancel and affects
   only the library original; exported files remain. Missing/damaged entries stay
   visible and can be deleted even when preview fails.
@@ -30,7 +37,8 @@ Optional library read access is separate from permission to capture a new window
 |---|---|---|
 | Full-resolution screenshot | Lossless PNG, exact window pixel dimensions including odd sizes | 33,554,432 pixels; 16,384 per dimension; 128 MiB encoded |
 | Context screenshot | PNG, no upscaling | At most 1920×1080 and 8 MiB |
-| Clip | H.264 MP4, no microphone/system audio or cursor | Five seconds, 1280×720, 15 fps, target 3 Mbps, 8 MiB |
+| Library clip | H.264 MP4, currently no audio; optional cursor | Runtime-qualified profiles up to 4K30 or 1080p60, up to 120 seconds and 128 MiB; bitrate/duration must fit the byte budget |
+| Game Help clip | H.264 MP4, silent | Five seconds, 1280×720, 15 fps, target 3 Mbps, 8 MiB |
 
 Larger original screenshots fail explicitly instead of silently shrinking. The
 limit includes 7680×4320 UHD 8K and suitable ultrawide windows. This remains a
@@ -45,7 +53,7 @@ The shared Windows codec adapter contains no Gemini-specific logic.
 
 Temporary attachments remain separate: four per widget, sixteen total, 256 MiB
 aggregate encoded-media budget, thirty-minute expiry. The per-attachment image
-ceiling is now 128 MiB; video/context captures retain their 8 MiB limit. A saved
+ceiling is 128 MiB; Game Help and legacy context requests retain their 8 MiB limit. A saved
 item survives worker retirement and permission revocation; open temporary copies
 are retired with the owning worker or the authority that allowed the read.
 
@@ -54,7 +62,7 @@ are retired with the owning worker or the authority that allowed the read.
 | Permission | Operations |
 |---|---|
 | `system.apps.windows.capture.v1` | Existing host-confirmed capture; original-resolution screenshot request is explicit |
-| `media.capture-library.read.v1` | List/open saved captures, read/release temporary library references, including while background |
+| `media.capture-library.read.v1` | List/open saved captures, read/release temporary library references, obtain image thumbnails, including while background |
 | `media.capture-library.save.v1` | Explicit interactive save of this widget's owned temporary media |
 | `media.capture-library.manage.v1` | Explicit interactive deletion and export to the fixed Pictures destination |
 
@@ -71,6 +79,9 @@ var status = await HostServices.Capture.GetStatusAsync(ticket, token);
 // After Ready and an explicit user Save:
 var item = await HostServices.CaptureLibrary.SaveAsync(status.Attachment!, token);
 var page = await HostServices.CaptureLibrary.ListAsync(offset: 0, token);
+// Resolve lazily from Widget.OnResolveArtworkAsync for a UI.Artwork handle:
+var thumbnail = await HostServices.CaptureLibrary.GetThumbnailAsync(item.Id, token);
+var artwork = new WidgetEncodedArtwork(WidgetArtworkContentType.Png, thumbnail.Bytes);
 var temporary = await HostServices.CaptureLibrary.OpenAsync(
     item.Id, CaptureImageResolution.Context, token);
 var preview = UI.MediaPlayer(MediaPlayerSource.FromCapture(temporary),
@@ -107,6 +118,14 @@ partial output; later operations clean recognized orphan copies and finish only
 previously requested deletions. Linked storage/export paths are refused. Export
 publishes a new file only after its complete copy succeeds.
 
+Thumbnails are host-derived PNGs bounded to 256×144 and 160 KiB, cached alongside
+the original and deleted with it. Up to 200 derivatives add at most 31.25 MiB
+outside the 2 GiB original-media quota; there is no automatic original eviction.
+The SDK reads each thumbnail in bounded chunks under library-read authority.
+It consumes no temporary capture slot. The grid uses lazy artwork handles, never
+original media or inline image blobs in widget snapshots. Invalid cached derivatives
+are regenerated; videos currently use a labeled placeholder.
+
 A temporary copy is scoped to its requesting broker/worker. Library-read revocation
 cannot be bypassed by capture permission, and permission to preview windows cannot
 read pixels. Missing codec, expired references, missing files, full storage and
@@ -127,8 +146,10 @@ and bounds its NV12 queue to three tracked surfaces. Software encoding retains a
 readback path. At a 3 Mbps target, five seconds is approximately 1.8 MiB before
 container/VBR variation. Available profiles come from runtime encoder probes;
 choosing a longer duration/higher bitrate must also fit the requested byte budget.
-The current widget defaults remain a five-second clip until the settings UI is
-updated; see `docs/platform-feature-improvements.md` for remaining work.
+The settings page shows estimated clip size and rejects combinations that exceed
+the attachment budget before capture. Only runtime-advertised audio modes appear;
+currently that is **No audio**. See `docs/platform-feature-improvements.md` for
+remaining work and physical acceptance.
 
 Synthetic animated 4K-window validation delivered all requested output slots for
 hardware 720p15, 1080p30, 1080p60 and 4K30. Encoder-only tests also decoded every

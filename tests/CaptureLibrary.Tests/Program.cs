@@ -26,6 +26,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Windows codec makes bounded context copies without changing odd-sized 4K originals", Codec),
     ("Capture Library controller flow reviews before saving and confirms deletion", WidgetFlow),
     ("SDK generic capture reads route saved references through library permission", SdkRouting),
+    ("Capture settings persist, retain unsupported quality, and reject oversized clips before capture", SettingsFlow),
+    ("High-entropy thumbnails stream within broker bounds and honor library-read revocation", ThumbnailTransport),
 };
 var failures = 0;
 foreach (var test in tests) try { await test.Run(); Console.WriteLine("PASS " + test.Name); } catch (Exception error) { failures++; Console.WriteLine("FAIL " + test.Name + ": " + error); }
@@ -154,7 +156,7 @@ static async Task Paging()
 {
     var media = new CaptureAttachment(new string('A', 32), "image/png", 100, 100, 1, 0, long.MaxValue);
     var items = Enumerable.Range(1, 21).Select(i => new CaptureLibraryItem(i.ToString("x32"), media, i)).ToArray();
-    var client = new WidgetTestHostServicesBuilder().WithHandler(WidgetCaptureLibraryCapabilities.List,
+    var client = new WidgetTestHostServicesBuilder().WithPrivateState(new()).WithHandler(WidgetCaptureLibraryCapabilities.List,
         (request, _) => ValueTask.FromResult(new CaptureLibraryPage(items.Skip(request.Offset).Take(20).ToArray(), request.Offset, items.Length, 21))).Build();
     var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
     ViewSnapshot View() => widget.RenderSnapshot("library-pages", 1);
@@ -164,6 +166,7 @@ static async Task Paging()
     {
         await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
         await Until(() => View().Root.Shortcuts.Any(s => s.Button == ControllerButton.RightBumper));
+        Check(Walk(View().Root).Count(n => n.ArtworkHandle is not null) == 20, "Saved images were not lazy artwork tiles");
         await widget.OnActionAsync(new("capture-library.next", "capture-library.next"));
         await Until(() => View().FocusGroupEntryRequest is not null);
         Check(View().FocusGroupEntryRequest!.GroupId == "capture-library.entries");
@@ -238,13 +241,31 @@ static async Task Codec()
         using var source = image.AsStreamForRead(); using var output = File.Create(input); await source.CopyToAsync(output);
     }
     var before = await WidgetRail.PackageDistribution.PackageIntegrity.HashFileAsync(input, default);
-    var store = new CaptureLibraryStore(f.Library, f.Exports, WindowsCaptureImageCodec.CreateContextAsync);
+    var generated = 0;
+    var store = new CaptureLibraryStore(f.Library, f.Exports, WindowsCaptureImageCodec.CreateContextAsync,
+        async (sourcePath, target, token) => { generated++; return await WindowsCaptureImageCodec.CreateThumbnailAsync(sourcePath, target, token); });
     var attachment = f.Source.Attachment with { Width = 3841, Height = 2161, ByteLength = new FileInfo(input).Length };
     var saved = await store.SaveAsync(new(attachment, input), default);
     await using (var context = await store.OpenAsync(saved.Id, CaptureImageResolution.Context, default))
     { Check(context.Media.Width == 1919 && context.Media.Height == 1080 && context.Media.ByteLength <= CaptureLimits.MaximumContextBytes, $"Unexpected context geometry {context.Media.Width}x{context.Media.Height}"); }
     Check((await WidgetRail.PackageDistribution.PackageIntegrity.HashFileAsync(input, default)).SequenceEqual(before));
     Check(!Directory.EnumerateFiles(f.Library, "context-*.png").Any(), "Temporary image rendition leaked");
+    var thumbnail = await store.ThumbnailAsync(saved.Id, default);
+    Check(thumbnail.IsWellFormed() && thumbnail.Width == 255 && thumbnail.Height == 144, "Thumbnail is not aspect-preserving and bounded");
+    using (var encoded = new InMemoryRandomAccessStream())
+    {
+        var stream = encoded.AsStreamForWrite(); await stream.WriteAsync(thumbnail.Bytes); await stream.FlushAsync(); encoded.Seek(0);
+        var decoder = await BitmapDecoder.CreateAsync(encoded);
+        using var decoded = await decoder.GetSoftwareBitmapAsync();
+        Check(decoded.PixelWidth == thumbnail.Width && decoded.PixelHeight == thumbnail.Height);
+    }
+    Check(BrokerJson.SerializeResponse(new(1, 1, true, BrokerJson.ToElement(thumbnail), null)).Length < BrokerJson.MaximumResponseBytes);
+    Check((await store.ThumbnailAsync(saved.Id, default)).Bytes.SequenceEqual(thumbnail.Bytes) && generated == 1, "Warm thumbnail was regenerated");
+    var cache = Path.Combine(f.Library, saved.Id + ".thumbnail");
+    File.WriteAllBytes(cache, [1, 2, 3]);
+    Check((await store.ThumbnailAsync(saved.Id, default)).IsWellFormed() && generated == 2, "Invalid derivative did not recover");
+    Check((await store.ListAsync(0, default)).StoredBytes == attachment.ByteLength, "Thumbnail changed original library quota");
+    await store.DeleteAsync(saved.Id, default); Check(!File.Exists(cache), "Thumbnail survived original deletion");
 }
 static async Task SdkRouting()
 {
@@ -254,12 +275,49 @@ static async Task SdkRouting()
     var widget = WidgetTestHost.Attach(new Probe(), client);
     Check((await widget.Read(attachment)).SequenceEqual(new byte[] { 1, 2, 3 })); await widget.Release(attachment);
 }
+static async Task ThumbnailTransport()
+{
+    using var f = new Fixture(); var path = Path.Combine(f.Root, "noise.png");
+    using (var memory = new InMemoryRandomAccessStream())
+    {
+        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, memory);
+        var pixels = new byte[256 * 144 * 4]; new Random(42).NextBytes(pixels);
+        for (var i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
+        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, 256, 144, 96, 96, pixels);
+        await encoder.FlushAsync(); memory.Seek(0);
+        using var input = memory.AsStreamForRead(); using var output = File.Create(path); await input.CopyToAsync(output);
+    }
+    var store = new CaptureLibraryStore(f.Library, f.Exports, null, WindowsCaptureImageCodec.CreateThumbnailAsync);
+    var item = await store.SaveAsync(new(f.Source.Attachment with { Width = 256, Height = 144, ByteLength = new FileInfo(path).Length }, path), default);
+    var consent = new ConsentStore(Path.Combine(f.Root, "consent"));
+    await consent.SetDecisionAsync(Fixture.Identity, PlatformCapabilities.CaptureLibraryReadV1, ConsentDecision.Grant);
+    var simulation = new SimulatedPlatformBrokerBackend();
+    await using var backend = new CompositePlatformBrokerBackend(simulation, simulation, captureLibrary: store);
+    await using var broker = new PlatformCapabilityBroker(Fixture.Identity, [PlatformCapabilities.CaptureLibraryReadV1], consent, backend);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive); long sequence = 0; var chunks = 0;
+    async Task<JsonElement> Call(CaptureLibraryThumbnailRequest request)
+    {
+        var result = await broker.ExecuteAsync(new(1, ++sequence, Fixture.Identity, PlatformCapabilities.CaptureLibraryReadV1, "capture-library.thumbnail", BrokerJson.ToElement(request)));
+        Check(BrokerJson.SerializeResponse(new(1, sequence, true, result, null)).Length <= BrokerJson.MaximumResponseBytes);
+        return result;
+    }
+    var client = new WidgetTestHostServicesBuilder().WithHandler(WidgetCaptureLibraryCapabilities.Thumbnail,
+        async (request, _) => { chunks++; return BrokerJson.ParsePayload<CaptureLibraryThumbnailChunk>(await Call(request)); }).Build();
+    var widget = WidgetTestHost.Attach(new Probe(), client);
+    var result = await widget.Thumbnail(item.Id);
+    Check(result.IsWellFormed() && result.Bytes.Length > 72 * 1024 && chunks > 1, "Fixture did not exercise bounded chunk transport");
+    await consent.SetDecisionAsync(Fixture.Identity, PlatformCapabilities.CaptureLibraryReadV1, ConsentDecision.Deny); await broker.RefreshConsentAsync();
+    await Reject(() => Call(new(item.Id)));
+    await store.DeleteAsync(item.Id, default);
+}
 static async Task WidgetFlow()
 {
     var id = new string('B', 32); var source = new CaptureAttachment(new string('C',32), "image/png", 3840, 2160, 1000, 0, long.MaxValue);
     var page = new CaptureLibraryPage([], 0, 0, 0); var saves = 0; var deletes = 0;
     var saveGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var client = new WidgetTestHostServicesBuilder()
+        .WithPrivateState(new())
+        .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))
         .WithHandler(WidgetCaptureLibraryCapabilities.List, (_, _) => ValueTask.FromResult(page))
         .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => {
             Check(request.Screenshot is { MaximumWidth: null, MaximumHeight: null } && request.Recording is null, "Library did not request an original screenshot");
@@ -290,11 +348,50 @@ static async Task WidgetFlow()
     }
     finally { saveGate.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
 }
+static async Task SettingsFlow()
+{
+    var savedState = new WidgetTestPrivateState(); var starts = 0;
+    var capabilities = new CaptureCapabilities(true, [CaptureImageFormat.Png],
+        [new("1080p30-hardware", 1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)], [CaptureAudioMode.None], true, 120);
+    var client = new WidgetTestHostServicesBuilder()
+        .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([],0,0,0))
+        .WithPrivateState(savedState)
+        .WithHandler(WidgetCaptureCapabilities.Capabilities, (_, _) => ValueTask.FromResult(capabilities))
+        .WithHandler(WidgetCaptureCapabilities.Validate, (request, _) => ValueTask.FromResult(capabilities.Validate(request)))
+        .WithHandler(WidgetCaptureCapabilities.Start, (_, _) => { starts++; throw new Exception("Invalid settings reached capture start"); }).Build();
+    CaptureLibraryWidget widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
+    IEnumerable<ViewNode> Walk(ViewNode n) => new[] { n }.Concat(n.Children.SelectMany(Walk));
+    ViewSnapshot View() => widget.RenderSnapshot("settings", 1);
+    ViewNode? Node(string id) => Walk(View().Root).FirstOrDefault(n => n.Id == id);
+    async Task Until(Func<bool> ready) { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)); while (!ready()) await Task.Delay(10, timeout.Token); }
+    async Task Action(string id) { await widget.OnActionAsync(new(id,id)); await Until(() => !Walk(View().Root).Any(n => n.IsBusy == true)); }
+    async Task Start() { await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive); await Until(() => Node("capture-library.empty") is not null && !Walk(View().Root).Any(n => n.IsBusy == true)); }
+    try
+    {
+        await Start(); await Action("capture-library.settings");
+        Check(Node("capture-library.setting.profile") is not null);
+        Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0, "Settings snapshot is invalid");
+        Check(!Walk(View().Root).Any(n => n.Text?.Contains("Microphone") == true), "Unsupported audio was advertised");
+        await Action("capture-library.option.duration.120"); await Action("capture-library.option.bitrate.12000000");
+        Check(savedState.Revision == 2 && Node("capture-library.settings.validation")?.Text?.Contains("size limit") == true);
+        await Action("capture-library.settings.back"); await Action("capture-library.video");
+        Check(starts == 0 && Node("capture-library.status")?.Text?.Contains("size limit") == true);
+        await WidgetTestHost.DestroyAsync(widget);
+        capabilities = capabilities with { RecordingProfiles = [] };
+        widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client); await Start(); await Action("capture-library.settings");
+        Check(savedState.Revision == 2 && Node("capture-library.settings.validation")?.Text?.Contains("saved quality has not been changed") == true,
+            "Restart overwrote unsupported persisted settings");
+        var json = savedState.Json!;
+        Check(json.Contains("12000000") && json.Contains("120"), "Recording settings did not persist");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
 sealed class Probe : Widget
 {
     public override WidgetView Render() => new(UI.Text("test", "test"));
     internal Task<byte[]> Read(CaptureAttachment media) => HostServices.Capture.ReadContentAsync(media);
     internal ValueTask Release(CaptureAttachment media) => HostServices.Capture.DiscardAsync(media);
+    internal ValueTask<CaptureLibraryThumbnail> Thumbnail(string id) => HostServices.CaptureLibrary.GetThumbnailAsync(id);
 }
 sealed class Fixture : IDisposable
 {

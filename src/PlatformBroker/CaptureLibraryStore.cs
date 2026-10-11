@@ -27,6 +27,7 @@ public sealed class CaptureLibraryStore
     private readonly string root;
     private readonly string exportRoot;
     private readonly Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize;
+    private readonly Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? thumbnail;
     private readonly int maximumItems;
     private readonly long maximumBytes;
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -35,8 +36,54 @@ public sealed class CaptureLibraryStore
     public CaptureLibraryStore(string root, string exportRoot,
         Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize = null)
         : this(root, exportRoot, normalize, CaptureLibraryLimits.MaximumItems, CaptureLibraryLimits.MaximumBytes) { }
-    internal CaptureLibraryStore(string root, string exportRoot, Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize, int maximumItems, long maximumBytes)
-    { this.maximumItems = maximumItems; this.maximumBytes = maximumBytes; this.root = Path.GetFullPath(root); this.exportRoot = Path.IsPathFullyQualified(exportRoot) ? Path.GetFullPath(exportRoot) : string.Empty; this.normalize = normalize; }
+    public CaptureLibraryStore(string root, string exportRoot,
+        Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize,
+        Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? thumbnail)
+        : this(root, exportRoot, normalize, CaptureLibraryLimits.MaximumItems, CaptureLibraryLimits.MaximumBytes, thumbnail) { }
+    internal CaptureLibraryStore(string root, string exportRoot, Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize, int maximumItems, long maximumBytes,
+        Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? thumbnail = null)
+    { this.maximumItems = maximumItems; this.maximumBytes = maximumBytes; this.root = Path.GetFullPath(root); this.exportRoot = Path.IsPathFullyQualified(exportRoot) ? Path.GetFullPath(exportRoot) : string.Empty; this.normalize = normalize; this.thumbnail = thumbnail; }
+
+    public async Task<CaptureLibraryThumbnail> ThumbnailAsync(string id, CancellationToken token)
+    {
+        DemandId(id);
+        await gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            using var ownership = Own();
+            var saved = Read(id);
+            if (saved.Item.Media.ContentType != "image/png") throw Error("capture_library_thumbnail_unavailable");
+            var original = new FileInfo(MediaPath(saved.Item));
+            if (!original.Exists || original.Length != saved.Item.Media.ByteLength) throw Error("capture_library_invalid_media");
+            var path = Path.Combine(root, id + ".thumbnail"); PlainPath(path);
+            if (File.Exists(path))
+            {
+                var cached = await ReadThumbnailAsync(path, token).ConfigureAwait(false);
+                if (cached is not null) return cached;
+                File.Delete(path);
+            }
+            if (thumbnail is null) throw Error("capture_library_codec_unavailable");
+            await using var source = await VerifiedAsync(saved, token).ConfigureAwait(false);
+            try
+            {
+                await thumbnail(MediaPath(saved.Item), path, token).ConfigureAwait(false);
+                return await ReadThumbnailAsync(path, token).ConfigureAwait(false) ?? throw Error("capture_library_invalid_media");
+            }
+            catch { DeleteOwned(path); throw; }
+        }
+        finally { gate.Release(); }
+    }
+    private static async Task<CaptureLibraryThumbnail?> ReadThumbnailAsync(string path, CancellationToken token)
+    {
+        PlainPath(path);
+        await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
+        if (input.Length is < 24 or > CaptureLibraryLimits.MaximumThumbnailBytes) return null;
+        var bytes = new byte[(int)input.Length];
+        await input.ReadExactlyAsync(bytes, token).ConfigureAwait(false);
+        var result = new CaptureLibraryThumbnail(System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(16, 4)),
+            System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes.AsSpan(20, 4)), bytes);
+        return result.IsWellFormed() ? result : null;
+    }
 
     public async Task<CaptureLibraryPage> ListAsync(int offset, CancellationToken token)
     {
@@ -133,7 +180,7 @@ public sealed class CaptureLibraryStore
             if (File.Exists(metadata)) File.Move(metadata, tombstone);
             else { using var marker = new FileStream(tombstone, FileMode.CreateNew, FileAccess.Write, FileShare.None); }
             var removed = true;
-            foreach (var extension in new[] { ".png", ".mp4" })
+            foreach (var extension in new[] { ".png", ".mp4", ".thumbnail" })
             {
                 var media = Path.Combine(root, id + extension); PlainPath(media);
                 try { File.Delete(media); } catch (IOException) { removed = false; } catch (UnauthorizedAccessException) { removed = false; }
@@ -177,7 +224,7 @@ public sealed class CaptureLibraryStore
                 var id = Path.GetFileNameWithoutExtension(deleted); if (!CaptureLimits.ValidToken(id)) continue;
                 PlainPath(deleted);
                 var removed = true;
-                foreach (var extension in new[] { ".png", ".mp4" })
+                foreach (var extension in new[] { ".png", ".mp4", ".thumbnail" })
                 {
                     var path = Path.Combine(root, id + extension); PlainPath(path);
                     try { File.Delete(path); } catch (IOException) { removed = false; } catch (UnauthorizedAccessException) { removed = false; }
@@ -188,6 +235,7 @@ public sealed class CaptureLibraryStore
             {
                 var name = Path.GetFileNameWithoutExtension(path);
                 var extension = Path.GetExtension(path);
+                if (extension == ".thumbnail" && CaptureLimits.ValidToken(name) && !File.Exists(MetadataPath(name))) DeleteOwned(path);
                 var context = extension == ".png" && name.StartsWith("context-", StringComparison.Ordinal) && CaptureLimits.ValidToken(name[8..]);
                 if (context) DeleteOwned(path); // Active read leases deny deletion; a later operation retries.
                 if (extension == ".pending" && Path.GetFileName(path).EndsWith(".json.pending", StringComparison.Ordinal) && CaptureLimits.ValidToken(Path.GetFileName(path)[..^13]))

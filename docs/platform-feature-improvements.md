@@ -11,17 +11,17 @@ Previous delivery and evidence: `platform-feature-roadmap.md`.
 
 ## Required outcome
 
-- [ ] Configurable shared capture API: separate image/video options, workflow,
+- [x] Configurable shared capture API: separate image/video options, workflow,
   capability discovery, preparation/combination validation, actual output metadata,
   stop-and-keep versus cancel/discard, general temporary media and streaming access.
-- [ ] Preserve foreground window chosen after hide/countdown; no window picker or
+- [x] Preserve foreground window chosen after hide/countdown; no window picker or
   foreground switching. No silent quality downgrade.
 - [ ] Hardware-assisted silent recording with measured supported combinations.
   Audio default off; advertise audio only after reliable implementation/validation.
   Document unavailable hardware-dependent work and continue other features.
-- [ ] Capture Library persistent settings based on advertised capabilities;
+- [x] Capture Library persistent settings based on advertised capabilities;
   thumbnail image grid; migrate Library and Game Help to shared capture API.
-- [ ] Reusable SDK graphs, bounded 60-second histories, FPS/average/1% low and
+- [x] Reusable SDK graphs, bounded 60-second histories, FPS/average/1% low and
   frame-time graph from individual frames; system CPU/GPU/memory histories.
   Clear gaps/target changes, compact pin without Automatic; retain PresentMon FPS.
 - [ ] Dedicated official marketplace widget, Settings entry and installed-widget
@@ -60,10 +60,9 @@ review/save/upload. Permissions stay declared and host-authorized.
 
 ## Next concrete action
 
-Implement hardware video encoding and qualify higher-quality profiles before
-advertising them. Add Capture Library capability-backed settings and thumbnails,
-then marketplace/permission work. Final assembled-candidate visual/physical
-acceptance remains pending alongside these goal sections.
+Implement shared permission requests/Settings intents and marketplace extraction.
+Hardware silent recording is qualified; audio remains outstanding. Final complete
+candidate assembly and visual/physical acceptance remain pending.
 
 ### Performance and graphs implementation checkpoint
 
@@ -244,3 +243,31 @@ of these new changes. No scope item is complete solely because it is planned.
 - Next: Capture Library persistent supported-option settings and lazy thumbnail
   grid, then shared permission requests/Settings intents and dedicated marketplace.
   Audio qualification and complete candidate assembly remain outstanding.
+
+## Capture Library settings and thumbnail checkpoint
+
+- Added grouped persistent screenshot/recording/preparation settings through
+  private state with revision-checked writes. First-use video prefers hardware
+  1080p30; screenshots remain original by default. Existing explicit settings are
+  not overwritten when support disappears. Validate exact size/bitrate/duration
+  before starting. Reopening can finish recording early. Audio remains None only.
+- Added responsive image-thumbnail grid using existing lazy artwork handles.
+  Shared SDK GetThumbnailAsync uses library-read permission without creating
+  temporary capture references. PNG derivatives are 256×144, <=160 KiB; stream
+  in bounded broker chunks so high-entropy images fit transport string limits.
+  Host caches derivatives, repairs invalid ones, and deletes them with originals.
+  Worker never reads original images for the grid; videos use labeled placeholders.
+- Capture Library 19/19 (`library-settings-tests-05.log`): restart persistence,
+  unavailable saved quality, pre-capture budget refusal, real PNG decode, cache
+  reuse/repair/deletion, noisy multi-chunk thumbnail transport and read revocation.
+- Final Library 19/19 (`library-settings-final-01.log`), broker 73/73
+  (`library-broker-tests-01.log`), API compatibility 17/17
+  (`library-api-checks-01.log`). Reviewed additive baseline has 3617 symbols.
+  Builds have zero warnings/errors. Snapshot contracts validate the settings and
+  grid, but native layout/controller acceptance belongs to final assembled-candidate
+  review. No assembled candidate has been launched with these changes yet.
+- Review: cache files are bounded, read-locked and path checked; no original
+  eviction, renderer changes, or inline images. Settings saves retain focus and
+  commit state only after the host acknowledges; B remains usable while probing.
+  Preferences use compare-and-swap revisions and corrupt settings require explicit
+  reset. Gallery can still list saved captures if preference loading fails.

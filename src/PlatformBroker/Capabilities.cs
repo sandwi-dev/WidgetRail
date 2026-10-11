@@ -267,7 +267,7 @@ public static class PlatformCapabilities
                 Set(ProviderDocumentCreate, ProviderDocumentDiscard), Set(), AllowsBackground: true,
                 BackgroundOperations: Set(ProviderDocumentCreate, ProviderDocumentDiscard)),
             [CaptureLibraryReadV1] = new(CaptureLibraryReadV1, 1, BrokerCapabilityKind.Read,
-                Set("capture-library.list", "capture-library.open", "capture-library.read", "capture-library.release"), Set(), AllowsBackground: true),
+                Set("capture-library.list", "capture-library.open", "capture-library.read", "capture-library.release", "capture-library.thumbnail"), Set(), AllowsBackground: true),
             [CaptureLibrarySaveV1] = new(CaptureLibrarySaveV1, 1, BrokerCapabilityKind.Control,
                 Set("capture-library.save"), Set(), AllowsDashboardGesture: false),
             [CaptureLibraryManageV1] = new(CaptureLibraryManageV1, 1, BrokerCapabilityKind.Control,
