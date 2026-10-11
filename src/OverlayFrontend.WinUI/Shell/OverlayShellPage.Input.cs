@@ -148,7 +148,8 @@ internal sealed partial class OverlayShellPage
         }
         if (retired || !visible) return;
         if (LocalInstallActive) { localInstallDialog?.Handle(button, phase); return; }
-        if (hostChoiceDialog is { } dialog) { dialog.Handle(button, phase); return; }
+        if (hostChoiceDialog is { } dialog)
+        { if (visible && HostChoiceHasForeground) dialog.Handle(button, phase); return; }
         if (ReceiveStartupInput(button, phase) || switching && interactive) return;
         try
         {

@@ -363,7 +363,7 @@ of these new changes. No scope item is complete solely because it is planned.
   the still-Interactive broker lifecycle; added CancelPending separately from
   lifecycle loss. A later valid request can recover without reloading.
   Final broker rerun passes 76/76 (`permissions-broker-final-01.log`).
-- Remaining integration review: pinned sources currently receive Unavailable
+- At this checkpoint, pinned sources received Unavailable
   rather than a main-window prompt; preserve the intended foreground/focus policy
   when addressing this. Review also found a no-op Stop recording selector;
   corrected below before publishing the new capture contract.
@@ -437,3 +437,33 @@ of these new changes. No scope item is complete solely because it is planned.
   Performance, Browser and Game Help. Verify real sandboxed marketplace service
   admission and Settings intent routing there, plus native capture-grid/settings
   layout. Raw frontend build output remains insufficient for handoff.
+
+### Pinned permission coordination checkpoint
+
+- Permission prompts now capture the exact active pin and use its XamlRoot.
+  The host suspends widget input while the dialog is open and restores the
+  original presentation/focus on completion. Replacement or unpinning cannot
+  restore a stale surface; unpinning dismisses the dialog before disposing its
+  window. Visibility/foreground/disconnection revoke dialog controller admission.
+- Pins below 320×280 DIPs return Unavailable; minimum-size layout qualification
+  is still pending. Longer permission messages have a bounded scroll viewport,
+  D-pad scrolling when focused and the standard right-stick scrolling kinetics.
+- Debug build passes with no warnings (`permission-pin-build-05.log`). Real
+  shell/Bridge synthetic intent fixture passes **45 checks**
+  (`permission-pin-shell-02/result.json`), including pinned-root ownership,
+  neutral controller admission, acceptance with the main foreground flag revoked,
+  exact pinned focus restoration, ordinary intent routing and browser handoff.
+  Windows inspection confirmed the pin HWND was foreground and main HWND was not.
+  The shell foreground flag intentionally includes owned peer windows, so a test
+  assumption equating it with the main HWND was corrected.
+- The separate dialog fixture reached 23 passing checks, including Allow/Deny/
+  Cancel geometry at 480×360, but failed message-scroll initialization. Its bounded
+  retry exposed an Opened-before-Loaded race: the deferred tab-stop admission
+  could run before IsLoaded. Moved admission to Loaded. That source fix builds,
+  but **small-viewport/message scrolling is not yet revalidated**; the 320×280
+  case was never reached. Do not report this fixture as passing. Preserve
+  `permission-pin-native-03` and `-04` as failed evidence. Revisit at complete
+  candidate layout qualification rather than repeating the same fixture now.
+- Exact broker request/grant from the assembled pinned widget and final native
+  layout review remain pending. All current tests use synthetic widgets and
+  isolated profiles; no user's consent was changed.

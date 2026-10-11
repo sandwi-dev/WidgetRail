@@ -416,6 +416,7 @@ internal sealed partial class OverlayShellPage
     private async Task RemovePinnedCoreAsync()
     {
         if (pinned is not { } current) return;
+        if (ReferenceEquals(hostChoicePin, current)) hostChoiceDialog?.Hide();
         if (ReferenceEquals(intentPinnedTarget, current)) intentCancellation?.Cancel();
         CancelPinnedAdjustment();
         current.FocusAcquired?.TrySetCanceled();

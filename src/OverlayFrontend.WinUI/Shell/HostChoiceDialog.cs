@@ -17,6 +17,9 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     private readonly ListView choices = new() { MaxHeight = 320, SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly IReadOnlyList<HostDialogChoice> entries;
+    private readonly ScrollViewer? messageViewport;
+    private readonly RightStickScroll messageScroll = new();
+    internal bool SupportsMessageScroll => messageViewport is not null;
     internal string? SelectedId { get; private set; }
     internal bool ControllerArmed { get; set; }
 
@@ -30,7 +33,20 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         Title = title; CloseButtonText = entries.Count == 0 ? "Done" : "Cancel";
         DefaultButton = ContentDialogButton.Close;
         var content = new StackPanel { Spacing = 12, MaxWidth = 480 };
-        if (!string.IsNullOrWhiteSpace(message)) content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            var text = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap };
+            if (directDecisionButtons)
+            {
+                messageViewport = new ScrollViewer { Content = text, MaxHeight = 360, IsTabStop = false,
+                    HorizontalScrollMode = ScrollMode.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+                AutomationProperties.SetAutomationId(messageViewport, "Host.Choice.Message");
+                AutomationProperties.SetName(messageViewport, "Requested access. Scroll to read all permissions.");
+                content.Children.Add(messageViewport);
+            }
+            else content.Children.Add(text);
+        }
         if (directDecisionButtons)
         {
             if (entries.Count != 2) throw new ArgumentException("Direct decisions require two choices.", nameof(entries));
@@ -60,6 +76,16 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         {
             (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
         };
+        Loaded += (_, _) =>
+        {
+            // ContentDialog performs its initial content focus during opening.
+            // Admit the scroll stop after that pass so Cancel remains the safe
+            // default, while the message is reachable during normal navigation.
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (IsLoaded && messageViewport is not null) messageViewport.IsTabStop = true;
+            });
+        };
     }
 
     protected override void OnApplyTemplate()
@@ -83,6 +109,8 @@ internal sealed partial class HostChoiceDialog : ContentDialog
 
     internal void MoveFocus(FocusNavigationDirection direction)
     {
+        if (messageViewport is not null && IsWithinFocused(messageViewport) && (direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down) &&
+            ScrollMessage(direction == FocusNavigationDirection.Up ? -64 : 64)) return;
         if (ListFocused() && direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down)
         {
             var next = choices.SelectedIndex + (direction == FocusNavigationDirection.Up ? -1 : 1);
@@ -95,6 +123,24 @@ internal sealed partial class HostChoiceDialog : ContentDialog
             }
         }
         FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = this });
+    }
+
+    internal void ConstrainMessageViewport(double rootHeight)
+    { if (messageViewport is not null) messageViewport.MaxHeight = Math.Clamp(rootHeight - 200, 40, 360); }
+    internal void ResetController()
+    { ControllerArmed = false; messageScroll.Reset(); }
+    internal void SampleMessageScroll(short x, short y, long timestamp)
+    {
+        var delta = messageScroll.Sample(x, y, timestamp);
+        if (delta.Y != 0) ScrollMessage(delta.Y);
+    }
+    private bool ScrollMessage(double delta)
+    {
+        if (messageViewport is null || messageViewport.ScrollableHeight <= 0) return false;
+        var target = Math.Clamp(messageViewport.VerticalOffset + delta, 0, messageViewport.ScrollableHeight);
+        if (Math.Abs(target - messageViewport.VerticalOffset) < 0.1) return false;
+        messageViewport.ChangeView(null, target, null, disableAnimation: true);
+        return true;
     }
 
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
@@ -112,10 +158,11 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         }
     }
 
-    private bool ListFocused()
+    private bool ListFocused() => IsWithinFocused(choices);
+    private bool IsWithinFocused(DependencyObject target)
     {
         for (var node = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (ReferenceEquals(node, choices)) return true;
+            if (ReferenceEquals(node, target)) return true;
         return false;
     }
 }

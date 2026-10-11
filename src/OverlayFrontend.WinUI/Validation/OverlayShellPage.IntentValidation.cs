@@ -99,6 +99,7 @@ internal sealed partial class OverlayShellPage
                 await EnterPinnedAsync();
                 await Until(() => PinnedInputActive && FocusManager.GetFocusedElement(pinned!.Window.AutomationRoot.XamlRoot) is DependencyObject focused &&
                     AutomationProperties.GetAutomationId(focused) == "Widget.pin-open");
+                await VerifyPinnedDialog();
                 pinned!.Presenter!.ActivateFocused();
                 await Until(() => activeWidget == "intent-target" && foreground && !PinnedInputActive &&
                     surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/pinned");
@@ -167,6 +168,37 @@ internal sealed partial class OverlayShellPage
                     "A single available layout replaces directly without a chooser");
                 await UnpinAsync(save: true);
                 if (verifyWebHandoff is not null) checks.AddRange(await verifyWebHandoff());
+
+                async Task VerifyPinnedDialog()
+                {
+                    var current = pinned!;
+                    var root = current.Window.AutomationRoot.XamlRoot;
+                    var focusedBefore = FocusManager.GetFocusedElement(root);
+                    var decision = ShowHostChoiceAsync("Allow widget access?", "Synthetic access request from a pinned widget.",
+                        (HostDialogChoice[])[new("allow", "Allow"), new("deny", "Deny")], lifetime.Token,
+                        directDecisionButtons: true, pinnedOwner: current);
+                    await Until(() => hostChoiceDialog is { IsLoaded: true });
+                    Check(ReferenceEquals(hostChoiceDialog!.XamlRoot, root) && HostChoiceHasForeground,
+                        "Host decision uses the active pin root and retains its foreground ownership");
+                    // The shell's foreground flag may include owned peer HWNDs.
+                    // Exercise routing with that flag revoked while the pin
+                    // independently retains its actual native foreground.
+                    var originalForeground = foreground;
+                    SetForeground(false);
+                    var neutral = new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1 };
+                    Receive(neutral);
+                    Check(hostChoiceDialog.ControllerArmed, "Neutral controller frame arms a pinned host dialog");
+                    var allow = Walk(hostChoiceDialog).OfType<Button>().Single(b => b.Content is "Allow");
+                    allow.Focus(FocusState.Keyboard);
+                    var accept = neutral; accept.State.Buttons = accept.PressedButtons = 0x1000;
+                    Receive(accept);
+                    Check(await decision == "allow", "Controller input reaches the pinned dialog while main HWND is inactive");
+                    await Until(() => ReferenceEquals(FocusManager.GetFocusedElement(root), focusedBefore));
+                    Check(PinnedInputActive && current.IsCurrent && !HostChoiceActive,
+                        "Pinned decision restores the exact original focus and interaction");
+                    var release = neutral; release.ReleasedButtons = 0x1000; Receive(release);
+                    SetForeground(originalForeground);
+                }
 
                 List<(string Label, string Id, Func<Task> Action)> PinCommands(WidgetRail.WidgetBridge.BridgeWidgetDescriptor descriptor)
                 {

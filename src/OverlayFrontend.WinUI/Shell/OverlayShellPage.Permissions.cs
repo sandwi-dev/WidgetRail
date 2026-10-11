@@ -33,14 +33,20 @@ internal sealed partial class OverlayShellPage
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         cancellation.CancelAfter(TimeSpan.FromMinutes(2));
         var token = cancellation.Token; Task? renewal = null;
-        bool Eligible() => !retired && visible && foreground && interactive && activeWidget == prompt.WidgetId && !LocalInstallActive;
+        var sourcePin = PinnedInputActive && pinned?.WidgetId == prompt.WidgetId ? pinned : null;
+        bool Eligible() => !retired && visible && !LocalInstallActive && (sourcePin is not null
+            ? ReferenceEquals(pinned, sourcePin) && sourcePin.IsCurrent && PinnedInputActive
+            : foreground && interactive && activeWidget == prompt.WidgetId);
         try
         {
             if (!Eligible() || !await session.IsPermissionCurrentAsync(prompt.RequestId, token)) return;
+            // A tiny pin cannot show a readable native permission dialog. Report
+            // unavailable so the widget can offer Settings or its main view.
+            if (sourcePin?.Window.AutomationRoot.XamlRoot is { } pinRoot && (pinRoot.Size.Width < 320 || pinRoot.Size.Height < 280)) return;
             renewal = WatchAsync();
             var selected = await ShowHostChoiceAsync("Allow widget access?",
                 PermissionPromptMessage(prompt),
-                (HostDialogChoice[])[new("allow", "Allow"), new("deny", "Deny")], token, directDecisionButtons: true);
+                (HostDialogChoice[])[new("allow", "Allow"), new("deny", "Deny")], token, directDecisionButtons: true, pinnedOwner: sourcePin);
             if (!Eligible() || !await session.IsPermissionCurrentAsync(prompt.RequestId, token)) return;
             outcome = selected switch { "allow" => WidgetPermissionOutcome.Granted, "deny" => WidgetPermissionOutcome.Denied, _ => WidgetPermissionOutcome.Cancelled };
         }

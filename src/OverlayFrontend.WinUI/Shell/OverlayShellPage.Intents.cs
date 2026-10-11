@@ -16,7 +16,10 @@ internal sealed partial class OverlayShellPage
     private TaskCompletionSource? intentForegroundAcquired;
     private bool browserExternalPending;
     private HostChoiceDialog? hostChoiceDialog;
+    private PinnedSurface? hostChoicePin;
     private bool HostChoiceActive => hostChoiceDialog is not null;
+    private bool HostChoiceHasForeground => hostChoicePin is { } pin
+        ? ReferenceEquals(pinned, pin) && pin.IsCurrent && PinnedInputActive : foreground;
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternalWebPageRequested { get; set; }
 
     private async Task InvokePinnedIntentAsync(PinnedSurface pin, WidgetActionRequest request)
@@ -178,21 +181,27 @@ internal sealed partial class OverlayShellPage
         finally { browserExternalPending = false; }
     }
 
-    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null, bool directDecisionButtons = false)
+    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null, bool directDecisionButtons = false, PinnedSurface? pinnedOwner = null)
     {
-        if (HostChoiceActive || LocalInstallActive || retired || !visible || !foreground) return null;
-        var original = surface;
-        var originalFocus = FocusManager.GetFocusedElement(XamlRoot) as Control;
+        var original = pinnedOwner is null ? surface : pinnedOwner.Presenter;
+        bool Current() => pinnedOwner is null ? foreground && ReferenceEquals(surface, original) :
+            ReferenceEquals(pinned, pinnedOwner) && pinnedOwner.IsCurrent && PinnedInputActive;
+        if (HostChoiceActive || LocalInstallActive || retired || !visible || !Current()) return null;
+        var root = pinnedOwner?.Window.AutomationRoot.XamlRoot ?? XamlRoot;
+        var originalFocus = FocusManager.GetFocusedElement(root) as Control;
         var originalState = original?.CapturePresentationState();
-        var dialog = new HostChoiceDialog(title, message, choices, directDecisionButtons) { XamlRoot = XamlRoot };
+        var dialog = new HostChoiceDialog(title, message, choices, directDecisionButtons) { XamlRoot = root };
+        dialog.ConstrainMessageViewport(root.Size.Height);
         if (primaryButtonText is not null) dialog.PrimaryButtonText = primaryButtonText;
         hostChoiceDialog = dialog;
+        hostChoicePin = pinnedOwner;
+        pinnedOwner?.SetInput(false);
         original?.SetPresentationInputEnabled(false);
         original?.SetAutomaticFocusEnabled(false);
         ResetInputPresentation(); PublishControllerGuide();
         try
         {
-            using var theme = NativePopupTheme.Dialog(dialog, original ?? (FrameworkElement)this);
+            using var theme = NativePopupTheme.Dialog(dialog, original ?? pinnedOwner?.Window.AutomationRoot ?? (FrameworkElement)this);
             using var dismiss = token.Register(() => DispatcherQueue.TryEnqueue(() => dialog.Hide()));
             await dialog.ShowAsync();
             token.ThrowIfCancellationRequested();
@@ -201,18 +210,22 @@ internal sealed partial class OverlayShellPage
         finally
         {
             hostChoiceDialog = null;
+            hostChoicePin = null;
             ResetInputPresentation(); PublishControllerGuide();
-            if (!retired && visible && foreground && ReferenceEquals(surface, original))
+            if (!retired && visible && Current())
             {
+                var enabled = pinnedOwner is not null || MainFocusEnabled;
                 if (originalState is not null) original?.RestorePresentationState(originalState);
-                original?.SetPresentationInputEnabled(MainFocusEnabled);
-                original?.SetAutomaticFocusEnabled(MainFocusEnabled);
-                if (MainFocusEnabled && originalFocus is { IsLoaded: true, IsEnabled: true } && WithinOriginal(originalFocus))
+                pinnedOwner?.SetInput(enabled);
+                original?.SetPresentationInputEnabled(enabled);
+                original?.SetAutomaticFocusEnabled(enabled);
+                if (enabled && originalFocus is { IsLoaded: true, IsEnabled: true } && WithinOriginal(originalFocus))
                     originalFocus.Focus(FocusState.Keyboard);
                 // Native dialog teardown can finish focus restoration after
                 // ShowAsync completes. Re-enter through the presenter's logical
                 // memory instead of relying on a possibly stale Control reference.
-                if (MainFocusEnabled) original?.Enter(restoreNativeFocus: true);
+                if (pinnedOwner is not null) pinnedOwner.Enter();
+                else if (MainFocusEnabled) original?.Enter(restoreNativeFocus: true);
                 else if (!interactive) FocusTray();
             }
         }
@@ -220,7 +233,7 @@ internal sealed partial class OverlayShellPage
         bool WithinOriginal(DependencyObject node)
         {
             for (var current = node; current is not null; current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
-                if (ReferenceEquals(current, original)) return true;
+                if (ReferenceEquals(current, original) || pinnedOwner is not null && ReferenceEquals(current, pinnedOwner.Window.AutomationRoot)) return true;
             return false;
         }
     }
@@ -231,9 +244,11 @@ internal sealed partial class OverlayShellPage
         heldAction.Reset(); rightStick.Reset();
         foreach (var (mask, button) in Buttons)
             if ((frame.ReleasedButtons & mask) != 0) shellOwnedReleases.Remove(button);
-        if (!foreground || frame.Connected == 0 || frame.Primed != 0) return true;
+        if (!visible || !HostChoiceHasForeground || frame.Connected == 0 || frame.Primed != 0)
+        { dialog.ResetController(); return true; }
         if (frame.State.Buttons == 0 && frame.State.LeftTrigger == 0 && frame.State.RightTrigger == 0) dialog.ControllerArmed = true;
         if (!dialog.ControllerArmed) return true;
+        dialog.SampleMessageScroll(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
         {
