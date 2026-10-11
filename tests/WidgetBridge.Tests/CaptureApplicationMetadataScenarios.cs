@@ -5,6 +5,29 @@ using WidgetRail.WidgetProtocol;
 
 internal static class CaptureApplicationMetadataScenarios
 {
+    internal static async Task DiscoveryThroughHostPipe()
+    {
+        var pipe = "capture-discovery-" + Guid.NewGuid().ToString("N");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await using var server = new WidgetBridgeServer(pipe, new([]));
+        var serving = server.RunAsync(TimeSpan.FromSeconds(3), deadline.Token);
+        await using var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token);
+        var registry = WindowCaptureRegistry.Shared;
+        var pending = registry.GetCapabilitiesAsync(deadline.Token);
+        var next = await session.TakeCaptureAsync(deadline.Token);
+        if (next.Request is not null || !next.NeedsCapabilities || !next.NeedsEncodingCapabilities)
+            throw new Exception("Capability demand did not cross the frontend pipe independently of capture.");
+        var basic = new CaptureCapabilities(true, [CaptureImageFormat.Png], [], [CaptureAudioMode.None], true, 120);
+        await session.PublishCaptureCapabilitiesAsync(basic, deadline.Token, encodingProbed: false);
+        if (pending.IsCompleted) throw new Exception("Image-only support falsely completed an encoding query.");
+        var full = basic with { RecordingProfiles = [new("hardware",1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)] };
+        await session.PublishCaptureCapabilitiesAsync(full, deadline.Token);
+        if ((await pending).RecordingProfiles.Single().Encoder != CaptureEncoderMode.Hardware)
+            throw new Exception("Probed encoder capabilities were lost across the host pipe.");
+        next = await session.TakeCaptureAsync(deadline.Token);
+        if (next.NeedsCapabilities || next.NeedsEncodingCapabilities) throw new Exception("Completed discovery still requests native work.");
+        await session.DisposeAsync(); await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
     internal static async Task ThroughHostPipe()
     {
         var pipe = "capture-app-context-" + Guid.NewGuid().ToString("N");

@@ -88,6 +88,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Media player resolves sealed assets URLs and authorized local files", MediaPlayerScenarios.Sources),
     ("Media player source resolution rejects forged and stale declarations", MediaPlayerScenarios.Authority),
     ("Capture application metadata crosses host pipe without trusting caller labels", CaptureApplicationMetadataScenarios.ThroughHostPipe),
+    ("Capture capabilities cross host pipe only after an explicit discovery request", CaptureApplicationMetadataScenarios.DiscoveryThroughHostPipe),
     ("Intent bridge search readiness and background feedback cross both pipes", BridgeIntentEndToEnd.SearchFeedbackThroughBothPipes),
     ("Intent bridge search missing key and no handler report unavailable with one fallback", BridgeIntentScenarios.SearchUnavailableFeedback),
     ("Intent bridge search rechecks readiness and reports rejection while source is hidden", BridgeIntentScenarios.SearchRecheckAndRejectedFeedback),

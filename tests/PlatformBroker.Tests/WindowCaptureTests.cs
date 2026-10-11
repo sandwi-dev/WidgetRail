@@ -4,6 +4,60 @@ using WidgetRail.WidgetProtocol;
 
 internal static class WindowCaptureTests
 {
+    internal static async Task ReservationAsync()
+    {
+        using var registry = new WindowCaptureRegistry(maximumBytes: 4096);
+        registry.SetCapabilities(new(true,[CaptureImageFormat.Png],[],[CaptureAudioMode.None],true,120));
+        var owner = new object(); var identity = new BrokerWidgetIdentity("example.capture","example","instance");
+        var request = new CaptureSessionRequest { Screenshot = new(), MaximumBytes = 2048 };
+        var first = registry.EnqueueConfigured(owner,identity,request); var work = registry.Take()!;
+        var bytes = new byte[2048]; new byte[] {137,80,78,71,13,10,26,10}.CopyTo(bytes,0);
+        await File.WriteAllBytesAsync(work.OutputPath,bytes);
+        registry.Complete(new(first.RequestId,1,1,0) { Properties = new(1,1) });
+        Check(registry.Status(owner,first.RequestId).Phase == WindowCapturePhase.Ready);
+        Reject(() => registry.EnqueueConfigured(owner,identity,request with { MaximumBytes = 3072 }));
+        Check(File.Exists(work.OutputPath));
+        var second = registry.EnqueueConfigured(owner,identity,request); registry.Take();
+        var sourcePath = Path.Combine(Path.GetTempPath(),"capture-reservation-"+Guid.NewGuid().ToString("N")+".png");
+        try
+        {
+            await File.WriteAllBytesAsync(sourcePath,bytes.AsMemory(0,512).ToArray());
+            await using var source = new CaptureLibraryReadLease(new(Guid.NewGuid().ToString("N"),"image/png",1,1,512,0,long.MaxValue),
+                new FileStream(sourcePath,FileMode.Open,FileAccess.Read,FileShare.Read));
+            try { await registry.ImportAsync(owner,identity,source,default); throw new Exception("Import consumed reserved recording budget"); }
+            catch (BrokerException error) { Check(error.Code == "capture_limit"); }
+        }
+        finally { File.Delete(sourcePath); }
+        registry.Cancel(owner,second.RequestId);
+        var replacement = registry.EnqueueConfigured(owner,identity,request);
+        Check(registry.Take()!.RequestId == replacement.RequestId);
+        registry.Cancel(owner,replacement.RequestId);
+    }
+    internal static async Task DiscoveryAsync()
+    {
+        using var registry = new WindowCaptureRegistry();
+        Check(!registry.NeedsCapabilities && !registry.NeedsEncodingCapabilities);
+        var image = registry.GetCapabilitiesAsync(default, includeEncoding: false);
+        Check(registry.NeedsCapabilities && !registry.NeedsEncodingCapabilities && !image.IsCompleted);
+        var basic = new CaptureCapabilities(true, [CaptureImageFormat.Png], [], [CaptureAudioMode.None], true, 120);
+        registry.SetCapabilities(basic, encodingProbed: false);
+        Check((await image).ImageFormats.Count == 1 && !registry.NeedsEncodingCapabilities);
+        var video = registry.GetCapabilitiesAsync(default);
+        Check(registry.NeedsEncodingCapabilities && !video.IsCompleted);
+        var complete = basic with { RecordingProfiles = [new("hardware",1280,720,15,1_000_000,6_000_000,CaptureEncoderMode.Hardware)] };
+        registry.SetCapabilities(complete);
+        Check((await video).RecordingProfiles.Count == 1);
+        registry.SetCapabilities(basic, encodingProbed: false);
+        Check((await registry.GetCapabilitiesAsync(default)).RecordingProfiles.Count == 1);
+        using var cancelled = new WindowCaptureRegistry(); using var cancellation = new CancellationTokenSource();
+        var pending = cancelled.GetCapabilitiesAsync(cancellation.Token);
+        cancellation.Cancel();
+        try { await pending; throw new Exception("Cancelled discovery completed"); } catch (OperationCanceledException) { }
+        Check(!cancelled.NeedsCapabilities && !cancelled.NeedsEncodingCapabilities);
+        var shutdown = cancelled.GetCapabilitiesAsync(default);
+        cancelled.Dispose();
+        try { await shutdown; throw new Exception("Retired discovery completed"); } catch (OperationCanceledException) { }
+    }
     internal static Task ConfiguredAsync()
     {
         using var registry = new WindowCaptureRegistry();

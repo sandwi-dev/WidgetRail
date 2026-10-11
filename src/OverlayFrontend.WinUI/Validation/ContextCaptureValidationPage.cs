@@ -81,6 +81,9 @@ internal sealed partial class ContextCaptureValidationPage : Page
                 Check(small.Width <= 320 && small.Height <= 240 && small.Properties?.SourceWidth == original.Properties!.SourceWidth,
                     "Configured bounded screenshot fits without upscaling and retains source metadata");
                 using var process = System.Diagnostics.Process.GetCurrentProcess();
+                var discovery = System.Diagnostics.Stopwatch.StartNew();
+                var capabilities = await NativeWindowCapture.GetCapabilitiesAsync(); discovery.Stop();
+                checks.Add($"Encoder discovery: {discovery.Elapsed.TotalMilliseconds:0} ms once on demand, {capabilities.RecordingProfiles.Count} supported profiles.");
                 var cpuBefore = process.TotalProcessorTime; var elapsed = System.Diagnostics.Stopwatch.StartNew();
                 var configuredRequest = videoRequest with { OutputPath = Path.Combine(directory, "configured.mp4"),
                     Options = new() { Recording = new(640, 360, 15, 1_000_000, 2), Preparation = new(0) } };
@@ -98,6 +101,21 @@ internal sealed partial class ContextCaptureValidationPage : Page
                 var stoppedProperties = await stoppedFile.Properties.GetVideoPropertiesAsync();
                 Check(stopped.Frames > 0 && stopped.DurationSeconds < 3 && Math.Abs(stoppedProperties.Duration.TotalSeconds - stopped.DurationSeconds) < .2,
                     "Stop-and-keep finalizes a playable short MP4 instead of discarding it");
+                Check(capabilities.IsWellFormed(), "Native encoder discovery returns validated capabilities");
+                foreach (var profile in capabilities.RecordingProfiles.Where(p => p.Encoder == CaptureEncoderMode.Hardware))
+                {
+                    var hardwareRequest = videoRequest with { OutputPath = Path.Combine(directory, profile.Id + ".mp4"),
+                        Options = new() { Recording = new(profile.MaximumWidth, profile.MaximumHeight, profile.FramesPerSecond,
+                            profile.MaximumBitrate, 2, CaptureEncoderMode.Hardware) } };
+                    process.Refresh(); cpuBefore = process.TotalProcessorTime; elapsed.Restart();
+                    var hardware = await NativeWindowCapture.RunAsync(hardwareRequest, deadline.Token);
+                    process.Refresh(); elapsed.Stop();
+                    var encoded = await (await StorageFile.GetFileFromPathAsync(hardwareRequest.OutputPath)).Properties.GetVideoPropertiesAsync();
+                    Check(hardware.Properties?.Encoder == CaptureEncoderMode.Hardware && encoded.Width == hardware.Width && encoded.Height == hardware.Height &&
+                        Math.Abs(encoded.Duration.TotalSeconds - hardware.DurationSeconds) < .15 && hardware.Frames > 0,
+                        $"WGC {profile.Id} uses verified hardware and produces matching playable metadata");
+                    checks.Add($"WGC {profile.Id}: {hardware.Width}x{hardware.Height}, frames={hardware.Frames}, missed={hardware.Properties!.MissedFrames}, elapsedMs={elapsed.Elapsed.TotalMilliseconds:0}, CPUms={(process.TotalProcessorTime-cpuBefore).TotalMilliseconds:0} (synthetic animated window, not game overhead).");
+                }
                 using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
                 var cancelled = false;
                 try { await NativeWindowCapture.RunAsync(videoRequest with { OutputPath = Path.Combine(directory, "cancelled.mp4") }, cancel.Token); }

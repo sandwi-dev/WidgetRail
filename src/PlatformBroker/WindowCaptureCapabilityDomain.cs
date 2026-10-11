@@ -7,6 +7,18 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
 {
     internal async Task<JsonElement> ExecuteAsync(string operation, JsonElement payload, CancellationToken token)
     {
+        if (operation is "capture.capabilities" or "capture.validate" or "capture.start")
+        {
+            var includeEncoding = true;
+            if (operation == "capture.capabilities") BrokerCapabilityDomains.DemandEmptyPayload(payload);
+            else
+            {
+                var options = BrokerJson.ParsePayload<CaptureSessionRequest>(payload);
+                if (!options.IsWellFormed()) return Execute(operation, payload, token);
+                includeEncoding = options.Recording is not null;
+            }
+            await WindowCaptureRegistry.Shared.GetCapabilitiesAsync(token, includeEncoding).ConfigureAwait(false);
+        }
         if (!operation.StartsWith("capture-library.", StringComparison.Ordinal)) return Execute(operation, payload, token);
         if (library is null) throw new BrokerException("capture_library_unavailable", "Capture Library is unavailable.");
         var registry = WindowCaptureRegistry.Shared;

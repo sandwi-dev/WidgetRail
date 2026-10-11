@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [string]$OutputDirectory, [switch]$TestPolicy, [switch]$TestCapture)
+param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [string]$OutputDirectory, [switch]$TestPolicy, [switch]$TestCapture, [switch]$TestEncoding)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -21,7 +21,7 @@ $optimization = if ($Configuration -eq 'Release') { @('/O2','/DNDEBUG') } else {
 $captureSources = if ($TestCapture) { @('/DWRAIL_CAPTURE_VALIDATION', (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureFixture.cpp')) } else { @() }
 $arguments = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DUNICODE','/D_UNICODE','/DWIN32_LEAN_AND_MEAN','/DNOMINMAX','/DWRAIL_PREVIEW_EXPORTS','/LD') + $optimization + $includes + $captureSources + @(
     (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowPreviewNative.cpp'), (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowContextCapture.cpp'), "/Fo:$objectDirectory\", "/Fe:$OutputDirectory\WinUiWindowPreviewNative.dll", '/link',
-    "/IMPLIB:$OutputDirectory\WinUiWindowPreviewNative.lib", "/PDB:$OutputDirectory\WinUiWindowPreviewNative.pdb") + $libraries + @('d3d11.lib','dxgi.lib','d2d1.lib','dwmapi.lib','user32.lib','ole32.lib','windowsapp.lib','gdi32.lib','windowscodecs.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib')
+    "/IMPLIB:$OutputDirectory\WinUiWindowPreviewNative.lib", "/PDB:$OutputDirectory\WinUiWindowPreviewNative.pdb") + $libraries + @('d3d11.lib','dxgi.lib','d2d1.lib','dwmapi.lib','user32.lib','ole32.lib','windowsapp.lib','gdi32.lib','windowscodecs.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib')
 $oldPath = $env:PATH
 try {
     $env:PATH = "$compilerDirectory;$sdkRoot\bin\$($sdk.Name)\x64;$oldPath"
@@ -47,6 +47,15 @@ try {
             (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureFixture.cpp'), "/Fo:$objectDirectory\CaptureFixture.obj", "/Fe:$OutputDirectory\WindowCaptureFixture.exe", '/link') + $libraries + @('user32.lib','gdi32.lib')
         & $compiler @fixture
         if ($LASTEXITCODE -ne 0) { throw 'Capture fixture build failed.' }
+    }
+    if ($TestEncoding) {
+        $encoding = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX','/DUNICODE','/D_UNICODE','/O2') + $includes + @(
+            (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureEncodingTests.cpp'), "/Fo:$objectDirectory\EncodingTests.obj", "/Fe:$OutputDirectory\WindowCaptureEncodingTests.exe", '/link') +
+            $libraries + @('d3d11.lib','dxgi.lib','ole32.lib','windowsapp.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib','psapi.lib')
+        & $compiler @encoding
+        if ($LASTEXITCODE -ne 0) { throw 'Capture encoding probe build failed.' }
+        & (Join-Path $OutputDirectory 'WindowCaptureEncodingTests.exe') $OutputDirectory
+        if ($LASTEXITCODE -ne 0) { throw 'No encoding profile passed.' }
     }
     & (Join-Path $compilerDirectory 'dumpbin.exe') /nologo /exports (Join-Path $OutputDirectory 'WinUiWindowPreviewNative.dll') | Set-Content (Join-Path $OutputDirectory 'exports.txt')
 } finally { $env:PATH = $oldPath }

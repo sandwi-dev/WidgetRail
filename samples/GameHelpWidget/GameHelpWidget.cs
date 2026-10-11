@@ -178,9 +178,17 @@ public sealed partial class GameHelpWidget : Widget
             try
             {
                 if(model.Value.Preview is { } prior) { await HostServices.Capture.DiscardAsync(prior,context.CancellationToken); model.Update(s => s with { Preview = null, Context = s.Context == prior ? null : s.Context }); }
+                RecordingOptions? recording = null;
+                if (kind == WindowCaptureKind.Video)
+                {
+                    var supported = await HostServices.Capture.GetCapabilitiesAsync(context.CancellationToken);
+                    var hardware = new RecordingOptions(1280, 720, 15, 3_000_000, 5, CaptureEncoderMode.Hardware);
+                    recording = supported.RecordingProfiles.Any(profile => profile.Supports(hardware))
+                        ? hardware : hardware with { Encoder = CaptureEncoderMode.Software };
+                }
                 ticket=await HostServices.Capture.StartAsync(new CaptureSessionRequest {
                     Screenshot = kind == WindowCaptureKind.Screenshot ? new ScreenshotOptions(1920, 1080) : null,
-                    Recording = kind == WindowCaptureKind.Video ? new RecordingOptions(1280, 720, 15, 3_000_000, 5) : null,
+                    Recording = recording,
                     Preparation = new(5), MaximumBytes = CaptureLimits.MaximumContextBytes,
                 }, context.CancellationToken);
                 if(context.IsCurrent) model.Update(s=>s with {Ticket=ticket,Preview=null});

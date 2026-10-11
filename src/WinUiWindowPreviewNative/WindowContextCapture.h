@@ -19,6 +19,14 @@ struct WrailCaptureResult {
 };
 static_assert(sizeof(WrailCaptureOptions) == 48);
 static_assert(sizeof(WrailCaptureResult) == 48);
+struct WrailCaptureEncodingProbe {
+    uint32_t size{sizeof(WrailCaptureEncodingProbe)},version{1},supported{},hardware{};
+    int32_t error{};uint32_t reserved{};
+    double elapsedMilliseconds{};
+};
+static_assert(sizeof(WrailCaptureEncodingProbe)==32);
+extern "C" PREVIEW_API int32_t __stdcall WrailProbeCaptureEncoding(const WrailCaptureOptions* options,
+    WrailCaptureEncodingProbe* result) noexcept;
 // Authority callback: 0 = cancelled/discard, 1 = continue, 2 = stop/finalize video.
 extern "C" PREVIEW_API int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarget* target,
     const wchar_t* outputPath, const WrailCaptureOptions* options, WrailPreviewAuthority authority, void* context,

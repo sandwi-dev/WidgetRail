@@ -343,6 +343,36 @@ public sealed class GameHelpTests
         finally{await WidgetTestHost.DestroyAsync(widget);}
     }
     [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task LightweightVideoPrefersAnAdvertisedHardwareEncoder(bool hardwareAvailable)
+    {
+        var service = new FakeService();
+        var expected = hardwareAvailable ? CaptureEncoderMode.Hardware : CaptureEncoderMode.Software;
+        var profiles = new List<CaptureRecordingProfile> { new("software",1280,720,15,1_000_000,6_000_000,CaptureEncoderMode.Software) };
+        if (hardwareAvailable) profiles.Add(new("hardware",1280,720,15,1_000_000,6_000_000,CaptureEncoderMode.Hardware));
+        var ticket = new WindowCaptureTicket(new string('c',32));
+        var media = new CaptureAttachment(new string('d',32),"video/mp4",1280,720,1000,5,DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeMilliseconds()) {
+            Properties = new(1280,720,15,75,0,expected) };
+        RecordingOptions? requested = null;
+        var host = new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetCaptureCapabilities.Capabilities, new CaptureCapabilities(true,[CaptureImageFormat.Png],profiles,[CaptureAudioMode.None],true,120))
+            .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => { requested = request.Recording; return ValueTask.FromResult(ticket); })
+            .WithResponse(WidgetCaptureCapabilities.Status,new WindowCaptureStatus(ticket.RequestId,WindowCapturePhase.Ready,media))
+            .WithResponse(WidgetCaptureCapabilities.Discard,new WidgetCapabilityAcknowledgement(true)).Build();
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service),host);
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);
+            await Until(()=>Walk(Snapshot(widget).Root).Any(n=>n.Id=="help.composer"));
+            await widget.OnActionAsync(new("capture.video","help.capture-video"));
+            await Until(()=>Snapshot(widget).Root.Kind==ViewNodeKind.ModalLayer);
+            Assert.AreEqual(new RecordingOptions(1280,720,15,3_000_000,5,expected),requested);
+            Assert.AreEqual(0,service.Requests.Count);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+    [TestMethod]
     public void GroundedSourcesComeOnlyFromAnnotationsAndSearchesStaySeparate()
     {
         var answer=JsonSerializer.Serialize(new{hint="Useful answer",detailedSolution="",observations=new[]{"Possible bonfire name"},uncertainty="Location is uncertain",replyOptions=new[]{new { label="Boss help", message="Help me approach this boss." }},searchQueries=new[]{"Elden Ring bonfire guide"}});

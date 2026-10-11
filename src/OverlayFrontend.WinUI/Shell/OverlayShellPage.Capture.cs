@@ -12,8 +12,6 @@ internal sealed partial class OverlayShellPage
     private async Task PumpCaptureAsync()
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(350));
-        var published = false;
-        long nextPublication = 0;
         try
         {
             while (await timer.WaitForNextTickAsync(lifetime.Token))
@@ -21,18 +19,16 @@ internal sealed partial class OverlayShellPage
                 if (capturing is { IsCompleted: false }) continue;
                 try
                 {
-                    if (!published || Environment.TickCount64 >= nextPublication)
-                    {
-                        await owner!.Session.PublishCaptureCapabilitiesAsync(NativeWindowCapture.Capabilities(), lifetime.Token);
-                        published = true;
-                        nextPublication = Environment.TickCount64 + 5000;
-                    }
                     var next = await owner!.Session.TakeCaptureAsync(lifetime.Token);
+                    if (next.NeedsCapabilities)
+                        await owner.Session.PublishCaptureCapabilitiesAsync(NativeWindowCapture.ImageCapabilities(), lifetime.Token, encodingProbed: false);
+                    if (next.NeedsEncodingCapabilities)
+                        await owner.Session.PublishCaptureCapabilitiesAsync(await NativeWindowCapture.GetCapabilitiesAsync().WaitAsync(lifetime.Token), lifetime.Token);
                     if (next.Request is not null) capturing = RunCaptureAsync(next);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
                 catch (Exception error) when (error is not OutOfMemoryException)
-                { published = false; if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-pump", error); }
+                { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-pump", error); }
             }
         }
         catch (OperationCanceledException) when (retired) { }

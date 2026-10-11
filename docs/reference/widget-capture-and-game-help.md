@@ -36,9 +36,24 @@ The desktop, shell and WidgetRail's own windows are not foreground capture targe
 Screenshot dimensions/format and recording dimensions, frame rate, bitrate,
 encoder and maximum duration are separate typed options. Query the host's actual
 advertised recording envelopes and revalidate before starting. Unsupported
-combinations fail explicitly. Current qualified baseline is PNG and software H.264
-up to 1280x720 at 15 fps, with no audio. Hardware/higher-quality modes are not
-advertised until their pipeline is qualified. Cursor inclusion is configurable.
+combinations fail explicitly. PNG and H.264 profiles are discovered on this PC.
+Qualified video envelopes are software 720p/15fps and hardware 720p/15fps,
+1080p/30fps, 1080p/60fps and 4K/30fps; only successful native probes are advertised.
+Audio remains unavailable/off. Cursor inclusion is configurable.
+
+Encoder discovery runs once on demand, off the UI thread, without recording a
+screen or writing a file. Startup and screenshot-only requests do not initialize
+video encoders. Each envelope checks its minimum and maximum bitrate through the
+actual Media Foundation pipeline. The hardware path verifies the selected MFT's
+hardware identity and fails if Windows chose software. Capture startup initializes
+the exact requested output again; a runtime failure never silently changes encoder
+or quality. Discovery is cached for the frontend session.
+
+Hardware frames remain on the GPU: BGRA capture/output is converted to NV12 with
+the D3D11 video processor. Three tracked NV12 surfaces bound queued frames and are
+reused only after the encoder releases each sample. Backpressure drops scheduled
+output slots instead of growing memory; metadata reports encoded/missed slots.
+These counts do not claim that every source-game frame was sampled.
 Target loss, replacement, resize, protected content, or cancellation terminates
 capture; another window is never silently substituted. Reopening the overlay
 finishes and retains configured recordings. During preparation it cancels instead.
@@ -68,14 +83,17 @@ request the exact original physical pixels, up to 33,554,432 pixels. The host
 verifies returned dimensions rather than accepting silent downscaling.
 See [Capture Library](capture-library.md). The host permits four
 attachments per widget, sixteen total, and 256 MiB of temporary media. Pending
-request leases include preparation and maximum recording duration plus a
+requests reserve their declared maximum output bytes before confirmation, so
+concurrent library imports cannot consume recording capacity. Request leases include preparation and maximum recording duration plus a
 two-minute confirmation/finalization allowance; completed captures expire after thirty minutes.
 Revocation, worker retirement and discard remove the owning captures. Failed
 deletes are retried; expired unlocked capture directories from a crashed host
 are cleaned on a later host run.
 
 Game Help explicitly requests a 1920x1080-bounded PNG or five-second 1280x720/15fps
-silent clip with an 8 MiB budget and five-second preparation. These are its own
+silent clip with an 8 MiB budget and five-second preparation. It chooses an
+advertised hardware encoder when available, retaining the same lightweight format.
+These are its own
 preferences, not framework constants for every widget. Send remains a separate
 explicit action after preview/question review. Capture Library uses the same
 configured service with original-resolution screenshots.

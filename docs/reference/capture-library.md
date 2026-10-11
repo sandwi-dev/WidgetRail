@@ -120,14 +120,21 @@ The native path also owns GPU capture/output/staging resources, so these values
 are **not total process memory**. PNG size depends strongly on image content and
 cannot be estimated reliably from an average screenshot. Disk use is shown in MiB.
 
-Higher-resolution clips are deliberately unchanged. Raw pixel throughput rises
+The shared API now supports qualified hardware encoding profiles. Raw pixel throughput rises
 from **13.8 million pixels/s** at 720p15 to **62.2 million** at 1080p30 (4.5×), or
-**248.8 million** at 4K30 (18×). The current Media Foundation path does not explicitly
-request a hardware encoder; raising resolution/fps needs measured encoding latency,
-queue/memory limits, bitrate/quality settings and game-overhead tests first. At its
-current 3 Mbps target, five seconds is approximately 1.8 MiB before container/VBR
-variation, bounded to 8 MiB. This is an implementation assessment, not a claim of
-measured GPU/CPU cost during gaming.
+**248.8 million** at 4K30 (18×). Hardware encoding keeps these pixels on the GPU
+and bounds its NV12 queue to three tracked surfaces. Software encoding retains a
+readback path. At a 3 Mbps target, five seconds is approximately 1.8 MiB before
+container/VBR variation. Available profiles come from runtime encoder probes;
+choosing a longer duration/higher bitrate must also fit the requested byte budget.
+The current widget defaults remain a five-second clip until the settings UI is
+updated; see `docs/platform-feature-improvements.md` for remaining work.
+
+Synthetic animated 4K-window validation delivered all requested output slots for
+hardware 720p15, 1080p30, 1080p60 and 4K30. Encoder-only tests also decoded every
+generated frame and checked dimensions, colors, ordered timestamps and no audio.
+This establishes functional support and local collection cost, not in-game GPU/FPS
+impact. Do not extrapolate these generated-window measurements to loaded games.
 
 Automated checks cover native geometry, a real Windows-codec odd-sized 4K rendition,
 original preservation, storage lifecycle, quotas, corruption, linked paths,

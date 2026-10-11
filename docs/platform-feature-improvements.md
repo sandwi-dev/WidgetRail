@@ -156,14 +156,14 @@ of these new changes. No scope item is complete solely because it is planned.
   distinguishes stop-and-retain from cancellation, extends request leases for
   preparation/duration, and verifies exact expected output dimensions/encoder.
   No window selection or activation APIs were added.
-- Frontend publishes capabilities on connection and periodically, uses dynamic
+- Frontend uses demand-driven capability publication (see hardware checkpoint), dynamic
   confirmation/countdown text, and reopening finishes configured recordings.
   During preparation it cancels. Source identity stays fixed after capture starts.
 - Native v2 ABI accepts dimensions, frame rate, bitrate, duration, cursor and byte
   limits. Writer backpressure replaces the unbounded-queue setting; missed slots
   are reported. Current advertised video envelope remains software 720p/15fps.
-  Hardware and audio are NOT implemented/advertised yet and remain required work
-  subject to the goal's qualification/defer rule.
+  This initial checkpoint advertised software only; the hardware checkpoint below
+  supersedes that envelope. Audio remains unadvertised.
 - Unified native source-size limits with original-image geometry. Real native
   tests found inconsistent WGC source size across thread-pool DPI contexts
   (802x491 versus 1444x884 for the same fixture). A scoped native PMv2 DPI context
@@ -205,3 +205,42 @@ of these new changes. No scope item is complete solely because it is planned.
   for lazy image tiles. Avoid loading full originals into widgets or putting
   encoded images into snapshots. Reuse/extend WindowsCaptureImageCodec for generic
   image renditions. Private preferences should use HostServices.PrivateState.
+
+## Hardware capture checkpoint
+
+- Hardware recording keeps BGRA frames on the GPU, converts to NV12 through the
+  D3D11 video processor, and submits DXGI surfaces to Media Foundation. Three
+  tracked output surfaces bound queued frames; surfaces return only after the
+  encoder releases them. Software recording retains CPU readback.
+- Verify the encoder MFT's hardware identity; no silent software fallback. Probe
+  the exact pipeline at both bitrate bounds before advertising each profile.
+  Probe uses an in-memory MP4 without capturing personal content or writing files.
+- Discovery is lazy: app startup and screenshots do not initialize video encoders.
+  Host-pipe demand distinguishes image support from full encoding discovery.
+  Recordings revalidate and initialize the exact requested output at use time.
+- Qualified profiles: software 720p15 (1–6 Mbps); hardware 720p15 (1–6), 1080p30
+  (3–12), 1080p60 (6–20), and 2160p30 (12–30). Audio is still None only.
+- Game Help chooses an available hardware encoder before submitting its unchanged
+  five-second 720p15 / 3 Mbps request, otherwise explicitly chooses software.
+  Screenshots do not query video encoders.
+- Reserve each capture's byte budget before prompting; concurrent library imports
+  cannot consume it. Completion replaces the reservation with actual bytes.
+  Cancelled files that cannot yet be deleted remain accounted against the quota.
+- Encoder-only tests (`encoding-native-08.log`) encode/decode every profile and
+  check frame counts, dimensions, color, ordered timestamps and absent audio.
+  Latest native build `encoding-native-10` also passes geometry, policy (15) and
+  diagnostic (2021) checks. It includes a fixture and is not the shipping DLL.
+- Actual WGC synthetic 3840×2160 animated window scenario
+  `hardware-wgc-test-03/result.json` passes original/scaled screenshots, software
+  recording, stop/keep, cancel/reuse, all four hardware profiles and player checks.
+  Discovery took 1801 ms once. Two-second recordings: software 640×360/15 used
+  63 ms process CPU; hardware 720p15/1080p30/1080p60/2160p30 used respectively
+  188/250/141/266 ms, with 30/60/120/60 encoded frames and zero missed slots.
+  These are synthetic measurements, not in-game GPU/FPS overhead evidence.
+- Broker 73/73 (`hardware-broker-final-01.log`), Capture Library 17/17
+  (`hardware-library-final-01.log`), Game Help 46/46
+  (`gamehelp-hardware-tests-01.log`), real host-pipe discovery 2/2
+  (`hardware-bridge-tests-01.log`). Test frontend and fixture were closed normally.
+- Next: Capture Library persistent supported-option settings and lazy thumbnail
+  grid, then shared permission requests/Settings intents and dedicated marketplace.
+  Audio qualification and complete candidate assembly remain outstanding.
