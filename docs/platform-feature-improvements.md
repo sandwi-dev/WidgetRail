@@ -26,10 +26,10 @@ Previous delivery and evidence: `platform-feature-roadmap.md`.
   Clear gaps/target changes, compact pin without Automatic; retain PresentMon FPS.
 - [x] Dedicated official marketplace widget, Settings entry and installed-widget
   management; shared host-controlled distribution/review authority. No custom repos.
-- [ ] Settings details/permissions intents and explicit host-owned SDK permission
+- [x] Settings details/permissions intents and explicit host-owned SDK permission
   dialog, clear outcomes, continuation after approval, no background prompting.
   Adopt in relevant first-party widgets.
-- [ ] Current documentation, SDK Gallery examples, focused automated gates and
+- [x] Current documentation, SDK Gallery examples, focused automated gates and
   practical local validation, complete assembled candidate launched for user.
 
 ## Sequence and design
@@ -60,11 +60,11 @@ review/save/upload. Permissions stay declared and host-authorized.
 
 ## Next concrete action
 
-Finish marketplace integration gates and checkpoint. Continue pinned-source
-permission handling and audio qualification, then assemble and launch the complete
-candidate after native layout review.
-Hardware silent recording is qualified; audio remains outstanding. Final complete
-candidate assembly and visual/physical acceptance remain pending.
+Implementation and local qualification are complete. Production-shaped candidate
+04 is launched in the normal profile for the user's physical acceptance. Follow
+`platform-feature-acceptance.md`; do not merge, push, publish, install an app update,
+or remove worktrees. Additional GitHub repositories remain deferred. The historical
+checkpoints below record intermediate states; the final handoff supersedes them.
 
 ### Performance and graphs implementation checkpoint
 
@@ -677,3 +677,37 @@ of these new changes. No scope item is complete solely because it is planned.
   `catalog-refresh-full-01.log`; no replacement/removal/restart guards relaxed.
 - Next: build candidate 04 and verify cold Library startup, thumbnail pixels,
   Performance main/pin graphs, Marketplace alignment, then normal-profile handoff.
+
+### Final assembled handoff
+
+- Candidate 04 built from clean commit `97a6e57a`; production 13 / developer 17
+  widgets pass complete catalog, package-integrity and icon admission. Both include
+  Browser, Game Help and all roadmap widgets. No installer/public release created.
+- Actual cold startup now lists all three seeded captures without retry. Capture
+  settings responds immediately. Re-entering Library after idle worker retirement
+  also works. Thumbnail bounds are 437/438 × 180 physical pixels at 125% scale;
+  actual red/green pixels and saved-image preview are visually confirmed.
+- Performance main page opens without Bridge admission errors. CPU/GPU/RAM/VRAM
+  histories visibly update; the 400×263-pixel compact pin renders real readings,
+  no Automatic option and no buttons. FPS was not enabled/elevated in this check.
+- Marketplace displays four left-aligned cards. Earlier actual download/review/
+  cancel and permission/Settings-intent checks remain applicable; no installation
+  or trust grant was performed in the normal profile.
+- Evidence: `artifacts/platform-improvements/assembled-validation-04/` contains
+  library/grid/preview, main/system performance, compact pin and Marketplace
+  screenshots plus UIA state. A temporary command-completion delay affected UIA,
+  ClrMD and even a trivial shell command; existing commands eventually completed.
+  Live presentation revisions continued advancing without failure. No duplicate
+  build/restart was used to conceal that delay.
+- Validation PID 97832 closed normally. Complete production candidate launched
+  with **no profile/catalog override**, PID 97684, Capture Library selected;
+  UIA confirms the actual root is visible. Exact path/launch receipt is
+  `artifacts/platform-improvements/final-candidate-launch.json`.
+- SDK references cover graphs, configurable captures/library, permission requests,
+  Settings destinations and Marketplace. Gallery has reusable graph/capture/
+  permission examples. Updated acceptance checklist and original roadmap pointers.
+- Final audit: all implementation/local-verification goal sections are complete.
+  Real-game FPS/overhead, physical controller navigation, game/HDR capture/audio
+  and installed Inno upgrade/recovery remain explicitly manual acceptance checks.
+  Additional repositories/private authentication remain deferred. The main checkout,
+  user settings and unrelated worktrees were preserved; no merge/push/publication.

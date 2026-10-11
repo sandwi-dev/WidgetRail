@@ -20,14 +20,17 @@ assignment documents. Work sequentially; no subagents requested.
 
 The final **runnable** candidate is the assembled production folder:
 
-`artifacts/platform-features-final/0.1.0-preview.29/WidgetRail-0.1.0-preview.29-win-x64/OverlayFrontend.WinUI.exe`
+`artifacts/platform-improvements/final-candidate-04/0.1.0-preview.29/WidgetRail-0.1.0-preview.29-win-x64/OverlayFrontend.WinUI.exe`
 
 The sibling Developer folder is also complete. Both include Browser, Game Help,
-Performance Monitor and Capture Library. Both passed release inventory, package
-integrity and icon admission (12 production widgets / 16 developer widgets,
-including Settings). Recovery resource bytes match current source. These are local
-preview.29 test candidates from a dirty-source build, not published releases.
-The overlay was not launched and no application update was installed.
+Performance Monitor, Capture Library and the dedicated Marketplace. Both passed
+release inventory, package integrity and icon admission (13 production widgets /
+17 developer widgets, including Settings). These are local preview.29 candidates
+assembled from clean commit `97a6e57a`, not published releases. The production
+candidate is launched with the normal profile; no application update was installed.
+The follow-up capture/audio/graphs/permissions work and final assembled validation
+are tracked in `platform-feature-improvements.md`. This current status supersedes
+the older chronological candidate notes below.
 
 Follow `docs/platform-feature-acceptance.md` for the remaining physical pass.
 Actual elevated/game FPS, real Inno upgrade/downgrade and real-game capture/player
