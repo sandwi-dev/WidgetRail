@@ -45,8 +45,34 @@ class VideoEncoder {
     std::array<ComPtr<ID3D11VideoProcessorOutputView>, 3> outputViews;
     std::shared_ptr<EncoderSurfaces> surfaces;
     DWORD stream{};
+    DWORD audioStream{};
+    uint64_t audioFrames{};
     UINT fps{};
-    bool hardware{}, started{};
+    bool hardware{}, started{}, audioEnabled{};
+
+    void InitializeAudio() {
+        ComPtr<IMFMediaType> output;
+        winrt::check_hresult(MFCreateMediaType(&output));
+        winrt::check_hresult(output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio));
+        winrt::check_hresult(output->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC));
+        winrt::check_hresult(output->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, AudioChannels));
+        winrt::check_hresult(output->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, AudioRate));
+        winrt::check_hresult(output->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16));
+        winrt::check_hresult(output->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, AudioBitrate / 8));
+        winrt::check_hresult(output->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0));
+        winrt::check_hresult(output->SetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29));
+        winrt::check_hresult(writer->AddStream(output.Get(), &audioStream));
+        ComPtr<IMFMediaType> input;
+        winrt::check_hresult(MFCreateMediaType(&input));
+        winrt::check_hresult(input->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio));
+        winrt::check_hresult(input->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM));
+        winrt::check_hresult(input->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, AudioChannels));
+        winrt::check_hresult(input->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, AudioRate));
+        winrt::check_hresult(input->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16));
+        winrt::check_hresult(input->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, AudioChannels * 2));
+        winrt::check_hresult(input->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, AudioRate * AudioChannels * 2));
+        winrt::check_hresult(writer->SetInputMediaType(audioStream, input.Get(), nullptr));
+    }
 
     static bool HardwareEncoder(IMFSinkWriter* sink) {
         ComPtr<IMFSinkWriterEx> extended;
@@ -106,11 +132,12 @@ class VideoEncoder {
         winrt::check_hresult(sample->SetSampleTime(start));winrt::check_hresult(sample->SetSampleDuration(end-start));
     }
 public:
+    static constexpr UINT AudioRate = 48000, AudioChannels = 2, AudioBitrate = 128000;
     static const wchar_t* LastStage() noexcept{return phase;}
     // A null path probes initialization into a tiny in-memory MP4, without
     // capturing a screen or creating a persistent file.
-    VideoEncoder(const wchar_t* path, UINT width, UINT height, const WrailCaptureOptions& options, ID3D11Device* device=nullptr)
-        : fps(options.framesPerSecond), hardware(options.encoder==2) {
+    VideoEncoder(const wchar_t* path, UINT width, UINT height, const WrailCaptureOptions& options, ID3D11Device* device=nullptr, bool includeAudio=false)
+        : fps(options.framesPerSecond), hardware(options.encoder==2), audioEnabled(includeAudio) {
         phase=L"MFStartup";winrt::check_hresult(MFStartup(MF_VERSION));started=true;
         try {
             phase=L"InitializeGpu";
@@ -157,6 +184,7 @@ public:
             }
             phase=L"SetInputMediaType";
             winrt::check_hresult(writer->SetInputMediaType(stream,input.Get(),nullptr));
+            if (audioEnabled) { phase=L"InitializeAudio"; InitializeAudio(); }
             phase=L"BeginWriting";
             winrt::check_hresult(writer->BeginWriting());
             phase=L"VerifyHardware";
@@ -167,6 +195,23 @@ public:
     ~VideoEncoder(){writer.Reset();if(started)MFShutdown();}
     VideoEncoder(const VideoEncoder&)=delete;
     VideoEncoder& operator=(const VideoEncoder&)=delete;
+    // Contiguous PCM; the caller aligns source QPC timestamps to the video epoch
+    // and supplies explicit silence for any uncovered portion of that timeline.
+    void WriteAudio(const int16_t* samples, UINT frames) {
+        if (!audioEnabled || !samples || !frames || frames > AudioRate) throw winrt::hresult_error(E_INVALIDARG);
+        const DWORD length = frames * AudioChannels * sizeof(int16_t);
+        ComPtr<IMFMediaBuffer> buffer; winrt::check_hresult(MFCreateMemoryBuffer(length, &buffer));
+        BYTE* target{}; winrt::check_hresult(buffer->Lock(&target, nullptr, nullptr));
+        memcpy(target, samples, length);
+        winrt::check_hresult(buffer->Unlock()); winrt::check_hresult(buffer->SetCurrentLength(length));
+        ComPtr<IMFSample> sample; winrt::check_hresult(MFCreateSample(&sample));
+        winrt::check_hresult(sample->AddBuffer(buffer.Get()));
+        const auto start = 10000000LL * audioFrames / AudioRate;
+        const auto end = 10000000LL * (audioFrames + frames) / AudioRate;
+        winrt::check_hresult(sample->SetSampleTime(start)); winrt::check_hresult(sample->SetSampleDuration(end - start));
+        winrt::check_hresult(writer->WriteSample(audioStream, sample.Get()));
+        audioFrames += frames;
+    }
     void Write(const std::vector<BYTE>& bytes, UINT index) {
         if(hardware)throw winrt::hresult_error(E_INVALIDARG);
         ComPtr<IMFMediaBuffer> buffer;winrt::check_hresult(MFCreateMemoryBuffer(static_cast<DWORD>(bytes.size()),&buffer));

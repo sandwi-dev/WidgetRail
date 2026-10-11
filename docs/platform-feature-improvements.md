@@ -467,3 +467,50 @@ of these new changes. No scope item is complete solely because it is planned.
 - Exact broker request/grant from the assembled pinned widget and final native
   layout review remain pending. All current tests use synthetic widgets and
   isolated profiles; no user's consent was changed.
+
+### Process audio and AAC qualification checkpoint
+
+- Added a native process-tree loopback implementation behind the standalone
+  `Build-WinUiWindowPreview.ps1 -TestAudio` probe. No shipping capture path calls
+  it yet; advertised audio remains None. It uses Windows asynchronous process
+  activation, an event-driven capture thread, fixed 48 kHz/stereo/16-bit PCM,
+  and a one-second (192,000-byte / 187.5 KiB) queue. Overflow and timing errors
+  fail explicitly; there is no system-audio fallback.
+- Added optional AAC input to the shared video encoder and a QPC-based audio
+  timeline helper. Existing silent callers retain the default. The timeline
+  clips audio before the video epoch, fills gaps with silence, caps output at
+  the configured frame count and avoids cumulative packet rounding drift.
+- `audio-native-06.log` passes **14 qualification checks**. A synthetic parent
+  plays 440 Hz, its child 660 Hz, and an unrelated sibling 990 Hz. Two capture
+  sessions preserve both target tones and exclude the competing tone. Observed
+  PCM queue peak is 3,840 bytes (3.75 KiB); capture plus fixture processing used
+  15.6 ms CPU over each roughly two-second run. This is synthetic process audio
+  evidence, not a real-game overhead or hardware-video measurement.
+- AAC mux/PCM decode of `audio-native-06/application-audio.mp4` preserves the
+  isolation: target amplitudes ~799, excluded frequency ~0.43. Decoded audio is
+  96,256 frames, ending 5.33 ms after the intended two-second video timeline.
+  Timestamps are monotonic. The probe also verifies explicit overflow and silence
+  from an independent process. Windows PCM conversion dithers silence by one LSB;
+  the assertion permits at most two LSB, rather than incorrectly requiring exact
+  zero. Earlier failed silent assertions are preserved in `audio-native-02/03.log`.
+- The audio activation callback owns its completion event even after a waiting
+  caller times out. The capture thread owns and releases WASAPI/COM resources;
+  borrowed packets are released on failure, and queued memory remains bounded.
+  Probe tones run only in owned synthetic children and change no volume settings.
+
+### Next concrete action
+
+1. Wire the qualified audio capture/AAC path into configured WGC recording. Bind
+   it to the same fixed process identity as the video. Choose and validate the
+   common QPC epoch, early-stop trimming, silence fill and bounded draining before
+   exposing Application audio. Keep System/Microphone unavailable. Add AAC bytes
+   to admission budgets and report actual audio metadata.
+2. Qualify real synthetic WGC audiovisual sync (including early stop, cancel,
+   target exit, reuse and hardware encoder combinations). Keep capability probing
+   lazy and only advertise combinations that pass runtime initialization.
+3. Finish native small-pin/message-scroll validation described above, plus
+   assembled Marketplace/permissions/capture-grid/settings checks. Update capture
+   confirmation/indicator text and Library audio settings only after support is
+   ready. Library preview currently starts muted; review that with audio support.
+4. Assemble and launch the complete edition candidate for physical testing. Goal
+   remains active; no merge, push, release, installer publication or cleanup.

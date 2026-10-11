@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [string]$OutputDirectory, [switch]$TestPolicy, [switch]$TestCapture, [switch]$TestEncoding)
+param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [string]$OutputDirectory, [switch]$TestPolicy, [switch]$TestCapture, [switch]$TestEncoding, [switch]$TestAudio)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -47,6 +47,15 @@ try {
             (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureFixture.cpp'), "/Fo:$objectDirectory\CaptureFixture.obj", "/Fe:$OutputDirectory\WindowCaptureFixture.exe", '/link') + $libraries + @('user32.lib','gdi32.lib')
         & $compiler @fixture
         if ($LASTEXITCODE -ne 0) { throw 'Capture fixture build failed.' }
+    }
+    if ($TestAudio) {
+        $audio = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX','/DUNICODE','/D_UNICODE','/O2') + $includes + @(
+            (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureAudioTests.cpp'), "/Fo:$objectDirectory\AudioTests.obj", "/Fe:$OutputDirectory\WindowCaptureAudioTests.exe", '/link') +
+            $libraries + @('ole32.lib','windowsapp.lib','mmdevapi.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','d3d11.lib')
+        & $compiler @audio
+        if ($LASTEXITCODE -ne 0) { throw 'Process audio probe build failed.' }
+        & (Join-Path $OutputDirectory 'WindowCaptureAudioTests.exe') $OutputDirectory
+        if ($LASTEXITCODE -ne 0) { throw 'Process audio probe failed.' }
     }
     if ($TestEncoding) {
         $encoding = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX','/DUNICODE','/D_UNICODE','/O2') + $includes + @(
