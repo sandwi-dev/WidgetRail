@@ -31,9 +31,9 @@ internal sealed partial class WidgetViewPresenter
             : double.NaN;
         var containerOwnsBox = indexedRootStyleOnContainer && node.Id == fragmentRootId;
         element.Width = containerOwnsBox ? double.NaN : Length(node, "width") ?? intrinsic;
-        element.Height = containerOwnsBox ? double.NaN : Length(node, "height") ?? intrinsic;
+        element.Height = containerOwnsBox ? double.NaN : Length(node, "height") ?? (node.Kind == ViewNodeKind.LineGraph ? 150 : intrinsic);
         element.MinWidth = containerOwnsBox ? 0 : Length(node, "min-width") ?? 0;
-        var minimumHeight = containerOwnsBox ? 0 : Length(node, "min-height") ?? 0;
+        var minimumHeight = containerOwnsBox ? 0 : Length(node, "min-height") ?? (node.Kind == ViewNodeKind.LineGraph ? 80 : 0);
         if (element is WidgetSlider slider) slider.SetAuthoredMinimumHeight(minimumHeight);
         else element.MinHeight = minimumHeight;
         element.MaxWidth = containerOwnsBox ? double.PositiveInfinity : Length(node, "max-width") ?? double.PositiveInfinity;

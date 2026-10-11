@@ -37,6 +37,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Malformed CSV and non-finite metrics are rejected", Malformed),
     ("Frame storage remains bounded", Bounded),
     ("Collector protocol enforces numeric-only result bounds", Protocol),
+    ("Rolling lows use the slowest individual frames, not sampled FPS", FrameStatistics),
+    ("The sixty-second window removes old stutters", HistoryExpiry),
     ("On-demand native sampling is cached and warms again after idle", NativeSampling),
 };
 var failures = 0;
@@ -76,6 +78,32 @@ static Task StaleAndRestart()
     Check(frames.Snapshot(3).Count == 0, "Frozen FPS survived a stopped process");
     frames.Observe("game,1,0x1,10", 3);
     frames.Clear(); Check(frames.Snapshot(3).Count == 0, "Collector restart retained old values");
+    return Task.CompletedTask;
+}
+static Task FrameStatistics()
+{
+    var frames = Create();
+    for (var i = 0; i < 1000; i++) frames.Observe($"game,123,0x1,{(i < 10 ? 100 : 10)}", i / 100d);
+    var rate = frames.Snapshot(10).Single();
+    var summary = rate.FrameStatistics!;
+    Check(summary.IsWellFormed(), "Generated invalid statistics");
+    Check(Math.Abs(summary.AverageFramesPerSecond - 1000 / 10.9) < .001, "Mean FPS was not interval-weighted");
+    Check(Math.Abs(summary.OnePercentLowFramesPerSecond!.Value - 10) < .001, "Slowest one percent was not used");
+    Check(Math.Abs(rate.FramesPerSecond - 100) < .001, "Current FPS no longer uses recent intervals");
+    Check(summary.RecentWorstFrameMilliseconds == 10, "Old stutter leaked into recent graph sample");
+    var warming = Create(); warming.Observe("game,1,0x1,10", .1);
+    Check(warming.Snapshot(1).Single().FrameStatistics!.OnePercentLowFramesPerSecond is null, "Low fabricated from too few frames");
+    return Task.CompletedTask;
+}
+static Task HistoryExpiry()
+{
+    var frames = Create();
+    for (var i = 0; i < 7000; i++) frames.Observe($"game,123,0x1,{(i < 100 ? 100 : 10)}", i / 100d);
+    var stats = frames.Snapshot(70).Single().FrameStatistics!;
+    Check(stats.SampleCount == 6000 && Math.Abs(stats.WindowSeconds - 60) < .001, "Window was not pruned to sixty seconds");
+    Check(stats.OnePercentLowFramesPerSecond == 100, "Expired slow frames still affect lows");
+    frames.Clear();
+    Check(frames.Snapshot(70).Count == 0, "Cleared collection retains history");
     return Task.CompletedTask;
 }
 static Task Malformed()

@@ -1265,6 +1265,11 @@ public static class ViewSnapshotValidator
                     "Interaction states apply only to buttons, sliders, action surfaces, and text entry.");
             if (node.Kind is ViewNodeKind.Slider && node.IsSelected is not null)
                 Add($"{path}.isSelected", "interaction_state_not_allowed", "Selected state does not apply to sliders.");
+            if (node.Kind == ViewNodeKind.LineGraph && (node.Graph is null || !node.Graph.IsWellFormed() ||
+                string.IsNullOrWhiteSpace(node.AccessibilityLabel)))
+                Add(path, "invalid_graph", "A graph requires a readable name, finite ordered samples and bounded axes.");
+            if (node.Graph is not null && node.Kind != ViewNodeKind.LineGraph)
+                Add(path, "invalid_graph_owner", "Only a LineGraph can declare graph data.");
             if (node.Kind is ViewNodeKind.Progress &&
                 (node.Value is null || node.Maximum is null ||
                  !double.IsFinite(node.Value.Value) || !double.IsFinite(node.Maximum.Value) ||
@@ -1779,7 +1784,7 @@ public static class ViewSnapshotValidator
                     Add(nodePath, "focus_presentation_too_deep",
                         $"A focus-associated presentation may be at most {ProtocolConstants.MaximumFocusPresentationDepth} levels deep.");
                 if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
-                    ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.Spacer or
+                    ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LineGraph or ViewNodeKind.Spacer or
                     ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
                     node.ActionId is not null || (node.ContextActions?.Count ?? 0) != 0 ||
                     (node.SelectOptions?.Count ?? 0) != 0 ||

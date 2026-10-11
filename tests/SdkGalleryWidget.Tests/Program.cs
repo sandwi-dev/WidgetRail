@@ -190,7 +190,9 @@ static async Task NativeGrid()
     await Act(widget, "gallery.tab.controls");
     var before = Snapshot(widget, 1);
     var firstGrid = Find(before, "gallery.grid");
-    Assert.Equal(ProtocolConstants.GridLayoutVersion, before.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.LineGraphVersion, before.ProtocolVersion);
+    Assert.Equal(ViewNodeKind.LineGraph, Find(before, "gallery.graph").Kind);
+    Assert.True(Find(before, "gallery.graph").Graph!.Points.Any(point => point.Value is null));
     Assert.Equal(ViewNodeKind.Grid, firstGrid.Kind);
     var layout = firstGrid.GridLayout!;
     Assert.True(firstGrid.GridMinimumColumnWidth is null && firstGrid.GridMaximumColumns is null);

@@ -143,6 +143,8 @@ internal sealed class ProtocolVersionRequirements
                 return;
 
             var scope = node.InputScopeId ?? inheritedScope;
+            if (node.Kind == ViewNodeKind.LineGraph || node.Graph is not null)
+                Add("line-graph", ProtocolConstants.LineGraphVersion, path, "Line graphs require protocol version 78 or later.");
             var capture = node.CapturedMedia ?? node.MediaPlayer?.Source?.Attachment;
             if (capture is not null && (capture.Origin == CaptureAttachmentOrigin.SavedLibrary || capture.Width > 1920 || capture.Height > 1080 || capture.ByteLength > 8 * 1024 * 1024))
                 Add("full-resolution-capture", ProtocolConstants.FullResolutionCaptureVersion, path, "Full-resolution captures require protocol version 77 or later.");

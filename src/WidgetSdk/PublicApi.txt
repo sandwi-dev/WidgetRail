@@ -630,6 +630,10 @@ method WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.Deconstruct(out st
 method WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.ToString() -> string
+method WidgetRail.WidgetSdk.LineGraphElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.LineGraphElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.LineGraphElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.LineGraphElement.ToString() -> string
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.GetHashCode() -> int
@@ -1724,6 +1728,8 @@ method static WidgetRail.WidgetSdk.IndexedCollectionElement.op_Equality(WidgetRa
 method static WidgetRail.WidgetSdk.IndexedCollectionElement.op_Inequality(WidgetRail.WidgetSdk.IndexedCollectionElement? left, WidgetRail.WidgetSdk.IndexedCollectionElement? right) -> bool
 method static WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.op_Equality(WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? left, WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? right) -> bool
 method static WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.op_Inequality(WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? left, WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? right) -> bool
+method static WidgetRail.WidgetSdk.LineGraphElement.op_Equality(WidgetRail.WidgetSdk.LineGraphElement? left, WidgetRail.WidgetSdk.LineGraphElement? right) -> bool
+method static WidgetRail.WidgetSdk.LineGraphElement.op_Inequality(WidgetRail.WidgetSdk.LineGraphElement? left, WidgetRail.WidgetSdk.LineGraphElement? right) -> bool
 method static WidgetRail.WidgetSdk.LoadingIndicatorElement.op_Equality(WidgetRail.WidgetSdk.LoadingIndicatorElement? left, WidgetRail.WidgetSdk.LoadingIndicatorElement? right) -> bool
 method static WidgetRail.WidgetSdk.LoadingIndicatorElement.op_Inequality(WidgetRail.WidgetSdk.LoadingIndicatorElement? left, WidgetRail.WidgetSdk.LoadingIndicatorElement? right) -> bool
 method static WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.op_Equality(WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? left, WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? right) -> bool
@@ -1853,6 +1859,7 @@ method static WidgetRail.WidgetSdk.UI.IconButton(WidgetRail.WidgetSdk.WidgetIcon
 method static WidgetRail.WidgetSdk.UI.Image(string source, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.ImageElement
 method static WidgetRail.WidgetSdk.UI.InlineLink(string text, string id, WidgetRail.WidgetProtocol.WidgetIntentRequest intent, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.InlinePngImage(string pngBase64, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain) -> WidgetRail.WidgetSdk.ImageElement
+method static WidgetRail.WidgetSdk.UI.LineGraph(string accessibleName, WidgetRail.WidgetProtocol.LineGraphDefinition graph, string id) -> WidgetRail.WidgetSdk.LineGraphElement
 method static WidgetRail.WidgetSdk.UI.LoadingIndicator(string id, string accessibilityLabel = "Loading", WidgetRail.WidgetProtocol.LoadingIndicatorSize size = WidgetRail.WidgetProtocol.LoadingIndicatorSize.Standard) -> WidgetRail.WidgetSdk.LoadingIndicatorElement
 method static WidgetRail.WidgetSdk.UI.MediaPlayer(WidgetRail.WidgetProtocol.MediaPlayerSource source, string id, string accessibleName = "Media player", WidgetRail.WidgetProtocol.MediaPlayerOptions? options = null, long revision = 1) -> WidgetRail.WidgetSdk.MediaPlayerElement
 method static WidgetRail.WidgetSdk.UI.MediaViewport(WidgetRail.WidgetProtocol.EmbeddedMediaSession session, string id) -> WidgetRail.WidgetSdk.MediaViewportElement
@@ -2198,6 +2205,8 @@ method virtual WidgetRail.WidgetSdk.ImageElement.Equals(WidgetRail.WidgetSdk.Ima
 method virtual WidgetRail.WidgetSdk.IndexedCollectionElement.<Clone>$() -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method virtual WidgetRail.WidgetSdk.IndexedCollectionElement.Equals(WidgetRail.WidgetSdk.IndexedCollectionElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.Equals(WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.LineGraphElement.<Clone>$() -> WidgetRail.WidgetSdk.LineGraphElement
+method virtual WidgetRail.WidgetSdk.LineGraphElement.Equals(WidgetRail.WidgetSdk.LineGraphElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.LoadingIndicatorElement.<Clone>$() -> WidgetRail.WidgetSdk.LoadingIndicatorElement
 method virtual WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(WidgetRail.WidgetSdk.LoadingIndicatorElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.Equals(WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? other) -> bool
@@ -2543,6 +2552,7 @@ property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.Scrubber
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.SelectElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.SliderElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.TextEntryElement.FocusNeighbors { get; set; }
+property WidgetRail.WidgetProtocol.FrameTimingStatistics? WidgetRail.WidgetSdk.WidgetPerformanceSnapshot.FrameStatistics { get; set; }
 property WidgetRail.WidgetProtocol.GridCellPlacement WidgetRail.WidgetSdk.GridCellElement.Placement { get; set; }
 property WidgetRail.WidgetProtocol.GridLayoutDefinition WidgetRail.WidgetSdk.GridLayoutElement.Layout { get; set; }
 property WidgetRail.WidgetProtocol.ImageFit WidgetRail.WidgetSdk.ImageElement.Fit { get; set; }
@@ -2553,6 +2563,7 @@ property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.Widget
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? WidgetRail.WidgetSdk.WidgetActionEvent.FocusedCollectionItem { get; set; }
 property WidgetRail.WidgetProtocol.IndexedCollectionRange WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.Range { get; }
+property WidgetRail.WidgetProtocol.LineGraphDefinition WidgetRail.WidgetSdk.LineGraphElement.Graph { get; set; }
 property WidgetRail.WidgetProtocol.LoadingIndicatorSize WidgetRail.WidgetSdk.LoadingIndicatorElement.Size { get; set; }
 property WidgetRail.WidgetProtocol.MediaPlayerDefinition WidgetRail.WidgetSdk.MediaPlayerElement.Media { get; set; }
 property WidgetRail.WidgetProtocol.ResponsiveVisibility WidgetRail.WidgetSdk.ResponsiveBranchElement.Visibility { get; set; }
@@ -3054,6 +3065,7 @@ property string WidgetRail.WidgetSdk.ImageElement.AccessibilityLabel { get; set;
 property string WidgetRail.WidgetSdk.ImageElement.Source { get; set; }
 property string WidgetRail.WidgetSdk.IndexedCollectionElement.AccessibilityLabel { get; }
 property string WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.AppId { get; set; }
+property string WidgetRail.WidgetSdk.LineGraphElement.AccessibleName { get; set; }
 property string WidgetRail.WidgetSdk.LoadingIndicatorElement.AccessibilityLabel { get; set; }
 property string WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.ProfileId { get; set; }
 property string WidgetRail.WidgetSdk.MediaPlayerElement.AccessibleName { get; set; }
@@ -3357,6 +3369,7 @@ type sealed class WidgetRail.WidgetSdk.IconElement : System.IEquatable<WidgetRai
 type sealed class WidgetRail.WidgetSdk.ImageElement : System.IEquatable<WidgetRail.WidgetSdk.ImageElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.IndexedCollectionElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.IndexedCollectionElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest : System.IEquatable<WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest>
+type sealed class WidgetRail.WidgetSdk.LineGraphElement : System.IEquatable<WidgetRail.WidgetSdk.LineGraphElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.LoadingIndicatorElement : System.IEquatable<WidgetRail.WidgetSdk.LoadingIndicatorElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest : System.IEquatable<WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest>
 type sealed class WidgetRail.WidgetSdk.MediaPlayerElement : System.IEquatable<WidgetRail.WidgetSdk.MediaPlayerElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement

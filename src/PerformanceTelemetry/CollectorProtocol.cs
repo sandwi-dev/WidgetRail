@@ -12,8 +12,8 @@ public sealed record CollectorReading(string State, IReadOnlyList<ProcessFrameRa
 /// <summary>Private numeric-only channel between the Bridge and its collector.</summary>
 public static partial class CollectorProtocol
 {
-    public const int Version = 1;
-    public const int MaximumFrameBytes = 64 * 1024;
+    public const int Version = 2;
+    public const int MaximumFrameBytes = 256 * 1024;
     public static bool ValidPipeName(string name) => name.Length is > 20 and < 150 &&
         name.StartsWith("wrail-fps-", StringComparison.Ordinal) && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
 
@@ -44,7 +44,8 @@ public static partial class CollectorProtocol
         if (reading.State is not ("idle" or "collecting" or "permission-required" or "failed" or "missing") ||
             reading.Processes is null || reading.Processes.Count > PresentFrameAccumulator.MaximumStreams ||
             reading.Processes.Any(p => p is null || p.ProcessId <= 0 || !double.IsFinite(p.FramesPerSecond) ||
-                p.FramesPerSecond is < 0 or > 10_000 || p.SampleCount is <= 0 or > PresentFrameAccumulator.MaximumSamplesPerStream) ||
+                p.FramesPerSecond is < 0 or > 10_000 || p.SampleCount is <= 0 or > PresentFrameAccumulator.MaximumSamplesPerStream ||
+                p.FrameStatistics is { } statistics && !statistics.IsWellFormed()) ||
             reading.Processes.Select(p => p.ProcessId).Distinct().Count() != reading.Processes.Count)
             throw new IOException("Invalid collector reading.");
     }

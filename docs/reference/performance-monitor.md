@@ -8,9 +8,11 @@ available to sandboxed and full-trust widget authors through
 
 The Application dropdown defaults to the top open application in Task Switcher's
 window order, excluding WidgetRail. Choose another current window to correct it;
-Automatic restores detection. This identifies an application, not a guaranteed
-game title. Main view shows FPS and system CPU/GPU/RAM/VRAM. A compact pin keeps
-the readings visible during play. Y refreshes; the normal host B/tray behavior
+Automatic restores detection in the main view. This identifies an application,
+not a guaranteed game title. The main view shows current/average FPS, 1% low,
+frame timing and system CPU/GPU/RAM/VRAM with a minute of rolling graphs. The
+compact pin shows FPS, 1% low and system load without an Automatic button or
+other focusable controls. Y refreshes; the normal host B/tray behavior
 is unchanged.
 
 FPS starts disabled. **Enable FPS** requires the separate FPS-control permission
@@ -42,10 +44,25 @@ on the secure desktop. Accounts unable to approve elevation cannot use FPS yet.
   swap chains are not added together.
 - Unknown metrics are null and display **—**, never zero. A game that is idle,
   minimized, protected or unsupported may produce no frames. Values expire.
+- Average FPS is 1000 divided by the mean individual frame interval over up to
+  sixty seconds for the current busiest swap chain. The 1% low is 1000 divided
+  by the mean of the slowest `ceil(frameCount * 0.01)` intervals. It remains
+  collecting until at least 1,000 frames and five seconds exist. The actual
+  collected frame count and window length appear in the main view; collection
+  restart, an expired stream, or memory limits can shorten the available window.
+  These statistics describe the selected application's retained collection, not
+  a benchmark session started when its widget page opens.
+- The frame-time graph shows the worst interval in the recent one-second sample,
+  not every raw frame. Graph gaps represent missing readings or hidden intervals.
+  Application graph traces reset on target change; system history remains intact.
 - Hardware sampling is cached for one second across consumers. The UI requests
   one snapshot per second while active. FPS aggregation retains at most 256
-  streams, 1024 samples per stream, and a two-second interval window; stale
-  streams expire. No frame trace, application name CSV or input events are saved.
+  streams and 1024 recent samples per stream for the existing two-second FPS
+  calculation. Additional history is limited to 65,536 intervals per stream and
+  262,144 intervals globally (4 MiB of live timestamp/interval values, plus queue
+  capacity and overhead). Queue capacity is trimmed as the shared budget moves
+  between streams; sorting reuses a pooled buffer. Stale streams expire. No frame
+  trace, application name CSV or input events are saved.
 
 The bundled Intel PresentMon console is pinned at 2.6.0 with a SHA256 lock in
 `eng/runtime-dependencies.json`. Publication downloads and verifies it; runtime
@@ -74,7 +91,8 @@ interactive action; reads never request Windows approval. The broker gates
 control separately from performance/window-title reads. Apps without that
 permission can still read existing authorized FPS collection and other metrics.
 
-`WidgetPerformanceSnapshot` reports sample UTC time, nullable metrics, the FPS
+`WidgetPerformanceSnapshot` reports sample UTC time, nullable metrics, optional
+`FrameStatistics`, the FPS
 state, selected target ID and current targets. Handle missing or declined
 collection without disabling the rest of the widget. SDK validation rejects
 nonfinite/out-of-range metrics, duplicate targets, and inconsistent FPS states.

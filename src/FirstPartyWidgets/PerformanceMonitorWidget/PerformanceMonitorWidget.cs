@@ -9,6 +9,7 @@ public sealed class PerformanceMonitorWidget : Widget
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refresh = new(1, 1);
     private readonly PinnedLayoutHandle _compact;
+    private readonly PerformanceHistory _history = new();
     private WidgetPerformanceSnapshot? _snapshot;
     private Task _loop = Task.CompletedTask;
     private string? _selection, _error;
@@ -21,8 +22,8 @@ public sealed class PerformanceMonitorWidget : Widget
         _compact = CreatePinnedLayoutHandle("performance.compact", "Compact performance", new()
         {
             Mode = WidgetSurfaceMode.Standard, WidthMode = WidgetSurfaceAxisMode.Preferred, HeightMode = WidgetSurfaceAxisMode.Preferred,
-            PreferredWidth = 320, PreferredHeight = 250, MinimumWidth = 240, MinimumHeight = 190,
-        }, "performance.pin.auto", "performance.pin");
+            PreferredWidth = 320, PreferredHeight = 210, MinimumWidth = 240, MinimumHeight = 180,
+        }, activeInputScopeId: "performance.pin");
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -70,6 +71,7 @@ public sealed class PerformanceMonitorWidget : Widget
             {
                 if (generation != _generation || revision != _revision || selection != _selection) return;
                 _snapshot = snapshot; _error = null;
+                _history.Observe(snapshot, DateTimeOffset.UtcNow);
                 if (_selection is not null && !snapshot.Targets.Any(t => t.Id == _selection)) _selection = null;
             }
         }
@@ -98,12 +100,13 @@ public sealed class PerformanceMonitorWidget : Widget
             if (_busy) return;
             generation = _generation;
             fpsEnabled = Enabled(_snapshot?.FpsState);
-            if (action.ActionId == "performance.auto") _selection = null;
+            if (action.ActionId == "performance.auto") { _selection = null; _history.ResetTarget(); }
             else if (action.ActionId.StartsWith("performance.target.", StringComparison.Ordinal))
             {
                 var id = action.ActionId["performance.target.".Length..];
                 if (_snapshot?.Targets.Any(t => t.Id == id) != true) return;
                 _selection = id;
+                _history.ResetTarget();
             }
             else if (action.ActionId is not ("performance.refresh" or "performance.fps")) return;
             ++_revision;
@@ -139,7 +142,20 @@ public sealed class PerformanceMonitorWidget : Widget
     public override WidgetView Render()
     {
         WidgetPerformanceSnapshot? snapshot; string? selection, error; bool busy;
-        lock (_gate) { snapshot = _snapshot; selection = _selection; error = _error; busy = _busy; }
+        LineGraphDefinition fpsGraph, frameGraph, cpuGraph, gpuGraph, ramGraph, vramGraph;
+        lock (_gate)
+        {
+            snapshot = _snapshot; selection = _selection; error = _error; busy = _busy;
+            var now = DateTimeOffset.UtcNow;
+            fpsGraph = _history.Graph(s => s.FramesPerSecond, now, "FPS", application: true);
+            frameGraph = _history.Graph(s => s.FrameStatistics?.RecentWorstFrameMilliseconds is > 0 ? s.FrameStatistics.RecentWorstFrameMilliseconds : null,
+                now, "ms", application: true);
+            cpuGraph = _history.Graph(s => s.CpuPercent, now, "%", 100);
+            gpuGraph = _history.Graph(s => s.GpuPercent, now, "%", 100);
+            ramGraph = _history.Graph(s => s.MemoryUsedBytes / 1073741824d, now, "GiB", snapshot?.MemoryTotalBytes / 1073741824d);
+            vramGraph = _history.Graph(s => s.DedicatedGpuMemoryBytes / 1073741824d, now, "GiB");
+        }
+        var statistics = snapshot?.FrameStatistics;
         var target = snapshot?.Targets.FirstOrDefault(t => t.Id == snapshot.SelectedTargetId);
         var choices = new List<SelectOption> { new("auto", "Automatic · top application", "performance.auto", IsSelected: selection is null) };
         if (snapshot is not null) choices.AddRange(snapshot.Targets.Select(t =>
@@ -149,12 +165,26 @@ public sealed class PerformanceMonitorWidget : Widget
             UI.Text("Performance Monitor", "performance.heading").Classes("performance-title"),
             UI.Select("Application", choices, "performance.target").Busy(busy),
             UI.Text(target?.ApplicationName ?? "No application selected", "performance.app").Classes("performance-subtitle"),
-            UI.ResponsiveGrid("performance.metrics", 220, 2,
+            UI.ResponsiveGrid("performance.frame-metrics", 170, 3,
                 Metric("FPS", Number(snapshot?.FramesPerSecond), "performance.fps.metric", "Application presents per second"),
+                Metric("Average FPS", Number(statistics?.AverageFramesPerSecond), "performance.average", "Available frame history · up to 60s"),
+                Metric("1% low", statistics?.OnePercentLowFramesPerSecond is { } low ? Number(low) : statistics is null ? "—" : "Collecting…", "performance.low",
+                    "Slowest 1% of frame intervals · at least 1,000 frames")),
+            UI.Text(statistics is null ? "Frame history is unavailable until FPS collection starts." :
+                $"{statistics.SampleCount:N0} frames · {statistics.WindowSeconds:0}s available · mean frame {statistics.AverageFrameMilliseconds:0.0} ms",
+                "performance.frame-window").Classes("performance-help"),
+            UI.ResponsiveGrid("performance.frame-graphs", 260, 2,
+                Chart("FPS · last 60 seconds", fpsGraph, "performance.fps.graph"),
+                Chart("Worst frame per sample · last 60 seconds", frameGraph, "performance.frame.graph")),
+            UI.Text("System usage · last 60 seconds", "performance.system.heading").Classes("performance-subtitle"),
+            UI.ResponsiveGrid("performance.metrics", 220, 2,
                 Metric("CPU", Percent(snapshot?.CpuPercent), "performance.cpu", "System usage"),
                 Metric("GPU", Percent(snapshot?.GpuPercent), "performance.gpu", "Busiest GPU engine"),
                 Metric("RAM", Bytes(snapshot?.MemoryUsedBytes) + (snapshot?.MemoryTotalBytes is { } total ? " / " + Bytes(total) : ""), "performance.ram", "System memory used"),
                 Metric("VRAM", Bytes(snapshot?.DedicatedGpuMemoryBytes), "performance.vram", "Dedicated GPU memory used")),
+            UI.ResponsiveGrid("performance.system-graphs", 260, 2,
+                Chart("CPU", cpuGraph, "performance.cpu.graph"), Chart("GPU", gpuGraph, "performance.gpu.graph"),
+                Chart("RAM", ramGraph, "performance.ram.graph"), Chart("VRAM", vramGraph, "performance.vram.graph")),
             UI.Text(error ?? Status(snapshot?.FpsState), "performance.status").Classes("performance-help"),
             UI.Button(Enabled(snapshot?.FpsState) ? "Stop FPS" : "Enable FPS", "performance.fps", "performance.fps.control")
                 .Busy(busy || snapshot?.FpsState == "enabling"),
@@ -167,9 +197,9 @@ public sealed class PerformanceMonitorWidget : Widget
         var pin = UI.Stack("performance.pin",
             UI.Text(target?.ApplicationName ?? "Performance", "performance.pin.name").Classes("performance-subtitle"),
             UI.Text(Number(snapshot?.FramesPerSecond) + " FPS", "performance.pin.fps").Classes("performance-value"),
+            UI.Text("1% low " + Number(statistics?.OnePercentLowFramesPerSecond), "performance.pin.low"),
             UI.Text("CPU " + Percent(snapshot?.CpuPercent) + "    GPU " + Percent(snapshot?.GpuPercent), "performance.pin.usage"),
-            UI.Text("RAM " + Bytes(snapshot?.MemoryUsedBytes) + "    VRAM " + Bytes(snapshot?.DedicatedGpuMemoryBytes), "performance.pin.memory"),
-            UI.Button(selection is null ? "Automatic" : "Use automatic selection", "performance.auto", "performance.pin.auto").Busy(busy))
+            UI.Text("RAM " + Bytes(snapshot?.MemoryUsedBytes) + "    VRAM " + Bytes(snapshot?.DedicatedGpuMemoryBytes), "performance.pin.memory"))
             .InputScope("performance.pin").Shortcut(ControllerButton.Y, "performance.refresh", label: "Refresh").Classes("performance-widget", "performance-pin");
         return new(root, "performance.target", ActiveInputScopeId: "performance.page", Surface: new()
         {
@@ -177,6 +207,9 @@ public sealed class PerformanceMonitorWidget : Widget
             PreferredWidth = 720, PreferredHeight = 660, MinimumWidth = 380, MinimumHeight = 380,
         }) { PinnedLayouts = [_compact.Present(pin)] };
     }
+
+    private static WidgetElement Chart(string title, LineGraphDefinition graph, string id) => UI.Stack(id + ".card",
+        UI.Text(title, id + ".title").Classes("performance-subtitle"), UI.LineGraph(title, graph, id)).Classes("performance-metric");
 
     private static StackElement Metric(string title, string value, string id, string description) => UI.Stack(id,
         UI.Text(title, id + ".title").Classes("performance-subtitle"),

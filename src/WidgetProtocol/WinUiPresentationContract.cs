@@ -41,7 +41,7 @@ public static class WinUiPresentationContract
         List<ProtocolValidationError>? errors = null;
         if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or
             ViewNodeKind.Button or ViewNodeKind.ActionSurface or ViewNodeKind.Slider or ViewNodeKind.ModalLayer or
-            ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.RichText or ViewNodeKind.Progress or
+            ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.RichText or ViewNodeKind.Progress or ViewNodeKind.LineGraph or
             ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image or
             ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or
             ViewNodeKind.Icon or ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser or ViewNodeKind.CapturedMedia or ViewNodeKind.MediaPlayer))

@@ -31,6 +31,7 @@ public enum ViewNodeKind
     CapturedMedia,
     MediaPlayer,
     RichText,
+    LineGraph,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>
@@ -401,6 +402,7 @@ public sealed record ViewNode
     public WebBrowserDocument? WebBrowser { get; init; }
     public MediaPlayerDefinition? MediaPlayer { get; init; }
     public CaptureAttachment? CapturedMedia { get; init; }
+    public LineGraphDefinition? Graph { get; init; }
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     public ControllerButton? ContextMenuButton { get; init; }
     public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];

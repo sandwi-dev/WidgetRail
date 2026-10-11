@@ -91,6 +91,7 @@ public enum PresentationProperty
     WebBrowser,
     CapturedMedia,
     MediaPlayer,
+    Graph,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -153,6 +154,7 @@ public static class PresentationPropertyMetadata
 {
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
+        PresentationProperty.Graph => PresentationPropertyImpact.Paint | PresentationPropertyImpact.Accessibility,
         PresentationProperty.MediaPlayer or PresentationProperty.CapturedMedia => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility | PresentationPropertyImpact.MeasureLayout,
         PresentationProperty.WebBrowser => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Resource |

@@ -482,6 +482,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.WindowPreview: element = new Previews.WidgetWindowPreview(); break;
             case ViewNodeKind.Text: element = new TextBlock { TextWrapping = TextWrapping.Wrap }; break;
             case ViewNodeKind.Progress: element = new ProgressBar(); break;
+            case ViewNodeKind.LineGraph: element = new WidgetLineGraph(); break;
             case ViewNodeKind.LoadingIndicator: element = new ProgressRing { IsActive = true }; break;
             case ViewNodeKind.Spacer: element = new Border(); break;
             default: throw new NotSupportedException($"WinUI presentation for {node.Kind} is not implemented.");
@@ -530,7 +531,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             // native Invoke semantics while announcing both selection and work.
             AutomationProperties.SetItemStatus(control, WidgetAccessibleState.ItemStatus(node));
             control.IsTabStop = element is not WidgetIndexedCollectionView && node.IsFocusable && binding.Identity.Scope == activeScope;
-            control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
+            control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview or WidgetLineGraph) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
         if (element is HyperlinkButton link) UpdateInlineLink(link, node.Text ?? string.Empty);
@@ -550,6 +551,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             ((StackPanel)binding.Children!).Orientation = horizontal ? Orientation.Horizontal : Orientation.Vertical;
         }
         if (element is Slider slider) UpdateSlider(slider, node);
+        if (element is WidgetLineGraph graph) graph.Apply(node.Graph!);
         if (element is ProgressBar progress)
         {
             progress.Minimum = node.Minimum ?? 0;

@@ -1,8 +1,13 @@
 using System.Globalization;
+using System.Buffers;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.PerformanceTelemetry;
 
-public sealed record ProcessFrameRate(int ProcessId, double FramesPerSecond, int SampleCount);
+public sealed record ProcessFrameRate(int ProcessId, double FramesPerSecond, int SampleCount)
+{
+    public FrameTimingStatistics? FrameStatistics { get; init; }
+}
 
 /// <summary>
 /// Consumes PresentMon v1 CSV in memory and reports application-present FPS from
@@ -12,10 +17,13 @@ public sealed class PresentFrameAccumulator
 {
     public const int MaximumStreams = 256;
     public const int MaximumSamplesPerStream = 1024;
+    public const int MaximumHistorySamplesPerStream = 65536;
+    public const int MaximumHistorySamplesTotal = 262144;
     private readonly object _gate = new();
     private readonly Dictionary<(int ProcessId, string SwapChain), Samples> _streams = [];
     private int _pid = -1, _chain = -1, _interval = -1;
     private double _lastNow;
+    private int _historyCount;
 
     public bool Observe(string row, double nowSeconds)
     {
@@ -24,7 +32,7 @@ public sealed class PresentFrameAccumulator
         if (fields is null) return false;
         lock (_gate)
         {
-            if (nowSeconds < _lastNow) _streams.Clear();
+            if (nowSeconds < _lastNow) { _streams.Clear(); _historyCount = 0; }
             _lastNow = nowSeconds;
             if (fields.Length > 2 && fields[0].Equals("Application", StringComparison.OrdinalIgnoreCase) &&
                 fields.Contains("ProcessID", StringComparer.OrdinalIgnoreCase))
@@ -32,19 +40,23 @@ public sealed class PresentFrameAccumulator
                 _pid = Array.FindIndex(fields, v => v.Equals("ProcessID", StringComparison.OrdinalIgnoreCase));
                 _chain = Array.FindIndex(fields, v => v.Equals("SwapChainAddress", StringComparison.OrdinalIgnoreCase));
                 _interval = Array.FindIndex(fields, v => v.Equals("MsBetweenPresents", StringComparison.OrdinalIgnoreCase));
-                _streams.Clear();
+                _streams.Clear(); _historyCount = 0;
                 return _pid >= 0 && _chain >= 0 && _interval >= 0;
             }
             if (_pid < 0 || _chain < 0 || _interval < 0 || fields.Length <= Math.Max(_interval, Math.Max(_pid, _chain)) ||
                 !int.TryParse(fields[_pid], NumberStyles.None, CultureInfo.InvariantCulture, out var processId) || processId <= 0 ||
                 fields[_chain].Length is 0 or > 32 ||
                 !double.TryParse(fields[_interval], NumberStyles.Float, CultureInfo.InvariantCulture, out var milliseconds) ||
-                !double.IsFinite(milliseconds) || milliseconds <= 0 || milliseconds > 10_000) return false;
+                !double.IsFinite(milliseconds) || milliseconds < .1 || milliseconds > 10_000) return false;
             var key = (processId, fields[_chain]);
             if (!_streams.TryGetValue(key, out var samples))
             {
                 if (_streams.Count == MaximumStreams)
-                    _streams.Remove(_streams.MinBy(pair => pair.Value.LastSeen).Key);
+                {
+                    var retired = _streams.MinBy(pair => pair.Value.LastSeen);
+                    _historyCount -= retired.Value.History.Count;
+                    _streams.Remove(retired.Key);
+                }
                 _streams.Add(key, samples = new());
             }
             samples.LastSeen = nowSeconds;
@@ -52,6 +64,16 @@ public sealed class PresentFrameAccumulator
                 (samples.Values.Count >= MaximumSamplesPerStream || samples.Values.Peek().At < nowSeconds - 2))
                 samples.Values.Dequeue();
             samples.Values.Enqueue((nowSeconds, milliseconds));
+            while (samples.History.Count != 0 && (samples.History.Count >= MaximumHistorySamplesPerStream ||
+                samples.History.Peek().At < nowSeconds - 60)) { samples.History.Dequeue(); --_historyCount; }
+            if (_historyCount >= MaximumHistorySamplesTotal)
+            {
+                // A global bound protects against applications with many busy swap chains.
+                var oldest = _streams.Values.Where(s => s.History.Count > 0).MinBy(s => s.History.Peek().At)!;
+                oldest.History.Dequeue(); --_historyCount;
+                oldest.TrimHistory();
+            }
+            samples.History.Enqueue((nowSeconds, milliseconds)); ++_historyCount;
             return true;
         }
     }
@@ -61,21 +83,63 @@ public sealed class PresentFrameAccumulator
         lock (_gate)
         {
             foreach (var stale in _streams.Where(pair => pair.Value.LastSeen < nowSeconds - 2.5).Select(pair => pair.Key).ToArray())
-                _streams.Remove(stale);
-            return _streams.GroupBy(pair => pair.Key.ProcessId).Select(group =>
+            { _historyCount -= _streams[stale].History.Count; _streams.Remove(stale); }
+            foreach (var stream in _streams.Values)
             {
-                var dominant = group.MaxBy(pair => pair.Value.Values.Count).Value.Values;
-                return new ProcessFrameRate(group.Key, Math.Clamp(1000 * dominant.Count / dominant.Sum(v => v.Milliseconds), 0, 10_000), dominant.Count);
+                while (stream.Values.TryPeek(out var first) && first.At < nowSeconds - 2) stream.Values.Dequeue();
+                while (stream.History.TryPeek(out var first) && first.At < nowSeconds - 60) { stream.History.Dequeue(); --_historyCount; }
+                stream.TrimHistory();
+            }
+            return _streams.Where(p => p.Value.Values.Count > 0).GroupBy(pair => pair.Key.ProcessId).Select(group =>
+            {
+                var stream = group.MaxBy(pair => pair.Value.Values.Count).Value;
+                var dominant = stream.Values;
+                var history = stream.History;
+                var window = history.Count == 0 ? 0 : Math.Min(60, Math.Max(0, nowSeconds - history.Peek().At));
+                FrameTimingStatistics? statistics = null;
+                if (history.Count > 0)
+                {
+                    var intervals = ArrayPool<double>.Shared.Rent(history.Count);
+                    try
+                    {
+                        var index = 0; double sum = 0;
+                        foreach (var frame in history) { intervals[index++] = frame.Milliseconds; sum += frame.Milliseconds; }
+                        var mean = sum / history.Count;
+                        double? low = null;
+                        if (history.Count >= 1000 && window >= 5)
+                        {
+                            Array.Sort(intervals, 0, history.Count);
+                            var slowCount = (int)Math.Ceiling(history.Count * .01);
+                            double slowSum = 0;
+                            for (var i = history.Count - slowCount; i < history.Count; i++) slowSum += intervals[i];
+                            low = 1000 * slowCount / slowSum;
+                        }
+                        statistics = new(1000 / mean, low, mean,
+                            dominant.Where(v => v.At >= nowSeconds - 1).Select(v => v.Milliseconds).DefaultIfEmpty(0).Max(),
+                            history.Count, window);
+                    }
+                    finally { ArrayPool<double>.Shared.Return(intervals); }
+                }
+                return new ProcessFrameRate(group.Key, Math.Clamp(1000 * dominant.Count / dominant.Sum(v => v.Milliseconds), 0, 10_000), dominant.Count)
+                    { FrameStatistics = statistics };
             }).ToArray();
         }
     }
 
-    public void Clear() { lock (_gate) { _streams.Clear(); _pid = _chain = _interval = -1; } }
+    public void Clear() { lock (_gate) { _streams.Clear(); _historyCount = 0; _pid = _chain = _interval = -1; } }
 
     private sealed class Samples
     {
         internal double LastSeen;
         internal Queue<(double At, double Milliseconds)> Values { get; } = new();
+        internal Queue<(double At, double Milliseconds)> History { get; } = new();
+        internal void TrimHistory()
+        {
+            // Bound retained capacity too, not only live entries, as the global
+            // budget moves between swap chains over a long-running session.
+            var capacity = History.EnsureCapacity(0);
+            if (capacity > 256 && History.Count < capacity / 4) History.TrimExcess();
+        }
     }
 
     private static string[]? ParseCsv(string row)

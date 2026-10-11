@@ -375,6 +375,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.WebBrowser, before.WebBrowser, after.WebBrowser);
         Add(PresentationProperty.MediaPlayer, before.MediaPlayer, after.MediaPlayer);
         Add(PresentationProperty.CapturedMedia, before.CapturedMedia, after.CapturedMedia);
+        Add(PresentationProperty.Graph, before.Graph, after.Graph);
         Add(PresentationProperty.ContextActions, before.ContextActions, after.ContextActions);
         Add(PresentationProperty.ContextMenuButton, before.ContextMenuButton, after.ContextMenuButton);
         Add(PresentationProperty.SelectOptions, before.SelectOptions, after.SelectOptions);

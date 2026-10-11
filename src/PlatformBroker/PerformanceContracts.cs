@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.PlatformBroker;
 
@@ -8,7 +9,10 @@ public sealed record PerformanceRequest(string? TargetId = null);
 public sealed record PerformanceEnableResult(string State);
 public sealed record PerformanceSnapshot(DateTimeOffset SampledAtUtc, double? CpuPercent, double? GpuPercent,
     long? MemoryUsedBytes, long? MemoryTotalBytes, long? DedicatedGpuMemoryBytes,
-    double? FramesPerSecond, string FpsState, string? SelectedTargetId, IReadOnlyList<PerformanceTarget> Targets);
+    double? FramesPerSecond, string FpsState, string? SelectedTargetId, IReadOnlyList<PerformanceTarget> Targets)
+{
+    public FrameTimingStatistics? FrameStatistics { get; init; }
+}
 
 public interface IPerformancePlatformBackend
 {
@@ -71,6 +75,7 @@ public static class PerformanceValidation
         static bool Percent(double? v) => v is null || double.IsFinite(v.Value) && v is >= 0 and <= 100;
         static bool Text(string? v, int max) => !string.IsNullOrWhiteSpace(v) && v.Length <= max && !v.Any(char.IsControl);
         if (value is null || !Percent(value.CpuPercent) || !Percent(value.GpuPercent) ||
+            value.FrameStatistics is { } statistics && (!statistics.IsWellFormed() || value.FpsState != "collecting" || value.FramesPerSecond is null) ||
             value.MemoryUsedBytes < 0 || value.MemoryTotalBytes < 0 || value.MemoryUsedBytes > value.MemoryTotalBytes || value.DedicatedGpuMemoryBytes < 0 ||
             value.FramesPerSecond is { } fps && (!double.IsFinite(fps) || fps < 0 || fps > 10_000 || value.FpsState != "collecting") ||
             !ValidFpsState(value.FpsState) || value.Targets is null || value.Targets.Count > 64 ||

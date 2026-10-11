@@ -5,4 +5,5 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../WidgetProtocol/WidgetProtocol.csproj" /></ItemGroup>
 </Project>

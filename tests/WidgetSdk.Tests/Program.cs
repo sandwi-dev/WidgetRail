@@ -9,6 +9,7 @@ using WidgetRail.WidgetSdk;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Media player sources are versioned bounded and source-specific", MediaPlayerPresentationTests.Contract),
+    ("Line graphs preserve immutable samples and incremental protocol updates", LineGraphPresentationTests.Contract),
     ("Web browser documents are bounded versioned and updated atomically", WebBrowserPresentationTests.Contract),
     ("Intent actions carry versioned bounded owned payloads", WidgetIntentPresentationTests.Declarations),
     ("Intent actions reject malformed and misplaced declarations", WidgetIntentPresentationTests.InvalidDeclarations),

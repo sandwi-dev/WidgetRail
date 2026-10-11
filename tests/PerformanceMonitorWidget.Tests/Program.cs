@@ -14,12 +14,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Hidden monitor stops polling and stale lifecycle results are cancelled", Lifecycle),
     ("SDK rejects malformed and nonfinite metrics", Malformed),
     ("Broker scopes targets and gates FPS control behind interactive consent", BrokerAuthority),
+    ("Graphs preserve gaps, reject malformed data and require native protocol support", GraphContract),
+    ("Frame statistics reach the main view and compact read-only pin", StatisticsPresentation),
 };
 var failed = 0;
 foreach (var test in tests)
 {
     try { await test.Run(); Console.WriteLine("PASS " + test.Name); }
-    catch (Exception error) { failed++; Console.Error.WriteLine("FAIL " + test.Name + ": " + error); }
+    catch (Exception error)
+    {
+        failed++; Console.Error.WriteLine("FAIL " + test.Name + ": " + error);
+        if (error is ProtocolValidationException validation) Console.Error.WriteLine(JsonSerializer.Serialize(validation.Errors));
+    }
 }
 Console.WriteLine($"{tests.Length - failed}/{tests.Length} tests passed.");
 return failed == 0 ? 0 : 1;
@@ -57,6 +63,8 @@ static async Task Presentation()
         Check(WinUiPresentationContract.Validate(snapshot).Count == 0 && ViewSnapshotValidator.Validate(snapshot).Count == 0,
             string.Join("; ", ViewSnapshotValidator.Validate(snapshot)));
         Check(snapshot.PinnedLayouts.Count == 1, "Missing compact pin");
+        Check(!Walk(snapshot.PinnedLayouts[0].Root!).Any(n => n.IsFocusable), "Pinned display still contains actions");
+        Check(Walk(snapshot.Root).Count(n => n.Kind == ViewNodeKind.LineGraph) == 6, "Missing live graphs");
         Check(Node(widget, "performance.fps.metric.value").Text == "—", "Unknown FPS shown as zero");
         Check(Node(widget, "performance.gpu.value").Text == "0%", "Measured zero shown as unavailable");
         Check(fake.Enables == 0, "Read requested UAC");
@@ -85,8 +93,46 @@ static async Task Selection()
     {
         await widget.OnActionAsync(new("performance.target.target-b", "performance.target"));
         Check(fake.Requested == "target-b", "Selected target not forwarded");
-        await widget.OnActionAsync(new("performance.auto", "performance.pin.auto"));
+        await widget.OnActionAsync(new("performance.auto", "performance.target"));
         Check(fake.Requested is null, "Automatic mode not restored");
+    }
+    finally { await Hide(widget); }
+}
+static Task GraphContract()
+{
+    var graph = new LineGraphDefinition([new(-60, 10), new(-30, null), new(0, 20)], -60, 0, 0, 100, "%");
+    var snapshot = new WidgetView(UI.LineGraph("CPU usage", graph, "test.graph")).CreateSnapshot("graph-test", 1);
+    Check(snapshot.ProtocolVersion == ProtocolConstants.LineGraphVersion && !snapshot.Root.IsFocusable, "Graph focus or version is wrong");
+    Check(WinUiPresentationContract.Validate(snapshot).Count == 0 && snapshot.Root.Graph!.Points[1].Value is null, "Gap lost in protocol");
+    Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 77 }).Any(e => e.Code == "feature_requires_version"), "Old host admitted graph");
+    foreach (var invalid in new[] {
+        graph with { Points = [new(0, double.NaN)] }, graph with { Points = [new(0, double.PositiveInfinity)] },
+        graph with { Points = [new(-1, 1), new(-2, 2)] }, graph with { Points = [new(0, 101)] },
+        graph with { Points = [new(0, 1), new(0, 2)] }, graph with { XMaximum = -60 },
+        graph with { Points = Enumerable.Range(0, 121).Select(i => new GraphPoint(-60 + i / 2d, 1)).ToArray() } })
+        Check(!invalid.IsWellFormed(), "Invalid graph accepted");
+    var forged = snapshot with { Root = snapshot.Root with { Kind = ViewNodeKind.Text } };
+    Check(ViewSnapshotValidator.Validate(forged).Any(e => e.Code == "invalid_graph_owner"), "Graph attached to another element");
+    Check(PresentationPropertyMetadata.Impact(PresentationProperty.Graph) ==
+        (PresentationPropertyImpact.Paint | PresentationPropertyImpact.Accessibility), "Graph sample update unnecessarily changes input/layout authority");
+    return Task.CompletedTask;
+}
+static async Task StatisticsPresentation()
+{
+    var fake = new Fake();
+    fake.Sample = fake.Sample with { FpsState = "collecting", FramesPerSecond = 120,
+        FrameStatistics = new(100, 50, 10, 20, 5000, 50) };
+    var widget = fake.Create(); await Activate(widget);
+    try
+    {
+        Check(Node(widget, "performance.average.value").Text == "100", "Average missing");
+        Check(Node(widget, "performance.low.value").Text == "50", "Low missing");
+        Check(Node(widget, "performance.frame.graph").Graph!.Points.Last().Value == 20, "Frame spike missing");
+        fake.Sample = fake.Sample with { SelectedTargetId = "target-b", FramesPerSecond = 60, FrameStatistics = null };
+        await Task.Delay(1000);
+        await widget.OnActionAsync(new("performance.target.target-b", "performance.target"));
+        var points = Node(widget, "performance.fps.graph").Graph!.Points;
+        Check(points.Last().Value == 60 && points.Take(points.Count - 1).All(p => p.Value is null), "Another application's history remained visible");
     }
     finally { await Hide(widget); }
 }

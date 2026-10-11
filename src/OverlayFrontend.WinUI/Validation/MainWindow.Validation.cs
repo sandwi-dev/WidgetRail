@@ -73,6 +73,11 @@ public sealed partial class MainWindow
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-line-graph") is { } graphResult)
+        {
+            AppWindow.Resize(new(900, 600));
+            RootFrame.Content = new Validation.LineGraphValidationPage(graphResult);
+        }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is { } documentResult)
         {
             AppWindow.Resize(new(1100, 900));

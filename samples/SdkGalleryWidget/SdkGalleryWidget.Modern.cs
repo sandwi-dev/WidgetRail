@@ -35,7 +35,12 @@ public sealed partial class SdkGalleryWidget
         UI.Row("gallery.busy.row",
             UI.Button("Run two-second task", "gallery.busy", "gallery.busy").Busy(Operations.IsBusy("gallery.busy")),
             UI.Button("Unavailable action", "gallery.unavailable", "gallery.disabled").Disabled()),
-        UI.Text("Busy controls keep their focus while preventing duplicate activation. Disabled controls are unavailable.", "gallery.busy.help"));
+        UI.Text("Busy controls keep their focus while preventing duplicate activation. Disabled controls are unavailable.", "gallery.busy.help"),
+        UI.SectionHeader("Line graphs", "gallery.graph.header", description: "Informational charts have no controller focus stop. Null samples leave a gap."),
+        UI.LineGraph("Example load history", new LineGraphDefinition(
+            [new(-60, 20), new(-50, 35), new(-40, 30), new(-30, null), new(-20, 55), new(-10, 85), new(0, 65)],
+            -60, 0, 0, 100, "%"), "gallery.graph"),
+        UI.Text("This is illustrative data. Authors publish up to 120 ordered samples, units, and axis bounds; the host draws the graph using the active theme.", "gallery.graph.help"));
 
     private StackElement TextPage()
     {
