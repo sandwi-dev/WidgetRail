@@ -364,7 +364,7 @@ static async Task SettingsFlow()
 {
     var savedState = new WidgetTestPrivateState(); var starts = 0;
     var capabilities = new CaptureCapabilities(true, [CaptureImageFormat.Png],
-        [new("1080p30-hardware", 1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)], [CaptureAudioMode.None], true, 120);
+        [new("1080p30-hardware", 1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)], [CaptureAudioMode.None, CaptureAudioMode.Application], true, 120);
     var client = new WidgetTestHostServicesBuilder()
         .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([],0,0,0))
         .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
@@ -384,18 +384,21 @@ static async Task SettingsFlow()
         await Start(); await Action("capture-library.settings");
         Check(Node("capture-library.setting.profile") is not null);
         Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0, "Settings snapshot is invalid");
-        Check(!Walk(View().Root).Any(n => n.Text?.Contains("Microphone") == true), "Unsupported audio was advertised");
+        Check(Node("capture-library.setting.audio")!.SelectOptions.Select(o => o.Id).SequenceEqual(new[] { "audio.None", "audio.Application" }),
+            "Unsupported audio was advertised");
+        Check(Node("capture-library.setting.audio")!.SelectOptions.Single(o => o.IsSelected).Id == "audio.None", "Audio was enabled by default");
+        await Action("capture-library.option.audio.Application");
         await Action("capture-library.option.duration.120"); await Action("capture-library.option.bitrate.12000000");
-        Check(savedState.Revision == 2 && Node("capture-library.settings.validation")?.Text?.Contains("size limit") == true);
+        Check(savedState.Revision == 3 && Node("capture-library.settings.validation")?.Text?.Contains("size limit") == true);
         await Action("capture-library.settings.back"); await Action("capture-library.video");
         Check(starts == 0 && Node("capture-library.status")?.Text?.Contains("size limit") == true);
         await WidgetTestHost.DestroyAsync(widget);
-        capabilities = capabilities with { RecordingProfiles = [] };
+        capabilities = capabilities with { RecordingProfiles = [], AudioModes = [CaptureAudioMode.None] };
         widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client); await Start(); await Action("capture-library.settings");
-        Check(savedState.Revision == 2 && Node("capture-library.settings.validation")?.Text?.Contains("saved quality has not been changed") == true,
+        Check(savedState.Revision == 3 && Node("capture-library.settings.validation")?.Text?.Contains("saved quality has not been changed") == true,
             "Restart overwrote unsupported persisted settings");
         var json = savedState.Json!;
-        Check(json.Contains("12000000") && json.Contains("120"), "Recording settings did not persist");
+        Check(json.Contains("12000000") && json.Contains("120") && json.Contains("Application"), "Recording/audio settings did not persist");
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }

@@ -57,9 +57,11 @@ internal sealed partial class OverlayShellPage
                 request.Resolution == CaptureImageResolution.Original ? "full-resolution" : "up to 1920 × 1080";
             var encoding = request.Options?.Recording is { } settings ?
                 $"\n{settings.MaximumWidth} × {settings.MaximumHeight} maximum · {settings.FramesPerSecond} fps · {settings.Encoder.ToString().ToLowerInvariant()} encoding." : "";
+            var applicationAudio = request.Options?.Recording?.Audio == CaptureAudioMode.Application;
+            var audioDescription = applicationAudio ? "Application audio will be recorded. The microphone will not be recorded." : "No audio will be recorded.";
             var selected = await ShowHostChoiceAsync(video ? "Record application?" : "Take screenshot?",
                 "WidgetRail will hide. Bring the application you want to capture to the foreground.\n\n" +
-                (video ? $"Recording starts {delay} and lasts up to {duration} seconds. No audio will be recorded.{encoding}" :
+                (video ? $"Recording starts {delay} and lasts up to {duration} seconds. {audioDescription}{encoding}" :
                     $"A {imageSize} screenshot will be taken {delay}.") +
                 " The application in front when capture begins will be captured." +
                 (video && request.Options is not null ? "\n\nReopen WidgetRail to finish recording and review it." : "\n\nReopen WidgetRail when finished to review your capture."),
@@ -81,7 +83,7 @@ internal sealed partial class OverlayShellPage
                 }
                 await session.SetCaptureRecordingAsync(request.RequestId, token);
                 recording = true;
-                indicator?.Show(video ? $"Recording · up to {duration}s · no audio" : "Taking screenshot…");
+                indicator?.Show(video ? $"Recording · up to {duration}s · {(applicationAudio ? "application audio" : "no audio")}" : "Taking screenshot…");
                 var result = await NativeWindowCapture.RunAsync(request, token, stop.Token);
                 committed = await session.CompleteCaptureAsync(new(request.RequestId, (int)result.Width, (int)result.Height, result.DurationSeconds, Target: result.Target)
                     { Properties = result.Properties }, token);

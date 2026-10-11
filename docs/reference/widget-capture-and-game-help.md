@@ -39,7 +39,9 @@ advertised recording envelopes and revalidate before starting. Unsupported
 combinations fail explicitly. PNG and H.264 profiles are discovered on this PC.
 Qualified video envelopes are software 720p/15fps and hardware 720p/15fps,
 1080p/30fps, 1080p/60fps and 4K/30fps; only successful native probes are advertised.
-Audio remains unavailable/off. Cursor inclusion is configurable.
+Audio defaults to None. When advertised, Application audio includes the captured
+process and its child processes, encoded as 48 kHz stereo AAC at 128 kbps.
+System-wide and microphone audio are not supported. Cursor inclusion is configurable.
 
 Encoder discovery runs once on demand, off the UI thread, without recording a
 screen or writing a file. Startup and screenshot-only requests do not initialize
@@ -48,6 +50,21 @@ actual Media Foundation pipeline. The hardware path verifies the selected MFT's
 hardware identity and fails if Windows chose software. Capture startup initializes
 the exact requested output again; a runtime failure never silently changes encoder
 or quality. Discovery is cached for the frontend session.
+
+Audio discovery initializes process loopback against the host's own process only;
+it does not capture another application's audio or retain PCM. Application audio
+is advertised only if process capture and AAC combined with every advertised
+video envelope initialize successfully. Actual recording uses the fixed video
+target's process identity. Consent and the recording indicator explicitly name
+audio inclusion. `CaptureLimits.AudioBitrate` is included in byte-budget validation.
+Game Help keeps its silent defaults.
+
+Video samples use the newest available WGC frame; older queued frames are retired
+to avoid adding latency at lower recording rates. Audio and WGC use a common QPC
+epoch. Audio is committed only through encoded video, with bounded pending PCM
+and silence for gaps. Early stopping cannot leave a long audio tail. A discontinuity
+or buffer overflow fails the recording rather than silently switching to system
+audio or returning corrupted sound.
 
 Hardware frames remain on the GPU: BGRA capture/output is converted to NV12 with
 the D3D11 video processor. Three tracked NV12 surfaces bound queued frames and are

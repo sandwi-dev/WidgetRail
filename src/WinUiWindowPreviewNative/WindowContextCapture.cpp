@@ -1,6 +1,7 @@
 #include "WindowContextCapture.h"
 #include "CaptureGeometry.h"
 #include "CaptureVideoEncoder.h"
+#include "CaptureAudioTimeline.h"
 #include <Windows.h>
 #include <d3d11.h>
 #include <d2d1_1.h>
@@ -68,7 +69,7 @@ void Png(const wchar_t* path, UINT w, UINT h, const std::vector<BYTE>& bytes) {
 using Video = widgetrail::capture::VideoEncoder;
 }
 extern "C" int32_t __stdcall WrailProbeCaptureEncoding(const WrailCaptureOptions* options,WrailCaptureEncodingProbe* result) noexcept {
-    if(!options || options->size!=sizeof(*options) || options->version!=2 || options->kind!=2 ||
+    if(!options || options->size!=sizeof(*options) || options->version!=3 || options->kind!=2 || options->audioMode>1 || options->reserved ||
         options->maximumWidth<2 || options->maximumHeight<2 || options->maximumWidth>8192 || options->maximumHeight>8192 ||
         options->maximumWidth%2 || options->maximumHeight%2 || uint64_t(options->maximumWidth)*options->maximumHeight>33554432ULL ||
         options->framesPerSecond<1 || options->framesPerSecond>120 || options->bitrate<100000 || options->bitrate>100000000 ||
@@ -80,17 +81,31 @@ extern "C" int32_t __stdcall WrailProbeCaptureEncoding(const WrailCaptureOptions
         ComPtr<ID3D11Device> device;
         if(options->encoder==2)winrt::check_hresult(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,
             D3D11_CREATE_DEVICE_BGRA_SUPPORT|D3D11_CREATE_DEVICE_VIDEO_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,nullptr));
-        Video probe(nullptr,options->maximumWidth,options->maximumHeight,*options,device.Get());
+        Video probe(nullptr,options->maximumWidth,options->maximumHeight,*options,device.Get(),options->audioMode==1);
         result->supported=1;result->hardware=probe.Hardware()?1:0;result->error=S_OK;
     }catch(const winrt::hresult_error& error){result->supported=0;result->error=error.code();}
      catch(...){result->supported=0;result->error=E_FAIL;}
     result->elapsedMilliseconds=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
     return S_OK; // Unsupported encoders are capability results, not a failed IPC call.
 }
+extern "C" int32_t __stdcall WrailProbeCaptureAudio(WrailCaptureEncodingProbe* result) noexcept {
+    if(!result || result->size!=sizeof(*result) || result->version!=1)return E_INVALIDARG;
+    const auto start=Clock::now();
+    try {
+        // Probe only our own process; never open another application's audio
+        // merely to populate a settings list. No PCM is retained or published.
+        widgetrail::capture::ProcessLoopbackCapture audio(GetCurrentProcessId());audio.Stop();
+        winrt::check_hresult(audio.Status());result->supported=1;result->error=S_OK;
+    }catch(const winrt::hresult_error& error){result->supported=0;result->error=error.code();}
+     catch(...){result->supported=0;result->error=E_FAIL;}
+    result->elapsedMilliseconds=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
+    return S_OK;
+}
 extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarget* target, const wchar_t* path, const WrailCaptureOptions* options,
     WrailPreviewAuthority authority, void* context, WrailCaptureResult* result) noexcept {
     if(!target || target->size!=sizeof(*target) || target->version!=1 || !path || !*path || !authority || !result ||
-        result->size!=sizeof(*result) || result->version!=2 || !options || options->size!=sizeof(*options) || options->version!=2 ||
+        result->size!=sizeof(*result) || result->version!=3 || !options || options->size!=sizeof(*options) || options->version!=3 ||
+        options->audioMode>1 || options->reserved || (options->kind!=2 && options->audioMode!=0) ||
         options->kind<1 || options->kind>2 || options->includeCursor>1 || options->maximumBytes<1024 || options->maximumBytes>128ULL*1024*1024 ||
         options->framesPerSecond<1 || options->framesPerSecond>120 || options->durationSeconds<1 || options->durationSeconds>120 ||
         options->bitrate<100000 || options->bitrate>100000000 || options->maximumWidth>16384 || options->maximumHeight>16384) return E_INVALIDARG;
@@ -138,20 +153,38 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
         capture.arrived=capture.pool.FrameArrived([signal](auto&&,auto&&){SetEvent(signal->value);});
         capture.session=capture.pool.CreateCaptureSession(capture.item);capture.session.IsCursorCaptureEnabled(options->includeCursor!=0);
         std::unique_ptr<Video> video;
-        if(kind==2)video=std::make_unique<Video>(path,width,height,*options,device.Get());
+        if(kind==2)video=std::make_unique<Video>(path,width,height,*options,device.Get(),options->audioMode==1);
+        std::unique_ptr<widgetrail::capture::ProcessLoopbackCapture> audio;
+        std::unique_ptr<widgetrail::capture::CaptureAudioTimeline> audioTimeline;
+        if(options->audioMode==1)audio=std::make_unique<widgetrail::capture::ProcessLoopbackCapture>(target->processId);
         capture.session.StartCapture();
         std::vector<BYTE> pixels(gpuVideo?0:width*height*4);
-        bool haveFrame=false;auto firstDeadline=Clock::now()+std::chrono::seconds(3);auto started=Clock::now();
+        bool haveFrame=false, stoppedEarly=false;auto firstDeadline=Clock::now()+std::chrono::seconds(3);auto started=Clock::now();
+        uint64_t audioEpoch{};
         UINT frames=0, nextSlot=0, missed=0, lastWrittenSlot=0;
         auto nextSizeCheck=Clock::now()+std::chrono::seconds(1);
         const UINT totalSlots=kind==2?fps*options->durationSeconds:1;
         while(nextSlot<totalSlots) {
             const auto decision=authority(context);
             if(!decision) throw winrt::hresult_error(E_ABORT);
-            if(decision==2 && kind==2) {if(!frames)throw winrt::hresult_error(E_ABORT);break;}
+            if(decision==2 && kind==2) {if(!frames)throw winrt::hresult_error(E_ABORT);stoppedEarly=true;break;}
+            if(audio) {
+                winrt::check_hresult(audio->Status());
+                if(audioTimeline) {
+                    audioTimeline->Queue(audio->Drain());
+                    if(frames)audioTimeline->FlushThrough(uint64_t(lastWrittenSlot+1)*Video::AudioRate/fps);
+                }
+            }
             if(haveFrame && Clock::now()<started+std::chrono::milliseconds(1000*nextSlot/fps)) {WaitForSingleObject(signal->value,10);continue;}
             if(!Current(*target,authority,context)) throw winrt::hresult_error(E_ABORT);
             auto frame=capture.pool.TryGetNextFrame();
+            // WGC may produce faster than the requested recording rate. Reading
+            // only one buffered frame per slot preserves an old frame and adds
+            // visible/audio latency. Retire stale frames before sampling pixels.
+            for(unsigned drain=0;frame && drain<4;++drain) {
+                auto latest=capture.pool.TryGetNextFrame();if(!latest)break;
+                frame.Close();frame=latest;
+            }
             if(frame) {
                 struct FrameGuard {Direct3D11CaptureFrame& frame;~FrameGuard(){try{if(frame)frame.Close();}catch(...){}}} guard{frame};
                 if(frame.ContentSize().Width!=size.Width || frame.ContentSize().Height!=size.Height) throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_RETRY));
@@ -168,7 +201,14 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
                     for(UINT y=0;y<height;++y)memcpy(pixels.data()+y*width*4,static_cast<BYTE*>(mapped.pData)+y*mapped.RowPitch,width*4);
                     immediate->Unmap(staging.Get(),0);
                 }
-                if(!haveFrame){haveFrame=true;started=Clock::now();}
+                if(!haveFrame){
+                    haveFrame=true;started=Clock::now();
+                    if(audio) {
+                        audioEpoch=static_cast<uint64_t>(frame.SystemRelativeTime().count());
+                        audioTimeline=std::make_unique<widgetrail::capture::CaptureAudioTimeline>(*video,audioEpoch,
+                            uint64_t(options->durationSeconds)*Video::AudioRate);
+                    }
+                }
             }
             auto now=Clock::now();
             if(!haveFrame){if(now>=firstDeadline)throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));}
@@ -194,6 +234,20 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
             if(nextSlot<totalSlots)WaitForSingleObject(signal->value,10);
         }
         if(!frames)throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
+        if(audio) {
+            const auto endFrames=uint64_t(lastWrittenSlot+1)*Video::AudioRate/fps;
+            const auto endQpc=audioEpoch+10000000ULL*(lastWrittenSlot+1)/fps;
+            // The final video frame represents a full frame interval. For a
+            // normal duration stop, collect its remaining sound (<=1 frame).
+            // An explicit early stop ends capture immediately and pads silence.
+            while(!stoppedEarly && widgetrail::capture::CaptureQpc100ns()<endQpc) {
+                const auto decision=authority(context);
+                if(!decision || !Current(*target,authority,context))throw winrt::hresult_error(E_ABORT);
+                if(decision==2)break;
+                audioTimeline->Queue(audio->Drain());audioTimeline->FlushThrough(endFrames);Sleep(5);
+            }
+            audio->Stop();audioTimeline->Queue(audio->Drain());audioTimeline->Finish(endFrames);
+        }
         if(video)video->Finish();
         WIN32_FILE_ATTRIBUTE_DATA finalSize{};
         if(GetFileAttributesExW(path,GetFileExInfoStandard,&finalSize) &&
@@ -201,6 +255,7 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
             throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
         result->width=width;result->height=height;result->frames=frames;result->durationSeconds=kind==2?double(lastWrittenSlot+1)/fps:0.0;result->error=S_OK;
         result->sourceWidth=size.Width;result->sourceHeight=size.Height;result->missedFrames=missed;result->encoder=kind==2?options->encoder:0;
+        result->audioMode=options->audioMode;
         return S_OK;
     } catch(const winrt::hresult_error& error){result->error=error.code();return error.code();}
       catch(...){result->error=E_FAIL;return E_FAIL;}

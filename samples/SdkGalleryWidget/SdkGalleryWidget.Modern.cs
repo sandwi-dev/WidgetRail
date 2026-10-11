@@ -22,6 +22,8 @@ public sealed partial class SdkGalleryWidget
         public long MediaRevision { get; init; } = 1;
         public ProviderDocumentReference? Document { get; init; }
         public CaptureAttachment? Capture { get; init; }
+        public CaptureCapabilities? CaptureCapabilities { get; init; }
+        public CaptureAudioMode CaptureAudio { get; init; } = CaptureAudioMode.None;
         public string Status { get; init; } = "Choose a demo. Nothing opens or records automatically.";
     }
     private readonly WidgetModel<DemoState> _demo;
@@ -113,6 +115,13 @@ public sealed partial class SdkGalleryWidget
                     UI.Button("Check access", "gallery.permission.check", "gallery.permission.check").Busy(Operations.IsBusy("gallery.service")),
                     UI.Button("Request access", "gallery.permission.request", "gallery.permission.request").Busy(Operations.IsBusy("gallery.service"))));
                 content.Add(UI.Text(_demo.Value.Status, "gallery.capture.status"));
+                content.Add(UI.Button("Inspect capture options", "gallery.capture.capabilities", "gallery.capture.capabilities").Busy(Operations.IsBusy("gallery.service")));
+                if (state.CaptureCapabilities is { AudioModes.Count: > 0 } available)
+                    content.Add(UI.SettingsField("gallery.capture.audio.row", "Recording audio",
+                        UI.Select("Recording audio", available.AudioModes.Select(mode => new SelectOption("audio." + mode,
+                            mode == CaptureAudioMode.None ? "No audio" : "Application audio", "gallery.capture.audio." + mode,
+                            state.CaptureAudio == mode)).ToArray(), "gallery.capture.audio").Busy(Operations.IsBusy("gallery.service")),
+                        "Only host-advertised modes are offered. This demo records five seconds at 720p/15 fps."));
                 content.Add(UI.Row("gallery.capture.actions",
                     UI.Button("Take screenshot", "gallery.capture.image", "gallery.capture.image").Busy(Operations.IsBusy("gallery.service")),
                     UI.Button("Record five seconds", "gallery.capture.video", "gallery.capture.video").Busy(Operations.IsBusy("gallery.service"))));
@@ -177,6 +186,13 @@ public sealed partial class SdkGalleryWidget
 
     private bool TryDemoAction(WidgetActionEvent action)
     {
+        if (action.ActionId.StartsWith("gallery.capture.audio.", StringComparison.Ordinal))
+        {
+            if (Enum.TryParse<CaptureAudioMode>(action.ActionId["gallery.capture.audio.".Length..], out var mode) &&
+                _demo.Value.CaptureCapabilities?.AudioModes.Contains(mode) == true)
+                _demo.Update(s => s with { CaptureAudio = mode });
+            return true;
+        }
         if (action.ActionId.StartsWith("gallery.surface.", StringComparison.Ordinal))
         {
             var mode = action.ActionId["gallery.surface.".Length..];
@@ -212,6 +228,9 @@ public sealed partial class SdkGalleryWidget
                 var outcome = await HostServices.Permissions.RequestAsync([WidgetCaptureCapabilities.Permission], token);
                 _demo.Update(s => s with { Status = "Permission request: " + outcome + ". This does not start a capture." }); }); break;
             case "gallery.capture.image": RunService(token => CaptureAsync(WindowCaptureKind.Screenshot, token)); break;
+            case "gallery.capture.capabilities": RunService(async token => {
+                var capabilities = await ReadCaptureCapabilitiesAsync(token);
+                _demo.Update(s => s with { Status = capabilities.Available ? $"{capabilities.RecordingProfiles.Count} video profiles available. Capture validates the chosen settings before starting." : "Capture is unavailable on this PC." }); }); break;
             case "gallery.capture.video": RunService(token => CaptureAsync(WindowCaptureKind.Video, token)); break;
             case "gallery.capture.discard": RunService(DiscardCaptureAsync); break;
             default: return false;
@@ -250,12 +269,21 @@ public sealed partial class SdkGalleryWidget
 
     private async Task CaptureAsync(WindowCaptureKind kind, CancellationToken token)
     {
+        var capabilities = await ReadCaptureCapabilitiesAsync(token);
+        var video = new RecordingOptions(Audio: _demo.Value.CaptureAudio);
+        var hardware = video with { Encoder = CaptureEncoderMode.Hardware };
+        if (capabilities.RecordingProfiles.Any(profile => profile.Supports(hardware))) video = hardware;
+        var request = new CaptureSessionRequest { Screenshot = kind == WindowCaptureKind.Screenshot ? new() : null,
+            Recording = kind == WindowCaptureKind.Video ? video : null, Preparation = new(5) };
+        var validation = await HostServices.Capture.ValidateAsync(request, token);
+        if (!validation.Supported)
+        { _demo.Update(s => s with { Status = $"Capture settings unavailable ({validation.ErrorCode}). Your existing preview was kept." }); return; }
         await DiscardCaptureAsync(token);
         WindowCaptureTicket? ticket = null;
         var complete = false;
         try
         {
-            ticket = await HostServices.Capture.RequestAsync(kind, token);
+            ticket = await HostServices.Capture.StartAsync(request, token);
             while (true)
             {
                 await Task.Delay(300, token);
@@ -272,5 +300,12 @@ public sealed partial class SdkGalleryWidget
                 try { await HostServices.Capture.CancelAsync(ticket, WidgetLifetimeToken); }
                 catch (Exception error) when (error is WidgetCapabilityException or OperationCanceledException) { }
         }
+    }
+
+    private async Task<CaptureCapabilities> ReadCaptureCapabilitiesAsync(CancellationToken token)
+    {
+        var available = await HostServices.Capture.GetCapabilitiesAsync(token);
+        _demo.Update(s => s with { CaptureCapabilities = available });
+        return available;
     }
 }

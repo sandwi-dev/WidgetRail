@@ -37,7 +37,7 @@ Optional library read access is separate from permission to capture a new window
 |---|---|---|
 | Full-resolution screenshot | Lossless PNG, exact window pixel dimensions including odd sizes | 33,554,432 pixels; 16,384 per dimension; 128 MiB encoded |
 | Context screenshot | PNG, no upscaling | At most 1920×1080 and 8 MiB |
-| Library clip | H.264 MP4, currently no audio; optional cursor | Runtime-qualified profiles up to 4K30 or 1080p60, up to 120 seconds and 128 MiB; bitrate/duration must fit the byte budget |
+| Library clip | H.264 MP4, optional application AAC audio and cursor | Runtime-qualified profiles up to 4K30 or 1080p60, up to 120 seconds and 128 MiB; combined video/audio bitrate and duration must fit the byte budget |
 | Game Help clip | H.264 MP4, silent | Five seconds, 1280×720, 15 fps, target 3 Mbps, 8 MiB |
 
 Larger original screenshots fail explicitly instead of silently shrinking. The
@@ -148,7 +148,14 @@ container/VBR variation. Available profiles come from runtime encoder probes;
 choosing a longer duration/higher bitrate must also fit the requested byte budget.
 The settings page shows estimated clip size and rejects combinations that exceed
 the attachment budget before capture. Only runtime-advertised audio modes appear;
-currently that is **No audio**. See `docs/platform-feature-improvements.md` for
+these are **No audio** and, after successful process-loopback/AAC probes,
+**Application audio**. Application audio captures the app and its child processes;
+it includes no microphone or other applications. It uses 48 kHz stereo AAC at
+128 kbps, adding about 16 KB/s before container overhead. Audio stays off by
+default, and its saved preference is retained if temporarily unsupported. Review
+shows actual frame rate, encoder and audio mode, and reports missed frames. Clips
+with audio start unmuted when the user plays their preview; they do not autoplay.
+See `docs/platform-feature-improvements.md` for
 remaining work and physical acceptance.
 
 Synthetic animated 4K-window validation delivered all requested output slots for

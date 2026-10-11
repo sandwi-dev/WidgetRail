@@ -16,7 +16,7 @@ Previous delivery and evidence: `platform-feature-roadmap.md`.
   stop-and-keep versus cancel/discard, general temporary media and streaming access.
 - [x] Preserve foreground window chosen after hide/countdown; no window picker or
   foreground switching. No silent quality downgrade.
-- [ ] Hardware-assisted silent recording with measured supported combinations.
+- [x] Hardware-assisted silent recording with measured supported combinations.
   Audio default off; advertise audio only after reliable implementation/validation.
   Document unavailable hardware-dependent work and continue other features.
 - [x] Capture Library persistent settings based on advertised capabilities;
@@ -498,19 +498,71 @@ of these new changes. No scope item is complete solely because it is planned.
   borrowed packets are released on failure, and queued memory remains bounded.
   Probe tones run only in owned synthetic children and change no volume settings.
 
+### Application audio integration checkpoint
+
+- Configured WGC recording now captures the fixed video target's process tree,
+  muxes AAC and reports actual audio mode. Native configured ABI is version 3,
+  with 56-byte options/results; the existing legacy capture export remains
+  compatible. The managed adapter uses the same layout. No system/microphone
+  mode is accepted and no application selection or foreground switching was added.
+- Audio uses the first WGC frame's QPC timestamp. Pending PCM is committed only
+  through encoded video frames; partial packets are retained for subsequent
+  frames. Early stop trims the pending tail and pads only the remaining video
+  interval. Each of the WASAPI and timeline queues is bounded to 192,000 bytes.
+- The first audiovisual fixture found ~142 ms lag at 15 fps. The cause was stale
+  WGC frames remaining in the two-frame pool. Sampling now retires old frames in
+  a bounded drain and uses the newest frame. This fixes the recording path, not
+  the test threshold. `audio-wgc-01.log` preserves the failed evidence.
+- `audio-wgc-03.log`: **44 checks pass**, recording a synthetic 3840×2160 window
+  at the full sizes of every advertised profile with AAC. Frames/missed slots:
+  software 720p15 30/0; hardware 720p15 30/0; 1080p30 60/0; 1080p60 120/0; 4K30
+  60/0. Decoded visual/tone transitions differ by at most 58.3/51.7/28.3/21.7/18.3
+  ms respectively. AAC duration differs by 5.33 ms from the two-second video.
+  Child-process inclusion, competing-process exclusion, early stop, cancellation,
+  target exit and reuse pass. Synthetic 4K30 process CPU was 406.2 ms with audio
+  versus 265.6 ms silent over ~2.4 seconds including initialization. These are
+  local synthetic measurements, not steady-state or in-game GPU/FPS guarantees.
+- Lazy discovery probes process audio against the host itself and checks AAC
+  combined with the minimum/maximum bitrate of each advertised video envelope.
+  Application audio is offered only when all combinations initialize. Screenshots
+  and startup still do not trigger encoder/audio discovery. The measured managed
+  discovery time was 3,480 ms once per frontend session, with five video profiles.
+- Audio is off by default. Capture Library exposes only advertised modes, saves
+  the audio preference, includes AAC bytes in its estimate, and preserves a saved
+  unsupported preference. Capture confirmation/indicator identify audio inclusion.
+  Review shows actual FPS/encoder/audio and missed frames; user-started playback
+  of audio clips is unmuted, with no autoplay. Shared admission includes the
+  128 kbps AAC budget (`CaptureLimits.AudioBitrate`). Game Help remains silent.
+- SDK Gallery now demonstrates capability discovery, validation and configured
+  StartAsync, with supported audio selection. Unsupported settings preserve its
+  existing preview; hardware preference retains the explicit 720p15 demo quality.
+  A legacy mocked RequestAsync handler was updated to exercise the new contract,
+  including rejected requests, default-off audio and preview preservation.
+- Validation: SDK configured capture **1/1** (`audio-sdk-tests-01.log`), Capture
+  Library **22/22** (`audio-library-tests-01.log`), Gallery **13/13**
+  (`audio-gallery-tests-02.log`), SDK compatibility **17/17**
+  (`audio-api-tests-01.log`). Reviewed SDK baseline remains 3,633 symbols.
+  Debug and shipping Release frontend builds pass without warnings
+  (`audio-frontend-build-02.log`, `audio-frontend-release-01.log`).
+- Managed/native WGC and native player fixture passes
+  (`audio-managed-01/result.json`, 56 assertion/measurement entries), including
+  actual application-audio metadata through P/Invoke, original screenshots,
+  silent hardware recordings, stop/cancel/reuse and player controls/lifecycle.
+  Both owned fixture processes were closed normally. No user media was captured.
+- Current qualified native DLL: `artifacts/platform-improvements/audio-wgc-03/`
+  `WinUiWindowPreviewNative.dll`. Its build did not use TestCapture, so the DLL
+  contains no capture-fixture exports. The standalone test EXE is not shipping.
+
 ### Next concrete action
 
-1. Wire the qualified audio capture/AAC path into configured WGC recording. Bind
-   it to the same fixed process identity as the video. Choose and validate the
-   common QPC epoch, early-stop trimming, silence fill and bounded draining before
-   exposing Application audio. Keep System/Microphone unavailable. Add AAC bytes
-   to admission budgets and report actual audio metadata.
-2. Qualify real synthetic WGC audiovisual sync (including early stop, cancel,
-   target exit, reuse and hardware encoder combinations). Keep capability probing
-   lazy and only advertise combinations that pass runtime initialization.
-3. Finish native small-pin/message-scroll validation described above, plus
-   assembled Marketplace/permissions/capture-grid/settings checks. Update capture
-   confirmation/indicator text and Library audio settings only after support is
-   ready. Library preview currently starts muted; review that with audio support.
-4. Assemble and launch the complete edition candidate for physical testing. Goal
-   remains active; no merge, push, release, installer publication or cleanup.
+1. Finish native small-pin/message-scroll validation described above. The Loaded
+   admission fix is built but the standalone small-layout fixture is still not
+   claimed passing. Verify actual pinned permission request/grant against the
+   assembled sandboxed worker, not only direct shell dialog coordination.
+2. Assemble the complete candidate with the current Bridge, worker, native ABI 3
+   DLL and current built-ins/samples (including Marketplace, Library, Performance,
+   Browser, Game Help and SDK Gallery). Validate real Marketplace service admission,
+   Settings intent routing and native capture-grid/settings layouts.
+3. Audit requirements/docs, then launch that complete candidate for physical
+   testing. Goal remains active; no merge, push, release, installer publication
+   or worktree cleanup. Raw frontend build output is not the deliverable.

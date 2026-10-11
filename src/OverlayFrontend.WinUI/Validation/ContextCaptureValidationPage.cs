@@ -102,6 +102,16 @@ internal sealed partial class ContextCaptureValidationPage : Page
                 Check(stopped.Frames > 0 && stopped.DurationSeconds < 3 && Math.Abs(stoppedProperties.Duration.TotalSeconds - stopped.DurationSeconds) < .2,
                     "Stop-and-keep finalizes a playable short MP4 instead of discarding it");
                 Check(capabilities.IsWellFormed(), "Native encoder discovery returns validated capabilities");
+                Check(capabilities.AudioModes.All(mode => mode is CaptureAudioMode.None or CaptureAudioMode.Application),
+                    "Capability discovery never advertises system or microphone audio");
+                if (capabilities.AudioModes.Contains(CaptureAudioMode.Application))
+                {
+                    var audioRequest = configuredRequest with { OutputPath = Path.Combine(directory, "application-audio.mp4"),
+                        Options = new() { Recording = new(640, 360, 15, 1_000_000, 1, Audio: CaptureAudioMode.Application) } };
+                    var withAudio = await NativeWindowCapture.RunAsync(audioRequest, deadline.Token);
+                    Check(withAudio.Properties is { Audio: CaptureAudioMode.Application, Encoder: CaptureEncoderMode.Software } && withAudio.Frames > 0,
+                        "Managed/native configured capture preserves requested and actual application audio");
+                }
                 foreach (var profile in capabilities.RecordingProfiles.Where(p => p.Encoder == CaptureEncoderMode.Hardware))
                 {
                     var hardwareRequest = videoRequest with { OutputPath = Path.Combine(directory, profile.Id + ".mp4"),

@@ -83,7 +83,8 @@ public sealed record CaptureCapabilities(bool Available, IReadOnlyList<CaptureIm
             if (video.MaximumDurationSeconds > MaximumRecordingSeconds) return new(false, "capture_duration_unsupported");
             if (!RecordingProfiles.Any(p => p.Supports(video))) return new(false, "capture_encoding_unsupported");
             // Reserve container overhead before admission. Runtime enforces the actual bound as well.
-            if ((long)video.Bitrate * video.MaximumDurationSeconds / 8 + 1024 * 1024 > request.MaximumBytes)
+            var totalBitrate = (long)video.Bitrate + (video.Audio == CaptureAudioMode.None ? 0 : CaptureLimits.AudioBitrate);
+            if (totalBitrate * video.MaximumDurationSeconds / 8 + 1024 * 1024 > request.MaximumBytes)
                 return new(false, "capture_output_budget_too_small");
         }
         return new(true);

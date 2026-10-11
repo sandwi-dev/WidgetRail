@@ -152,7 +152,12 @@ public sealed partial class CaptureLibraryWidget : Widget
             if (state.Preview is { } media)
             {
                 items.Add(UI.Text(Describe(media), "capture-library.metadata").Classes("capture-help"));
-                items.Add(UI.MediaPlayer(MediaPlayerSource.FromCapture(media), "capture-library.preview", "Capture preview", new(Muted: true)).Classes("capture-preview"));
+                if (media.ContentType == "video/mp4" && media.Properties is { } actual)
+                    items.Add(UI.Text($"{actual.RequestedFramesPerSecond} fps · {actual.Encoder} encoding · " +
+                        (actual.Audio == CaptureAudioMode.Application ? "Application audio" : "No audio") +
+                        (actual.MissedFrames > 0 ? $" · {actual.MissedFrames} missed frames" : ""), "capture-library.recording-properties").Classes("capture-help"));
+                items.Add(UI.MediaPlayer(MediaPlayerSource.FromCapture(media), "capture-library.preview", "Capture preview",
+                    new(Muted: media.Properties?.Audio is null or CaptureAudioMode.None)).Classes("capture-preview"));
             }
             else items.Add(UI.Text(state.Busy ? "Opening capture…" : "Preview unavailable. You can return to the library or delete this entry.", "capture-library.unavailable").Classes("capture-help"));
             var actions = new List<WidgetElement>();

@@ -58,6 +58,8 @@ public static class CaptureLimits
     public const int PreparationSeconds = 5;
     public const int VideoSeconds = 5;
     public const int FramesPerSecond = 15;
+    /// <summary>Bitrate of the host's supported AAC audio track, when requested.</summary>
+    public const int AudioBitrate = 128_000;
     public const int MaximumRecordingSeconds = 120;
     public const int MaximumWidth = 16384;
     public const int MaximumHeight = 16384;

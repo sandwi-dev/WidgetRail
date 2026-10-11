@@ -41,7 +41,7 @@ public:
     DWORD Id() const noexcept { return process.dwProcessId; }
 };
 
-static void PlayTone(double frequency, const std::wstring& stopName, const std::wstring& readyName) {
+static void PlayTone(double frequency, const std::wstring& stopName, const std::wstring& readyName, bool pulse = false) {
     NamedEvent stop(stopName), ready(readyName);
     ComPtr<IMMDeviceEnumerator> devices;
     winrt::check_hresult(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&devices)));
@@ -58,20 +58,23 @@ static void PlayTone(double frequency, const std::wstring& stopName, const std::
     UINT32 capacity{}; winrt::check_hresult(client->GetBufferSize(&capacity));
     ComPtr<IAudioRenderClient> renderer; winrt::check_hresult(client->GetService(IID_PPV_ARGS(&renderer)));
     uint64_t sampleIndex = 0;
+    REFERENCE_TIME latency{}; winrt::check_hresult(client->GetStreamLatency(&latency));
     const auto fill = [&] {
         UINT32 padding{}; winrt::check_hresult(client->GetCurrentPadding(&padding));
         const auto frames = capacity - padding; if (!frames) return;
         BYTE* bytes{}; winrt::check_hresult(renderer->GetBuffer(frames, &bytes));
         auto samples = reinterpret_cast<int16_t*>(bytes);
+        const auto presentation = CaptureQpc100ns() + latency + 10000000ULL * padding / ProcessLoopbackCapture::Rate;
         for (UINT32 i = 0; i < frames; ++i, ++sampleIndex) {
-            const auto value = static_cast<int16_t>(819 * std::sin(2 * Pi * frequency * double(sampleIndex) / ProcessLoopbackCapture::Rate));
+            const auto audible = !pulse || ((presentation + 10000000ULL * i / ProcessLoopbackCapture::Rate) / 5000000) % 2 == 0;
+            const auto value = static_cast<int16_t>((audible ? 819 : 0) * std::sin(2 * Pi * frequency * double(sampleIndex) / ProcessLoopbackCapture::Rate));
             samples[2 * i] = samples[2 * i + 1] = value;
         }
         winrt::check_hresult(renderer->ReleaseBuffer(frames, 0));
     };
     fill(); winrt::check_hresult(client->Start()); SetEvent(ready.value);
     const HANDLE events[] = {stop.value, available.Get()};
-    const auto deadline = GetTickCount64() + 20000;
+    const auto deadline = GetTickCount64() + 60000;
     while (GetTickCount64() < deadline) {
         const auto wait = WaitForMultipleObjects(2, events, FALSE, 1000);
         if (wait == WAIT_OBJECT_0) break;
@@ -170,6 +173,8 @@ static void VerifyMux(DWORD target, const std::wstring& path) {
         "AAC round trip stays within 50 ms of the video duration with ordered timestamps");
     Check(root > 50 && child > 50 && other < std::min(root, child) * .03, "AAC round trip preserves process-tree audio isolation");
 }
+#include "WindowCaptureAudioWgcTests.h"
+
 int wmain(int argc, wchar_t** argv) {
     try {
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
@@ -180,13 +185,17 @@ int wmain(int argc, wchar_t** argv) {
             NamedEvent stop(argv[2]), ready(argv[3]);
             SetEvent(ready.value); WaitForSingleObject(stop.value, 20000); return 0;
         }
-        if (argc == 4 && std::wstring(argv[1]) == L"--tone-tree") {
+        if (argc == 4 && (std::wstring(argv[1]) == L"--tone-tree" || std::wstring(argv[1]) == L"--pulse-tree")) {
             const auto childReady = std::wstring(argv[3]) + L"-child";
             NamedEvent ready(childReady);
             ToneProcess child(L"--tone 660 " + std::wstring(argv[2]) + L" " + childReady);
             if (WaitForSingleObject(ready.value, 5000) != WAIT_OBJECT_0) throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
-            PlayTone(440, argv[2], argv[3]); return 0;
+            std::unique_ptr<PulseWindow> window;
+            const auto pulse = std::wstring(argv[1]) == L"--pulse-tree";
+            if (pulse) window = std::make_unique<PulseWindow>();
+            PlayTone(440, argv[2], argv[3], pulse); return 0;
         }
+        if (argc == 3 && std::wstring(argv[1]) == L"--wgc") return RunAudioWgc(argv[2]);
         if (argc != 2) return 2;
         const auto prefix = L"Local\\WidgetRail.AudioProbe." + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(GetTickCount64());
         const auto stopName = prefix + L".stop", targetReadyName = prefix + L".target", otherReadyName = prefix + L".other";

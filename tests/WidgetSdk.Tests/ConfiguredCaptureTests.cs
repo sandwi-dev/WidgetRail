@@ -22,6 +22,15 @@ internal static class ConfiguredCaptureTests
         Check((await client.Capture.GetCapabilitiesAsync()).IsWellFormed(), "Capabilities lost");
         var request = new CaptureSessionRequest { Recording = new(MaximumWidth: 640, MaximumHeight: 360, MaximumDurationSeconds: 10), Preparation = new(0) };
         Check((await client.Capture.ValidateAsync(request)).Supported && requested is null, "Validation started a recording");
+        var withAudio = request with { Recording = request.Recording! with { Audio = CaptureAudioMode.Application } };
+        Check(caps.Validate(withAudio).ErrorCode == "capture_audio_unsupported", "Unadvertised audio accepted");
+        var audioCaps = caps with { AudioModes = [CaptureAudioMode.None, CaptureAudioMode.Application] };
+        var silentBudget = (long)request.Recording!.Bitrate * request.Recording.MaximumDurationSeconds / 8 + 1024 * 1024;
+        Check(audioCaps.Validate(request with { MaximumBytes = silentBudget }).Supported &&
+            audioCaps.Validate(withAudio with { MaximumBytes = silentBudget }).ErrorCode == "capture_output_budget_too_small",
+            "AAC bytes were not included in admission budget");
+        Check(audioCaps.Validate(withAudio with { MaximumBytes = silentBudget + (long)CaptureLimits.AudioBitrate * request.Recording.MaximumDurationSeconds / 8 }).Supported,
+            "Sufficient AAC budget was rejected");
         var ticket = await client.Capture.StartAsync(request);
         Check(requested == request, "SDK rewrote the requested options");
         await client.Capture.StopAsync(ticket); Check(stops == 1, "Stop not forwarded");

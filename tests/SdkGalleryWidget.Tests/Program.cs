@@ -712,12 +712,21 @@ static async Task HostExamples()
     var reference = new ProviderDocumentReference(new string('a', 32), ProviderDocumentReference.RestrictedHtml);
     var ticket = new WindowCaptureTicket(new string('b', 32));
     var capture = new CaptureAttachment(new string('c', 32), "image/png", 320, 180, 100, 0, DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeMilliseconds());
+    var capabilities = new CaptureCapabilities(true, [CaptureImageFormat.Png],
+        [new("720p15-hardware",1280,720,15,1_000_000,6_000_000,CaptureEncoderMode.Hardware)],
+        [CaptureAudioMode.None,CaptureAudioMode.Application],true,120);
+    var reject = false;
+    CaptureSessionRequest? validated = null;
     var services = new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetDocumentCapabilities.Create, (request, token) => { calls++; return ValueTask.FromResult(reference); })
         .WithResponse(WidgetPermissionCapabilities.Check, new WidgetPermissionStatuses([new(WidgetCaptureCapabilities.Permission, WidgetPermissionState.NotDecided)]))
         .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
         .WithResponse(WidgetDocumentCapabilities.Discard, new WidgetCapabilityAcknowledgement(true))
-        .WithHandler(WidgetCaptureCapabilities.Request, (request, token) => { calls++; return ValueTask.FromResult(ticket); })
+        .WithResponse(WidgetCaptureCapabilities.Capabilities, capabilities)
+        .WithHandler(WidgetCaptureCapabilities.Validate, (request, _) => {
+            validated = request;
+            return ValueTask.FromResult(reject ? new CaptureConfigurationValidation(false,"capture_audio_unsupported") : capabilities.Validate(request)); })
+        .WithHandler(WidgetCaptureCapabilities.Start, (request, token) => { calls++; return ValueTask.FromResult(ticket); })
         .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(ticket.RequestId, WindowCapturePhase.Ready, capture))
         .WithResponse(WidgetCaptureCapabilities.Discard, new WidgetCapabilityAcknowledgement(true)).Build();
     var widget = WidgetTestHost.Attach(new SdkGalleryWidget(), services);
@@ -746,6 +755,15 @@ static async Task HostExamples()
     var preview = Snapshot(widget, 2);
     Assert.Equal(0, ViewSnapshotValidator.Validate(preview).Count);
     Assert.Equal(capture, Find(preview, "gallery.capture.image-preview").CapturedMedia);
+    Assert.True(validated?.Screenshot is { MaximumWidth: null, MaximumHeight: null });
+    Assert.Equal("audio.None", Find(preview, "gallery.capture.audio").SelectOptions.Single(o => o.IsSelected).Id);
+    await Act(widget, "gallery.capture.audio.Application");
+    reject = true;
+    await Act(widget, "gallery.capture.video");
+    await WaitUntil(() => Find(Snapshot(widget, 91), "gallery.capture.video").IsBusy != true);
+    Assert.True(validated?.Recording is { Audio: CaptureAudioMode.Application, Encoder: CaptureEncoderMode.Hardware, FramesPerSecond: 15, MaximumDurationSeconds: 5 });
+    Assert.Equal(capture, Find(Snapshot(widget, 91), "gallery.capture.image-preview").CapturedMedia);
+    Assert.Equal(2, calls);
     await Act(widget, "gallery.capture.discard");
     await WaitUntil(() => Find(Snapshot(widget, 91), "gallery.capture.image").IsBusy != true);
     Assert.False(Nodes(Snapshot(widget, 3).Root).Any(node => node.CapturedMedia is not null));

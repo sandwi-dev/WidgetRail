@@ -24,9 +24,11 @@ internal static partial class NativeWindowCapture
             new("1080p60-hardware", 1920, 1080, 60, 6_000_000, 20_000_000, CaptureEncoderMode.Hardware),
             new("2160p30-hardware", 3840, 2160, 30, 12_000_000, 30_000_000, CaptureEncoderMode.Hardware)];
         var supported = new List<CaptureRecordingProfile>();
+        var audioProbe = new EncodingProbe { Size = (uint)sizeof(EncodingProbe), Version = 1 };
+        var applicationAudio = ProbeAudio(ref audioProbe) >= 0 && audioProbe.Supported == 1;
         foreach (var profile in qualified)
         {
-            var options = new Options { Size = (uint)sizeof(Options), Version = 2, Kind = 2,
+            var options = new Options { Size = (uint)sizeof(Options), Version = 3, Kind = 2,
                 MaximumWidth = (uint)profile.MaximumWidth, MaximumHeight = (uint)profile.MaximumHeight,
                 FramesPerSecond = (uint)profile.FramesPerSecond, Bitrate = (uint)profile.MaximumBitrate,
                 DurationSeconds = 1, Encoder = (uint)profile.Encoder, MaximumBytes = CaptureLimits.MaximumAttachmentBytes };
@@ -35,11 +37,26 @@ internal static partial class NativeWindowCapture
                 (result.Hardware == 1) != (profile.Encoder == CaptureEncoderMode.Hardware)) continue;
             options.Bitrate = (uint)profile.MinimumBitrate;
             result = new() { Size = (uint)sizeof(EncodingProbe), Version = 1 };
-            if (ProbeEncoding(in options, ref result) >= 0 && result.Supported == 1 &&
-                (result.Hardware == 1) == (profile.Encoder == CaptureEncoderMode.Hardware)) supported.Add(profile);
+            if (ProbeEncoding(in options, ref result) < 0 || result.Supported != 1 ||
+                (result.Hardware == 1) != (profile.Encoder == CaptureEncoderMode.Hardware)) continue;
+            supported.Add(profile);
+            // AudioModes applies to every advertised profile. Only offer audio
+            // when the AAC/video combination initializes across their bounds.
+            if (applicationAudio)
+            {
+                options.AudioMode = (uint)CaptureAudioMode.Application;
+                foreach (var bitrate in new[] { profile.MinimumBitrate, profile.MaximumBitrate })
+                {
+                    options.Bitrate = (uint)bitrate;
+                    result = new() { Size = (uint)sizeof(EncodingProbe), Version = 1 };
+                    if (ProbeEncoding(in options, ref result) < 0 || result.Supported != 1 ||
+                        (result.Hardware == 1) != (profile.Encoder == CaptureEncoderMode.Hardware)) applicationAudio = false;
+                }
+            }
         }
         return new(true, (CaptureImageFormat[])[CaptureImageFormat.Png], supported.ToArray(),
-            (CaptureAudioMode[])[CaptureAudioMode.None], true, CaptureLimits.MaximumRecordingSeconds);
+            applicationAudio && supported.Count > 0 ? (CaptureAudioMode[])[CaptureAudioMode.None, CaptureAudioMode.Application] :
+                (CaptureAudioMode[])[CaptureAudioMode.None], true, CaptureLimits.MaximumRecordingSeconds);
     }
     internal static unsafe NativePreviewTarget ForegroundTarget()
     {
@@ -64,6 +81,7 @@ internal static partial class NativeWindowCapture
     {
         internal uint Size, Version, Kind, MaximumWidth, MaximumHeight, FramesPerSecond, Bitrate, DurationSeconds, IncludeCursor, Encoder;
         internal ulong MaximumBytes;
+        internal uint AudioMode, Reserved;
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct ConfiguredResult
@@ -72,6 +90,7 @@ internal static partial class NativeWindowCapture
         internal int Error;
         internal double DurationSeconds;
         internal uint SourceWidth, SourceHeight, MissedFrames, Encoder;
+        internal uint AudioMode, Reserved;
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct EncodingProbe
@@ -108,13 +127,14 @@ internal static partial class NativeWindowCapture
             if (request.Options is { } settings)
             {
                 var video = settings.Recording;
-                var options = new Options { Size = (uint)sizeof(Options), Version = 2, Kind = (uint)request.Kind,
+                var options = new Options { Size = (uint)sizeof(Options), Version = 3, Kind = (uint)request.Kind,
                     MaximumWidth = (uint)(video?.MaximumWidth ?? settings.Screenshot?.MaximumWidth ?? 0),
                     MaximumHeight = (uint)(video?.MaximumHeight ?? settings.Screenshot?.MaximumHeight ?? 0),
                     FramesPerSecond = (uint)(video?.FramesPerSecond ?? 15), Bitrate = (uint)(video?.Bitrate ?? 3_000_000),
                     DurationSeconds = (uint)(video?.MaximumDurationSeconds ?? 5), IncludeCursor = settings.IncludeCursor ? 1u : 0,
-                    Encoder = (uint)(video?.Encoder ?? CaptureEncoderMode.Software), MaximumBytes = (ulong)settings.MaximumBytes };
-                var output = new ConfiguredResult { Size = (uint)sizeof(ConfiguredResult), Version = 2 };
+                    Encoder = (uint)(video?.Encoder ?? CaptureEncoderMode.Software), MaximumBytes = (ulong)settings.MaximumBytes,
+                    AudioMode = (uint)(video?.Audio ?? CaptureAudioMode.None) };
+                var output = new ConfiguredResult { Size = (uint)sizeof(ConfiguredResult), Version = 3 };
                 var code = CaptureConfigured(in target, request.OutputPath, in options,
                     (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref output);
                 token.ThrowIfCancellationRequested();
@@ -123,7 +143,7 @@ internal static partial class NativeWindowCapture
                 return new(output.Width, output.Height, output.Frames, output.DurationSeconds, identity) {
                     Properties = new((int)output.SourceWidth, (int)output.SourceHeight, video?.FramesPerSecond ?? 0,
                         video is null ? 0 : (int)output.Frames, (int)output.MissedFrames,
-                        video is null ? null : (CaptureEncoderMode)output.Encoder, CaptureAudioMode.None) };
+                        video is null ? null : (CaptureEncoderMode)output.Encoder, (CaptureAudioMode)output.AudioMode) };
             }
             var result = new Result { Size = (uint)sizeof(Result), Version = 1 };
             var status = Capture(in target, request.OutputPath, request.Kind == WindowCaptureKind.Screenshot && request.Resolution == CaptureImageResolution.Original ? 3u : (uint)request.Kind,
@@ -146,6 +166,8 @@ internal static partial class NativeWindowCapture
     private static partial int CaptureConfigured(in NativePreviewTarget target, string path, in Options options, nint authority, nint context, ref ConfiguredResult result);
     [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailProbeCaptureEncoding")]
     private static partial int ProbeEncoding(in Options options, ref EncodingProbe result);
+    [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailProbeCaptureAudio")]
+    private static partial int ProbeAudio(ref EncodingProbe result);
     [LibraryImport("user32.dll")] private static partial nint GetForegroundWindow();
     [LibraryImport("user32.dll")] private static partial nint GetAncestor(nint window, uint flags);
     [LibraryImport("user32.dll")] private static partial nint GetDesktopWindow();

@@ -143,9 +143,11 @@ public sealed partial class CaptureLibraryWidget
                 fields.Add(Field("duration", "Maximum duration", Durations.Where(d => d <= capabilities.MaximumRecordingSeconds).Select(d => Option("duration." + d, $"{d} seconds", d == video.MaximumDurationSeconds))));
                 fields.Add(UI.Text("Reopen WidgetRail to finish a clip early. Every recording stops at its maximum duration.",
                     "capture-library.settings.stop-help").Classes("capture-help"));
-                fields.Add(Field("audio", "Audio", capabilities.AudioModes.Select(a => Option("audio." + a, a == CaptureAudioMode.None ? "No audio" : a.ToString(), video.Audio == a)),
-                    "Only validated audio modes are available."));
-                fields.Add(UI.Text($"Estimated video size: {(long)video.Bitrate * video.MaximumDurationSeconds / 8 / 1048576d:0.0} MiB + container overhead · limit 128 MiB.", "capture-library.settings.estimate").Classes("capture-help"));
+                fields.Add(Field("audio", "Audio", capabilities.AudioModes.Select(a => Option("audio." + a,
+                    a == CaptureAudioMode.None ? "No audio" : a == CaptureAudioMode.Application ? "Application audio" : a.ToString(), video.Audio == a)),
+                    "Records audio from the captured application. Microphone audio is not recorded. Only available modes are listed."));
+                var totalBitrate = (long)video.Bitrate + (video.Audio == CaptureAudioMode.None ? 0 : CaptureLimits.AudioBitrate);
+                fields.Add(UI.Text($"Estimated recording size: {totalBitrate * video.MaximumDurationSeconds / 8 / 1048576d:0.0} MiB + container overhead · limit 128 MiB.", "capture-library.settings.estimate").Classes("capture-help"));
             }
             items.Add(UI.Stack("capture-library.settings.video", fields.ToArray()).Classes("capture-settings-section"));
             var preparation = new List<WidgetElement> {

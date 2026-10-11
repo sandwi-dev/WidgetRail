@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [string]$OutputDirectory, [switch]$TestPolicy, [switch]$TestCapture, [switch]$TestEncoding, [switch]$TestAudio)
+param([ValidateSet('Debug','Release')][string]$Configuration = 'Release', [string]$OutputDirectory, [switch]$TestPolicy, [switch]$TestCapture, [switch]$TestEncoding, [switch]$TestAudio, [switch]$TestAudioWgc)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -22,6 +22,7 @@ $captureSources = if ($TestCapture) { @('/DWRAIL_CAPTURE_VALIDATION', (Join-Path
 $arguments = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DUNICODE','/D_UNICODE','/DWIN32_LEAN_AND_MEAN','/DNOMINMAX','/DWRAIL_PREVIEW_EXPORTS','/LD') + $optimization + $includes + $captureSources + @(
     (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowPreviewNative.cpp'), (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowContextCapture.cpp'), "/Fo:$objectDirectory\", "/Fe:$OutputDirectory\WinUiWindowPreviewNative.dll", '/link',
     "/IMPLIB:$OutputDirectory\WinUiWindowPreviewNative.lib", "/PDB:$OutputDirectory\WinUiWindowPreviewNative.pdb") + $libraries + @('d3d11.lib','dxgi.lib','d2d1.lib','dwmapi.lib','user32.lib','ole32.lib','windowsapp.lib','gdi32.lib','windowscodecs.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib')
+$arguments += 'mmdevapi.lib'
 $oldPath = $env:PATH
 try {
     $env:PATH = "$compilerDirectory;$sdkRoot\bin\$($sdk.Name)\x64;$oldPath"
@@ -48,13 +49,15 @@ try {
         & $compiler @fixture
         if ($LASTEXITCODE -ne 0) { throw 'Capture fixture build failed.' }
     }
-    if ($TestAudio) {
+    if ($TestAudio -or $TestAudioWgc) {
         $audio = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX','/DUNICODE','/D_UNICODE','/O2') + $includes + @(
             (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureAudioTests.cpp'), "/Fo:$objectDirectory\AudioTests.obj", "/Fe:$OutputDirectory\WindowCaptureAudioTests.exe", '/link') +
-            $libraries + @('ole32.lib','windowsapp.lib','mmdevapi.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','d3d11.lib')
+            $libraries + @('ole32.lib','windowsapp.lib','mmdevapi.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','d3d11.lib','user32.lib','gdi32.lib',
+                (Join-Path $OutputDirectory 'WinUiWindowPreviewNative.lib'))
         & $compiler @audio
         if ($LASTEXITCODE -ne 0) { throw 'Process audio probe build failed.' }
-        & (Join-Path $OutputDirectory 'WindowCaptureAudioTests.exe') $OutputDirectory
+        if ($TestAudioWgc) { & (Join-Path $OutputDirectory 'WindowCaptureAudioTests.exe') --wgc $OutputDirectory }
+        else { & (Join-Path $OutputDirectory 'WindowCaptureAudioTests.exe') $OutputDirectory }
         if ($LASTEXITCODE -ne 0) { throw 'Process audio probe failed.' }
     }
     if ($TestEncoding) {

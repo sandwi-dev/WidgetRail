@@ -186,6 +186,14 @@ anything. Capture operations use widget lifetime so hiding the overlay does not
 cancel an approved recording. Discard removes the current attachment. Optional
 permission errors are shown in the page rather than crashing the widget.
 
+The capture demo uses `GetCapabilitiesAsync`, `ValidateAsync` and `StartAsync`.
+Inspect capture options exposes the host's available audio choices; audio defaults
+to None. Its video example is explicitly five seconds at 720p/15 fps, preferring
+a matching hardware envelope, and refuses unsupported settings while retaining
+an existing preview. It never silently reduces resolution or frame rate. Images
+use `ScreenshotOptions` with original dimensions. The host confirmation shows
+the actual requested settings and audio inclusion before recording.
+
 Inline links and intent buttons declare their requested contracts in the manifest.
 `PreferExistingSurface` is the default; `Routing.Windows` is explicit. Search uses
 `ReportsResult` and a declared fallback only for Unavailable/Rejected, not ambiguous
