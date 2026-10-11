@@ -15,36 +15,74 @@ For foreground capture, declare only `system.apps.windows.capture.v1`.
 No application list or window selection is required:
 
 ```csharp
-var ticket = await HostServices.Capture.RequestAsync(
-    WindowCaptureKind.Video, cancellationToken);
+var supported = await HostServices.Capture.GetCapabilitiesAsync(cancellationToken);
+var options = new CaptureSessionRequest {
+    Recording = new RecordingOptions(1280, 720, 15, 3_000_000, 10),
+    Preparation = new CapturePreparation(3),
+    IncludeCursor = false,
+};
+var validation = await HostServices.Capture.ValidateAsync(options, cancellationToken);
+if (!validation.Supported) { /* Explain validation.ErrorCode; do not silently substitute. */ return; }
+var ticket = await HostServices.Capture.StartAsync(options, cancellationToken);
 var status = await HostServices.Capture.GetStatusAsync(ticket, cancellationToken);
+// Once Recording, StopAsync(ticket, token) retains it; CancelAsync discards it.
 ```
 
 The host asks for confirmation, completes its release-aware hide transition,
-shows a five-second preparation countdown, then resolves the foreground application
+shows the requested preparation countdown (zero to thirty seconds), then resolves the foreground application
 once and captures that window. It does not activate or restore a selected target.
 Game Help uses this flow and has no application picker or window-list permission.
 The desktop, shell and WidgetRail's own windows are not foreground capture targets.
-Video lasts five seconds, at 15 fps, with no audio or cursor. Target
-loss, replacement, resize, protected content, cancellation, or reopening the
-overlay terminates capture; another window is never silently substituted.
+Screenshot dimensions/format and recording dimensions, frame rate, bitrate,
+encoder and maximum duration are separate typed options. Query the host's actual
+advertised recording envelopes and revalidate before starting. Unsupported
+combinations fail explicitly. Current qualified baseline is PNG and software H.264
+up to 1280x720 at 15 fps, with no audio. Hardware/higher-quality modes are not
+advertised until their pipeline is qualified. Cursor inclusion is configurable.
+Target loss, replacement, resize, protected content, or cancellation terminates
+capture; another window is never silently substituted. Reopening the overlay
+finishes and retains configured recordings. During preparation it cancels instead.
 The overlay does not reopen automatically.
 
-This is the only capture mode. Requests accept a capture kind, never a window ID
+This is the only source-selection mode. Requests never accept a window ID
 or application name. Window selection and application activation are not part of
 the capture service. The native layer binds the foreground window identity once
 when capture starts and retains it until that screenshot or recording finishes.
 
-Initiation requires interactive lifecycle. Status, cancellation, discard and
+Initiation requires interactive lifecycle. Discovery/validation never starts a
+recording or opens a dialog. Status, stop, cancellation, discard and
 authorized reads can continue while the overlay is hidden. Use a widget-lifetime
 operation for status polling. Preview permission alone does not grant capture.
 
-Attachments contain opaque IDs and bounded metadata. Context PNG is limited to 1920x1080 / 8 MiB; video to 1280x720 / 8 MiB. Explicit original-resolution screenshots preserve window pixels up to 33,554,432 pixels / 128 MiB; see [Capture Library](capture-library.md). The host permits four
+Attachments contain opaque IDs and bounded metadata. New captures include actual
+source dimensions and, for recordings, requested frame rate, encoded/missed frame
+counts, encoder mode and audio mode. Configured media requires protocol 79.
+Use `CopyContentToAsync(attachment, destination, token)` for bounded streaming;
+`ReadContentAsync` remains a convenience that allocates the whole encoded file.
+
+Configured captures have a requested byte budget up to 128 MiB, and recordings
+have a maximum duration up to 120 seconds. Admission checks estimated encoded
+size plus container overhead; the native writer and completion recheck actual
+size. Screenshot bounds preserve aspect ratio without upscaling; null dimensions
+request the exact original physical pixels, up to 33,554,432 pixels. The host
+verifies returned dimensions rather than accepting silent downscaling.
+See [Capture Library](capture-library.md). The host permits four
 attachments per widget, sixteen total, and 256 MiB of temporary media. Pending
-requests expire after two minutes; completed captures expire after thirty.
+request leases include preparation and maximum recording duration plus a
+two-minute confirmation/finalization allowance; completed captures expire after thirty minutes.
 Revocation, worker retirement and discard remove the owning captures. Failed
 deletes are retried; expired unlocked capture directories from a crashed host
 are cleaned on a later host run.
+
+Game Help explicitly requests a 1920x1080-bounded PNG or five-second 1280x720/15fps
+silent clip with an 8 MiB budget and five-second preparation. These are its own
+preferences, not framework constants for every widget. Send remains a separate
+explicit action after preview/question review. Capture Library uses the same
+configured service with original-resolution screenshots.
+
+Legacy `RequestAsync(kind)` and original-resolution overloads remain available
+with their original defaults and attachment bounds. They do not silently gain
+new format/size behavior, and reopening the overlay cancels legacy requests.
 
 ## Native media element
 

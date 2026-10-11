@@ -42,6 +42,16 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         var registry = WindowCaptureRegistry.Shared;
         switch (operation)
         {
+            case "capture.capabilities":
+                BrokerCapabilityDomains.DemandEmptyPayload(payload);
+                return BrokerJson.ToElement(registry.Capabilities);
+            case "capture.validate":
+                return BrokerJson.ToElement(registry.Capabilities.Validate(BrokerJson.ParsePayload<CaptureSessionRequest>(payload)));
+            case "capture.start":
+                return BrokerJson.ToElement(registry.EnqueueConfigured(this, identity, BrokerJson.ParsePayload<CaptureSessionRequest>(payload)));
+            case "capture.stop":
+                registry.Stop(this, BrokerJson.ParsePayload<WindowCaptureTicket>(payload).RequestId);
+                return BrokerCapabilityDomains.Acknowledged();
             case "capture.request-original":
             case PlatformCapabilities.WindowCaptureRequest:
                 var request = BrokerJson.ParsePayload<WindowCaptureRequest>(payload);

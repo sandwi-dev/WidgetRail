@@ -28,15 +28,18 @@ using namespace winrt::Windows::Graphics::DirectX::Direct3D11;
 namespace {
 std::atomic_bool busy{};
 using Clock = std::chrono::steady_clock;
-constexpr uint32_t Fps = 15, VideoFrames = 75;
 struct Event { HANDLE value{CreateEventW(nullptr, FALSE, FALSE, nullptr)}; ~Event() { if(value) CloseHandle(value); } };
+struct CaptureDpiContext {
+    DPI_AWARENESS_CONTEXT previous{SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)};
+    ~CaptureDpiContext(){if(previous)SetThreadDpiAwarenessContext(previous);}
+};
 bool Current(const WrailPreviewTarget& expected, WrailPreviewAuthority authority, void* context) {
     if (!authority(context)) return false;
     const auto hwnd = reinterpret_cast<HWND>(expected.window);
     WrailPreviewTarget actual{};
     if (FAILED(WrailPreviewReadIdentity(expected.window, &actual)) || actual.processId != expected.processId ||
         actual.processCreated != expected.processCreated || wcscmp(actual.className, expected.className) ||
-        GetAncestor(GetForegroundWindow(), GA_ROOT) != hwnd || !IsWindowVisible(hwnd) || IsIconic(hwnd)) return false;
+        !IsWindowVisible(hwnd) || IsIconic(hwnd)) return false;
     DWORD affinity{}, cloaked{};
     return GetWindowDisplayAffinity(hwnd, &affinity) && affinity == WDA_NONE &&
         SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && !cloaked;
@@ -62,22 +65,24 @@ void Png(const wchar_t* path, UINT w, UINT h, const std::vector<BYTE>& bytes) {
     winrt::check_hresult(frame->Commit()); winrt::check_hresult(encoder->Commit());
 }
 struct Video {
-    ComPtr<IMFSinkWriter> writer; DWORD stream{}; bool started{};
-    Video(const wchar_t* path, UINT w, UINT h) {
+    ComPtr<IMFSinkWriter> writer; DWORD stream{}; bool started{}; UINT fps{};
+    Video(const wchar_t* path, UINT w, UINT h, const WrailCaptureOptions& options) : fps(options.framesPerSecond) {
         winrt::check_hresult(MFStartup(MF_VERSION)); started=true;
         try {
             ComPtr<IMFAttributes> attributes; winrt::check_hresult(MFCreateAttributes(&attributes, 1));
-            winrt::check_hresult(attributes->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE));
+            // Keep writer backpressure; the capture loop drops missed slots instead
+            // of queueing an unbounded backlog when encoding is slower than capture.
+            winrt::check_hresult(attributes->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, FALSE));
             winrt::check_hresult(MFCreateSinkWriterFromURL(path, nullptr, attributes.Get(), &writer));
             ComPtr<IMFMediaType> output; winrt::check_hresult(MFCreateMediaType(&output));
             winrt::check_hresult(output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)); winrt::check_hresult(output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264));
-            winrt::check_hresult(output->SetUINT32(MF_MT_AVG_BITRATE, 3000000)); winrt::check_hresult(output->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive));
-            winrt::check_hresult(MFSetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, w,h)); winrt::check_hresult(MFSetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, Fps,1));
+            winrt::check_hresult(output->SetUINT32(MF_MT_AVG_BITRATE, options.bitrate)); winrt::check_hresult(output->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive));
+            winrt::check_hresult(MFSetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, w,h)); winrt::check_hresult(MFSetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, fps,1));
             winrt::check_hresult(MFSetAttributeRatio(output.Get(), MF_MT_PIXEL_ASPECT_RATIO,1,1)); winrt::check_hresult(writer->AddStream(output.Get(), &stream));
             ComPtr<IMFMediaType> input; winrt::check_hresult(MFCreateMediaType(&input));
             winrt::check_hresult(input->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)); winrt::check_hresult(input->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32));
             winrt::check_hresult(input->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive));
-            winrt::check_hresult(MFSetAttributeSize(input.Get(), MF_MT_FRAME_SIZE,w,h)); winrt::check_hresult(MFSetAttributeRatio(input.Get(), MF_MT_FRAME_RATE,Fps,1));
+            winrt::check_hresult(MFSetAttributeSize(input.Get(), MF_MT_FRAME_SIZE,w,h)); winrt::check_hresult(MFSetAttributeRatio(input.Get(), MF_MT_FRAME_RATE,fps,1));
             winrt::check_hresult(MFSetAttributeRatio(input.Get(), MF_MT_PIXEL_ASPECT_RATIO,1,1));
             winrt::check_hresult(input->SetUINT32(MF_MT_DEFAULT_STRIDE,w*4));
             winrt::check_hresult(writer->SetInputMediaType(stream,input.Get(),nullptr)); winrt::check_hresult(writer->BeginWriting());
@@ -89,23 +94,34 @@ struct Video {
         BYTE* target{}; winrt::check_hresult(buffer->Lock(&target,nullptr,nullptr)); memcpy(target,bytes.data(),bytes.size());
         winrt::check_hresult(buffer->Unlock()); winrt::check_hresult(buffer->SetCurrentLength(static_cast<DWORD>(bytes.size())));
         ComPtr<IMFSample> sample; winrt::check_hresult(MFCreateSample(&sample)); winrt::check_hresult(sample->AddBuffer(buffer.Get()));
-        const LONGLONG start=10000000LL*index/Fps, end=10000000LL*(index+1)/Fps;
+        const LONGLONG start=10000000LL*index/fps, end=10000000LL*(index+1)/fps;
         winrt::check_hresult(sample->SetSampleTime(start)); winrt::check_hresult(sample->SetSampleDuration(end-start));
         winrt::check_hresult(writer->WriteSample(stream,sample.Get()));
     }
     void Finish() { winrt::check_hresult(writer->Finalize()); }
 };
 }
-extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target, const wchar_t* path, uint32_t kind,
-    WrailPreviewAuthority authority, void* context, WrailContextCaptureResult* result) noexcept {
+extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarget* target, const wchar_t* path, const WrailCaptureOptions* options,
+    WrailPreviewAuthority authority, void* context, WrailCaptureResult* result) noexcept {
     if(!target || target->size!=sizeof(*target) || target->version!=1 || !path || !*path || !authority || !result ||
-        result->size!=sizeof(*result) || result->version!=1 || (kind<1 || kind>3)) return E_INVALIDARG;
+        result->size!=sizeof(*result) || result->version!=2 || !options || options->size!=sizeof(*options) || options->version!=2 ||
+        options->kind<1 || options->kind>2 || options->includeCursor>1 || options->maximumBytes<1024 || options->maximumBytes>128ULL*1024*1024 ||
+        options->framesPerSecond<1 || options->framesPerSecond>120 || options->durationSeconds<1 || options->durationSeconds>120 ||
+        options->bitrate<100000 || options->bitrate>100000000 || options->maximumWidth>16384 || options->maximumHeight>16384) return E_INVALIDARG;
+    // The hardware path will be admitted only when its encoder is explicitly verified.
+    if(options->kind==2 && options->encoder!=1) return E_NOTIMPL;
+    const auto kind=options->kind, fps=options->framesPerSecond;
     if(busy.exchange(true)) return HRESULT_FROM_WIN32(ERROR_BUSY);
     struct BusyGuard { ~BusyGuard(){busy=false;} } busyGuard;
     try {
+        // Thread-pool threads may inherit different DPI contexts after WinRT calls.
+        // WGC item dimensions must always describe physical source pixels.
+        CaptureDpiContext dpi;
+        if(!dpi.previous)throw winrt::hresult_error(HRESULT_FROM_WIN32(GetLastError()));
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         struct Apartment { ~Apartment(){winrt::uninit_apartment();} } apartment;
-        if(!Current(*target,authority,context)) throw winrt::hresult_error(E_ACCESSDENIED);
+        if(!Current(*target,authority,context) || GetAncestor(GetForegroundWindow(), GA_ROOT)!=reinterpret_cast<HWND>(target->window))
+            throw winrt::hresult_error(E_ACCESSDENIED);
         if(!GraphicsCaptureSession::IsSupported()) throw winrt::hresult_error(E_NOTIMPL);
         ComPtr<ID3D11Device> device; ComPtr<ID3D11DeviceContext> immediate;
         winrt::check_hresult(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT,
@@ -117,8 +133,7 @@ extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target
         auto interop=winrt::get_activation_factory<GraphicsCaptureItem,IGraphicsCaptureItemInterop>();
         winrt::check_hresult(interop->CreateForWindow(reinterpret_cast<HWND>(target->window),winrt::guid_of<GraphicsCaptureItem>(),winrt::put_abi(capture.item)));
         auto size=capture.item.Size();
-        if(size.Width<=0 || size.Height<=0 || size.Width>8192 || size.Height>8192 || int64_t(size.Width)*size.Height>20000000) throw winrt::hresult_error(E_INVALIDARG);
-        const auto geometry = CaptureSize(size.Width, size.Height, kind);
+        const auto geometry = ConfiguredCaptureSize(size.Width, size.Height, options->maximumWidth, options->maximumHeight, kind==2);
         if (!geometry.width || !geometry.height) throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
         const UINT width = geometry.width, height = geometry.height;
         D3D11_TEXTURE2D_DESC desc{};desc.Width=width;desc.Height=height;desc.MipLevels=1;desc.ArraySize=1;
@@ -135,15 +150,18 @@ extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target
         auto signal=std::make_shared<Event>();if(!signal->value) throw winrt::hresult_error(E_OUTOFMEMORY);
         capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,DirectXPixelFormat::B8G8R8A8UIntNormalized,2,size);
         capture.arrived=capture.pool.FrameArrived([signal](auto&&,auto&&){SetEvent(signal->value);});
-        capture.session=capture.pool.CreateCaptureSession(capture.item);capture.session.IsCursorCaptureEnabled(false);
+        capture.session=capture.pool.CreateCaptureSession(capture.item);capture.session.IsCursorCaptureEnabled(options->includeCursor!=0);
         capture.session.StartCapture();
         std::unique_ptr<Video> video;
         std::vector<BYTE> pixels(width*height*4);
         bool haveFrame=false;auto firstDeadline=Clock::now()+std::chrono::seconds(3);auto started=Clock::now();
-        UINT frames=0;
-        while(frames<(kind==2?VideoFrames:1U)) {
-            if(!authority(context)) throw winrt::hresult_error(E_ABORT);
-            if(haveFrame && Clock::now()<started+std::chrono::milliseconds(1000*frames/Fps)) {WaitForSingleObject(signal->value,10);continue;}
+        UINT frames=0, nextSlot=0, missed=0;
+        const UINT totalSlots=kind==2?fps*options->durationSeconds:1;
+        while(nextSlot<totalSlots) {
+            const auto decision=authority(context);
+            if(!decision) throw winrt::hresult_error(E_ABORT);
+            if(decision==2 && kind==2) {if(!frames)throw winrt::hresult_error(E_ABORT);break;}
+            if(haveFrame && Clock::now()<started+std::chrono::milliseconds(1000*nextSlot/fps)) {WaitForSingleObject(signal->value,10);continue;}
             if(!Current(*target,authority,context)) throw winrt::hresult_error(E_ABORT);
             auto frame=capture.pool.TryGetNextFrame();
             if(frame) {
@@ -160,20 +178,51 @@ extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target
                 winrt::check_hresult(immediate->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped));
                 for(UINT y=0;y<height;++y)memcpy(pixels.data()+y*width*4,static_cast<BYTE*>(mapped.pData)+y*mapped.RowPitch,width*4);
                 immediate->Unmap(staging.Get(),0);
-                if(!haveFrame){haveFrame=true;started=Clock::now();if(kind==2)video=std::make_unique<Video>(path,width,height);}
+                if(!haveFrame){haveFrame=true;if(kind==2)video=std::make_unique<Video>(path,width,height,*options);started=Clock::now();}
             }
             auto now=Clock::now();
             if(!haveFrame){if(now>=firstDeadline)throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));}
-            else if(now>=started+std::chrono::milliseconds(1000*frames/Fps)) {
-                if(kind!=2)Png(path,width,height,pixels);else video->Write(pixels,frames);
-                ++frames;
+            else if(now>=started+std::chrono::milliseconds(1000*nextSlot/fps)) {
+                const auto elapsed=std::chrono::duration<double>(now-started).count();
+                const UINT slot=kind==2?std::max(nextSlot,static_cast<UINT>(elapsed*fps)):0;
+                if(slot>=totalSlots)break;
+                missed+=slot-nextSlot;
+                if(kind!=2)Png(path,width,height,pixels);else video->Write(pixels,slot);
+                ++frames;nextSlot=slot+1;
+                if(nextSlot%fps==0 || kind!=2) {
+                    WIN32_FILE_ATTRIBUTE_DATA attributes{};
+                    if(GetFileAttributesExW(path,GetFileExInfoStandard,&attributes) &&
+                        ((uint64_t(attributes.nFileSizeHigh)<<32)|attributes.nFileSizeLow)>options->maximumBytes)
+                        throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
+                }
             }
-            if(kind==2 && haveFrame && now-started>std::chrono::seconds(8))throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
-            if(frames<(kind==2?VideoFrames:1U))WaitForSingleObject(signal->value,10);
+            if(kind==2 && haveFrame && now-started>std::chrono::seconds(options->durationSeconds+3))throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
+            if(nextSlot<totalSlots)WaitForSingleObject(signal->value,10);
         }
+        if(!frames)throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
         if(video)video->Finish();
-        result->width=width;result->height=height;result->frames=frames;result->durationSeconds=kind==2?5.0:0.0;result->error=S_OK;
+        WIN32_FILE_ATTRIBUTE_DATA finalSize{};
+        if(GetFileAttributesExW(path,GetFileExInfoStandard,&finalSize) &&
+            ((uint64_t(finalSize.nFileSizeHigh)<<32)|finalSize.nFileSizeLow)>options->maximumBytes)
+            throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
+        result->width=width;result->height=height;result->frames=frames;result->durationSeconds=kind==2?double(nextSlot)/fps:0.0;result->error=S_OK;
+        result->sourceWidth=size.Width;result->sourceHeight=size.Height;result->missedFrames=missed;result->encoder=kind==2?options->encoder:0;
         return S_OK;
     } catch(const winrt::hresult_error& error){result->error=error.code();return error.code();}
       catch(...){result->error=E_FAIL;return E_FAIL;}
+}
+
+extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target, const wchar_t* path, uint32_t kind,
+    WrailPreviewAuthority authority, void* context, WrailContextCaptureResult* result) noexcept {
+    if(!result || result->size!=sizeof(*result) || result->version!=1 || kind<1 || kind>3) return E_INVALIDARG;
+    WrailCaptureOptions options;
+    options.kind=kind==2?2:1;
+    options.maximumWidth=kind==3?0:kind==2?1280:1920;
+    options.maximumHeight=kind==3?0:kind==2?720:1080;
+    options.maximumBytes=kind==3?128ULL*1024*1024:8ULL*1024*1024;
+    WrailCaptureResult output;
+    const auto status=WrailCaptureWindowConfigured(target,path,&options,authority,context,&output);
+    result->width=output.width;result->height=output.height;result->frames=output.frames;
+    result->durationSeconds=output.durationSeconds;result->error=status;
+    return status;
 }

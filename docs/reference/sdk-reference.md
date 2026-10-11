@@ -8,6 +8,7 @@ Use this index to find one API family at a time. For a first project, start with
 | Topic | Start here |
 |---|---|
 | Rich text and inline intent links | [Native rich text](widget-rich-text.md) |
+| Informational time-series graphs | [Native line graphs](line-graphs.md) |
 | Browsing and provider surfaces | [Web browser](widget-web-browser.md) |
 | Native media playback | [Media player](widget-media-player.md) |
 | Capture and restricted documents | [Capture and Game Help](widget-capture-and-game-help.md) |

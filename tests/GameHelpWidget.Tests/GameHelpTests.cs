@@ -291,11 +291,13 @@ public sealed class GameHelpTests
             Task.FromResult(new GameHelpAnswer("Useful answer", [], "", [new("Next step", "What should I try next?")], [], []));
         var ticket=new WindowCaptureTicket(new string('a',32));
         var data=new byte[32];var attachment=new CaptureAttachment(new string('b',32),"image/png",64,48,data.Length,0,DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeMilliseconds())
-            { SourceApplication = new("007 First Light", "007FirstLight") };
+            { SourceApplication = new("007 First Light", "007FirstLight"), Properties = new(64,48) };
         var host=new WidgetTestHostServicesBuilder()
-            .WithHandler(WidgetCaptureCapabilities.Request, (request, _) =>
+            .WithHandler(WidgetCaptureCapabilities.Start, (request, _) =>
             {
-                Assert.AreEqual(WindowCaptureKind.Screenshot, request.Kind);
+                Assert.AreEqual(new ScreenshotOptions(1920, 1080), request.Screenshot);
+                Assert.IsNull(request.Recording);
+                Assert.AreEqual((long)CaptureLimits.MaximumContextBytes, request.MaximumBytes);
                 return ValueTask.FromResult(ticket);
             })
             .WithResponse(WidgetCaptureCapabilities.Status,new WindowCaptureStatus(ticket.RequestId,WindowCapturePhase.Ready,attachment))
@@ -312,7 +314,7 @@ public sealed class GameHelpTests
             await widget.OnActionAsync(new("capture.image","help.capture-image"));
             await Until(()=>Snapshot(widget).Root.Kind==ViewNodeKind.ModalLayer);
             Assert.AreEqual(0,service.Requests.Count);
-            Assert.AreEqual(ProtocolConstants.MediaPlayerVersion,Snapshot(widget).ProtocolVersion);
+            Assert.AreEqual(ProtocolConstants.ConfigurableCaptureVersion,Snapshot(widget).ProtocolVersion);
             Assert.IsTrue(Walk(Snapshot(widget).Root).Any(n=>n.Kind==ViewNodeKind.MediaPlayer&&n.MediaPlayer!.Source.Attachment==attachment));
             Assert.AreEqual(ViewNodeKind.TextEntry, Walk(Snapshot(widget).Root).Single(n => n.Id == "help.preview-question").Kind);
             await widget.OnActionAsync(new("preview.question", "help.preview-question") { CommittedText = "How do I reach the office?" });

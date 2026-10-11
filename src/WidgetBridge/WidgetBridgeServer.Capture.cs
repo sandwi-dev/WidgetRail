@@ -10,6 +10,10 @@ public sealed partial class WidgetBridgeServer
         var captures = WindowCaptureRegistry.Shared;
         switch (request.Type)
         {
+            case BridgeMessageTypes.CaptureCapabilities:
+                captures.SetCapabilities(BridgeJson.FromElement<CaptureCapabilities>(request.Payload));
+                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(true), token).ConfigureAwait(false);
+                break;
             case BridgeMessageTypes.TakeCapture:
                 var pending = captures.Take();
                 var (catalog, _) = _registry.CatalogSnapshot();
@@ -23,7 +27,7 @@ public sealed partial class WidgetBridgeServer
                 var live = captures.IsCurrent(check.RequestId);
                 var current = live ? captures.Take() : null;
                 live = live && current?.RequestId == check.RequestId && await CaptureAllowedAsync(current.Widget, token).ConfigureAwait(false);
-                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(live), token).ConfigureAwait(false);
+                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(live) { StopRequested = live && captures.IsStopRequested(check.RequestId) }, token).ConfigureAwait(false);
                 break;
             case BridgeMessageTypes.RecordingCapture:
                 captures.Recording(BridgeJson.FromElement<BridgeCaptureReference>(request.Payload).RequestId);

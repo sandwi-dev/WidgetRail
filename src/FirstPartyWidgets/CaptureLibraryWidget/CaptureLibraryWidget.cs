@@ -88,9 +88,11 @@ public sealed class CaptureLibraryWidget : Widget
             {
                 await ReleaseAsync(prior, context.CancellationToken);
                 model.Update(s => s with { Preview = null, SelectedId = null, Detail = false });
-                ticket = kind == WindowCaptureKind.Screenshot
-                    ? await HostServices.Capture.RequestAsync(kind, CaptureImageResolution.Original, context.CancellationToken)
-                    : await HostServices.Capture.RequestAsync(kind, context.CancellationToken);
+                ticket = await HostServices.Capture.StartAsync(new CaptureSessionRequest {
+                    Screenshot = kind == WindowCaptureKind.Screenshot ? new ScreenshotOptions() : null,
+                    Recording = kind == WindowCaptureKind.Video ? new RecordingOptions() : null,
+                    Preparation = new(5),
+                }, context.CancellationToken);
                 while (true)
                 {
                     await Task.Delay(300, context.CancellationToken);
@@ -203,13 +205,14 @@ public sealed class CaptureLibraryWidget : Widget
         return view;
     }
     private static string Describe(CaptureAttachment media) => (media.SourceApplication?.ApplicationName is { } name ? name + " · " : "") +
-        (media.ContentType == "image/png" ? "Screenshot" : "5-second clip") + $" · {media.Width} × {media.Height} · {media.ByteLength / 1048576d:0.0} MiB";
+        (media.ContentType == "image/png" ? "Screenshot" : $"{media.DurationSeconds:0.#}-second clip") + $" · {media.Width} × {media.Height} · {media.ByteLength / 1048576d:0.0} MiB";
     private static string Explain(string code) => code switch
     {
         "permission_denied" or "capability_not_declared" => "Allow Capture Library's required permissions in Settings → Widgets. Deleting and exporting also need its optional manage permission.",
         "capture_library_linked_path" => "This storage location uses a link that WidgetRail cannot follow. Your existing data was not changed.",
         "capture_library_full" => "Your library is full. Export or delete saved captures before saving another.",
-        "capture_too_large" => "That window is larger than the screenshot limit. Use a smaller window or lower resolution and try again.",
+        "capture_too_large" or "capture_output_budget_too_small" => "The capture exceeds its size limit. Use a lower resolution or shorter recording and try again.",
+        "capture_encoding_unsupported" or "capture_duration_unsupported" or "capture_image_format_unsupported" or "capture_audio_unsupported" => "Those capture settings are unavailable on this PC. Choose a supported option.",
         "capture_limit" => "Too many temporary captures are open. Return to the library and try again.",
         "cancelled" => "Capture cancelled. Nothing was saved.",
         "capture_library_invalid_media" or "capture_library_not_found" => "This saved capture is missing or damaged. Its original was not changed.",

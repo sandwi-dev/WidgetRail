@@ -65,8 +65,8 @@ full-trust widgets use the same service and checks.
 
 ```csharp
 // Existing RequestAsync(kind, token) keeps context resolution for compatibility.
-var ticket = await HostServices.Capture.RequestAsync(
-    WindowCaptureKind.Screenshot, CaptureImageResolution.Original, token);
+var ticket = await HostServices.Capture.RequestScreenshotAsync(
+    new ScreenshotOptions(), cancellationToken: token);
 var status = await HostServices.Capture.GetStatusAsync(ticket, token);
 // After Ready and an explicit user Save:
 var item = await HostServices.CaptureLibrary.SaveAsync(status.Attachment!, token);
@@ -89,6 +89,9 @@ permission and changing it cannot grant access. Protocol **77** is required to
 render library-origin or larger-than-context captures. Old capture request and
 constructor signatures remain available; original requests use a distinct
 `capture.request-original` operation so an older host cannot silently downgrade it.
+Configured captures additionally require protocol **79** for their output metadata;
+see [configurable capture](widget-capture-and-game-help.md#capture). Saved originals
+retain this metadata, including source pixels and recording encoder/frame counts.
 The production Capture Library widget and Game Help are working author examples.
 
 ## Storage and failure behavior

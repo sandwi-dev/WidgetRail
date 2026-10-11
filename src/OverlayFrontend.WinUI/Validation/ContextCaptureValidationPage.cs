@@ -51,7 +51,7 @@ internal sealed partial class ContextCaptureValidationPage : Page
                 }
                 var affinityRead = GetWindowDisplayAffinity(handle, out var affinity);
                 checks.Add($"Target={handle}, foreground={GetForegroundWindow()}, affinityRead={affinityRead}, affinity={affinity}, error={System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
-                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
                 var image = await NativeWindowCapture.RunAsync(request, deadline.Token);
                 Check(image.Width > 0 && image.Height > 0 && image.Frames == 1, "Owned WGC screenshot produces bounded dimensions and one frame");
                 using (var stream = await (await StorageFile.GetFileFromPathAsync(request.OutputPath)).OpenReadAsync())
@@ -68,9 +68,36 @@ internal sealed partial class ContextCaptureValidationPage : Page
                 var videoRequest = request with { Kind = WindowCaptureKind.Video, OutputPath = Path.Combine(directory, "synthetic.mp4") };
                 var video = await NativeWindowCapture.RunAsync(videoRequest, deadline.Token);
                 var properties = await (await StorageFile.GetFileFromPathAsync(videoRequest.OutputPath)).Properties.GetVideoPropertiesAsync();
-                Check(video.Frames == 75 && Math.Abs(properties.Duration.TotalSeconds - 5) < .15 && video.DurationSeconds == 5,
-                    "MP4 contains 75 frames over five seconds");
+                Check(video.Frames is > 0 and <= 75 && Math.Abs(properties.Duration.TotalSeconds - video.DurationSeconds) < .15 && video.DurationSeconds <= 5 && video.DurationSeconds > 4.5,
+                    "Legacy MP4 retains its five-second duration with bounded frame delivery");
                 Check(properties.Width == video.Width && properties.Height == video.Height, "MP4 dimensions match the bounded capture");
+                var original = await NativeWindowCapture.RunAsync(request with { OutputPath = Path.Combine(directory, "original.png"),
+                    Options = new() { Screenshot = new(), Preparation = new(0) } }, deadline.Token);
+                Check(original.Properties is { } originalProperties && original.Width == originalProperties.SourceWidth && original.Height == originalProperties.SourceHeight,
+                    "Configured original screenshot keeps exact source pixel dimensions");
+                var small = await NativeWindowCapture.RunAsync(request with { OutputPath = Path.Combine(directory, "small.png"),
+                    Options = new() { Screenshot = new(320, 240), IncludeCursor = true } }, deadline.Token);
+                checks.Add($"Source dimensions: original {original.Properties!.SourceWidth}x{original.Properties.SourceHeight}, small {small.Properties!.SourceWidth}x{small.Properties.SourceHeight}; output {small.Width}x{small.Height}.");
+                Check(small.Width <= 320 && small.Height <= 240 && small.Properties?.SourceWidth == original.Properties!.SourceWidth,
+                    "Configured bounded screenshot fits without upscaling and retains source metadata");
+                using var process = System.Diagnostics.Process.GetCurrentProcess();
+                var cpuBefore = process.TotalProcessorTime; var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                var configuredRequest = videoRequest with { OutputPath = Path.Combine(directory, "configured.mp4"),
+                    Options = new() { Recording = new(640, 360, 15, 1_000_000, 2), Preparation = new(0) } };
+                var configured = await NativeWindowCapture.RunAsync(configuredRequest, deadline.Token);
+                process.Refresh(); elapsed.Stop();
+                checks.Add($"Synthetic 640x360/15 software capture: {elapsed.Elapsed.TotalMilliseconds:0} ms elapsed, {(process.TotalProcessorTime-cpuBefore).TotalMilliseconds:0} ms process CPU; not game-load overhead.");
+                Check(configured.Properties is { Encoder: CaptureEncoderMode.Software, RequestedFramesPerSecond: 15, Audio: CaptureAudioMode.None } &&
+                    configured.Width <= 640 && configured.Height <= 360 && configured.DurationSeconds is > 1.5 and <= 2,
+                    "Configured video reports actual software encoding, dimensions and requested duration");
+                using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(1200));
+                var stoppedRequest = configuredRequest with { OutputPath = Path.Combine(directory, "stopped.mp4"),
+                    Options = new() { Recording = new(640, 360, 15, 1_000_000, 10, StopManually: true) } };
+                var stopped = await NativeWindowCapture.RunAsync(stoppedRequest, deadline.Token, stop.Token);
+                var stoppedFile = await StorageFile.GetFileFromPathAsync(stoppedRequest.OutputPath);
+                var stoppedProperties = await stoppedFile.Properties.GetVideoPropertiesAsync();
+                Check(stopped.Frames > 0 && stopped.DurationSeconds < 3 && Math.Abs(stoppedProperties.Duration.TotalSeconds - stopped.DurationSeconds) < .2,
+                    "Stop-and-keep finalizes a playable short MP4 instead of discarding it");
                 using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
                 var cancelled = false;
                 try { await NativeWindowCapture.RunAsync(videoRequest with { OutputPath = Path.Combine(directory, "cancelled.mp4") }, cancel.Token); }

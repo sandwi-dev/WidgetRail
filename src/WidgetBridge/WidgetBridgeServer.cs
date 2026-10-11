@@ -366,6 +366,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             await HandleMediaPlayerAsync(request, cancellationToken).ConfigureAwait(false);
             return;
         case BridgeMessageTypes.TakeCapture:
+        case BridgeMessageTypes.CaptureCapabilities:
         case BridgeMessageTypes.CheckCapture:
         case BridgeMessageTypes.RecordingCapture:
         case BridgeMessageTypes.CompleteCapture:

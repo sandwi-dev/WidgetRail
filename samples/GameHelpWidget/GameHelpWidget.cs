@@ -178,7 +178,11 @@ public sealed partial class GameHelpWidget : Widget
             try
             {
                 if(model.Value.Preview is { } prior) { await HostServices.Capture.DiscardAsync(prior,context.CancellationToken); model.Update(s => s with { Preview = null, Context = s.Context == prior ? null : s.Context }); }
-                ticket=await HostServices.Capture.RequestAsync(kind,context.CancellationToken);
+                ticket=await HostServices.Capture.StartAsync(new CaptureSessionRequest {
+                    Screenshot = kind == WindowCaptureKind.Screenshot ? new ScreenshotOptions(1920, 1080) : null,
+                    Recording = kind == WindowCaptureKind.Video ? new RecordingOptions(1280, 720, 15, 3_000_000, 5) : null,
+                    Preparation = new(5), MaximumBytes = CaptureLimits.MaximumContextBytes,
+                }, context.CancellationToken);
                 if(context.IsCurrent) model.Update(s=>s with {Ticket=ticket,Preview=null});
                 while(true)
                 {
@@ -187,7 +191,7 @@ public sealed partial class GameHelpWidget : Widget
                     if(result.Phase==WindowCapturePhase.Ready)
                     {complete=true;if(context.IsCurrent)model.Update(s=>s with {Capturing=false,Preview=result.Attachment,OfferContext=false,Ticket=null});break;}
                     if(result.Phase is WindowCapturePhase.Failed or WindowCapturePhase.Cancelled)
-                        throw new GameHelpException(result.ErrorCode??"capture_failed",result.Phase==WindowCapturePhase.Cancelled?"Capture cancelled.":"Capture could not finish. Bring your game to the foreground before the countdown ends and keep it there during recording, then retry.");
+                        throw new GameHelpException(result.ErrorCode??"capture_failed",result.Phase==WindowCapturePhase.Cancelled?"Capture cancelled.":"Capture could not finish. Bring your game to the foreground before the countdown ends and keep its window visible during recording, then retry.");
                 }
             }
             catch(OperationCanceledException) when(context.CancellationToken.IsCancellationRequested) { }

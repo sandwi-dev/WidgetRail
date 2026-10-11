@@ -4,6 +4,49 @@ using WidgetRail.WidgetProtocol;
 
 internal static class WindowCaptureTests
 {
+    internal static Task ConfiguredAsync()
+    {
+        using var registry = new WindowCaptureRegistry();
+        var owner = new object(); var other = new object();
+        var identity = new BrokerWidgetIdentity("example.capture", "example", "instance");
+        var options = new CaptureSessionRequest { Recording = new(MaximumDurationSeconds: 12), Preparation = new(0) };
+        Check(!registry.Capabilities.Available);
+        Reject(() => registry.EnqueueConfigured(owner, identity, options));
+        var capabilities = new CaptureCapabilities(true, [CaptureImageFormat.Png],
+            [new("software", 1280, 720, 15, 1_000_000, 6_000_000, CaptureEncoderMode.Software)], [CaptureAudioMode.None], true, 120);
+        registry.SetCapabilities(capabilities);
+        Check(capabilities.Validate(options).Supported);
+        Check(!capabilities.Validate(options with { Recording = options.Recording! with { FramesPerSecond = 60 } }).Supported);
+        Check(!capabilities.Validate(options with { Recording = options.Recording! with { Encoder = CaptureEncoderMode.Hardware } }).Supported);
+        Check(!capabilities.Validate(options with { Recording = options.Recording! with { Audio = CaptureAudioMode.System } }).Supported);
+        Check(!capabilities.Validate(options with { MaximumBytes = 1024 }).Supported);
+        var ticket = registry.EnqueueConfigured(owner, identity, options);
+        var request = registry.Take()!;
+        Check(request.Options == options);
+        Reject(() => registry.Stop(owner, ticket.RequestId)); // no recording exists yet
+        registry.Recording(ticket.RequestId);
+        Reject(() => registry.Stop(other, ticket.RequestId));
+        registry.Stop(owner, ticket.RequestId);
+        Check(registry.IsCurrent(ticket.RequestId) && registry.IsStopRequested(ticket.RequestId));
+        File.WriteAllBytes(request.OutputPath, [0, 0, 0, 20, 102, 116, 121, 112, 0, 0, 0, 0, 0, 0, 0, 0]);
+        registry.Complete(new(ticket.RequestId, 1280, 720, 2) { Properties = new(1280, 720, 15, 30, 0, CaptureEncoderMode.Software) });
+        var status = registry.Status(owner, ticket.RequestId);
+        Check(status.Phase == WindowCapturePhase.Ready && status.StopRequested && status.Attachment!.Properties!.EncodedFrames == 30);
+        registry.Stop(owner, ticket.RequestId); // lost-reply retry is harmless
+        registry.Discard(owner, status.Attachment!.Id);
+        var imageRequest = new CaptureSessionRequest { Screenshot = new(), Preparation = new(1), IncludeCursor = true };
+        var image = registry.EnqueueConfigured(owner, identity, imageRequest);
+        var imageWork = registry.Take()!;
+        File.WriteAllBytes(imageWork.OutputPath, [137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0]);
+        registry.Complete(new(image.RequestId, 640, 360, 0) { Properties = new(1280, 720) });
+        Check(registry.Status(owner, image.RequestId).Phase == WindowCapturePhase.Failed); // original silently downscaled
+        var cancel = registry.EnqueueConfigured(owner, identity, options);
+        registry.Take(); registry.Recording(cancel.RequestId); registry.Cancel(owner, cancel.RequestId);
+        Check(!registry.IsCurrent(cancel.RequestId) && registry.Status(owner, cancel.RequestId).Attachment is null);
+        PlatformCapabilities.TryGet(PlatformCapabilities.WindowCaptureV1, out var capability);
+        Check(!capability.AllowsBackgroundForOperation("capture.start") && capability.AllowsBackgroundForOperation("capture.stop"));
+        return Task.CompletedTask;
+    }
     internal static async Task ForegroundAuthorityAsync()
     {
         var folder = Path.Combine(Path.GetTempPath(), "wrail-foreground-capture-" + Guid.NewGuid().ToString("N"));

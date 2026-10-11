@@ -26,6 +26,7 @@ internal static class BridgeMessageTypes
     public const string WindowPreviewPermissions = "window-preview-permissions";
     public const string TakeCapture = "capture-take";
     public const string CheckCapture = "capture-check";
+    public const string CaptureCapabilities = "capture-capabilities";
     public const string RecordingCapture = "capture-recording";
     public const string CompleteCapture = "capture-complete";
     public const string ResolveProviderDocument = "provider-document";

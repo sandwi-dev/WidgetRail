@@ -261,7 +261,9 @@ static async Task WidgetFlow()
     var saveGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var client = new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetCaptureLibraryCapabilities.List, (_, _) => ValueTask.FromResult(page))
-        .WithResponse(WidgetCaptureCapabilities.OriginalScreenshot, new WindowCaptureTicket(id))
+        .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => {
+            Check(request.Screenshot is { MaximumWidth: null, MaximumHeight: null } && request.Recording is null, "Library did not request an original screenshot");
+            return ValueTask.FromResult(new WindowCaptureTicket(id)); })
         .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(id, WindowCapturePhase.Ready, source))
         .WithResponse(WidgetCaptureCapabilities.Discard, new WidgetCapabilityAcknowledgement(true))
         .WithHandler(WidgetCaptureLibraryCapabilities.Save, async (_, token) => { saves++; await saveGate.Task.WaitAsync(token); var item = new CaptureLibraryItem(id, source, 1); page = new([item],0,1,1000); return item; })

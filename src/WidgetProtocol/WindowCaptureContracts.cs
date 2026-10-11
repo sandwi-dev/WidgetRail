@@ -17,7 +17,11 @@ public sealed record WindowCaptureRequest(WindowCaptureKind Kind)
 }
 public sealed record WindowCaptureTicket(string RequestId);
 public sealed record WindowCaptureStatus(string RequestId, WindowCapturePhase Phase,
-    CaptureAttachment? Attachment = null, string? ErrorCode = null);
+    CaptureAttachment? Attachment = null, string? ErrorCode = null)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool StopRequested { get; init; }
+}
 /// <summary>Display metadata for the exact captured window; never a target selector.</summary>
 public sealed record CaptureApplicationContext(string ApplicationName, string WindowTitle)
 {
@@ -34,12 +38,15 @@ public sealed record CaptureAttachment(string Id, string ContentType, int Width,
     public CaptureAttachmentOrigin Origin { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CaptureApplicationContext? SourceApplication { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CaptureMediaProperties? Properties { get; init; }
     public bool IsWellFormed() => Enum.IsDefined(Origin) && (SourceApplication is null || SourceApplication.IsWellFormed()) && CaptureLimits.ValidToken(Id) && ContentType is "image/png" or "video/mp4" &&
         Width is > 0 and <= CaptureLimits.MaximumWidth && Height is > 0 and <= CaptureLimits.MaximumHeight &&
         ((long)Width * Height <= CaptureLimits.MaximumPixels) &&
         ByteLength is > 0 and <= CaptureLimits.MaximumAttachmentBytes &&
-        (ContentType != "video/mp4" || Width <= 1280 && Height <= 720 && ByteLength <= CaptureLimits.MaximumContextBytes) && double.IsFinite(DurationSeconds) &&
-        (ContentType == "image/png" ? DurationSeconds == 0 : DurationSeconds is > 0 and <= CaptureLimits.VideoSeconds + 0.25) &&
+        (Properties is null || Properties.IsWellFormed(ContentType == "video/mp4")) &&
+        (ContentType != "video/mp4" || Properties is not null || Width <= 1280 && Height <= 720 && ByteLength <= CaptureLimits.MaximumContextBytes) && double.IsFinite(DurationSeconds) &&
+        (ContentType == "image/png" ? DurationSeconds == 0 : DurationSeconds > 0 && DurationSeconds <= (Properties is null ? CaptureLimits.VideoSeconds : CaptureLimits.MaximumRecordingSeconds) + 0.25) &&
         ExpiresAtUnixMilliseconds > 0;
 }
 public sealed record CaptureAttachmentRequest(string AttachmentId);
@@ -51,6 +58,7 @@ public static class CaptureLimits
     public const int PreparationSeconds = 5;
     public const int VideoSeconds = 5;
     public const int FramesPerSecond = 15;
+    public const int MaximumRecordingSeconds = 120;
     public const int MaximumWidth = 16384;
     public const int MaximumHeight = 16384;
     public const long MaximumPixels = 33554432;

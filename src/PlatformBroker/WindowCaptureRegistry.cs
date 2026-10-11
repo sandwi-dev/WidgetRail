@@ -5,8 +5,14 @@ namespace WidgetRail.PlatformBroker;
 
 /// <summary>Trusted foreground capture request. Output path never crosses widget IPC.</summary>
 public sealed record HostWindowCapture(string RequestId, BrokerWidgetIdentity Widget,
-    WindowCaptureKind Kind, string OutputPath, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] CaptureImageResolution Resolution = CaptureImageResolution.Context);
-public sealed record HostCaptureCompletion(string RequestId, int Width, int Height, double DurationSeconds, string? ErrorCode = null, NativeWindowPreviewTarget? Target = null, CaptureApplicationContext? SourceApplication = null);
+    WindowCaptureKind Kind, string OutputPath, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] CaptureImageResolution Resolution = CaptureImageResolution.Context)
+{
+    public CaptureSessionRequest? Options { get; init; }
+}
+public sealed record HostCaptureCompletion(string RequestId, int Width, int Height, double DurationSeconds, string? ErrorCode = null, NativeWindowPreviewTarget? Target = null, CaptureApplicationContext? SourceApplication = null)
+{
+    public CaptureMediaProperties? Properties { get; init; }
+}
 public sealed record HostCaptureAttachment(CaptureAttachment Attachment, string Path, [property: JsonIgnore] string RequiredCapability = PlatformCapabilities.WindowCaptureV1);
 
 /// <summary>Single-process capability owner. Every operation remains scoped to the original broker object.</summary>
@@ -19,6 +25,7 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null) : IDispos
     private readonly Dictionary<string, Entry> entries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> pendingDeletes = new(StringComparer.Ordinal);
     private bool disposed;
+    private CaptureCapabilities capabilities = CaptureCapabilities.Unavailable;
     private ITimer? sweeper;
     private FileStream? directoryLease;
     private DateTimeOffset nextOrphanSweep;
@@ -31,8 +38,26 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null) : IDispos
         internal CaptureAttachment? Attachment;
         internal string? Error;
         internal string RequiredCapability = PlatformCapabilities.WindowCaptureV1;
+        internal bool StopRequested;
     }
-    internal WindowCaptureTicket Enqueue(object owner, BrokerWidgetIdentity widget, WindowCaptureKind kind, CaptureImageResolution resolution = CaptureImageResolution.Context)
+    internal CaptureCapabilities Capabilities { get { lock (gate) return capabilities; } }
+    internal void SetCapabilities(CaptureCapabilities value)
+    {
+        if (value is null || !value.IsWellFormed()) throw Error("invalid_capture_capabilities");
+        lock (gate) capabilities = value with { ImageFormats = value.ImageFormats.ToArray(), RecordingProfiles = value.RecordingProfiles.ToArray(), AudioModes = value.AudioModes.ToArray() };
+    }
+    internal WindowCaptureTicket EnqueueConfigured(object owner, BrokerWidgetIdentity widget, CaptureSessionRequest options)
+    {
+        lock (gate)
+        {
+            var validation = capabilities.Validate(options);
+            if (!validation.Supported) throw Error(validation.ErrorCode!);
+            return Enqueue(owner, widget, options.Recording is null ? WindowCaptureKind.Screenshot : WindowCaptureKind.Video,
+                options.Screenshot?.MaximumWidth is null && options.Recording is null ? CaptureImageResolution.Original : CaptureImageResolution.Context, options);
+        }
+    }
+    internal WindowCaptureTicket Enqueue(object owner, BrokerWidgetIdentity widget, WindowCaptureKind kind, CaptureImageResolution resolution = CaptureImageResolution.Context,
+        CaptureSessionRequest? options = null)
     {
         lock (gate)
         {
@@ -45,8 +70,8 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null) : IDispos
             if (pendingDeletes.Count + entries.Count >= CaptureLimits.MaximumTotal || entries.Values.Count(entry => ReferenceEquals(entry.Owner, owner)) >= CaptureLimits.MaximumPerWidget) throw Error("capture_limit");
             var id = Guid.NewGuid().ToString("N");
             var request = new HostWindowCapture(id, widget, kind,
-                Path.Combine(root, id + (kind == WindowCaptureKind.Screenshot ? ".png" : ".mp4")), resolution);
-            entries.Add(id, new(owner, request, clock.GetUtcNow().AddMinutes(2)));
+                Path.Combine(root, id + (kind == WindowCaptureKind.Screenshot ? ".png" : ".mp4")), resolution) { Options = options };
+            entries.Add(id, new(owner, request, clock.GetUtcNow().AddSeconds(120 + (options?.Preparation.DelaySeconds ?? 0) + (options?.Recording?.MaximumDurationSeconds ?? 0))));
             return new(id);
         }
     }
@@ -68,6 +93,18 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null) : IDispos
     internal bool IsCurrent(string requestId)
     {
         lock (gate) { Sweep(); return !disposed && entries.TryGetValue(requestId, out var entry) && entry.Phase is WindowCapturePhase.Preparing or WindowCapturePhase.Recording; }
+    }
+    internal bool IsStopRequested(string id)
+    { lock (gate) return entries.TryGetValue(id, out var entry) && entry.StopRequested; }
+    internal void Stop(object owner, string id)
+    {
+        lock (gate)
+        {
+            var entry = Owned(owner, id);
+            if (entry.Request.Options?.Recording is null || entry.Phase is not (WindowCapturePhase.Recording or WindowCapturePhase.Ready))
+                throw Error("capture_not_recording");
+            if (entry.Phase == WindowCapturePhase.Recording) entry.StopRequested = true;
+        }
     }
     internal void Recording(string requestId)
     {
@@ -95,8 +132,10 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null) : IDispos
             var attachment = new CaptureAttachment(Guid.NewGuid().ToString("N"),
                 entry.Request.Kind == WindowCaptureKind.Screenshot ? "image/png" : "video/mp4", result.Width, result.Height,
                 file.Exists ? file.Length : 0, result.DurationSeconds, expires.ToUnixTimeMilliseconds())
-                { SourceApplication = result.SourceApplication };
-            if (!attachment.IsWellFormed() || entry.Request.Resolution == CaptureImageResolution.Context && entry.Request.Kind == WindowCaptureKind.Screenshot &&
+                { SourceApplication = result.SourceApplication, Properties = entry.Request.Options is null ? null : result.Properties };
+            var options = entry.Request.Options;
+            if (!attachment.IsWellFormed() || options is not null && !MatchesOptions(options, attachment) ||
+                options is null && entry.Request.Resolution == CaptureImageResolution.Context && entry.Request.Kind == WindowCaptureKind.Screenshot &&
                 (attachment.Width > 1920 || attachment.Height > 1080 || attachment.ByteLength > CaptureLimits.MaximumContextBytes) || entries.Values.Sum(item => item.Attachment?.ByteLength ?? 0) + pendingDeletes.Values.Sum() + attachment.ByteLength > CaptureLimits.MaximumTotalBytes || !MatchesHeader(entry.Request.OutputPath, entry.Request.Kind))
             { entry.Phase = WindowCapturePhase.Failed; entry.Error = "capture_invalid_media"; Delete(entry.Request.OutputPath); return; }
             entry.Attachment = attachment; entry.Phase = WindowCapturePhase.Ready; entry.Expires = expires;
@@ -104,7 +143,27 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null) : IDispos
     }
     internal WindowCaptureStatus Status(object owner, string id)
     {
-        lock (gate) { var entry = Owned(owner, id); return new(id, entry.Phase, entry.Attachment, entry.Error); }
+        lock (gate) { var entry = Owned(owner, id); return new(id, entry.Phase, entry.Attachment, entry.Error) { StopRequested = entry.StopRequested }; }
+    }
+    private static bool MatchesOptions(CaptureSessionRequest options, CaptureAttachment attachment)
+    {
+        if (attachment.Properties is not { } actual || attachment.ByteLength > options.MaximumBytes) return false;
+        if (options.Screenshot is { } image)
+            return image.Format == CaptureImageFormat.Png && attachment.ContentType == "image/png" &&
+                ExpectedSize(image.MaximumWidth ?? actual.SourceWidth, image.MaximumHeight ?? actual.SourceHeight, false);
+        var video = options.Recording!;
+        return attachment.ContentType == "video/mp4" && actual.RequestedFramesPerSecond == video.FramesPerSecond &&
+            actual.Encoder == video.Encoder && actual.Audio == video.Audio && attachment.DurationSeconds <= video.MaximumDurationSeconds + .25 &&
+            actual.SourceWidth >= 2 && actual.SourceHeight >= 2 && ExpectedSize(video.MaximumWidth, video.MaximumHeight, true);
+
+        bool ExpectedSize(int width, int height, bool video)
+        {
+            var scale = Math.Min(1, Math.Min((double)width / actual.SourceWidth, (double)height / actual.SourceHeight));
+            var expectedWidth = Math.Max(1, (int)(actual.SourceWidth * scale));
+            var expectedHeight = Math.Max(1, (int)(actual.SourceHeight * scale));
+            if (video) { expectedWidth = Math.Max(2, expectedWidth & ~1); expectedHeight = Math.Max(2, expectedHeight & ~1); }
+            return attachment.Width == expectedWidth && attachment.Height == expectedHeight;
+        }
     }
     internal void Cancel(object owner, string id)
     {

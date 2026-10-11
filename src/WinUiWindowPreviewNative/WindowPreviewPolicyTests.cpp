@@ -1,4 +1,13 @@
 #include "CaptureGeometry.h"
+#include "WindowContextCapture.h"
+static_assert(ConfiguredCaptureSize(7680,4320,0,0,false).width==7680);
+static_assert(ConfiguredCaptureSize(3841,2161,1920,1080,false).width==1919);
+static_assert(ConfiguredCaptureSize(1920,1080,1280,720,true).width==1280);
+static_assert(ConfiguredCaptureSize(1920,1080,1280,720,true).height==720);
+static_assert(ConfiguredCaptureSize(640,360,1280,720,true).width==640);
+static_assert(ConfiguredCaptureSize(16384,16384,0,0,false).width==0);
+static_assert(ConfiguredCaptureSize(3840,2160,0,720,false).width==0);
+static_assert(ConfiguredCaptureSize(1,1,1280,720,true).width==0);
 static_assert(CaptureSize(3840, 2160, 3).width == 3840 && CaptureSize(3840, 2160, 3).height == 2160);
 static_assert(CaptureSize(1919, 1079, 3).width == 1919 && CaptureSize(1919, 1079, 3).height == 1079);
 static_assert(CaptureSize(7680, 4320, 3).width == 7680);

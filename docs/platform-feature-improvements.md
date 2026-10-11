@@ -60,9 +60,10 @@ review/save/upload. Permissions stay declared and host-authorized.
 
 ## Next concrete action
 
-Begin configurable capture contracts and host pipeline. Performance/graph source
-and automated/native validation are complete; final assembled-candidate visual and
-physical acceptance remain pending alongside the other goal sections.
+Implement hardware video encoding and qualify higher-quality profiles before
+advertising them. Add Capture Library capability-backed settings and thumbnails,
+then marketplace/permission work. Final assembled-candidate visual/physical
+acceptance remains pending alongside these goal sections.
 
 ### Performance and graphs implementation checkpoint
 
@@ -144,3 +145,63 @@ All new controller layouts, real-game overhead, FPS behavior across games,
 recording/audio synchronization, HDR, and actual installer recovery remain physical
 checks until explicitly exercised. Existing automated evidence is not acceptance
 of these new changes. No scope item is complete solely because it is planned.
+
+## Configurable capture checkpoint
+
+- Added screenshot/recording/preparation options, capability discovery and exact
+  combination validation, start/stop operations, actual output metadata, and
+  streaming temporary-media reads. Configured metadata requires protocol 79;
+  legacy operations/constructors and attachment bounds remain unchanged.
+- Broker rechecks advertised support at admission, scopes stop to the requester,
+  distinguishes stop-and-retain from cancellation, extends request leases for
+  preparation/duration, and verifies exact expected output dimensions/encoder.
+  No window selection or activation APIs were added.
+- Frontend publishes capabilities on connection and periodically, uses dynamic
+  confirmation/countdown text, and reopening finishes configured recordings.
+  During preparation it cancels. Source identity stays fixed after capture starts.
+- Native v2 ABI accepts dimensions, frame rate, bitrate, duration, cursor and byte
+  limits. Writer backpressure replaces the unbounded-queue setting; missed slots
+  are reported. Current advertised video envelope remains software 720p/15fps.
+  Hardware and audio are NOT implemented/advertised yet and remain required work
+  subject to the goal's qualification/defer rule.
+- Unified native source-size limits with original-image geometry. Real native
+  tests found inconsistent WGC source size across thread-pool DPI contexts
+  (802x491 versus 1444x884 for the same fixture). A scoped native PMv2 DPI context
+  fixes this: original and bounded captures now both report 802x491 physical
+  source pixels. This was verified using actual WGC, not just geometry helpers.
+- Native build `artifacts/platform-improvements/capture-native-02` passes 16 new/
+  retained geometry assertions, 15 policy checks, 2021 diagnostic checks. Includes
+  the synthetic capture fixture; use a non-fixture native build for final shipping.
+- Native scenario `capture-native-test-02/result.json` passed: known PNG pixels,
+  legacy clip duration, original/bounded configured images, two-second configured
+  recording, stop-and-keep MP4, cancellation/reuse, and existing native player
+  playback/focus/scrubbing/expanded-view/retirement checks. Fixture/frontend closed
+  normally (PIDs 67044/94348); no overlay remains running.
+- Synthetic 640x360/15 software capture: 2115 ms wall time, 109 ms process CPU.
+  This is NOT real-game overhead or proof of higher-quality encoding support.
+- Game Help migrated to explicit lightweight options: 1920x1080 PNG or five-second
+  1280x720/15 clip, five-second delay, 8 MiB. Preview/edit/Send preserved; 44/44 tests
+  (`capture-gamehelp-tests-01.log`). Capture Library also uses configured original
+  screenshots/default clips; settings/grid work remains. Library tests 17/17
+  (`capture-library-api-tests-01.log`).
+- Initial core checks: broker capture 4/4 (`capture-broker-tests-01.log`), SDK 155/155
+  (`capture-sdk-tests-01.log`), Bridge Release and frontend Debug build clean.
+- Final broker suite 71/71 (`capture-broker-final-02.log`); configured output is
+  checked against the exact aspect-preserving expected dimensions, not merely
+  an upper bound. API compatibility 17/17 (`capture-api-compatibility-tests-01.log`),
+  reviewed additive SDK baseline now 3615 symbols. Normal Release frontend builds
+  cleanly (`capture-frontend-release-01.log`); no candidate launch/publication yet.
+- Source review: native ABI sizes/callback lifetime, per-thread DPI restoration,
+  strict option/metadata validation, explicit native encoding modes, byte-budget
+  enforcement, owner-scoped stop/revoke, bounded streaming, and retrying capability
+  publication after connection failures. No paid provider request or personal
+  screen capture was used; all native image/video evidence is the synthetic fixture.
+- Capability discovery currently seeds the locally verified software baseline
+  after WGC support detection. Next phase must probe installed encoders and exact
+  configurations, including software availability, instead of assuming every PC
+  has the same Media Foundation codecs. Hardware/audio remain unadvertised.
+- Next thumbnail design: expose a bounded host-generated library thumbnail via
+  library-read authority, and reuse existing `OnResolveArtworkAsync` + `UI.Artwork`
+  for lazy image tiles. Avoid loading full originals into widgets or putting
+  encoded images into snapshots. Reuse/extend WindowsCaptureImageCodec for generic
+  image renditions. Private preferences should use HostServices.PrivateState.

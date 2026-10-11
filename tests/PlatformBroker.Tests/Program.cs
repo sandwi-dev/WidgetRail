@@ -10,6 +10,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Provider attribution markup is bounded owner-scoped and retired", ProviderDocumentTests.RunAsync),
     ("Window capture application metadata matches exact window identity", WindowCaptureTests.MetadataAsync),
     ("Window capture ownership bounds expiry and attachment cleanup", WindowCaptureTests.RunAsync),
+    ("Window capture configurations are explicit and stop retains while cancel discards", WindowCaptureTests.ConfiguredAsync),
     ("Window capture foreground selection needs capture permission but no window list", WindowCaptureTests.ForegroundAuthorityAsync),
     ("Display restore pipe deadlines and rollback events reach the client", DisplayRestorePipeTests.RunAsync),
     ("Task windows are permission gated and tokens stay broker scoped", TaskWindowBroker),
