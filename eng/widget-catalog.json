@@ -27,6 +27,14 @@
   ],
   "bundledWidgets": [
     {
+      "id": "performance-monitor",
+      "packageId": "widgetrail.firstparty.performance-monitor",
+      "instanceId": "performance-monitor.default",
+      "packageRoot": "runtime/PerformanceMonitor",
+      "icon": "settings",
+      "quickActions": []
+    },
+    {
       "id": "display-profiles",
       "packageId": "widgetrail.firstparty.display-profiles",
       "instanceId": "display-profiles.default",

@@ -40,4 +40,6 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Games & Apps](games-and-apps.md), [Task Switcher](task-switcher.md), and [Power](power-widget.md)
 - [Network Controls](network-controls.md) and [tray status](tray-status.md)
 - [Display Profiles](display-profiles.md)
+- [Performance Monitor and shared metrics](performance-monitor.md)
+- [Settings support reports](support-reports.md)
 - [Playnite](playnite-library.md) and [Spotify](spotify-integration.md)

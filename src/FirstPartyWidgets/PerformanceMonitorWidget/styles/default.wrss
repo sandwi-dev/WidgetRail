@@ -1,0 +1,7 @@
+.performance-widget { padding: 16px; gap: 12px; background: var(--surface); color: var(--text); }
+.performance-title { font-size: 24px; font-weight: 600; }
+.performance-subtitle { font-size: 15px; font-weight: 600; max-lines: 2; text-overflow: ellipsis; }
+.performance-value { font-size: 28px; font-weight: 600; }
+.performance-metric { padding: 12px; gap: 6px; corner-radius: 10px; background: var(--surface-raised); }
+.performance-help { font-size: 13px; color: var(--text-muted); }
+.performance-pin { padding: 12px; gap: 8px; }

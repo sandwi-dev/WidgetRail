@@ -93,20 +93,22 @@ internal static class Program
             await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
             await using var communityBackend = new WindowsCommunityPlatformBackend(
                 Path.Combine(settingsPaths.RootDirectory, "widget-state"));
+            var applicationBackend = new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(installedCatalogRoot);
             await using var platformBackend = new CompositePlatformBrokerBackend(
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend(),
                 new WindowsActivityPlatformBackend(),
                 new WindowsBluetoothPlatformBackend(pairingDiagnostic: mediaDiagnostics.RecordBluetoothPairing),
                 new WindowsMediaPlatformBackend(),
-                new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
-                    installedCatalogRoot),
+                applicationBackend,
                 communityBackend,
                 communityBackend,
                 communityBackend,
                 power: new WidgetRail.WindowsPowerProvider.WindowsPowerPlatformBackend(),
                 displays: new WidgetRail.WindowsDisplayProvider.WindowsDisplayProfilesBackend(
-                    settingsPaths.RootDirectory, Path.Combine(AppContext.BaseDirectory, "WidgetBridge.exe")));
+                    settingsPaths.RootDirectory, Path.Combine(AppContext.BaseDirectory, "WidgetBridge.exe")),
+                performance: new WidgetRail.WindowsPerformanceProvider.WindowsPerformanceBackend(applicationBackend,
+                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Performance", "PerformanceCollector.exe"))));
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget,

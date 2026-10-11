@@ -15,9 +15,11 @@
   "hostRuntimeDirectories": [
     "Bridge",
     "WidgetWorkerHost",
-    "Settings"
+    "Settings",
+    "Performance"
   ],
   "productionWidgets": [
+    "performance-monitor",
     "media-sessions",
     "games-apps",
     "task-switcher",

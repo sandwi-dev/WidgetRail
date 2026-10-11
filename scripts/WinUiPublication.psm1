@@ -87,6 +87,11 @@ foreach($runtimeFile in @('Microsoft.ui.xaml.dll','Microsoft.WindowsAppRuntime.d
 foreach($entry in @(@('WidgetBridge','Bridge'),@('WidgetWorkerHost','WidgetWorkerHost'))){
     Publish "src/$($entry[0])/$($entry[0]).csproj" (Join-Path $build "runtime/$($entry[1])") $entry[1]
 }
+$performance=Join-Path $build 'runtime/Performance'
+Publish 'src/PerformanceCollector/PerformanceCollector.csproj' $performance 'performance-collector'
+$presentMon=& (Join-Path $PSScriptRoot 'Get-PresentMon.ps1') -Destination (Join-Path $repository 'artifacts/tools/presentmon-2.6.0/PresentMon.exe')
+Copy-Item -LiteralPath $presentMon -Destination (Join-Path $performance 'PresentMon.exe')
+Copy-Item -LiteralPath (Join-Path $repository 'third_party/PresentMon/LICENSE.txt') -Destination (Join-Path $performance 'PresentMon-LICENSE.txt')
 Publish 'tools/BundledWidgetPackageSeal/BundledWidgetPackageSeal.csproj' (Join-Path $output 'seal') 'seal'
 Publish 'tools/ReleaseVerifier/ReleaseVerifier.csproj' (Join-Path $output 'verify') 'verify'
 & (Join-Path $output 'verify/ReleaseVerifier.exe') --frontend $frontend *> (Join-Path $logs 'frontend-cleanup-verification.txt')

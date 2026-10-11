@@ -24,6 +24,16 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         new(StringComparer.Ordinal);
 
     public IReadOnlyList<TaskWindowSummary> TaskWindows { get; set; } = [];
+    public PerformanceSnapshot Performance { get; set; } = new(DateTimeOffset.UtcNow, 12, 30,
+        4L << 30, 16L << 30, 2L << 30, null, "not-enabled", null, []);
+    public string? PerformanceTargetRequested { get; private set; }
+    public int PerformanceEnableRequests { get; private set; }
+    public Task<PerformanceSnapshot> GetPerformanceAsync(string? targetId, CancellationToken token)
+    { token.ThrowIfCancellationRequested(); PerformanceTargetRequested = targetId; return Task.FromResult(Performance); }
+    public Task<PerformanceEnableResult> EnableFpsAsync(CancellationToken token)
+    { token.ThrowIfCancellationRequested(); PerformanceEnableRequests++; return Task.FromResult(new PerformanceEnableResult("enabling")); }
+    public Task<PerformanceEnableResult> DisableFpsAsync(CancellationToken token)
+    { token.ThrowIfCancellationRequested(); return Task.FromResult(new PerformanceEnableResult("not-enabled")); }
     public Func<string, CancellationToken, Task>? TaskWindowSwitch { get; set; }
     public Func<string, CancellationToken, Task>? TaskWindowClose { get; set; }
     public Task<IReadOnlyList<TaskWindowSummary>> GetTaskWindowsAsync(CancellationToken cancellationToken)

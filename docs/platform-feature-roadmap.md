@@ -40,7 +40,7 @@ Keep the full objective active until all five are ready for physical testing.
   export privacy/contents, cancellation/failure, and Settings focus/actions.
 - Physical: controller navigation, expanded details, busy state and exported file.
 
-## 2. Performance Monitor — pending
+## 2. Performance Monitor — implemented; candidate ready for physical checks
 
 - Reusable host sampling plus a pinnable production widget.
 - FPS required; frame-time graph optional. Investigate PresentMon/ETW collection
@@ -50,6 +50,62 @@ Keep the full objective active until all five are ready for physical testing.
   lifetime, no hidden unbounded polling. Compact pin and richer main view.
 - Evidence: metric correctness, process changes, overhead, unsupported adapters,
   no game, and required manual compatibility matrix.
+- FPS probe: official Intel PresentMon v2.6.0 console binary (980,320 bytes),
+  MIT license, valid Intel Authenticode signature, GitHub SHA256
+  `b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af`.
+  Docs: https://github.com/GameTechDev/PresentMon/blob/main/README.md and
+  https://github.com/GameTechDev/PresentMon/blob/main/README-ConsoleApplication.md.
+  Release: https://github.com/GameTechDev/PresentMon/releases/tag/v2.6.0.
+- Read-only account check: current process is unelevated and token is not in
+  Performance Log Users. Actual two-second self-PID probe using a unique trace
+  session and no input/GPU tracking returned access denied immediately. Evidence:
+  `artifacts/performance/nonadmin-probe.log`, `nonadmin-probe-result.json`.
+  No trace was started, elevation requested, group membership changed or service
+  installed. Downloaded signed binary and reference docs are under the same
+  ignored artifact directory, not yet distribution content.
+- Design constraint: FPS needs explicit Windows-permission enablement, without
+  elevating the main overlay or silently changing the user's groups. Investigate
+  a narrowly scoped collector helper with explicit user consent and bounded
+  lifetime/IPC, or an existing compatible PresentMon service. Required FPS must
+  remain in scope; permission failure is a status, never a fabricated zero FPS.
+- Implemented so far: native shared on-demand CPU/GPU/RAM/VRAM sampler; bounded
+  PresentMon CSV accumulator and private authenticated collector; explicit UAC
+  enable/stop with the main overlay unelevated; broker-scoped target IDs and
+  separate read/control permissions; typed SDK service; production widget with
+  automatic/corrected selection and compact pin; publication dependency lock and
+  license. Existing bundled .NET is reused for elevated helper launch, avoiding
+  a second runtime copy (Windows may label this UAC prompt Microsoft .NET Host).
+- Focused checks: core 7/7; widget/SDK/broker feature tests 7/7 (including stale-read
+  protection across FPS enablement). Real helper probe
+  verifies PID/nonce authentication, idle without demand, permission-required
+  without fabricated FPS, and exit when owner disconnects. Evidence:
+  `artifacts/performance/helper-probe-01.log`. No elevation requested.
+- Native metrics probe measured all four system metrics. Warm sampling used
+  31.25 ms CPU over 10.58 seconds (~0.30% of one core), with a ~36.9 MB total test
+  process working set. This includes the test harness; it is not incremental
+  production memory or FPS overhead. Evidence: `system-probe-02.json`.
+- Broader broker suite initially exposed two expected closed-vocabulary counts
+  (42→44 capabilities, 10→11 domains). Updated those assertions and added explicit
+  performance read/control checks. Rerun passed 70/70. SDK API baseline regenerated;
+  compatibility checks passed 17/17; SDK suite 153/153; Settings 84/84. Feature tests initially used incorrect test-helper
+  API names; fixed, then built and passed.
+- Packaging self-test passed after explicitly adding the new production widget
+  and helper/license to its expected edition inventories. Complete candidate:
+  `artifacts/performance/candidate-01/build/frontend/OverlayFrontend.WinUI.exe`.
+  Published cleanup verified; published helper's real nonadmin authentication,
+  permission failure and disconnect-exit probe passed (`published-helper-probe.log`).
+  PresentMon file hash matches the locked release. No collector remained running.
+- Review covered stale periodic replies after control actions, neutral/unknown
+  readings, no UAC from reads, runtime reuse under ShellExecute elevation,
+  bounded protocol/history, no private trace persistence, retained verified
+  executable file handle, and cleanup of only owned ETW sessions even after a
+  collector crash. No elevation, service install or account-group changes made.
+- Physical checks pending: approve/cancel Windows prompt; measure FPS for actual
+  DirectX/Vulkan/OpenGL games, multi-swap-chain and frame-generation behavior;
+  compare overhead under game load; choose another app and close it; pin, hide,
+  unpin and verify collection stops; inspect themes/scaling/controller navigation.
+  Frame-time graphs are optional and omitted. Actual privileged FPS remains a
+  physical check; this has not been tested across games yet.
 
 ## 3. Widget marketplace and updates — pending
 
@@ -115,3 +171,10 @@ Keep the full objective active until all five are ready for physical testing.
 - Next: Performance Monitor feasibility and implementation. Investigate an actual
   FPS collector (PresentMon/ETW, permission/deployment implications), then shared
   metrics contracts and pinnable widget. Do not settle for usage-only monitoring.
+- Diagnostics local commit: `c43fc5b6`. Latest completed Performance builds,
+  tests and probes are under `artifacts/performance`. No running build/test
+  sessions remain. Next: marketplace implementation. Reuse/extract the CLI's
+  `RemotePackageDownload.cs`, `GitHubReleases.cs`, and recorded package-source
+  update review. Existing widget install/version-selection/permissions remain
+  the mutation authority. Downloads must be bounded cancellable jobs rather
+  than blocking the private Settings pipe's short request deadline.

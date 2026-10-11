@@ -432,6 +432,8 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.ProviderDocumentsV1 => "Display restricted HTML documents",
         PlatformCapabilities.WindowCaptureV1 => "Capture an application window",
         PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
+        PlatformCapabilities.PerformanceReadV1 => "Read system usage, game frame rates and open window titles",
+        PlatformCapabilities.PerformanceFpsControlV1 => "Request Windows approval to enable FPS collection",
         PlatformCapabilities.PowerReadV1 => "Check available PC power options",
         PlatformCapabilities.DisplaysReadV1 => "See display setups and saved profiles",
         PlatformCapabilities.DisplaysControlV1 => "Save and restore display profiles",
@@ -521,6 +523,10 @@ internal static class SettingsPermissionPresentation
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
         PlatformCapabilities.TaskWindowsPreviewV1 =>
             "Display window contents inside the overlay. Previews are view-only.",
+        PlatformCapabilities.PerformanceReadV1 =>
+            "Reads CPU/GPU usage, memory usage, frame rates and open application names for performance monitoring. It does not capture screen content.",
+        PlatformCapabilities.PerformanceFpsControlV1 =>
+            "Allows an explicit Enable FPS action to request Windows approval for a dedicated frame-rate collector. WidgetRail itself remains unelevated.",
         PlatformCapabilities.PowerReadV1 =>
             "Check whether this PC supports shutdown, restart and sleep.",
         PlatformCapabilities.DisplaysReadV1 =>

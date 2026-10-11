@@ -53,6 +53,11 @@ public sealed record BrokerCapabilityDefinition(
 /// <summary>Closed public capability vocabulary. Version is part of every ID.</summary>
 public static class PlatformCapabilities
 {
+    public const string PerformanceReadV1 = "system.performance.read.v1";
+    public const string PerformanceFpsControlV1 = "system.performance.fps.control.v1";
+    public const string PerformanceGet = "performance.get";
+    public const string PerformanceEnableFps = "performance.fps.enable";
+    public const string PerformanceDisableFps = "performance.fps.disable";
     public const string DisplaysReadV1 = "system.displays.read.v1";
     public const string DisplaysControlV1 = "system.displays.control.v1";
     public const string DisplayProfilesGet = "display-profiles.get";
@@ -263,6 +268,8 @@ public static class PlatformCapabilities
                 ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead), AllowsBackground: true,
                 BackgroundOperations: Set(WindowCaptureStatus, WindowCaptureRead, WindowCaptureCancel, WindowCaptureDiscard)),
             [TaskWindowsPreviewV1] = new(TaskWindowsPreviewV1, 1, BrokerCapabilityKind.Read, Set(), Set()),
+            [PerformanceReadV1] = new(PerformanceReadV1, 1, BrokerCapabilityKind.Read, Set(PerformanceGet), Set()),
+            [PerformanceFpsControlV1] = new(PerformanceFpsControlV1, 1, BrokerCapabilityKind.Control, Set(PerformanceEnableFps, PerformanceDisableFps), Set(), AllowsDashboardGesture: false),
             [TaskWindowsReadV1] = new(TaskWindowsReadV1, 1, BrokerCapabilityKind.Read,
                 Set(TaskWindowsList), Set()),
             [TaskWindowsSwitchV1] = new(TaskWindowsSwitchV1, 1, BrokerCapabilityKind.Control,

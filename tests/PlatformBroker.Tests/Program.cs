@@ -137,13 +137,14 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(10, rootFields.Count(field =>
+    Assert.Equal(11, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
     [
         typeof(DisplayProfilesCapabilityDomain),
         typeof(PowerCapabilityDomain),
+        typeof(PerformanceCapabilityDomain),
         typeof(AudioCapabilityDomain),
         typeof(NetworkCapabilityDomain),
         typeof(AppLibraryCapabilityDomain),
@@ -441,7 +442,12 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(42, PlatformCapabilities.All.Count);
+    Assert.Equal(44, PlatformCapabilities.All.Count);
+    Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceReadV1, out var performanceRead));
+    Assert.Equal(BrokerCapabilityKind.Read, performanceRead.KindForOperation(PlatformCapabilities.PerformanceGet));
+    Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceFpsControlV1, out var performanceControl));
+    Assert.Equal(BrokerCapabilityKind.Control, performanceControl.KindForOperation(PlatformCapabilities.PerformanceEnableFps));
+    Assert.True(!performanceControl.AllowsDashboardGesture);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));

@@ -15,12 +15,15 @@ internal enum BrokerCapabilityDomain
     PrivateState,
     WindowCapture,
     ProviderDocuments,
+    Performance,
 }
 
 internal static class BrokerCapabilityDomains
 {
     internal static BrokerCapabilityDomain Resolve(string capabilityId)
     {
+        if (capabilityId is PlatformCapabilities.PerformanceReadV1 or PlatformCapabilities.PerformanceFpsControlV1)
+            return BrokerCapabilityDomain.Performance;
         if (capabilityId == PlatformCapabilities.ProviderDocumentsV1) return BrokerCapabilityDomain.ProviderDocuments;
         if (capabilityId == PlatformCapabilities.WindowCaptureV1) return BrokerCapabilityDomain.WindowCapture;
         if (capabilityId is PlatformCapabilities.DisplaysReadV1 or PlatformCapabilities.DisplaysControlV1)

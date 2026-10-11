@@ -15,6 +15,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     private readonly IPrivateStatePlatformBrokerBackend _privateState;
     private readonly IPowerPlatformBrokerBackend? _power;
     private readonly IDisplayProfilesPlatformBackend? _displays;
+    private readonly IPerformancePlatformBackend? _performance;
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
@@ -28,9 +29,11 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         ILoopbackHttpPlatformBrokerBackend? loopbackHttp = null,
         IPrivateStatePlatformBrokerBackend? privateState = null,
         IPowerPlatformBrokerBackend? power = null,
-        IDisplayProfilesPlatformBackend? displays = null)
+        IDisplayProfilesPlatformBackend? displays = null,
+        IPerformancePlatformBackend? performance = null)
     {
         _displays = displays;
+        _performance = performance;
         if (_displays is not null) _displays.EventPublished += ForwardDisplayEvent;
         _power = power;
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
@@ -51,6 +54,14 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
 
     public Task<IReadOnlyList<TaskWindowSummary>> GetTaskWindowsAsync(CancellationToken cancellationToken) =>
         _appLibrary.GetTaskWindowsAsync(cancellationToken);
+
+    public Task<PerformanceSnapshot> GetPerformanceAsync(string? targetId, CancellationToken token) =>
+        _performance?.GetPerformanceAsync(targetId, token) ?? Task.FromException<PerformanceSnapshot>(
+            new BrokerException("performance_unavailable", "Performance monitoring is unavailable."));
+    public Task<PerformanceEnableResult> EnableFpsAsync(CancellationToken token) =>
+        _performance?.EnableFpsAsync(token) ?? Task.FromResult(new PerformanceEnableResult("unavailable"));
+    public Task<PerformanceEnableResult> DisableFpsAsync(CancellationToken token) =>
+        _performance?.DisableFpsAsync(token) ?? Task.FromResult(new PerformanceEnableResult("unavailable"));
     public Task SwitchTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
         _appLibrary.SwitchTaskWindowAsync(windowId, cancellationToken);
     public Task CloseTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
@@ -329,6 +340,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (_performance is IAsyncDisposable performance) await performance.DisposeAsync().ConfigureAwait(false);
         if (_displays is not null) _displays.EventPublished -= ForwardDisplayEvent;
         if (_displays is IAsyncDisposable displays) await displays.DisposeAsync().ConfigureAwait(false);
         _audio.EventPublished -= ForwardAudioEvent;

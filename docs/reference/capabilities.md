@@ -25,6 +25,7 @@ messages, choose pipe identities, or call native APIs as a workaround for denial
 | Audio devices, volume, microphone, spatial sound | [Audio capabilities](audio-capabilities.md) |
 | Network and Bluetooth | [Network capabilities](network-capabilities.md) |
 | Apps, windows, media sessions, and power | [Application capabilities](application-capabilities.md) |
+| System usage, game FPS, and explicit FPS enablement | [Performance monitoring](performance-monitor.md) |
 | Exact-port localhost JSON and write-only secrets | [Companion services](community-companion-services.md) |
 | Host-granted saved widget state | [Private state](private-widget-state.md) |
 

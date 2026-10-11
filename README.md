@@ -91,6 +91,7 @@ Both installer editions include the following widgets:
 | **Network Controls** | Toggle Wi-Fi and Bluetooth radios and view connection details. Connect or disconnect Wi-Fi, manage saved networks and automatic connection, and scan, pair, or remove Bluetooth devices. |
 | **Display Profiles** | Save the current monitor setup and restore it later. Confirm with Keep changes or let the previous setup restore automatically. |
 | **Power** | Sleep, restart, or shut down Windows. |
+| **Performance Monitor** | Pin FPS and system CPU/GPU/RAM/VRAM readings. FPS requires explicit Windows approval for a separate collector. |
 | **[Browser](docs/reference/widget-web-browser.md)** | Browse with a controller pointer, drag, zoom and text entry; open URLs or Google searches, use bookmarks/history and pin the page. |
 | **[Game Help](docs/reference/widget-capture-and-game-help.md)** | Ask Gemini about a game, attach a screenshot or five-second silent clip, expand detailed solutions and open suggested links. Requires the user's Gemini API key. |
 | **Settings** | Configure layout, appearance, accessibility, controllers, widgets, permissions, and diagnostics. |
