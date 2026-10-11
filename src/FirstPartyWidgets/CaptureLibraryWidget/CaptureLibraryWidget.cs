@@ -200,7 +200,11 @@ public sealed partial class CaptureLibraryWidget : Widget
             items.Add(UI.Text("Return to your application. Reopen WidgetRail after the capture to review it.", "capture-library.wait").Classes("capture-help"));
             items.Add(UI.Button("Cancel capture", "capture-library.cancel", "capture-library.cancel"));
         }
-        if (state.Message is { } message) items.Add(UI.Text(message, "capture-library.status").Classes("capture-help"));
+        if (state.Message is { } message)
+        {
+            items.Add(UI.Text(message, "capture-library.status").Classes("capture-help"));
+            if (message == Explain("permission_denied")) items.Add(PermissionsButton());
+        }
         var root = UI.VerticalScroll("capture-library.page", items.ToArray()).InputScope("capture-library.page").Classes("capture-library");
         if (state.Preview is not null || state.Detail) root = root.Shortcut(ControllerButton.B, "capture-library.back", label: "Library");
         else if (!state.Busy) root = root.Shortcut(ControllerButton.Y, "capture-library.photo", label: "Screenshot").Shortcut(ControllerButton.X, "capture-library.video", label: "Record clip");

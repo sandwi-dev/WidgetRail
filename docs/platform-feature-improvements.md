@@ -60,7 +60,8 @@ review/save/upload. Permissions stay declared and host-authorized.
 
 ## Next concrete action
 
-Implement shared permission requests/Settings intents and marketplace extraction.
+Implement shared permission requests (Settings navigation intents are done), then
+marketplace extraction.
 Hardware silent recording is qualified; audio remains outstanding. Final complete
 candidate assembly and visual/physical acceptance remain pending.
 
@@ -271,3 +272,47 @@ of these new changes. No scope item is complete solely because it is planned.
   commit state only after the host acknowledges; B remains usable while probing.
   Preferences use compare-and-swap revisions and corrupt settings require explicit
   reset. Gallery can still list saved captures if preference loading fails.
+
+## Settings navigation intents checkpoint
+
+- Added standard `widgetrail.settings.widget.open` and
+  `widgetrail.settings.permissions.open`, each with bounded packageId payload.
+  Settings waits for cold initialization, serializes with its existing operation
+  gate, reloads current catalog/permission projections, and selects the exact
+  installed/bundled package. Missing packages and mismatched schemas reject.
+- Navigation never writes consent or enables/installs a widget. Both mappings
+  require ordinary active delivery; there is no custom B-return stack.
+- Capture Library provides an Open permissions action on permission failures,
+  declared in its manifest and routed through the existing intent system.
+- Settings 87/87 (`settings-intents-tests-02.log`), including cold delivery,
+  transitions between distinct packages, built-in details, nonexistent target,
+  schema mismatch, normal B navigation, and unchanged consent.
+- Intent routing 23/23 (`settings-intents-routing-tests-01.log`); Library 20/20
+  (`settings-intents-library-tests-01.log`) includes the permission-failure link
+  with a valid scoped intent snapshot. No renderer/foreground-routing changes.
+- Next is an explicit SDK permission-request service: host-granted channel,
+  requester-bound declarations/lifecycle, bounded pending requests, native host
+  dialog and clear results, then first-party continuation after approval. Reads
+  must never prompt. Marketplace extraction and audio remain separate remaining
+  work. Final candidate native layout checks/launch are still outstanding.
+
+### Permission service implementation notes
+
+- Use an intrinsic host-granted service like private state; requesting a permission
+  cannot itself require that permission. BrokerWidgetProcessCompanion currently
+  grants only PrivateStateV1 to every worker channel. Both full-trust and sandbox
+  channels use this companion.
+- Separate read-only status from explicit request. Scope all IDs to the requesting
+  broker's declared ordinary capabilities. Full-trust approval, UAC and drivers
+  are outside this service. Background/visible-only widgets cannot prompt.
+- Model bounded requester-owned pending requests, cancellation/expiry and worker
+  retirement. Avoid holding the worker input gate while waiting for a native dialog;
+  follow the capture ticket/status pattern if needed rather than a long RPC.
+- Frontend already has ShowHostChoiceAsync with native controller handling, themed
+  popup and focus restoration. Revalidate active visible foreground requester and
+  catalog identity before display and consent persistence. Host must own names and
+  capability descriptions, not accept them from the worker.
+- Return granted/denied/cancelled/unavailable; do not catch a denied read and prompt
+  automatically. First-party explicit actions can request and resume their action
+  after approval. Implement tests for lifecycle, foreign/undeclared IDs, expiration,
+  cancellation/retirement, duplicate/prompt bounds, and grant before continuation.

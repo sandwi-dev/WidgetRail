@@ -28,6 +28,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("SDK generic capture reads route saved references through library permission", SdkRouting),
     ("Capture settings persist, retain unsupported quality, and reject oversized clips before capture", SettingsFlow),
     ("High-entropy thumbnails stream within broker bounds and honor library-read revocation", ThumbnailTransport),
+    ("Missing library permission offers a scoped Settings intent without prompting", PermissionLink),
 };
 var failures = 0;
 foreach (var test in tests) try { await test.Run(); Console.WriteLine("PASS " + test.Name); } catch (Exception error) { failures++; Console.WriteLine("FAIL " + test.Name + ": " + error); }
@@ -383,6 +384,29 @@ static async Task SettingsFlow()
             "Restart overwrote unsupported persisted settings");
         var json = savedState.Json!;
         Check(json.Contains("12000000") && json.Contains("120"), "Recording settings did not persist");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+static async Task PermissionLink()
+{
+    var client = new WidgetTestHostServicesBuilder().WithHandler(WidgetCaptureLibraryCapabilities.List,
+        (_, _) => throw new WidgetCapabilityException("permission_denied", "Denied")).Build();
+    var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
+    IEnumerable<ViewNode> Walk(ViewNode n) => new[] { n }.Concat(n.Children.SelectMany(Walk));
+    try
+    {
+        await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        ViewSnapshot view;
+        while (true)
+        {
+            view = widget.RenderSnapshot("permissions",1);
+            if (Walk(view.Root).Any(n => n.Id == "capture-library.permissions")) break;
+            await Task.Delay(10, timeout.Token);
+        }
+        var intent = Walk(view.Root).Single(n => n.Id == "capture-library.permissions").Intent!;
+        Check(intent.ContractId == WidgetIntentContracts.OpenWidgetPermissions && intent.Payload.GetProperty("packageId").GetString() == "widgetrail.firstparty.capture-library");
+        Check(intent.Presentation == WidgetIntentPresentation.OpenWidget && ViewSnapshotValidator.Validate(view).Count == 0);
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }

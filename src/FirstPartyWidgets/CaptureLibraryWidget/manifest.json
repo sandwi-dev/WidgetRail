@@ -6,6 +6,11 @@
   "iconAssets": { "captures.mark": { "path": "assets/icons/captures.svg" } },
   "permissions": ["system.apps.windows.capture.v1", "media.capture-library.read.v1", "media.capture-library.save.v1"],
   "optionalPermissions": ["media.capture-library.manage.v1"],
+  "intents": { "requests": [
+    { "id": "widgetrail.settings.permissions.open", "version": 1,
+      "payloadSchema": { "type": "object", "additionalProperties": false,
+        "properties": { "packageId": { "type": "string", "minLength": 3, "maxLength": 128 } }, "required": ["packageId"] } }
+  ] },
   "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 120 },
   "resourceRequest": { "memoryMb": 48, "updateHz": 2 }, "architectures": ["x64"]
 }

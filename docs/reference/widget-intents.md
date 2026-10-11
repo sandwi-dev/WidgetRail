@@ -38,6 +38,39 @@ YouTube opts in for search only; known-video playback needs no search API key.
 
 ## Package declarations
 
+### Settings destinations
+
+Settings handles two navigation-only contracts, both with a payload such as
+`{"packageId":"widgetrail.firstparty.capture-library"}`:
+
+- `widgetrail.settings.widget.open` (`WidgetIntentContracts.WidgetSettings`) opens
+  that widget's details, for an installed package or a bundled widget.
+- `widgetrail.settings.permissions.open` (`WidgetIntentContracts.WidgetPermissions`)
+  opens that widget's declared permissions.
+
+Declare the corresponding request with this schema:
+
+```json
+{"type":"object","additionalProperties":false,"properties":{
+  "packageId":{"type":"string","minLength":3,"maxLength":128}
+},"required":["packageId"]}
+```
+
+Use `WidgetIntentPresentation.OpenWidget`. These handlers do not support passive
+delivery. They refresh the relevant projection and replace the previous page and
+selection; missing packages or packages without permissions reject the request.
+Navigation does not grant permission, enable a widget, or approve an installation.
+There is no special B return path: Settings retains its ordinary navigation.
+
+```csharp
+UI.Button("Open permissions", "unused", "permissions")
+    .OpenIntent(WidgetIntentContracts.WidgetPermissions,
+        JsonSerializer.SerializeToElement(new { packageId = "example.publisher.widget" }),
+        WidgetIntentPresentation.OpenWidget);
+```
+
+### Manifest format
+
 An optional `intents` manifest object contains `requests` and `handles` arrays.
 Each entry carries `id`, positive integer `version`, and `payloadSchema`.
 Handler entries additionally accept `supportsPassiveDelivery` and

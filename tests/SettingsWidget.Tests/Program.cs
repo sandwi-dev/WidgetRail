@@ -66,6 +66,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Initialization publishes loading before slow dependencies complete", LoadingBeforeReady),
     ("Allow all grants only one widget's displayed declarations atomically", AllowAllPermissions),
     ("Settings cannot be disabled through its UI or saved preferences", SettingsCannotBeDisabled),
+    ("Settings intents open exact installed and bundled widget pages without changing consent", SettingsIntents),
     ("Snapshot presentation is repeatable", SettingsPolicyScenarios.PresentationIsRepeatable),
     ("Navigation and preference policies are closed", SettingsPolicyScenarios.NavigationAndPreferencePoliciesAreClosed),
     ("Preference persistence owns valid and recovery writes", SettingsPolicyScenarios.PreferencePersistenceOwnsWrites),
@@ -341,6 +342,37 @@ static async Task SettingsCannotBeDisabled()
         BuiltInWidgets = new() { DisabledIds = [BuiltInWidgetSettings.SettingsWidgetId] },
     }));
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+}
+static async Task SettingsIntents()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog"); var bundledRoot = Path.Combine(temp.Path, "runtime");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    WriteInstalledWidget(catalogRoot, "dev.test.installed", "dev.publisher", "Installed target", [PlatformCapabilities.AudioSessionsReadV1], []);
+    WriteBundledWidget(bundledRoot, "Builtin", "widgetrail.firstparty.target", "widgetrail.firstparty", "Bundled target", [PlatformCapabilities.CaptureLibraryReadV1], []);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent, bundledRoot);
+    WidgetIntentRequest Request(WidgetIntentContract contract, string id) => WidgetIntentRequest.Create(contract, JsonSerializer.SerializeToElement(new { packageId = id }), WidgetIntentPresentation.OpenWidget);
+    await widget.InitializeAsync(default);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
+    try
+    {
+        Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(Request(WidgetIntentContracts.WidgetSettings, "dev.test.installed")));
+        Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+        Assert.True(Nodes(Snapshot(widget).Root).Any(node => node.Text?.Contains("Installed target") == true), "Details intent selected the wrong package.");
+        Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(Request(WidgetIntentContracts.WidgetPermissions, "widgetrail.firstparty.target")));
+        Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
+        Assert.True(Nodes(Snapshot(widget).Root).Any(node => node.Text?.Contains("Bundled target") == true), "Permissions intent retained the previous package.");
+        Assert.Valid(Snapshot(widget));
+        await Action(widget, "back"); Assert.Equal(SettingsPage.Permissions, widget.CurrentPage);
+        Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(Request(WidgetIntentContracts.WidgetSettings, "widgetrail.firstparty.target")));
+        Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+        var missing = Request(WidgetIntentContracts.WidgetPermissions, "dev.test.missing");
+        Assert.Equal(WidgetIntentResult.Rejected, await widget.OnIntentAsync(missing));
+        Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+        Assert.Equal(WidgetIntentResult.Rejected, await widget.OnIntentAsync(missing with { SchemaDigest = new string('0',64) }));
+        Assert.Equal(0, (await consent.LoadAsync()).Entries.Count);
+    }
+    finally { await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default); }
 }
 
 static async Task ReadinessRetryIsBoundedAndClassified()

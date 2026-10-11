@@ -162,10 +162,18 @@ public sealed partial class CaptureLibraryWidget
         }
         else if (state.Busy) items.Add(UI.Text("Checking supported capture options…", "capture-library.settings.loading").Classes("capture-help"));
         if (state.Capabilities is not null) items.Add(UI.Button("Reset capture settings", "capture-library.option.reset", "capture-library.settings.reset").Busy(state.Busy));
-        if (state.Message is { } message) items.Add(UI.Text(message, "capture-library.settings.status").Classes("capture-help"));
+        if (state.Message is { } message)
+        {
+            items.Add(UI.Text(message, "capture-library.settings.status").Classes("capture-help"));
+            if (message == Explain("permission_denied")) items.Add(PermissionsButton());
+        }
         return new(UI.VerticalScroll("capture-library.settings.page", items.ToArray()).InputScope("capture-library.settings.page")
             .Shortcut(ControllerButton.B, "capture-library.settings.back", label: "Library").Classes("capture-library"), "capture-library.settings.back");
     }
+
+    private static WidgetElement PermissionsButton() => UI.Button("Open permissions", "unused", "capture-library.permissions")
+        .OpenIntent(WidgetIntentContracts.WidgetPermissions, JsonSerializer.SerializeToElement(new { packageId = "widgetrail.firstparty.capture-library" }),
+            WidgetIntentPresentation.OpenWidget);
 
     public override async ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(WidgetArtworkHandle handle, CancellationToken cancellationToken = default)
     {

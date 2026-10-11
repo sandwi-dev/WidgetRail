@@ -37,6 +37,15 @@ public static class WidgetIntentContracts
     public const string OpenWebPage = "widgetrail.web.open";
     public const string OpenVideo = "widgetrail.video.open";
     public const string SearchVideo = "widgetrail.video.search";
+    public const string OpenWidgetSettings = "widgetrail.settings.widget.open";
+    public const string OpenWidgetPermissions = "widgetrail.settings.permissions.open";
+
+    public static WidgetIntentContract WidgetSettings { get; } = new(OpenWidgetSettings, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "packageId":{"type":"string","minLength":3,"maxLength":128}
+        },"required":["packageId"]}
+        """));
+    public static WidgetIntentContract WidgetPermissions { get; } = new(OpenWidgetPermissions, 1, WidgetSettings.PayloadSchema);
 
     public static WidgetIntentContract VideoSearch { get; } = new(SearchVideo, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{
@@ -96,7 +105,8 @@ public static class WidgetIntentContracts
                     if (contracts.TryGetValue(key, out var digest) && digest != compiled.SchemaDigest)
                         add(path, "conflicting_intent", "The same intent version has conflicting schemas.");
                     contracts[key] = compiled.SchemaDigest;
-                    var standard = compiled.Id switch { OpenWebPage => Web, OpenVideo => Video, SearchVideo => VideoSearch, _ => null };
+                    var standard = compiled.Id switch { OpenWebPage => Web, OpenVideo => Video, SearchVideo => VideoSearch,
+                        OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||
                          compiled.SchemaDigest != CompiledWidgetIntentContract.Create(standard).SchemaDigest))
