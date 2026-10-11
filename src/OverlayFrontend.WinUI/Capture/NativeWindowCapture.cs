@@ -36,7 +36,7 @@ internal static partial class NativeWindowCapture
         try
         {
             var result = new Result { Size = (uint)sizeof(Result), Version = 1 };
-            var status = Capture(in target, request.OutputPath, (uint)request.Kind,
+            var status = Capture(in target, request.OutputPath, request.Kind == WindowCaptureKind.Screenshot && request.Resolution == CaptureImageResolution.Original ? 3u : (uint)request.Kind,
                 (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref result);
             token.ThrowIfCancellationRequested();
             Marshal.ThrowExceptionForHR(status);

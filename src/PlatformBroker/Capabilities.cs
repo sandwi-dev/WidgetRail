@@ -106,6 +106,9 @@ public static class PlatformCapabilities
     public const string ProviderDocumentsV1 = "presentation.documents.v1";
     public const string ProviderDocumentCreate = "document.create";
     public const string ProviderDocumentDiscard = "document.discard";
+    public const string CaptureLibraryReadV1 = "media.capture-library.read.v1";
+    public const string CaptureLibrarySaveV1 = "media.capture-library.save.v1";
+    public const string CaptureLibraryManageV1 = "media.capture-library.manage.v1";
     public const string WindowCaptureV1 = "system.apps.windows.capture.v1";
     public const string WindowCaptureRequest = "capture.request";
     public const string WindowCaptureStatus = "capture.status";
@@ -263,8 +266,13 @@ public static class PlatformCapabilities
             [ProviderDocumentsV1] = new(ProviderDocumentsV1, 1, BrokerCapabilityKind.Control,
                 Set(ProviderDocumentCreate, ProviderDocumentDiscard), Set(), AllowsBackground: true,
                 BackgroundOperations: Set(ProviderDocumentCreate, ProviderDocumentDiscard)),
-            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
-                Set(WindowCaptureRequest, WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead), Set(),
+            [CaptureLibraryReadV1] = new(CaptureLibraryReadV1, 1, BrokerCapabilityKind.Read,
+                Set("capture-library.list", "capture-library.open", "capture-library.read", "capture-library.release"), Set(), AllowsBackground: true),
+            [CaptureLibrarySaveV1] = new(CaptureLibrarySaveV1, 1, BrokerCapabilityKind.Control,
+                Set("capture-library.save"), Set(), AllowsDashboardGesture: false),
+            [CaptureLibraryManageV1] = new(CaptureLibraryManageV1, 1, BrokerCapabilityKind.Control,
+                Set("capture-library.delete", "capture-library.export"), Set(), AllowsDashboardGesture: false),            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
+                Set(WindowCaptureRequest, "capture.request-original", WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead), Set(),
                 ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead), AllowsBackground: true,
                 BackgroundOperations: Set(WindowCaptureStatus, WindowCaptureRead, WindowCaptureCancel, WindowCaptureDiscard)),
             [TaskWindowsPreviewV1] = new(TaskWindowsPreviewV1, 1, BrokerCapabilityKind.Read, Set(), Set()),

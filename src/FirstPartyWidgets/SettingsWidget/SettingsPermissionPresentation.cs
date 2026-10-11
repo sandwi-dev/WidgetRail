@@ -431,6 +431,9 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
         PlatformCapabilities.ProviderDocumentsV1 => "Display restricted HTML documents",
         PlatformCapabilities.WindowCaptureV1 => "Capture an application window",
+        PlatformCapabilities.CaptureLibraryReadV1 => "Browse and read your saved captures",
+        PlatformCapabilities.CaptureLibrarySaveV1 => "Save captures to your library",
+        PlatformCapabilities.CaptureLibraryManageV1 => "Delete and export saved captures",
         PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
         PlatformCapabilities.PerformanceReadV1 => "Read system usage, game frame rates and open window titles",
         PlatformCapabilities.PerformanceFpsControlV1 => "Request Windows approval to enable FPS collection",
@@ -521,6 +524,12 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppLibraryReadV1 =>
             "See a bounded app library of current installed applications and this package's explicitly remembered apps, using conservative kinds and opaque IDs. " +
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
+        PlatformCapabilities.CaptureLibraryReadV1 =>
+            "Browse and read captures you explicitly saved, including captures saved by other widgets. This does not permit new screen recordings or deletion.",
+        PlatformCapabilities.CaptureLibrarySaveV1 =>
+            "Keep this widget's temporary captures in your shared library across restarts. Saving is explicit and does not upload media.",
+        PlatformCapabilities.CaptureLibraryManageV1 =>
+            "Delete saved originals and export copies to Pictures/WidgetRail/Captures. Previously exported copies are not deleted with the library item.",
         PlatformCapabilities.TaskWindowsPreviewV1 =>
             "Display window contents inside the overlay. Previews are view-only.",
         PlatformCapabilities.PerformanceReadV1 =>

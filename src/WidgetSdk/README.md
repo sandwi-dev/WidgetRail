@@ -1098,3 +1098,5 @@ the last valid source while focus moves to other controls, the tray, or a modal.
 Background surfaces retain focused artwork by default and can opt out with `false`.
 Explicit policies require protocol 56. Sources are revalidated against the current
 view, including cursor eviction and item-key reuse; see [retention rules](../../docs/developers/presentation-retention.md).
+
+For explicitly retained screenshots/clips, full-resolution capture, owned library references and context-sized copies, see [Capture Library](../../docs/reference/capture-library.md). The Capture Library and Game Help widgets demonstrate the shared service.

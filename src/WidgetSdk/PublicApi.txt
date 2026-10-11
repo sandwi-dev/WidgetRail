@@ -461,6 +461,9 @@ field const int WidgetRail.WidgetSdk.WidgetResourceError.MaximumMessageLength = 
 field const int WidgetRail.WidgetSdk.WidgetScenarioDefinition.CurrentVersion = 1
 field const int WidgetRail.WidgetSdk.WidgetScenarioResult.CurrentVersion = 1
 field const string WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Permission = "system.apps.windows.capture.v1"
+field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.ManagePermission = "media.capture-library.manage.v1"
+field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.ReadPermission = "media.capture-library.read.v1"
+field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.SavePermission = "media.capture-library.save.v1"
 field const string WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Permission = "presentation.documents.v1"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.CapabilityPrefix = "network.loopback:"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.GetJsonOperation = "loopback.http.get-json"
@@ -1108,11 +1111,19 @@ method WidgetRail.WidgetSdk.WidgetCapabilityQuery.<Clone>$() -> WidgetRail.Widge
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.DeleteAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ExportAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryExport>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ListAsync(int offset = 0, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryPage>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.OpenAsync(string id, WidgetRail.WidgetProtocol.CaptureImageResolution resolution = WidgetRail.WidgetProtocol.CaptureImageResolution.Original, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureAttachment>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ReadContentAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task<byte[]>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ReleaseAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.SaveAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
 method WidgetRail.WidgetSdk.WidgetCaptureService.CancelAsync(WidgetRail.WidgetProtocol.WindowCaptureTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureService.DiscardAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureService.GetStatusAsync(WidgetRail.WidgetProtocol.WindowCaptureTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureStatus>
 method WidgetRail.WidgetSdk.WidgetCaptureService.ReadContentAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task<byte[]>
 method WidgetRail.WidgetSdk.WidgetCaptureService.RequestAsync(WidgetRail.WidgetProtocol.WindowCaptureKind kind, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
+method WidgetRail.WidgetSdk.WidgetCaptureService.RequestAsync(WidgetRail.WidgetProtocol.WindowCaptureKind kind, WidgetRail.WidgetProtocol.CaptureImageResolution resolution, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
 method WidgetRail.WidgetSdk.WidgetCollectionCursor.Equals(object obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCollectionCursor.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCollectionCursor.ToString() -> string
@@ -2618,6 +2629,7 @@ property WidgetRail.WidgetSdk.WidgetBluetoothPairingOutcome WidgetRail.WidgetSdk
 property WidgetRail.WidgetSdk.WidgetBluetoothRadioState WidgetRail.WidgetSdk.WidgetBluetoothSnapshot.RadioState { get; set; }
 property WidgetRail.WidgetSdk.WidgetBluetoothSnapshot WidgetRail.WidgetSdk.WidgetBluetoothChanged.Snapshot { get; set; }
 property WidgetRail.WidgetSdk.WidgetBluetoothUnpairingOutcome WidgetRail.WidgetSdk.WidgetBluetoothUnpairingResult.Outcome { get; set; }
+property WidgetRail.WidgetSdk.WidgetCaptureLibraryService WidgetRail.WidgetSdk.WidgetHostServices.CaptureLibrary { get; }
 property WidgetRail.WidgetSdk.WidgetCaptureService WidgetRail.WidgetSdk.WidgetHostServices.Capture { get; }
 property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.After { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Before { get; set; }
@@ -2941,9 +2953,17 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged> WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities.Changed { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetWifiRadioChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.WifiRadioChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureAttachmentRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureAttachmentRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Release { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryListRequest,WidgetRail.WidgetProtocol.CaptureLibraryPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.List { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryOpenRequest,WidgetRail.WidgetProtocol.CaptureAttachment> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Open { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetProtocol.CaptureLibraryExport> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Export { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Delete { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibrarySaveRequest,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Save { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReadRequest,WidgetRail.WidgetProtocol.CaptureReadChunk> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Read { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReadRequest,WidgetRail.WidgetProtocol.CaptureReadChunk> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Read { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.OriginalScreenshot { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureTicket,WidgetRail.WidgetProtocol.WindowCaptureStatus> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Status { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureTicket,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Cancel { get; }
@@ -3425,6 +3445,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetCapabilityException : System.Except
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest,TResponse> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest,TResponse>>
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityQuery : System.IEquatable<WidgetRail.WidgetSdk.WidgetCapabilityQuery>
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityUnavailableException : System.Exception, System.Runtime.Serialization.ISerializable
+type sealed class WidgetRail.WidgetSdk.WidgetCaptureLibraryService
 type sealed class WidgetRail.WidgetSdk.WidgetCaptureService
 type sealed class WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCommandError : System.IEquatable<WidgetRail.WidgetSdk.WidgetCommandError>
@@ -3540,6 +3561,7 @@ type static class WidgetRail.WidgetSdk.UI
 type static class WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetAudioCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureCapabilities
+type static class WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits
 type static class WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities
 type static class WidgetRail.WidgetSdk.WidgetDocumentCapabilities

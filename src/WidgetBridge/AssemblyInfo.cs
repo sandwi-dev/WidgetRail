@@ -6,3 +6,4 @@ using System.Runtime.CompilerServices;
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("ReleaseVerifier")]
 [assembly: InternalsVisibleTo("AppUpdates.Tests")]
+[assembly: InternalsVisibleTo("CaptureLibrary.Tests")]

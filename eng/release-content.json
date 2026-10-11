@@ -19,6 +19,7 @@
     "Performance"
   ],
   "productionWidgets": [
+    "capture-library",
     "performance-monitor",
     "media-sessions",
     "games-apps",

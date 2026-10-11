@@ -83,8 +83,8 @@ $production = Join-Path $first 'WidgetRail-0.1.0-preview.1-win-x64'
 $dev = Join-Path $first 'WidgetRail-Developer-0.1.0-preview.1-win-x64'
 $prodCatalog = Get-Content (Join-Path $production 'widget-catalog.json') -Raw | ConvertFrom-Json
 $devCatalog = Get-Content (Join-Path $dev 'widget-catalog.json') -Raw | ConvertFrom-Json
-Check (@($prodCatalog.bundledWidgets).Count -eq 10) 'Production catalog differs.'
-Check (@($devCatalog.bundledWidgets).Count -eq 14) 'Developer catalog differs.'
+Check (@($prodCatalog.bundledWidgets).Count -eq 11) 'Production catalog differs.'
+Check (@($devCatalog.bundledWidgets).Count -eq 15) 'Developer catalog differs.'
 foreach ($edition in @($production, $dev)) {
     foreach ($file in @('PerformanceCollector.exe', 'PresentMon.exe', 'PresentMon-LICENSE.txt')) {
         Check (Test-Path -LiteralPath (Join-Path $edition "runtime/Performance/$file")) 'FPS helper or license missing from an edition.'
@@ -94,6 +94,7 @@ Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'performance-monitor'
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'performance-monitor').Count -eq 1) 'Performance Monitor is missing from an edition.'
 Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1 -and
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1) 'Display Profiles is missing from an edition.'
+Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'capture-library').Count -eq 1 -and @($devCatalog.bundledWidgets | Where-Object id -EQ 'capture-library').Count -eq 1) 'Capture Library is missing from an edition.'
 foreach ($id in @('browser', 'game-help')) {
     $prodWidget = @($prodCatalog.bundledWidgets | Where-Object id -CEQ $id)
     $devWidget = @($devCatalog.bundledWidgets | Where-Object id -CEQ $id)

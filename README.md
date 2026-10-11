@@ -91,6 +91,7 @@ Both installer editions include the following widgets:
 | **Network Controls** | Toggle Wi-Fi and Bluetooth radios and view connection details. Connect or disconnect Wi-Fi, manage saved networks and automatic connection, and scan, pair, or remove Bluetooth devices. |
 | **Display Profiles** | Save the current monitor setup and restore it later. Confirm with Keep changes or let the previous setup restore automatically. |
 | **Power** | Sleep, restart, or shut down Windows. |
+| **[Capture Library](docs/reference/capture-library.md)** | Save full-resolution screenshots and short silent clips, preview/export them and reuse saved context in Game Help. |
 | **Performance Monitor** | Pin FPS and system CPU/GPU/RAM/VRAM readings. FPS requires explicit Windows approval for a separate collector. |
 | **[Browser](docs/reference/widget-web-browser.md)** | Browse with a controller pointer, drag, zoom and text entry; open URLs or Google searches, use bookmarks/history and pin the page. |
 | **[Game Help](docs/reference/widget-capture-and-game-help.md)** | Ask Gemini about a game, attach a screenshot or five-second silent clip, expand detailed solutions and open suggested links. Requires the user's Gemini API key. |
@@ -231,7 +232,7 @@ the native host.
 The installer includes private .NET base and Windows Desktop runtimes, and checks for
 GameInput and WebView2. A missing WebView2 runtime requires an internet download.
 
-Application updates are manual: quit WidgetRail and run the newer installer.
+Use **Settings → About & troubleshooting → App updates & recovery** to check releases, review notes and prepare verified installers with a pre-update profile backup. Installation stays explicit and requires quitting WidgetRail. The desktop recovery shortcut works even if the updated app cannot start. See [App updates](docs/reference/app-updates.md). You can also manually run a newer installer.
 Built-in widgets update with the application; your settings and installed add-ons
 are retained. Production and Developer use the same application version and
 saved data, rather than separate stable and unstable channels.

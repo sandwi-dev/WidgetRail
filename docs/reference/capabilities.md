@@ -61,3 +61,7 @@ The current typed service definitions live in
 [`Power.cs`](../../src/WidgetSdk/Power.cs),
 [`DisplayProfiles.cs`](../../src/WidgetSdk/DisplayProfiles.cs), and
 [`TaskSwitcher.cs`](../../src/WidgetSdk/TaskSwitcher.cs).
+
+## Saved capture library
+
+See [Capture Library](capture-library.md) for separate read, save and manage/export permissions. Library reads expose explicitly saved media from the user's shared library; they do not authorize new screen recordings. Writes and exports require interactive lifecycle.

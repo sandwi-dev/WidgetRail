@@ -1,3 +1,12 @@
+#include "CaptureGeometry.h"
+static_assert(CaptureSize(3840, 2160, 3).width == 3840 && CaptureSize(3840, 2160, 3).height == 2160);
+static_assert(CaptureSize(1919, 1079, 3).width == 1919 && CaptureSize(1919, 1079, 3).height == 1079);
+static_assert(CaptureSize(7680, 4320, 3).width == 7680);
+static_assert(CaptureSize(16384, 16384, 3).width == 0);
+static_assert(CaptureSize(0, 1080, 3).width == 0);
+static_assert(CaptureSize(3840, 2160, 1).width == 1920 && CaptureSize(3840, 2160, 1).height == 1080);
+static_assert(CaptureSize(3840, 2160, 2).width == 1280 && CaptureSize(3840, 2160, 2).height == 720);
+static_assert(CaptureSize(1919, 1079, 2).width % 2 == 0);
 #include "WindowPreviewPolicy.h"
 #include <iostream>
 #include <stdexcept>

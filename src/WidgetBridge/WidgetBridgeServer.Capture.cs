@@ -49,7 +49,8 @@ public sealed partial class WidgetBridgeServer
                 var (widgets, _) = _registry.CatalogSnapshot();
                 var configured = widgets.GetConfigured(attachment.WidgetId);
                 var identity = new BrokerWidgetIdentity(configured.PackageId, configured.PublisherId, configured.InstanceId);
-                if (!await CaptureAllowedAsync(identity, token).ConfigureAwait(false)) throw new BrokerException("permission_denied", "Capture permission is unavailable.");
+                var resolved = captures.Resolve(identity, attachment.AttachmentId);
+                if (!await CaptureAllowedAsync(identity, token, resolved.RequiredCapability).ConfigureAwait(false)) throw new BrokerException("permission_denied", "Capture permission is unavailable.");
                 if (!_registry.IsCaptureWorkerCurrent(attachment.WidgetId, attachment.WorkerRun)) throw new BrokerException("capture_unavailable", "Capture worker retired.");
                 await ReplyAsync(request.Type, request.RequestId, captures.Resolve(identity, attachment.AttachmentId), token).ConfigureAwait(false);
                 break;
@@ -69,14 +70,15 @@ public sealed partial class WidgetBridgeServer
         { return null; } // Missing metadata must not discard a successful capture.
     }
 
-    private async Task<bool> CaptureAllowedAsync(BrokerWidgetIdentity identity, CancellationToken token)
+    private async Task<bool> CaptureAllowedAsync(BrokerWidgetIdentity identity, CancellationToken token, string capability = PlatformCapabilities.WindowCaptureV1)
     {
+        if (capability is not (PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibraryReadV1)) return false;
         var (catalog, _) = _registry.CatalogSnapshot();
         var descriptor = catalog.Widgets.FirstOrDefault(item => item.InstanceId == identity.InstanceId);
         if (descriptor is null || _consentStore is null) return false;
         var configured = catalog.GetConfigured(descriptor.Id);
         return configured.PackageId == identity.PackageId && configured.PublisherId == identity.PublisherId &&
-            configured.DeclaredCapabilities.Contains(PlatformCapabilities.WindowCaptureV1) &&
-            await _consentStore.GetDecisionAsync(identity, PlatformCapabilities.WindowCaptureV1, token).ConfigureAwait(false) == ConsentDecision.Grant;
+            configured.DeclaredCapabilities.Contains(capability) &&
+            await _consentStore.GetDecisionAsync(identity, capability, token).ConfigureAwait(false) == ConsentDecision.Grant;
     }
 }

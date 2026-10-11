@@ -1114,6 +1114,7 @@ public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     IPrivateSecretPlatformBrokerBackend,
     IPrivateStatePlatformBrokerBackend, ILoopbackHttpPlatformBrokerBackend
 {
+    CaptureLibraryStore? CaptureLibrary => null;
 }
 
 public sealed class BrokerException : Exception

@@ -74,7 +74,7 @@ for installation and service setup; installing WidgetRail alone does not configu
 
 ## Updates
 
-Updates are manual. Quit WidgetRail and run a newer application installer.
+Updates are explicit. Open **Settings → About & troubleshooting → App updates & recovery** to review releases and prepare an update with recovery, then quit WidgetRail before continuing in the Windows installer. See [App updates and recovery](../reference/app-updates.md). You can also download and run a newer installer manually.
 Your widgets and settings are kept. Built-in widgets update with the application.
 
 For an add-on, open its details in **Settings → Widgets → Update from file**.

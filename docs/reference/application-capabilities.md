@@ -14,6 +14,9 @@ service. Both sandboxed and full-trust application widgets use these APIs. See [
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
 | `system.apps.windows.read.v1` | `HostServices.TaskSwitcher.GetWindowsAsync` | Visible or Interactive |
 | `system.apps.windows.capture.v1` | `HostServices.Capture` | Interactive confirmation; owned status/read/discard can continue in background |
+| `media.capture-library.read.v1` | `HostServices.CaptureLibrary.ListAsync` / `OpenAsync` and owned media reads | Shared explicitly saved captures; background reads allowed |
+| `media.capture-library.save.v1` | `HostServices.CaptureLibrary.SaveAsync` | Interactive; save only owned temporary media |
+| `media.capture-library.manage.v1` | `DeleteAsync` / `ExportAsync` | Interactive; fixed Pictures export destination |
 | `presentation.documents.v1` | `HostServices.Documents.CreateAsync` / `DiscardAsync`, `UI.ProviderContent` | Owned restricted HTML; scripts/forms/network blocked; background publication allowed |
 | `system.apps.windows.preview.v1` | Host-rendered `UI.WindowPreview` | A current window and preview permission |
 | `system.apps.windows.switch.v1` | `HostServices.TaskSwitcher.SwitchAsync` | Interactive |

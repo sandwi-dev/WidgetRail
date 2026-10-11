@@ -1,4 +1,5 @@
 #include "WindowContextCapture.h"
+#include "CaptureGeometry.h"
 #include <Windows.h>
 #include <d3d11.h>
 #include <d2d1_1.h>
@@ -98,7 +99,7 @@ struct Video {
 extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target, const wchar_t* path, uint32_t kind,
     WrailPreviewAuthority authority, void* context, WrailContextCaptureResult* result) noexcept {
     if(!target || target->size!=sizeof(*target) || target->version!=1 || !path || !*path || !authority || !result ||
-        result->size!=sizeof(*result) || result->version!=1 || (kind!=1 && kind!=2)) return E_INVALIDARG;
+        result->size!=sizeof(*result) || result->version!=1 || (kind<1 || kind>3)) return E_INVALIDARG;
     if(busy.exchange(true)) return HRESULT_FROM_WIN32(ERROR_BUSY);
     struct BusyGuard { ~BusyGuard(){busy=false;} } busyGuard;
     try {
@@ -117,8 +118,9 @@ extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target
         winrt::check_hresult(interop->CreateForWindow(reinterpret_cast<HWND>(target->window),winrt::guid_of<GraphicsCaptureItem>(),winrt::put_abi(capture.item)));
         auto size=capture.item.Size();
         if(size.Width<=0 || size.Height<=0 || size.Width>8192 || size.Height>8192 || int64_t(size.Width)*size.Height>20000000) throw winrt::hresult_error(E_INVALIDARG);
-        auto scale=std::min({1.0,(kind==1?1920.0:1280.0)/size.Width,(kind==1?1080.0:720.0)/size.Height});
-        UINT width=std::max(2U,static_cast<UINT>(size.Width*scale)&~1U), height=std::max(2U,static_cast<UINT>(size.Height*scale)&~1U);
+        const auto geometry = CaptureSize(size.Width, size.Height, kind);
+        if (!geometry.width || !geometry.height) throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
+        const UINT width = geometry.width, height = geometry.height;
         D3D11_TEXTURE2D_DESC desc{};desc.Width=width;desc.Height=height;desc.MipLevels=1;desc.ArraySize=1;
         desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;desc.SampleDesc.Count=1;desc.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
         ComPtr<ID3D11Texture2D> output;winrt::check_hresult(device->CreateTexture2D(&desc,nullptr,&output));
@@ -139,7 +141,7 @@ extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target
         std::vector<BYTE> pixels(width*height*4);
         bool haveFrame=false;auto firstDeadline=Clock::now()+std::chrono::seconds(3);auto started=Clock::now();
         UINT frames=0;
-        while(frames<(kind==1?1U:VideoFrames)) {
+        while(frames<(kind==2?VideoFrames:1U)) {
             if(!authority(context)) throw winrt::hresult_error(E_ABORT);
             if(haveFrame && Clock::now()<started+std::chrono::milliseconds(1000*frames/Fps)) {WaitForSingleObject(signal->value,10);continue;}
             if(!Current(*target,authority,context)) throw winrt::hresult_error(E_ABORT);
@@ -163,11 +165,11 @@ extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target
             auto now=Clock::now();
             if(!haveFrame){if(now>=firstDeadline)throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));}
             else if(now>=started+std::chrono::milliseconds(1000*frames/Fps)) {
-                if(kind==1)Png(path,width,height,pixels);else video->Write(pixels,frames);
+                if(kind!=2)Png(path,width,height,pixels);else video->Write(pixels,frames);
                 ++frames;
             }
             if(kind==2 && haveFrame && now-started>std::chrono::seconds(8))throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
-            if(frames<(kind==1?1U:VideoFrames))WaitForSingleObject(signal->value,10);
+            if(frames<(kind==2?VideoFrames:1U))WaitForSingleObject(signal->value,10);
         }
         if(video)video->Finish();
         result->width=width;result->height=height;result->frames=frames;result->durationSeconds=kind==2?5.0:0.0;result->error=S_OK;

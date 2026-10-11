@@ -39,9 +39,8 @@ Initiation requires interactive lifecycle. Status, cancellation, discard and
 authorized reads can continue while the overlay is hidden. Use a widget-lifetime
 operation for status polling. Preview permission alone does not grant capture.
 
-Attachments contain opaque IDs and bounded metadata. PNG is limited to
-1920x1080; video to 1280x720; each attachment to 8 MiB. The host permits four
-attachments per widget, sixteen total, and 64 MiB of retained media. Pending
+Attachments contain opaque IDs and bounded metadata. Context PNG is limited to 1920x1080 / 8 MiB; video to 1280x720 / 8 MiB. Explicit original-resolution screenshots preserve window pixels up to 33,554,432 pixels / 128 MiB; see [Capture Library](capture-library.md). The host permits four
+attachments per widget, sixteen total, and 256 MiB of temporary media. Pending
 requests expire after two minutes; completed captures expire after thirty.
 Revocation, worker retirement and discard remove the owning captures. Failed
 deletes are retried; expired unlocked capture directories from a crashed host
@@ -185,3 +184,5 @@ scrollable viewport. Both documents and ordinary browser elements show a themed
 outline when their container has focus before interaction; the outline hides while
 interacting. Browser and document controls share the Browser environment (with
 per-widget private profiles); embedded media has its separate shared environment.
+
+Saved originals are retained separately in [Capture Library](capture-library.md). Game Help can select a saved item as a context-sized temporary copy, review it and edit the question before explicit Send. Optional library read access grants no new recording authority.

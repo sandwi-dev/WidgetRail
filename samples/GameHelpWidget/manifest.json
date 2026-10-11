@@ -30,7 +30,7 @@
     "system.apps.windows.capture.v1",
     "presentation.documents.v1"
   ],
-  "optionalPermissions": [],
+  "optionalPermissions": ["media.capture-library.read.v1"],
   "intents": {
     "requests": [
       {

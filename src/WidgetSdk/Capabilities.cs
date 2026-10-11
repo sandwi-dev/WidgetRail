@@ -259,6 +259,7 @@ public sealed class WidgetHostServices
         TaskSwitcher = new WidgetTaskSwitcherService(capabilityClient);
         Performance = new WidgetPerformanceService(capabilityClient);
         Capture = new WidgetCaptureService(capabilityClient);
+        CaptureLibrary = new WidgetCaptureLibraryService(capabilityClient);
         Documents = new WidgetDocumentService(capabilityClient);
         Media = new WidgetMediaService(capabilityClient);
         Loopback = new WidgetLoopbackHttpService(capabilityClient);
@@ -276,6 +277,7 @@ public sealed class WidgetHostServices
     public WidgetTaskSwitcherService TaskSwitcher { get; }
     public WidgetPerformanceService Performance { get; }
     public WidgetCaptureService Capture { get; }
+    public WidgetCaptureLibraryService CaptureLibrary { get; }
     public WidgetDocumentService Documents { get; }
     public WidgetMediaService Media { get; }
     public WidgetLoopbackHttpService Loopback { get; }

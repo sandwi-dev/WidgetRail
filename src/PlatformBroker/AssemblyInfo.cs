@@ -8,3 +8,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("FirstPartyWidgetConformance.Tests")]
 
 [assembly: InternalsVisibleTo("WidgetApplicationRuntime")]
+[assembly: InternalsVisibleTo("CaptureLibrary.Tests")]

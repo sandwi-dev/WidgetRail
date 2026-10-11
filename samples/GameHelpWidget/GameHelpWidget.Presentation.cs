@@ -23,6 +23,7 @@ public sealed partial class GameHelpWidget
                     UI.Row("help.delete-confirm.actions", UI.Button("Keep key", "key.delete.cancel", "help.delete-cancel"),
                         UI.Button("Remove key", "key.delete.confirm", "help.delete-proceed"))), "help.delete-cancel", "key.delete.cancel"));
         if (state.Settings) return SettingsView(view, state);
+        if (state.LibraryOpen) return LibraryView(view, state);
         if (state.CaptureOptions) return CaptureOptionsView(view, state);
         if (state.Preview is { } preview && !state.Capturing && !state.PreviewReadOnly)
             return PreviewView(view, state, preview);
@@ -187,7 +188,8 @@ public sealed partial class GameHelpWidget
                 UI.Grid("help.context-actions", [GridTrack.Auto(), GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
                     UI.Button("Screenshot", "capture.image", "help.capture-image").Busy(state.Capturing),
                     UI.Button("Record 5 seconds", "capture.video", "help.capture-video").Busy(state.Capturing).InGrid(0, 1),
-                    UI.Button("Answer without capture", "ask.plain", "help.answer-plain").Busy(state.Capturing).InGrid(1, 0, columnSpan: 2)).Spacing(8, 8))
+                    UI.Button("Choose saved capture", "library.open", "help.context-library").Busy(state.Capturing).InGrid(1, 0),
+                    UI.Button("Answer without capture", "ask.plain", "help.answer-plain").Busy(state.Capturing).InGrid(1, 1)).Spacing(8, 8))
                 .RememberChildFocus("help.answer-plain").Classes("help-context-choice"));
         if (state.Capturing)
             messages.Add(UI.Stack("help.capture-status", UI.Text("Capture in progress", "help.capture-title").Classes("help-section-title"),
@@ -264,6 +266,7 @@ public sealed partial class GameHelpWidget
                 UI.Button("Record 5 seconds", "capture.video", "help.add-video").Busy(state.Busy || state.Capturing).InGrid(0, 1)).Spacing(0, 12),
             UI.Text("Recordings contain video only. Reopen WidgetRail to review the capture before sending anything to Gemini.", "help.capture-privacy").Classes("help-caption"),
         };
+        content.Add(UI.Button("Choose saved capture", "library.open", "help.add-library").Busy(state.Busy || state.Capturing || state.LibraryBusy));
         if (state.Error is { } actionError) content.Add(ErrorPanel(actionError, "help.capture.error"));
         return view.WithModal(new("help.capture-options", "Add game context", UI.Stack("help.capture-options.content", content.ToArray()).Classes("help-dialog"),
             "help.add-image", "context.close"));

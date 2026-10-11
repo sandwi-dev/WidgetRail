@@ -9,6 +9,9 @@ public sealed partial class GameHelpWidget : Widget
     private sealed record Message(long Id, string Role, string Text, GameHelpAnswer? Answer = null, string? ContextLabel = null, bool SolutionExpanded = false, bool SourcesExpanded = false);
     private sealed record State
     {
+        internal long LibraryFocusRequest;
+        internal bool LibraryOpen, LibraryBusy;
+        internal CaptureLibraryPage? LibraryPage;
         internal bool HasKey, KeyReady, Settings, Busy, Capturing, OfferContext, PreviewReadOnly, CaptureOptions, ConfirmNew, ConfirmDelete;
         internal string? FocusGroup;
         internal long FocusRequest;
@@ -66,6 +69,7 @@ public sealed partial class GameHelpWidget : Widget
     {
         if (!IsActive) return ValueTask.CompletedTask;
         var state=model.Value;
+        if (HandleLibraryAction(action, state)) return ValueTask.CompletedTask;
         switch(action.ActionId)
         {
             case "draft": model.Update(s=>s with {Draft=action.CommittedText ?? ""}); break;
@@ -261,7 +265,7 @@ public sealed partial class GameHelpWidget : Widget
     }
     private void NewConversation()
     {
-        Operations.Cancel("answer");Operations.Cancel("capture");
+        Operations.Cancel("answer");Operations.Cancel("capture");Operations.Cancel("library");
         var state=model.Value;
         model.Update(s=>new State {HasKey=s.HasKey,KeyReady=s.KeyReady,Spoilers=s.Spoilers,Grounding=s.Grounding});
         var attachments=new[]{state.Preview,state.Context}.OfType<CaptureAttachment>().Distinct().ToArray();

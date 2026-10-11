@@ -16,6 +16,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     private readonly IPowerPlatformBrokerBackend? _power;
     private readonly IDisplayProfilesPlatformBackend? _displays;
     private readonly IPerformancePlatformBackend? _performance;
+    public CaptureLibraryStore? CaptureLibrary { get; }
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
@@ -30,8 +31,9 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         IPrivateStatePlatformBrokerBackend? privateState = null,
         IPowerPlatformBrokerBackend? power = null,
         IDisplayProfilesPlatformBackend? displays = null,
-        IPerformancePlatformBackend? performance = null)
+        IPerformancePlatformBackend? performance = null, CaptureLibraryStore? captureLibrary = null)
     {
+        CaptureLibrary = captureLibrary;
         _displays = displays;
         _performance = performance;
         if (_displays is not null) _displays.EventPublished += ForwardDisplayEvent;

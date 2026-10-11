@@ -10,6 +10,35 @@ namespace WidgetRail.GameHelpWidget.Tests;
 public sealed class GameHelpTests
 {
     [TestMethod]
+    public async Task SavedCaptureSelectionOpensContextPreviewAndWaitsForExplicitSend()
+    {
+        var service = new FakeService();
+        var media = new CaptureAttachment(new string('A', 32), "image/png", 1920, 1080, 1000, 0, long.MaxValue) { Origin = CaptureAttachmentOrigin.SavedLibrary };
+        var id = new string('B', 32); var requested = CaptureImageResolution.Original;
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([new(id, media, 1)], 0, 1, 1000))
+            .WithHandler(WidgetCaptureLibraryCapabilities.Open, (request, _) => { requested = request.Resolution; return ValueTask.FromResult(media); })
+            .WithResponse(WidgetCaptureLibraryCapabilities.Release, new WidgetCapabilityAcknowledgement(true)).Build());
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.composer"));
+            await widget.OnActionAsync(new("draft", "help.composer") { CommittedText = "How do I get past this boss?" });
+            await widget.OnActionAsync(new("library.open", "help.add-library"));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.library.item." + id && n.IsBusy != true));
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget)).Count);
+            await widget.OnActionAsync(new("library.select." + id, "help.library.item." + id));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.preview-media"));
+            Assert.AreEqual(CaptureImageResolution.Context, requested);
+            Assert.AreEqual(0, service.Requests.Count, "Selecting a saved capture uploaded it before confirmation");
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget)).Count);
+            await widget.OnActionAsync(new("preview.send", "help.preview-send"));
+            await Until(() => service.Requests.Count == 1);
+            Assert.AreEqual(media, service.Requests[0].Attachment);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+    [TestMethod]
     public async Task SourceIntentsPreferExistingBrowserOrYouTubeSurfaceAndPreserveRedirects()
     {
         const string redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/fixture";

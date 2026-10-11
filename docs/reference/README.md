@@ -46,3 +46,5 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Playnite](playnite-library.md) and [Spotify](spotify-integration.md)
 
 - [App updates and standalone recovery](app-updates.md): explicit Inno updates, verified downloads and profile rollback.
+
+- [Capture Library and full-resolution screenshots](capture-library.md)

@@ -27,6 +27,14 @@
   ],
   "bundledWidgets": [
     {
+      "id": "capture-library",
+      "packageId": "widgetrail.firstparty.capture-library",
+      "instanceId": "capture-library.default",
+      "packageRoot": "runtime/CaptureLibrary",
+      "icon": "fullscreen",
+      "quickActions": []
+    },
+    {
       "id": "performance-monitor",
       "packageId": "widgetrail.firstparty.performance-monitor",
       "instanceId": "performance-monitor.default",

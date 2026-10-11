@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1, "id": "widgetrail.firstparty.capture-library", "publisher": "widgetrail.firstparty",
+  "name": "Capture Library", "version": "0.1.0", "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/CaptureLibraryWidget.dll", "type": "WidgetRail.FirstPartyWidgets.CaptureLibrary.CaptureLibraryWidget" },
+  "presentation": { "icon": "fullscreen", "packageIcon": { "assetId": "captures.mark", "colorMode": "themeTint" } },
+  "iconAssets": { "captures.mark": { "path": "assets/icons/captures.svg" } },
+  "permissions": ["system.apps.windows.capture.v1", "media.capture-library.read.v1", "media.capture-library.save.v1"],
+  "optionalPermissions": ["media.capture-library.manage.v1"],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 120 },
+  "resourceRequest": { "memoryMb": 48, "updateHz": 2 }, "architectures": ["x64"]
+}

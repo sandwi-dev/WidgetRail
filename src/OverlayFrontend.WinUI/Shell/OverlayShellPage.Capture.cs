@@ -47,9 +47,9 @@ internal sealed partial class OverlayShellPage
             var selected = await ShowHostChoiceAsync(video ? "Record game context?" : "Capture game context?",
                 "WidgetRail will hide. Bring the application you want to capture to the foreground.\n\n" +
                 (video ? "Recording starts after a 5-second countdown and lasts 5 seconds. No audio will be recorded." :
-                    "A screenshot will be taken after a 5-second countdown.") +
+                    request.Resolution == CaptureImageResolution.Original ? "A full-resolution screenshot will be taken after a 5-second countdown." : "A screenshot will be taken after a 5-second countdown.") +
                 " The application in front when the countdown ends will be captured." +
-                "\n\nReopen WidgetRail when finished to preview and send the capture.", (HostDialogChoice[])[new("proceed", "Proceed")], token);
+                "\n\nReopen WidgetRail when finished to review your capture.", (HostDialogChoice[])[new("proceed", "Proceed")], token);
             if (selected != "proceed" || HideForCaptureRequested is null || !await session.IsCaptureCurrentAsync(request.RequestId, token) ||
                 !await HideForCaptureRequested(token)) throw new OperationCanceledException();
             renewal = RenewAsync();
@@ -78,7 +78,7 @@ internal sealed partial class OverlayShellPage
             {
                 if (error is not OperationCanceledException) Diagnostics.FrontendFailureLog.Current.Write("capture-run", error);
                 try { await session.CompleteCaptureAsync(new(request.RequestId, 0, 0, 0,
-                    error is OperationCanceledException ? "cancelled" : "capture_target_unavailable"), lifetime.Token); }
+                    error is OperationCanceledException ? "cancelled" : error.HResult == unchecked((int)0x800700DF) ? "capture_too_large" : "capture_target_unavailable"), lifetime.Token); }
                 catch (Exception report) when (report is not OutOfMemoryException) { Diagnostics.FrontendFailureLog.Current.Write("capture-report", report); }
             }
         }

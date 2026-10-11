@@ -16,6 +16,29 @@ Foreground handling, launch enforcement, and Spotify OAuth are out of scope.
 Direct user assignment authorizes this roadmap independently of legacy planner
 assignment documents. Work sequentially; no subagents requested.
 
+## Current status — all five implemented and ready for physical acceptance
+
+The final **runnable** candidate is the assembled production folder:
+
+`artifacts/platform-features-final/0.1.0-preview.29/WidgetRail-0.1.0-preview.29-win-x64/OverlayFrontend.WinUI.exe`
+
+The sibling Developer folder is also complete. Both include Browser, Game Help,
+Performance Monitor and Capture Library. Both passed release inventory, package
+integrity and icon admission (12 production widgets / 16 developer widgets,
+including Settings). Recovery resource bytes match current source. These are local
+preview.29 test candidates from a dirty-source build, not published releases.
+The overlay was not launched and no application update was installed.
+
+Follow `docs/platform-feature-acceptance.md` for the remaining physical pass.
+Actual elevated/game FPS, real Inno upgrade/downgrade and real-game capture/player
+behavior are still pending; automated checks do not replace those observations.
+No merge, push, release or worktree cleanup has occurred. Main's excluded work remains
+untouched. Older chronological next-action notes below are superseded by this status.
+
+Local milestones: diagnostics `c43fc5b6`; performance `407dd9c1`; marketplace
+`cd59d094`; app updates/recovery `79d99482`; recovery UX/cleanup follow-up `0824e760`;
+performance manifest/icon qualification `78f79481`. Capture Library is the final
+implementation commit following those milestones.
 ## Completion gates
 
 Each feature needs a controller-flow design, implementation, bounded resource and
@@ -149,7 +172,7 @@ Keep the full objective active until all five are ready for physical testing.
 - Test with isolated fixtures; do not install updates on this PC without further
   user authorization. Prepare documented installer/recovery physical checks.
 
-## 5. Capture Library — pending
+## 5. Capture Library — implemented; candidate ready for physical checks
 
 - Full-resolution screenshots; assess clip resolution/encoding overhead.
 - Reusable host retained-media storage distinct from temporary attachments.
@@ -293,3 +316,139 @@ Keep the full objective active until all five are ready for physical testing.
   public version may have no newer installer to offer; fixtures validate that flow.
 - Current next feature: Capture Library. All five remain in scope; objective is
   active. Do not merge, push, publish, install app updates, or remove worktrees.
+
+### Capture Library design checkpoint
+
+- App updates committed locally as `79d99482`; final candidate/checks above.
+- Keep the existing default capture request at context resolution for compatibility.
+  Add an explicit full-resolution screenshot option used by Capture Library: preserve
+  exact (including odd) window pixel dimensions; reject oversized captures rather
+  than silently scaling. Bound to 33,554,432 pixels, 16,384 per dimension and 128 MiB.
+  Five-second video remains 1280x720/15fps/3Mbps/no audio/8MiB; assess higher-resolution
+  costs separately, not bundled silently into screenshot improvements.
+- Add a reusable capture-library service with separate read, save and manage/export
+  permissions. It uses opaque IDs, a profile-scoped store, 200 saved items / 2 GiB,
+  atomic metadata publication, integrity hashes and no automatic eviction. Explicit
+  saves survive worker/app restarts. Temporary attachments remain expiring and owned.
+- Reopening saved media issues a fresh owned temporary attachment. Native preview
+  accepts library read authority without granting permission to initiate capture.
+  Revocation retires only references depending on the revoked authority. Existing
+  capture permission cannot keep a library-derived attachment alive after library
+  permission is revoked.
+- Store keeps the original unchanged. Opening a context-sized image uses a reusable
+  Windows image codec adapter (1920x1080 PNG) for consumers such as Game Help, keeping
+  its upload budget independent of original screenshot resolution. No Gemini logic
+  belongs in the host. Saved videos reuse the existing bounded format.
+- Capture Library widget: capture screenshot/clip, review then Save/Discard; recent
+  saved list with paging, native image/video preview, explicit delete confirmation,
+  and export to Pictures/WidgetRail/Captures. Busy controls retain focus. No new pin
+  navigation or automatic screenshot saving. Game Help gains saved-capture selection
+  and uses its existing preview/question/Send flow; selecting never uploads by itself.
+- Validate quotas, corrupt/missing/linked files, cancellation, atomic publication,
+  owner/permission boundaries and restart persistence using isolated stores. Validate
+  exact native screenshot geometry and normalized image dimensions. Document memory
+  and encoding limits separately from physical game/protected-content acceptance.
+
+### Capture Library implementation checkpoint
+
+- Implemented shared store/SDK, separate read/save/manage permissions, original
+  screenshot mode, media preview, export/delete, production widget and Game Help
+  selection/review. Original capture uses a distinct operation; the old request
+  constructor and context default are retained for binary/source compatibility.
+- Library-derived temporary references carry their origin and are enforced against
+  library read authority; generic SDK read/discard routes correctly. Revocation
+  removes temporary copies without deleting saved originals. Protocol 77 gates
+  library-origin/full-resolution presentation.
+- Native geometry build passed: eight compile-time cases (odd sizes, 4K/8K, limits,
+  context/video sizing), 15 preview policy checks and 2021 diagnostics checks.
+- Focused library checks 13/13 (`tests-04.log`), including actual Windows codec
+  conversion of a generated 3841x2161 PNG to 1919x1080 with unchanged original;
+  quotas, damaged metadata/media, idempotency, orphan cleanup, linked paths,
+  permission/ownership, widget review/save/delete, and SDK origin routing.
+- Game Help 44/44 (`gamehelp-tests-02.log`); broker 70/70; SDK 153/153;
+  API compatibility 17/17. New tests initially referenced non-existent convenience
+  API names; corrected to existing WidgetActionEvent object initialization and
+  snapshot validator. SDK public baseline regenerated with 3591 symbols.
+- Documentation includes exact bounds and a separate clip-throughput/memory cost
+  assessment. No desktop/game capture or Gemini API call used for validation.
+- Remaining: final affected checks after latest compatibility/UI refinements,
+  packaging self-test, full combined candidate, source review and local commit.
+  Physical game/HDR/protected-content, player focus/scaling and FPS/elevation /
+  updater installation acceptance remain explicitly pending.
+
+### Final review refinements
+
+- Library final tests expanded to 14/14, including delayed deletion while another
+  reader owns a file. Damaged entries remain deletable; quota limits and orphan
+  cleanup preserve saved originals. Linked paths are checked with file attributes
+  directly (including broken links). Layout actions use responsive grids.
+- Capture request preserves its original one-argument constructor/deconstructor;
+  default resolution/origin are omitted on the wire. Explicit original resolution
+  has a distinct operation; new references carry protocol 77 requirements.
+- Recovery review found preparation lacked visible progress. Added a standalone
+  Windows progress adapter and cooperative cancellation before Setup. Hash/copy
+  loops keep the progress window responsive. Headless controls and cancellation
+  tests pass; recovery suite is now 11/11 (`app-updates/recovery-progress-final.log`).
+- Capture candidate-01 built successfully but is superseded by these final review
+  refinements; prepare candidate-02 with the current sources. No installed profile,
+  desktop shortcut, overlay process, or real installer was modified by validation.
+
+### Assembled-candidate review
+
+- Final Library suite is 17/17 (`tests-final-07.log`), including controller page
+  focus/bumper navigation, delayed-delete accounting and preservation when metadata
+  is missing. Game Help remains 44/44 (`gamehelp-tests-final.log`).
+- Recovery suite is 13/13 (`app-updates/recovery-final-02.log`): Unicode filenames,
+  visible progress/cancellation and waiting for app exit before external UI are
+  covered. The registered app has ordinary Bridge child startup and nonrecursive
+  shutdown; development job-owned candidates cannot install updates.
+- Inno contract check, synthetic Pascal syntax compilation (not executed), and
+  isolated native cleanup fixtures passed. Explicit uninstall data removal includes
+  the new recovery folder; ordinary/silent uninstall preserves it.
+- Full release-folder verification caught unsupported stroke-linecap/linejoin
+  attributes in the two new SVGs. Removed those attributes; actual SVG compatibility
+  inputs and the catalog suite passed 37/37 (`catalog-icons-tests-final.log`).
+- Raw publication build roots omit Browser/Game Help, which live in the developer
+  publication before edition assembly. The final runnable candidate must therefore
+  use the complete edition folder assembled from both roots, not build/frontend.
+  The first attempted assembly remains staged as failed icon-admission evidence.
+- Latest source publication is `artifacts/capture-library/candidate-06` (building).
+  Next: verify/assemble both editions; check all recovery resources and all shipped
+  package/icon admissions; finalize local commits and the goal. Physical checklist
+  is `docs/platform-feature-acceptance.md`. Do not launch/install while doing this.
+
+### Final evidence and handoff
+
+- Final publication: `artifacts/capture-library/candidate-06`; the performance
+  manifest was corrected to declare pin support and re-sealed afterward. Its
+  old generated integrity marker was removed only inside that unpublished candidate
+  before re-sealing; no installed package was touched.
+- Final assembled editions: `artifacts/platform-features-final/0.1.0-preview.29`.
+  Both verified complete and include all four feature/browser/help widgets.
+  The earlier platform-features-candidate folder is superseded (performance pin
+  declaration was absent); raw build/frontend is not the final launch path.
+- Capture Library 17/17; Game Help 44/44; broker 70/70; SDK 153/153; API
+  compatibility 17/17; Settings 86/86; SVG/catalog 37/37. Final log names are
+  `tests-final-07.log`, `gamehelp-tests-final.log`, `broker-tests-final.log`,
+  `sdk-tests-01.log`, `api-compatibility-final.log`, `settings-tests-01.log`, and
+  `catalog-icons-tests-final.log` under `artifacts/capture-library`.
+- Performance widget now 8/8, including production manifest pin admission
+  (`artifacts/performance/manifest-tests-final.log`). Prior native sampler/FPS
+  nonadmin probes and collection-cost evidence remain valid; elevated FPS is manual.
+- App update service 8/8; recovery 13/13 (`recovery-final-02.log`), plus
+  authenticated transport 28/28 and CLI distribution 20/20. Inno contract,
+  syntax-only compilation and isolated cleanup fixture checks passed. No real
+  installer or uninstall operation ran; the cleanup executable exited from its
+  test InitializeSetup before installation and used synthetic paths only.
+- Native preview build passed with eight new compile-time geometry assertions,
+  15 policy checks and 2021 diagnostic checks. Published async-cleanup verification
+  passed in the final frontend. Both source SVGs are admitted without fallbacks.
+- Review covered ownership/revocation, bounded media/network allocations, exact
+  installer review, mutable-installation rechecks, recovery phase markers and
+  Unicode paths, no automatic saved-media eviction, explicit delete confirmations,
+  link refusal, controller busy focus and page-entry focus. Recovery external UI
+  waits until app exit, without changing the excluded general foreground logic.
+- The final catalog verification and recovery-resource comparison started no widgets,
+  Windows providers, controller sessions or GUI. No production profile changed.
+- Required implementation work is complete. Next is the user's physical acceptance
+  checklist; integration/release/install authorization remains separate.

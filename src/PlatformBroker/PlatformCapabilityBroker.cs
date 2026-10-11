@@ -188,7 +188,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _mediaDomain = new MediaCapabilityDomain(_backend);
         _privateSecretDomain = new PrivateSecretCapabilityDomain(_backend, _identity);
         _privateStateDomain = new PrivateStateCapabilityDomain(_backend, _identity);
-        _captureDomain = new(_identity);
+        _captureDomain = new(_identity, _backend.CaptureLibrary);
         _documentDomain = new(_identity);
         _backend.EventPublished += OnBackendEvent;
     }
@@ -347,7 +347,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         {
             BrokerCapabilityDomain.Performance => await _performanceDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.ProviderDocuments => _documentDomain.Execute(request.Operation, request.Payload, requestToken),
-            BrokerCapabilityDomain.WindowCapture => _captureDomain.Execute(request.Operation, request.Payload, requestToken),
+            BrokerCapabilityDomain.WindowCapture => await _captureDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Displays =>
                 await _displayProfilesDomain.ExecuteAsync(request.Operation, request.Payload, _identity, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Power =>
@@ -454,7 +454,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
         }
         foreach (var lease in canceled) lease.SignalCancellation();
-        if (!granted.Contains(PlatformCapabilities.WindowCaptureV1)) _captureDomain.Dispose();
+        if (!granted.Contains(PlatformCapabilities.WindowCaptureV1)) _captureDomain.Revoke(PlatformCapabilities.WindowCaptureV1);
+        if (!granted.Contains(PlatformCapabilities.CaptureLibraryReadV1)) _captureDomain.Revoke(PlatformCapabilities.CaptureLibraryReadV1);
         if (!granted.Contains(PlatformCapabilities.ProviderDocumentsV1)) _documentDomain.Revoke();
     }
 
