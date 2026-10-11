@@ -77,6 +77,11 @@ Hashes verify bytes, not publishers. Remote installation does not create an
 automatic update subscription. See [Publishing](../developers/publishing-and-installation.md)
 and [Package format](widget-packaging.md).
 
+For controller-friendly discovery, use [Settings' widget marketplace](widget-marketplace.md).
+It shares this downloader and package validation. Marketplace installations also
+record their GitHub source for CLI update checks; installation never enables a
+widget automatically.
+
 ## Discover packages on GitHub
 
 ```powershell

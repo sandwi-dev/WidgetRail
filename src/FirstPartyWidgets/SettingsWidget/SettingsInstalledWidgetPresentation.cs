@@ -32,6 +32,7 @@ internal static class SettingsInstalledWidgetPresentation
         var children = new List<WidgetElement>
         {
             UI.Text("Widgets", "installed.heading", "Widgets").Classes("page-heading"),
+            UI.Button("Browse marketplace", "open.marketplace", "installed.marketplace").Busy(busy).Classes("setting-row"),
             UI.Text(valid
                     ? "Built-in widgets come with WidgetRail. Only install community widgets from sources you trust. WidgetRail has not verified who made them."
                     : $"{diagnostic ?? "Installed widget catalog is unavailable."} Last-good installed versions remain available for review; retry after the catalog changes.",

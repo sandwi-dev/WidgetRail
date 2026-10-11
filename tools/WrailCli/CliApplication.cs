@@ -63,6 +63,16 @@ public static class CliApplication
             await error.WriteLineAsync($"error: {exception.Message}");
             return 2;
         }
+        catch (DistributionUsageException exception)
+        {
+            await error.WriteLineAsync($"error: {exception.Message}");
+            return 2;
+        }
+        catch (DistributionOperationException exception)
+        {
+            await error.WriteLineAsync($"error: {exception.Message}");
+            return 1;
+        }
         catch (WidgetPackageException exception)
         {
             await error.WriteLineAsync($"error {exception.Code}: {exception.Message}");

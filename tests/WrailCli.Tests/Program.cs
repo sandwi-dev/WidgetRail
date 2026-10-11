@@ -454,9 +454,9 @@ static async Task GitHubThemeUpdateWorkflow()
     Assert.True(selectionBytes.SequenceEqual(await File.ReadAllBytesAsync(paths.SettingsFile)), "Theme update changed the user's appearance selection.");
     Assert.Equal("1.0.0", (await store.LoadAsync()).Appearance.ThemeVersion);
     var newTheme = await ThemePackage.InspectSourceAsync(Path.Combine(root, "themes", id, "2.0.0"), default);
-    Assert.True(PackageSources.Find(root, "theme", id, "2.0.0", PackageSources.ThemeDigest(newTheme)) is not null, "New theme source was not recorded.");
+    Assert.True(PackageSources.Find(root, "theme", id, "2.0.0", ThemePackageDigest.Compute(newTheme)) is not null, "New theme source was not recorded.");
     Assert.Equal(0, (await RunCli("theme", "remove", id, "2.0.0", "--settings-root", root)).Code);
-    Assert.True(PackageSources.Find(root, "theme", id, "2.0.0", PackageSources.ThemeDigest(newTheme)) is null, "Removed theme retained its source record.");
+    Assert.True(PackageSources.Find(root, "theme", id, "2.0.0", ThemePackageDigest.Compute(newTheme)) is null, "Removed theme retained its source record.");
 }
 
 static async Task GitHubMetadataSafety()
@@ -3367,7 +3367,7 @@ static async Task RemoteRedirectsAreBounded()
     {
         MaximumRedirects = 2,
     });
-    var exception = await Assert.ThrowsAsync<CliOperationException>(() => downloader.DownloadAsync(
+    var exception = await Assert.ThrowsAsync<DistributionOperationException>(() => downloader.DownloadAsync(
         new Uri("https://widgets.example/start.wrwidget"), null, CancellationToken.None));
     Assert.Contains("2-redirect limit", exception.Message);
     Assert.Equal(3, calls);
@@ -3379,7 +3379,7 @@ static async Task RemoteRedirectsAreBounded()
         return Task.FromResult(response);
     });
     using var unsafeDownloader = new RemotePackageDownloader(unsafeRedirectHandler);
-    var unsafeException = await Assert.ThrowsAsync<CliUsageException>(() => unsafeDownloader.DownloadAsync(
+    var unsafeException = await Assert.ThrowsAsync<DistributionUsageException>(() => unsafeDownloader.DownloadAsync(
         new Uri("https://widgets.example/start.wrwidget"), null, CancellationToken.None));
     Assert.Contains("absolute HTTPS", unsafeException.Message);
 }
@@ -3394,7 +3394,7 @@ static async Task RemoteDownloadIsBounded()
         return Task.FromResult(response);
     });
     using var headerDownloader = new RemotePackageDownloader(headerHandler, TestDownloadOptions(temp.Path, 8));
-    var headerException = await Assert.ThrowsAsync<CliOperationException>(() => headerDownloader.DownloadAsync(
+    var headerException = await Assert.ThrowsAsync<DistributionOperationException>(() => headerDownloader.DownloadAsync(
         new Uri("https://widgets.example/x.wrwidget"), null, CancellationToken.None));
     Assert.Contains("Content-Length: 9", headerException.Message);
 
@@ -3403,13 +3403,13 @@ static async Task RemoteDownloadIsBounded()
         Content = new StreamContent(new RepeatingReadStream(9)),
     }));
     using var streamDownloader = new RemotePackageDownloader(streamHandler, TestDownloadOptions(temp.Path, 8));
-    var streamException = await Assert.ThrowsAsync<CliOperationException>(() => streamDownloader.DownloadAsync(
+    var streamException = await Assert.ThrowsAsync<DistributionOperationException>(() => streamDownloader.DownloadAsync(
         new Uri("https://widgets.example/x.wrwidget"), null, CancellationToken.None));
     Assert.Contains("8-byte download limit", streamException.Message);
 
     using var emptyHandler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, [])));
     using var emptyDownloader = new RemotePackageDownloader(emptyHandler, TestDownloadOptions(temp.Path, 8));
-    var emptyException = await Assert.ThrowsAsync<CliOperationException>(() => emptyDownloader.DownloadAsync(
+    var emptyException = await Assert.ThrowsAsync<DistributionOperationException>(() => emptyDownloader.DownloadAsync(
         new Uri("https://widgets.example/x.wrwidget"), null, CancellationToken.None));
     Assert.Contains("response was empty", emptyException.Message);
     Assert.True(!Directory.EnumerateFileSystemEntries(temp.Path).Any(), "Bounded downloads leaked temporary files.");
@@ -3424,7 +3424,7 @@ static async Task RemoteRejectsContentEncoding()
         return Task.FromResult(response);
     });
     using var downloader = new RemotePackageDownloader(handler);
-    var exception = await Assert.ThrowsAsync<CliOperationException>(() => downloader.DownloadAsync(
+    var exception = await Assert.ThrowsAsync<DistributionOperationException>(() => downloader.DownloadAsync(
         new Uri("https://widgets.example/x.wrwidget"), null, CancellationToken.None));
     Assert.Contains("identity content encoding", exception.Message);
 }
@@ -3448,7 +3448,7 @@ static async Task RemoteHashMismatchCleansUp()
     using var temp = new TemporaryDirectory();
     using var handler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, [1, 2, 3])));
     using var downloader = new RemotePackageDownloader(handler, TestDownloadOptions(temp.Path, 32));
-    var exception = await Assert.ThrowsAsync<CliOperationException>(() => downloader.DownloadAsync(
+    var exception = await Assert.ThrowsAsync<DistributionOperationException>(() => downloader.DownloadAsync(
         new Uri("https://widgets.example/x.wrwidget"), new byte[32], CancellationToken.None));
     Assert.Contains("SHA-256 mismatch", exception.Message);
     Assert.True(!Directory.EnumerateFileSystemEntries(temp.Path).Any(), "Integrity failure leaked a package or directory.");
@@ -3484,7 +3484,7 @@ static async Task RemoteTimeoutsAreBounded()
         ResponseTimeout = TimeSpan.FromMilliseconds(20),
         OverallTimeout = TimeSpan.FromSeconds(2),
     });
-    var responseException = await Assert.ThrowsAsync<CliOperationException>(() => responseDownloader.DownloadAsync(
+    var responseException = await Assert.ThrowsAsync<DistributionOperationException>(() => responseDownloader.DownloadAsync(
         new Uri("https://widgets.example/x.wrwidget"), null, CancellationToken.None));
     Assert.Contains("response timeout", responseException.Message);
 
@@ -3497,7 +3497,7 @@ static async Task RemoteTimeoutsAreBounded()
         ResponseTimeout = TimeSpan.FromSeconds(2),
         OverallTimeout = TimeSpan.FromMilliseconds(20),
     });
-    var overallException = await Assert.ThrowsAsync<CliOperationException>(() => overallDownloader.DownloadAsync(
+    var overallException = await Assert.ThrowsAsync<DistributionOperationException>(() => overallDownloader.DownloadAsync(
         new Uri("https://widgets.example/x.wrwidget"), null, CancellationToken.None));
     Assert.Contains("overall timeout", overallException.Message);
 }

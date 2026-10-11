@@ -96,6 +96,10 @@ Both installer editions include the following widgets:
 | **[Game Help](docs/reference/widget-capture-and-game-help.md)** | Ask Gemini about a game, attach a screenshot or five-second silent clip, expand detailed solutions and open suggested links. Requires the user's Gemini API key. |
 | **Settings** | Configure layout, appearance, accessibility, controllers, widgets, permissions, and diagnostics. |
 
+Use **Settings → Widgets → Browse marketplace** to discover curated add-ons,
+review downloads and permissions, and install updates while retaining previous
+versions. See [Widget marketplace](docs/reference/widget-marketplace.md).
+
 The tray displays local time, internet connectivity over Wi-Fi or Ethernet,
 and Bluetooth radio status. Available controls depend on Windows permissions,
 connected hardware, and installed providers.

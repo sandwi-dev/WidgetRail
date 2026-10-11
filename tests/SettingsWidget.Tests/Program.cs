@@ -45,6 +45,7 @@ if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Marketplace download review is controller-native and full access requires confirmation", MarketplaceScenarios.ControllerFlow),
     ("Diagnostics export stays focusable and retains its saved location", DiagnosticsExportScenarios.ExportRetainsFocusAndResult),
     ("Installed rows separate visible fields and preserve one action", StructuredInstalledRows),
     ("Settings pages have distinct ownership and valid focus paths", SettingsUsabilityScenarios.PagesHaveConsistentOwnershipAndFocus),

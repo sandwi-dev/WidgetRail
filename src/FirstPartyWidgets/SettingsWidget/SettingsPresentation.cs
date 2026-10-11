@@ -26,7 +26,8 @@ internal sealed record SettingsPresentationState(
     bool Loading = false,
     SettingsHostFeatures? HostFeatures = null,
     bool DiagnosticDetails = false,
-    string? SupportExportFile = null);
+    string? SupportExportFile = null,
+    SettingsMarketplaceState? Marketplace = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static partial class SettingsPresentation
@@ -46,6 +47,7 @@ internal static partial class SettingsPresentation
         }
         view = state.Page switch
         {
+            SettingsPage.Marketplace or SettingsPage.MarketplaceDetails => RenderMarketplace(header, state),
             SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy, state.Loading,
                 state.HostFeatures ?? new()),
             SettingsPage.Appearance => RenderAppearance(
@@ -647,6 +649,8 @@ internal static class SettingsNavigationPolicy
         SettingsPage packageCapabilitiesReturnPage) => page switch
         {
             SettingsPage.ControllerHelp => SettingsPage.Controllers,
+            SettingsPage.Marketplace => SettingsPage.InstalledWidgets,
+            SettingsPage.MarketplaceDetails => SettingsPage.Marketplace,
             SettingsPage.InstalledWidgetTechnical => SettingsPage.InstalledWidgetDetails,
             SettingsPage.Diagnostics or SettingsPage.Reset => SettingsPage.About,
             SettingsPage.InstalledWidgetUpdate => SettingsPage.InstalledWidgetDetails,

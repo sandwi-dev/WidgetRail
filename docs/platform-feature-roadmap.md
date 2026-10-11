@@ -107,7 +107,7 @@ Keep the full objective active until all five are ready for physical testing.
   Frame-time graphs are optional and omitted. Actual privileged FPS remains a
   physical check; this has not been tested across games yet.
 
-## 3. Widget marketplace and updates — pending
+## 3. Widget marketplace and updates — implemented; candidate ready for physical checks
 
 - Curated release-backed catalog in Settings, no accounts/ratings/payments/public
   submissions. Descriptions, screenshots, compatibility, trust and permissions.
@@ -117,6 +117,30 @@ Keep the full objective active until all five are ready for physical testing.
 - Define catalog schema, immutable package metadata, release generation, and
   offline behavior. Test malicious/stale metadata, interrupted downloads,
   compatibility and permission transitions. Document publisher workflow.
+- Implemented: curated Playnite/Spotify/YouTube Video/YouTube Music inventory
+  with pinned screenshot URLs, release/version checks, bounded cancellable
+  background jobs, SHA256 verification with a retained archive handle, exact
+  expiring review tokens, full-access confirmation and permission deltas.
+  The existing catalog update transaction retains old versions, selects the new
+  version disabled, and refreshes the host/Settings after publication.
+- Shared CLI downloader and GitHub release client extracted to
+  `src/PackageDistribution`; the CLI maps shared exceptions to its existing
+  exit codes. 20 real Remote/GitHub CLI tests passed. The first test-name selector
+  also matched an error-message string; `cli-distribution-audit.json` verifies
+  all 20 actual tests passed (not a product failure).
+- Settings now has Browse marketplace, details/screenshots (LB/RB), progress,
+  cancellation, and controller-native review starting on Cancel near the trust
+  warning. Up-to-date items route to installed-widget management. Current build
+  checks: marketplace backend 6/6, Settings 85/85, diagnostics transport 27/27.
+  New management routing and tightened version validation were added afterward;
+  rerun relevant checks before finalizing.
+- Actual public-release probe succeeded for all four listings and downloaded /
+  verified / reviewed YouTube Video 0.3.40 (SHA256 in `live-review-01.log`). It
+  installed nothing and discarded the temporary archive. User profiles untouched.
+- Next: share recorded package-source metadata with the CLI, finish regression
+  checks/docs, build a complete candidate. Physical screenshot loading, long
+  permission review, cancellation and install/update/rollback flows remain for
+  the user's return. No active tool sessions at this checkpoint.
 
 ## 4. App updates with recovery — pending
 
@@ -178,3 +202,23 @@ Keep the full objective active until all five are ready for physical testing.
   update review. Existing widget install/version-selection/permissions remain
   the mutation authority. Downloads must be bounded cancellable jobs rather
   than blocking the private Settings pipe's short request deadline.
+- Performance local commit: `407dd9c1`. Its complete candidate and 338 focused
+  checks (7 core, 7 feature, 70 broker, 153 SDK, 17 API compatibility, 84 Settings)
+  plus packaging/probe evidence are recorded above. This progress-note addition
+  is the only uncommitted file after that milestone. Do not rerun completed checks
+  without a relevant change; next implementation work is the marketplace.
+
+### Marketplace completion checkpoint
+
+- Final focused checks passed: marketplace 7/7, Settings 85/85, transport 27/27,
+  shared CLI distribution 20/20. Review rechecks selected version/content digest
+  under the catalog mutation lock; expired/replayed reviews cannot install.
+- Source metadata is shared with CLI updates; saved inactive versions route to
+  management. Live release/download/review probe passed without installation.
+- Complete candidate: `artifacts/marketplace/candidate-01/build/frontend/OverlayFrontend.WinUI.exe`.
+  Published async cleanup verification passed. Review found no additional blocker:
+  semantic controls, stable focus, bounded cancellable work, exact held-file review,
+  explicit full-access approval, disabled installation and prior-version retention.
+- Physical marketplace checks remain pending. No live profile changed or app launched.
+- Next: define and implement application updates and standalone recovery. Earlier
+  chronological next-action entries above are historical; this is the current checkpoint.

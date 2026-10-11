@@ -40,6 +40,8 @@ public enum SettingsPage
     Diagnostics,
     AuthorityRecovery,
     Reset,
+    Marketplace,
+    MarketplaceDetails,
 }
 
 public sealed partial class SettingsWidget : Widget
@@ -163,6 +165,7 @@ public sealed partial class SettingsWidget : Widget
         bool settingsValid;
         bool diagnosticDetails;
         string? supportExportFile;
+        SettingsMarketplaceState marketplace;
         PlatformDiagnosticsSnapshot diagnostics;
         SettingsInstalledWidgetState installedState;
         SettingsPermissionState permissionState;
@@ -185,6 +188,7 @@ public sealed partial class SettingsWidget : Widget
             settingsValid = _settingsValid;
             diagnosticDetails = _diagnosticDetails;
             supportExportFile = _supportExportFile;
+            marketplace = _marketplaceState;
             diagnostics = _diagnostics;
             installedState = _installedState;
             permissionState = _permissionState;
@@ -206,7 +210,7 @@ public sealed partial class SettingsWidget : Widget
             error,
             selectedTheme,
             themePickerFocusId, startupStatus, display, loading, _hostFeatures,
-            diagnosticDetails, supportExportFile);
+            diagnosticDetails, supportExportFile, marketplace);
         if (SettingsPresentation.TryRender(presentation, out var view))
             return SettingsPresentation.AnimatePage(view, page, loading);
         var header = SettingsPresentation.Header(presentation);
@@ -301,6 +305,8 @@ public sealed partial class SettingsWidget : Widget
                 try
                 {
                     await ReadPackageNotificationCoreAsync(cancellationToken).ConfigureAwait(false);
+                    if (CurrentPage is SettingsPage.Marketplace or SettingsPage.MarketplaceDetails)
+                        await ReadMarketplaceAsync(new("status"), cancellationToken).ConfigureAwait(false);
                     if (CurrentPage is SettingsPage.Overlay or SettingsPage.Appearance or SettingsPage.Accessibility)
                         await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
                     if (CurrentPage is not (SettingsPage.Controllers or SettingsPage.ControllerHelp)) continue;
@@ -389,6 +395,7 @@ public sealed partial class SettingsWidget : Widget
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (await HandleMarketplaceActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
             if (action.ActionId == "back" && CurrentPage == SettingsPage.InstalledWidgetVersionRemoval)
             {
                 CancelVersionRemoval();
@@ -1053,6 +1060,7 @@ public sealed partial class SettingsWidget : Widget
         {
             var previousPage = _page;
             _page = page;
+            if (page != SettingsPage.MarketplaceDetails) _marketplaceState = _marketplaceState with { ReviewOpen = false };
             if (page == SettingsPage.Permissions &&
                 previousPage != SettingsPage.PermissionDiagnostics)
                 _permissionState = _permissionState with { DiagnosticsReturnFocus = false };

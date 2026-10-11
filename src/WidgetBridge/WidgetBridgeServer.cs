@@ -32,6 +32,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
     private readonly BridgeLocalWidgetPackageImportService? _localPackageImport;
+    private readonly BridgeWidgetMarketplace? _marketplace;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly SemaphoreSlim _notificationWriteGate = new(1, 1);
     private readonly BridgeFrameWriteBoundary _frameWriter;
@@ -125,6 +126,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _packageUninstall = new BridgeWidgetPackageUninstallService(
             packageCatalog,
             _catalogMonitor);
+        _marketplace = packageCatalog is null || _catalogMonitor is null ? null :
+            new BridgeWidgetMarketplace(packageCatalog, async token => { await _catalogMonitor.ReloadNowAsync(token).ConfigureAwait(false); });
         _localPackageImport = _catalogMonitor is null
             ? null
             : new BridgeLocalWidgetPackageImportService(
@@ -312,6 +315,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             {
                 if (_localPackageImport is not null)
                     await _localPackageImport.DisposeAsync().ConfigureAwait(false);
+                if (_marketplace is not null) await _marketplace.DisposeAsync().ConfigureAwait(false);
                 await _registry.DisposeAsync().ConfigureAwait(false);
             }
             finally
@@ -331,6 +335,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _taskActivations.Clear();
         if (_localPackageImport is not null)
             await _localPackageImport.DisposeAsync().ConfigureAwait(false);
+        if (_marketplace is not null) await _marketplace.DisposeAsync().ConfigureAwait(false);
         await _registry.DisposeAsync().ConfigureAwait(false);
         _notificationWriteGate.Dispose();
         _writeGate.Dispose();
@@ -1124,19 +1129,25 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     _packageUninstall.InspectAsync,
                     _packageUninstall.UninstallAsync,
                     context, _supportsExclusiveControllerControl ? _controllers.SetAsync : null, RequestApplicationControlAsync,
-                    _ => ValueTask.FromResult(_localPackageImport?.TakeNotification(configured.PublicDescriptor().RuntimeGeneration)
-                        ?? PlatformWidgetPackageNotification.Empty),
+                    _ => ValueTask.FromResult(TakePackageNotification(configured.PublicDescriptor().RuntimeGeneration)),
                     _localData.InspectBuiltInAsync, _localData.ClearBuiltInAsync,
                     () => _appearance?.Display ?? OverlayDisplayContext.Unavailable,
                     settingsRoot: _settingsRoot,
                     exclusiveControllerControl: _supportsExclusiveControllerControl,
                     heldDpadScroll: _supportsHeldDpadScroll,
-                    startupRegistration: _supportsStartupRegistration)
+                    startupRegistration: _supportsStartupRegistration,
+                    marketplace: _marketplace is null ? null : _marketplace.HandleAsync)
                 : _consentStore is null || _platformBackend is null
                     ? null
                     : CreateCompanionFactory(configured),
         });
         return new WidgetProcessBridgeClient(client);
+    }
+
+    private PlatformWidgetPackageNotification TakePackageNotification(string generation)
+    {
+        var local = _localPackageImport?.TakeNotification(generation) ?? PlatformWidgetPackageNotification.Empty;
+        return local.Message.Length != 0 ? local : _marketplace?.TakeNotification() ?? PlatformWidgetPackageNotification.Empty;
     }
 
     private Task PublishClientInvalidation(

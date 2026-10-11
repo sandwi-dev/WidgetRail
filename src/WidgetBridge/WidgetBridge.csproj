@@ -12,6 +12,7 @@
     <ProjectReference Include="..\WidgetBridge.Contracts\WidgetBridge.Contracts.csproj" />
     <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
     <ProjectReference Include="..\PlatformDiagnostics\PlatformDiagnostics.csproj" />
+    <ProjectReference Include="..\PackageDistribution\PackageDistribution.csproj" />
     <ProjectReference Include="..\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\WidgetCatalog\WidgetCatalog.csproj" />
     <ProjectReference Include="..\WidgetRuntime\WidgetRuntime.csproj" />
@@ -27,4 +28,5 @@
     <ProjectReference Include="..\WindowsAppLibraryProvider\WindowsAppLibraryProvider.csproj" />
     <ProjectReference Include="..\WindowsCommunityProvider\WindowsCommunityProvider.csproj" />
   </ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Marketplace/catalog.json" LogicalName="WidgetRail.Marketplace.catalog.json" /></ItemGroup>
 </Project>

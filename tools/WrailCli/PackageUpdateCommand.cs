@@ -36,7 +36,7 @@ internal static class PackageUpdateCommand
             previousTheme = await ThemePackage.InspectSourceAsync(Path.Combine(root, "themes", selected.CatalogId, selected.CatalogVersion), token);
             version = previousTheme.Manifest.Version;
             publisher = previousTheme.Manifest.Publisher!;
-            digest = PackageSources.ThemeDigest(previousTheme);
+            digest = ThemePackageDigest.Compute(previousTheme);
         }
         else
         {
@@ -89,7 +89,7 @@ internal static class PackageUpdateCommand
             await output.WriteLineAsync("Theme packages contain styles and metadata; no widget permissions are added.");
             if (!apply) return await ReviewAsync(parsed, source, hash, output, theme, root, version);
             await ThemePackage.InstallAsync(next, root, token);
-            await PackageSources.SaveAsync(root, "theme", new(id, next.Manifest.Version, publisher, source.ToString(), hash, PackageSources.ThemeDigest(next)), output, token);
+            await PackageSources.SaveAsync(root, "theme", new(id, next.Manifest.Version, publisher, source.ToString(), hash, ThemePackageDigest.Compute(next)), output, token);
             await output.WriteLineAsync($"Installed {id} {next.Manifest.Version}. The current theme is unchanged; choose the new version in Settings > Appearance. Older versions remain available.");
             return 0;
         }

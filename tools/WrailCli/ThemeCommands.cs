@@ -316,7 +316,7 @@ internal static class ThemeInstallCommand
         if (github is not null && downloadedHash is not null)
             await PackageSources.SaveAsync(ThemeSettingsRoot.Resolve(parsed.Option("--settings-root")), "theme",
                 new(inspection.Manifest.Id, inspection.Manifest.Version, inspection.Manifest.Publisher!,
-                    github.ToString(), downloadedHash, PackageSources.ThemeDigest(inspection)), output, cancellationToken);
+                    github.ToString(), downloadedHash, ThemePackageDigest.Compute(inspection)), output, cancellationToken);
         await output.WriteLineAsync(
             $"Installed {inspection.Manifest.Id} {inspection.Manifest.Version} to {installed}.");
         await output.WriteLineAsync("Select it from Settings > Appearance after reviewing the publisher and preview.");

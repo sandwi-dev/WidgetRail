@@ -1,0 +1,22 @@
+[
+  {
+    "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
+    "description": "Browse and launch your Playnite games. Requires the separate Playnite Bridge extension and a running Playnite instance.",
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/home.png"]
+  },
+  {
+    "id": "widgetrail.samples.spotify", "publisher": "widgetrail.samples", "name": "Spotify",
+    "description": "Browse your Spotify library and control playback with your controller. Spotify sign-in and provider setup are required.",
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/search-player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/pinned-player.png"]
+  },
+  {
+    "id": "widgetrail.samples.youtube-video", "publisher": "widgetrail.samples", "name": "YouTube Video",
+    "description": "Search and watch YouTube with a pinnable player. Searching requires a YouTube API key; video links can play without a search key.",
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/pinned-video.png"]
+  },
+  {
+    "id": "widgetrail.samples.ytmusic", "publisher": "widgetrail.samples", "name": "YouTube Music",
+    "description": "Browse music and keep playback controls pinned while playing. Sign-in may be required.",
+    "screenshots": []
+  }
+]
