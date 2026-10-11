@@ -11,7 +11,7 @@ recording, upload, or eviction of saved media.
   qualified hardware 1080p30, otherwise another supported profile; default duration
   is five seconds and audio is off.
 - **Capture settings** groups screenshot resolution/format, recording quality,
-  bitrate, duration, stop behavior, audio, preparation delay/countdown and cursor.
+  bitrate, maximum duration, audio, preparation delay/countdown and cursor.
   Settings persist privately across restarts. Unavailable saved settings remain
   intact and fail with an explanation; recording never silently downgrades.
 - Confirm the host dialog, let WidgetRail hide, and bring your application forward.

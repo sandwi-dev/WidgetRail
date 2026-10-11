@@ -69,8 +69,6 @@ public sealed partial class CaptureLibraryWidget
             case "image.1080": next = next with { Image = image with { MaximumWidth = 1920, MaximumHeight = 1080 } }; break;
             case "image.1440": next = next with { Image = image with { MaximumWidth = 2560, MaximumHeight = 1440 } }; break;
             case "image.2160": next = next with { Image = image with { MaximumWidth = 3840, MaximumHeight = 2160 } }; break;
-            case "stop.manual": next = next with { Video = video with { StopManually = true } }; break;
-            case "stop.fixed": next = next with { Video = video with { StopManually = false } }; break;
             case "cursor.on" when capabilities.CursorSupported: next = next with { IncludeCursor = true }; break;
             case "cursor.off": next = next with { IncludeCursor = false }; break;
             case "countdown.on": next = next with { Preparation = prep with { ShowCountdown = true } }; break;
@@ -143,8 +141,8 @@ public sealed partial class CaptureLibraryWidget
                     fields.Add(Field("bitrate", "Bitrate", rates.Select(rate => Option("bitrate." + rate, $"{rate / 1_000_000d:0.#} Mbps", rate == video.Bitrate)), "Higher bitrate retains more detail and uses more storage."));
                 }
                 fields.Add(Field("duration", "Maximum duration", Durations.Where(d => d <= capabilities.MaximumRecordingSeconds).Select(d => Option("duration." + d, $"{d} seconds", d == video.MaximumDurationSeconds))));
-                fields.Add(Field("stop", "Stop recording", [Option("stop.fixed", "At maximum duration", !video.StopManually), Option("stop.manual", "When I reopen WidgetRail", video.StopManually)],
-                    "Reopening always finishes the clip early. Maximum duration is a safety limit in either mode."));
+                fields.Add(UI.Text("Reopen WidgetRail to finish a clip early. Every recording stops at its maximum duration.",
+                    "capture-library.settings.stop-help").Classes("capture-help"));
                 fields.Add(Field("audio", "Audio", capabilities.AudioModes.Select(a => Option("audio." + a, a == CaptureAudioMode.None ? "No audio" : a.ToString(), video.Audio == a)),
                     "Only validated audio modes are available."));
                 fields.Add(UI.Text($"Estimated video size: {(long)video.Bitrate * video.MaximumDurationSeconds / 8 / 1048576d:0.0} MiB + container overhead · limit 128 MiB.", "capture-library.settings.estimate").Classes("capture-help"));

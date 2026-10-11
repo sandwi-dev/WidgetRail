@@ -21,7 +21,7 @@ public sealed record ScreenshotOptions(int? MaximumWidth = null, int? MaximumHei
 /// <summary>Explicit encoding settings. The requested dimensions are an aspect-preserving bound, not a stretch.</summary>
 public sealed record RecordingOptions(int MaximumWidth = 1280, int MaximumHeight = 720, int FramesPerSecond = 15,
     int Bitrate = 3_000_000, int MaximumDurationSeconds = 5, CaptureEncoderMode Encoder = CaptureEncoderMode.Software,
-    CaptureAudioMode Audio = CaptureAudioMode.None, bool StopManually = false)
+    CaptureAudioMode Audio = CaptureAudioMode.None)
 {
     public bool IsWellFormed() => MaximumWidth is >= 2 and <= 8192 && MaximumHeight is >= 2 and <= 8192 &&
         MaximumWidth % 2 == 0 && MaximumHeight % 2 == 0 && (long)MaximumWidth * MaximumHeight <= CaptureLimits.MaximumPixels &&

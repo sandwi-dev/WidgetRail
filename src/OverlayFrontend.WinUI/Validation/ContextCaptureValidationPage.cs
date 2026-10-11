@@ -95,7 +95,7 @@ internal sealed partial class ContextCaptureValidationPage : Page
                     "Configured video reports actual software encoding, dimensions and requested duration");
                 using var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(1200));
                 var stoppedRequest = configuredRequest with { OutputPath = Path.Combine(directory, "stopped.mp4"),
-                    Options = new() { Recording = new(640, 360, 15, 1_000_000, 10, StopManually: true) } };
+                    Options = new() { Recording = new(640, 360, 15, 1_000_000, 10) } };
                 var stopped = await NativeWindowCapture.RunAsync(stoppedRequest, deadline.Token, stop.Token);
                 var stoppedFile = await StorageFile.GetFileFromPathAsync(stoppedRequest.OutputPath);
                 var stoppedProperties = await stoppedFile.Properties.GetVideoPropertiesAsync();

@@ -364,8 +364,15 @@ of these new changes. No scope item is complete solely because it is planned.
   Final broker rerun passes 76/76 (`permissions-broker-final-01.log`).
 - Remaining integration review: pinned sources currently receive Unavailable
   rather than a main-window prompt; preserve the intended foreground/focus policy
-  when addressing this. Also remove or give real semantics to the Capture Library
-  Stop recording selector: StopManually currently does not change recording behavior
-  (all recordings stop on reopen or maximum duration), so do not ship a no-op option.
+  when addressing this. Review also found a no-op Stop recording selector;
+  corrected below before publishing the new capture contract.
   Marketplace, audio qualification, complete candidate assembly, native layout review
   and launch remain outstanding. No whole-goal completion has been claimed.
+
+### Capture stopping contract cleanup
+
+- Removed the unused StopManually flag from the unreleased configurable recording
+  contract and removed its ineffective selector. The UI explains the real behavior:
+  every recording stops at maximum duration, and reopening can finish it early.
+  SDK StopAsync remains the independent lifecycle operation for widget authors.
+  This changes no previously released capture constructor or legacy request API.
