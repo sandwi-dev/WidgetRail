@@ -6,6 +6,7 @@ using WidgetRail.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("App updates require authenticated commands and valid review snapshots", AppUpdateRoundTrip),
     ("Marketplace commands require the trusted channel and enforce review shape", MarketplaceRoundTrip),
     ("Support reports exclude private data and leave no partial file", () => SupportBundleScenarios.ExportPrivacyAndFailureAsync(HealthySnapshot(21))),
     ("Health distinguishes recovered failures from missing telemetry", () => SupportBundleScenarios.Health(HealthySnapshot(22))),
@@ -52,6 +53,23 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
+static async Task AppUpdateRoundTrip()
+{
+    var calls = 0;
+    var snapshot = new AppUpdateSnapshot(1, "idle", "0.1.0");
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)),
+        appUpdates: (_, _) => { calls++; return ValueTask.FromResult(snapshot); });
+    var wrong = new PlatformDiagnosticsPipeClient(harness.PipeName, new string('0', 64), Environment.ProcessId);
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() => wrong.AppUpdatesAsync(new("check")).AsTask());
+    Assert.Equal(0, calls);
+    Assert.Equal(1L, (await harness.Client.AppUpdatesAsync(new("status"))).Revision);
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() => harness.Client.AppUpdatesAsync(new("install")).AsTask());
+    Assert.Equal(1, calls);
+    snapshot = snapshot with { State = "ready" };
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() => harness.Client.AppUpdatesAsync(new("status")).AsTask());
+    snapshot = snapshot with { Revision = 2, ReviewToken = new string('A', 64) };
+    Assert.Equal(2L, (await harness.Client.AppUpdatesAsync(new("status"))).Revision);
+}
 static async Task MarketplaceRoundTrip()
 {
     var calls = 0;
@@ -861,12 +879,13 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? clearBuiltIn = null,
         Func<OverlayDisplayContext>? overlayDisplay = null,
         Func<CancellationToken, ValueTask<SupportBundleExportResult>>? supportExport = null,
-        Func<MarketplaceCommand, CancellationToken, ValueTask<MarketplaceSnapshot>>? marketplace = null)
+        Func<MarketplaceCommand, CancellationToken, ValueTask<MarketplaceSnapshot>>? marketplace = null,
+        Func<AppUpdateCommand, CancellationToken, ValueTask<AppUpdateSnapshot>>? appUpdates = null)
     {
         PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
-            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification, inspectBuiltIn, clearBuiltIn, overlayDisplay, supportExport, marketplace);
+            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification, inspectBuiltIn, clearBuiltIn, overlayDisplay, supportExport, marketplace, appUpdates);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

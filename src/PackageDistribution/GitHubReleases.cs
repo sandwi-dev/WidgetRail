@@ -24,15 +24,17 @@ public sealed record GitHubPackageSource(string Repository, string Tag, string A
 }
 
 public sealed record GitHubAsset(string Name, string? Sha256, long Size);
-public sealed record GitHubRelease(string Tag, bool Prerelease, IReadOnlyList<GitHubAsset> Assets, string? ChecksumFile);
+public sealed record GitHubRelease(string Tag, bool Prerelease, IReadOnlyList<GitHubAsset> Assets, string? ChecksumFile, string Notes = "");
 
 public sealed class GitHubReleaseClient : IDisposable
 {
     private readonly HttpClient _http;
+    private readonly bool _includeInstallers;
     private readonly HttpMessageHandler? _handler;
-    public GitHubReleaseClient(HttpMessageHandler? handler)
+    public GitHubReleaseClient(HttpMessageHandler? handler, bool includeInstallers = false)
     {
         _handler = handler;
+        _includeInstallers = includeInstallers;
         _http = new HttpClient(handler ?? new SocketsHttpHandler
         {
             AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.None,
@@ -51,7 +53,7 @@ public sealed class GitHubReleaseClient : IDisposable
         if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() > 20)
             throw new DistributionOperationException("GitHub returned an invalid release list.");
         return json.RootElement.EnumerateArray().Where(item => !Boolean(item, "draft"))
-            .Select(ParseRelease).ToArray();
+            .Select(item => ParseRelease(item, _includeInstallers)).ToArray();
     }
 
     public async Task<GitHubRelease> GetReleaseAsync(string repository, string? tag, CancellationToken token)
@@ -60,7 +62,7 @@ public sealed class GitHubReleaseClient : IDisposable
         if (tag is not null) _ = GitHubPackageSource.Parse($"github:{repository}@{tag}/probe.wrwidget", ".wrwidget");
         using var json = await GetAsync($"repos/{repository}/releases/" + (tag is null ? "latest" : "tags/" + Uri.EscapeDataString(tag)), token);
         if (Boolean(json.RootElement, "draft")) throw new DistributionOperationException("Draft releases cannot be installed.");
-        var release = ParseRelease(json.RootElement);
+        var release = ParseRelease(json.RootElement, _includeInstallers);
         if (tag is not null && release.Tag != tag) throw new DistributionOperationException("GitHub returned a different release tag than requested.");
         return release;
     }
@@ -96,7 +98,7 @@ public sealed class GitHubReleaseClient : IDisposable
             ?? throw new DistributionUsageException("Checksum manifest does not contain this package. Supply --sha256 explicitly.");
     }
 
-    private static GitHubRelease ParseRelease(JsonElement item)
+    private static GitHubRelease ParseRelease(JsonElement item, bool includeInstallers)
     {
         var tag = Text(item, "tag_name");
         if (!item.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
@@ -114,7 +116,7 @@ public sealed class GitHubReleaseClient : IDisposable
                 continue;
             }
             var extension = Path.GetExtension(name).ToLowerInvariant();
-            if (extension is not ".wrwidget" and not ".wrtheme") continue;
+            if (extension is not ".wrwidget" and not ".wrtheme" && !(includeInstallers && extension == ".exe")) continue;
             // Reconstruct downloads from validated names, never an API-supplied URL.
             _ = GitHubPackageSource.Parse($"github:validation/repository@{tag}/{name}", extension);
             var digest = asset.TryGetProperty("digest", out var value) && value.ValueKind == JsonValueKind.String
@@ -127,7 +129,7 @@ public sealed class GitHubReleaseClient : IDisposable
                 throw new DistributionOperationException("GitHub returned an invalid asset size.");
             result.Add(new(name, hash?.ToLowerInvariant(), bytes));
         }
-        return new(tag, Boolean(item, "prerelease"), result, checksumFile);
+        return new(tag, Boolean(item, "prerelease"), result, checksumFile, item.TryGetProperty("body", out var body) && body.ValueKind == JsonValueKind.String ? (body.GetString() ?? string.Empty)[..Math.Min(8000, body.GetString()!.Length)] : string.Empty);
     }
 
     private static string Text(JsonElement item, string name) => item.ValueKind == JsonValueKind.Object &&
@@ -170,4 +172,3 @@ public sealed class GitHubReleaseClient : IDisposable
 
     public void Dispose() => _http.Dispose();
 }
-

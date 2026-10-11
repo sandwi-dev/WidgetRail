@@ -15,6 +15,9 @@ internal static partial class Program
         ProcessLifecycle? lifetime = null;
         try
         {
+            // Recovery owns profile files while setup/restore runs outside this app.
+            if (Mutex.TryOpenExisting(@"Local\WidgetRail.Recovery", out var updateRecovery))
+            { updateRecovery.Dispose(); return 0; }
             if (ControllerRecoveryStartup.TryRun(args, [], out var recoveryExitCode))
                 return recoveryExitCode;
             var arguments = args;

@@ -49,7 +49,7 @@ public sealed class RemotePackageDownloader : IDisposable
         Action<long, long?>? progress = null)
     {
         ValidateRemoteUri(source, "Remote package URL");
-        if (temporaryExtension is not ".wrwidget" and not ".wrtheme")
+        if (temporaryExtension is not ".wrwidget" and not ".wrtheme" and not ".exe")
             throw new ArgumentException("Temporary package extension is unsupported.", nameof(temporaryExtension));
         using var overall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         overall.CancelAfter(_options.OverallTimeout);
@@ -300,7 +300,7 @@ public static partial class RemotePackageSource
 
     public static Uri? Resolve(string source, string requiredExtension = ".wrwidget")
     {
-        if (requiredExtension is not ".wrwidget" and not ".wrtheme")
+        if (requiredExtension is not ".wrwidget" and not ".wrtheme" and not ".exe")
             throw new ArgumentException("Remote package extension is unsupported.", nameof(requiredExtension));
         if (source.StartsWith("github:", StringComparison.OrdinalIgnoreCase))
             return ResolveGitHub(source["github:".Length..], requiredExtension);

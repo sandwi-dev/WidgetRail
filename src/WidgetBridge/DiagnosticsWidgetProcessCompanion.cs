@@ -80,7 +80,8 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
         bool exclusiveControllerControl = true,
         bool heldDpadScroll = true,
         bool startupRegistration = true,
-        Func<MarketplaceCommand, CancellationToken, ValueTask<MarketplaceSnapshot>>? marketplace = null)
+        Func<MarketplaceCommand, CancellationToken, ValueTask<MarketplaceSnapshot>>? marketplace = null,
+        Func<AppUpdateCommand, CancellationToken, ValueTask<AppUpdateSnapshot>>? appUpdates = null)
     {
         ArgumentNullException.ThrowIfNull(snapshotProvider);
         ArgumentNullException.ThrowIfNull(authorityRecoveryRetry);
@@ -104,6 +105,7 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             applicationControl: applicationControl,
             packageNotification: packageNotification,
             marketplace: marketplace,
+            appUpdates: appUpdates,
             supportExport: async token =>
             {
                 var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);

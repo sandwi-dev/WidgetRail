@@ -45,6 +45,7 @@ if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("App updates use explicit review and preserve busy focus", AppUpdateScenarios.ControllerFlow),
     ("Marketplace download review is controller-native and full access requires confirmation", MarketplaceScenarios.ControllerFlow),
     ("Diagnostics export stays focusable and retains its saved location", DiagnosticsExportScenarios.ExportRetainsFocusAndResult),
     ("Installed rows separate visible fields and preserve one action", StructuredInstalledRows),

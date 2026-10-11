@@ -27,7 +27,7 @@ internal sealed record SettingsPresentationState(
     SettingsHostFeatures? HostFeatures = null,
     bool DiagnosticDetails = false,
     string? SupportExportFile = null,
-    SettingsMarketplaceState? Marketplace = null);
+    SettingsMarketplaceState? Marketplace = null, SettingsAppUpdateState? AppUpdates = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static partial class SettingsPresentation
@@ -64,6 +64,7 @@ internal static partial class SettingsPresentation
                 state.HostFeatures ?? new()),
             SettingsPage.Controllers => ControllerSettingsPresentation.Render(state),
             SettingsPage.ControllerHelp => ControllerSettingsPresentation.Render(state, details: true),
+            SettingsPage.AppUpdates => RenderAppUpdates(header, state),
             SettingsPage.About => RenderAbout(header),
             SettingsPage.Diagnostics => RenderDiagnostics(header, state),
             SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(header, state),
@@ -362,6 +363,7 @@ internal static partial class SettingsPresentation
         UI.Text("WidgetRail", "about.name").Classes("section-heading"),
         UI.Text("Version " + ProductVersion, "about.version").Classes("page-help"),
         UI.Text("Controller-first widgets for your desktop and games.", "about.description").Classes("page-help"),
+        UI.Button("App updates & recovery", "open.app-updates", "about.updates").Classes("setting-row"),
         UI.Button("Diagnostics", "open.diagnostics", "about.diagnostics").Classes("setting-row"),
         UI.Text("Inspect service status, widget failures, and recovery information.", "about.diagnostics.help").Classes("page-help"),
         UI.Button("Reset settings…", "open.reset", "category.reset").Classes("danger-button"),
@@ -652,6 +654,7 @@ internal static class SettingsNavigationPolicy
             SettingsPage.Marketplace => SettingsPage.InstalledWidgets,
             SettingsPage.MarketplaceDetails => SettingsPage.Marketplace,
             SettingsPage.InstalledWidgetTechnical => SettingsPage.InstalledWidgetDetails,
+            SettingsPage.AppUpdates => SettingsPage.About,
             SettingsPage.Diagnostics or SettingsPage.Reset => SettingsPage.About,
             SettingsPage.InstalledWidgetUpdate => SettingsPage.InstalledWidgetDetails,
             SettingsPage.InstalledWidgetVersionRemoval => SettingsPage.InstalledWidgetVersions,

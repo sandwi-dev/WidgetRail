@@ -25,6 +25,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private readonly Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? _packageNotification;
     private readonly Func<OverlayDisplayContext>? _overlayDisplay;
     private readonly Func<CancellationToken, ValueTask<SupportBundleExportResult>>? _supportExport;
+    private readonly Func<AppUpdateCommand, CancellationToken, ValueTask<AppUpdateSnapshot>>? _appUpdates;
     private readonly Func<MarketplaceCommand, CancellationToken, ValueTask<MarketplaceSnapshot>>? _marketplace;
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
@@ -67,7 +68,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? builtInLocalDataClear = null,
         Func<OverlayDisplayContext>? overlayDisplay = null,
         Func<CancellationToken, ValueTask<SupportBundleExportResult>>? supportExport = null,
-        Func<MarketplaceCommand, CancellationToken, ValueTask<MarketplaceSnapshot>>? marketplace = null)
+        Func<MarketplaceCommand, CancellationToken, ValueTask<MarketplaceSnapshot>>? marketplace = null,
+        Func<AppUpdateCommand, CancellationToken, ValueTask<AppUpdateSnapshot>>? appUpdates = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
@@ -76,6 +78,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         _overlayDisplay = overlayDisplay;
         _supportExport = supportExport;
         _marketplace = marketplace;
+        _appUpdates = appUpdates;
         _exclusiveControl = exclusiveControl;
         _applicationControl = applicationControl;
         _packageNotification = packageNotification;
@@ -187,9 +190,21 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             throw new PlatformDiagnosticsException("malformed_request");
         if (request.Marketplace is not null && request.Operation != "marketplace")
             throw new PlatformDiagnosticsException("malformed_request");
+        if (request.AppUpdates is not null && request.Operation != "app-updates") throw new PlatformDiagnosticsException("malformed_request");
         string receiptOperation;
         switch (request.Operation)
         {
+            case "app-updates":
+            {
+                if (request.AppUpdates is null || request.ConfirmationToken is not null || request.WidgetId is not null || request.PublisherId is not null || request.ActiveVersion is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                AppUpdateContract.ValidateCommand(request.AppUpdates);
+                var result = _appUpdates is null ? AppUpdateSnapshot.Unavailable : await _appUpdates(request.AppUpdates, cancellationToken).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                AppUpdateContract.ValidateSnapshot(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = request.Operation;
+                break;
+            }
             case "marketplace":
             {
                 if (request.Marketplace is null || request.ConfirmationToken is not null || request.WidgetId is not null ||
@@ -674,7 +689,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         string? PublisherId = null,
         string? ActiveVersion = null,
         bool? ExclusiveControl = null,
-        MarketplaceCommand? Marketplace = null);
+        MarketplaceCommand? Marketplace = null, AppUpdateCommand? AppUpdates = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 }
@@ -698,6 +713,12 @@ public sealed class PlatformDiagnosticsPipeClient(
             "export-support-bundle", PlatformDiagnosticsPipeServer.ValidateSupportExport,
             cancellationToken).ConfigureAwait(false);
 
+    public async ValueTask<AppUpdateSnapshot> AppUpdatesAsync(AppUpdateCommand command, CancellationToken cancellationToken = default)
+    {
+        AppUpdateContract.ValidateCommand(command);
+        return await ExecuteAsync<AppUpdateSnapshot>(new DiagnosticsRequest("app-updates", AppUpdates: command),
+            "app-updates", AppUpdateContract.ValidateSnapshot, cancellationToken).ConfigureAwait(false);
+    }
     public async ValueTask<MarketplaceSnapshot> MarketplaceAsync(MarketplaceCommand command, CancellationToken cancellationToken = default)
     {
         MarketplaceContract.ValidateCommand(command);
@@ -891,7 +912,7 @@ public sealed class PlatformDiagnosticsPipeClient(
         string? PublisherId = null,
         string? ActiveVersion = null,
         bool? ExclusiveControl = null,
-        MarketplaceCommand? Marketplace = null);
+        MarketplaceCommand? Marketplace = null, AppUpdateCommand? AppUpdates = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 

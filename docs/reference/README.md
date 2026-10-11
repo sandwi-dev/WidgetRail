@@ -44,3 +44,5 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Performance Monitor and shared metrics](performance-monitor.md)
 - [Settings support reports](support-reports.md)
 - [Playnite](playnite-library.md) and [Spotify](spotify-integration.md)
+
+- [App updates and standalone recovery](app-updates.md): explicit Inno updates, verified downloads and profile rollback.

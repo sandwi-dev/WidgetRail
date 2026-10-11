@@ -5,3 +5,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("FirstPartyWidgetConformance.Tests")]
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("ReleaseVerifier")]
+[assembly: InternalsVisibleTo("AppUpdates.Tests")]

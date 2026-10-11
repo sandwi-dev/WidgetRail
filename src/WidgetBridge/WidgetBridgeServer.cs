@@ -32,6 +32,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
     private readonly BridgeLocalWidgetPackageImportService? _localPackageImport;
+    private readonly BridgeAppUpdates _appUpdates;
     private readonly BridgeWidgetMarketplace? _marketplace;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly SemaphoreSlim _notificationWriteGate = new(1, 1);
@@ -96,6 +97,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _appearance = appearance;
         _controllers = new BridgeControllerControl(settingsStore);
         _settingsRoot = settingsStore?.Paths.RootDirectory;
+        _appUpdates = BridgeAppUpdates.Create(_settingsRoot);
         _consentStore = consentStore;
         _platformBackend = platformBackend;
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
@@ -316,6 +318,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 if (_localPackageImport is not null)
                     await _localPackageImport.DisposeAsync().ConfigureAwait(false);
                 if (_marketplace is not null) await _marketplace.DisposeAsync().ConfigureAwait(false);
+                await _appUpdates.DisposeAsync().ConfigureAwait(false);
                 await _registry.DisposeAsync().ConfigureAwait(false);
             }
             finally
@@ -336,6 +339,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         if (_localPackageImport is not null)
             await _localPackageImport.DisposeAsync().ConfigureAwait(false);
         if (_marketplace is not null) await _marketplace.DisposeAsync().ConfigureAwait(false);
+        await _appUpdates.DisposeAsync().ConfigureAwait(false);
         await _registry.DisposeAsync().ConfigureAwait(false);
         _notificationWriteGate.Dispose();
         _writeGate.Dispose();
@@ -1136,7 +1140,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     exclusiveControllerControl: _supportsExclusiveControllerControl,
                     heldDpadScroll: _supportsHeldDpadScroll,
                     startupRegistration: _supportsStartupRegistration,
-                    marketplace: _marketplace is null ? null : _marketplace.HandleAsync)
+                    marketplace: _marketplace is null ? null : _marketplace.HandleAsync,
+                    appUpdates: _appUpdates.HandleAsync)
                 : _consentStore is null || _platformBackend is null
                     ? null
                     : CreateCompanionFactory(configured),

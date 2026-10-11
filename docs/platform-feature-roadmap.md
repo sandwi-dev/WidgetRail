@@ -131,9 +131,7 @@ Keep the full objective active until all five are ready for physical testing.
 - Settings now has Browse marketplace, details/screenshots (LB/RB), progress,
   cancellation, and controller-native review starting on Cancel near the trust
   warning. Up-to-date items route to installed-widget management. Current build
-  checks: marketplace backend 6/6, Settings 85/85, diagnostics transport 27/27.
-  New management routing and tightened version validation were added afterward;
-  rerun relevant checks before finalizing.
+  checks: marketplace backend 7/7, Settings 85/85, diagnostics transport 27/27.
 - Actual public-release probe succeeded for all four listings and downloaded /
   verified / reviewed YouTube Video 0.3.40 (SHA256 in `live-review-01.log`). It
   installed nothing and discarded the temporary archive. User profiles untouched.
@@ -142,7 +140,7 @@ Keep the full objective active until all five are ready for physical testing.
   permission review, cancellation and install/update/rollback flows remain for
   the user's return. No active tool sessions at this checkpoint.
 
-## 4. App updates with recovery — pending
+## 4. App updates with recovery — implemented; candidate ready for physical checks
 
 - Release checks/notes and verified downloads; deliberate Inno installer handoff,
   never interrupt gameplay. Share suitable download/version infrastructure.
@@ -222,3 +220,76 @@ Keep the full objective active until all five are ready for physical testing.
 - Physical marketplace checks remain pending. No live profile changed or app launched.
 - Next: define and implement application updates and standalone recovery. Earlier
   chronological next-action entries above are historical; this is the current checkpoint.
+
+### App update/recovery design (before implementation)
+
+- Explicit Settings check, release notes, matching-edition download and final
+  confirmation. No polling notifications, shutdown, silent installation or elevation
+  of WidgetRail. Inno remains the per-user installer.
+- Require the current registered Inno installation and matching running payload
+  before offering installation. Development candidates can inspect releases only.
+- Download both the selected new installer and the exact currently installed
+  version's installer, verify published SHA256 values, and retain them locally.
+  Refuse installation if the matching recovery installer cannot be obtained.
+- A standalone Windows PowerShell recovery script uses Windows dialogs; it runs
+  independently of WidgetRail/.NET and is accessible through a desktop recovery
+  shortcut. The user quits WidgetRail before it can continue. It never kills
+  processes or interrupts gameplay. Installer UI remains the final user control.
+- With the application stopped, copy the entire WidgetRail profile before setup
+  (including installed widgets and their data). Refuse reparse points, excessive
+  size/file count, inaccessible files, insufficient space or incomplete backup.
+  Backups/installers live outside the profile in WidgetRail-Recovery and are private
+  local data, never support-report content or uploads. No automatic deletion.
+- Recovery runs the retained previous installer, then restores its matching profile.
+  Preserve the post-update profile separately. An old app never intentionally opens
+  new profile data. Windows Credential Manager, OS permissions and external full-trust
+  widget data are outside profile rollback; sign-in may be needed again.
+- Persist phase markers before mutations. Recovery is repeatable after partial
+  install or interrupted restore; no success reported merely because setup launched.
+- Focused isolated tests exercise backup fidelity, exclusions/limits, failed setup,
+  corrupted installer, interruption/recovery and profile preservation. Actual installer
+  execution/upgrade/downgrade remains a pending user-authorized physical test.
+
+### App updates implementation checkpoint
+
+- Marketplace committed locally as `cd59d094`; candidate and checks recorded above.
+- Implemented Settings release checks/notes, matching-edition verified downloads
+  of new and exact previous Inno installers, cancellable jobs and exact single-use
+  confirmation. Candidate installations cannot replace the registered installation.
+- Independent Windows PowerShell recovery/desktop shortcut, whole-profile backup
+  with ACLs and SHA256 manifest, installer recheck, persisted phases, previous-version
+  install/profile restore and preservation of newer profile. Frontend startup observes
+  recovery ownership. No update installed and no desktop shortcut created by tests.
+- Initial service checks 8/8, Settings 86/86, transport 28/28, recovery 6/6 passed.
+  Windows PowerShell null-string overload required an explicit previous-state path
+  for atomic File.Replace; corrected and passed. A Settings test helper initially
+  used Busy instead of IsBusy; corrected before the 86/86 run.
+- Next: finish interruption/resource review, regression checks, candidate, docs and
+  local commit, then Capture Library. This milestone is not yet finalized.
+
+### App updates completion checkpoint
+
+- Final focused checks: service 8/8 (`tests-final-02.log`), standalone Windows
+  PowerShell recovery 9/9 (`recovery-final-04.log`), Settings 86/86
+  (`settings-tests-final.log`), authenticated transport 28/28, shared CLI download/
+  release regressions 20/20 (`cli-tests-final-02.log`). All under `artifacts/app-updates`.
+- Additional test findings corrected: Windows PowerShell array enumeration for
+  multi-file profiles; shared release client now includes installer assets only
+  when explicitly requested by app updates (CLI widget listings remain unchanged).
+  Damaged backups fail before profile changes; partial restore copies are preserved
+  and rebuilt. The recovery entry point parses with Windows PowerShell 5.1.
+- Final candidate: `artifacts/app-updates/candidate-02/build/frontend/OverlayFrontend.WinUI.exe`.
+  Complete payload built, published cleanup verification passed, both embedded
+  recovery scripts matched source SHA256. Candidate-01 is superseded (built before
+  the final recovery/CLI corrections). No app or installer launched.
+- Review: bounded downloads and metadata, no automatic shutdown/install, exact
+  confirmation, matching installed-version/edition recheck before setup, explicit
+  Windows confirmation, verification immediately before execution with held file
+  leases, no reparse traversal, ACL/profile preservation, durable phase markers,
+  no automatic deletion, and startup exclusion while recovery owns profile files.
+- Physical pending: actual Inno upgrade/downgrade with published matching installer
+  pair; Windows confirmation/shortcut; cancelled setup; first-launch failure and
+  recovery; redirected folders/disk space; account sign-in after rollback. Current
+  public version may have no newer installer to offer; fixtures validate that flow.
+- Current next feature: Capture Library. All five remain in scope; objective is
+  active. Do not merge, push, publish, install app updates, or remove worktrees.

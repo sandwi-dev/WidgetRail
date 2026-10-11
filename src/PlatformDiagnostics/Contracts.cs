@@ -204,6 +204,8 @@ public sealed record OverlayDisplayContext(string Id, string Name)
 
 public interface IPlatformDiagnosticsService
 {
+    ValueTask<AppUpdateSnapshot> AppUpdatesAsync(AppUpdateCommand command, CancellationToken cancellationToken = default) => ValueTask.FromResult(AppUpdateSnapshot.Unavailable);
+
     ValueTask<MarketplaceSnapshot> MarketplaceAsync(MarketplaceCommand command, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(MarketplaceSnapshot.Unavailable);
     ValueTask<SupportBundleExportResult> ExportSupportBundleAsync(CancellationToken cancellationToken = default) =>
