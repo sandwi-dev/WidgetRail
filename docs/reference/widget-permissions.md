@@ -48,8 +48,10 @@ permissions. A cancelled dialog changes nothing. Settings remains available thro
 
 Requests require Interactive lifecycle and a foreground host presentation. Losing
 interaction, retirement, cancellation or expiry closes/invalidates pending consent.
-The current frontend presents permission dialogs from the main widget surface;
-pinned-dialog placement is still under validation. Requests that cannot be shown
+The frontend presents permission dialogs in the initiating main or active pinned
+surface, retaining its focus and restoring interaction afterward. Pins smaller
+than 320×280 DIPs return Unavailable; offer the main view or Settings in that case.
+Long permission lists support D-pad and right-stick scrolling. Requests that cannot be shown
 do not create a background queue. An SDK cancellation token throws cancellation;
 user dismissal returns Cancelled.
 

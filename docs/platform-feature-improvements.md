@@ -555,10 +555,9 @@ of these new changes. No scope item is complete solely because it is planned.
 
 ### Next concrete action
 
-1. Finish native small-pin/message-scroll validation described above. The Loaded
-   admission fix is built but the standalone small-layout fixture is still not
-   claimed passing. Verify actual pinned permission request/grant against the
-   assembled sandboxed worker, not only direct shell dialog coordination.
+1. Verify actual pinned permission request/grant against the assembled sandboxed
+   worker, not only direct shell dialog coordination. The small-layout and message
+   scrolling qualification below is now complete.
 2. Assemble the complete candidate with the current Bridge, worker, native ABI 3
    DLL and current built-ins/samples (including Marketplace, Library, Performance,
    Browser, Game Help and SDK Gallery). Validate real Marketplace service admission,
@@ -566,3 +565,18 @@ of these new changes. No scope item is complete solely because it is planned.
 3. Audit requirements/docs, then launch that complete candidate for physical
    testing. Goal remains active; no merge, push, release, installer publication
    or worktree cleanup. Raw frontend build output is not the deliverable.
+
+### Final dialog layout qualification
+
+- `permission-final-layout-01/result.json`: **32 checks pass** on the current
+  Debug frontend. The Loaded-based scroll-stop admission resolves the earlier
+  initialization failure. Default Cancel, all three decision outcomes, unarmed
+  opening gesture, pinned foreground retention and scrolling pass. Allow/Deny/
+  Cancel remain inside both 480×360 and 320×280 DIP pin viewports; long messages
+  accept focus, D-pad scrolling and right-stick scrolling at both sizes.
+- Earlier failed fixtures remain recorded; they no longer describe current source
+  behavior. Permission reference documentation now describes main and pinned
+  dialog placement and the minimum pin dimensions.
+- Next build uses the normal local distribution assembly, with fresh candidate
+  output under `artifacts/platform-improvements/final-candidate`. It does not
+  create an installer, register MSIX, change trust, or publish anything remotely.
