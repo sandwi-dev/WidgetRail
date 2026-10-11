@@ -83,5 +83,6 @@ function RemoveAllWidgetRailData: Boolean;
 begin
   Result := RemoveWidgetRailProfiles;
   if not RemoveDataTree(ExpandConstant('{localappdata}\WidgetRail')) then Result := False;
+  if not RemoveDataTree(ExpandConstant('{localappdata}\WidgetRail-Recovery')) then Result := False;
   if not RemoveDataTree(ExpandConstant('{%TEMP}\WidgetRail')) then Result := False;
 end;

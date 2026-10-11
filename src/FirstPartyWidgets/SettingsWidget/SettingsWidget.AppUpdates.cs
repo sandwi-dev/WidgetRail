@@ -103,7 +103,7 @@ internal static partial class SettingsPresentation
         if (state.Confirm && snapshot.State == "ready")
             view = view.WithModal(new WidgetModal("app-update.confirm", "Prepare to install",
                 UI.Stack("app-update.confirm.content",
-                    UI.Text("Both installers have been verified. Continue to the Windows confirmation, quit WidgetRail from Settings, then choose OK there. Your profile is backed up before the interactive installer opens.", "app-update.confirm.help"),
+                    UI.Text("Both installers have been verified. Continue, then quit WidgetRail from Settings. A Windows confirmation opens after the app exits; your profile is backed up before the interactive installer starts. The desktop recovery shortcut remains available if you finish later.", "app-update.confirm.help"),
                     UI.Text("The backup may contain private settings and widget data. Keep the recovery folder private. Installation is stopped if a complete backup cannot be made.", "app-update.confirm.privacy"),
                     UI.Row("app-update.confirm.actions",
                         UI.Button("Cancel", "app-update.dismiss", "app-update.dismiss"),

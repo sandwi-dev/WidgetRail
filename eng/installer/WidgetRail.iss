@@ -241,8 +241,8 @@ begin
   { Silent uninstall preserves data and never treats suppressed UI as consent. }
   if UninstallSilent then Exit;
   Choice := MsgBox('Also delete WidgetRail''s local data for this Windows account?' + #13#10#13#10 +
-    'This removes installed widgets, settings, caches, logs and isolated-widget data, including data shared with development copies.' + #13#10#13#10 +
-    'Credentials in Windows Credential Manager and data saved elsewhere by add-ons are kept.' + #13#10#13#10 +
+    'This removes installed widgets, settings, saved captures, recovery copies, caches, logs and isolated-widget data, including data shared with development copies.' + #13#10#13#10 +
+    'Credentials in Windows Credential Manager, exported files and other data saved elsewhere are kept.' + #13#10#13#10 +
     'Yes: permanently delete this local data.' + #13#10 +
     'No (recommended): keep data for reinstalling.' + #13#10 +
     'Cancel: do not uninstall.',
@@ -258,18 +258,18 @@ begin
   if (CurUninstallStep = usDone) and OwnsInstallation and
      not DeleteUserData and not UninstallSilent then begin
     MsgBox('Your WidgetRail data was kept.' + #13#10#13#10 +
-      'To remove saved data manually later, press Win+R, enter %LOCALAPPDATA%, and delete only the WidgetRail folder. You can also delete the WidgetRail folder inside %TEMP%.' + #13#10#13#10 +
-      'For complete cleanup of Windows sandbox profiles too, reinstall WidgetRail and choose Yes to delete local data when uninstalling. Credentials in Windows Credential Manager and data saved elsewhere by add-ons are kept.', mbInformation, MB_OK);
+      'To remove saved data manually later, press Win+R, enter %LOCALAPPDATA%, and delete only the WidgetRail and WidgetRail-Recovery folders. You can also delete the WidgetRail folder inside %TEMP%.' + #13#10#13#10 +
+      'For complete cleanup of Windows sandbox profiles too, reinstall WidgetRail and choose Yes to delete local data when uninstalling. Credentials in Windows Credential Manager, exported files and other data saved elsewhere are kept.', mbInformation, MB_OK);
     Exit;
   end;
   if CurUninstallStep = usPostUninstall then begin
     if DeleteUserData and OwnsInstallation then begin
       try
         if not RemoveAllWidgetRailData then
-          MsgBox('WidgetRail was uninstalled, but some data could not be removed. Close applications using that data and retry cleanup. Saved data is in %LOCALAPPDATA%\WidgetRail and temporary files are in %TEMP%\WidgetRail.', mbError, MB_OK);
+          MsgBox('WidgetRail was uninstalled, but some data could not be removed. Close applications using that data and retry cleanup. Saved data is in %LOCALAPPDATA%\WidgetRail and %LOCALAPPDATA%\WidgetRail-Recovery; temporary files are in %TEMP%\WidgetRail.', mbError, MB_OK);
       except
         Log('WidgetRail data cleanup failed: ' + GetExceptionMessage);
-        MsgBox('WidgetRail was uninstalled, but some data could not be removed. Close applications using that data and retry cleanup. Saved data is in %LOCALAPPDATA%\WidgetRail and temporary files are in %TEMP%\WidgetRail.', mbError, MB_OK);
+        MsgBox('WidgetRail was uninstalled, but some data could not be removed. Close applications using that data and retry cleanup. Saved data is in %LOCALAPPDATA%\WidgetRail and %LOCALAPPDATA%\WidgetRail-Recovery; temporary files are in %TEMP%\WidgetRail.', mbError, MB_OK);
       end;
     end;
     Exit;

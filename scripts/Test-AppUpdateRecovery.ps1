@@ -99,7 +99,42 @@ try {
     Check (@(Get-ChildItem -LiteralPath $f.Cache -Directory -Filter 'profile-partial-*').Count -eq 1) 'Partial copy was not preserved'
     $passed++; Write-Output 'PASS interrupted restore copy is preserved and rebuilt'
 
-    Write-Output "$passed/9 recovery checks passed; no real profile or installer touched."
+    $f = New-Fixture 'cancel-preparation'
+    $script:RecoveryProgress = { param($phase) if ($phase -eq 'copy') { throw [OperationCanceledException]::new('cancel fixture') } }
+    $rejected = $false
+    try { Invoke-RecoveryInstall $f.Cache $f.Profile $f.Plan { throw 'must not launch' } } catch [OperationCanceledException] { $rejected = $true }
+    finally { $script:RecoveryProgress = $null }
+    Check $rejected 'Cancellation did not stop preparation'
+    Check ((Get-Content (Join-Path $f.Profile 'settings.json') -Raw) -eq 'before') 'Cancelled preparation changed profile'
+    $passed++; Write-Output 'PASS progress cancellation stops before installer and preserves profile'
+
+    Add-Type -AssemblyName System.Windows.Forms
+    . (Join-Path $PSScriptRoot '../src/AppUpdateRecovery/RecoveryProgress.ps1')
+    try {
+        New-RecoveryProgress -Visible:$false
+        Report-RecoveryProgress 'backing-up'
+        Check ($script:RecoveryProgressForm.Controls.Count -eq 3 -and $script:RecoveryCancelButton.Enabled) 'Progress controls missing'
+        Report-RecoveryProgress 'installing'
+        Check (!$script:RecoveryCancelButton.Enabled) 'Preparation cancellation remained active during Setup'
+    } finally { Close-RecoveryProgress }
+    $passed++; Write-Output 'PASS Windows progress controls initialize headlessly and lock cancellation at setup'
+
+    $f = New-Fixture 'unicode'
+    $unicodeName = [string][char]0x65E5 + [char]0x672C + '.json'
+    [IO.File]::WriteAllText((Join-Path $f.Profile $unicodeName), 'unicode profile fixture')
+    Invoke-RecoveryInstall $f.Cache $f.Profile $f.Plan { return 0 }
+    Invoke-RecoveryRestore $f.Cache $f.Profile $f.Plan { return 0 }
+    Check ([IO.File]::ReadAllText((Join-Path $f.Profile $unicodeName)) -eq 'unicode profile fixture') 'Unicode profile filename was not restored'
+    $passed++; Write-Output 'PASS Unicode profile filenames survive Windows PowerShell JSON recovery'
+
+    $mutexName = 'Local\WidgetRail.Recovery.Test.' + [guid]::NewGuid().ToString('N')
+    $fakeHost = [Threading.Mutex]::new($false, $mutexName)
+    try { Check (!(Wait-RecoveryHostClosed $mutexName 0.1)) 'Recovery proceeded while the host marker existed' }
+    finally { $fakeHost.Dispose() }
+    Check (Wait-RecoveryHostClosed $mutexName 0.1) 'Recovery did not proceed after host exit'
+    $passed++; Write-Output 'PASS in-app recovery waits for host exit without stealing foreground'
+
+    Write-Output "$passed/13 recovery checks passed; no real profile or installer touched."
 } finally {
     $full = [IO.Path]::GetFullPath($root)
     $expected = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

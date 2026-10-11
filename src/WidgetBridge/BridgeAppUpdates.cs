@@ -80,7 +80,7 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
                     return ValueTask.FromResult(_snapshot);
                 // This starts only the independent confirmation UI; it never closes
                 // WidgetRail or launches setup while this app remains running.
-                try { _launch(_prepared); Set(_snapshot with { State = "handoff", ReviewToken = null, Message = "Recovery is ready. Quit WidgetRail, then continue in the Windows confirmation dialog. Setup will remain interactive." }); }
+                try { _launch(_prepared); Set(_snapshot with { State = "handoff", ReviewToken = null, Message = "Quit WidgetRail now; confirmation opens after it exits. If you finish later, use the desktop recovery shortcut. Setup remains interactive." }); }
                 catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
                 { Set(_snapshot with { Message = "Could not open recovery. Use the WidgetRail Recovery shortcut on your desktop." }); }
                 return ValueTask.FromResult(_snapshot);
@@ -135,7 +135,7 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
         Directory.CreateDirectory(root);
         var newHash = await SaveInstallerAsync(client, release, asset, Path.Combine(root, "update.exe"), token);
         var oldHash = await SaveInstallerAsync(client, previous, previousAsset, Path.Combine(root, "previous.exe"), token);
-        foreach (var name in new[] { "RecoveryEngine.ps1", "Recover.ps1" })
+        foreach (var name in new[] { "RecoveryEngine.ps1", "RecoveryProgress.ps1", "Recover.ps1" })
         {
             using var input = typeof(BridgeAppUpdates).Assembly.GetManifestResourceStream("WidgetRail.Recovery." + name)!;
             await using var output = new FileStream(Path.Combine(root, name), FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -199,7 +199,7 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
     private static void Launch(string root)
     {
         var info = new ProcessStartInfo(PowerShell) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root };
-        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(root, "Recover.ps1"), "-Mode", "Install" }) info.ArgumentList.Add(arg);
+        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(root, "Recover.ps1"), "-Mode", "Install", "-WaitForAppExit" }) info.ArgumentList.Add(arg);
         using var process = Process.Start(info) ?? throw new IOException("Recovery could not start.");
     }
     private static void WriteShortcut(string root)

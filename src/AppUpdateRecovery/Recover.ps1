@@ -1,13 +1,16 @@
-param([ValidateSet('Install','Recover')][string]$Mode = 'Recover')
+param([ValidateSet('Install','Recover')][string]$Mode = 'Recover', [switch]$WaitForAppExit)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.Windows.Forms
 try {
     . (Join-Path $PSScriptRoot 'RecoveryEngine.ps1')
+    . (Join-Path $PSScriptRoot 'RecoveryProgress.ps1')
+    # In-app preparation must not steal controller focus before the user quits.
+    if ($WaitForAppExit -and !(Wait-RecoveryHostClosed)) { exit 0 }
     Assert-PlainPath $PSScriptRoot
     $planPath = Join-Path $PSScriptRoot 'plan.json'
     if ((Get-Item -LiteralPath $planPath).Length -gt 8192) { throw 'Invalid recovery plan.' }
-    $plan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+    $plan = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($plan.schema -ne 1) { throw 'Unsupported recovery plan.' }
     $profile = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'WidgetRail'
     if ($Mode -eq 'Recover' -and !(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'state.json'))) { $Mode = 'Install' }
@@ -29,10 +32,11 @@ try {
             Assert-PlainPath $installed.ApplicationRoot
             $releaseFile = Join-Path $installed.ApplicationRoot 'release.json'
             if ((Get-Item -LiteralPath $releaseFile).Length -gt 8MB) { throw 'Invalid installed release metadata.' }
-            $release = Get-Content -LiteralPath $releaseFile -Raw | ConvertFrom-Json
+            $release = Get-Content -LiteralPath $releaseFile -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($installed.Edition -ne $plan.edition) { throw 'The installed edition changed since this update was prepared.' }
             if ($Mode -eq 'Install' -and ($release.version -ne $plan.previousVersion -or $installed.ApplicationRoot -ne $plan.previousRoot)) { throw 'The installation changed since this update was prepared. Check updates again.' }
             if ($Mode -eq 'Recover' -and $release.version -notin @($plan.previousVersion, $plan.updateVersion)) { throw 'Another app version is installed. This recovery set will not replace an unrelated version.' }
+            New-RecoveryProgress
             # Inno checks the overlay mutex, so release it only around setup.
             # Both operations refuse any real overlay before their file work.
             $runner = {
@@ -51,7 +55,7 @@ try {
             }
             if ($Mode -eq 'Install') { Invoke-RecoveryInstall $PSScriptRoot $profile $plan $runner }
             else { Invoke-RecoveryRestore $PSScriptRoot $profile $plan $runner }
-        } finally { $recoveryLock.ReleaseMutex(); $recoveryLock.Dispose() }
+        } finally { if (Get-Variable RecoveryProgressForm -Scope Script -ErrorAction SilentlyContinue) { Close-RecoveryProgress }; $recoveryLock.ReleaseMutex(); $recoveryLock.Dispose() }
     } finally { if ($null -ne $appLock) { $appLock.ReleaseMutex(); $appLock.Dispose() } }
     [Windows.Forms.MessageBox]::Show('Completed. You can open WidgetRail from Start. Keep this recovery folder until you have tested the app.', 'WidgetRail recovery', 'OK', 'Information') | Out-Null
 } catch {

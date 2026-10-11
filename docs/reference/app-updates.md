@@ -14,8 +14,7 @@ matches the installed production/developer edition. Notes are displayed as text
    from WidgetRail's public release repository. SHA256 values come from the GitHub
    asset digest or published checksum manifest. This is integrity verification,
    not an Authenticode-signing claim.
-2. Choose **Review installation**, then **Continue**. A Windows confirmation opens.
-   Quit WidgetRail from Settings before accepting it. The app is never force-closed.
+2. Choose **Review installation**, then **Continue**. Quit WidgetRail from Settings; a Windows confirmation opens afterward. The app is never force-closed.
 3. The helper makes a verified copy of the entire local WidgetRail profile, then
    starts normal interactive Inno Setup. Cancelling Setup retains recovery data.
 
@@ -69,3 +68,9 @@ The full Inno upgrade/downgrade, Windows dialog flow, credential reauthenticatio
 and real app failure/recovery still need physical acceptance. No application update
 has been installed during automated validation. Windows may show unsigned-installer
 warnings, and organizational PowerShell restrictions can prevent recovery launch.
+
+The standalone helper shows a Windows progress window while preparing and verifying the profile. Preparation can be cancelled before Setup starts; existing data is preserved. Once Setup starts, use the installer's own Cancel control.
+
+Uninstalling normally preserves recovery copies. Choosing the uninstaller's explicit **delete local data** option also removes WidgetRail-Recovery, including profile backups and retained installers. Exported files remain; desktop recovery shortcuts can be removed separately.
+
+The in-app helper waits silently for up to two minutes for the app to exit, preserving controller focus until then. If you quit later, launch the prepared desktop recovery shortcut. No confirmation or installer opens over an active overlay as part of this handoff.

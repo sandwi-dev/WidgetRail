@@ -2,6 +2,37 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$script:RecoveryProgress = $null
+function Report-RecoveryProgress([string]$Phase) {
+    if ($null -ne $script:RecoveryProgress) { & $script:RecoveryProgress $Phase }
+}
+function Get-RecoveryHash([string]$Path) {
+    Report-RecoveryProgress 'verify'
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    $source = $null
+    try {
+        $source = [IO.File]::Open($Path, 'Open', 'Read', 'Read')
+        $buffer = New-Object byte[] 1048576
+        [long]$count = 0
+        while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $null = $algorithm.TransformBlock($buffer, 0, $read, $buffer, 0)
+            $count += $read
+            if ($count -ge 16MB) { Report-RecoveryProgress 'verify'; $count = 0 }
+        }
+        $null = $algorithm.TransformFinalBlock($buffer, 0, 0)
+        return [BitConverter]::ToString($algorithm.Hash).Replace('-', '')
+    } finally { if ($null -ne $source) { $source.Dispose() }; $algorithm.Dispose() }
+}
+function Wait-RecoveryHostClosed([string]$MutexName = 'Local\WidgetRail.OverlayHost.Running', [double]$TimeoutSeconds = 120) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        [Threading.Mutex]$running = $null
+        if (![Threading.Mutex]::TryOpenExisting($MutexName, [ref]$running)) { return $true }
+        $running.Dispose()
+        if ([DateTime]::UtcNow -ge $deadline) { return $false }
+        Start-Sleep -Milliseconds 100
+    } while ($true)
+}
 function Assert-PlainPath([string]$Path) {
     $cursor = [IO.Path]::GetFullPath($Path)
     while ($cursor) {
@@ -23,6 +54,7 @@ function Get-ProfileInventory([string]$Root) {
     if (Test-Path -LiteralPath $Root) { $queue.Enqueue($Root) }
     [long]$bytes = 0
     while ($queue.Count) {
+        Report-RecoveryProgress 'copy'
         foreach ($entry in Get-ChildItem -LiteralPath $queue.Dequeue() -Force) {
             if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Profile contains a link. Backup stopped without installing.' }
             $relative = $entry.FullName.Substring($Root.TrimEnd('\').Length + 1)
@@ -47,6 +79,7 @@ function Copy-RecoveryProfile([string]$Source, [string]$Destination) {
     if ($drive.AvailableFreeSpace -lt ($bytes + 512MB)) { throw 'Not enough free space for a complete recovery copy.' }
     New-Item -ItemType Directory -Path $Destination | Out-Null
     foreach ($item in $items) {
+        Report-RecoveryProgress 'copy'
         $from = Join-Path $Source $item.Relative
         $to = Join-Path $Destination $item.Relative
         Assert-PlainPath $from
@@ -56,10 +89,18 @@ function Copy-RecoveryProfile([string]$Source, [string]$Destination) {
             $sourceStream = [IO.File]::Open($from, 'Open', 'Read', 'Read')
             try {
                 $output = [IO.File]::Open($to, 'CreateNew', 'Write', 'None')
-                try { $sourceStream.CopyTo($output); $output.Flush($true) } finally { $output.Dispose() }
+                try {
+                    $buffer = New-Object byte[] 1048576
+                    [long]$copied = 0
+                    while (($read = $sourceStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                        $output.Write($buffer, 0, $read); $copied += $read
+                        if ($copied -ge 16MB) { Report-RecoveryProgress 'copy'; $copied = 0 }
+                    }
+                    $output.Flush($true)
+                } finally { $output.Dispose() }
             } finally { $sourceStream.Dispose() }
             if ((Get-Item -LiteralPath $to).Length -ne $item.Bytes) { throw 'Profile changed during backup. Installation was stopped.' }
-            if ((Get-FileHash -LiteralPath $from -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $to -Algorithm SHA256).Hash) { throw 'Backup verification failed.' }
+            if ((Get-RecoveryHash $from) -ne (Get-RecoveryHash $to)) { throw 'Backup verification failed.' }
         }
     }
     # Apply original ACLs after copying children, preserving sandbox access without
@@ -73,7 +114,7 @@ function Copy-RecoveryProfile([string]$Source, [string]$Destination) {
 function Write-ProfileManifest([string]$Root, [string]$Profile) {
     $entries = @(Get-ProfileInventory $Profile | ForEach-Object {
         foreach ($item in $_) {
-            [pscustomobject]@{ relative = $item.Relative; directory = $item.Directory; sha256 = $(if ($item.Directory) { '' } else { (Get-FileHash -LiteralPath (Join-Path $Profile $item.Relative) -Algorithm SHA256).Hash }) }
+            [pscustomobject]@{ relative = $item.Relative; directory = $item.Directory; sha256 = $(if ($item.Directory) { '' } else { (Get-RecoveryHash (Join-Path $Profile $item.Relative)) }) }
         }
     })
     [IO.File]::WriteAllText((Join-Path $Root 'profile-manifest.json'), (ConvertTo-Json -InputObject @($entries) -Depth 4))
@@ -82,7 +123,7 @@ function Write-ProfileManifest([string]$Root, [string]$Profile) {
 function Assert-ProfileManifest([string]$Root, [string]$Profile) {
     $manifest = Join-Path $Root 'profile-manifest.json'
     if ((Get-Item -LiteralPath $manifest).Length -gt 32MB) { throw 'Recovery manifest is oversized.' }
-    $entries = [object[]](Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    $entries = [object[]](Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json)
     $inventory = @(Get-ProfileInventory $Profile)
     if ($entries.Count -ne $inventory.Count) { throw 'Backup contents changed. No profile was replaced.' }
     $byPath = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
@@ -94,10 +135,11 @@ function Assert-ProfileManifest([string]$Root, [string]$Profile) {
         if (!$byPath.ContainsKey($item.Relative)) { throw 'Backup manifest does not match its contents.' }
         $entry = $byPath[$item.Relative]
         if ($entry.directory -ne $item.Directory) { throw 'Backup manifest does not match its contents.' }
-        if (!$item.Directory -and (Get-FileHash -LiteralPath (Join-Path $Profile $item.Relative) -Algorithm SHA256).Hash -ne $entry.sha256) { throw 'Backup integrity check failed.' }
+        if (!$item.Directory -and (Get-RecoveryHash (Join-Path $Profile $item.Relative)) -ne $entry.sha256) { throw 'Backup integrity check failed.' }
     }
 }
 function Write-RecoveryState([string]$Root, [string]$Phase) {
+    Report-RecoveryProgress $Phase
     $path = Join-Path $Root 'state.json'
     $temporary = Join-Path $Root 'state.pending'
     [IO.File]::WriteAllText($temporary, (@{ phase = $Phase; utc = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json))
@@ -110,8 +152,7 @@ function Open-VerifiedInstaller([string]$Path, [string]$Hash) {
     if ($Hash -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid installer checksum.' }
     $lease = [IO.File]::Open($Path, 'Open', 'Read', 'Read')
     try {
-        $algorithm = [Security.Cryptography.SHA256]::Create()
-        try { $actual = [BitConverter]::ToString($algorithm.ComputeHash($lease)).Replace('-', '') } finally { $algorithm.Dispose() }
+        $actual = Get-RecoveryHash $Path
         if ($actual -ne $Hash) { throw 'Installer integrity check failed. Nothing was launched.' }
         return $lease
     } catch { $lease.Dispose(); throw }
@@ -137,7 +178,7 @@ function Invoke-RecoveryInstall([string]$Root, [string]$Profile, [object]$Plan, 
 }
 
 function Invoke-RecoveryRestore([string]$Root, [string]$Profile, [object]$Plan, [scriptblock]$RunInstaller) {
-    $state = Get-Content -LiteralPath (Join-Path $Root 'state.json') -Raw | ConvertFrom-Json
+    $state = Get-Content -LiteralPath (Join-Path $Root 'state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($state.phase -eq 'restored') { return }
     if ($state.phase -eq 'backing-up') { throw 'Backup did not finish. Setup was never started; original profile is unchanged.' }
     if ($state.phase -notin @('backup-ready','installing','installed','install-failed','restoring-installer','restoring-profile','profile-preserved')) { throw 'Unknown recovery state.' }
