@@ -659,3 +659,21 @@ of these new changes. No scope item is complete solely because it is planned.
   and compact pin (no Automatic button), Marketplace alignment and source/release
   consistency. Existing component/native graph tests did not exercise this Bridge
   admission stage; do not use them as proof the assembled Performance UI worked.
+
+### Third assembled-candidate startup correction
+
+- Preserved the live stalled Capture Library processes for diagnosis. Artifact-only
+  ClrMD inspection found the worker idle with loaded entries, Bridge snapshot 2,
+  frontend snapshot 1, no refresh task and a `stale_refresh_failure` diagnostic.
+  Only selected framework state/type names were inspected; no heap dump or secrets.
+- The catalog reload deserialized identical icon/quick-action lists into new objects.
+  Descriptor record equality therefore treated an unchanged descriptor as retired,
+  rejecting the in-flight snapshot. Canonicalize exactly equal descriptor contents
+  during catalog admission; real scalar/list changes still get a new descriptor.
+  This preserves existing strict authority checks rather than retrying stale work.
+- A deterministic pipe regression reproduces snapshot 1 remaining stale for both
+  same-revision and advancing-revision catalog reloads (2 failures before fix).
+  Complete presentation-session tests pass **332/332** after the correction:
+  `catalog-refresh-full-01.log`; no replacement/removal/restart guards relaxed.
+- Next: build candidate 04 and verify cold Library startup, thumbnail pixels,
+  Performance main/pin graphs, Marketplace alignment, then normal-profile handoff.

@@ -10,6 +10,53 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed partial class SessionTransportTests
 {
     [TestMethod]
+    [DataRow(1L)]
+    [DataRow(2L)]
+    public async Task UnchangedCatalogPreservesAnInFlightInvalidationRefresh(long catalogRevision)
+    {
+        await using var server = new ScriptedBridgeServer();
+        var established = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalogApplied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var descriptor = Descriptor() with
+        {
+            IconAssets = [new("icon", new string('a', 64), new string('b', 64), 100, 100)],
+            QuickActions = [new() { Id = "refresh", Label = "Refresh", ActionId = "refresh", SourceElementId = "root" }],
+        };
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var list = await ReadAsync(channel);
+            await ReplyCatalogAsync(channel, list.RequestId, 1, [descriptor], isComplete: false);
+            var establish = await ReadAsync(channel);
+            await ReplySnapshotAsync(channel, establish.RequestId, descriptor, sequence: 1);
+            await established.Task.WaitAsync(TestDeadline);
+            await SendInvalidationAsync(channel, revision: 1);
+            var refresh = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, refresh.Type);
+            refreshReceived.TrySetResult();
+            var nextList = await ReadAsync(channel);
+            await ReplyCatalogAsync(channel, nextList.RequestId, catalogRevision, [descriptor]);
+            await catalogApplied.Task.WaitAsync(TestDeadline);
+            await ReplySnapshotAsync(channel, refresh.RequestId, descriptor, sequence: 2);
+            await ExpectStopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options()))
+        {
+            await session.ListWidgetsAsync();
+            var initial = await session.EstablishPresentationAsync(session.GetTarget("session-widget"), WidgetLifecycleState.Interactive);
+            established.TrySetResult();
+            await refreshReceived.Task.WaitAsync(TestDeadline);
+            var catalog = await session.ListWidgetsAsync();
+            catalogApplied.TrySetResult();
+            await WaitUntilAsync(() => session.GetState("session-widget")?.LastGood?.Snapshot.Sequence == 2 || session.Diagnostics.Any(d => d.Code == "stale_refresh_failure"));
+            Assert.AreEqual(2L, session.GetState("session-widget")!.LastGood!.Snapshot.Sequence);
+            Assert.AreSame(initial.Descriptor, catalog.Widgets.Single());
+            Assert.IsNull(session.GetState("session-widget")!.Failure);
+        }
+        await serverTask.WaitAsync(TestDeadline);
+    }
+
+    [TestMethod]
     public async Task InvalidationBeforeFirstSnapshotRefreshesAfterEstablishment()
     {
         await using var server = new ScriptedBridgeServer();

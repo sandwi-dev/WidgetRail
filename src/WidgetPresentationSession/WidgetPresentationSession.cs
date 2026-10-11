@@ -163,6 +163,22 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
             if (revision < _catalogRevision)
                 throw new BridgeProtocolException("WidgetBridge returned a stale widget catalog.");
+            // Deserialization allocates new lists even for an unchanged descriptor.
+            // Record equality compares those lists by reference. Keep the admitted
+            // object when every scalar and collection entry still matches, so a
+            // catalog refresh cannot retire in-flight snapshots or displayed input.
+            for (var index = 0; index < widgets.Length; index++)
+            {
+                var incoming = widgets[index];
+                if (_descriptors.TryGetValue(incoming.Id, out var admitted) &&
+                    incoming.IconAssets.SequenceEqual(admitted.IconAssets) &&
+                    incoming.QuickActions.SequenceEqual(admitted.QuickActions) &&
+                    (incoming with { IconAssets = admitted.IconAssets, QuickActions = admitted.QuickActions }) == admitted)
+                {
+                    widgets[index] = admitted;
+                    byId[incoming.Id] = admitted;
+                }
+            }
             _catalogRevision = revision;
             foreach (var pair in byId)
             {
