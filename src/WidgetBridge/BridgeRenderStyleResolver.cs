@@ -125,6 +125,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.RichText => "text",
         ViewNodeKind.Button => "button",
         ViewNodeKind.Progress => "progress",
+        ViewNodeKind.LineGraph => "lineGraph",
         ViewNodeKind.Slider => "slider",
         ViewNodeKind.Spacer => "spacer",
         ViewNodeKind.Image => "image",

@@ -25,6 +25,10 @@ including theme/high-contrast styling. Updates change geometry and accessible
 values without replacing the native control or taking focus. Graph data updates
 are paint/accessibility changes, not controller-authority changes.
 
+The WRSS element role is `lineGraph`, for example
+`lineGraph { color: var(--accent); height: 160px; }`. Authored classes can style
+individual graphs through the same Bridge/native style path.
+
 The SDK Gallery's controls page contains an offline example with a deliberate
 gap. Performance Monitor provides the live application, keeping only a bounded
 minute of graph samples and resetting application traces on target changes.

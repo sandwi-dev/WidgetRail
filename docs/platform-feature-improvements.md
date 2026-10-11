@@ -628,3 +628,34 @@ of these new changes. No scope item is complete solely because it is planned.
   prove the first cold discovery request, cold Settings intent and regrant flow,
   thumbnail grid and Performance main/pin layouts. Then update the acceptance
   handoff path and launch the final complete candidate in the normal profile.
+
+### Second assembled-candidate review
+
+- Distribution assembly from `dbe99bd1` passes both complete editions (13/17
+  widgets) under `final-candidate-02`. Developer PID 89788 used the same isolated
+  validation profile; all new evidence is under `assembled-validation-02`.
+- The first cold SDK Gallery capability request succeeds in 4,349 ms, returning
+  five profiles without retry (`cold-capture-capabilities.json`). This exceeds
+  the old three-second deadline and validates the actual corrected pipe path.
+- Capture Library correctly shows its denied-read recovery link. That intent
+  cold-starts Settings directly on Capture Library's permission page, displaying
+  the exact denied capability. Allow access writes Grant; returning to Library
+  lists the synthetic saved captures. Application audio remains selected across
+  app/worker restart. Evidence: `settings-permission-intent.json`,
+  `library-consent-restored.json`, `library-audio-persisted.json`.
+- Native visual review found two remaining admission/layout gaps, so this
+  candidate is **not** the final handoff. Thumbnail files are valid red/green PNGs
+  and the host generates its derivative cache, but UIA shows zero-width image
+  bounds. Added explicit 100% thumbnail/caption width and start alignment inside
+  cards. Capture Library/theme checks **22/22** pass
+  (`thumbnail-width-tests-01.log`); actual thumbnail pixels need candidate review.
+- Performance could not open: the Bridge raised `Unsupported view node kind
+  'LineGraph'` before reaching the native renderer. Added the missing `lineGraph`
+  render-style role. A focused regression proves themed graph routing and checks
+  that every admitted enum kind has a Bridge role; **1/1** passes
+  (`graph-style-tests-02.log`). The first test compilation omitted required
+  assertion messages; corrected without changing production behavior.
+- Next candidate must prove visible thumbnail pixels, Performance main graphs
+  and compact pin (no Automatic button), Marketplace alignment and source/release
+  consistency. Existing component/native graph tests did not exercise this Bridge
+  admission stage; do not use them as proof the assembled Performance UI worked.

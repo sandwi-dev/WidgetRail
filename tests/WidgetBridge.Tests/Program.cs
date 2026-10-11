@@ -281,6 +281,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Admitted registry invalidation reaches the client event queue", AdmittedRegistryInvalidationReachesClientEventQueue),
     ("Protocol-v37 poster and ordinary action surfaces resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
+    ("Protocol-v78 line graphs cross the bridge render-style boundary", LineGraphRenderRole),
     ("Overflow wrapping crosses the generic Bridge render-style boundary", OverflowWrapRenderStyle),
     ("Grouped collection headers resolve shared section typography", GroupHeaderRenderStyle),
     ("Protocol-v41 Select nodes resolve bridge render roles", SelectRenderRole),
@@ -6053,6 +6054,28 @@ static Task ActionSurfaceRenderRole()
     Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion,
         focusPresentationSnapshot.ProtocolVersion);
     Assert.Equal(ProtocolConstants.PosterTileVersion, snapshot.ProtocolVersion);
+    return Task.CompletedTask;
+}
+
+static Task LineGraphRenderRole()
+{
+    var snapshot = new WidgetView(UI.LineGraph("CPU history",
+        new([new(-60, 10), new(-30, null), new(0, 30)], -60, 0, 0, 100, "%"), "history"))
+        .CreateSnapshot("bridge.graph", 1);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    Assert.True(BridgeRenderStyleResolver.Resolve(snapshot, null).ContainsKey("history"), "Unthemed graph omitted from the style map.");
+    var parsed = WrssParser.Parse("lineGraph { color: #2468ac; height: 160px; }", "graph.wrss");
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, "Graph WRSS did not compile.");
+    var styles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    Assert.Equal("#2468ac", styles["history"].Base["color"].Text);
+    Assert.Equal(160D, styles["history"].Base["height"].Number!.Value);
+    Assert.False(snapshot.Root.IsFocusable, "Styling made an informational graph focusable.");
+    // Every admitted node kind needs a Bridge role, independently of its data
+    // contract. This catches a new SDK/native element missing this middle layer.
+    foreach (var kind in Enum.GetValues<ViewNodeKind>())
+        Assert.True(BridgeRenderStyleResolver.Resolve(snapshot with { Root = new ViewNode { Id = "role", Kind = kind } }, compiled.Theme).ContainsKey("role"),
+            $"The Bridge has no render role for {kind}.");
     return Task.CompletedTask;
 }
 
