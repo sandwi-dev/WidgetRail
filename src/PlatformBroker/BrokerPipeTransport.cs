@@ -56,6 +56,16 @@ internal static class BrokerPipeRequestTimeoutPolicy
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
+        // The first configured-capture request can wait for lazy encoder/audio
+        // discovery in the frontend. Both pipe ends must outlive that bounded
+        // registry wait; ordinary status/read/cancel requests remain short.
+        if (request.CapabilityId == PlatformCapabilities.WindowCaptureV1 &&
+            request.Operation is "capture.capabilities" or "capture.validate" or "capture.start")
+        {
+            var deadline = TimeSpan.FromSeconds(WindowCaptureRegistry.CapabilityDiscoveryTimeoutSeconds + 5);
+            return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
+        }
+
         // An explicit inquiry owns a bounded scan, not a short status read.
         // Use the same duration as the provider on both ends of the pipe.
         if (request.CapabilityId == PlatformCapabilities.NetworkBluetoothPairV1 &&

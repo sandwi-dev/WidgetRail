@@ -2,7 +2,7 @@
 .page-heading { font-size: 24px; font-weight: 600; }
 .section-heading { font-size: 17px; font-weight: 600; text-align: start; }
 .page-help { font-size: 13px; color: var(--text-muted); text-align: start; }
-.marketplace-card { padding: 16px; gap: 8px; corner-radius: 8px; background: var(--surface-raised); }
+.marketplace-card { padding: 16px; gap: 8px; align: start; corner-radius: 8px; background: var(--surface-raised); }
 .marketplace-preview { height: 280px; }
 .diagnostic-line { font-size: 14px; text-align: start; }
 .diagnostic-error { color: var(--danger, #c98181); text-align: start; }

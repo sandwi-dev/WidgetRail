@@ -580,3 +580,51 @@ of these new changes. No scope item is complete solely because it is planned.
 - Next build uses the normal local distribution assembly, with fresh candidate
   output under `artifacts/platform-improvements/final-candidate`. It does not
   create an installer, register MSIX, change trust, or publish anything remotely.
+
+### First assembled-candidate review
+
+- Local distribution assembly from `6b82e2c6` completed under
+  `artifacts/platform-improvements/final-candidate/0.1.0-preview.29`.
+  Production verifies 13 widgets, Developer 17, including sealed packages/icons,
+  private runtimes and emitted frontend cleanup. This candidate is superseded by
+  the cold-discovery correction below; do not use it as the final handoff.
+- Launched Developer in the isolated `assembled-validation-01/profile` with an
+  empty installed catalog. The real sandboxed Marketplace populated all four
+  official listings, downloaded Spotify, verified compatibility and presented the
+  full-access review. Review was cancelled and the download discarded; no package
+  was installed or executed. Evidence and screenshots are in that validation
+  directory. A wait initially targeted the review dialog before the separate
+  Review installation action; inspection confirmed the correct intermediate state.
+- The sealed sandboxed SDK Gallery requested previously undecided capture access
+  from its full-widget pin. The host dialog appeared in the pin, with Cancel
+  initially focused. Allow returned Granted to the same worker (PID 91248),
+  restored exact Request access keyboard focus and retained pinned foreground.
+  `pin-permission-granted.json`, `pin-permission-focus.json`, window inventories
+  and `pin-permission-dialog.png` record this actual worker/host flow.
+- Capture Library settings render coherently and scroll to all options. Application
+  audio was selected and persisted only in the disposable profile. Screenshot
+  evidence covers the top and bottom. The actual Windows/controller navigation
+  acceptance pass remains user-owned; UI Automation is not physical controller proof.
+- Cold Inspect capture options failed once, while its immediate cached retry
+  returned five profiles. Native discovery measured ~3.5 seconds versus the
+  transport's ordinary 3-second timeout. Added a 20-second deadline only to capture
+  capabilities/validate/start on both pipe ends, covering the registry's existing
+  15-second bounded discovery wait. Status/read/cancel/stop and other capabilities
+  keep their normal deadlines. Caller cancellation still abandons discovery.
+- Regression evidence: real broker pipe with an intentionally shorter ordinary
+  deadline, cancellation and delayed capability publication passes; capture checks
+  **7/7**, full broker suite **78/78** (`cold-capture-pipe-tests-01.log`,
+  `cold-capture-broker-full-01.log`). Also aligned Marketplace card contents to the
+  start edge; widget/theme checks **4/4** (`marketplace-alignment-tests-02.log`).
+  One parallel build collided in shared MSBuild output; the sequential rebuild
+  passed. That compiler lock was infrastructure failure, not a passing test.
+- Validation app PID 92332 closed normally. A small artifact-only fixture used the
+  real CaptureLibraryStore to seed three distinct synthetic red/green screenshots
+  into the disposable profile, then denied that profile's Library read permission.
+  This prepares a cold Settings-permission intent and native thumbnail review.
+  No normal profile or personal image was read or changed. Fixture source/results
+  are under `seed-library-fixture` and `assembled-validation-01`.
+- Next: build a fresh complete candidate with the deadline/alignment changes,
+  prove the first cold discovery request, cold Settings intent and regrant flow,
+  thumbnail grid and Performance main/pin layouts. Then update the acceptance
+  handoff path and launch the final complete candidate in the normal profile.

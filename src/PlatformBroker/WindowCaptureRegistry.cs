@@ -18,6 +18,7 @@ public sealed record HostCaptureAttachment(CaptureAttachment Attachment, string 
 /// <summary>Single-process capability owner. Every operation remains scoped to the original broker object.</summary>
 internal sealed class WindowCaptureRegistry(TimeProvider? time = null, long maximumBytes = CaptureLimits.MaximumTotalBytes) : IDisposable
 {
+    internal const int CapabilityDiscoveryTimeoutSeconds = 15;
     internal static WindowCaptureRegistry Shared { get; } = new();
     private readonly object gate = new();
     private readonly TimeProvider clock = time ?? TimeProvider.System;
@@ -56,7 +57,7 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null, long maxi
             if (ready.IsCompleted) return capabilities;
             if (includeEncoding) ++encodingWaiters; else ++capabilityWaiters;
         }
-        try { await ready.WaitAsync(TimeSpan.FromSeconds(15), token).ConfigureAwait(false); lock (gate) return capabilities; }
+        try { await ready.WaitAsync(TimeSpan.FromSeconds(CapabilityDiscoveryTimeoutSeconds), token).ConfigureAwait(false); lock (gate) return capabilities; }
         catch (TimeoutException) { throw Error("capture_capabilities_unavailable"); }
         finally { lock (gate) { if (includeEncoding) --encodingWaiters; else --capabilityWaiters; } }
     }

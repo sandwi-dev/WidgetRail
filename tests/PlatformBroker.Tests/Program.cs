@@ -12,6 +12,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Restricted documents issue opaque references and discard revoke regrant and dispose exactly", ProviderDocumentBrokerTests.AttributionLifecycleAsync),
     ("Restricted documents preserve multiline HTML through the broker pipe", ProviderDocumentBrokerTests.MultilinePipeAsync),
     ("Provider attribution markup is bounded owner-scoped and retired", ProviderDocumentTests.RunAsync),
+    ("Window capture cold discovery survives ordinary pipe deadlines and cancellation", CaptureDiscoveryPipeTests.RunAsync),
     ("Window capture application metadata matches exact window identity", WindowCaptureTests.MetadataAsync),
     ("Window capture ownership bounds expiry and attachment cleanup", WindowCaptureTests.RunAsync),
     ("Window capture configurations are explicit and stop retains while cancel discards", WindowCaptureTests.ConfiguredAsync),
