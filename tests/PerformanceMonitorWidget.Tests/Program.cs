@@ -6,6 +6,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Production manifest admits the implemented compact pin", ManifestPin),
     ("Monitor and compact pin are valid controller surfaces with unavailable distinct from zero", Presentation),
     ("FPS enablement is explicit and button focus survives its busy state", Enablement),
     ("An older periodic read cannot undo a newly admitted FPS action", StaleRead),
@@ -23,6 +24,15 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failed}/{tests.Length} tests passed.");
 return failed == 0 ? 0 : 1;
 
+static Task ManifestPin()
+{
+    var root = new DirectoryInfo(AppContext.BaseDirectory);
+    while (root is not null && !File.Exists(Path.Combine(root.FullName, "src", "FirstPartyWidgets", "PerformanceMonitorWidget", "manifest.json"))) root = root.Parent;
+    if (root is null) throw new Exception("Repository manifest was not found");
+    using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(root.FullName, "src", "FirstPartyWidgets", "PerformanceMonitorWidget", "manifest.json")));
+    Check(json.RootElement.TryGetProperty("pinningSupported", out var pinning) && pinning.GetBoolean(), "The host would reject the compact pin");
+    return Task.CompletedTask;
+}
 static ViewSnapshot Snapshot(PerformanceMonitorWidget widget) => widget.Render().CreateSnapshot("performance-test", 1);
 static IEnumerable<ViewNode> Walk(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Walk));
 static ViewNode Node(PerformanceMonitorWidget widget, string id) => Walk(Snapshot(widget).Root).Single(n => n.Id == id);
