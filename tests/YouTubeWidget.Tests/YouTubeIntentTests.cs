@@ -9,6 +9,45 @@ namespace WidgetRail.YouTubeWidget.Tests;
 public sealed partial class YouTubeWidgetTests
 {
     [TestMethod]
+    public async Task ExternalSetupAndPlayerLinksUseWindowsIntentHandoff()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        try
+        {
+            await widget.OnActionAsync(new("youtube.setup.open", "youtube.setup.open"));
+            var setup = widget.RenderSnapshot("external.intent", 1);
+            CheckLink(Find(setup.Root, "youtube.setup.console"),
+                "https://console.cloud.google.com/apis/library/youtube.googleapis.com");
+            await widget.OnActionAsync(new("youtube.setup.back", "youtube.setup.back"));
+            await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+            var load = widget.RenderSnapshot("external.intent", 2).EmbeddedMediaSession!.PendingCommand!;
+            await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Paused, 1, duration: 120, playbackRate: 1);
+            await widget.OnActionAsync(new(YouTubeVideoWidget.CaptionsActionId, YouTubeVideoWidget.CaptionsActionId));
+            var settings = widget.RenderSnapshot("external.intent", 3);
+            CheckLink(Find(settings.Root, "youtube.player.settings.open-row.action"), "https://www.youtube.com/watch?v=" + VideoId);
+            await widget.OnActionAsync(new(YouTubeVideoWidget.CaptionsActionId, YouTubeVideoWidget.CaptionsActionId));
+            var captions = widget.RenderSnapshot("external.intent", 4);
+            CheckLink(Find(captions.Root, "youtube.player.captions.open-youtube"), "https://www.youtube.com/watch?v=" + VideoId);
+            foreach (var snapshot in new[] { setup, settings, captions }) Assert.IsEmpty(ViewSnapshotValidator.Validate(snapshot));
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+        static void CheckLink(ViewNode node, string url)
+        {
+            Assert.IsNotNull(node.Intent);
+            Assert.AreEqual(WidgetIntentContracts.Web.Id, node.Intent.ContractId);
+            Assert.AreEqual(WidgetIntentRouting.Windows, node.Intent.Routing);
+            Assert.AreEqual(url, node.Intent.Payload.GetProperty("url").GetString());
+            using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
+            var request = manifest.RootElement.GetProperty("intents").GetProperty("requests").EnumerateArray()
+                .Single(item => item.GetProperty("id").GetString() == node.Intent.ContractId);
+            var contract = CompiledWidgetIntentContract.Create(new WidgetIntentContract(
+                request.GetProperty("id").GetString()!, request.GetProperty("version").GetInt32(), request.GetProperty("payloadSchema")));
+            Assert.AreEqual(contract.SchemaDigest, node.Intent.SchemaDigest);
+            Assert.IsTrue(contract.Accepts(node.Intent.Payload));
+        }
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task SearchIntentFromPlayerMovesRouteAndFocusTogether(bool hasVideo)

@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.spotify",
   "publisher": "widgetrail.samples",
   "name": "Spotify",
-  "version": "0.3.84",
+  "version": "0.3.85",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -28,6 +28,22 @@
   },
   "permissions": [],
   "optionalPermissions": [],
+  "intents": {
+    "requests": [
+      {
+        "id": "widgetrail.web.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": { "type": "string", "minLength": 1, "maxLength": 2048 }
+          },
+          "required": ["url"]
+        }
+      }
+    ]
+  },
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "keep-alive"

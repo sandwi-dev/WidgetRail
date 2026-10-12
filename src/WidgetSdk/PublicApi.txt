@@ -2602,8 +2602,10 @@ property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ComponentAc
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.PickerOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.SelectOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ToastElement.Glyph { get; }
+property WidgetRail.WidgetProtocol.WidgetIntentRequest? WidgetRail.WidgetSdk.ActionSheetItem.Intent { get; set; }
 property WidgetRail.WidgetProtocol.WidgetIntentRequest? WidgetRail.WidgetSdk.ActionSurfaceElement.Intent { get; set; }
 property WidgetRail.WidgetProtocol.WidgetIntentRequest? WidgetRail.WidgetSdk.ButtonElement.Intent { get; set; }
+property WidgetRail.WidgetProtocol.WidgetIntentRequest? WidgetRail.WidgetSdk.ComponentAction.Intent { get; set; }
 property WidgetRail.WidgetProtocol.WidgetPackageIcon? WidgetRail.WidgetSdk.ButtonElement.PackageIcon { get; set; }
 property WidgetRail.WidgetProtocol.WidgetPackageIcon? WidgetRail.WidgetSdk.IconElement.PackageIcon { get; set; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints WidgetRail.WidgetSdk.PinnedLayoutHandle.Surface { get; }

@@ -1,5 +1,6 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using System.Text.Json;
 
 namespace WidgetRail.Samples.SpotifyWidget;
 
@@ -368,6 +369,9 @@ internal static class SpotifyPresentation
                     "spotify.setup-step-1").Classes("spotify-setup-step"),
             UI.Button("Open developer dashboard", "spotify.setup.dashboard",
                     "spotify.setup.dashboard")
+                .OpenIntent(WidgetIntentContracts.Web,
+                    JsonSerializer.SerializeToElement(new { url = SpotifyApplicationContract.DeveloperDashboardUri }),
+                    WidgetIntentRouting.Windows)
                 .Busy(setupBusy)
                 .FocusDown("spotify.setup.copy-redirect")
                 .Classes("spotify-secondary", "spotify-setup-action"),

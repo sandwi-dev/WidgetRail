@@ -28,10 +28,6 @@ internal sealed class SpotifyApplicationService(
         _backend.ConfigureSpotifyClientAsync(
             _identity, new ConfigureSpotifyClientRequest(clientId), cancellationToken));
 
-    public ValueTask OpenDeveloperDashboardAsync(
-        CancellationToken cancellationToken = default) =>
-        _setupActions.OpenDeveloperDashboardAsync(cancellationToken);
-
     public ValueTask CopyRedirectUriAsync(
         CancellationToken cancellationToken = default) =>
         _setupActions.CopyRedirectUriAsync(cancellationToken);

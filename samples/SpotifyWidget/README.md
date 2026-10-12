@@ -32,6 +32,9 @@ required for Web Playback SDK streaming and Spotify's playback-control APIs.
 Spotify's developer-mode restrictions still apply to your app and account. You can
 return to the widget's Settings to replace the Client ID later.
 
+**Open developer dashboard** uses a Windows-browser intent so WidgetRail waits
+for controller release and its close animation before opening the page.
+
 ## Use it with a controller
 
 Once connected, a fresh Spotify widget opens on **Devices**, where you can choose where to listen.

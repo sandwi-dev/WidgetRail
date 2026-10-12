@@ -390,13 +390,6 @@ public sealed class SpotifyWidget : Widget
                     await RunCommandOperationAsync(CheckConfigurationAsync, cancellationToken, serialize: false)
                         .ConfigureAwait(false);
                 break;
-            case SpotifyActionKind.SetupOpenDashboard:
-                await RunSetupActionAsync(
-                    _spotify.OpenDeveloperDashboardAsync,
-                    "Opening Spotify developer dashboard…",
-                    "Spotify developer dashboard opened",
-                    cancellationToken).ConfigureAwait(false);
-                break;
             case SpotifyActionKind.SetupCopyRedirect:
                 await RunSetupActionAsync(
                     _spotify.CopyRedirectUriAsync,

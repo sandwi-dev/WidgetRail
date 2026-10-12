@@ -31,6 +31,10 @@ Search requires your own Google API key. Playing a link does not require a searc
 The key stays in Windows Credential Manager. Searches run when you submit a query;
 additional pages load as you reach the end of the results. Google applies its API quota.
 
+**Open Google Cloud Console** and **Open in YouTube** use the Windows default
+browser through WidgetRail's shared intent handoff. The host waits for controller
+release and its close animation before launching the browser.
+
 ## Controller controls
 
 | Control | Action |

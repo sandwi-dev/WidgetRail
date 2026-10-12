@@ -1,12 +1,10 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace WidgetRail.Samples.SpotifyWidget;
 
 internal interface ISpotifySetupActions
 {
-    ValueTask OpenDeveloperDashboardAsync(CancellationToken cancellationToken);
     ValueTask CopyRedirectUriAsync(CancellationToken cancellationToken);
 }
 
@@ -16,30 +14,6 @@ internal sealed class SpotifyWindowsSetupActions : ISpotifySetupActions
     private const uint MoveableMemory = 0x0002;
     private const int MaximumClipboardAttempts = 5;
     private static readonly TimeSpan ClipboardRetryDelay = TimeSpan.FromMilliseconds(25);
-
-    public ValueTask OpenDeveloperDashboardAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            var process = Process.Start(new ProcessStartInfo(
-                SpotifyApplicationContract.DeveloperDashboardUri)
-            {
-                UseShellExecute = true,
-            });
-            if (process is null)
-                throw new InvalidOperationException("No browser process was started.");
-            process.Dispose();
-            return ValueTask.CompletedTask;
-        }
-        catch (Exception exception) when (
-            exception is Win32Exception or InvalidOperationException)
-        {
-            throw new SpotifyApplicationException(
-                "dashboard_unavailable",
-                "The Spotify developer dashboard could not be opened.", exception);
-        }
-    }
 
     public async ValueTask CopyRedirectUriAsync(CancellationToken cancellationToken)
     {

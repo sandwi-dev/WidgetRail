@@ -26,6 +26,39 @@ internal static class WidgetIntentPresentationTests
         return Task.CompletedTask;
     }
 
+    internal static Task ComponentDeclarations()
+    {
+        foreach (var routing in Enum.GetValues<WidgetIntentRouting>())
+        foreach (var presentation in Enum.GetValues<WidgetIntentPresentation>())
+        {
+            var intent = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+                Json("""{"url":"https://example.com/guide"}"""), routing) with { Presentation = presentation };
+            var action = new ComponentAction("Read guide", "read-guide") { Intent = intent };
+            var icon = WidgetIcon.Glyph(WidgetGlyph.Connection);
+            var components = new WidgetView(UI.Stack("components",
+                UI.SettingsRow("Guide", action, "setting"),
+                UI.SettingsRow(icon, "Guide", action, "icon-setting"),
+                UI.Alert("Guide", "Read more", AlertTone.Info, "alert", action: action),
+                UI.Alert(icon, "Guide", "Read more", AlertTone.Info, "icon-alert", action),
+                UI.EmptyState("No results", "Read more", "empty", action),
+                UI.EmptyState(icon, "No results", "Read more", "icon-empty", action),
+                UI.ActionSheet("Links", "links", "links.scope", "back",
+                    [new ActionSheetItem("links.open", "Read guide", "read-guide") { Intent = intent }]),
+                UI.SettingsRow("Local action", new ComponentAction("Refresh", "refresh"), "local")))
+                .CreateSnapshot("intent.components", 1);
+            Check(ViewSnapshotValidator.Validate(components).Count == 0);
+            var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(components));
+            var declarations = Flatten(restored.Root).Where(node => node.Intent is not null).ToArray();
+            Check(declarations.Length == 7 && declarations.All(node =>
+                node.Kind == ViewNodeKind.Button && node.ActionId == "read-guide" && intent.Matches(node.Intent)));
+            Check(Flatten(restored.Root).Single(node => node.Id == "local.action").Intent is null);
+            Check(ViewSnapshotValidator.Validate(components with { ProtocolVersion = 64 })
+                .Any(error => error.Code == "feature_requires_version"));
+        }
+        return Task.CompletedTask;
+        static IEnumerable<ViewNode> Flatten(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Flatten));
+    }
+
     internal static Task InvalidDeclarations()
     {
         var intent = WidgetIntentRequest.Create(WidgetIntentContracts.Web, Json("""{"url":"https://example.com"}"""));

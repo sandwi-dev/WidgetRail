@@ -19,7 +19,6 @@ internal enum SpotifyActionKind
     SetupOpen,
     SetupClose,
     SetupDone,
-    SetupOpenDashboard,
     SetupCopyRedirect,
     SetupConfigureClient,
     Connect,
@@ -64,7 +63,6 @@ internal static class SpotifyRouteActionPolicy
             "spotify.setup.open" => new(SpotifyActionKind.SetupOpen),
             "spotify.setup.close" => new(SpotifyActionKind.SetupClose),
             "spotify.setup.done" => new(SpotifyActionKind.SetupDone),
-            "spotify.setup.dashboard" => new(SpotifyActionKind.SetupOpenDashboard),
             "spotify.setup.copy-redirect" => new(SpotifyActionKind.SetupCopyRedirect),
             "spotify.setup.client-id" => new(SpotifyActionKind.SetupConfigureClient),
             "spotify.connect" or "spotify.connect.features" =>

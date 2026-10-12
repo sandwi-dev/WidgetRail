@@ -10,10 +10,12 @@ public enum StatusTone { Neutral, Info, Success, Warning, Danger }
 public enum AlertTone { Info, Success, Warning, Danger }
 public enum ActionSheetItemTone { Default, Danger }
 
-/// <summary>A single optional action rendered by an alert or empty state.</summary>
+/// <summary>A single action rendered by a settings row, alert, or empty state.</summary>
 public sealed record ComponentAction(string Label, string ActionId, WidgetGlyph? Glyph = null)
 {
     public WidgetIcon? Icon { get; init; }
+    /// <summary>An optional declarative intent carried by the generated action button.</summary>
+    public WidgetIntentRequest? Intent { get; init; }
 }
 
 /// <summary>A stable, controller-addressable option in a segmented tab row.</summary>
@@ -36,6 +38,8 @@ public sealed record ActionSheetItem(
     bool IsBusy = false)
 {
     public WidgetIcon? Icon { get; init; }
+    /// <summary>An optional declarative intent carried by this item's button.</summary>
+    public WidgetIntentRequest? Intent { get; init; }
 }
 
 /// <summary>A stable, single-select option rendered by <see cref="UI.Picker"/>.</summary>
@@ -420,6 +424,7 @@ public static partial class UI
         children.Add(new ButtonElement(
             StableIdentifier.Child(id, "action"), action.Label, action.ActionId)
         {
+            Intent = action.Intent,
             AccessibilityLabel = string.Join(". ", accessibleParts),
             Glyph = action.Icon?.FallbackGlyph ?? action.Glyph,
             PackageIcon = action.Icon is null ? null : WidgetIconMaterializer.PackageIcon(action.Icon),
@@ -484,6 +489,7 @@ public static partial class UI
 
             var button = new ButtonElement(item.Id, item.Label, item.ActionId)
             {
+                Intent = item.Intent,
                 AccessibilityLabel = string.Join(", ", accessibleParts),
                 Glyph = item.Icon?.FallbackGlyph ?? item.Glyph,
                 PackageIcon = item.Icon is null ? null : WidgetIconMaterializer.PackageIcon(item.Icon),
@@ -1200,6 +1206,7 @@ public static partial class UI
                 action.Label,
                 action.ActionId)
             {
+                Intent = action.Intent,
                 Glyph = action.Icon?.FallbackGlyph ?? action.Glyph,
                 PackageIcon = action.Icon is null ? null : WidgetIconMaterializer.PackageIcon(action.Icon),
                 AccessibilityLabel = action.Label,

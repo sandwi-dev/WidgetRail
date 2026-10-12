@@ -28,6 +28,28 @@ no arbitrary protocol/command execution. Routing is part of action identity, so 
 stale action cannot change routes while it is being dispatched. WidgetRail's intent
 registry is independent of Windows protocol associations.
 
+`ComponentAction.Intent` and `ActionSheetItem.Intent` carry the same request to
+the generated button in settings rows, alerts, empty states and action sheets.
+Declare the corresponding contract in the package's `intents.requests`, including
+for Windows routing. Use this path for external account/setup links so the host
+can wait for controller release and its close transition before launching.
+
+```csharp
+var request = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+    JsonSerializer.SerializeToElement(new { url = "https://example.com/setup" }),
+    WidgetIntentRouting.Windows);
+var setup = new ComponentAction("Open setup", "open-setup") { Intent = request };
+var row = UI.SettingsRow("Account", setup, "account");
+var item = new ActionSheetItem("links.setup", "Open setup", "open-setup")
+    { Intent = request };
+```
+
+The same property supports widget-preferred routing and presentation preferences;
+it is not limited to external links. Keep a stable action ID and declare the
+contract normally. Omitting `Intent` retains ordinary widget action handling.
+Generated buttons use the existing intent authorization and routing path; these
+components do not open a browser themselves.
+
 Handlers may opt into `hasDynamicAvailability: true` on an individual mapping.
 The Bridge calls `Widget.IsIntentAvailableAsync(request, token)` before listing the
 handler and rechecks its exact worker before delivery. The callback can run after

@@ -285,8 +285,6 @@ public sealed partial class YouTubeWidgetTests
         public ValueTask<YouTubeConfigurationSummary> GetConfigurationAsync(CancellationToken token) => ValueTask.FromResult(new YouTubeConfigurationSummary(true));
         public ValueTask ConfigureApiKeyAsync(string key, CancellationToken token) => ValueTask.CompletedTask;
         public ValueTask DeleteApiKeyAsync(CancellationToken token) => ValueTask.CompletedTask;
-        public ValueTask OpenGoogleCloudConsoleAsync(CancellationToken token) => ValueTask.CompletedTask;
-        public ValueTask OpenVideoInYouTubeAsync(string id, CancellationToken token) => ValueTask.CompletedTask;
         public ValueTask<YouTubeSearchPage> SearchAsync(string query, string? pageToken, int pageSize, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Tokens.Add(pageToken); return ValueTask.FromResult(search(query, pageToken, pageSize)); }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

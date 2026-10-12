@@ -14,6 +14,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Configured capture separates options lifecycle and bounded streaming", ConfiguredCaptureTests.Contract),
     ("Web browser documents are bounded versioned and updated atomically", WebBrowserPresentationTests.Contract),
     ("Intent actions carry versioned bounded owned payloads", WidgetIntentPresentationTests.Declarations),
+    ("Intent component actions preserve routing through all generated button paths", WidgetIntentPresentationTests.ComponentDeclarations),
     ("Intent actions reject malformed and misplaced declarations", WidgetIntentPresentationTests.InvalidDeclarations),
     ("Intent action changes preserve atomic presentation authority", WidgetIntentPresentationTests.Updates),
     ("WinUI author preflight diagnoses legacy declarations", WinUiPresentationContractTests.LegacyDeclarations),

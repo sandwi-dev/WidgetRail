@@ -1,6 +1,7 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.Samples.Shared;
+using System.Text.Json;
 
 namespace WidgetRail.Samples.YouTubeWidget;
 
@@ -252,6 +253,9 @@ public sealed partial class YouTubeVideoWidget
                     UI.Text("In Google Cloud Console, enable YouTube Data API v3 and restrict the key to that API.",
                         "youtube.setup.instructions").Classes("youtube-copy"),
                     UI.Button("Open Google Cloud Console", SetupOpenConsoleActionId, "youtube.setup.console")
+                        .OpenIntent(WidgetIntentContracts.Web,
+                            JsonSerializer.SerializeToElement(new { url = "https://console.cloud.google.com/apis/library/youtube.googleapis.com" }),
+                            WidgetIntentRouting.Windows)
                         .Disabled(busy).FocusDown("youtube.setup.key").Classes("youtube-secondary"))
                 .Classes("youtube-card", "youtube-setup-step"),
             UI.Stack("youtube.setup.key-card",
@@ -405,7 +409,7 @@ public sealed partial class YouTubeVideoWidget
                 UI.SettingsRow(
                     "Open in YouTube",
                     new ComponentAction("Open video", OpenInYouTubeActionId,
-                        WidgetGlyph.Connection),
+                        WidgetGlyph.Connection) { Intent = ExternalVideoIntent(playback.VideoId) },
                     "youtube.player.settings.open-row",
                     description: "Use YouTube for provider-owned controls and preferences.",
                     isDisabled: playback.VideoId is null),
@@ -462,7 +466,7 @@ public sealed partial class YouTubeVideoWidget
                     "youtube.player.captions.open-youtube",
                     "Open caption options in YouTube",
                     OpenInYouTubeActionId,
-                    WidgetGlyph.Connection),
+                    WidgetGlyph.Connection) { Intent = ExternalVideoIntent(state.Playback.VideoId) },
             ],
             "YouTube's documented caption preferences are player-construction options. " +
             "Changing them here would recreate the player and interrupt this session.");
@@ -523,14 +527,14 @@ public sealed partial class YouTubeVideoWidget
             : null;
     }
 
+    private static WidgetIntentRequest? ExternalVideoIntent(string? videoId) => videoId is null ? null :
+        WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+            JsonSerializer.SerializeToElement(new { url = "https://www.youtube.com/watch?v=" + videoId }), WidgetIntentRouting.Windows);
+
     private bool TryHandleApplicationAction(WidgetActionEvent action)
     {
         switch (action.ActionId)
         {
-            case SetupOpenConsoleActionId:
-                Operations.RunSingleFlight("youtube.open-console",
-                    context => _application.OpenGoogleCloudConsoleAsync(context.CancellationToken));
-                return true;
             case SetupKeyActionId when action.CommittedText is { } secret:
                 _setupCommand.Run(new(YouTubeSetupOperation.Configure, secret));
                 return true;
@@ -580,11 +584,6 @@ public sealed partial class YouTubeVideoWidget
                 return true;
             case CaptionsBackActionId:
                 _model.Update(state => state.WithRoute(YouTubeRoute.PlayerSettings));
-                return true;
-            case OpenInYouTubeActionId when _model.Value.Playback.VideoId is { } videoId:
-                Operations.RunSingleFlight("youtube.open-video",
-                    context => _application.OpenVideoInYouTubeAsync(videoId,
-                        context.CancellationToken));
                 return true;
             case "youtube.player.return":
                 _model.Update(state => state.WithRootSection(

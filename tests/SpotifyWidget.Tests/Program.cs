@@ -458,6 +458,15 @@ static async Task SetupUsesVerticalScroll()
     Assert.NotNull(Find(scroll, "spotify.setup-step-3"));
     var card = Find(scroll, "spotify.setup-card");
     Assert.Equal("spotify.setup.dashboard", card.Children[2].Id);
+    var intent = card.Children[2].Intent;
+    Assert.NotNull(intent);
+    Assert.Equal(WidgetIntentRouting.Windows, intent!.Routing);
+    Assert.Equal(WidgetIntentContracts.Web.Id, intent.ContractId);
+    Assert.Equal(SpotifyApplicationContract.DeveloperDashboardUri, intent.Payload.GetProperty("url").GetString());
+    var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
+    var contract = CompiledWidgetIntentContract.Create(manifest.Intents!.Requests.Single(item => item.Id == intent.ContractId));
+    Assert.Equal(contract.SchemaDigest, intent.SchemaDigest);
+    Assert.True(contract.Accepts(intent.Payload), "Dashboard intent must be admitted by the package's declared web contract.");
     Assert.Equal("spotify.setup.copy-redirect", card.Children[4].Id);
     Assert.Equal("spotify.setup.client-id", card.Children[6].Id);
     Assert.Equal("spotify.setup.done", card.Children[7].Id);

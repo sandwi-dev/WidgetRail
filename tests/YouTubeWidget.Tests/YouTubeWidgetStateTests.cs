@@ -619,13 +619,6 @@ public sealed class YouTubeWidgetLifecycleTests
         public ValueTask DeleteApiKeyAsync(CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
-        public ValueTask OpenGoogleCloudConsoleAsync(CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-
-        public ValueTask OpenVideoInYouTubeAsync(
-            string videoId, CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-
         public ValueTask<YouTubeSearchPage> SearchAsync(
             string query,
             string? pageToken,

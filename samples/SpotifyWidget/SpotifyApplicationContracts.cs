@@ -242,10 +242,6 @@ public interface ISpotifyApplicationService : IAsyncDisposable
         ValueTask.FromException<SpotifyConfigurationSummary>(
             new SpotifyApplicationException(
                 "setup_unavailable", "Spotify setup is unavailable."));
-    ValueTask OpenDeveloperDashboardAsync(
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromException(new SpotifyApplicationException(
-            "setup_unavailable", "Spotify setup is unavailable."));
     ValueTask CopyRedirectUriAsync(
         CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new SpotifyApplicationException(

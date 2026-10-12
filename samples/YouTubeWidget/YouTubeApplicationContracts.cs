@@ -25,10 +25,6 @@ public interface IYouTubeApplicationService : IAsyncDisposable
 
     ValueTask DeleteApiKeyAsync(CancellationToken cancellationToken);
 
-    ValueTask OpenGoogleCloudConsoleAsync(CancellationToken cancellationToken);
-
-    ValueTask OpenVideoInYouTubeAsync(string videoId, CancellationToken cancellationToken);
-
     ValueTask<YouTubeSearchPage> SearchAsync(
         string query,
         string? pageToken,
@@ -65,12 +61,6 @@ internal sealed class UnavailableYouTubeApplicationService : IYouTubeApplication
 
     public ValueTask DeleteApiKeyAsync(CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
-
-    public ValueTask OpenGoogleCloudConsoleAsync(CancellationToken cancellationToken) =>
-        ValueTask.CompletedTask;
-
-    public ValueTask OpenVideoInYouTubeAsync(
-        string videoId, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
     public ValueTask<YouTubeSearchPage> SearchAsync(
         string query, string? pageToken, int pageSize, CancellationToken cancellationToken) =>
