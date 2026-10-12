@@ -884,3 +884,32 @@ of these new changes. No scope item is complete solely because it is planned.
   out/in, Fit, expand/collapse and the zoom percentage. Its wrapping now uses
   the remaining child count. Shared scale calculations remain necessary for
   the percentage and preserving image position across fullscreen transitions.
+
+### Shared fullscreen transition animation (2026-10-12)
+
+- Added compositor scale/position transitions to `MediaFullscreenLayer`, with
+  fading controls and backdrop. Images, native video and embedded video retain
+  their existing renderers. Uniform scaling avoids stretching media, and the
+  inline widget keeps its original layout behind the transition.
+- `DefaultTransitionDuration` in `MediaFullscreenLayer.Motion.cs` is the single
+  shared tuning value (300 ms initially). A host instance can override
+  `TransitionDuration`; existing animation speed and reduced-motion preferences
+  apply. Widget authors need no new SDK option.
+- The fullscreen owner retains input until collapse completes. Repeated close,
+  reversal during entrance and stale callbacks cannot activate background
+  controls or steal focus. Source changes, hide and disposal bypass animation.
+- Native ScrollViewer state restoration required reconciling image zoom after
+  reparenting and final arrange. Interrupted entrance retains the original
+  image state instead of saving an intermediate fullscreen viewport.
+- Evidence is in `artifacts/media-fullscreen-motion`: native regression results,
+  embedded sample results and a frame recording showing the same WebView
+  scaling through collapse. The first external image recording serialized UI
+  commands until recording stopped, so it is not transition evidence.
+- Final Debug build passed with no warnings. `native-05.json` passes 73 checks;
+  `embedded-05.json` passes 13. The added image-scale check reproduced the
+  native viewport timing issue before the correction and now passes, including
+  cancellation before first paint and reversal during the animation.
+- WinUI review checked shared placement ownership, input release routing,
+  animation cancellation/disposal, visual property restoration, theme brushes,
+  reduced motion and preservation of playback/image state. No SDK/protocol
+  changes, merge or release are part of this update.

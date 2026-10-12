@@ -62,10 +62,11 @@ internal sealed partial class OverlayShellPage
                 _ = fullscreenLayer.ShowAsync(new(fullscreenView, fullscreenView, HandleEmbeddedFullscreen,
                     fullscreenView.MoveFocus, fullscreenView.Enter,
                     () => { fullscreenView.Hide(); fullscreenLayer.Park(fullscreenView); mediaOwner?.ExitFullscreen(); },
-                    () => { if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard); else QueueEntryFocus(); }));
+                    () => { if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard); else QueueEntryFocus(); },
+                    Origin: fullscreenLayer.BoundsOf(mediaOwner.FullscreenOrigin), Chrome: fullscreenView.TransitionChrome));
             }
         }
-        else if (ReferenceEquals(fullscreenLayer.Owner, fullscreenView)) fullscreenLayer.Close();
+        else if (ReferenceEquals(fullscreenLayer.Owner, fullscreenView)) fullscreenLayer.Close(restoreFocus: false);
     }
 
     private void RefreshFullscreenChrome()
@@ -76,7 +77,7 @@ internal sealed partial class OverlayShellPage
         if (showing)
         {
             surface?.ResetPressedStyles();
-            ProductionLayout.Visibility = Visibility.Collapsed;
+            ProductionLayout.Visibility = fullscreenLayer.IsTransitioning ? Visibility.Visible : Visibility.Collapsed;
         }
         else
         {

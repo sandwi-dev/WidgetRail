@@ -50,9 +50,15 @@ internal sealed partial class MediaPlayerView
         Handle(ControllerButton.LeftBumper, ControllerEventPhase.Pressed);
         await Until(() => imageViewport.ZoomFactor == 1);
         Check(PanImage(short.MaxValue, 0), "Fit image consumes pan input to prevent parent page scrolling");
+        var fullscreen = MediaFullscreenLayer.Find(this)!;
+        fullscreen.TransitionDuration = TimeSpan.FromMilliseconds(600);
         var imageExpanded = ToggleExpandedAsync();
         await Until(() => expandedHost is { IsLoaded: true, IsOpen: true } && imageTools.ActualHeight > 0);
+        await Task.Delay(80);
+        Check(fullscreen.IsTransitioning && !card.IsHitTestVisible, "Configured fullscreen duration keeps controls inert during expansion");
         await Until(() => !changingPlacement);
+        Check(!fullscreen.IsTransitioning && card.IsHitTestVisible, "Expansion settles motion before enabling controls");
+        fullscreen.TransitionDuration = MediaFullscreenLayer.DefaultTransitionDuration;
         imageViewport.Focus(FocusState.Keyboard);
         Handle(ControllerButton.RightTrigger, ControllerEventPhase.Pressed);
         await Until(() => imageViewport.ZoomFactor > 1.1);
@@ -73,6 +79,27 @@ internal sealed partial class MediaPlayerView
         Handle(ControllerButton.B, ControllerEventPhase.Pressed); Handle(ControllerButton.B, ControllerEventPhase.Released);
         await imageExpanded;
         Check(imageViewport.ZoomFactor == 1 && !IsExpanded, "Fit and Back restore the inline image viewer");
+        ZoomImage(1);
+        await Until(() => imageViewport.ZoomFactor > 1.1);
+        var originalScale = RememberImageViewport()!.Scale;
+        var zoomedExpansion = ToggleExpandedAsync();
+        await Until(() => !changingPlacement && expandedHost is { IsTransitioning: false });
+        await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+        Check(Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01,
+            "Animated expansion preserves inspected image scale after native scroll restoration");
+        expandedHost!.Close(); await zoomedExpansion;
+        await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+        Check(Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01,
+            "Animated collapse restores the original image scale");
+        var interruptedImage = ToggleExpandedAsync();
+        fullscreen.Close(); await interruptedImage;
+        await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+        Check(!IsExpanded, "Canceling image expansion before its first frame retains the original zoom");
+        interruptedImage = ToggleExpandedAsync();
+        await Task.Delay(60);
+        fullscreen.Close(); await interruptedImage;
+        await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+        Check(!IsExpanded, "Reversing image expansion mid-animation retains the original zoom");
         SetActive(true, true);
         Apply(_ => Task.FromResult(new HostCaptureAttachment(clip, mp4)), clip, () => true);
         await Until(() => player?.PlaybackSession.NaturalDuration.TotalSeconds > 4.9);
@@ -135,7 +162,7 @@ internal sealed partial class MediaPlayerView
         Check(speed.Focus(FocusState.Keyboard), "Speed control accepts focus before expansion");
         var expanded = ToggleExpandedAsync();
         await Until(() => expandedHost is { IsLoaded: true, IsOpen: true });
-        await Task.Delay(150);
+        await Until(() => !changingPlacement && expandedHost is { IsTransitioning: false });
         Check(card.Parent is MediaFullscreenLayer, "Expanded viewer uses the shared shell layer without dialog framing");
         Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Expansion preserves the focused transport control; actual=" +
             (FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focus ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(focus) : "none"));
@@ -152,7 +179,7 @@ internal sealed partial class MediaPlayerView
         for (var cycle = 0; cycle < 3; cycle++)
         {
             var transition = ToggleExpandedAsync();
-            await Until(() => IsExpanded && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed));
+            await Until(() => IsExpanded && !changingPlacement && expandedHost is { IsTransitioning: false } && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed));
             var layer = expandedHost!;
             layer.Route(ControllerButton.RightStick, ControllerEventPhase.Pressed);
             Check(layer.Route(ControllerButton.RightStick, ControllerEventPhase.Released), "Collapse gesture release stays owned by fullscreen");
@@ -165,11 +192,23 @@ internal sealed partial class MediaPlayerView
         await Until(() => IsExpanded);
         expandedHost!.Close();
         var overlapping = ToggleExpandedAsync();
-        Check(!IsExpanded && overlapping.IsCompleted, "Overlapping reopen is ignored until the previous placement settles");
+        Check((!IsExpanded || expandedHost is { IsClosing: true }) && overlapping.IsCompleted,
+            "Repeated collapse is ignored while the previous animated placement is closing");
         await rapid;
+        Check(!IsExpanded && !fullscreen.IsTransitioning, "Close during entrance finishes inline without a stale animation callback");
+        var forced = ToggleExpandedAsync();
+        fullscreen.Close(restoreFocus: false);
+        Check(!IsExpanded && !fullscreen.IsOpen && !fullscreen.IsTransitioning, "Host teardown closes immediately even during an animation");
+        await forced;
+        fullscreen.ApplyMotion(WidgetRail.PlatformSettings.AppearanceSettings.Default with { Motion = WidgetRail.PlatformSettings.MotionPreference.Reduced }, true);
+        var reduced = ToggleExpandedAsync();
+        await Until(() => !changingPlacement);
+        Check(!fullscreen.IsTransitioning && card.IsHitTestVisible, "Reduced motion settles expansion without transforms");
+        fullscreen.Close(); await reduced;
+        fullscreen.ApplyMotion(WidgetRail.PlatformSettings.AppearanceSettings.Default, true);
         Check(!Handle(ControllerButton.X, ControllerEventPhase.Pressed), "Inline X remains available to widget shortcuts");
         var controlsCheck = ToggleExpandedAsync();
-        await Until(() => IsExpanded);
+        await Until(() => IsExpanded && !changingPlacement && expandedHost is { IsTransitioning: false });
         videoChrome.Hide();
         Check(!videoChrome.Visible && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), video), "Auto-hidden controls park focus on the visible media canvas");
         var wasPlaying = IsPlaying;

@@ -6,7 +6,7 @@ internal sealed partial class NativePopupTheme
     internal static IDisposable? FullscreenMedia(MediaFullscreenLayer layer)
     {
         var owner = Find(layer);
-        return owner?.Track(() => layer.Background = owner.surface);
+        return owner?.Track(() => layer.SetBackdrop(owner.surface));
     }
     internal static IDisposable? MediaPlayer(MediaPlayerView media)
     {

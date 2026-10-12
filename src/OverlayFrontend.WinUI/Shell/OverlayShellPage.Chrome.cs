@@ -39,6 +39,7 @@ internal sealed partial class OverlayShellPage
     {
         chromeStyles?.Update(ShellPalette, Appearance, systemUi.AnimationsEnabled);
         popupTheme.Update(ShellPalette, Appearance);
+        fullscreenLayer.ApplyMotion(Appearance, systemUi.AnimationsEnabled);
         trayGuide.ApplyAppearance(ShellPalette, Appearance, systemUi.AnimationsEnabled);
         RefreshSystemStatusAppearance();
         openingIndicator?.ApplyAppearance(ShellPalette, Appearance, systemUi.AnimationsEnabled);

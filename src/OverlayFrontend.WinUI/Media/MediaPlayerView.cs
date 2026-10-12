@@ -139,8 +139,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         imageViewport.IsEnabled = input;
         foreach (var control in imageControls) control.IsEnabled = input;
         video.IsHitTestVisible = input; video.IsTabStop = input && IsExpanded;
-        if (!input) { adjustingVolume = false; expandedHost?.Close(); }
-        if (!active) { SuspendPlayer(); timer.Stop(); expandedHost?.Close(); } else if (IsLoaded && !lifetime.IsCancellationRequested) timer.Start();
+        if (!input) { adjustingVolume = false; expandedHost?.Close(restoreFocus: false); }
+        if (!active) { SuspendPlayer(); timer.Stop(); expandedHost?.Close(restoreFocus: false); } else if (IsLoaded && !lifetime.IsCancellationRequested) timer.Start();
         foreach (var control in controls) control.IsEnabled = input && player is not null;
         expand.IsEnabled = input && player is not null && CanExpand;
         imageExpand.IsEnabled = input && CanExpand;
@@ -157,7 +157,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (next == definition) return;
         if (definition is { } previous && previous.Source == next.Source && previous.Revision == next.Revision && (player is not null || image.Source is not null))
         { definition = next; if (resolved is not null) resolved = resolved with { Media = next }; if (player is not null) ApplyOptions(next.Options); return; }
-        expandedHost?.Close();
+        expandedHost?.Close(restoreFocus: false);
         lifetime.Cancel(); lifetime.Dispose(); lifetime = new();
         ReleasePlayer(); definition = next; resolved = null; adjustingVolume = false; waitingForSlot = false;
         image.Source = null; imageViewport.Visibility = imageTools.Visibility = video.Visibility = toolbar.Visibility = Visibility.Collapsed;
@@ -419,5 +419,5 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         }
     }
     public void Dispose()
-    { if (disposed) return; disposed = true; expandedHost?.Close(); lifetime.Cancel(); lifetime.Dispose(); timer.Stop(); videoChrome.Stop(); theme?.Dispose(); ReleasePlayer(); image.Source = null; }
+    { if (disposed) return; disposed = true; expandedHost?.Close(restoreFocus: false); lifetime.Cancel(); lifetime.Dispose(); timer.Stop(); videoChrome.Stop(); theme?.Dispose(); ReleasePlayer(); image.Source = null; }
 }

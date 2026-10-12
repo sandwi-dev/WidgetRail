@@ -59,7 +59,7 @@ internal sealed partial class OverlayShellPage
                     if (ProductionLayout.Visibility == Visibility.Visible &&
                         (WidgetSurface.Width > widgetExtent.Width + 1 || WidgetSurface.Height > widgetExtent.Height + 1)) wideReveal = true;
                 });
-                await Click("media-shell.fullscreen"); await Until(() => IsMediaFullscreen);
+                await Click("media-shell.fullscreen"); await Until(() => IsMediaFullscreen && !fullscreenLayer.IsTransitioning);
                 Check(Math.Abs(WidgetSurface.Width - widgetExtent.Width) < 1 && Math.Abs(WidgetSurface.Height - widgetExtent.Height) < 1,
                     "fullscreen keeps the retained widget at its authored dimensions on an ultrawide viewport");
                 Check(ReferenceEquals(browser.Parent, fullscreenView.SurfaceHost), "fullscreen moves the existing browser");

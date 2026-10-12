@@ -87,6 +87,16 @@ Fit remains Fit when the viewport changes. Touch zoom/scroll and native keyboard
 available. All of this stays inside the host; it does not launch Windows Photos.
 
 Fullscreen media fills the available overlay viewport with aspect-fit rendering.
+Images, native video and embedded video share a GPU scale/position transition,
+with fading controls and backdrop. The default duration is 300 ms, defined by
+`MediaFullscreenLayer.DefaultTransitionDuration` in
+`src/OverlayFrontend.WinUI/Media/MediaFullscreenLayer.Motion.cs`; the host's
+`TransitionDuration` property permits a code-level override. Existing widget
+animation speed applies, and reduced motion skips the animation. No SDK option
+or widget-specific transition code is required. Normal collapse animates;
+source retirement, overlay hiding and disposal close immediately. Focus and
+interaction resume after the placement settles, with playback and image zoom
+retained throughout.
 A floating toolbar overlays the media, with safe margins for focus outlines;
 there is no dialog title, fixed 1280-by-900 cap, or nested card border. Video controls
 auto-hide while playing, park focus on the media, and reveal without executing a

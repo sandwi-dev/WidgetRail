@@ -37,6 +37,7 @@ internal sealed partial class MediaPlayerView
         if (expandedHost is { } existing) { existing.Close(); return Task.CompletedTask; }
         if (!input || disposed || changingPlacement || MediaFullscreenLayer.Find(this) is not { IsOpen: false } host) return Task.CompletedTask;
         var previous = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as Control;
+        var origin = host.BoundsOf(card);
         var imageState = RememberImageViewport();
         changingPlacement = true;
         expandedHost = host;
@@ -45,13 +46,15 @@ internal sealed partial class MediaPlayerView
         return host.ShowAsync(new(this, card, Handle, direction => MoveFocus(direction),
             () =>
             {
+                // ScrollViewer may finalize its native viewport after the
+                // first arrange. Reconcile against the settled dimensions.
                 RestoreImageViewport(imageState);
                 changingPlacement = false;
                 if (input && !disposed) (previous is { IsEnabled: true, Visibility: Visibility.Visible } ? previous : PreferredFocus).Focus(FocusState.Keyboard);
             },
             () =>
             {
-                imageState = RememberImageViewport();
+                if (!changingPlacement) imageState = RememberImageViewport();
                 changingPlacement = true;
                 expandedHost = null;
                 SetExpandedLayout(false);
@@ -65,7 +68,8 @@ internal sealed partial class MediaPlayerView
                 RestoreImageViewport(imageState);
                 changingPlacement = false;
                 (previous is { IsEnabled: true, Visibility: Visibility.Visible } ? previous : PreferredFocus).Focus(FocusState.Keyboard);
-            }, PanImage, () => changingPlacement = false));
+            }, PanImage, () => changingPlacement = false, Origin: origin,
+            Prepare: () => RestoreImageViewport(imageState), Chrome: [toolbar, imageTools]));
     }
 
     private void SetExpandedLayout(bool expanded)
