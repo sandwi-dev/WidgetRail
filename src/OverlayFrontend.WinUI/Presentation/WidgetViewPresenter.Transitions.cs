@@ -19,9 +19,10 @@ internal sealed partial class WidgetViewPresenter
         internal Dictionary<string, (Rect Bounds, bool Selection)> Layout { get; } = new(StringComparer.Ordinal);
         internal List<WidgetCompositionTarget> Targets { get; } = [];
         internal WidgetCompositionMotion? Motion;
+        internal WidgetPageMotion? PageMotion;
         internal EventHandler<object>? LayoutReady;
     }
-    private sealed record SectionExit(string IncomingId, int Direction, WidgetMotionHost Outgoing)
+    private sealed record SectionExit(string IncomingId, int Direction, WidgetMotionHost Outgoing, bool Page)
     { internal WidgetMotionHost? Owner { get; set; } }
     private readonly WidgetMotionGroups motionGroups = new();
     private WidgetMotionStage? motionStage;
@@ -54,9 +55,10 @@ internal sealed partial class WidgetViewPresenter
         if (changes.Count == 0) return commit;
         SettleTransitions();
         var options = WidgetMotionOptions.From(appearance, systemAnimationsEnabled);
-        if (!presentationActive || !sameOwner || !IsLoaded || options.Reduced || options.Section == WidgetRail.PlatformSettings.WidgetSectionAnimation.None) return commit;
+        if (!presentationActive || !sameOwner || !IsLoaded || options.Reduced) return commit;
         foreach (var change in changes)
         {
+            if (visible.Any(d => d.Node.Transition?.GroupId == change.GroupId && commit.ReplacedIds.Contains(d.Node.Id))) continue;
             foreach (var nextLayout in visible.Where(d => d.Node.Transition is { Kind: WidgetTransitionKind.Layout } t && t.GroupId == change.GroupId))
                 if (bindings.TryGetValue(nextLayout.Node.Id, out var priorLayout) && Bounds(priorLayout.LayoutElement) is { } bounds)
                     commit.Layout[nextLayout.Node.Id] = (bounds, false);
@@ -66,10 +68,12 @@ internal sealed partial class WidgetViewPresenter
                 t.GroupId == change.GroupId && d.Node.IsSelected is true && TransitionVisible(d, declarations));
             if (nextSelected is not null && priorSelected is not null && Bounds(bindings[priorSelected.Node.Id].LayoutElement) is { } selectionBounds)
                 commit.Layout[nextSelected.Node.Id] = (selectionBounds, true);
-            var incoming = visible.FirstOrDefault(d => d.Node.Transition is { Kind: WidgetTransitionKind.Content } t && t.GroupId == change.GroupId);
-            var outgoing = declarations.Values.FirstOrDefault(d => d.Node.Transition is { Kind: WidgetTransitionKind.Content } t &&
+            var incoming = visible.FirstOrDefault(d => d.Node.Transition is { Kind: WidgetTransitionKind.Content or WidgetTransitionKind.Page } t && t.GroupId == change.GroupId);
+            var outgoing = declarations.Values.FirstOrDefault(d => d.Node.Transition is { Kind: WidgetTransitionKind.Content or WidgetTransitionKind.Page } t &&
                 t.GroupId == change.GroupId && TransitionVisible(d, declarations));
-            if (incoming is null || outgoing is null || bindings[outgoing.Node.Id].MotionHost is not { } host || Bounds(host) is not { } oldBounds) continue;
+            if (incoming is null || outgoing is null || commit.ReplacedIds.Contains(incoming.Node.Id) || bindings[outgoing.Node.Id].MotionHost is not { } host || Bounds(host) is not { } oldBounds) continue;
+            var page = incoming.Node.Transition!.Kind == WidgetTransitionKind.Page;
+            if (page ? options.Page == WidgetRail.PlatformSettings.WidgetPageAnimation.None : options.Section == WidgetRail.PlatformSettings.WidgetSectionAnimation.None) continue;
             // A separately owned live viewport cannot be duplicated with a
             // retained XAML subtree. Its owner keeps placement/input authority;
             // selection/header motion can still run independently.
@@ -80,6 +84,7 @@ internal sealed partial class WidgetViewPresenter
                 var binding = bindings[id]; commit.Retained.Add(binding);
                 binding.Element.IsHitTestVisible = false;
                 if (binding.Element is Control control) control.IsTabStop = false;
+                if (binding.Element is Media.MediaPlayerView media) media.RetainForPageExit();
                 if (binding.Element is WidgetIndexedCollectionView collection) collection.SuspendForTransition();
             });
             if (VisualTreeHelper.GetParent(host) is Panel parent) parent.Children.Remove(host);
@@ -87,14 +92,14 @@ internal sealed partial class WidgetViewPresenter
             host.Margin = new(); host.Width = oldBounds.Width; host.Height = oldBounds.Height;
             host.MinWidth = host.MinHeight = 0; host.MaxWidth = host.MaxHeight = double.PositiveInfinity;
             Canvas.SetLeft(host, 0); Canvas.SetTop(host, 0);
-            commit.Sections.Add(new(incoming.Node.Id, change.Direction, host));
+            commit.Sections.Add(new(incoming.Node.Id, change.Direction, host, page));
         }
         if (commit.Sections.Count > 0 || commit.Layout.Count > 0) activeTransition = commit;
         return commit;
 
         static void Collect(ViewNode node, Action<string> visit)
         { visit(node.Id); foreach (var child in node.Children) Collect(child, visit); }
-        static bool HasLiveSurface(ViewNode node) => node.Kind is ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser or ViewNodeKind.CapturedMedia or ViewNodeKind.MediaPlayer || node.Children.Any(HasLiveSurface);
+        static bool HasLiveSurface(ViewNode node) => node.Kind is ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser || node.Children.Any(HasLiveSurface);
     }
 
     private bool TransitionVisible(Declaration declaration, IReadOnlyDictionary<string, Declaration> plan)
@@ -151,13 +156,23 @@ internal sealed partial class WidgetViewPresenter
             {
                 var options = WidgetMotionOptions.From(appearance, systemAnimationsEnabled);
                 var playbacks = new List<WidgetMotionPlayback>();
+                var pages = new List<(WidgetMotionHost, WidgetMotionRecipe)>();
                 foreach (var section in commit.Sections)
                 {
                     var incoming = bindings[section.IncomingId].MotionHost!;
                     var size = new Vector2((float)incoming.ActualWidth, (float)incoming.ActualHeight);
-                    var recipe = WidgetMotionPolicy.Section(options, size, section.Direction);
-                    playbacks.Add(new(Target(incoming), recipe.Incoming));
-                    playbacks.Add(new(Target(section.Outgoing), recipe.Outgoing));
+                    var recipe = section.Page ? WidgetMotionPolicy.Page(options, size, section.Direction) : WidgetMotionPolicy.Section(options, size, section.Direction);
+                    if (section.Page || commit.Retained.Any(binding => binding.Element is Media.MediaPlayerView) ||
+                        bindings.Values.Any(binding => binding.Element is Media.MediaPlayerView))
+                    {
+                        pages.Add((incoming, recipe.Incoming));
+                        pages.Add((section.Outgoing, recipe.Outgoing));
+                    }
+                    else
+                    {
+                        playbacks.Add(new(Target(incoming), recipe.Incoming));
+                        playbacks.Add(new(Target(section.Outgoing), recipe.Outgoing));
+                    }
                 }
                 foreach (var (id, priorLayout) in commit.Layout)
                     if (bindings.TryGetValue(id, out var binding) && binding.MotionHost is { } host && Bounds(host) is { } current)
@@ -167,15 +182,33 @@ internal sealed partial class WidgetViewPresenter
                             new((float)prior.Width, (float)prior.Height), new((float)current.Width, (float)current.Height), priorLayout.Selection);
                         playbacks.Add(new(Target(host, false, priorLayout.Selection), recipe));
                     }
-                if (playbacks.Count == 0) { SettleTransitions(); return; }
-                LastTransitionTargetCount = playbacks.Count;
+                if (playbacks.Count == 0 && pages.Count == 0) { SettleTransitions(); return; }
+                LastTransitionTargetCount = playbacks.Count + pages.Count;
                 ++transitionStarts;
                 commit.Motion = new(CompositionTarget.GetCompositorForCurrentThread(), DispatcherQueue);
-                TransitionPlayback = commit.Motion.PlayAsync(playbacks);
+                SynchronizeMedia(true);
+                commit.PageMotion = new(pages, (host, pose) =>
+                {
+                    foreach (var media in bindings.Values.Concat(commit.Retained).Select(binding => binding.Element).OfType<Media.MediaPlayerView>().Distinct())
+                        media.ApplyPagePose(host, pose);
+                });
+                TransitionPlayback = PlayTogetherAsync();
                 _ = CompleteAsync();
+
+                async Task<WidgetMotionOutcome> PlayTogetherAsync()
+                {
+                    var results = await Task.WhenAll(playbacks.Count == 0 ? Task.FromResult(WidgetMotionOutcome.Completed) : commit.Motion.PlayAsync(playbacks),
+                        pages.Count == 0 ? Task.FromResult(WidgetMotionOutcome.Completed) : commit.PageMotion.PlayAsync());
+                    return results.FirstOrDefault(result => result != WidgetMotionOutcome.Completed, WidgetMotionOutcome.Completed);
+                }
             }
             catch (Exception error) { SettleTransitions(); ReportFailure(error); }
 
+            void SynchronizeMedia(bool ancestryChanged)
+            {
+                foreach (var media in bindings.Values.Concat(commit.Retained).Select(binding => binding.Element).OfType<Media.MediaPlayerView>().Distinct())
+                    media.SynchronizePagePlacement(ancestryChanged);
+            }
             WidgetCompositionTarget Target(WidgetMotionHost host, bool clipped = true, bool selection = false)
             {
                 var size = new Vector2((float)host.ActualWidth, (float)host.ActualHeight);
@@ -198,8 +231,10 @@ internal sealed partial class WidgetViewPresenter
         activeTransition = null;
         if (commit.LayoutReady is not null) LayoutUpdated -= commit.LayoutReady;
         commit.Motion?.Dispose();
+        commit.PageMotion?.Dispose();
         foreach (var target in commit.Targets) target.Dispose();
         foreach (var section in commit.Sections) section.Owner?.ClearOutgoing();
         foreach (var binding in commit.Retained) Retire(binding);
+        foreach (var media in bindings.Values.Select(binding => binding.Element).OfType<Media.MediaPlayerView>()) media.EndPageMotion();
     }
 }

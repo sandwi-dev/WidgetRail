@@ -430,6 +430,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.Transition is not null)
                 Add("widget-transition", ProtocolConstants.WidgetTransitionVersion,
                     $"{path}.transition", "Widget transitions require protocol version 58 or later.");
+            if (node.Transition?.Kind == WidgetTransitionKind.Page)
+                Add("page-navigation", ProtocolConstants.PageNavigationVersion,
+                    $"{path}.transition", "Page navigation requires protocol version 80 or later.");
             if (node.CollectionLayout is not null)
                 Add("collection-layout", ProtocolConstants.CollectionLayoutVersion,
                     $"{path}.collectionLayout", "Collection realization requires protocol version 59 or later.");

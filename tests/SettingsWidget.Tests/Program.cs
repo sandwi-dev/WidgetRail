@@ -284,7 +284,8 @@ static async Task LoadingBeforeReady()
     Assert.Equal(loading.Surface, ready.Surface);
     Assert.Equal(loading.Root.Id, ready.Root.Id);
     Assert.Equal(loading.Root.Children[1].Id, ready.Root.Children[1].Id);
-    Assert.Equal(loading.Root.Children[1].Transition, ready.Root.Children[1].Transition);
+    Assert.Equal(loading.Root.Children[1].Transition!.Key, ready.Root.Children[1].Transition!.Key);
+    Assert.Equal(WidgetTransitionKind.Page, ready.Root.Children[1].Transition!.Kind);
     Assert.Equal("Settings", Nodes(ready.Root).Single(node => node.Id == "settings.title").Text);
     Assert.True(!Nodes(ready.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.loading.indicator"), "Ready home retained loading content or its removed subtitle.");
     Assert.Valid(loading);
@@ -450,7 +451,7 @@ static async Task ControllerScrollSurface()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     var root = Snapshot(widget);
-    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, root.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PageNavigationVersion, root.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.HeightMode);

@@ -4,7 +4,7 @@ using WidgetRail.PlatformSettings;
 namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 
 internal readonly record struct WidgetMotionOptions(WidgetSectionAnimation Section, WidgetModalAnimation Modal,
-    WidgetFocusAnimation Focus, bool AnimateDialogs, bool Reduced, double Speed)
+    WidgetFocusAnimation Focus, bool AnimateDialogs, bool Reduced, double Speed, WidgetPageAnimation Page = WidgetPageAnimation.Slide)
 {
     internal static WidgetMotionOptions From(AppearanceSettings appearance, bool systemAnimationsEnabled)
     {
@@ -15,7 +15,7 @@ internal readonly record struct WidgetMotionOptions(WidgetSectionAnimation Secti
             ? Math.Clamp(appearance.WidgetAnimationSpeed, AppearanceSettings.MinimumWidgetAnimationSpeed,
                 AppearanceSettings.MaximumWidgetAnimationSpeed) : 1;
         return new(appearance.SectionAnimation, appearance.ModalAnimation, appearance.FocusAnimation,
-            appearance.AnimateWidgetModals, reduced, speed);
+            appearance.AnimateWidgetModals, reduced, speed, appearance.PageAnimation);
     }
 
     internal TimeSpan Duration(double milliseconds) => Reduced ? TimeSpan.Zero : TimeSpan.FromMilliseconds(milliseconds /
@@ -77,6 +77,25 @@ internal static class WidgetMotionPolicy
         var shown = WidgetMotionPose.Identity;
         var hidden = shown with { Opacity = 0 };
         return new(new(hidden, shown, duration), new(shown, hidden, duration));
+    }
+
+    internal static WidgetSectionMotion Page(WidgetMotionOptions options, Vector2 viewport, int direction)
+    {
+        ValidateSize(viewport);
+        var duration = options.Duration(options.Page == WidgetPageAnimation.None ? 0 : 200);
+        var shown = WidgetMotionPose.Identity;
+        if (duration == TimeSpan.Zero) return new(new(shown, shown, duration), new(shown, shown, duration));
+        if (direction == 0 || options.Page == WidgetPageAnimation.Fade)
+            return new(new(shown with { Opacity = 0 }, shown, duration), new(shown, shown with { Opacity = 0 }, duration));
+        var section = options.Page switch
+        {
+            WidgetPageAnimation.VerticalSlide => WidgetSectionAnimation.VerticalSlide,
+            WidgetPageAnimation.Reveal => WidgetSectionAnimation.Reveal,
+            WidgetPageAnimation.CoverSlide => WidgetSectionAnimation.CoverSlide,
+            _ => WidgetSectionAnimation.Slide,
+        };
+        var recipe = Section(options with { Section = section }, viewport, direction);
+        return new(recipe.Incoming with { Duration = duration }, recipe.Outgoing with { Duration = duration });
     }
 
     internal static WidgetSectionMotion Section(WidgetMotionOptions options, Vector2 viewport, int direction)

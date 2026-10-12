@@ -394,31 +394,32 @@ public static class ViewSnapshotValidator
         {
             foreach (var compact in new[] { true, false })
             {
-                var groups = new Dictionary<string, (string Key, int Order, bool Content, bool Selection)>(StringComparer.Ordinal);
+                var groups = new Dictionary<string, (string Key, int Order, WidgetNavigationOperation? Navigation, bool Content, bool Selection)>(StringComparer.Ordinal);
                 var layoutNodes = 0;
-                void Walk(ViewNode? node, string path, bool insideContent)
+                void Walk(ViewNode? node, string path, bool insideContent, bool insidePage)
                 {
                     if (node is null) return;
                     if (node.VisibleWhen == (compact ? ResponsiveVisibility.ExpandedOnly : ResponsiveVisibility.CompactOnly)) return;
                     if (node.Transition is { } motion && !string.IsNullOrWhiteSpace(motion.GroupId))
                     {
-                        var content = motion.Kind == WidgetTransitionKind.Content;
+                        var content = motion.Kind is WidgetTransitionKind.Content or WidgetTransitionKind.Page;
                         var selected = motion.Kind == WidgetTransitionKind.Selection && node.IsSelected is true;
                         if (groups.TryGetValue(motion.GroupId, out var group))
                         {
-                            if (group.Key != motion.Key || group.Order != motion.Order || content && group.Content || selected && group.Selection)
+                            if (group.Key != motion.Key || group.Order != motion.Order || group.Navigation != motion.Navigation || content && group.Content || selected && group.Selection)
                                 Add(path, "transition_group_conflict", "A transition group requires one section key/order, at most one content container and one selected surface per responsive mode.");
-                            groups[motion.GroupId] = (motion.Key, motion.Order, content || group.Content, selected || group.Selection);
+                            groups[motion.GroupId] = (motion.Key, motion.Order, motion.Navigation, content || group.Content, selected || group.Selection);
                         }
-                        else groups[motion.GroupId] = (motion.Key, motion.Order, content, selected);
-                        if (content && insideContent)
+                        else groups[motion.GroupId] = (motion.Key, motion.Order, motion.Navigation, content, selected);
+                        if (content && insideContent || motion.Kind == WidgetTransitionKind.Page && insidePage)
                             Add(path, "nested_content_transition", "Content transition containers cannot be nested.");
-                        insideContent |= content;
+                        insideContent |= motion.Kind == WidgetTransitionKind.Content;
+                        insidePage |= motion.Kind == WidgetTransitionKind.Page;
                         if (!content) ++layoutNodes;
                     }
-                    foreach (var child in node.Children ?? []) Walk(child, path + ".children", insideContent);
+                    foreach (var child in node.Children ?? []) Walk(child, path + ".children", insideContent, insidePage);
                 }
-                Walk(root, "$.root", false);
+                Walk(root, "$.root", false, false);
                 if (groups.Count > ProtocolConstants.MaximumWidgetTransitionGroups ||
                     layoutNodes > ProtocolConstants.MaximumWidgetTransitionLayoutNodes)
                     Add("$.root", "transition_capacity", "A presentation supports at most seven section groups and 64 moving layout elements.");
@@ -761,8 +762,11 @@ public static class ViewSnapshotValidator
                 if (!Enum.IsDefined(transition.Kind) || transition.Order is
                     < -ProtocolConstants.MaximumWidgetTransitionOrder or > ProtocolConstants.MaximumWidgetTransitionOrder)
                     Add($"{path}.transition", "invalid_transition", "Transition kind or order is invalid.");
-                if (transition.Kind == WidgetTransitionKind.Content &&
-                    node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.FocusPresentationSurface))
+                if (transition.Kind == WidgetTransitionKind.Page ? transition.Navigation is null || !Enum.IsDefined(transition.Navigation.Value) || transition.Order != 0 : transition.Navigation is not null)
+                    Add($"{path}.transition", "invalid_page_navigation", "Page transitions require a valid navigation operation and zero order; section transitions cannot declare navigation.");
+                if (transition.Kind is WidgetTransitionKind.Content or WidgetTransitionKind.Page &&
+                    node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.FocusPresentationSurface) &&
+                    !(transition.Kind == WidgetTransitionKind.Page && node.Kind == ViewNodeKind.Scroll))
                     Add($"{path}.transition", "invalid_transition_container", "Content transitions require a layout or focus-presentation container.");
             }
             CheckString(node.AccessibilityLabel, $"{path}.accessibilityLabel");

@@ -201,6 +201,7 @@ public sealed partial class SettingsWidget : Widget
             status = !loading && _toastVisible ? StatusMessage : "Ready";
         }
 
+        var navigation = ObservePageNavigation(page);
         var presentation = new SettingsPresentationState(
             page,
             settings,
@@ -215,7 +216,7 @@ public sealed partial class SettingsWidget : Widget
             themePickerFocusId, startupStatus, display, loading, _hostFeatures,
             diagnosticDetails, supportExportFile, marketplace, appUpdates);
         if (SettingsPresentation.TryRender(presentation, out var view))
-            return SettingsPresentation.AnimatePage(view, page, loading);
+            return SettingsPresentation.AnimatePage(view, page, loading, navigation);
         var header = SettingsPresentation.Header(presentation);
         view = page switch
         {
@@ -253,7 +254,7 @@ public sealed partial class SettingsWidget : Widget
                     header, busy, permissionState),
             _ => throw new InvalidOperationException($"Unsupported Settings page {page}."),
         };
-        return SettingsPresentation.AnimatePage(view, page, loading);
+        return SettingsPresentation.AnimatePage(view, page, loading, navigation);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)

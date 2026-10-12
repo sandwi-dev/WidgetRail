@@ -85,6 +85,48 @@ For API signatures and detailed targeting rules, see
 
 ## Coordinated section transitions
 
+Page navigation and section selection are separate contracts. Use page navigation
+for parent/detail destinations and section transitions for sibling tabs.
+
+### Page navigation
+
+```csharp
+var root = UI.Stack("capture.page", content)
+    .TransitionPage("capture.navigation", pageKey, WidgetNavigationOperation.Forward);
+```
+
+Keep the region ID and group stable. Change `pageKey` only when navigating;
+loading, artwork completion and playback updates keep the same key and operation.
+Use `Back` when returning to a parent and `Replace` when replacing the current
+destination without directional navigation. The declaration does not install a
+Back shortcut or own widget business state. Widgets still handle their existing
+Back action and select the destination.
+
+The Page animation preference supports Slide, Vertical slide, Fade, Reveal,
+Cover slide and None. Forward and Back reverse direction; Replace fades neutrally.
+Normal duration is 200 ms, scaled by widget animation speed. Reduced motion or
+None skips retention and motion. Section preferences remain independent.
+
+The host keeps bounded focus and scroll memory for visited page keys and restores
+it on Back when the targets still exist. Pages may contain sibling section
+regions; when both change together the containing page transition takes priority.
+Nested page regions and section-inside-section transitions are rejected.
+
+Native media players and image viewers participate in page transitions. Outgoing
+controls lose input immediately; their admitted media stays visible for the
+bounded exit and is then disposed. A shared XAML frame clock moves and clips the
+page and resident video together without copying the decoder or capturing a bitmap.
+Hide, owner replacement, reduced motion and superseding navigation settle retention.
+Browser, embedded-media and window-preview owners still use the conservative
+non-retaining fallback when placed inside the changing region. Keep persistent
+surfaces outside that region if their content should continue across navigation.
+
+Page declarations require protocol 80; ordinary section declarations retain their
+existing minimum version. An older host must reject an unsupported page declaration
+rather than silently dropping its navigation semantics.
+
+### Section selection
+
 Use `UI.NavigationShellParts(...).WithTransitions()` to animate navigation
 positions and the shell-owned content together. Existing navigation overloads
 keep their static presentation. For a custom arrangement, apply
@@ -119,9 +161,10 @@ code declares semantic groups and keys, not animation frames.
 The presenter retains outgoing XAML presentation only for the transition,
 revokes its input/accessibility ownership, and gives the incoming page authority.
 It disposes the retained controls when the transition finishes or is superseded.
-Same-key content updates do not start another transition. A subtree with a live
-browser, media or window-preview surface does not participate in retained section
-content motion; its independent surface owner keeps placement and input authority.
+Same-key content updates do not start another transition. Native media players
+and image viewers can participate. A subtree with a live browser, embedded-media
+viewport or window-preview surface uses the non-retaining fallback; its independent
+surface owner keeps placement and input authority.
 Header and selection motion can still run.
 
 Content transition containers cannot be nested. Each group has one content

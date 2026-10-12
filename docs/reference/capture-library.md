@@ -179,3 +179,9 @@ For widget authors, ReadContentAsync allocates the encoded attachment size (up t
 A missing metadata file is not treated as proof of an unfinished save: its original remains as an unavailable entry until you explicitly delete it. Automatic partial-copy cleanup requires a transaction marker written before copying media.
 
 LB/RB change pages in Capture Library and Game Help's saved-capture picker. Page changes explicitly focus and reveal the first new row; the footer also shows the page number.
+
+Opening a saved capture or Capture settings uses the host's page-navigation
+transition; Back reverses it and restores the library's selected item and scroll
+position. Loading the capture does not start another page transition. Native
+video remains attached while its page moves and is released when the outgoing
+transition ends. Choose the effect in Settings → Appearance → Page animation.

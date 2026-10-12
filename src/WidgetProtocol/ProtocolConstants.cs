@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 79;
+    public const int CurrentVersion = 80;
+    public const int PageNavigationVersion = 80;
     public const int ConfigurableCaptureVersion = 79;
     public const int LineGraphVersion = 78;
     public const int FullResolutionCaptureVersion = 77;

@@ -54,6 +54,20 @@ internal static class WidgetTransitionTests
             UI.Stack("inner").TransitionContent("inner.tabs", "home", 0)).TransitionContent("outer.tabs", "home", 0));
         try { nested.CreateSnapshot("nested", 1); throw new InvalidOperationException("nested captures accepted"); }
         catch (ProtocolValidationException error) { Check(error.Errors.Any(item => item.Code == "nested_content_transition"), "nested diagnostic"); }
+        var route = new WidgetView(UI.Stack("page", UI.Button("Back", "back", "back"))
+            .InputScope("preview").TransitionPage("navigation", "capture", WidgetNavigationOperation.Forward)).CreateSnapshot("widget", 1);
+        Check(route.ProtocolVersion == ProtocolConstants.PageNavigationVersion && route.ActiveInputScopeId == "preview", "page contract version and scope");
+        Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(route)).Root.Transition == route.Root.Transition, "page JSON round trip");
+        Check(ViewSnapshotValidator.Validate(route with { ProtocolVersion = 79 }).Count != 0, "old hosts reject page navigation");
+        Check(ViewSnapshotValidator.Validate(route with { Root = route.Root with { Transition = route.Root.Transition! with { Navigation = null } } }).Count != 0, "page operation is required");
+        Check(ViewSnapshotValidator.Validate(first with { Root = first.Root with { Transition = first.Root.Transition! with { Navigation = WidgetNavigationOperation.Back } } }).Count != 0, "section cannot masquerade as navigation");
+        var tabbedPage = new WidgetView(UI.Stack("page",
+            UI.Stack("tabs").TransitionContent("tabs", "songs", 0))
+            .TransitionPage("pages", "library", WidgetNavigationOperation.Forward)).CreateSnapshot("widget", 1);
+        Check(ViewSnapshotValidator.Validate(tabbedPage).Count == 0, "pages may contain sibling section regions");
+        var scrollingPage = new WidgetView(UI.VerticalScroll("scrolling", UI.Button("Open", "open", "open"))
+            .TransitionPage("pages", "library", WidgetNavigationOperation.Back)).CreateSnapshot("widget", 1);
+        Check(ViewSnapshotValidator.Validate(scrollingPage).Count == 0, "page declarations preserve native scroll containers");
         return Task.CompletedTask;
     }
 

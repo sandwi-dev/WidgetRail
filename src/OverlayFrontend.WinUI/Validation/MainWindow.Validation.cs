@@ -120,7 +120,14 @@ public sealed partial class MainWindow
         else if (validateContextMenu) RootFrame.Content = new Validation.ContextMenuControlValidationPage();
         else if (shellConfiguration is not null) return;
         else if (validateTextEntry) RootFrame.Content = new Validation.TextEntryValidationPage();
-        else if (validateStyles) RootFrame.Content = new Validation.WidgetStylesValidationPage();
+        else if (validateStyles) {
+            if (Shell.FrontendArguments.Value(arguments, "--page-navigation-fixtures") is not null)
+            {
+                ShellCard.Margin = ShellCard.Padding = new(0); ShellHeader.Visibility = Visibility.Collapsed;
+                ShellLayout.RowSpacing = 0; AppWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+            }
+            RootFrame.Content = new Validation.WidgetStylesValidationPage();
+        }
         else if (validateGlyphs) RootFrame.Content = new Validation.GlyphValidationPage();
         else if (validateModals) RootFrame.Content = new Validation.ModalValidationPage();
         else if (validateMotion) RootFrame.Content = new Validation.WidgetMotionValidationPage();

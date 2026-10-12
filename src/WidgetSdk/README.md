@@ -1048,6 +1048,14 @@ are documented in [Power widget](../../docs/reference/power-widget.md).
 
 ### Section transitions
 
+For parent/detail navigation, use `page.TransitionPage(regionId, destinationKey,
+WidgetNavigationOperation.Forward)` and use `Back` on return or `Replace` for
+non-directional replacement. Keep the key stable through loading updates. The
+host remembers bounded focus/scroll state on Back and owns page timing, clipping,
+native-media exit lifetimes, and reduced motion. Page effects are configured
+separately from section effects. See [page navigation](../../docs/developers/navigation.md#page-navigation)
+for the contract and live-surface limitations. Page declarations require protocol 80.
+
 For animated sections, `UI.NavigationShellParts(...).WithTransitions()` coordinates
 navigation movement with its content. In custom layouts, use
 `content.TransitionContent(shellId, selectedSectionId, selectedIndex)`; additional

@@ -19,6 +19,7 @@ internal enum SettingsPreferenceKind
     AnimateWidgetSwitching,
     FocusAnimation,
     SectionAnimation,
+    PageAnimation,
     AnimateWidgetModals,
     ModalAnimation,
     AnimationSpeedDecrease,
@@ -40,6 +41,7 @@ internal readonly record struct SettingsPreferenceMutation(
     string? DisplayId = null,
     WidgetFocusAnimation? FocusAnimation = null,
     WidgetSectionAnimation? SectionAnimation = null,
+    WidgetPageAnimation? PageAnimation = null,
     WidgetModalAnimation? ModalAnimation = null,
     MotionPreference? Motion = null,
     ContrastPreference? Contrast = null,
@@ -151,6 +153,7 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             FocusAnimation = focus,
         },
+        SettingsPreferenceKind.PageAnimation when PageAnimation is { } page => appearance with { PageAnimation = page },
         SettingsPreferenceKind.SectionAnimation when SectionAnimation is { } selected => appearance with
         {
             SectionAnimation = selected,
@@ -265,6 +268,12 @@ internal static class SettingsPreferencePolicy
                 FocusAnimation: WidgetFocusAnimation.Fade),
             "focus-animation.none" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
                 FocusAnimation: WidgetFocusAnimation.None),
+            "page-animation.slide" => new(SettingsPreferenceKind.PageAnimation, "Page animation saved", PageAnimation: WidgetPageAnimation.Slide),
+            "page-animation.verticalslide" => new(SettingsPreferenceKind.PageAnimation, "Page animation saved", PageAnimation: WidgetPageAnimation.VerticalSlide),
+            "page-animation.fade" => new(SettingsPreferenceKind.PageAnimation, "Page animation saved", PageAnimation: WidgetPageAnimation.Fade),
+            "page-animation.reveal" => new(SettingsPreferenceKind.PageAnimation, "Page animation saved", PageAnimation: WidgetPageAnimation.Reveal),
+            "page-animation.coverslide" => new(SettingsPreferenceKind.PageAnimation, "Page animation saved", PageAnimation: WidgetPageAnimation.CoverSlide),
+            "page-animation.none" => new(SettingsPreferenceKind.PageAnimation, "Page animation saved", PageAnimation: WidgetPageAnimation.None),
             "section-animation.paging" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
                 SectionAnimation: WidgetSectionAnimation.Paging),
             "section-animation.slide" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",

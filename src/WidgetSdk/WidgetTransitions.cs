@@ -4,6 +4,16 @@ namespace WidgetRail.WidgetSdk;
 
 public static class WidgetTransitionExtensions
 {
+    /// <summary>Animates navigation within a stable page region. Keep the destination key
+    /// unchanged during loading and content updates. Back reverses forward motion; Replace
+    /// uses a neutral transition. The host owns rendering, focus memory and reduced motion.</summary>
+    public static WidgetElement TransitionPage(this WidgetElement element,
+        string groupId, string pageKey, WidgetNavigationOperation operation)
+    {
+        if (!Enum.IsDefined(operation)) throw new ArgumentOutOfRangeException(nameof(operation));
+        return new TransitionElement(element, new(groupId, pageKey, 0, WidgetTransitionKind.Page, operation));
+    }
+
     /// <summary>
     /// Slides between sections inside this element's clipped bounds. Keep the
     /// element ID and group ID stable; change the section key only on navigation.

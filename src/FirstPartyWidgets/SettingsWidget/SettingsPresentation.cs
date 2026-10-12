@@ -74,7 +74,7 @@ internal static partial class SettingsPresentation
         return view is not null;
     }
 
-    internal static WidgetView AnimatePage(WidgetView view, SettingsPage page, bool loading)
+    internal static WidgetView AnimatePage(WidgetView view, SettingsPage page, bool loading, WidgetNavigationOperation operation = WidgetNavigationOperation.Forward)
     {
         // Loading is a data state within a page. Keep the motion parent and key
         // stable so background completion cannot reparent already-focused cards.
@@ -82,7 +82,7 @@ internal static partial class SettingsPresentation
             return view;
         var children = root.Children.ToArray();
         children[1] = UI.Stack("settings.page-motion", children[1]).Classes("settings-page-motion")
-            .TransitionContent("settings.pages", page.ToString(), (int)page);
+            .TransitionPage("settings.pages", page.ToString(), operation);
         return view with { Root = root with { Children = children } };
     }
 
@@ -261,11 +261,23 @@ internal static partial class SettingsPresentation
                     new("coverslide", "Cover slide", "section-animation.coverslide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.CoverSlide),
                     new("none", "None", "section-animation.none", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.None),
                 }, "overlay.section-animation", "Section animation")
-                    .FocusUp("overlay.focus-animation").FocusDown("overlay.animate-dialogs")
+                    .FocusUp("overlay.focus-animation").FocusDown("overlay.page-animation")
                     .Busy(busy).AddClasses("setting-row"),
+                UI.Select("Page animation", new SelectOption[]
+                {
+                    new("slide", "Slide", "page-animation.slide", IsSelected: appearance.PageAnimation == WidgetPageAnimation.Slide),
+                    new("verticalslide", "Vertical slide", "page-animation.verticalslide", IsSelected: appearance.PageAnimation == WidgetPageAnimation.VerticalSlide),
+                    new("fade", "Fade", "page-animation.fade", IsSelected: appearance.PageAnimation == WidgetPageAnimation.Fade),
+                    new("reveal", "Reveal", "page-animation.reveal", IsSelected: appearance.PageAnimation == WidgetPageAnimation.Reveal),
+                    new("coverslide", "Cover slide", "page-animation.coverslide", IsSelected: appearance.PageAnimation == WidgetPageAnimation.CoverSlide),
+                    new("none", "None", "page-animation.none", IsSelected: appearance.PageAnimation == WidgetPageAnimation.None),
+                }, "overlay.page-animation", "Page animation")
+                    .FocusUp("overlay.section-animation").FocusDown("overlay.animate-dialogs")
+                    .Busy(busy).AddClasses("setting-row"),
+                UI.Text("Used when opening a detail page or going back. Tabs use Section animation.", "appearance.page-animation.help").Classes("page-help"),
                 UI.Switch("Animate widget dialogs", appearance.AnimateWidgetModals,
                     "widget-modal-animation.toggle", "overlay.animate-dialogs")
-                    .FocusUp("overlay.section-animation").FocusDown("overlay.modal-animation")
+                    .FocusUp("overlay.page-animation").FocusDown("overlay.modal-animation")
                     .Busy(busy).AddClasses("setting-row"),
                 UI.Select("Dialog animation", new SelectOption[]
                 {

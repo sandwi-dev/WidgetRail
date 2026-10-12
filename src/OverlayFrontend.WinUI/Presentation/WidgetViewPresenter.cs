@@ -159,6 +159,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         applying = true;
         try
         {
+            PreparePageMemory(plan, sameOwner);
             transition = PrepareTransitions(plan, sameOwner);
             modalExit = PrepareModalExit(plan, sameOwner);
             var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
@@ -255,6 +256,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ValidateTransientControl();
         ValidateSliderAdjustment();
         QueueMediaRefresh();
+        RestorePageMemory();
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         UpdateScrollReveal(nextPresentation.View);
         QueueSurfaceUpdate();

@@ -23,6 +23,7 @@ public sealed record BridgePlatformAppearance
     public required bool AnimateWidgetSwitching { get; init; }
     public string FocusAnimation { get; init; } = "fade";
     public string SectionAnimation { get; init; } = "slide";
+    public string PageAnimation { get; init; } = "slide";
     public bool AnimateWidgetModals { get; init; } = true;
     public string ModalAnimation { get; init; } = "zoom";
     public double WidgetAnimationSpeed { get; init; } = 1;
@@ -145,6 +146,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             AnimateWidgetSwitching = appearance.AnimateWidgetSwitching,
             FocusAnimation = appearance.FocusAnimation.ToString().ToLowerInvariant(),
             SectionAnimation = appearance.SectionAnimation.ToString().ToLowerInvariant(),
+            PageAnimation = appearance.PageAnimation.ToString().ToLowerInvariant(),
             AnimateWidgetModals = appearance.AnimateWidgetModals,
             ModalAnimation = appearance.ModalAnimation.ToString().ToLowerInvariant(),
             WidgetAnimationSpeed = appearance.WidgetAnimationSpeed,

@@ -8,7 +8,7 @@ public sealed partial class CaptureLibraryWidget : Widget
 {
     private sealed record State(CaptureLibraryPage? Page = null, CaptureAttachment? Preview = null, bool FromLibrary = false,
         string? SelectedId = null, bool Detail = false, bool Busy = false, bool Capturing = false, bool ConfirmDelete = false, string? Message = null, long FocusRequest = 0,
-        bool Settings = false, CapturePreferences? Preferences = null, CaptureCapabilities? Capabilities = null, long PreferencesRevision = 0);
+        WidgetNavigationOperation Navigation = WidgetNavigationOperation.Forward, bool Settings = false, CapturePreferences? Preferences = null, CaptureCapabilities? Capabilities = null, long PreferencesRevision = 0);
     private readonly WidgetModel<State> model;
     private long nextFocusRequest;
     public CaptureLibraryWidget() => model = CreateModel(new State());
@@ -32,7 +32,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         if (action.ActionId == "capture-library.cancel")
         { Operations.Cancel("capture-library.work"); model.Update(s => s with { Busy = false, Capturing = false, Message = "Capture cancelled." }); return ValueTask.CompletedTask; }
         if (action.ActionId == "capture-library.settings.back")
-        { model.Update(s => s with { Settings = false, Message = null }); return ValueTask.CompletedTask; }
+        { model.Update(s => s with { Settings = false, Navigation = WidgetNavigationOperation.Back, Message = null }); return ValueTask.CompletedTask; }
         if (state.Busy) return ValueTask.CompletedTask;
         if (action.ActionId.StartsWith("capture-library.option.", StringComparison.Ordinal))
         { ChangeSetting(action.ActionId); return ValueTask.CompletedTask; }
@@ -40,7 +40,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         {
             case "capture-library.allow": Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureCapabilities.Permission, WidgetCaptureLibraryCapabilities.SavePermission], token); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             case "capture-library.settings":
-                model.Update(s => s with { Settings = true });
+                model.Update(s => s with { Settings = true, Navigation = WidgetNavigationOperation.Forward });
                 Work(LoadSettingsAsync); break;
             case "capture-library.photo": Capture(WindowCaptureKind.Screenshot); break;
             case "capture-library.video": Capture(WindowCaptureKind.Video); break;
@@ -48,7 +48,7 @@ public sealed partial class CaptureLibraryWidget : Widget
             case "capture-library.next": Load(Math.Min(CaptureLibraryLimits.MaximumItems, (state.Page?.Offset ?? 0) + CaptureLibraryLimits.PageSize), enterPage: true); break;
             case "capture-library.previous": Load(Math.Max(0, (state.Page?.Offset ?? 0) - CaptureLibraryLimits.PageSize), enterPage: true); break;
             case "capture-library.back":
-                Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = false, ConfirmDelete = false }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
+                Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             case "capture-library.save" when state.Preview is { } preview:
                 Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.SavePermission], token); var item = await HostServices.CaptureLibrary.SaveAsync(preview, token); model.Update(s => s with { SelectedId = item.Id, Message = "Saved to your library. The original stays here across restarts." }); }); break;
             case "capture-library.export" when state.SelectedId is { } id:
@@ -56,13 +56,13 @@ public sealed partial class CaptureLibraryWidget : Widget
             case "capture-library.delete" when state.SelectedId is not null: model.Update(s => s with { ConfirmDelete = true }); break;
             case "capture-library.delete.cancel": model.Update(s => s with { ConfirmDelete = false }); break;
             case "capture-library.delete.confirm" when state.ConfirmDelete && state.SelectedId is { } deleted:
-                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.DeleteAsync(deleted, token); await ReleaseAsync(state, token); model.Update(s => s with { SelectedId = null, Preview = null, Detail = false, ConfirmDelete = false, Message = "Removed from the library. Previously exported copies are unchanged." }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
+                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.DeleteAsync(deleted, token); await ReleaseAsync(state, token); model.Update(s => s with { SelectedId = null, Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false, Message = "Removed from the library. Previously exported copies are unchanged." }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             default:
                 if (action.ActionId.StartsWith("capture-library.open.", StringComparison.Ordinal))
                 {
                     var selected = action.ActionId["capture-library.open.".Length..];
                     if (state.Page?.Items.Any(item => item.Id == selected) == true)
-                        Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = true, SelectedId = selected }); var media = await HostServices.CaptureLibrary.OpenAsync(selected, cancellationToken: token); model.Update(s => s with { Preview = media, FromLibrary = true, SelectedId = selected }); });
+                        Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = true, SelectedId = selected, Navigation = WidgetNavigationOperation.Forward }); var media = await HostServices.CaptureLibrary.OpenAsync(selected, cancellationToken: token); model.Update(s => s with { Preview = media, FromLibrary = true, SelectedId = selected }); });
                 }
                 break;
         }
@@ -113,7 +113,7 @@ public sealed partial class CaptureLibraryWidget : Widget
                     if (status.Phase == WindowCapturePhase.Ready)
                     {
                         completed = true;
-                        if (context.IsCurrent) model.Update(s => s with { Preview = status.Attachment, FromLibrary = false, SelectedId = null, Message = "Review your capture, then save it to keep it." });
+                        if (context.IsCurrent) model.Update(s => s with { Preview = status.Attachment, Navigation = WidgetNavigationOperation.Forward, FromLibrary = false, SelectedId = null, Message = "Review your capture, then save it to keep it." });
                         else if (status.Attachment is { } abandoned) { using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2)); await HostServices.Capture.DiscardAsync(abandoned, cleanup.Token); }
                         break;
                     }
@@ -130,6 +130,11 @@ public sealed partial class CaptureLibraryWidget : Widget
             }
         }, WidgetOperationLifetime.Widget);
     }
+    private static WidgetView Page(WidgetView view, string key, WidgetNavigationOperation operation) => view with
+    {
+        Root = view.Root.TransitionPage("capture-library.pages", key, operation),
+    };
+
     private async Task ReleaseAsync(State state, CancellationToken token)
     {
         if (state.Preview is null) return;
@@ -143,7 +148,7 @@ public sealed partial class CaptureLibraryWidget : Widget
     public override WidgetView Render()
     {
         var state = model.Value;
-        if (state.Settings) return RenderSettings(state);
+        if (state.Settings) return Page(RenderSettings(state), "settings", state.Navigation);
         var items = new List<WidgetElement> { UI.Text("Capture Library", "capture-library.title").Classes("capture-title") };
         string initial;
         if (state.Preview is not null || state.Detail)
@@ -227,7 +232,7 @@ public sealed partial class CaptureLibraryWidget : Widget
             if (pages.Offset > 0) root = root.Shortcut(ControllerButton.LeftBumper, "capture-library.previous", label: "Previous page");
             if (pages.Offset + pages.Items.Count < pages.TotalCount) root = root.Shortcut(ControllerButton.RightBumper, "capture-library.next", label: "Next page");
         }
-        var view = new WidgetView(root, initial)
+        var view = new WidgetView(root.TransitionPage("capture-library.pages", state.Preview is not null || state.Detail ? "preview" : "home", state.Navigation), initial)
         {
             FocusGroupEntryRequest = state.Preview is null && !state.Detail && state.Page?.Items.Count > 0 && state.FocusRequest > 0
                 ? new() { RequestId = state.FocusRequest, GroupId = "capture-library.entries" } : null,

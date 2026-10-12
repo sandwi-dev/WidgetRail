@@ -14,7 +14,7 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
     private readonly CompositeTransform placement = new();
     private Grid? slot;
     private double aspectRatio;
-    private bool fullscreen, disposed, observing, covered;
+    private bool fullscreen, disposed, observing, covered, pageMotion;
     internal bool HasSlot => slot is not null;
     internal bool CanPresent(Grid target) => XamlRoot is null || ReferenceEquals(XamlRoot, target.XamlRoot);
     internal Rect VideoBounds => SurfaceHost.TransformToVisual(this).TransformBounds(new(0, 0, SurfaceHost.ActualWidth, SurfaceHost.ActualHeight));
@@ -37,6 +37,52 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         Fit();
     }
 
+    internal void RefreshPlacement(bool ancestryChanged = false)
+    {
+        if (ancestryChanged && !fullscreen) FollowOpacity();
+        ApplyPlacement();
+    }
+
+    internal void ApplyPagePose(FrameworkElement layer, FrameworkElement viewport, Motion.WidgetMotionPose pose)
+    {
+        if (disposed || fullscreen || slot is not { IsLoaded: true } target || Parent is not FrameworkElement root) return;
+        if (!pageMotion) { pageMotion = true; Observe(false); FollowOpacity(); }
+        var toRoot = viewport.TransformToVisual(root);
+        var local = target.TransformToVisual(layer).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
+        Rect Map(Rect rect) => toRoot.TransformBounds(new(
+            (rect.X - layer.ActualWidth / 2) * pose.Scale.X + layer.ActualWidth / 2 + pose.Translation.X,
+            (rect.Y - layer.ActualHeight / 2) * pose.Scale.Y + layer.ActualHeight / 2 + pose.Translation.Y,
+            rect.Width * pose.Scale.X, rect.Height * pose.Scale.Y));
+        var bounds = Map(local);
+        var visible = bounds;
+        visible.Intersect(toRoot.TransformBounds(new(pose.Insets.X, pose.Insets.Y,
+            Math.Max(0, viewport.ActualWidth - pose.Insets.X - pose.Insets.Z),
+            Math.Max(0, viewport.ActualHeight - pose.Insets.Y - pose.Insets.W))));
+        for (DependencyObject? item = target; item is UIElement element && !ReferenceEquals(item, layer); item = VisualTreeHelper.GetParent(item))
+        {
+            if (element.Visibility != Visibility.Visible) { Visibility = Visibility.Collapsed; return; }
+            Rect? clip = element.Clip is RectangleGeometry rectangle ? rectangle.Rect :
+                element is ScrollViewer or ScrollContentPresenter && element is FrameworkElement frame ? new(0, 0, frame.ActualWidth, frame.ActualHeight) : null;
+            if (clip is { } value) visible.Intersect(Map(element.TransformToVisual(layer).TransformBounds(value)));
+        }
+        for (DependencyObject? item = viewport; item is UIElement element; item = VisualTreeHelper.GetParent(item))
+        {
+            if (element.Visibility != Visibility.Visible) { Visibility = Visibility.Collapsed; return; }
+            if (ReferenceEquals(item, viewport)) continue;
+            Rect? clip = element.Clip is RectangleGeometry rectangle ? rectangle.Rect :
+                element is ScrollViewer or ScrollContentPresenter && element is FrameworkElement frame ? new(0, 0, frame.ActualWidth, frame.ActualHeight) : null;
+            if (clip is { } value) visible.Intersect(element.TransformToVisual(root).TransformBounds(value));
+        }
+        visible.Intersect(new(0, 0, root.ActualWidth, root.ActualHeight));
+        Place(bounds, visible);
+    }
+
+    internal void EndPageMotion()
+    {
+        if (!pageMotion) return;
+        pageMotion = false; Observe(!fullscreen && slot is not null); ApplyPlacement();
+    }
+
     internal void SetSlot(Grid? value)
     {
         var changed = !ReferenceEquals(slot, value) || fullscreen;
@@ -50,6 +96,7 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
     internal void EnterFullscreen()
     {
         if (fullscreen) return;
+        pageMotion = false;
         fullscreen = true;
         Observe(false);
         var visual = ElementCompositionPreview.GetElementVisual(this);
@@ -105,7 +152,7 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
 
     private void ApplyPlacement()
     {
-        if (disposed || fullscreen) return;
+        if (disposed || fullscreen || pageMotion) return;
         if (covered) { Visibility = Visibility.Collapsed; return; }
         if (slot is not { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } target ||
             Parent is not FrameworkElement root || target.XamlRoot != XamlRoot)
@@ -119,7 +166,12 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
                 element is ScrollViewer or ScrollContentPresenter && element is FrameworkElement frame ? new(0, 0, frame.ActualWidth, frame.ActualHeight) : null;
             if (clip is { } value) visible.Intersect(element.TransformToVisual(root).TransformBounds(value));
         }
-        if (visible.IsEmpty || visible.Width <= 0 || visible.Height <= 0) { Visibility = Visibility.Collapsed; return; }
+        Place(bounds, visible);
+    }
+
+    private void Place(Rect bounds, Rect visible)
+    {
+        if (covered || visible.IsEmpty || visible.Width <= 0 || visible.Height <= 0) { Visibility = Visibility.Collapsed; return; }
         Visibility = Visibility.Visible;
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
         var media = MediaTransitionGeometry.Fit(new(0, 0, ActualWidth, ActualHeight), aspectRatio);

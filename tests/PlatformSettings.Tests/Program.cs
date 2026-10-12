@@ -157,6 +157,7 @@ static async Task SettingsRoundTrip()
             AnimateWidgetSwitching = true,
             FocusAnimation = WidgetFocusAnimation.None,
             SectionAnimation = WidgetSectionAnimation.Slide,
+            PageAnimation = WidgetPageAnimation.Fade,
             WidgetAnimationSpeed = 1.5,
             AnimateWidgetModals = false,
             ModalAnimation = WidgetModalAnimation.Lift,
@@ -172,6 +173,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     Assert.Equal(WidgetFocusAnimation.None, reloaded.Appearance.FocusAnimation);
     Assert.Equal(WidgetSectionAnimation.Slide, reloaded.Appearance.SectionAnimation);
+    Assert.Equal(WidgetPageAnimation.Fade, reloaded.Appearance.PageAnimation);
     Assert.Equal(1.5d, reloaded.Appearance.WidgetAnimationSpeed);
     Assert.Equal(false, reloaded.Appearance.AnimateWidgetModals);
     Assert.Equal(WidgetModalAnimation.Lift, reloaded.Appearance.ModalAnimation);
@@ -1258,6 +1260,7 @@ file static class Assert
         Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
         Equal(expected.Appearance.FocusAnimation, actual.Appearance.FocusAnimation);
         Equal(expected.Appearance.SectionAnimation, actual.Appearance.SectionAnimation);
+        Equal(expected.Appearance.PageAnimation, actual.Appearance.PageAnimation);
         Equal(expected.Appearance.AnimateWidgetModals, actual.Appearance.AnimateWidgetModals);
         Equal(expected.Appearance.ModalAnimation, actual.Appearance.ModalAnimation);
         Equal(expected.Appearance.WidgetAnimationSpeed, actual.Appearance.WidgetAnimationSpeed);

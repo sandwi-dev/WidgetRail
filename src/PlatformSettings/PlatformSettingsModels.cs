@@ -47,6 +47,9 @@ public enum WidgetFocusAnimation { Fade = 0, None = 2, Settle = 3 }
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetSectionAnimation>))]
 public enum WidgetSectionAnimation { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide }
 
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetPageAnimation>))]
+public enum WidgetPageAnimation { Slide, VerticalSlide, Fade, Reveal, CoverSlide, None }
+
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetModalAnimation>))]
 public enum WidgetModalAnimation { Lift, Zoom }
 
@@ -104,6 +107,7 @@ public sealed record AppearanceSettings
     /// <summary>Host-owned transitions between sections within a widget.</summary>
     public WidgetFocusAnimation FocusAnimation { get; init; } = WidgetFocusAnimation.Settle;
     public WidgetSectionAnimation SectionAnimation { get; init; } = WidgetSectionAnimation.Slide;
+    public WidgetPageAnimation PageAnimation { get; init; } = WidgetPageAnimation.Slide;
     /// <summary>Host-owned opening and closing motion for widget dialogs.</summary>
     public bool AnimateWidgetModals { get; init; } = true;
     /// <summary>Motion recipe used when widget dialog animations are enabled.</summary>
@@ -288,6 +292,8 @@ public static class PlatformSettingsValidator
             Add("$.appearance.modalAnimation", "invalid_enum", "Dialog animation is invalid.");
         if (!Enum.IsDefined(appearance.FocusAnimation))
             Add("$.appearance.focusAnimation", "invalid_enum", "Focus animation is invalid.");
+        if (!Enum.IsDefined(appearance.PageAnimation))
+            Add("$.appearance.pageAnimation", "invalid_enum", "Page animation is invalid.");
         if (!Enum.IsDefined(appearance.SectionAnimation))
             Add("$.appearance.sectionAnimation", "invalid_enum", "Section animation is invalid.");
         Range(appearance.WidgetAnimationSpeed, AppearanceSettings.MinimumWidgetAnimationSpeed,

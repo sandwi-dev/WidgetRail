@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--page-navigation-fixtures") is { } pageFixtures)
+        { await PageNavigationAsync(pageFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gallery-scroll-fixtures") is { } galleryFixtures)
         { await GalleryScrollRevealAsync(galleryFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gamehelp-citation-fixtures") is { } citationFixtures)

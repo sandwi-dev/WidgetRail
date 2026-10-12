@@ -129,8 +129,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         };
         timer = DispatcherQueue.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(250);
         timer.Tick += (_, _) => Refresh();
-        Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.MediaPlayer(this); EnsureVideoStage(); if (active) timer.Start(); };
-        Unloaded += (_, _) => { timer.Stop(); videoChrome.Stop(); player?.Pause(); ReleaseVideoStage(); theme?.Dispose(); theme = null; };
+        Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.MediaPlayer(this); EnsureVideoStage(); SynchronizePagePlacement(true); if (active && !retainedForPageExit) timer.Start(); };
+        Unloaded += (_, _) => { timer.Stop(); videoChrome.Stop(); if (!retainedForPageExit) { player?.Pause(); ReleaseVideoStage(); } theme?.Dispose(); theme = null; };
     }
     internal void SetActive(bool value, bool acceptsInput)
     {
@@ -170,7 +170,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         try
         {
             var value = await resolve(token);
-            if (disposed || token.IsCancellationRequested || definition != next || !current()) return;
+            if (disposed || retainedForPageExit || token.IsCancellationRequested || definition != next || !current()) return;
             if (value.Media != next || value.ExpiresAtUnixMilliseconds <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) throw new InvalidOperationException("Media expired.");
             resolved = value;
             var uri = new Uri(value.Uri);
@@ -190,7 +190,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
                 player.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() => { if (!disposed && !token.IsCancellationRequested) Fail(); });
                 player.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
                 {
-                    if (disposed || token.IsCancellationRequested) return;
+                    if (disposed || retainedForPageExit || token.IsCancellationRequested) return;
                     if (player is not null) player.PlaybackSession.PlaybackRate = requestedRate;
                     EnsureVideoStage();
                     status.Visibility = Visibility.Collapsed;
@@ -236,7 +236,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     { lifetime.Cancel(); timer.Stop(); ReleasePlayer(); image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed; status.Text = "This media could not be opened. The source may be unavailable or its format unsupported."; status.Visibility = Visibility.Visible; video.Visibility = toolbar.Visibility = Visibility.Collapsed; }
     private void Refresh()
     {
-        if (disposed) return;
+        if (disposed || retainedForPageExit) return;
         if (currentAuthority?.Invoke() == false) { Fail(); return; }
         if (resolved?.RequiresRevalidation == true && !checkingAuthority && Environment.TickCount64 >= nextAuthorityCheck && resolveAuthority is not null) _ = RefreshAuthorityAsync(lifetime.Token);
         if (resolved?.ExpiresAtUnixMilliseconds is { } expiry && expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) { timer.Stop(); Fail(); return; }

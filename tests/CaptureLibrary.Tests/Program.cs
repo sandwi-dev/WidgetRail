@@ -363,14 +363,17 @@ static async Task WidgetFlow()
         await Until(() => Node("capture-library.empty") is not null && Node("capture-library.photo")?.IsBusy != true);
         await widget.OnActionAsync(new("capture-library.photo", "capture-library.photo")); await Until(() => Node("capture-library.save") is not null && Node("capture-library.save")?.IsBusy != true);
         Check(saves == 0, "Capture saved without review");
+        Check(View().Root.Transition is { Kind: WidgetTransitionKind.Page, Key: "preview", Navigation: WidgetNavigationOperation.Forward }, "Review must be forward page navigation");
         Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0);
         await widget.OnActionAsync(new("capture-library.save", "capture-library.save")); await Until(() => saves == 1);
         Check(Node("capture-library.save")?.IsBusy == true && Node("capture-library.save")?.IsDisabled != true);
         saveGate.TrySetResult(); await Until(() => Node("capture-library.delete") is not null && Node("capture-library.delete")?.IsBusy != true);
+        Check(View().Root.Transition?.Key == "preview", "Saving must not navigate away from the current preview");
         await widget.OnActionAsync(new("capture-library.delete", "capture-library.delete"));
         Check(View().InitialFocusId == "capture-library.delete.cancel" && deletes == 0);
         await widget.OnActionAsync(new("capture-library.delete.confirm", "capture-library.delete.confirm"));
         await Until(() => Node("capture-library.empty") is not null); Check(deletes == 1);
+        Check(View().Root.Transition is { Key: "home", Navigation: WidgetNavigationOperation.Back }, "Deleting returns to the library with Back navigation");
     }
     finally { saveGate.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
 }
