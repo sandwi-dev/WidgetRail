@@ -117,7 +117,8 @@ controls lose input immediately; their admitted media stays visible for the
 bounded exit and is then disposed. A shared XAML frame clock moves and clips the
 page and resident video together without copying the decoder or capturing a bitmap.
 Hide, owner replacement, reduced motion and superseding navigation settle retention.
-Browser, embedded-media and window-preview owners still use the conservative
+Native video without a resident shell stage, browser, embedded-media and
+window-preview owners still use the conservative
 non-retaining fallback when placed inside the changing region. Keep persistent
 surfaces outside that region if their content should continue across navigation.
 

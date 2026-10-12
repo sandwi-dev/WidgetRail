@@ -6,6 +6,7 @@ internal sealed partial class MediaPlayerView
 {
     private MediaPresentationStage? videoStage;
     private bool retainedForPageExit;
+    internal bool CanRetainPageExit => !IsVideo || videoStage is not null;
 
     internal void RetainForPageExit()
     {

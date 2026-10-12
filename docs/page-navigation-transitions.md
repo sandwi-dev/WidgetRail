@@ -31,7 +31,7 @@ guard indiscriminately. SDK authors declare navigation, not renderer workarounds
 
 - SDK console suite: 157 checks; motion policy: 18 tests; Settings: 87 checks;
   Capture Library: 22 checks; platform settings: 27 checks.
-- Native page fixture: 55 checks across all six page effects, including video
+- Native page fixture: 57 checks across all six page effects, including video
   placement during movement, no native reattachment, outgoing input revocation,
   focus/scroll restoration, source disposal, interrupted navigation and reduced motion.
 - Existing native media/image fullscreen fixture: 79 checks.
@@ -44,3 +44,15 @@ guard indiscriminately. SDK authors declare navigation, not renderer workarounds
   Existing section-only compositor motion remains unchanged.
 - Browser, embedded-media and window-preview owners retain the safe snap fallback
   for changing content regions; their attachment/authority contracts are unchanged.
+
+## Candidate review
+
+- The complete candidate was checked with existing Dawnwalker video and screenshot
+  entries. Forward/Back animate and the original capture tile regains focus.
+  Settings exposes all six page options independently of section options.
+- Additional checks cover concurrent Back navigation in independent page regions.
+  Video without a resident shell stage uses the conservative exit fallback.
+- Broad native-style validation hits the same preexisting poster aspect-ratio timeout
+  on both this branch and unchanged main (before transition checks). Evidence:
+  `styles-status.json` and `baseline-styles-status.json` in the artifact directory.
+  The focused transition/media/widget/settings checks listed above pass.

@@ -13,12 +13,13 @@ internal sealed partial class WidgetViewPresenter
     private void PreparePageMemory(Dictionary<string, Declaration> plan, bool sameOwner)
     {
         if (!sameOwner) { pageMemory.Clear(); pendingPageMemory.Clear(); ++pageMemoryVersion; return; }
+        pendingPageMemory.Clear();
         foreach (var next in plan.Values.Where(d => d.Node.Transition?.Kind == WidgetTransitionKind.Page))
         {
             var navigation = next.Node.Transition!;
             var prior = declarations.Values.FirstOrDefault(d => d.Node.Transition is { Kind: WidgetTransitionKind.Page } t && t.GroupId == navigation.GroupId);
             if (prior?.Node.Transition is not { } previous || previous.Key == navigation.Key) continue;
-            ++pageMemoryVersion; pendingPageMemory.Clear();
+            ++pageMemoryVersion;
             var ids = new HashSet<string>(StringComparer.Ordinal);
             Collect(prior.Node);
             var focused = FocusedBinding()?.Identity.Id;

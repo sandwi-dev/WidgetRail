@@ -84,6 +84,20 @@ internal sealed partial class WidgetStylesValidationPage
             page.ApplyAppearance(appearance with { Motion = MotionPreference.Reduced }, true);
             Render("home", WidgetNavigationOperation.Back);
             Check(page.OutgoingTransitionCount == 0, "Reduced motion changes pages without retention");
+            page.ApplyAppearance(appearance, true);
+            RenderPair("home", WidgetNavigationOperation.Replace); await Settle();
+            Find<Button>("Widget.pair.left.item.4", page)!.Focus(FocusState.Keyboard);
+            Find<ScrollViewer>("Widget.pair.left.scroll", page)!.ChangeView(null, 80, null, true);
+            Find<ScrollViewer>("Widget.pair.right.scroll", page)!.ChangeView(null, 120, null, true);
+            await Task.Delay(80);
+            var leftOffset = Find<ScrollViewer>("Widget.pair.left.scroll", page)!.VerticalOffset;
+            var rightOffset = Find<ScrollViewer>("Widget.pair.right.scroll", page)!.VerticalOffset;
+            Check(leftOffset > 0 && rightOffset > 0, "Independent page regions have different scroll positions");
+            RenderPair("detail", WidgetNavigationOperation.Forward); await Settle();
+            RenderPair("home", WidgetNavigationOperation.Back); await Settle();
+            Check(Math.Abs(Find<ScrollViewer>("Widget.pair.left.scroll", page)!.VerticalOffset - leftOffset) < 1 &&
+                Math.Abs(Find<ScrollViewer>("Widget.pair.right.scroll", page)!.VerticalOffset - rightOffset) < 1,
+                "Concurrent Back navigation restores both page regions");
             if (failure is not null) throw failure;
             await File.WriteAllTextAsync(result, JsonSerializer.Serialize(new { passed = true, checks }));
         }
@@ -112,6 +126,22 @@ internal sealed partial class WidgetStylesValidationPage
             if (page.TransitionPlayback is { } playback) await playback;
             await Task.Delay(70);
             if (failure is not null) throw failure;
+        }
+        void RenderPair(string key, WidgetNavigationOperation operation)
+        {
+            var styles = new Dictionary<string, BridgeNodeRenderStyles>();
+            ViewNode Region(string name)
+            {
+                var id = "pair." + name;
+                styles[id] = Compute("stack { width: 330px; height: 400px; }", id, "stack");
+                styles[id + ".scroll"] = Compute("scroll { height: 300px; }", id + ".scroll", "scroll");
+                var body = key == "home" ? new ViewNode { Id = id + ".scroll", Kind = ViewNodeKind.Scroll, ScrollAxis = WidgetProtocol.ScrollAxis.Vertical,
+                    Children = Enumerable.Range(0, 20).Select(i => new ViewNode { Id = id + ".item." + i, Kind = ViewNodeKind.Button, Text = "Item " + i, ActionId = "open" }).ToArray() }
+                    : new ViewNode { Id = id + ".back", Kind = ViewNodeKind.Button, Text = "Back", ActionId = "back" };
+                return new() { Id = id, Kind = ViewNodeKind.Stack, Transition = new(id, key, 0, WidgetTransitionKind.Page, operation), Children = (ViewNode[])[body] };
+            }
+            var regions = new ViewNode { Id = "pair", Kind = ViewNodeKind.Row, Children = (ViewNode[])[Region("left"), Region("right")] };
+            page.Apply(CreateFrame(regions, styles)); page.UpdateLayout();
         }
     }
 }

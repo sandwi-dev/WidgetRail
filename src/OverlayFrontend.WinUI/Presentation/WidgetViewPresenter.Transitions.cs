@@ -78,6 +78,7 @@ internal sealed partial class WidgetViewPresenter
             // retained XAML subtree. Its owner keeps placement/input authority;
             // selection/header motion can still run independently.
             if (HasLiveSurface(incoming.Node) || HasLiveSurface(outgoing.Node)) continue;
+            if (HasUnretainedVideo(outgoing.Node)) continue;
             Collect(incoming.Node, id => commit.ReplacedIds.Add(id));
             Collect(outgoing.Node, id =>
             {
@@ -100,6 +101,8 @@ internal sealed partial class WidgetViewPresenter
         static void Collect(ViewNode node, Action<string> visit)
         { visit(node.Id); foreach (var child in node.Children) Collect(child, visit); }
         static bool HasLiveSurface(ViewNode node) => node.Kind is ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview or ViewNodeKind.WebBrowser || node.Children.Any(HasLiveSurface);
+        bool HasUnretainedVideo(ViewNode node) => bindings.TryGetValue(node.Id, out var binding) &&
+            binding.Element is Media.MediaPlayerView { CanRetainPageExit: false } || node.Children.Any(HasUnretainedVideo);
     }
 
     private bool TransitionVisible(Declaration declaration, IReadOnlyDictionary<string, Declaration> plan)
