@@ -103,6 +103,7 @@ internal sealed partial class MediaPlayerView
         var expanded = ToggleExpandedAsync();
         await Until(() => expandedDialog is { IsLoaded:true });
         await Task.Delay(150);
+        Check(string.IsNullOrEmpty(expandedDialog!.CloseButtonText), "Expanded viewer has no space-consuming footer button");
         Check(toolbar.TransformToVisual(card).TransformPoint(new(0, toolbar.ActualHeight)).Y <= card.ActualHeight + 1,
             "Expanded video reserves visible height for timeline and transport controls");
         Check(IsPlaying && ReferenceEquals(player,retained) && card.Parent is Microsoft.UI.Xaml.Controls.Grid,"Expanded view retains one player and playback state");
@@ -110,6 +111,9 @@ internal sealed partial class MediaPlayerView
         Handle(ControllerButton.B,ControllerEventPhase.Released);
         await expanded;
         Check(IsPlaying && !HasDialog && ReferenceEquals(Content,card) && ReferenceEquals(player,retained),"B restores inline player without recreating playback");
+        await Task.Delay(150);
+        Check(toolbar.TransformToVisual(this).TransformPoint(new(0, toolbar.ActualHeight)).Y <= ActualHeight + 1,
+            "Returning from expansion keeps inline transport inside its original height");
         Apply(_ => Task.FromResult(new HostMediaPlayerSource(general,new Uri(mp4).AbsoluteUri)), general, () => true);
         Check(ReferenceEquals(player,retained),"Compatible snapshots do not reopen general media");
         var rememberedPosition = player!.PlaybackSession.Position.TotalSeconds;

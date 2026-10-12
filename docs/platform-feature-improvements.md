@@ -767,3 +767,13 @@ of these new changes. No scope item is complete solely because it is planned.
   controls. Inline review still scrolled its title because 64vh did not reserve
   metadata/actions. Follow-up uses a finite Stack with a growing player row;
   the library grid remains scrollable. Rechecking the complete page bounds next.
+- User requested removing the expanded viewer's large Back footer. Removed it;
+  B, keyboard Escape and the toolbar Collapse action remain. Expanded height now
+  uses the recovered space. Late size events from a retired dialog are ignored.
+- Native media checks now 38/38, including no footer and inline return bounds.
+  A small standalone preview exposed clipped controls to UIA after Escape; its
+  automated selector wait did not qualify mouse/keyboard return. The actual
+  assembled Capture Library must verify those routes before handoff.
+- Review-page Stack/flex layout was checked in candidate 02: heading, transport
+  and action buttons are all inside the page bounds at 225% scaling. FPS logs also
+  record bounded state/target-PID/stream-count changes; telemetry 10/10 remains green.

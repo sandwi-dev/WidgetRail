@@ -142,6 +142,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     {
         active = value; input = value && acceptsInput;
         imageViewport.IsHitTestVisible = input;
+        imageViewport.IsEnabled = input;
         foreach (var control in imageControls) control.IsEnabled = input;
         video.IsHitTestVisible = input; video.IsTabStop = false;
         if (!input) { adjustingVolume = false; expandedDialog?.Hide(); }
@@ -359,15 +360,26 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (expandedDialog is { } existing) { existing.Hide(); return; }
         if (!input || disposed || XamlRoot is null) return;
         var root = XamlRoot;
-        var dialog = new ContentDialog { Title = IsImage ? "Image viewer" : "Video player", CloseButtonText = "Back", DefaultButton = ContentDialogButton.None, XamlRoot = root };
+        var dialog = new ContentDialog { Title = IsImage ? "Image viewer" : "Video player", DefaultButton = ContentDialogButton.None, XamlRoot = root };
+        dialog.KeyDown += (_, args) =>
+        {
+            if (args.Key == Windows.System.VirtualKey.Escape) { args.Handled = true; dialog.Hide(); }
+        };
         Input.GamepadKeyBoundary.ObserveDialog(dialog);
         var availableWidth = Math.Max(280, Math.Min(1280, root.Size.Width - 96));
         dialog.Resources["ContentDialogMaxWidth"] = availableWidth + 48;
         dialog.Resources["ContentDialogMaxHeight"] = Math.Max(180, root.Size.Height - 32);
-        var holder = new Grid { Width = availableWidth, Height = Math.Max(180, Math.Min(800, root.Size.Height - 240)) };
-        holder.SizeChanged += (_, args) => SizeCard(args.NewSize.Width, args.NewSize.Height);
+        var holder = new Grid { Width = availableWidth, Height = Math.Max(180, Math.Min(900, root.Size.Height - 160)) };
+        holder.SizeChanged += (_, args) =>
+        {
+            if (ReferenceEquals(expandedDialog, dialog)) SizeCard(args.NewSize.Width, args.NewSize.Height);
+        };
         var returnControl = FocusManager.GetFocusedElement(root) as Control;
         expandedDialog = dialog; Content = null; holder.Children.Add(card); dialog.Content = holder;
+        Label(expand, "Collapse player", "MediaPlayer.Expand");
+        Label(imageExpand, "Collapse image", "MediaPlayer.Image.Expand");
+        expand.Content = new SymbolIcon(Symbol.BackToWindow);
+        imageExpand.Content = new SymbolIcon(Symbol.BackToWindow);
         dialog.Opened += (_, _) =>
         {
             // The dialog template can reserve more title/footer space at large
@@ -383,7 +395,12 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         catch (Exception error) when (error is not OutOfMemoryException) { Diagnostics.FrontendFailureLog.Current.Write("media-player-expand", error); }
         finally
         {
-            holder.Children.Remove(card); dialog.Content = null; expandedDialog = null;
+            expandedDialog = null;
+            holder.Children.Remove(card); dialog.Content = null;
+            Label(expand, "Expand player", "MediaPlayer.Expand");
+            Label(imageExpand, "Expand image", "MediaPlayer.Image.Expand");
+            expand.Content = new SymbolIcon(Symbol.FullScreen);
+            imageExpand.Content = new SymbolIcon(Symbol.FullScreen);
             if (!disposed) { Content = card; SizeCard(ActualWidth, ActualHeight); if (input) (returnControl is { IsLoaded: true, IsEnabled: true, Visibility: Visibility.Visible } ? returnControl : PreferredFocus).Focus(FocusState.Keyboard); }
             InteractionChanged?.Invoke();
         }

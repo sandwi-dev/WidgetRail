@@ -10,6 +10,9 @@ public sealed class WindowsPerformanceBackend(IAppLibraryPlatformBrokerBackend a
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IReadOnlyList<TaskWindowSummary> _windows = [];
     private long _windowsAt = long.MinValue / 2;
+    private long _diagnosticAt;
+    private string? _diagnosticState;
+    private uint _diagnosticTarget;
 
     public async Task<PerformanceSnapshot> GetPerformanceAsync(string? targetId, CancellationToken token)
     {
@@ -29,6 +32,12 @@ public sealed class WindowsPerformanceBackend(IAppLibraryPlatformBrokerBackend a
             var rate = frames?.FramesPerSecond;
             var state = collection.State == "collecting" && selected is null ? "no-target" :
                 collection.State == "collecting" && rate is null ? "no-frames" : collection.State;
+            var processId = selected?.PreviewTarget?.ProcessId ?? 0;
+            if (diagnostic is not null && (_diagnosticState != state || _diagnosticTarget != processId || Environment.TickCount64 >= _diagnosticAt))
+            {
+                _diagnosticState = state; _diagnosticTarget = processId; _diagnosticAt = Environment.TickCount64 + 10_000;
+                diagnostic($"sample state={state} target-pid={processId} streams={collection.Processes.Count} selected-samples={frames?.SampleCount ?? 0}");
+            }
             return new(system.SampledAtUtc, system.CpuPercent, system.GpuPercent, system.MemoryUsedBytes, system.MemoryTotalBytes,
                 system.DedicatedGpuMemoryBytes, collection.State == "collecting" ? rate : null, state, selected?.WindowId,
                 _windows.Select(w => new PerformanceTarget(w.WindowId, w.ApplicationName, w.Title)).ToArray())

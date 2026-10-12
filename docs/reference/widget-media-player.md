@@ -78,6 +78,8 @@ available. All of this stays inside the host; it does not launch Windows Photos.
 Expanded players constrain their card to the dialog's content viewport, reserving
 space for the toolbar even at high display scaling. Inline height remains authored
 through WRSS; viewport-relative height is available for responsive review pages.
+Expansion has no bottom Back button: use B, keyboard Escape, or the toolbar's
+Collapse control to return to the same inline view.
 
 Inactive players release their decoder and retain lightweight position/volume/rate
 state for a same-source reopen. The host bounds native video residency to four players; expansion does not consume
