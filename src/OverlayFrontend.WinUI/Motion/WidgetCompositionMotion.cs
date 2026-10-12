@@ -93,6 +93,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
         {
             using var animation = Compositor.CreateVector3KeyFrameAnimation();
             animation.Duration = recipe.Duration;
+            animation.DelayTime = recipe.Delay;
             animation.InsertExpressionKeyFrame(0, "this.StartingValue");
             animation.InsertKeyFrame(1, to, easing);
             target.StartAnimation(property, animation);
@@ -101,6 +102,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
         {
             using var animation = Compositor.CreateScalarKeyFrameAnimation();
             animation.Duration = recipe.Duration;
+            animation.DelayTime = recipe.Delay;
             animation.InsertExpressionKeyFrame(0, "this.StartingValue");
             animation.InsertKeyFrame(1, to, easing);
             target.StartAnimation(property, animation);
@@ -137,7 +139,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
     }
     internal static void Validate(WidgetMotionRecipe recipe)
     {
-        if (recipe.Duration < TimeSpan.Zero || recipe.Duration > TimeSpan.FromSeconds(2) || !Enum.IsDefined(recipe.Easing))
+        if (recipe.Duration < TimeSpan.Zero || recipe.Delay < TimeSpan.Zero || recipe.Duration + recipe.Delay > TimeSpan.FromSeconds(2) || !Enum.IsDefined(recipe.Easing))
             throw new ArgumentOutOfRangeException(nameof(recipe));
         CheckPose(recipe.From); CheckPose(recipe.To);
         static void CheckPose(WidgetMotionPose pose)

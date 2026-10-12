@@ -73,6 +73,9 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         ? ReferenceEquals(focused, volume) ? adjustingVolume ? "Done" : "Adjust volume" : AutomationProperties.GetName(focused)
         : IsPlaying ? "Pause" : "Play";
     internal Action? InteractionChanged { get; set; }
+    // Resolve authority in parallel, but keep decoder creation and its first
+    // layout out of the page animation's UI-thread frame budget.
+    internal Task PresentationReady { private get; set; } = Task.CompletedTask;
     internal MediaPlayerView()
     {
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -170,6 +173,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         try
         {
             var value = await resolve(token);
+            await PresentationReady.WaitAsync(token);
             if (disposed || retainedForPageExit || token.IsCancellationRequested || definition != next || !current()) return;
             if (value.Media != next || value.ExpiresAtUnixMilliseconds <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) throw new InvalidOperationException("Media expired.");
             resolved = value;
@@ -380,6 +384,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         Windows.UI.Text.FontWeight weight, FontFamily? font, double radius)
     {
         normalBrush = background; selectedBrush = selected;
+        videoStage?.SetPageBackground(background);
         card.Background = IsExpanded && videoStage is not null ? null : background;
         card.BorderBrush = border; inlineRadius = new(radius); card.CornerRadius = IsExpanded ? new(0) : inlineRadius;
         toolbar.Background = imageTools.Background = background;
@@ -414,7 +419,12 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     }
     private void ReleasePlayer()
     {
-        try { video.SetMediaPlayer(null); player?.Dispose(); source?.Dispose(); ReleaseVideoStage(); }
+        try
+        {
+            videoStage?.SetCovered(true);
+            video.Visibility = Visibility.Collapsed;
+            video.SetMediaPlayer(null); player?.Dispose(); source?.Dispose(); ReleaseVideoStage();
+        }
         finally
         {
             player = null; source = null;

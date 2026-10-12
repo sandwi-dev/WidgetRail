@@ -21,6 +21,7 @@ internal sealed partial class WidgetViewPresenter
         internal WidgetCompositionMotion? Motion;
         internal WidgetPageMotion? PageMotion;
         internal EventHandler<object>? LayoutReady;
+        internal TaskCompletionSource Settled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
     private sealed record SectionExit(string IncomingId, int Direction, WidgetMotionHost Outgoing, bool Page)
     { internal WidgetMotionHost? Owner { get; set; } }
@@ -190,11 +191,16 @@ internal sealed partial class WidgetViewPresenter
                 ++transitionStarts;
                 commit.Motion = new(CompositionTarget.GetCompositorForCurrentThread(), DispatcherQueue);
                 SynchronizeMedia(true);
+                var mediaBindings = bindings;
+                var mediaViews = CollectMedia();
                 commit.PageMotion = new(pages, (host, pose) =>
                 {
-                    foreach (var media in bindings.Values.Concat(commit.Retained).Select(binding => binding.Element).OfType<Media.MediaPlayerView>().Distinct())
+                    if (!ReferenceEquals(mediaBindings, bindings)) { mediaBindings = bindings; mediaViews = CollectMedia(); }
+                    foreach (var media in mediaViews)
                         media.ApplyPagePose(host, pose);
                 });
+                Media.MediaPlayerView[] CollectMedia() => bindings.Values.Concat(commit.Retained)
+                    .Select(binding => binding.Element).OfType<Media.MediaPlayerView>().Distinct().ToArray();
                 TransitionPlayback = PlayTogetherAsync();
                 _ = CompleteAsync();
 
@@ -232,12 +238,20 @@ internal sealed partial class WidgetViewPresenter
     {
         if (activeTransition is not { } commit) return;
         activeTransition = null;
-        if (commit.LayoutReady is not null) LayoutUpdated -= commit.LayoutReady;
-        commit.Motion?.Dispose();
-        commit.PageMotion?.Dispose();
-        foreach (var target in commit.Targets) target.Dispose();
-        foreach (var section in commit.Sections) section.Owner?.ClearOutgoing();
-        foreach (var binding in commit.Retained) Retire(binding);
-        foreach (var media in bindings.Values.Select(binding => binding.Element).OfType<Media.MediaPlayerView>()) media.EndPageMotion();
+        try
+        {
+            if (commit.LayoutReady is not null) LayoutUpdated -= commit.LayoutReady;
+            // Hide resident outgoing surfaces before restoring their page transforms.
+            // Otherwise an async native frame can briefly repaint at the resting pose.
+            foreach (var binding in commit.Retained)
+                if (binding.Element is Media.MediaPlayerView media) media.HidePageExit();
+            commit.Motion?.Dispose();
+            commit.PageMotion?.Dispose();
+            foreach (var target in commit.Targets) target.Dispose();
+            foreach (var section in commit.Sections) section.Owner?.ClearOutgoing();
+            foreach (var binding in commit.Retained) Retire(binding);
+            foreach (var media in bindings.Values.Select(binding => binding.Element).OfType<Media.MediaPlayerView>()) media.EndPageMotion();
+        }
+        finally { commit.Settled.TrySetResult(); }
     }
 }

@@ -103,7 +103,10 @@ Back shortcut or own widget business state. Widgets still handle their existing
 Back action and select the destination.
 
 The Page animation preference supports Slide, Vertical slide, Fade, Reveal,
-Cover slide and None. Forward and Back reverse direction; Replace fades neutrally.
+Cover slide, and None. Fade moves through the page background, finishing the
+outgoing fade before revealing the destination. Native media remains attached
+during exit; initializing a new decoder waits until entrance motion completes.
+Forward and Back reverse direction; Replace uses the same neutral fade-through.
 Normal duration is 200 ms, scaled by widget animation speed. Reduced motion or
 None skips retention and motion. Section preferences remain independent.
 

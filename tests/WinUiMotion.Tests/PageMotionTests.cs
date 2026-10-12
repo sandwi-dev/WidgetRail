@@ -31,7 +31,7 @@ public sealed class PageMotionTests
                 SectionAnimation = WidgetSectionAnimation.None, PageAnimation = effect }, true);
             var forward = WidgetMotionPolicy.Page(options, new(640, 480), 1);
             var back = WidgetMotionPolicy.Page(options, new(640, 480), -1);
-            Assert.AreEqual(effect == WidgetPageAnimation.None ? 0d : 200d, forward.Incoming.Duration.TotalMilliseconds);
+            Assert.AreEqual(effect == WidgetPageAnimation.None ? 0d : 200d, (forward.Incoming.Duration + forward.Incoming.Delay).TotalMilliseconds);
             Assert.AreEqual(-forward.Incoming.From.Translation, back.Incoming.From.Translation);
             var replace = WidgetMotionPolicy.Page(options, new(640, 480), 0);
             Assert.AreEqual(Vector3.Zero, replace.Incoming.From.Translation);
@@ -47,6 +47,25 @@ public sealed class PageMotionTests
         foreach (var effect in Enum.GetValues<WidgetPageAnimation>())
             Assert.AreEqual(TimeSpan.Zero, WidgetMotionPolicy.Page(WidgetMotionOptions.From(appearance with
                 { PageAnimation = effect, Motion = MotionPreference.Reduced }, true), new(640, 480), 1).Incoming.Duration);
+    }
+
+    [TestMethod]
+    public void FadeRetiresOutgoingBeforeRevealingIncoming()
+    {
+        foreach (var speed in new[] { .5, 1, 2 })
+        {
+            var options = WidgetMotionOptions.From(AppearanceSettings.Default with
+                { Motion = MotionPreference.Full, PageAnimation = WidgetPageAnimation.Fade, WidgetAnimationSpeed = speed }, true);
+            foreach (var direction in new[] { -1, 0, 1 })
+            {
+                var fade = WidgetMotionPolicy.Page(options, new(640, 480), direction);
+                Assert.AreEqual(fade.Outgoing.Duration, fade.Incoming.Delay);
+                Assert.AreEqual(TimeSpan.Zero, fade.Outgoing.Delay);
+                Assert.AreEqual(0f, fade.Outgoing.To.Opacity);
+                Assert.AreEqual(0f, fade.Incoming.From.Opacity);
+                Assert.AreEqual(200 / speed, (fade.Incoming.Delay + fade.Incoming.Duration).TotalMilliseconds);
+            }
+        }
     }
 
     private static WidgetTransition Page(string key, WidgetNavigationOperation operation) => new("pages", key, 0, WidgetTransitionKind.Page, operation);

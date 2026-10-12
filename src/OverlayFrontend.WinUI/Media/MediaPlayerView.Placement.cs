@@ -31,6 +31,11 @@ internal sealed partial class MediaPlayerView
 
     internal void EndPageMotion() => videoStage?.EndPageMotion();
 
+    internal void HidePageExit()
+    {
+        if (retainedForPageExit) videoStage?.SetCovered(true);
+    }
+
     private void EnsureVideoStage()
     {
         if (disposed || !IsVideo || MediaFullscreenLayer.Find(this) is not { } host) return;
@@ -41,12 +46,14 @@ internal sealed partial class MediaPlayerView
             videoStage.SurfaceHost.Children.Add(video);
         }
         videoStage.Configure(VideoAspectRatio);
+        videoStage.SetPageBackground(normalBrush);
         if (!IsExpanded) videoStage.SetSlot(stage);
     }
 
     private void ReleaseVideoStage()
     {
         if (videoStage is not { } resident) return;
+        resident.SetCovered(true);
         videoStage = null;
         resident.SurfaceHost.Children.Remove(video);
         resident.Dispose();

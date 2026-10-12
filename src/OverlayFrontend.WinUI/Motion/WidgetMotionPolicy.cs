@@ -30,7 +30,7 @@ internal readonly record struct WidgetMotionPose(Vector3 Translation, Vector3 Sc
 
 internal enum WidgetMotionEasing { Smooth, EaseIn, EaseOut }
 internal readonly record struct WidgetMotionRecipe(WidgetMotionPose From, WidgetMotionPose To, TimeSpan Duration,
-    WidgetMotionEasing Easing = WidgetMotionEasing.Smooth);
+    WidgetMotionEasing Easing = WidgetMotionEasing.Smooth, TimeSpan Delay = default);
 internal readonly record struct WidgetSectionMotion(WidgetMotionRecipe Incoming, WidgetMotionRecipe Outgoing);
 internal enum WidgetResizeReason { WidgetSwitch, ContentSizeChanged }
 
@@ -86,7 +86,8 @@ internal static class WidgetMotionPolicy
         var shown = WidgetMotionPose.Identity;
         if (duration == TimeSpan.Zero) return new(new(shown, shown, duration), new(shown, shown, duration));
         if (direction == 0 || options.Page == WidgetPageAnimation.Fade)
-            return new(new(shown with { Opacity = 0 }, shown, duration), new(shown, shown with { Opacity = 0 }, duration));
+            return new(new(shown with { Opacity = 0 }, shown, duration / 2, Delay: duration / 2),
+                new(shown, shown with { Opacity = 0 }, duration / 2));
         var section = options.Page switch
         {
             WidgetPageAnimation.VerticalSlide => WidgetSectionAnimation.VerticalSlide,

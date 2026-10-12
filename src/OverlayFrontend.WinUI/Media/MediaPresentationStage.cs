@@ -12,6 +12,10 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
 {
     internal Grid SurfaceHost { get; } = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly CompositeTransform placement = new();
+    private readonly Border fadeCover = new() { IsHitTestVisible = false,
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        Background = new SolidColorBrush(Microsoft.UI.Colors.Black), Visibility = Visibility.Collapsed };
+    private float pageOpacity = 1;
     private Grid? slot;
     private double aspectRatio;
     private bool fullscreen, disposed, observing, covered, pageMotion;
@@ -25,7 +29,7 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         IsHitTestVisible = false;
         Visibility = Visibility.Collapsed;
         RenderTransform = placement;
-        Children.Add(SurfaceHost);
+        Children.Add(SurfaceHost); Children.Add(fadeCover);
         SizeChanged += (_, _) => Fit();
         LayoutUpdated += OnLayout;
     }
@@ -39,14 +43,26 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
 
     internal void RefreshPlacement(bool ancestryChanged = false)
     {
-        if (ancestryChanged && !fullscreen) FollowOpacity();
+        if (ancestryChanged && !fullscreen && !pageMotion) FollowOpacity();
         ApplyPlacement();
     }
 
     internal void ApplyPagePose(FrameworkElement layer, FrameworkElement viewport, Motion.WidgetMotionPose pose)
     {
         if (disposed || fullscreen || slot is not { IsLoaded: true } target || Parent is not FrameworkElement root) return;
-        if (!pageMotion) { pageMotion = true; Observe(false); FollowOpacity(); }
+        if (!pageMotion)
+        {
+            pageMotion = true; Observe(false);
+            var visual = ElementCompositionPreview.GetElementVisual(this);
+            visual.StopAnimation("Opacity"); visual.Opacity = 1;
+        }
+        // Native swap-chain opacity can expose the desktop through the XAML
+        // beneath it. Fade through the page color instead; retire the opaque
+        // video once fully covered, before the incoming page starts its fade.
+        pageOpacity = pose.Opacity;
+        fadeCover.Width = SurfaceHost.Width; fadeCover.Height = SurfaceHost.Height;
+        fadeCover.Opacity = 1 - pageOpacity;
+        fadeCover.Visibility = pageOpacity < 1 ? Visibility.Visible : Visibility.Collapsed;
         var toRoot = viewport.TransformToVisual(root);
         var local = target.TransformToVisual(layer).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
         Rect Map(Rect rect) => toRoot.TransformBounds(new(
@@ -80,7 +96,8 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
     internal void EndPageMotion()
     {
         if (!pageMotion) return;
-        pageMotion = false; Observe(!fullscreen && slot is not null); ApplyPlacement();
+        pageMotion = false; fadeCover.Visibility = Visibility.Collapsed; FollowOpacity();
+        Observe(!fullscreen && slot is not null); ApplyPlacement();
     }
 
     internal void SetSlot(Grid? value)
@@ -89,14 +106,14 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         slot = value;
         fullscreen = false;
         Observe(value is not null);
-        if (changed) FollowOpacity();
+        if (changed && !pageMotion) FollowOpacity();
         ApplyPlacement();
     }
 
     internal void EnterFullscreen()
     {
         if (fullscreen) return;
-        pageMotion = false;
+        EndPageMotion();
         fullscreen = true;
         Observe(false);
         var visual = ElementCompositionPreview.GetElementVisual(this);
@@ -171,9 +188,15 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
 
     private void Place(Rect bounds, Rect visible)
     {
-        if (covered || visible.IsEmpty || visible.Width <= 0 || visible.Height <= 0) { Visibility = Visibility.Collapsed; return; }
-        Visibility = Visibility.Visible;
-        if (ActualWidth <= 0 || ActualHeight <= 0) return;
+        if (covered || pageMotion && pageOpacity <= 0 || visible.IsEmpty || visible.Width <= 0 || visible.Height <= 0) { Visibility = Visibility.Collapsed; return; }
+        if (ActualWidth <= 0 || ActualHeight <= 0 || bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            // Measure the plane without allowing its decoder to paint at the
+            // default full-window transform while layout is still pending.
+            SurfaceHost.Visibility = Visibility.Collapsed;
+            Visibility = Visibility.Visible;
+            return;
+        }
         var media = MediaTransitionGeometry.Fit(new(0, 0, ActualWidth, ActualHeight), aspectRatio);
         var pose = MediaTransitionGeometry.Match(media, bounds);
         placement.ScaleX = placement.ScaleY = pose.Scale.X;
@@ -182,15 +205,32 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
             (visible.Y - placement.TranslateY) / placement.ScaleY, visible.Width / placement.ScaleX, visible.Height / placement.ScaleY);
         if (Clip is not RectangleGeometry old || Math.Abs(old.Rect.X - localClip.X) > .01 || Math.Abs(old.Rect.Y - localClip.Y) > .01 ||
             Math.Abs(old.Rect.Width - localClip.Width) > .01 || Math.Abs(old.Rect.Height - localClip.Height) > .01)
-            Clip = new RectangleGeometry { Rect = localClip };
+        {
+            if (Clip is RectangleGeometry geometry) geometry.Rect = localClip;
+            else Clip = new RectangleGeometry { Rect = localClip };
+        }
+        // Never expose an unpositioned full-window media surface, even on its
+        // first frame while the source and native layout are arriving separately.
+        Visibility = Visibility.Visible;
+        SurfaceHost.Visibility = Visibility.Visible;
     }
 
     public void Dispose()
     {
+        Visibility = Visibility.Collapsed;
         disposed = true; slot = null;
         Observe(false);
         ElementCompositionPreview.GetElementVisual(this).StopAnimation("Opacity");
         LayoutUpdated -= OnLayout;
         if (Parent is Panel parent) parent.Children.Remove(this);
+    }
+
+    internal void SetPageBackground(Brush? brush)
+    {
+        if (brush is SolidColorBrush solid)
+        {
+            var color = solid.Color; color.A = 255;
+            fadeCover.Background = new SolidColorBrush(color);
+        }
     }
 }

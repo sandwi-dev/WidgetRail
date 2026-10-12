@@ -41,6 +41,11 @@ internal sealed partial class WidgetStylesValidationPage
                 Render("video", WidgetNavigationOperation.Forward);
                 var media = Find<MediaPlayerView>("Widget.route.media", page)!;
                 media.Apply(_ => Task.FromResult(new HostMediaPlayerSource(video, new Uri(mp4).AbsoluteUri)), video, () => true);
+                if (effect != WidgetPageAnimation.None)
+                {
+                    await Task.Delay(40);
+                    Check(MediaPlayerView.ResidentPlayers == 0, effect + ": decoder startup waits for the incoming page animation");
+                }
                 await Wait(() => media.IsPlaying);
                 await Settle();
                 Check(media.IsPlaying, effect + ": incoming native video plays");
