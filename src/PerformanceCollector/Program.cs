@@ -9,6 +9,8 @@ if (!OperatingSystem.IsWindows() || args.Length != 6 || args[0] != "--pipe" ||
     !int.TryParse(args[3], out var parentId) || parentId <= 0 || args[5].Length != 64 || !args[5].All(char.IsAsciiHexDigit)) return 2;
 
 using var lifetime = new CancellationTokenSource();
+var diagnostics = new FpsDiagnosticBuffer();
+diagnostics.Write("collector-start");
 await using var pipe = new NamedPipeClientStream(".", args[1], PipeDirection.InOut, PipeOptions.Asynchronous);
 try
 {
@@ -18,7 +20,7 @@ try
     using var parent = Process.GetProcessById(parentId);
     await CollectorProtocol.WriteAsync(pipe, new CollectorHello(CollectorProtocol.Version, args[5]), connect.Token);
     var collect = 0;
-    var runner = new PresentMonRunner(Path.Combine(AppContext.BaseDirectory, "PresentMon.exe"));
+    var runner = new PresentMonRunner(Path.Combine(AppContext.BaseDirectory, "PresentMon.exe"), diagnostics.Write);
     var worker = runner.RunAsync(() => Volatile.Read(ref collect) != 0, lifetime.Token);
     try
     {
@@ -28,7 +30,7 @@ try
             heartbeat.CancelAfter(TimeSpan.FromSeconds(10));
             var command = await CollectorProtocol.ReadAsync<CollectorCommand>(pipe, heartbeat.Token);
             Volatile.Write(ref collect, command.Collect ? 1 : 0);
-            await CollectorProtocol.WriteAsync(pipe, runner.Read(), heartbeat.Token);
+            await CollectorProtocol.WriteAsync(pipe, runner.Read() with { Diagnostics = diagnostics.Drain() }, heartbeat.Token);
         }
     }
     finally
@@ -41,5 +43,6 @@ try
 catch (Exception error) when (error is IOException or OperationCanceledException or ArgumentException or
     InvalidOperationException or System.Text.Json.JsonException or System.ComponentModel.Win32Exception)
 {
+    diagnostics.Write($"collector-failed type={error.GetType().Name} hresult={error.HResult:X8}");
     return 4;
 }

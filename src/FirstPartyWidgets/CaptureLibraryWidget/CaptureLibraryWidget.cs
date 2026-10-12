@@ -177,7 +177,6 @@ public sealed partial class CaptureLibraryWidget : Widget
                 UI.Button("Take screenshot", "capture-library.photo", "capture-library.photo").Busy(state.Busy),
                 UI.Button("Record clip", "capture-library.video", "capture-library.video").Busy(state.Busy),
                 UI.Button("Capture settings", "capture-library.settings", "capture-library.settings").Busy(state.Busy)));
-            items.Add(UI.Text("Review captures before saving. Change image quality, recording and preparation in Capture settings.", "capture-library.help").Classes("capture-help"));
             if (state.Page is { } page)
             {
                 items.Add(UI.Text($"{page.TotalCount} / {CaptureLibraryLimits.MaximumItems} saved · {page.StoredBytes / 1048576d:0.0} MiB / 2 GiB", "capture-library.usage").Classes("capture-help"));
@@ -185,13 +184,14 @@ public sealed partial class CaptureLibraryWidget : Widget
                 foreach (var item in page.Items)
                 {
                     var id = "capture-library.item." + item.Id;
-                    WidgetElement artwork = item.Available && item.Media.ContentType == "image/png"
-                        ? UI.Artwork(new WidgetArtworkHandle(item.Id), id + ".thumbnail", "Screenshot thumbnail", ImageFit.Contain).Classes("capture-thumbnail")
+                    WidgetElement artwork = item.Available
+                        ? UI.Artwork(new WidgetArtworkHandle(item.Id), id + ".thumbnail", item.Media.ContentType == "image/png" ? "Screenshot thumbnail" : "Video thumbnail", ImageFit.Cover).Classes("capture-thumbnail")
                         : UI.Text(item.Available ? "Video clip" : "Unavailable", id + ".placeholder").Classes("capture-thumbnail-placeholder");
                     entries.Add(UI.ActionSurface("capture-library.open." + item.Id, id, Describe(item.Media), ActionSurfaceOrientation.Vertical,
                         artwork,
                         UI.Stack(id + ".copy", UI.Text(item.Available ? item.Media.SourceApplication?.ApplicationName ?? "Application capture" : "Unavailable capture", id + ".name").Classes("capture-heading"),
-                            UI.Text(item.Available ? DateTimeOffset.FromUnixTimeMilliseconds(item.SavedAtUnixMilliseconds).ToLocalTime().ToString("g", CultureInfo.CurrentCulture) + " · " + Describe(item.Media) : "This entry can be opened for deletion.", id + ".info").Classes("capture-help")).Classes("capture-entry-copy")).Busy(state.Busy).Classes("capture-entry"));
+                            UI.Text(item.Available ? (item.Media.ContentType == "image/png" ? "Screenshot" : $"Clip · {item.Media.DurationSeconds:0.#} s") + $" · {item.Media.Width} × {item.Media.Height}" : "This entry can be opened for deletion.", id + ".info").Classes("capture-help"),
+                            UI.Text(DateTimeOffset.FromUnixTimeMilliseconds(item.SavedAtUnixMilliseconds).ToLocalTime().ToString("g", CultureInfo.CurrentCulture), id + ".date").Classes("capture-help")).Classes("capture-entry-copy")).Busy(state.Busy).Classes("capture-entry"));
                 }
                 if (page.Items.Count > 0) items.Add(UI.ResponsiveGrid("capture-library.entries", 220, 3, entries.ToArray()).RememberChildFocus("capture-library.item." + page.Items[0].Id));
                 items.Add(UI.Text($"Page {page.Offset / CaptureLibraryLimits.PageSize + 1} of {Math.Max(1, (page.TotalCount + CaptureLibraryLimits.PageSize - 1) / CaptureLibraryLimits.PageSize)}", "capture-library.page-number").Classes("capture-help"));

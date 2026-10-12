@@ -52,7 +52,7 @@ public sealed class CaptureLibraryStore
         {
             using var ownership = Own();
             var saved = Read(id);
-            if (saved.Item.Media.ContentType != "image/png") throw Error("capture_library_thumbnail_unavailable");
+            if (saved.Item.Media.ContentType is not ("image/png" or "video/mp4")) throw Error("capture_library_thumbnail_unavailable");
             var original = new FileInfo(MediaPath(saved.Item));
             if (!original.Exists || original.Length != saved.Item.Media.ByteLength) throw Error("capture_library_invalid_media");
             var path = Path.Combine(root, id + ".thumbnail"); PlainPath(path);

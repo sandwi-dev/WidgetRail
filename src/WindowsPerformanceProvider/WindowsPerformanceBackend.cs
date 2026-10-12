@@ -2,11 +2,11 @@ using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WindowsPerformanceProvider;
 
-public sealed class WindowsPerformanceBackend(IAppLibraryPlatformBrokerBackend applications, string collectorExecutable)
+public sealed class WindowsPerformanceBackend(IAppLibraryPlatformBrokerBackend applications, string collectorExecutable, Action<string>? diagnostic = null)
     : IPerformancePlatformBackend, IAsyncDisposable
 {
     private readonly WindowsSystemSampler _system = new();
-    private readonly FpsCollectorClient _fps = new(collectorExecutable);
+    private readonly FpsCollectorClient _fps = new(collectorExecutable, diagnostic);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IReadOnlyList<TaskWindowSummary> _windows = [];
     private long _windowsAt = long.MinValue / 2;

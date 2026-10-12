@@ -3,7 +3,7 @@
 `UI.MediaPlayer` (protocol 75) is the shared inline WinUI media element. Game Help
 uses it for capture review; captures do not have a separate playback renderer.
 The legacy `UI.CapturedMedia` declaration remains compatible and maps to this same
-renderer. Captured still images are displayed without video controls.
+renderer. Captured still images use a shared zoom/pan viewer with image controls.
 
 ```csharp
 using WidgetRail.WidgetProtocol;
@@ -66,6 +66,18 @@ The expanded view reuses the same player, position and native controls. Hiding t
 presentation pauses playback; passive visible presentations can keep playing.
 Capture expiry/revocation clears already decoded content. Dispose/source replacement
 cancels outstanding loads and releases native player/source objects.
+
+For still images, LT/RT zoom (up to 8× relative to fit), directions pan while the
+image viewport is focused, LB fits the image, and RB switches between the image
+and its toolbar. A activates the focused control, R3 expands/collapses, and B
+closes expansion before returning to ordinary widget navigation. The image keeps
+its aspect ratio; host-issued original-resolution captures retain their supplied
+resolution for zooming. Touch zoom/scroll and native keyboard navigation remain
+available. All of this stays inside the host; it does not launch Windows Photos.
+
+Expanded players constrain their card to the dialog's content viewport, reserving
+space for the toolbar even at high display scaling. Inline height remains authored
+through WRSS; viewport-relative height is available for responsive review pages.
 
 Inactive players release their decoder and retain lightweight position/volume/rate
 state for a same-source reopen. The host bounds native video residency to four players; expansion does not consume

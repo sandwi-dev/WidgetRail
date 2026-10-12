@@ -25,6 +25,23 @@ internal sealed partial class MediaPlayerView
         await Until(() => image.Source is BitmapImage bitmap && bitmap.PixelWidth > 0);
         Check(image.Visibility == Visibility.Visible && player is null, "Screenshot preview decodes generated PNG without a player");
         SetActive(true, true);
+        Check(CanControl && imageTools.Visibility == Visibility.Visible && imageViewport.Focus(FocusState.Keyboard), "Image viewer exposes focused controller controls");
+        Handle(ControllerButton.RightTrigger, ControllerEventPhase.Pressed);
+        await Until(() => imageViewport.ZoomFactor > 1.1);
+        var imageOffset = imageViewport.HorizontalOffset;
+        MoveFocus(FocusNavigationDirection.Right);
+        await Until(() => imageViewport.HorizontalOffset > imageOffset);
+        Check(true, "Image triggers zoom and directions pan the full-resolution picture");
+        Handle(ControllerButton.LeftBumper, ControllerEventPhase.Pressed);
+        await Until(() => imageViewport.ZoomFactor == 1);
+        var imageExpanded = ToggleExpandedAsync();
+        await Until(() => expandedDialog is { IsLoaded: true } && imageTools.ActualHeight > 0);
+        Check(imageTools.TransformToVisual(card).TransformPoint(new(0, imageTools.ActualHeight)).Y <= card.ActualHeight + 1,
+            "Expanded image controls fit inside the visible media card");
+        Handle(ControllerButton.B, ControllerEventPhase.Pressed); Handle(ControllerButton.B, ControllerEventPhase.Released);
+        await imageExpanded;
+        Check(imageViewport.ZoomFactor == 1 && !HasDialog, "Fit and Back restore the inline image viewer");
+        SetActive(true, true);
         Apply(_ => Task.FromResult(new HostCaptureAttachment(clip, mp4)), clip, () => true);
         await Until(() => player?.PlaybackSession.NaturalDuration.TotalSeconds > 4.9);
         Check(!IsPlaying && player!.IsMuted, "Native video opens muted without autoplay");
@@ -85,6 +102,9 @@ internal sealed partial class MediaPlayerView
         var retained = player;
         var expanded = ToggleExpandedAsync();
         await Until(() => expandedDialog is { IsLoaded:true });
+        await Task.Delay(150);
+        Check(toolbar.TransformToVisual(card).TransformPoint(new(0, toolbar.ActualHeight)).Y <= card.ActualHeight + 1,
+            "Expanded video reserves visible height for timeline and transport controls");
         Check(IsPlaying && ReferenceEquals(player,retained) && card.Parent is Microsoft.UI.Xaml.Controls.Grid,"Expanded view retains one player and playback state");
         Handle(ControllerButton.B,ControllerEventPhase.Pressed);
         Handle(ControllerButton.B,ControllerEventPhase.Released);

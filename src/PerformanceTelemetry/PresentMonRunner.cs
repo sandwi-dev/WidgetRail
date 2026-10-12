@@ -4,12 +4,13 @@ using System.Security.Cryptography;
 namespace WidgetRail.PerformanceTelemetry;
 
 /// <summary>Owns only uniquely named short-lived ETW sessions. No CSV files or input tracking.</summary>
-public sealed class PresentMonRunner(string executable)
+public sealed class PresentMonRunner(string executable, Action<string>? diagnostic = null)
 {
     public const string ExpectedSha256 = "B2A706BC6AD475749E3B7E3409263AA1E6906D45BDCF993F6DBC0F660188F1AF";
     private readonly PresentFrameAccumulator _frames = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private string _state = "idle";
+    private long rows, acceptedRows;
     public CollectorReading Read() => new(Volatile.Read(ref _state), _frames.Snapshot(_clock.Elapsed.TotalSeconds));
 
     public async Task RunAsync(Func<bool> wantsCollection, CancellationToken token)
@@ -33,6 +34,7 @@ public sealed class PresentMonRunner(string executable)
                 Volatile.Write(ref _state, "missing"); failedUntilRelease = true; continue;
             }
             var session = "WidgetRail-FPS-" + Guid.NewGuid().ToString("N");
+            Interlocked.Exchange(ref rows, 0); Interlocked.Exchange(ref acceptedRows, 0);
             using var process = new Process { StartInfo = StartInfo(executable,
                 "--session_name", session, "--output_stdout", "--no_console_stats", "--v1_metrics",
                 "--no_track_input", "--no_track_gpu", "--no_track_display", "--timed", "120", "--terminate_after_timed") };
@@ -40,21 +42,32 @@ public sealed class PresentMonRunner(string executable)
             try
             {
                 if (!process.Start()) throw new IOException("Collector did not start.");
+                diagnostic?.Invoke($"session-start session={session} child={process.Id} limit-seconds=120");
                 Volatile.Write(ref _state, "collecting");
                 var stdout = ReadFramesAsync(process.StandardOutput, token);
-                var stderr = DrainAsync(process.StandardError, token);
+                var stderr = ReadErrorsAsync(process.StandardError, token);
+                var reportAt = _clock.Elapsed.TotalSeconds + 10;
                 try
                 {
                     while (!process.HasExited && wantsCollection())
+                    {
+                        if (_clock.Elapsed.TotalSeconds >= reportAt)
+                        {
+                            reportAt = _clock.Elapsed.TotalSeconds + 10;
+                            diagnostic?.Invoke($"session-health rows={Interlocked.Read(ref rows)} accepted={Interlocked.Read(ref acceptedRows)} reader={stdout.Status} errors-reader={stderr.Status}");
+                        }
                         await Task.Delay(100, token).ConfigureAwait(false);
+                    }
                 }
                 finally
                 {
                     // A crashed collector can leave its real-time ETW session
                     // behind. Retire our exact session even after process exit.
                     await StopSessionAsync(session, process).ConfigureAwait(false);
+                    diagnostic?.Invoke($"session-stop exit={process.ExitCode} demand={wantsCollection()} rows={Interlocked.Read(ref rows)} accepted={Interlocked.Read(ref acceptedRows)}");
                     try { await Task.WhenAll(stdout, stderr).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false); }
-                    catch (Exception error) when (error is OperationCanceledException or IOException or TimeoutException) { }
+                    catch (Exception error) when (error is OperationCanceledException or IOException or TimeoutException)
+                    { diagnostic?.Invoke($"reader-end type={error.GetType().Name} hresult={error.HResult:X8}"); }
                 }
                 if (wantsCollection() && !token.IsCancellationRequested && process.ExitCode != 0)
                 {
@@ -64,6 +77,7 @@ public sealed class PresentMonRunner(string executable)
             }
             catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
             {
+                diagnostic?.Invoke($"session-failed type={error.GetType().Name} hresult={error.HResult:X8}");
                 Volatile.Write(ref _state, "failed"); failedUntilRelease = true;
             }
         }
@@ -72,7 +86,20 @@ public sealed class PresentMonRunner(string executable)
     private async Task ReadFramesAsync(StreamReader reader, CancellationToken token)
     {
         while (await reader.ReadLineAsync(token).ConfigureAwait(false) is { } line)
-            _frames.Observe(line, _clock.Elapsed.TotalSeconds);
+        {
+            Interlocked.Increment(ref rows);
+            if (_frames.Observe(line, _clock.Elapsed.TotalSeconds)) Interlocked.Increment(ref acceptedRows);
+        }
+    }
+
+    private async Task ReadErrorsAsync(StreamReader reader, CancellationToken token)
+    {
+        // Fixed-size chunks bound error retention even if a provider omits newlines.
+        var buffer = new char[512];
+        var remaining = 8;
+        int count;
+        while ((count = await reader.ReadAsync(buffer, token).ConfigureAwait(false)) != 0)
+            if (remaining-- > 0) diagnostic?.Invoke("presentmon-stderr " + new string(buffer, 0, count));
     }
 
     private static async Task DrainAsync(StreamReader reader, CancellationToken token)

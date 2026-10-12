@@ -71,6 +71,15 @@ beside it. Each trace has a unique WidgetRail name and a 120-second hard recordi
 window. Cleanup stops only that exact session; another tool's PresentMon session
 is never stopped. GPU/input/display-detail tracking is disabled in this FPS path.
 
+Local collector diagnostics are written by the unelevated Bridge to
+`diagnostics/fps-collector.log` under the settings root. Rotation keeps the current
+file and one previous file, approximately 128 KiB each. The elevated helper sends
+bounded messages through collector protocol v3 and never writes diagnostic files.
+Logs include session starts/stops, exit codes, ten-second row/reader health counters,
+connection failures and at most eight bounded stderr chunks per trace. Paths and
+control characters are sanitized; raw frame CSV, capture media and pipe credentials
+are not logged. The diagnostic update does not change FPS collection/restart policy.
+
 ## SDK contract
 
 Declare `system.performance.read.v1` to call:

@@ -55,6 +55,13 @@ internal sealed partial class WidgetViewPresenter
         if (HasTransientControl) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)];
         if (FocusedMediaPlayer is { HasDialog: true, CanControl: false })
             return (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)];
+        if (FocusedMediaPlayer is { IsImage: true, CanControl: true } picture)
+            return (ControllerGuideHint[])[new(ControllerPrompt.A, picture.PrimaryActionLabel, ControllerButton.A),
+                new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger),
+                new(ControllerPrompt.LeftStickMove, "Pan"), new(ControllerPrompt.LeftBumper, "Fit image", ControllerButton.LeftBumper),
+                new(ControllerPrompt.RightBumper, "Image / controls", ControllerButton.RightBumper),
+                new(ControllerPrompt.RightStickPress, picture.HasDialog ? "Collapse" : "Expand", ControllerButton.RightStick),
+                .. (picture.HasDialog ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)] : [])];
         if (FocusedMediaPlayer is { IsVideo: true, CanControl: true } media)
             return (ControllerGuideHint[])[new(ControllerPrompt.A, media.PrimaryActionLabel, ControllerButton.A),
                 new(ControllerPrompt.LeftTrigger, "Seek back", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Seek forward", ControllerButton.RightTrigger),

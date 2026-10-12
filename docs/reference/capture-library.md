@@ -17,7 +17,8 @@ recording, upload, or eviction of saved media.
 - Confirm the host dialog, let WidgetRail hide, and bring your application forward.
   The configured countdown precedes capture (five seconds by default). Reopen the
   overlay to finish a recording early and review it. Reopening during preparation cancels.
-- Preview uses the shared native media player. Choose **Save to library** or
+- Preview uses the shared native media player and grows with the available viewport.
+  Images support controller zoom/pan and an expanded viewer. Choose **Save to library** or
   **Discard**. Leaving an unsaved capture does not retain it across worker restarts.
 - Browse a responsive thumbnail grid by application, date and media type, with 20 items per page.
   Open an item to preview, export, or delete. Delete starts on Cancel and affects
@@ -62,7 +63,7 @@ are retired with the owning worker or the authority that allowed the read.
 | Permission | Operations |
 |---|---|
 | `system.apps.windows.capture.v1` | Existing host-confirmed capture; original-resolution screenshot request is explicit |
-| `media.capture-library.read.v1` | List/open saved captures, read/release temporary library references, obtain image thumbnails, including while background |
+| `media.capture-library.read.v1` | List/open saved captures, read/release temporary library references, obtain image/video thumbnails, including while background |
 | `media.capture-library.save.v1` | Explicit interactive save of this widget's owned temporary media |
 | `media.capture-library.manage.v1` | Explicit interactive deletion and export to the fixed Pictures destination |
 
@@ -124,7 +125,9 @@ outside the 2 GiB original-media quota; there is no automatic original eviction.
 The SDK reads each thumbnail in bounded chunks under library-read authority.
 It consumes no temporary capture slot. The grid uses lazy artwork handles, never
 original media or inline image blobs in widget snapshots. Invalid cached derivatives
-are regenerated; videos currently use a labeled placeholder.
+are regenerated. Video frames come from Windows' thumbnail service and pass through
+the same bounded PNG encoding/cache path. Unsupported or unavailable thumbnail
+providers do not prevent opening the original clip. The original is never rewritten.
 
 A temporary copy is scoped to its requesting broker/worker. Library-read revocation
 cannot be bypassed by capture permission, and permission to preview windows cannot

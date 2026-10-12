@@ -42,7 +42,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private object? resourceOwner;
     private sealed record PlaybackMemory(MediaPlayerDefinition Definition, double Position, double Volume, bool Muted, bool Loop, double Rate);
     private PlaybackMemory? playbackMemory;
-    private Control PreferredFocus => rememberedControl is { IsEnabled: true, Visibility: Visibility.Visible } remembered ? remembered : play;
+    private Control PreferredFocus => rememberedControl is { IsEnabled: true, Visibility: Visibility.Visible, IsLoaded: true } remembered ? remembered : IsImage ? imageViewport : play;
     private ContentDialog? expandedDialog;
     internal bool IsAdjustingVolume => adjustingVolume;
     internal bool HasDialog => expandedDialog is not null;
@@ -54,7 +54,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private static int residentPlayers;
     internal static int ResidentPlayers => Volatile.Read(ref residentPlayers);
     private bool ownsPlayerSlot, waitingForSlot;
-    internal bool CanControl => player is not null;
+    internal bool CanControl => player is not null || IsImage && image.Source is not null;
+    internal bool IsImage => resolved is { IsImage: true };
     private MediaPlayer? player;
     private MediaSource? source;
     private MediaPlayerDefinition? definition;
@@ -66,7 +67,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private long nextAuthorityCheck;
     internal bool IsVideo => resolved is { IsImage: false };
     internal bool IsPlaying => player?.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
-    internal string PrimaryActionLabel => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused && !ReferenceEquals(focused, play) && !ReferenceEquals(focused, position)
+    internal string PrimaryActionLabel => IsImage ? ImageActionLabel : XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused && !ReferenceEquals(focused, play) && !ReferenceEquals(focused, position)
         ? ReferenceEquals(focused, volume) ? adjustingVolume ? "Done" : "Adjust volume" : AutomationProperties.GetName(focused)
         : IsPlaying ? "Pause" : "Play";
     internal Action? InteractionChanged { get; set; }
@@ -76,11 +77,13 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         VerticalContentAlignment = VerticalAlignment.Stretch;
         body.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        stage.Children.Add(image); stage.Children.Add(video); stage.Children.Add(status); body.Children.Add(stage);
+        InitializeImages();
+        stage.Children.Add(imageViewport); stage.Children.Add(video); stage.Children.Add(status); body.Children.Add(stage);
         toolbar.RowDefinitions.Add(new() { Height = GridLength.Auto });
         toolbar.RowDefinitions.Add(new() { Height = GridLength.Auto });
         toolbar.RowSpacing = 8;
-        for (var i = 0; i < 7; i++) toolbar.ColumnDefinitions.Add(new() { Width = i == 5 ? new(1, GridUnitType.Star) : GridLength.Auto });
+        for (var i = 0; i < 7; i++) toolbar.ColumnDefinitions.Add(new() { Width = i == 4 ? new(1, GridUnitType.Star) : GridLength.Auto });
+        mute.HorizontalAlignment = HorizontalAlignment.Right;
         var playContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         playContent.Children.Add(playIcon); playContent.Children.Add(playLabel); play.Content = playContent;
         var replayContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -107,6 +110,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         position.ValueChanged += (_, _) => { if (!refreshing && input && player?.PlaybackSession.CanSeek == true) player.PlaybackSession.Position = TimeSpan.FromSeconds(position.Value); };
         volume.ValueChanged += (_, _) => { if (!refreshing && input && player is not null) { player.Volume = volume.Value / 100; player.IsMuted = false; } };
         Grid.SetRow(toolbar, 1); body.Children.Add(toolbar); card.Child = body; Content = card;
+        Grid.SetRow(imageTools, 1); body.Children.Add(imageTools);
+        SizeChanged += (_, args) => { if (!HasDialog) SizeCard(args.NewSize.Width, args.NewSize.Height); };
         AutomationProperties.SetName(play, "Play or pause"); AutomationProperties.SetName(replay, "Replay");
         AutomationProperties.SetAutomationId(play, "MediaPlayer.Play"); AutomationProperties.SetAutomationId(replay, "MediaPlayer.Replay");
         play.Click += (_, _) => Toggle(); replay.Click += (_, _) => Replay();
@@ -116,6 +121,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             playLabel.Visibility = replayLabel.Visibility = width < 640 ? Visibility.Collapsed : Visibility.Visible;
             replay.Visibility = loop.Visibility = width < 360 ? Visibility.Collapsed : Visibility.Visible;
             volume.Visibility = width < 400 ? Visibility.Collapsed : Visibility.Visible;
+            volume.Width = Math.Clamp(width * .18, 72, 160);
             toolbar.ColumnSpacing = width < 420 ? 6 : 12;
             if (input && XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused && controls.Contains(focused) && focused.Visibility != Visibility.Visible)
                 play.Focus(FocusState.Keyboard);
@@ -124,7 +130,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         {
             var focused = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
             if (focused is Control control && controls.Contains(control)) rememberedControl = control;
-            else if (ReferenceEquals(focused, this) && input && player is not null) PreferredFocus.Focus(FocusState.Keyboard);
+            else if (ReferenceEquals(focused, this) && input && CanControl) PreferredFocus.Focus(FocusState.Keyboard);
             InteractionChanged?.Invoke();
         };
         timer = DispatcherQueue.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(250);
@@ -135,12 +141,14 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     internal void SetActive(bool value, bool acceptsInput)
     {
         active = value; input = value && acceptsInput;
+        imageViewport.IsHitTestVisible = input;
+        foreach (var control in imageControls) control.IsEnabled = input;
         video.IsHitTestVisible = input; video.IsTabStop = false;
         if (!input) { adjustingVolume = false; expandedDialog?.Hide(); }
         if (!active) { SuspendPlayer(); timer.Stop(); expandedDialog?.Hide(); } else if (IsLoaded && !lifetime.IsCancellationRequested) timer.Start();
         foreach (var control in controls) control.IsEnabled = input && player is not null;
         position.IsEnabled = replay.IsEnabled = input && player?.PlaybackSession.CanSeek == true;
-        if (input && player is not null && XamlRoot is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), this))
+        if (input && CanControl && XamlRoot is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), this))
             PreferredFocus.Focus(FocusState.Keyboard);
     }
     internal void Apply(Func<CancellationToken, Task<HostMediaPlayerSource>> resolve, MediaPlayerDefinition next, Func<bool> current, object? owner = null)
@@ -155,7 +163,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         expandedDialog?.Hide();
         lifetime.Cancel(); lifetime.Dispose(); lifetime = new();
         ReleasePlayer(); definition = next; resolved = null; adjustingVolume = false; waitingForSlot = false;
-        image.Source = null; image.Visibility = video.Visibility = toolbar.Visibility = Visibility.Collapsed;
+        image.Source = null; imageViewport.Visibility = imageTools.Visibility = video.Visibility = toolbar.Visibility = Visibility.Collapsed;
+        rememberedControl = null;
         status.Visibility = Visibility.Visible; status.Text = "Opening media…";
         _ = LoadAsync(resolve, next, current, lifetime.Token);
     }
@@ -205,9 +214,11 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             }
             else
             {
-                var bitmap = new BitmapImage { DecodePixelWidth = value.Width > 0 ? Math.Min(value.Width, 1920) : 1920 };
+                var bitmap = new BitmapImage { DecodePixelWidth = value.Width > 0 ? value.Width : 1920 };
                 bitmap.ImageFailed += (_, _) => { if (!disposed && !token.IsCancellationRequested) Fail(); };
-                bitmap.UriSource = uri; image.Source = bitmap; image.Visibility = Visibility.Visible;
+                bitmap.UriSource = uri; image.Source = bitmap;
+                imageViewport.Visibility = imageTools.Visibility = Visibility.Visible;
+                FitImage();
             }
             if (!IsVideo) status.Visibility = Visibility.Collapsed;
             SetActive(active, input); Refresh();
@@ -223,7 +234,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         requestedRate = options.PlaybackRate; player.PlaybackSession.PlaybackRate = requestedRate;
     }
     private void Fail()
-    { lifetime.Cancel(); timer.Stop(); ReleasePlayer(); image.Source = null; image.Visibility = Visibility.Collapsed; status.Text = "This media could not be opened. The source may be unavailable or its format unsupported."; status.Visibility = Visibility.Visible; video.Visibility = toolbar.Visibility = Visibility.Collapsed; }
+    { lifetime.Cancel(); timer.Stop(); ReleasePlayer(); image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed; status.Text = "This media could not be opened. The source may be unavailable or its format unsupported."; status.Visibility = Visibility.Visible; video.Visibility = toolbar.Visibility = Visibility.Collapsed; }
     private void Refresh()
     {
         if (disposed) return;
@@ -281,6 +292,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     internal void ActivateFocusedControl()
     {
         if (!input || XamlRoot is null) return;
+        if (IsImage) { ActivateImageControl(); return; }
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (HasDialog && focused is Button && !controls.Contains(focused)) { expandedDialog?.Hide(); return; }
         if (ReferenceEquals(focused, replay)) Replay();
@@ -293,6 +305,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     }
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
+        if (IsImage) return MoveImageFocus(direction);
         if (!input || player is null || XamlRoot is null) return false;
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (ReferenceEquals(focused, position))
@@ -325,12 +338,13 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     internal bool Handle(ControllerButton button, ControllerEventPhase phase)
     {
         if (button == ControllerButton.B && backOwned) { if (phase == ControllerEventPhase.Released) backOwned = false; return true; }
-        if (!input || !IsVideo) return false;
+        if (!input || !CanControl) return false;
         if (button == ControllerButton.B && (adjustingVolume || HasDialog))
         {
             if (phase == ControllerEventPhase.Pressed) { backOwned = true; if (adjustingVolume) adjustingVolume = false; else expandedDialog?.Hide(); }
             return true;
         }
+        if (IsImage) return HandleImage(button, phase);
         if (button is not (ControllerButton.A or ControllerButton.LeftTrigger or ControllerButton.RightTrigger or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.RightStick)) return HasDialog;
         if (phase == ControllerEventPhase.Released) return true;
         if (button == ControllerButton.A && phase == ControllerEventPhase.Pressed) ActivateFocusedControl();
@@ -345,21 +359,32 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (expandedDialog is { } existing) { existing.Hide(); return; }
         if (!input || disposed || XamlRoot is null) return;
         var root = XamlRoot;
-        var dialog = new ContentDialog { Title = "Media player", CloseButtonText = "Back", DefaultButton = ContentDialogButton.None, XamlRoot = root };
+        var dialog = new ContentDialog { Title = IsImage ? "Image viewer" : "Video player", CloseButtonText = "Back", DefaultButton = ContentDialogButton.None, XamlRoot = root };
         Input.GamepadKeyBoundary.ObserveDialog(dialog);
         var availableWidth = Math.Max(280, Math.Min(1280, root.Size.Width - 96));
         dialog.Resources["ContentDialogMaxWidth"] = availableWidth + 48;
+        dialog.Resources["ContentDialogMaxHeight"] = Math.Max(180, root.Size.Height - 32);
         var holder = new Grid { Width = availableWidth, Height = Math.Max(180, Math.Min(800, root.Size.Height - 240)) };
+        holder.SizeChanged += (_, args) => SizeCard(args.NewSize.Width, args.NewSize.Height);
         var returnControl = FocusManager.GetFocusedElement(root) as Control;
         expandedDialog = dialog; Content = null; holder.Children.Add(card); dialog.Content = holder;
-        dialog.Opened += (_, _) => play.Focus(FocusState.Keyboard);
+        dialog.Opened += (_, _) =>
+        {
+            // The dialog template can reserve more title/footer space at large
+            // text scales. Bound the player to its real content viewport.
+            for (DependencyObject? ancestor = VisualTreeHelper.GetParent(holder); ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
+                if (ancestor is ScrollViewer scroll && scroll.ViewportHeight > 0)
+                { holder.Height = Math.Min(holder.Height, scroll.ViewportHeight); break; }
+            SizeCard(holder.ActualWidth, holder.Height);
+            (IsImage ? (Control)imageViewport : play).Focus(FocusState.Keyboard);
+        };
         InteractionChanged?.Invoke();
         try { using var colors = NativePopupTheme.Dialog(dialog, this); await dialog.ShowAsync(); }
         catch (Exception error) when (error is not OutOfMemoryException) { Diagnostics.FrontendFailureLog.Current.Write("media-player-expand", error); }
         finally
         {
             holder.Children.Remove(card); dialog.Content = null; expandedDialog = null;
-            if (!disposed) { Content = card; if (input) (returnControl is { IsLoaded: true, IsEnabled: true, Visibility: Visibility.Visible } ? returnControl : play).Focus(FocusState.Keyboard); }
+            if (!disposed) { Content = card; SizeCard(ActualWidth, ActualHeight); if (input) (returnControl is { IsLoaded: true, IsEnabled: true, Visibility: Visibility.Visible } ? returnControl : PreferredFocus).Focus(FocusState.Keyboard); }
             InteractionChanged?.Invoke();
         }
     }
@@ -371,11 +396,11 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         toolbar.Background = background; status.Foreground = foreground; time.Foreground = muted;
         position.Foreground = focus; position.Background = border;
         status.FontSize = time.FontSize = fontSize; status.FontWeight = time.FontWeight = weight;
-        foreach (var control in controls.Append(position))
+        foreach (var control in controls.Concat(imageControls).Append(imageViewport).Append(position))
         {
             control.FocusVisualPrimaryBrush = focus; control.FocusVisualSecondaryBrush = background; control.UseSystemFocusVisuals = true;
         }
-        foreach (var button in controls.OfType<Button>())
+        foreach (var button in controls.Concat(imageControls).OfType<Button>())
         {
             button.Background = background; button.Foreground = foreground; button.BorderBrush = border; button.BorderThickness = new(1);
             button.FontSize = fontSize; button.FontWeight = weight; button.CornerRadius = new(radius);

@@ -7,12 +7,15 @@ namespace WidgetRail.PerformanceTelemetry;
 
 public sealed record CollectorHello(int Version, string Nonce);
 public sealed record CollectorCommand(bool Collect);
-public sealed record CollectorReading(string State, IReadOnlyList<ProcessFrameRate> Processes);
+public sealed record CollectorReading(string State, IReadOnlyList<ProcessFrameRate> Processes)
+{
+    public IReadOnlyList<string> Diagnostics { get; init; } = [];
+}
 
 /// <summary>Private numeric-only channel between the Bridge and its collector.</summary>
 public static partial class CollectorProtocol
 {
-    public const int Version = 2;
+    public const int Version = 3;
     public const int MaximumFrameBytes = 256 * 1024;
     public static bool ValidPipeName(string name) => name.Length is > 20 and < 150 &&
         name.StartsWith("wrail-fps-", StringComparison.Ordinal) && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
@@ -41,6 +44,9 @@ public static partial class CollectorProtocol
 
     public static void Validate(CollectorReading reading)
     {
+        if (reading.Diagnostics is null || reading.Diagnostics.Count > 16 ||
+            reading.Diagnostics.Any(message => message is null || message.Length > 1024 || message.Any(char.IsControl)))
+            throw new IOException("Invalid collector diagnostics.");
         if (reading.State is not ("idle" or "collecting" or "permission-required" or "failed" or "missing") ||
             reading.Processes is null || reading.Processes.Count > PresentFrameAccumulator.MaximumStreams ||
             reading.Processes.Any(p => p is null || p.ProcessId <= 0 || !double.IsFinite(p.FramesPerSecond) ||

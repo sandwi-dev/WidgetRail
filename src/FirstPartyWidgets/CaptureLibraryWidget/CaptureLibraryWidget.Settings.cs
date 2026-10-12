@@ -177,7 +177,7 @@ public sealed partial class CaptureLibraryWidget
 
     public override async ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(WidgetArtworkHandle handle, CancellationToken cancellationToken = default)
     {
-        if (model.Value.Page?.Items.Any(item => item.Id == handle.Value && item.Available && item.Media.ContentType == "image/png") != true) return null;
+        if (model.Value.Page?.Items.Any(item => item.Id == handle.Value && item.Available) != true) return null;
         try
         {
             var thumbnail = await HostServices.CaptureLibrary.GetThumbnailAsync(handle.Value, cancellationToken);

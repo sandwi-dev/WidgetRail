@@ -7,6 +7,20 @@ using WidgetRail.FirstPartyWidgets.CaptureLibrary;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
+if (args is ["--video-thumbnail", var syntheticClip, var output])
+{
+    syntheticClip = Path.GetFullPath(syntheticClip); output = Path.GetFullPath(output);
+    using var source = File.OpenRead(syntheticClip);
+    var before = await System.Security.Cryptography.SHA256.HashDataAsync(source);
+    var dimensions = await WindowsCaptureImageCodec.CreateThumbnailAsync(syntheticClip, output, default);
+    var bytes = await File.ReadAllBytesAsync(output);
+    Check(new CaptureLibraryThumbnail(dimensions.Width, dimensions.Height, bytes).IsWellFormed(), "Windows video thumbnail is not a bounded PNG");
+    using var original = File.OpenRead(syntheticClip);
+    Check(before.SequenceEqual(await System.Security.Cryptography.SHA256.HashDataAsync(original)), "Thumbnail changed its original video");
+    Console.WriteLine($"PASS Windows video thumbnail {dimensions.Width}x{dimensions.Height}, {bytes.Length} bytes; original unchanged");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Saved originals survive store recreation; repeat saves deduplicate; exports are exact", Persistence),

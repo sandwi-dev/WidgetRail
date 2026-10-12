@@ -10,7 +10,7 @@ namespace WidgetRail.WindowsPerformanceProvider;
 /// One host-owned collector. Enabling is explicit; reads only renew a short
 /// collection lease. The helper can stay idle after consent without tracing.
 /// </summary>
-public sealed class FpsCollectorClient(string executable) : IAsyncDisposable
+public sealed class FpsCollectorClient(string executable, Action<string>? diagnostic = null) : IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -65,6 +65,7 @@ public sealed class FpsCollectorClient(string executable) : IAsyncDisposable
         var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         try
         {
+            diagnostic?.Invoke("collector-launch-requested");
             if (!await PresentMonRunner.VerifyExecutableAsync(Path.Combine(Path.GetDirectoryName(executable)!, "PresentMon.exe"), token).ConfigureAwait(false))
             {
                 lock (_gate) _reading = new("missing", []);
@@ -82,6 +83,7 @@ public sealed class FpsCollectorClient(string executable) : IAsyncDisposable
             foreach (var value in new[] { "--pipe", name, "--parent", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), "--nonce", nonce })
                 info.ArgumentList.Add(value);
             using var helper = Process.Start(info) ?? throw new IOException("Collector launch failed.");
+            diagnostic?.Invoke($"collector-launched child={helper.Id}");
             token.ThrowIfCancellationRequested();
             using var connect = CancellationTokenSource.CreateLinkedTokenSource(token);
             connect.CancelAfter(TimeSpan.FromSeconds(15));
@@ -100,17 +102,20 @@ public sealed class FpsCollectorClient(string executable) : IAsyncDisposable
                 await CollectorProtocol.WriteAsync(pipe, new CollectorCommand(collect), heartbeat.Token).ConfigureAwait(false);
                 var reading = await CollectorProtocol.ReadAsync<CollectorReading>(pipe, heartbeat.Token).ConfigureAwait(false);
                 CollectorProtocol.Validate(reading);
+                foreach (var message in reading.Diagnostics) diagnostic?.Invoke(message);
                 lock (_gate) { _reading = reading; _receivedAt = Environment.TickCount64; }
                 await Task.Delay(1000, token).ConfigureAwait(false);
             }
         }
         catch (System.ComponentModel.Win32Exception error) when (error.NativeErrorCode == 1223)
         {
+            diagnostic?.Invoke("collector-elevation-declined");
             lock (_gate) _reading = new("declined", []);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or
             OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException)
         {
+            diagnostic?.Invoke($"collector-disconnected type={error.GetType().Name} hresult={error.HResult:X8} shutdown={token.IsCancellationRequested}");
             lock (_gate) _reading = new(token.IsCancellationRequested ? "idle" : "failed", []);
         }
     }

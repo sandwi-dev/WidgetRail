@@ -37,6 +37,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Malformed CSV and non-finite metrics are rejected", Malformed),
     ("Frame storage remains bounded", Bounded),
     ("Collector protocol enforces numeric-only result bounds", Protocol),
+    ("Collector diagnostics are bounded sanitized and rotated without privileged writes", Diagnostics),
     ("Rolling lows use the slowest individual frames, not sampled FPS", FrameStatistics),
     ("The sixty-second window removes old stutters", HistoryExpiry),
     ("On-demand native sampling is cached and warms again after idle", NativeSampling),
@@ -132,11 +133,34 @@ static async Task Protocol()
     var parsed = await CollectorProtocol.ReadAsync<CollectorReading>(memory, default);
     CollectorProtocol.Validate(parsed);
     foreach (var bad in new[] { valid with { State = "private/path" }, valid with { Processes = [new(0, 60, 1)] },
-        valid with { Processes = [new(123, double.NaN, 1)] }, valid with { Processes = [new(123, 60, 1), new(123, 30, 1)] } })
+        valid with { Processes = [new(123, double.NaN, 1)] }, valid with { Processes = [new(123, 60, 1), new(123, 30, 1)] },
+        valid with { Diagnostics = [new string('x', 1025)] }, valid with { Diagnostics = ["bad\nline"] },
+        valid with { Diagnostics = Enumerable.Repeat("bounded", 17).ToArray() } })
     {
         try { CollectorProtocol.Validate(bad); throw new Exception("Bad numeric report accepted"); }
         catch (IOException) { }
     }
+}
+static async Task Diagnostics()
+{
+    var buffer = new FpsDiagnosticBuffer();
+    for (var i = 0; i < 30; i++) buffer.Write($"event={i} error at C:\\private\\secret-file\r\n");
+    var messages = buffer.Drain();
+    Check(messages.Length == 16 && messages[0].StartsWith("event=14", StringComparison.Ordinal), "Diagnostic queue is not bounded");
+    Check(messages.All(message => !message.Contains("private") && !message.Any(char.IsControl)), "Private paths or newlines leaked");
+    Check(buffer.Drain().Length == 0, "Diagnostics replayed after draining");
+    var reading = new CollectorReading("collecting", []) { Diagnostics = messages };
+    using var memory = new MemoryStream();
+    await CollectorProtocol.WriteAsync(memory, reading, default); memory.Position = 0;
+    var restored = await CollectorProtocol.ReadAsync<CollectorReading>(memory, default);
+    CollectorProtocol.Validate(restored); Check(restored.Diagnostics.SequenceEqual(messages), "Diagnostic transport changed entries");
+    var folder = Path.Combine(Path.GetTempPath(), "wrail-fps-log-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(folder);
+    var path = Path.Combine(folder, "fps.log");
+    await File.WriteAllTextAsync(path, new string('x', 128 * 1024));
+    new FpsDiagnosticLog(path).Write("bounded entry");
+    Check(new FileInfo(path).Length < 2048 && new FileInfo(path + ".previous").Length == 128 * 1024, "Log rotation failed");
+    File.Delete(path); File.Delete(path + ".previous"); Directory.Delete(folder);
 }
 static async Task NativeSampling()
 {

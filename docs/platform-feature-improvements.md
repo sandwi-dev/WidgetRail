@@ -736,3 +736,30 @@ of these new changes. No scope item is complete solely because it is planned.
   source/packaging commits both match `9fc74116`. Installer metadata and checksums
   accompany them. This documentation checkpoint is subsequent to the build.
 - No installer executed, no push/tag/release created, and no worktrees removed.
+
+### Capture viewer polish and FPS diagnostics — in progress
+
+- User requested cleaner Capture Library cards, native video thumbnails, a proper
+  image viewer, responsive inline/expanded video, and reasonable FPS diagnostics.
+  Authorized closing the failing installed app for validation and relaunching a
+  candidate. Branch `codex/capture-viewer-polish` starts from accepted main b81cc6d9.
+- Windows thumbnail service now produces clip frames through the existing bounded
+  PNG cache/lease path. Library cards omit duplicate names and verbose size text.
+  Preview height grows with its viewport. Images use shared native zoom/pan/fit/
+  expand controls, preserving capture authority and full-resolution metadata.
+- Explicit card sizing and dialog content-viewport constraints keep transport
+  controls inside the expanded player. Volume no longer stretches across the card.
+- FPS diagnostics: bounded helper queue over protocol v3; only the normal Bridge
+  writes rotating 128-KiB logs. Collection behavior and its 120-second restart policy
+  are unchanged. No frame CSV, nonce or capture contents are logged.
+- Evidence `artifacts/capture-viewer-polish`: Capture Library 22/22, telemetry 10/10,
+  native media 36/36; actual Windows clip thumbnail 210x144 PNG, 1974 bytes, original
+  hash unchanged. Debug frontend clean; expanded native screenshot at 225% scaling
+  shows visible transport. Initial fixture used a relative StorageFile path; fixed
+  the fixture to resolve absolute paths. Initial frontend command lacked native
+  paths; reused matching clean-built native DLLs (no native source changes).
+- Installed PID 20992 closed normally with user authorization; native validation
+  PID 53476 currently open. Next: final review/clean commit, assemble both editions,
+  seed one synthetic video in the disposable Library profile, verify real widget
+  thumbnail and responsive preview, then launch normal-profile candidate. Do not
+  merge, push, create installers/releases, or remove worktrees for this request.

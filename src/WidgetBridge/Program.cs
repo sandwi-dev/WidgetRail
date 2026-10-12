@@ -108,7 +108,8 @@ internal static class Program
                 displays: new WidgetRail.WindowsDisplayProvider.WindowsDisplayProfilesBackend(
                     settingsPaths.RootDirectory, Path.Combine(AppContext.BaseDirectory, "WidgetBridge.exe")),
                 performance: new WidgetRail.WindowsPerformanceProvider.WindowsPerformanceBackend(applicationBackend,
-                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Performance", "PerformanceCollector.exe"))),
+                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Performance", "PerformanceCollector.exe")),
+                    new WidgetRail.PerformanceTelemetry.FpsDiagnosticLog(Path.Combine(settingsPaths.RootDirectory, "diagnostics", "fps-collector.log")).Write),
                 captureLibrary: new CaptureLibraryStore(Path.Combine(settingsPaths.RootDirectory, "capture-library"),
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "WidgetRail", "Captures"),
                     WindowsCaptureImageCodec.CreateContextAsync, WindowsCaptureImageCodec.CreateThumbnailAsync));
