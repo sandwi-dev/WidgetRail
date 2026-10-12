@@ -1003,3 +1003,25 @@ of these new changes. No scope item is complete solely because it is planned.
   bounds without browser unloads or reattachment. Visual inspection confirms
   the menu draws above the video (`artifacts/radial-media-layering/radial-over-video.png`).
   The Debug build passes with zero warnings/errors.
+
+### Native video retained fullscreen surface (2026-10-12)
+
+- Reproduced the native player's boundary shrink with a high-contrast moving
+  test video and desktop capture at approximately 59 fps. Four expansion/return
+  cycles unloaded the MediaPlayerElement eight times; an inspected return frame
+  briefly shrank below the inline size despite correct final geometry.
+- Native video now shares the renamed MediaPresentationStage with embedded video.
+  The video renderer stays attached at one aspect-fit render size; the shared
+  fullscreen coordinator animates its stage with the native XAML motion path.
+  Transport chrome remains independently placed and themed. Other resident
+  surfaces hide while one is expanded. The SDK and decoder residency budget are
+  unchanged. Source retirement and disposal release the resident stage.
+- The new opt-in native transition probe checks every sampled frame for stable
+  parent/render size, verifies playback and focus, and restores exact inline
+  bounds. Four paused/playing cycles pass nine checks with zero unloads. The
+  recorded boundary frames no longer show the reproduced undersize jump.
+- Validation: 79 native media/image checks and 15 real YouTube checks pass,
+  including radial overlap. The Debug build has zero warnings/errors. Evidence
+  is in `artifacts/native-resident-transition` (baseline-01, final-01,
+  regression-final) and `artifacts/youtube-transition-handoff/native-shared-stage-final`.
+  Physical acceptance remains with the user.

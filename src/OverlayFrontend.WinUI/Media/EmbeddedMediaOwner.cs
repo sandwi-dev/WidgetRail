@@ -22,7 +22,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         internal CancellationTokenSource Lifetime { get; } = new();
         internal WidgetPresentationEmbeddedMediaDocument? Document;
         internal EmbeddedMediaSurface? Surface;
-        internal EmbeddedMediaStage? Stage;
+        internal MediaPresentationStage? Stage;
         internal Task? Resolving;
         internal bool IsResolving;
         internal long AttemptSequence;
@@ -51,7 +51,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     internal string? GetFailure(string widgetId) => failures.GetValueOrDefault(widgetId);
     internal int ResidentCount => entries.Count;
     internal int BrowserCreationCount { get; private set; }
-    internal Func<double, EmbeddedMediaStage>? CreateStage { get; set; }
+    internal Func<double, MediaPresentationStage>? CreateStage { get; set; }
 #if ENABLE_WIDGET_VALIDATION
     internal Microsoft.UI.Xaml.Controls.WebView2? BrowserForValidation(string id) => entries.GetValueOrDefault(id)?.Surface?.Element as Microsoft.UI.Xaml.Controls.WebView2;
     internal Grid? MediaHostForValidation(string id) => entries.GetValueOrDefault(id)?.Stage?.SurfaceHost;

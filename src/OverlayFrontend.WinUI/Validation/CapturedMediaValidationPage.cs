@@ -24,6 +24,14 @@ internal sealed partial class CapturedMediaValidationPage : Page
         {
             media.Height = Math.Max(180, ActualHeight - 48);
             media.UpdateLayout();
+            if (Environment.GetCommandLineArgs().Contains("--native-transition-probe"))
+            {
+                media.Width = 760; media.Height = 600;
+                media.HorizontalAlignment = HorizontalAlignment.Left; media.VerticalAlignment = VerticalAlignment.Bottom;
+                media.UpdateLayout();
+                await media.ValidateNativeTransitionsAsync(mp4, result);
+                return;
+            }
             var checks = new List<string>(); string? error = null;
             try
             {

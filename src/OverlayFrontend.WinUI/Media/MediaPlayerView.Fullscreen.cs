@@ -18,14 +18,21 @@ internal sealed partial class MediaPlayerView
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(video, "MediaPlayer.Video.Viewport");
         video.UseSystemFocusVisuals = false;
         card.PointerMoved += (_, _) => { if (IsVideo && IsExpanded) videoChrome.Reveal(); };
+        video.PointerMoved += (_, _) => { if (IsVideo && IsExpanded) videoChrome.Reveal(); };
         video.PointerPressed += (_, _) => { if (input) { video.Focus(FocusState.Pointer); videoChrome.Reveal(); } };
+        stage.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        stage.PointerPressed += (_, _) => { if (input && IsVideo && !IsExpanded) PreferredFocus.Focus(FocusState.Pointer); };
         video.GotFocus += (_, _) => InteractionChanged?.Invoke();
-        card.KeyDown += (_, args) =>
+        card.KeyDown += OnMediaKeyDown;
+        // Resident video is a sibling of the chrome, so its keys do not bubble through the card.
+        video.KeyDown += OnMediaKeyDown;
+        void OnMediaKeyDown(object sender, KeyRoutedEventArgs args)
         {
+            if (args.Handled) return;
             if (Input.GamepadKeyBoundary.Owns(this, args) || !input) return;
             if (args.Key == Windows.System.VirtualKey.Space && IsVideo) { Toggle(); args.Handled = true; }
             if (IsVideo && IsExpanded) videoChrome.Reveal();
-        };
+        }
     }
     private bool RevealVideoControls()
     {
@@ -42,6 +49,7 @@ internal sealed partial class MediaPlayerView
         var imageState = RememberImageViewport();
         changingPlacement = true;
         expandedHost = host;
+        videoStage?.EnterFullscreen();
         Content = null;
         SetExpandedLayout(true);
         return host.ShowAsync(new(this, card, Handle, direction => MoveFocus(direction),
@@ -51,6 +59,7 @@ internal sealed partial class MediaPlayerView
                 // first arrange. Reconcile against the settled dimensions.
                 RestoreImageViewport(imageState);
                 changingPlacement = false;
+                if (videoStage is not null) videoStage.IsHitTestVisible = input;
                 if (input && !disposed) (previous is { IsEnabled: true, Visibility: Visibility.Visible } ? previous : PreferredFocus).Focus(FocusState.Keyboard);
             },
             () =>
@@ -60,6 +69,7 @@ internal sealed partial class MediaPlayerView
                 expandedHost = null;
                 SetExpandedLayout(false);
                 if (!disposed) Content = card;
+                videoStage?.SetSlot(stage);
                 InteractionChanged?.Invoke();
             },
             () =>
@@ -71,8 +81,9 @@ internal sealed partial class MediaPlayerView
                 (previous is { IsEnabled: true, Visibility: Visibility.Visible } ? previous : PreferredFocus).Focus(FocusState.Keyboard);
             }, PanImage, () => changingPlacement = false, Origin: origin,
             Prepare: () => RestoreImageViewport(imageState), Chrome: [toolbar, imageTools], UseXamlTransform: IsVideo,
-            MediaBounds: IsVideo ? () => MediaTransitionGeometry.Fit(video.TransformToVisual(card)
-                .TransformBounds(new(0, 0, video.ActualWidth, video.ActualHeight)), VideoAspectRatio) : null));
+            MediaBounds: IsVideo ? () => videoStage?.VideoBounds ?? MediaTransitionGeometry.Fit(video.TransformToVisual(card)
+                .TransformBounds(new(0, 0, video.ActualWidth, video.ActualHeight)), VideoAspectRatio) : null,
+            MotionContent: videoStage));
     }
 
     private double VideoAspectRatio => player?.PlaybackSession is { NaturalVideoWidth: > 0, NaturalVideoHeight: > 0 } playback
@@ -84,6 +95,8 @@ internal sealed partial class MediaPlayerView
         card.Padding = new(expanded ? 0 : 8);
         card.BorderThickness = new(expanded ? 0 : 1);
         card.CornerRadius = expanded ? new(0) : inlineRadius;
+        card.Background = expanded && videoStage is not null ? null : normalBrush;
+        if (videoStage is not null) videoStage.IsHitTestVisible = false;
         Grid.SetRowSpan(stage, expanded ? 2 : 1);
         foreach (var chrome in new FrameworkElement[] { toolbar, imageTools })
         {

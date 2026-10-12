@@ -10,7 +10,7 @@ internal sealed partial class EmbeddedMediaOwner
     private WidgetMediaPresentation? fullscreen;
     internal event Action? FullscreenChanged;
     internal string? FullscreenWidgetId => fullscreen?.Document.Authority.WidgetId;
-    internal EmbeddedMediaStage? FullscreenStage => FullscreenWidgetId is { } id ? entries.GetValueOrDefault(id)?.Stage : null;
+    internal MediaPresentationStage? FullscreenStage => FullscreenWidgetId is { } id ? entries.GetValueOrDefault(id)?.Stage : null;
     internal Microsoft.UI.Xaml.FrameworkElement? FullscreenOrigin => FullscreenWidgetId is { } id ? MatchingViewport(id)?.Element.SurfaceHost : null;
     internal bool FullscreenCommandPending => fullscreen is not null &&
         entries.GetValueOrDefault(fullscreen.Document.Authority.WidgetId)?.Surface?.IsCommandPending == true;

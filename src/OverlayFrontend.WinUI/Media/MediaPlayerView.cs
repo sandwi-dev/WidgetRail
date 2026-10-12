@@ -129,8 +129,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         };
         timer = DispatcherQueue.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(250);
         timer.Tick += (_, _) => Refresh();
-        Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.MediaPlayer(this); if (active) timer.Start(); };
-        Unloaded += (_, _) => { timer.Stop(); videoChrome.Stop(); player?.Pause(); theme?.Dispose(); theme = null; };
+        Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.MediaPlayer(this); EnsureVideoStage(); if (active) timer.Start(); };
+        Unloaded += (_, _) => { timer.Stop(); videoChrome.Stop(); player?.Pause(); ReleaseVideoStage(); theme?.Dispose(); theme = null; };
     }
     internal void SetActive(bool value, bool acceptsInput)
     {
@@ -185,12 +185,14 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
                 ownsPlayerSlot = true;
                 player = new MediaPlayer { AutoPlay = false };
                 ApplyOptions(next.Options);
+                EnsureVideoStage();
                 source = MediaSource.CreateFromUri(uri); player.Source = source; video.SetMediaPlayer(player);
                 player.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() => { if (!disposed && !token.IsCancellationRequested) Fail(); });
                 player.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
                 {
                     if (disposed || token.IsCancellationRequested) return;
                     if (player is not null) player.PlaybackSession.PlaybackRate = requestedRate;
+                    EnsureVideoStage();
                     status.Visibility = Visibility.Collapsed;
                     if (playbackMemory is { } saved && definition is { } latest && saved.Definition.Source == latest.Source && saved.Definition.Revision == latest.Revision && player is { } resumed)
                     {
@@ -378,7 +380,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         Windows.UI.Text.FontWeight weight, FontFamily? font, double radius)
     {
         normalBrush = background; selectedBrush = selected;
-        card.Background = background; card.BorderBrush = border; inlineRadius = new(radius); card.CornerRadius = IsExpanded ? new(0) : inlineRadius;
+        card.Background = IsExpanded && videoStage is not null ? null : background;
+        card.BorderBrush = border; inlineRadius = new(radius); card.CornerRadius = IsExpanded ? new(0) : inlineRadius;
         toolbar.Background = imageTools.Background = background;
         toolbar.CornerRadius = imageTools.CornerRadius = new(radius);
         imageZoom.Foreground = muted; status.Foreground = foreground; time.Foreground = muted;
@@ -411,7 +414,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     }
     private void ReleasePlayer()
     {
-        try { video.SetMediaPlayer(null); player?.Dispose(); source?.Dispose(); }
+        try { video.SetMediaPlayer(null); player?.Dispose(); source?.Dispose(); ReleaseVideoStage(); }
         finally
         {
             player = null; source = null;

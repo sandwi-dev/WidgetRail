@@ -105,7 +105,7 @@ internal sealed partial class OverlayShellPage
                     phase = "clip-half";
                     inlineSlot.Clip = new RectangleGeometry { Rect = new(0, 0, inlineSlot.ActualWidth / 2, inlineSlot.ActualHeight) };
                     await Task.Delay(450);
-                    var stage = (EmbeddedMediaStage)((FrameworkElement)browser.Parent).Parent;
+                    var stage = (MediaPresentationStage)((FrameworkElement)browser.Parent).Parent;
                     var clipped = stage.TransformToVisual(this).TransformBounds(((RectangleGeometry)stage.Clip).Rect);
                     if (Math.Abs(clipped.Width - inlineSlot.ActualWidth / 2) > 1) throw new InvalidOperationException("Resident video does not follow slot clipping.");
                     checks.Add("Resident pixels follow the authored slot's clip");

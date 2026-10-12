@@ -56,10 +56,11 @@ internal sealed partial class MediaFullscreenLayer : Grid
 
     internal void Attach(Grid root) { root.SetValue(HostProperty, this); root.Children.Add(this); }
     internal void Park(FrameworkElement content) => parking.Children.Add(content);
-    internal EmbeddedMediaStage CreateMediaStage(double aspectRatio)
+    internal MediaPresentationStage CreateMediaStage(double aspectRatio)
     {
-        var stage = new EmbeddedMediaStage(aspectRatio);
+        var stage = new MediaPresentationStage(aspectRatio);
         Children.Insert(Children.IndexOf(backdrop) + 1, stage);
+        stage.SetCovered(IsOpen);
         return stage;
     }
     internal static MediaFullscreenLayer? Find(DependencyObject source)
@@ -74,6 +75,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
         if (IsOpen) throw new InvalidOperationException("A media presentation is already expanded.");
         var version = ++generation;
         current = presentation;
+        foreach (var stage in Children.OfType<MediaPresentationStage>())
+            stage.SetCovered(!ReferenceEquals(stage, presentation.MotionContent));
         IsTransitioning = true;
         presentation.Content.IsHitTestVisible = false;
         var name = AutomationProperties.GetName(presentation.Owner as DependencyObject ?? presentation.Content);
@@ -114,6 +117,7 @@ internal sealed partial class MediaFullscreenLayer : Grid
         IsHitTestVisible = false;
         backdrop.Visibility = Visibility.Collapsed;
         previous.Restore();
+        foreach (var stage in Children.OfType<MediaPresentationStage>()) stage.SetCovered(false);
         Changed?.Invoke();
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {

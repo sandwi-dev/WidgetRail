@@ -6,19 +6,20 @@ using Windows.Foundation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Media;
 
-/// <summary>A resident XAML media plane. Fullscreen changes its transform, not the WebView's native attachment.</summary>
-internal sealed partial class EmbeddedMediaStage : Grid, IDisposable
+/// <summary>A resident XAML media plane shared by native and embedded video.
+/// Fullscreen changes its transform, not the renderer's attachment or viewport.</summary>
+internal sealed partial class MediaPresentationStage : Grid, IDisposable
 {
     internal Grid SurfaceHost { get; } = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly CompositeTransform placement = new();
     private Grid? slot;
     private double aspectRatio;
-    private bool fullscreen, disposed, observing;
+    private bool fullscreen, disposed, observing, covered;
     internal bool HasSlot => slot is not null;
     internal bool CanPresent(Grid target) => XamlRoot is null || ReferenceEquals(XamlRoot, target.XamlRoot);
     internal Rect VideoBounds => SurfaceHost.TransformToVisual(this).TransformBounds(new(0, 0, SurfaceHost.ActualWidth, SurfaceHost.ActualHeight));
 
-    internal EmbeddedMediaStage(double aspectRatio)
+    internal MediaPresentationStage(double aspectRatio)
     {
         this.aspectRatio = aspectRatio;
         IsHitTestVisible = false;
@@ -59,6 +60,14 @@ internal sealed partial class EmbeddedMediaStage : Grid, IDisposable
         Visibility = Visibility.Visible;
     }
 
+    internal void SetCovered(bool value)
+    {
+        covered = value;
+        if (value) Visibility = Visibility.Collapsed;
+        else if (fullscreen) Visibility = Visibility.Visible;
+        else ApplyPlacement();
+    }
+
     private void Fit()
     {
         var rect = MediaTransitionGeometry.Fit(new(0, 0, ActualWidth, ActualHeight), aspectRatio);
@@ -97,6 +106,7 @@ internal sealed partial class EmbeddedMediaStage : Grid, IDisposable
     private void ApplyPlacement()
     {
         if (disposed || fullscreen) return;
+        if (covered) { Visibility = Visibility.Collapsed; return; }
         if (slot is not { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } target ||
             Parent is not FrameworkElement root || target.XamlRoot != XamlRoot)
         { Visibility = Visibility.Collapsed; return; }
