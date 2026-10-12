@@ -88,7 +88,7 @@ available. All of this stays inside the host; it does not launch Windows Photos.
 
 Fullscreen media fills the available overlay viewport with aspect-fit rendering.
 Images, native video and embedded video share a GPU scale/position transition,
-with fading controls and backdrop. The default duration is 300 ms, defined by
+with fading controls and backdrop. The default duration is 200 ms, defined by
 `MediaFullscreenLayer.DefaultTransitionDuration` in
 `src/OverlayFrontend.WinUI/Media/MediaFullscreenLayer.Motion.cs`; the host's
 `TransitionDuration` property permits a code-level override. Existing widget

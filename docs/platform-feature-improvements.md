@@ -1025,3 +1025,15 @@ of these new changes. No scope item is complete solely because it is planned.
   is in `artifacts/native-resident-transition` (baseline-01, final-01,
   regression-final) and `artifacts/youtube-transition-handoff/native-shared-stage-final`.
   Physical acceptance remains with the user.
+
+### Accepted media and FPS work integrated (2026-10-12)
+
+- User accepted the capture viewer, FPS collection, unified fullscreen behavior,
+  resident native/embedded video transitions, and shell overlay layer correction
+  for integration into local main.
+- Reduced the shared fullscreen default to 200 ms as requested. The code-level
+  override, widget animation speed, and reduced-motion behavior remain available.
+- Existing validation includes 103 final media/radial checks and visual checks
+  of paused/playing Dawnwalker clips in the complete candidate. The final 300-to-200
+  ms constant change was reviewed with its reference documentation and passes
+  diff checks; the running candidate has not been rebuilt for that tuning change.

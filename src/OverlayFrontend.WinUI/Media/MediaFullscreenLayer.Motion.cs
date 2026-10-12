@@ -12,7 +12,7 @@ internal sealed partial class MediaFullscreenLayer
 {
     // Shared tuning point for images, native video and embedded media.
     // Widget animation speed scales this duration; reduced motion skips it.
-    internal static readonly TimeSpan DefaultTransitionDuration = TimeSpan.FromMilliseconds(300);
+    internal static readonly TimeSpan DefaultTransitionDuration = TimeSpan.FromMilliseconds(200);
     internal TimeSpan TransitionDuration { get; set; } = DefaultTransitionDuration;
     private AppearanceSettings motionAppearance = AppearanceSettings.Default;
     private bool systemAnimations = true;
