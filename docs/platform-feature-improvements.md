@@ -763,3 +763,7 @@ of these new changes. No scope item is complete solely because it is planned.
   seed one synthetic video in the disposable Library profile, verify real widget
   thumbnail and responsive preview, then launch normal-profile candidate. Do not
   merge, push, create installers/releases, or remove worktrees for this request.
+- Assembled review confirmed actual video thumbnail pixels and unclipped expanded
+  controls. Inline review still scrolled its title because 64vh did not reserve
+  metadata/actions. Follow-up uses a finite Stack with a growing player row;
+  the library grid remains scrollable. Rechecking the complete page bounds next.

@@ -216,7 +216,10 @@ public sealed partial class CaptureLibraryWidget : Widget
                 items.Add(PermissionsButton());
             }
         }
-        var root = UI.VerticalScroll("capture-library.page", items.ToArray()).InputScope("capture-library.page").Classes("capture-library");
+        ContainerElement root = state.Preview is not null || state.Detail
+            ? UI.Stack("capture-library.page", items.ToArray())
+            : UI.VerticalScroll("capture-library.page", items.ToArray());
+        root = root.InputScope("capture-library.page").Classes("capture-library");
         if (state.Preview is not null || state.Detail) root = root.Shortcut(ControllerButton.B, "capture-library.back", label: "Library");
         else if (!state.Busy) root = root.Shortcut(ControllerButton.Y, "capture-library.photo", label: "Screenshot").Shortcut(ControllerButton.X, "capture-library.video", label: "Record clip");
         if (state.Preview is null && !state.Detail && !state.Busy && state.Page is { } pages)
