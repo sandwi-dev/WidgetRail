@@ -124,6 +124,18 @@ internal sealed partial class OverlayShellPage
                     else inlineSlot.SetValue(RenderTransformProperty, oldTransform);
                 }
                 phase = "restored"; await Task.Delay(450);
+                phase = "radial-over-media";
+                PrepareRadialBackEntry(); SetInteractive(false); FocusTray();
+                await Until(() => RadialOpen && radialView is { IsLoaded: true, Visibility: Visibility.Visible });
+                await Task.Delay(600);
+                if (!ReferenceEquals(radialView!.Parent, ShellOverlayLayer) || Canvas.GetZIndex(ShellOverlayLayer) <= Canvas.GetZIndex(fullscreenLayer))
+                    throw new InvalidOperationException("Shell chooser is not above the resident media layer.");
+                var wheelBounds = radialView.TransformToVisual(this).TransformBounds(new(0, 0, radialView.ActualWidth, radialView.ActualHeight));
+                var videoBounds = browser.TransformToVisual(this).TransformBounds(new(0, 0, browser.ActualWidth, browser.ActualHeight));
+                wheelBounds.Intersect(videoBounds);
+                if (wheelBounds.IsEmpty || wheelBounds.Width <= 0 || wheelBounds.Height <= 0 || unloads != 0 || !ReferenceEquals(browser.Parent, parent))
+                    throw new InvalidOperationException("Radial layering probe must overlap uninterrupted resident video.");
+                checks.Add("Radial chooser overlaps above resident video without reattaching the browser");
                 Write(true, null);
             }
             catch (Exception error) { Write(false, error.ToString()); }

@@ -75,5 +75,8 @@
             </Grid>
         </Grid>
         </Grid>
+        <!-- Shell overlays must paint above resident media, while retaining the
+             same content-band geometry as the widget layout. -->
+        <Grid x:Name="ShellOverlayLayer" Canvas.ZIndex="10" VerticalAlignment="Top" />
     </local:ProductionShellRoot>
 </Page>

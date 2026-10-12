@@ -24,7 +24,7 @@ internal sealed partial class OverlayShellPage
     {
         radialView = new(ResolveTrayIconAsync) { Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Bottom,
             HorizontalAlignment = HorizontalAlignment.Center, Margin = new(0, 0, 0, 12) };
-        ProductionLayout.Children.Add(radialView);
+        ShellOverlayLayer.Children.Add(radialView);
         WidgetHost.GettingFocus += (_, args) =>
         {
             if (RadialOpen && radialView.IsLoaded && radialSelection is { } selected)

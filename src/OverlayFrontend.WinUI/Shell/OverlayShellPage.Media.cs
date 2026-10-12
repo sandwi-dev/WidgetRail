@@ -78,6 +78,7 @@ internal sealed partial class OverlayShellPage
     private void RefreshFullscreenChrome()
     {
         var showing = fullscreenLayer.IsOpen;
+        ShellOverlayLayer.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
         surface?.SettleWidgetResize();
         WidgetHost.IsEnabled = Tray.IsEnabled = !showing;
         if (showing)

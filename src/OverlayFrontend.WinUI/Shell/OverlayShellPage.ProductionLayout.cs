@@ -29,6 +29,8 @@ internal sealed partial class OverlayShellPage
         ProductionLayout.Margin = new(24 / zoom, 24 / zoom, 24 / zoom, 14 / zoom);
         var available = new SurfaceExtent(Math.Max(1, viewport.Width - 48 / zoom), Math.Max(1, viewport.Height - 38 / zoom));
         var bands = ProductionShellGeometry.Bands(available.Height);
+        ShellOverlayLayer.Margin = ProductionLayout.Margin;
+        ShellOverlayLayer.Height = bands.ContentHeight;
         ProductionLayout.RowDefinitions[1].Height = new(bands.ContentGap);
         ProductionLayout.RowDefinitions[2].Height = new(bands.GuideHeight);
         ProductionLayout.RowDefinitions[3].Height = new(bands.GuideGap);

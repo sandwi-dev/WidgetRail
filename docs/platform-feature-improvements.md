@@ -993,3 +993,13 @@ of these new changes. No scope item is complete solely because it is planned.
   entry/return frames no longer show the reproduced undersize/blank frame;
   `final-youtube-pixel-coverage.json` and `clipping-contact.jpg` preserve the pixel
   checks and visible clipping exercise. Physical acceptance remains with the user.
+
+### Radial chooser above resident video (2026-10-12)
+
+- Moved the radial chooser and widget-opening badge into a shell overlay layer
+  above resident media. It shares the existing content-band bounds and margins,
+  preserving placement and controller navigation, and hides during fullscreen.
+- The real YouTube fixture passes 15 checks, including overlapping radial/video
+  bounds without browser unloads or reattachment. Visual inspection confirms
+  the menu draws above the video (`artifacts/radial-media-layering/radial-over-video.png`).
+  The Debug build passes with zero warnings/errors.

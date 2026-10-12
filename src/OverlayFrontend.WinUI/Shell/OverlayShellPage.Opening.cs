@@ -11,7 +11,7 @@ internal sealed partial class OverlayShellPage
     {
         openingIndicator = new(ResolveTrayIconAsync) { VerticalAlignment = VerticalAlignment.Bottom };
         Canvas.SetZIndex(openingIndicator, 10);
-        ProductionLayout.Children.Add(openingIndicator);
+        ShellOverlayLayer.Children.Add(openingIndicator);
         openingIndicator.SizeChanged += (_, _) => PositionOpeningIndicator();
     }
 
