@@ -89,5 +89,29 @@ reproduce the Fade desktop hole and uneven entry motion on the 4K and top-middle
 
 Focused validation: 19 motion policy tests, 62 native page checks (including
 deferred decoder startup), and 79 existing media/fullscreen checks passed.
-Fade's saved-clip frame inspection shows the desktop hole is gone. Complete
-candidate recordings and physical acceptance are still pending.
+Fade's saved-clip frame inspection shows the desktop hole is gone.
+
+The complete candidate built from `c9d1ad14` is under
+`artifacts/page-transition-polish/candidate/0.1.0-preview.30`; both production and
+developer catalog checks passed (13/17 widgets). `Reproduce.ps1` exercised both
+saved clips paused and playing for all six page preferences. `Stress.ps1` repeated
+the top-middle clip 20 times, including rapid Back during loading/navigation.
+
+The old candidate's `baseline-stress.mp4` reproduces full-monitor first-frame
+flashes. The same run on the corrected candidate (`final-stress.mp4`) has none.
+The old video plane could become visible before its first positive native layout;
+the new visibility ordering closes that interval. Peripheral frame comparison and
+contact sheets are saved beside the recordings (`*-inspection.json`, `*-outside.jpg`).
+These are display recordings, not just XAML geometry assertions; they requested
+120 fps but encoded roughly 65–70 fps on this system, so they do not prove every
+display refresh was sampled.
+
+In the 24-transition diagnostic comparison for Slide/Fade/Vertical slide, the
+median per-transition maximum UI frame gap dropped from 30.63 to 16.63 ms; worst
+gap from 56.52 to 39.37 ms, and worst animation-update work from 22.02 to 0.26 ms.
+The comparison includes recording overhead and different Debug/Release builds;
+it is local diagnostic evidence, not a general performance guarantee. Timing
+samples are in `frame-timings.json`. Film inspection also covers Reveal, Cover
+slide, and None. Original Vertical slide preference was restored.
+
+User physical acceptance remains pending. No merge, push, installer or release.
