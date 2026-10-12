@@ -940,3 +940,22 @@ of these new changes. No scope item is complete solely because it is planned.
   fixture passes 81 checks. Build completes with zero warnings/errors. Manual
   review covered transform restoration, cancellation, retained playback,
   reduced motion and renderer-specific routing within the shared host.
+
+### Fullscreen video endpoint geometry (2026-10-12)
+
+- The shrink-then-grow observation identified inconsistent geometry: inline
+  embedded browsers stretched to their slot while fullscreen fitted the video,
+  and the animation scaled the outer fullscreen area instead of the video.
+- Inline media now keeps its authored slot and centers an aspect-fit browser
+  inside the content area. Shared transition geometry maps the fitted video
+  rectangle, including offsets, to the fitted inline rectangle. Native video
+  supplies the same geometry using its natural video dimensions. Images keep
+  their existing zoom/pan behavior. Attachment, focus and document lifetimes
+  have not been changed.
+- Added endpoint checks for wide/tall fullscreen areas, actual embedded/native
+  endpoints and inline aspect preservation. The 30 fps embedded recording in
+  `artifacts/media-transition-geometry` reaches 448 px on the last animated
+  frame and remains 448 px after return, with no end-of-animation growth.
+  `return-pixel-bounds.json` records the measured frame bounds. Physical YouTube
+  confirmation remains with the user.
+- Final validation: 19 embedded-media checks, 79 native-media checks and 81 cross-root transfer checks pass. Both fixture processes remained responsive and closed normally. The Debug build has zero warnings/errors; review confirmed geometry-only changes with existing attachment and return ordering preserved.

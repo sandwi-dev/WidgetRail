@@ -29,6 +29,7 @@ internal sealed partial class OverlayShellPage
                 var core = browser.CoreWebView2;
 #pragma warning restore WUI4001
                 var creations = mediaOwner!.BrowserCreationCount;
+                Check(MediaFullscreenLayer.ValidateLetterboxedEndpoints(), "Letterboxed animation endpoints match video bounds in wide and tall containers");
                 await Click("media-shell.play");
                 await MediaUntil("!m.paused"); Check(true, "real sample Play starts local video through normalized A");
                 await Click("media-shell.play");
@@ -60,9 +61,14 @@ internal sealed partial class OverlayShellPage
                         (WidgetSurface.Width > widgetExtent.Width + 1 || WidgetSurface.Height > widgetExtent.Height + 1)) wideReveal = true;
                 });
                 await Click("media-shell.play"); await MediaUntil("!m.paused");
+                var inlineHost = Walk(surface!).OfType<WidgetMediaViewport>().Single().SurfaceHost;
+                Check(Math.Abs(inlineHost.ActualWidth / inlineHost.ActualHeight - 16d / 9) < .01,
+                    "Inline browser viewport keeps the declared video aspect ratio before expansion");
+                var inlineVideo = MediaTransitionGeometry.Fit(fullscreenLayer.BoundsOf(inlineHost)!.Value, 16d / 9);
                 await Click("media-shell.fullscreen");
                 await CheckStableExternalTransition("Playing embedded video entrance");
                 await Until(() => IsMediaFullscreen && !fullscreenLayer.IsTransitioning);
+                Check(fullscreenLayer.MediaEndpointMatches(inlineVideo), "Embedded video animation meets the exact fitted inline rectangle");
                 Check(Math.Abs(WidgetSurface.Width - widgetExtent.Width) < 1 && Math.Abs(WidgetSurface.Height - widgetExtent.Height) < 1,
                     "fullscreen keeps the retained widget at its authored dimensions on an ultrawide viewport");
                 Check(ReferenceEquals(browser.Parent, fullscreenView.SurfaceHost), "fullscreen moves the existing browser");

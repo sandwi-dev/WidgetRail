@@ -102,6 +102,8 @@ XAML can synchronize the media surface with its container. Images and embedded
 video retain their compositor animation. This renderer distinction is host-owned;
 it does not enable frame-server playback, pause the video, capture screenshots,
 or introduce a new widget-authoring option.
+Transition endpoints match the fitted video rectangles, including letterbox
+offsets, rather than the surrounding card or fullscreen window dimensions.
 A floating toolbar overlays the media, with safe margins for focus outlines;
 there is no dialog title, fixed 1280-by-900 cap, or nested card border. Video controls
 auto-hide while playing, park focus on the media, and reveal without executing a

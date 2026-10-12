@@ -59,11 +59,10 @@ internal sealed partial class MediaFullscreenLayer
         var height = Math.Max(1, presentation.Content.ActualHeight);
         if (presentation.Origin is not { Width: > 0, Height: > 0 } rect)
             return WidgetMotionPose.Identity with { Scale = new(.9f, .9f, 1), Translation = new((float)width * .05f, (float)height * .05f, 0), Opacity = 0 };
-        // Uniform scaling keeps images/video undistorted when the inline card
-        // has a different aspect ratio from the fullscreen viewport.
-        var scale = (float)Math.Min(rect.Width / width, rect.Height / height);
-        return WidgetMotionPose.Identity with { Scale = new(scale, scale, 1),
-            Translation = new((float)(rect.X + (rect.Width - width * scale) / 2), (float)(rect.Y + (rect.Height - height * scale) / 2), 0) };
+        // Map the rendered media, not the letterboxed outer fullscreen layer.
+        var media = presentation.MediaBounds?.Invoke() is { Width: > 0, Height: > 0 } bounds
+            ? bounds : new Rect(0, 0, width, height);
+        return MediaTransitionGeometry.Match(media, rect);
     }
 
     private void PrepareEntrance(Presentation presentation, long version)

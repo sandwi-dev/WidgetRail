@@ -884,6 +884,9 @@ document, and playback session.
 Entering and leaving preserve the sealed adapter, controller, document, and
 playback session. The host owns safe-work-area placement, aspect fit, DPI,
 native guide, focus, accessibility, and return to the authored layout.
+The inline `MediaViewport` keeps its authored layout slot, but centers its
+browser surface at the session's declared `AspectRatio` inside that slot.
+Letterboxing keeps the inline and fullscreen video shapes consistent.
 
 Offer entry with the reserved `host.embeddedMediaSession.enterFullscreen` action; the
 host leaves the mode on B without routing it to the widget, and View remains

@@ -160,10 +160,12 @@ internal sealed partial class MediaPlayerView
         Toggle(); await Until(() => IsPlaying);
         var retained = player;
         Check(speed.Focus(FocusState.Keyboard), "Speed control accepts focus before expansion");
+        var inlineVideo = MediaTransitionGeometry.Fit(fullscreen.BoundsOf(video)!.Value, VideoAspectRatio);
         var expanded = ToggleExpandedAsync();
         await Until(() => expandedHost is { IsLoaded: true, IsOpen: true });
         await CheckStableVideoTransition("Playing video entrance");
         await Until(() => !changingPlacement && expandedHost is { IsTransitioning: false });
+        Check(fullscreen.MediaEndpointMatches(inlineVideo), "Native video animation endpoint matches its fitted inline pixels rather than the card");
         Check(card.Parent is MediaFullscreenLayer, "Expanded viewer uses the shared shell layer without dialog framing");
         Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Expansion preserves the focused transport control; actual=" +
             (FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focus ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(focus) : "none"));

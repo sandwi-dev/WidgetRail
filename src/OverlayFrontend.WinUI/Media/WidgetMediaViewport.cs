@@ -9,7 +9,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 /// <summary>Native layout slot for browser pixels. SDK media viewports are deliberately not focus targets.</summary>
 internal sealed partial class WidgetMediaViewport : ContentControl
 {
-    internal Grid SurfaceHost { get; } = new();
+    internal Grid SurfaceHost { get; } = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Grid layers = new();
     private readonly ProgressRing loading = new() { Width = 32, Height = 32, IsActive = false, Visibility = Visibility.Collapsed };
     private readonly TextBlock pinnedNotice = new() { Text = "Media is playing in the pinned window", TextWrapping = TextWrapping.Wrap,
         HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
@@ -22,7 +23,8 @@ internal sealed partial class WidgetMediaViewport : ContentControl
 
     public WidgetMediaViewport()
     {
-        var layers = new Grid(); layers.Children.Add(SurfaceHost); layers.Children.Add(loading); layers.Children.Add(pinnedNotice); Content = layers;
+        layers.Children.Add(SurfaceHost); layers.Children.Add(loading); layers.Children.Add(pinnedNotice); Content = layers;
+        layers.SizeChanged += (_, _) => FitSurface();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(loading, "Starting media player");
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -56,7 +58,15 @@ internal sealed partial class WidgetMediaViewport : ContentControl
     {
         Declaration = declaration;
         ScopeActive = scopeActive;
+        FitSurface();
         InvalidateMeasure();
+    }
+
+    private void FitSurface()
+    {
+        var bounds = MediaTransitionGeometry.Fit(new(0, 0, Math.Max(0, layers.ActualWidth), Math.Max(0, layers.ActualHeight)), Declaration?.AspectRatio ?? 16d / 9);
+        SurfaceHost.Width = bounds.Width;
+        SurfaceHost.Height = bounds.Height;
     }
 
     protected override Size MeasureOverride(Size availableSize)

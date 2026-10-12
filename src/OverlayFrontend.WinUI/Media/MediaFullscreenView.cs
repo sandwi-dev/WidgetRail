@@ -16,6 +16,8 @@ internal sealed partial class MediaFullscreenView : Grid
     private readonly Grid area = new();
     private readonly Grid commands = new() { ColumnSpacing = 12, RowSpacing = 8 };
     internal FrameworkElement[] TransitionChrome => [commands, title, progress];
+    internal Windows.Foundation.Rect VideoBounds => SurfaceHost.TransformToVisual(this)
+        .TransformBounds(new(0, 0, SurfaceHost.ActualWidth, SurfaceHost.ActualHeight));
     private int commandColumns;
     private readonly TextBlock title = new() { TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
     private readonly List<(FontIcon Icon, ControllerPrompt Prompt)> prompts = [];

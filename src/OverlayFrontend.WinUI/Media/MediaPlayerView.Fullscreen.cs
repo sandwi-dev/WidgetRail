@@ -37,7 +37,8 @@ internal sealed partial class MediaPlayerView
         if (expandedHost is { } existing) { existing.Close(); return Task.CompletedTask; }
         if (!input || disposed || changingPlacement || MediaFullscreenLayer.Find(this) is not { IsOpen: false } host) return Task.CompletedTask;
         var previous = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as Control;
-        var origin = host.BoundsOf(card);
+        var origin = host.BoundsOf(IsVideo ? video : card);
+        if (IsVideo && origin is { } viewport) origin = MediaTransitionGeometry.Fit(viewport, VideoAspectRatio);
         var imageState = RememberImageViewport();
         changingPlacement = true;
         expandedHost = host;
@@ -69,8 +70,13 @@ internal sealed partial class MediaPlayerView
                 changingPlacement = false;
                 (previous is { IsEnabled: true, Visibility: Visibility.Visible } ? previous : PreferredFocus).Focus(FocusState.Keyboard);
             }, PanImage, () => changingPlacement = false, Origin: origin,
-            Prepare: () => RestoreImageViewport(imageState), Chrome: [toolbar, imageTools], UseXamlTransform: IsVideo));
+            Prepare: () => RestoreImageViewport(imageState), Chrome: [toolbar, imageTools], UseXamlTransform: IsVideo,
+            MediaBounds: IsVideo ? () => MediaTransitionGeometry.Fit(video.TransformToVisual(card)
+                .TransformBounds(new(0, 0, video.ActualWidth, video.ActualHeight)), VideoAspectRatio) : null));
     }
+
+    private double VideoAspectRatio => player?.PlaybackSession is { NaturalVideoWidth: > 0, NaturalVideoHeight: > 0 } playback
+        ? (double)playback.NaturalVideoWidth / playback.NaturalVideoHeight : 16d / 9;
 
     private void SetExpandedLayout(bool expanded)
     {

@@ -45,7 +45,7 @@
     <Page Remove="Validation\**\*.xaml;MainPage.xaml" />
   </ItemGroup>
   <ItemGroup Condition="'$(EnableTrimmedControlValidation)' == 'true' And '$(EnableWidgetValidation)' != 'true'">
-    <Compile Include="Validation\CapturedMediaView.Validation.cs" />
+    <Compile Include="Validation\CapturedMediaView.Validation.cs;Validation\MediaFullscreenLayer.GeometryValidation.cs" />
   </ItemGroup>
   <!-- Small trim-safe native smoke test; excluded from shipping and ordinary fixtures. -->
   <ItemGroup Condition="'$(EnableTrimmedControlValidation)' != 'true' Or '$(EnableWidgetValidation)' == 'true'">
