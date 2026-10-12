@@ -202,7 +202,7 @@ public sealed partial class MainWindow
         validationPlatformActivation = arguments.Contains("--validation-platform-activation");
         if ((arguments.Contains("--shell-no-controller") || arguments.Contains("--validate-production-controller")) &&
             Shell.FrontendArguments.Value(arguments, "--validate-embedded-sample") is { } embeddedResult)
-            page.EnableEmbeddedSampleValidation(embeddedResult);
+            page.EnableEmbeddedSampleValidation(embeddedResult, arguments.Contains("--validate-embedded-fullscreen-only"));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-switches") is { } switchResult)
             page.EnableSwitchValidation(switchResult);
         if (arguments.Contains("--shell-no-controller") && arguments.Contains("--replay-shell-input"))

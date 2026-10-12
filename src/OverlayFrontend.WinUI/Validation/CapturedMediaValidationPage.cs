@@ -17,7 +17,9 @@ internal sealed partial class CapturedMediaValidationPage : Page
     {
         var theme = new NativePopupTheme(); theme.Attach(this); theme.Update(null, AppearanceSettings.Default);
         var media = new MediaPlayerView { Height = 360, Margin = new(24), IsTabStop = true };
-        Content = media;
+        var root = new Grid(); root.Children.Add(media);
+        new MediaFullscreenLayer().Attach(root);
+        Content = root;
         Loaded += async (_, _) =>
         {
             media.Height = Math.Max(180, ActualHeight - 48);
@@ -29,7 +31,7 @@ internal sealed partial class CapturedMediaValidationPage : Page
             if (error is null && Environment.GetCommandLineArgs().Contains("--media-player-preview"))
             {
                 var preview = new MediaPlayerView { Height = Math.Max(180, ActualHeight - 48), Margin = new(24), IsTabStop = true };
-                Content = preview; preview.SetActive(true,true);
+                root.Children.Remove(media); root.Children.Insert(0, preview); preview.SetActive(true,true);
                 var source = new MediaPlayerDefinition(MediaPlayerSource.LocalFile(mp4),new(Muted:true));
                 preview.Apply(_ => Task.FromResult(new HostMediaPlayerSource(source,new Uri(mp4).AbsoluteUri)),source,()=>true);
             }

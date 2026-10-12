@@ -5,7 +5,8 @@ using WidgetRail.WidgetPresentationSession;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
-    private MediaPlayerView? FocusedMediaPlayer => bindings.Values.Select(binding => binding.Element).OfType<MediaPlayerView>().FirstOrDefault(media => media.HasDialog) ??
+    internal bool MoveMediaPointer(short x, short y) => FocusedMediaPlayer?.PanImage(x, y) == true;
+    private MediaPlayerView? FocusedMediaPlayer => bindings.Values.Select(binding => binding.Element).OfType<MediaPlayerView>().FirstOrDefault(media => media.IsExpanded) ??
         (FocusedBinding() is { Element: MediaPlayerView media } binding && Navigable(binding) ? media : null);
     private void UpdateMediaPlayer(MediaPlayerView media, ViewNode node, string scope)
     {

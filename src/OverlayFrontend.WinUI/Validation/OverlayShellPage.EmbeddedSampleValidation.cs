@@ -12,11 +12,11 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     // Opt-in sealed local sample only. Never drives a remote provider or user media.
-    internal void EnableEmbeddedSampleValidation(string path)
+    internal void EnableEmbeddedSampleValidation(string path, bool fullscreenOnly = false)
     {
         Loaded += async (_, _) =>
         {
-            const string id = "widgetrail.samples.embedded-media";
+            const string id = "embedded-media-sample";
             var checks = new List<string>();
             try
             {
@@ -75,6 +75,11 @@ internal sealed partial class OverlayShellPage
                 Check(surface.WidgetResizeStarts == widgetResizeStarts,
                     "fullscreen handoff does not start an ordinary widget resizing animation");
                 Check(mediaOwner.BrowserCreationCount == creations, "fullscreen return retains one browser");
+                if (fullscreenOnly)
+                {
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, checks, error = (string?)null }));
+                    return;
+                }
                 await Click("media-shell.play"); await MediaUntil("!m.paused");
                 await PinMediaAsync(id); await Until(() => pinned?.Media is not null);
                 var pin = pinned!;

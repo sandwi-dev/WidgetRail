@@ -7,10 +7,10 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 
 internal sealed partial class MediaFullscreenView
 {
-    private readonly DispatcherTimer controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private MediaControlsVisibility controlsVisibility = null!;
     private readonly Button videoFocus = new() { Width = 1, Height = 1, Opacity = 0, IsTabStop = false, IsHitTestVisible = false };
     private bool controlsInteractive = true;
-    private bool pointerOverControls;
+
     internal bool ControlsVisible => commands.Visibility == Visibility.Visible;
 
     private void InitializeAutoHide()
@@ -20,11 +20,12 @@ internal sealed partial class MediaFullscreenView
         AutomationProperties.SetName(videoFocus, "Video. Activate to show playback controls");
         AutomationProperties.SetAutomationId(videoFocus, compact ? "Overlay.MediaCompact.VideoFocus" : "Overlay.MediaFullscreen.VideoFocus");
         videoFocus.Click += (_, _) => Enter();
-        controlsTimer.Tick += (_, _) => { if (!pointerOverControls) HideControls(); };
+        controlsVisibility = new([commands, progress, title], () => controlsInteractive && Visibility == Visibility.Visible, ParkControlFocus);
+        controlsVisibility.Initialize();
         PointerMoved += (_, _) => RevealControls();
         PointerPressed += (_, _) => RevealControls();
-        commands.PointerEntered += (_, _) => { pointerOverControls = true; controlsTimer.Stop(); };
-        commands.PointerExited += (_, _) => { pointerOverControls = false; RevealControls(); };
+
+
         KeyDown += (_, args) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;
@@ -41,24 +42,17 @@ internal sealed partial class MediaFullscreenView
     internal void RevealControls()
     {
         if (!controlsInteractive || Visibility != Visibility.Visible) return;
-        commands.Visibility = progress.Visibility = Visibility.Visible;
+        controlsVisibility.Reveal();
         title.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        commands.IsHitTestVisible = true;
-        controlsTimer.Stop();
-        if (IsLoaded && !pointerOverControls) controlsTimer.Start();
     }
 
-    private void HideControls()
+    private void HideControls() => controlsVisibility.Hide();
+
+    private void ParkControlFocus()
     {
-        controlsTimer.Stop();
-        // Preserve the command for restoration, but never leave native focus on
-        // an invisible button or let A accidentally execute that hidden command.
         if (controlsInteractive && XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Button focused && actions.ContainsKey(focused))
             videoFocus.Focus(FocusState.Programmatic);
-        commands.IsHitTestVisible = false;
-        commands.Visibility = title.Visibility = progress.Visibility = Visibility.Collapsed;
     }
-
     private void FocusControls() => (remembered is { IsEnabled: true } ? remembered : back).Focus(FocusState.Keyboard);
 
     internal void MoveFocus(FocusNavigationDirection direction)

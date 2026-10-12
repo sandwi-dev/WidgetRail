@@ -818,3 +818,40 @@ of these new changes. No scope item is complete solely because it is planned.
   and `tests-03.binlog`. Manual C# review covered bounded retention, clock-domain
   alignment, error classification, output draining, and exact-session cleanup.
   No merge or release requested.
+
+### Shared fullscreen media presentation (2026-10-12)
+
+- Replaced native media's ContentDialog expansion with `MediaFullscreenLayer`,
+  the same shell destination now used by embedded media. Source resolution and
+  rendering remain with their existing native/WebView owners. Widget authors
+  keep `UI.MediaPlayer`, its sources/options, and authored inline WRSS sizing;
+  no new protocol or capture-specific fullscreen view was introduced.
+- One fullscreen placement lifetime handles background input exclusion, gesture
+  releases, settled focus restoration and stale transition callbacks. Native
+  playback retains its player, image expansion retains the inspected position
+  and scale, and the ordinary widget retains its dimensions and scroll layout.
+- Fullscreen fills the overlay viewport without the old dialog cap/title/card
+  framing. Floating transport/image controls have safe focus margins. Shared
+  `MediaControlsVisibility` parks focus before hiding controls and prevents A
+  from activating a hidden command. Pausing reveals video controls. Inline X/Y
+  stay available to authors; fullscreen X toggles playback like embedded video.
+- Images have Fit, actual-size/100%, a zoom percentage, mouse drag/wheel zoom,
+  continuous stick pan and directional nudging. Image control layout and video
+  compact controls respond to text sizing. Expansion is offered only where a
+  shell fullscreen destination exists; cross-window pinned promotion is not
+  introduced by this change.
+- Validation evidence: `artifacts/media-fullscreen-unification`. Native checks
+  cover geometry, focus, repeated expansion, input ownership, decoder lifetime
+  and authority revocation. Embedded shell checks pass (13), retaining one browser
+  and the authored widget geometry. Actual Capture Library checked at 3840x2160,
+  225% DPI: inline player 2583x1134, fullscreen 3840x2159, safe right/bottom bounds,
+  Escape/pointer collapse, 144% zoom retention and a 150px mouse drag producing a
+  150px image displacement. Screenshots and JSON receipts are retained.
+- The first embedded test used a stale catalog ID and did not reach playback;
+  its failed fixture needed targeted termination after normal close timed out.
+  The corrected fixture passed and exited normally. Normal profile remains
+  untouched by the synthetic media tests. Final native gate: 56/56 in
+  `native-final-02.json`, including enlarged text, rapid reopen suppression and
+  inline author shortcut preservation. Manual WinUI review covered ownership,
+  source/decoder retention, theme subscriptions, input leases and focus bounds.
+  Publication and launch receipts are kept in the same evidence directory.

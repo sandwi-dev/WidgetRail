@@ -72,7 +72,7 @@ internal sealed partial class MediaFullscreenView : Grid
         SizeChanged += (_, _) => ReflowCommands();
         commands.SizeChanged += (_, _) => ReflowCommands();
         Loaded += (_, _) => { WidgetControllerPrompts.Changed += RefreshPrompts; RefreshPrompts(); };
-        Unloaded += (_, _) => { WidgetControllerPrompts.Changed -= RefreshPrompts; controlsTimer.Stop(); };
+        Unloaded += (_, _) => { WidgetControllerPrompts.Changed -= RefreshPrompts; controlsVisibility.Stop(); };
         KeyDown += (_, args) => { if (args.Key == Windows.System.VirtualKey.Escape) { args.Handled = true; ExitRequested?.Invoke(); } };
         GotFocus += (_, _) => { if (FocusManager.GetFocusedElement(XamlRoot) is Button button && actions.ContainsKey(button)) remembered = button; };
         ReflowCommands();
@@ -110,7 +110,7 @@ internal sealed partial class MediaFullscreenView : Grid
         RevealControls();
         if (focused.IsEnabled) actions[focused]();
     }
-    internal void Hide() { controlsTimer.Stop(); pointerOverControls = false; Visibility = Visibility.Collapsed; }
+    internal void Hide() { controlsVisibility.Stop(); Visibility = Visibility.Collapsed; }
     internal void RegisterChrome(ShellChromeStyles styles)
     {
         // This surface lives outside the widget declaration, but remains inside

@@ -60,24 +60,39 @@ full toolbar.
 - LT/RT seek: half a second for short clips, five seconds for longer media.
 - LB replays; RB toggles looping; R3 expands/collapses.
 - B closes expanded view or volume adjustment, otherwise follows outer navigation.
-- X and Y remain available to the widget, including Game Help's retry/send actions.
+- X and Y remain available to the widget inline, including Game Help's retry/send
+  actions. In fullscreen, X directly toggles playback, matching embedded video.
 
-The expanded view reuses the same player, position and native controls. Hiding the
+The expanded view reuses the same player, position and native controls. It shares
+the shell fullscreen layer, focus handoff and gesture ownership with embedded
+media; it no longer opens a ContentDialog. Expansion/collapse retains the focused
+control after layout settles, including repeated transitions. Hiding the
 presentation pauses playback; passive visible presentations can keep playing.
 Capture expiry/revocation clears already decoded content. Dispose/source replacement
 cancels outstanding loads and releases native player/source objects.
 
-For still images, LT/RT zoom (up to 8× relative to fit), directions pan while the
+For still images, LT/RT zoom, directions pan while the
 image viewport is focused, LB fits the image, and RB switches between the image
 and its toolbar. A activates the focused control, R3 expands/collapses, and B
 closes expansion before returning to ordinary widget navigation. The image keeps
 its aspect ratio; host-issued original-resolution captures retain their supplied
-resolution for zooming. Touch zoom/scroll and native keyboard navigation remain
+resolution for zooming. The focused canvas supports continuous stick panning;
+mouse dragging and wheel zoom are also supported. Fit, actual-size (100%) and a
+zoom percentage are available in the toolbar. Expansion retains the viewed image
+position and scale; Fit remains Fit when the viewport changes. Touch zoom/scroll and native keyboard navigation remain
 available. All of this stays inside the host; it does not launch Windows Photos.
 
-Expanded players constrain their card to the dialog's content viewport, reserving
-space for the toolbar even at high display scaling. Inline height remains authored
-through WRSS; viewport-relative height is available for responsive review pages.
+Fullscreen media fills the available overlay viewport with aspect-fit rendering.
+A floating toolbar overlays the media, with safe margins for focus outlines;
+there is no dialog title, fixed 1280-by-900 cap, or nested card border. Video controls
+auto-hide while playing, park focus on the media, and reveal without executing a
+hidden action. Pausing reveals controls. Image controls remain visible. Inline
+height remains authored through WRSS; viewport-relative height is available for
+responsive review pages. No new SDK declaration or widget-owned fullscreen view
+is required. The same behavior serves Capture Library, Game Help and other authors.
+Expansion is available in shell-hosted widget presentations. A peer without a
+shell fullscreen destination does not advertise an expansion shortcut; promoting
+a pinned peer to another window is not part of this media placement contract.
 Expansion has no bottom Back button: use B, keyboard Escape, or the toolbar's
 Collapse control to return to the same inline view.
 

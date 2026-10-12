@@ -34,13 +34,20 @@ internal sealed partial class MediaPlayerView
         Check(true, "Image triggers zoom and directions pan the full-resolution picture");
         Handle(ControllerButton.LeftBumper, ControllerEventPhase.Pressed);
         await Until(() => imageViewport.ZoomFactor == 1);
+        ActualImageSize();
+        await Until(() => Math.Abs(ImageFitScale * imageViewport.ZoomFactor * XamlRoot.RasterizationScale - 1) < .02);
+        Check(true, "Actual-size image view maps source pixels to display pixels at the current DPI");
+        FitImage(); await Until(() => imageViewport.ZoomFactor == 1);
         var imageExpanded = ToggleExpandedAsync();
-        await Until(() => expandedDialog is { IsLoaded: true } && imageTools.ActualHeight > 0);
+        await Until(() => expandedHost is { IsLoaded: true, IsOpen: true } && imageTools.ActualHeight > 0);
         Check(imageTools.TransformToVisual(card).TransformPoint(new(0, imageTools.ActualHeight)).Y <= card.ActualHeight + 1,
             "Expanded image controls fit inside the visible media card");
+        Check(card.ActualWidth <= expandedHost!.ActualWidth + 1 && card.ActualHeight <= expandedHost.ActualHeight + 1 &&
+            imageTools.TransformToVisual(card).TransformPoint(new(imageTools.ActualWidth, 0)).X <= card.ActualWidth - 8,
+            "Expanded image and its rightmost control fit the shared viewport with focus clearance");
         Handle(ControllerButton.B, ControllerEventPhase.Pressed); Handle(ControllerButton.B, ControllerEventPhase.Released);
         await imageExpanded;
-        Check(imageViewport.ZoomFactor == 1 && !HasDialog, "Fit and Back restore the inline image viewer");
+        Check(imageViewport.ZoomFactor == 1 && !IsExpanded, "Fit and Back restore the inline image viewer");
         SetActive(true, true);
         Apply(_ => Task.FromResult(new HostCaptureAttachment(clip, mp4)), clip, () => true);
         await Until(() => player?.PlaybackSession.NaturalDuration.TotalSeconds > 4.9);
@@ -100,17 +107,63 @@ internal sealed partial class MediaPlayerView
         Check(player!.IsMuted,"Changing playback options during source resolution cannot strand or revive the old load");
         Toggle(); await Until(() => IsPlaying);
         var retained = player;
+        Check(speed.Focus(FocusState.Keyboard), "Speed control accepts focus before expansion");
         var expanded = ToggleExpandedAsync();
-        await Until(() => expandedDialog is { IsLoaded:true });
+        await Until(() => expandedHost is { IsLoaded: true, IsOpen: true });
         await Task.Delay(150);
-        Check(string.IsNullOrEmpty(expandedDialog!.CloseButtonText), "Expanded viewer has no space-consuming footer button");
+        Check(card.Parent is MediaFullscreenLayer, "Expanded viewer uses the shared shell layer without dialog framing");
+        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Expansion preserves the focused transport control; actual=" +
+            (FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focus ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(focus) : "none"));
+        Check(card.ActualWidth <= expandedHost!.ActualWidth + 1 && card.ActualHeight <= expandedHost.ActualHeight + 1 &&
+            toolbar.TransformToVisual(card).TransformPoint(new(toolbar.ActualWidth, 0)).X <= card.ActualWidth - 8,
+            "Expanded video and rightmost controls fit the shared viewport with focus clearance");
         Check(toolbar.TransformToVisual(card).TransformPoint(new(0, toolbar.ActualHeight)).Y <= card.ActualHeight + 1,
             "Expanded video reserves visible height for timeline and transport controls");
         Check(IsPlaying && ReferenceEquals(player,retained) && card.Parent is Microsoft.UI.Xaml.Controls.Grid,"Expanded view retains one player and playback state");
         Handle(ControllerButton.B,ControllerEventPhase.Pressed);
         Handle(ControllerButton.B,ControllerEventPhase.Released);
         await expanded;
-        Check(IsPlaying && !HasDialog && ReferenceEquals(Content,card) && ReferenceEquals(player,retained),"B restores inline player without recreating playback");
+        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Collapse restores the same focused transport control");
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            var transition = ToggleExpandedAsync();
+            await Until(() => IsExpanded && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed));
+            var layer = expandedHost!;
+            layer.Route(ControllerButton.RightStick, ControllerEventPhase.Pressed);
+            Check(layer.Route(ControllerButton.RightStick, ControllerEventPhase.Released), "Collapse gesture release stays owned by fullscreen");
+            await transition;
+            Check(!IsExpanded && ReferenceEquals(player, retained) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed),
+                "Repeated expansion retains the player and focus without visiting another control");
+        }
+        Check(IsPlaying && !IsExpanded && ReferenceEquals(Content,card) && ReferenceEquals(player,retained),"B restores inline player without recreating playback");
+        var rapid = ToggleExpandedAsync();
+        await Until(() => IsExpanded);
+        expandedHost!.Close();
+        var overlapping = ToggleExpandedAsync();
+        Check(!IsExpanded && overlapping.IsCompleted, "Overlapping reopen is ignored until the previous placement settles");
+        await rapid;
+        Check(!Handle(ControllerButton.X, ControllerEventPhase.Pressed), "Inline X remains available to widget shortcuts");
+        var controlsCheck = ToggleExpandedAsync();
+        await Until(() => IsExpanded);
+        videoChrome.Hide();
+        Check(!videoChrome.Visible && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), video), "Auto-hidden controls park focus on the visible media canvas");
+        var wasPlaying = IsPlaying;
+        Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+        Check(videoChrome.Visible && IsPlaying == wasPlaying, "First A reveals controls without activating a hidden command");
+        expandedHost!.Width = 380; expandedHost.Height = 240; expandedHost.UpdateLayout();
+        await Task.Delay(100);
+        Check(card.ActualWidth <= 381 && toolbar.TransformToVisual(card).TransformPoint(new(toolbar.ActualWidth, toolbar.ActualHeight)).X <= card.ActualWidth + 1,
+            "Narrow fullscreen layout keeps the transport inside the right edge");
+        var oldFont = time.FontSize;
+        ApplyTheme(normalBrush!, play.Foreground, time.Foreground, selectedBrush!, card.BorderBrush, position.Foreground,
+            24, time.FontWeight, time.FontFamily, inlineRadius.TopLeft);
+        expandedHost.UpdateLayout();
+        Check(toolbar.TransformToVisual(card).TransformPoint(new(toolbar.ActualWidth, toolbar.ActualHeight)).X <= card.ActualWidth + 1,
+            "Large text retains safe transport bounds in a narrow fullscreen viewport");
+        ApplyTheme(normalBrush!, play.Foreground, time.Foreground, selectedBrush!, card.BorderBrush, position.Foreground,
+            oldFont, time.FontWeight, time.FontFamily, inlineRadius.TopLeft);
+        expandedHost.ClearValue(WidthProperty); expandedHost.ClearValue(HeightProperty); expandedHost.Close();
+        await controlsCheck;
         await Task.Delay(150);
         Check(toolbar.TransformToVisual(this).TransformPoint(new(0, toolbar.ActualHeight)).Y <= ActualHeight + 1,
             "Returning from expansion keeps inline transport inside its original height");

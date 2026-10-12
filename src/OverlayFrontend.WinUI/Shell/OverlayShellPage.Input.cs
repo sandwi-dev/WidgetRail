@@ -75,8 +75,11 @@ internal sealed partial class OverlayShellPage
         if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
         { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var radialNavigation = ReceiveRadialNavigation(frame);
-        var browserPointer = !radialNavigation && (PinnedInputActive ? pinned!.Presenter : interactive ? surface : null)
-            ?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true;
+        var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
+        var browserPointer = !radialNavigation && (IsMediaFullscreen
+            ? fullscreenLayer.MoveAnalog(frame.State.LeftThumbX, frame.State.LeftThumbY)
+            : pointerPresenter?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true ||
+              pointerPresenter?.MoveMediaPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : browserPointer ? default : frame.StickNavigation;
         var next = direction.Direction switch
         {
@@ -88,12 +91,13 @@ internal sealed partial class OverlayShellPage
         };
         if (!radialNavigation && direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
         {
-            if (PinnedInputActive)
+            if (IsMediaFullscreen) fullscreenLayer.MoveFocus(next);
+            else if (PinnedInputActive)
             {
                 if (pinned!.Presenter is { } widget) widget.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);
                 else if (pinned.MediaView is { } media) media.MoveFocus(next);
             }
-            else if (IsMediaFullscreen) fullscreenView.MoveFocus(next);
+
             else if (interactive && RecoveryVisible) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = StatusChrome });
             else if (interactive && surface is { } focusedSurface)
             {
@@ -154,6 +158,7 @@ internal sealed partial class OverlayShellPage
         try
         {
             if (await RoutePinnedPlacementButtonAsync(button, phase)) return;
+            if (RouteFullscreenButton(button, phase)) return;
             if (pinned is { } pin && !IsMediaFullscreen)
             {
                 if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed)
@@ -172,7 +177,7 @@ internal sealed partial class OverlayShellPage
                     return;
                 }
             }
-            if (RouteFullscreenButton(button, phase)) return;
+
             if (!interactive)
             {
                 await RouteTrayButtonAsync(button, phase, origin);

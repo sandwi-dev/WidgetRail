@@ -22,7 +22,11 @@ The SDK viewport remains nonfocusable and pointer-inert. Authored native Play,
 Pause and seek controls use the existing normalized input/action path and publish
 typed playback commands. No controller reader or new browser focus model exists.
 Native WinUI layout gives MediaViewport a bounded growing track; the browser is
-clipped inside it. Pinned/fullscreen endpoint transfer remains separate work.
+clipped inside it. Embedded video, native video and images share one shell-owned
+`MediaFullscreenLayer` for placement, exclusive fullscreen input, and focus
+restoration. Renderers retain their own source/authority and transport operations.
+`MediaControlsVisibility` supplies the shared controls visibility policy. Native
+media no longer uses a dialog or fixed-size content holder for expansion.
 
 1. Resolve `WidgetPresentationEmbeddedMediaDocument` with the exact current frame
    authority through `WidgetPresentationSession.ResolveEmbeddedMediaAsync`.

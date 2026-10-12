@@ -606,9 +606,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             if (interactive && activeWidget == requestedWidget) surface?.RestoreRetainedFocusPresentation();
             return;
         }
+        if (IsMediaFullscreen) { fullscreenLayer.FocusContent(); return; }
         if (PinnedInputActive) { pinned!.Enter(); return; }
-        if (IsMediaFullscreen) fullscreenView.Enter();
-        else if (interactive && RecoveryVisible && Retry.Visibility == Visibility.Visible) Retry.Focus(FocusState.Keyboard);
+        if (interactive && RecoveryVisible && Retry.Visibility == Visibility.Visible) Retry.Focus(FocusState.Keyboard);
         else if (interactive && surface is not null) surface.Enter(restoreNativeFocus: true);
         else FocusTray();
     }

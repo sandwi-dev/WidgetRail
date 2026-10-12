@@ -13,14 +13,17 @@ internal sealed partial class OverlayShellPage
     private EmbeddedMediaOwner? mediaOwner;
     private Browser.BrowserOwner? browserOwner;
     private readonly MediaFullscreenView fullscreenView = new();
-    private readonly HashSet<ControllerButton> fullscreenOwnedButtons = [];
-    internal bool IsMediaFullscreen => mediaOwner?.FullscreenWidgetId is not null;
+    private readonly MediaFullscreenLayer fullscreenLayer = new();
+    internal bool IsMediaFullscreen => fullscreenLayer.IsOpen;
     internal event Action? MediaPresentationChanged;
 
     private void InitializeFullscreenView()
     {
-        ((Grid)Content).Children.Add(fullscreenView);
-        fullscreenView.ExitRequested += () => mediaOwner?.ExitFullscreen();
+        fullscreenLayer.Attach((Grid)Content);
+        fullscreenLayer.Park(fullscreenView);
+        fullscreenLayer.CanRestoreFocus = () => !retired && visible && foreground;
+        fullscreenLayer.Changed += RefreshFullscreenChrome;
+        fullscreenView.ExitRequested += () => fullscreenLayer.Close();
         fullscreenView.CommandRequested += command => mediaOwner?.DispatchFullscreen(command);
     }
 
@@ -50,51 +53,65 @@ internal sealed partial class OverlayShellPage
 
     private void RefreshFullscreenView()
     {
-        var showing = mediaOwner?.FullscreenState is not null;
-        // Complete any ordinary resize before borrowing the media viewport. The
-        // fullscreen layer has its own geometry and is not a widget size change.
+        if (mediaOwner?.FullscreenState is { } state)
+        {
+            fullscreenView.Show(state.Declaration);
+            if (!fullscreenLayer.IsOpen)
+            {
+                var previous = FocusManager.GetFocusedElement(XamlRoot) as Control;
+                _ = fullscreenLayer.ShowAsync(new(fullscreenView, fullscreenView, HandleEmbeddedFullscreen,
+                    fullscreenView.MoveFocus, fullscreenView.Enter,
+                    () => { fullscreenView.Hide(); fullscreenLayer.Park(fullscreenView); mediaOwner?.ExitFullscreen(); },
+                    () => { if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard); else QueueEntryFocus(); }));
+            }
+        }
+        else if (ReferenceEquals(fullscreenLayer.Owner, fullscreenView)) fullscreenLayer.Close();
+    }
+
+    private void RefreshFullscreenChrome()
+    {
+        var showing = fullscreenLayer.IsOpen;
         surface?.SettleWidgetResize();
         WidgetHost.IsEnabled = Tray.IsEnabled = !showing;
         if (showing)
         {
-            surface?.ResetPressedStyles(); surface?.DismissTransientControl();
+            surface?.ResetPressedStyles();
             ProductionLayout.Visibility = Visibility.Collapsed;
-            fullscreenView.Show(mediaOwner!.FullscreenState!.Declaration);
-            // A handoff is infrequent and must publish a fully arranged native
-            // destination before EmbeddedMediaOwner reparents the live WebView.
-            fullscreenView.UpdateLayout();
         }
         else
         {
-            fullscreenView.Hide();
             if (shellViewport.Width > 0 && shellViewport.Height > 0) ConfigureProductionViewport(shellViewport);
             ProductionLayout.Visibility = Visibility.Visible;
             ProductionLayout.UpdateLayout();
         }
         MediaPresentationChanged?.Invoke();
         SizingChanged?.Invoke();
-        if (!retired && visible && foreground) DispatcherQueue.TryEnqueue(() => QueueEntryFocus());
     }
 
-    private bool RouteFullscreenButton(ControllerButton button, ControllerEventPhase phase)
+    private bool HandleEmbeddedFullscreen(ControllerButton button, ControllerEventPhase phase)
     {
-        // A B/View/A press can close this presentation. Its release still belongs
-        // to the host, never to a shortcut on the newly revealed widget or tray.
-        if (phase == ControllerEventPhase.Released && fullscreenOwnedButtons.Remove(button)) return true;
-        if (!IsMediaFullscreen) return false;
         if (phase != ControllerEventPhase.Pressed && !(phase == ControllerEventPhase.Repeated &&
             button is ControllerButton.LeftTrigger or ControllerButton.RightTrigger)) return true;
-        fullscreenOwnedButtons.Add(button);
+        if (button == ControllerButton.B) return false;
         if (button != ControllerButton.A) fullscreenView.RevealControls();
-        if (button == ControllerButton.B) mediaOwner!.ExitFullscreen();
-        else if (button == ControllerButton.View) { mediaOwner!.ExitFullscreen(); SetInteractive(false); FocusTray(); }
-        else if (button == ControllerButton.X) mediaOwner!.DispatchFullscreen(EmbeddedMediaHostCommand.TogglePlayback);
-        else if (button == ControllerButton.LeftTrigger) mediaOwner!.DispatchFullscreen(EmbeddedMediaHostCommand.SeekBackward);
-        else if (button == ControllerButton.RightTrigger) mediaOwner!.DispatchFullscreen(EmbeddedMediaHostCommand.SeekForward);
+        if (button == ControllerButton.X) mediaOwner?.DispatchFullscreen(EmbeddedMediaHostCommand.TogglePlayback);
+        else if (button == ControllerButton.LeftTrigger) mediaOwner?.DispatchFullscreen(EmbeddedMediaHostCommand.SeekBackward);
+        else if (button == ControllerButton.RightTrigger) mediaOwner?.DispatchFullscreen(EmbeddedMediaHostCommand.SeekForward);
         else if (button == ControllerButton.A) fullscreenView.ActivateFocused();
         return true;
     }
 
+    private bool RouteFullscreenButton(ControllerButton button, ControllerEventPhase phase)
+    {
+        if (IsMediaFullscreen && button == ControllerButton.View && phase == ControllerEventPhase.Pressed)
+        {
+            // Own this gesture before revealing the tray.
+            fullscreenLayer.Route(button, phase);
+            fullscreenLayer.Close(restoreFocus: false);
+            SetInteractive(false); FocusTray(); return true;
+        }
+        return fullscreenLayer.Route(button, phase);
+    }
     private void ReconcileMediaHostState() => mediaOwner?.SetHostState(activeWidget,
         !retired && PresentationVisible, !retired && visible && !switching && interactive && foreground,
         acceptsDashboardPlayback: !retired && visible && foreground && !switching && !interactive &&

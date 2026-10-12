@@ -26,7 +26,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private readonly Button replay = new() { IsTabStop = true, UseSystemFocusVisuals = true, MinHeight = 44, Padding = new(12, 8, 12, 8) };
     private readonly SymbolIcon playIcon = new(Symbol.Play);
     private readonly TextBlock playLabel = new() { Text = "Play", VerticalAlignment = VerticalAlignment.Center };
-    private readonly SymbolIcon replayIcon = new(Symbol.RepeatAll);
+    private readonly SymbolIcon replayIcon = new(Symbol.Refresh);
     private readonly TextBlock replayLabel = new() { Text = "Replay", VerticalAlignment = VerticalAlignment.Center };
     private readonly Slider position = new() { Minimum = 0, Maximum = 1, StepFrequency = .1, SmallChange = .5, LargeChange = 5, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBlock time = new() { VerticalAlignment = VerticalAlignment.Center, MinWidth = 84, TextAlignment = TextAlignment.Right };
@@ -37,15 +37,16 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private readonly Button expand = new() { Content = new SymbolIcon(Symbol.FullScreen) };
     private readonly Slider volume = new() { Minimum = 0, Maximum = 100, Value = 100, StepFrequency = 5, SmallChange = 5, LargeChange = 10, MinWidth = 48, VerticalAlignment = VerticalAlignment.Center };
     private Control[] controls = [];
-    private bool refreshing, adjustingVolume, backOwned;
+    private bool refreshing, adjustingVolume, backOwned, chromeWasPlaying;
     private double requestedRate = 1;
     private object? resourceOwner;
     private sealed record PlaybackMemory(MediaPlayerDefinition Definition, double Position, double Volume, bool Muted, bool Loop, double Rate);
     private PlaybackMemory? playbackMemory;
     private Control PreferredFocus => rememberedControl is { IsEnabled: true, Visibility: Visibility.Visible, IsLoaded: true } remembered ? remembered : IsImage ? imageViewport : play;
-    private ContentDialog? expandedDialog;
+    private MediaFullscreenLayer? expandedHost;
     internal bool IsAdjustingVolume => adjustingVolume;
-    internal bool HasDialog => expandedDialog is not null;
+    internal bool IsExpanded => expandedHost is not null;
+    internal bool CanExpand => IsExpanded || MediaFullscreenLayer.Find(this) is not null;
     private double Duration => player?.PlaybackSession.NaturalDuration.TotalSeconds is > 0 and var seconds && double.IsFinite(seconds) ? seconds : resolved?.DurationSeconds ?? 0;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer timer;
     private CancellationTokenSource lifetime = new();
@@ -111,23 +112,15 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         volume.ValueChanged += (_, _) => { if (!refreshing && input && player is not null) { player.Volume = volume.Value / 100; player.IsMuted = false; } };
         Grid.SetRow(toolbar, 1); body.Children.Add(toolbar); card.Child = body; Content = card;
         Grid.SetRow(imageTools, 1); body.Children.Add(imageTools);
-        SizeChanged += (_, args) => { if (!HasDialog) SizeCard(args.NewSize.Width, args.NewSize.Height); };
+        InitializeMediaChrome();
+
         AutomationProperties.SetName(play, "Play or pause"); AutomationProperties.SetName(replay, "Replay");
         AutomationProperties.SetAutomationId(play, "MediaPlayer.Play"); AutomationProperties.SetAutomationId(replay, "MediaPlayer.Replay");
         play.Click += (_, _) => Toggle(); replay.Click += (_, _) => Replay();
-        card.SizeChanged += (_, _) =>
-        {
-            var width = card.ActualWidth;
-            playLabel.Visibility = replayLabel.Visibility = width < 640 ? Visibility.Collapsed : Visibility.Visible;
-            replay.Visibility = loop.Visibility = width < 360 ? Visibility.Collapsed : Visibility.Visible;
-            volume.Visibility = width < 400 ? Visibility.Collapsed : Visibility.Visible;
-            volume.Width = Math.Clamp(width * .18, 72, 160);
-            toolbar.ColumnSpacing = width < 420 ? 6 : 12;
-            if (input && XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused && controls.Contains(focused) && focused.Visibility != Visibility.Visible)
-                play.Focus(FocusState.Keyboard);
-        };
+        card.SizeChanged += (_, _) => ReflowTransport();
         GotFocus += (_, _) =>
         {
+            if (changingPlacement) return;
             var focused = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
             if (focused is Control control && controls.Contains(control)) rememberedControl = control;
             else if (ReferenceEquals(focused, this) && input && CanControl) PreferredFocus.Focus(FocusState.Keyboard);
@@ -136,7 +129,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         timer = DispatcherQueue.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(250);
         timer.Tick += (_, _) => Refresh();
         Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.MediaPlayer(this); if (active) timer.Start(); };
-        Unloaded += (_, _) => { timer.Stop(); player?.Pause(); theme?.Dispose(); theme = null; };
+        Unloaded += (_, _) => { timer.Stop(); videoChrome.Stop(); player?.Pause(); theme?.Dispose(); theme = null; };
     }
     internal void SetActive(bool value, bool acceptsInput)
     {
@@ -144,10 +137,12 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         imageViewport.IsHitTestVisible = input;
         imageViewport.IsEnabled = input;
         foreach (var control in imageControls) control.IsEnabled = input;
-        video.IsHitTestVisible = input; video.IsTabStop = false;
-        if (!input) { adjustingVolume = false; expandedDialog?.Hide(); }
-        if (!active) { SuspendPlayer(); timer.Stop(); expandedDialog?.Hide(); } else if (IsLoaded && !lifetime.IsCancellationRequested) timer.Start();
+        video.IsHitTestVisible = input; video.IsTabStop = input && IsExpanded;
+        if (!input) { adjustingVolume = false; expandedHost?.Close(); }
+        if (!active) { SuspendPlayer(); timer.Stop(); expandedHost?.Close(); } else if (IsLoaded && !lifetime.IsCancellationRequested) timer.Start();
         foreach (var control in controls) control.IsEnabled = input && player is not null;
+        expand.IsEnabled = input && player is not null && CanExpand;
+        imageExpand.IsEnabled = input && CanExpand;
         position.IsEnabled = replay.IsEnabled = input && player?.PlaybackSession.CanSeek == true;
         if (input && CanControl && XamlRoot is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), this))
             PreferredFocus.Focus(FocusState.Keyboard);
@@ -161,7 +156,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (next == definition) return;
         if (definition is { } previous && previous.Source == next.Source && previous.Revision == next.Revision && (player is not null || image.Source is not null))
         { definition = next; if (resolved is not null) resolved = resolved with { Media = next }; if (player is not null) ApplyOptions(next.Options); return; }
-        expandedDialog?.Hide();
+        expandedHost?.Close();
         lifetime.Cancel(); lifetime.Dispose(); lifetime = new();
         ReleasePlayer(); definition = next; resolved = null; adjustingVolume = false; waitingForSlot = false;
         image.Source = null; imageViewport.Visibility = imageTools.Visibility = video.Visibility = toolbar.Visibility = Visibility.Collapsed;
@@ -248,6 +243,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         var seconds = Math.Max(0, value.PlaybackSession.Position.TotalSeconds);
         var duration = Duration;
         playLabel.Text = IsPlaying ? "Pause" : "Play"; playIcon.Symbol = IsPlaying ? Symbol.Pause : Symbol.Play;
+        if (IsExpanded && IsPlaying != chromeWasPlaying) videoChrome.Reveal();
+        chromeWasPlaying = IsPlaying;
         AutomationProperties.SetName(play, playLabel.Text);
         refreshing = true;
         try
@@ -295,7 +292,6 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (!input || XamlRoot is null) return;
         if (IsImage) { ActivateImageControl(); return; }
         var focused = FocusManager.GetFocusedElement(XamlRoot);
-        if (HasDialog && focused is Button && !controls.Contains(focused)) { expandedDialog?.Hide(); return; }
         if (ReferenceEquals(focused, replay)) Replay();
         else if (ReferenceEquals(focused, loop)) ToggleLoop();
         else if (ReferenceEquals(focused, speed)) CycleSpeed();
@@ -308,21 +304,25 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     {
         if (IsImage) return MoveImageFocus(direction);
         if (!input || player is null || XamlRoot is null) return false;
+        if (RevealVideoControls()) return true;
+        if (IsExpanded) videoChrome.Reveal();
         var focused = FocusManager.GetFocusedElement(XamlRoot);
+        if (ReferenceEquals(focused, video)) return position.Focus(FocusState.Keyboard);
         if (ReferenceEquals(focused, position))
         {
             if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right) { Seek(direction == FocusNavigationDirection.Left ? -SeekStep : SeekStep); return true; }
             if (direction == FocusNavigationDirection.Down) return PreferredFocus.Focus(FocusState.Keyboard);
-            return HasDialog;
+            if (IsExpanded && direction == FocusNavigationDirection.Up) return video.Focus(FocusState.Keyboard);
+            return IsExpanded;
         }
         if (direction == FocusNavigationDirection.Up && position.IsEnabled) { adjustingVolume = false; return position.Focus(FocusState.Keyboard); }
-        if (direction is not (FocusNavigationDirection.Left or FocusNavigationDirection.Right)) { adjustingVolume = false; return HasDialog; }
+        if (direction is not (FocusNavigationDirection.Left or FocusNavigationDirection.Right)) { adjustingVolume = false; return IsExpanded; }
         if (ReferenceEquals(focused, volume) && adjustingVolume)
         { volume.Value = Math.Clamp(volume.Value + (direction == FocusNavigationDirection.Left ? -5 : 5), 0, 100); return true; }
         var available = controls.Where(control => control.IsEnabled && control.Visibility == Visibility.Visible).ToArray();
         var index = Array.IndexOf(available, focused as Control);
         var next = index + (direction == FocusNavigationDirection.Left ? -1 : 1);
-        return next >= 0 && next < available.Length ? available[next].Focus(FocusState.Keyboard) : HasDialog;
+        return next >= 0 && next < available.Length ? available[next].Focus(FocusState.Keyboard) : IsExpanded;
     }
     private double SeekStep => Duration is > 0 and <= 10 ? .5 : 5;
     private void Seek(double seconds) { if (input && player?.PlaybackSession.CanSeek == true) player.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Clamp(player.PlaybackSession.Position.TotalSeconds + seconds, 0, Duration)); }
@@ -340,79 +340,49 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     {
         if (button == ControllerButton.B && backOwned) { if (phase == ControllerEventPhase.Released) backOwned = false; return true; }
         if (!input || !CanControl) return false;
-        if (button == ControllerButton.B && (adjustingVolume || HasDialog))
+        if (button == ControllerButton.B && IsExpanded && !adjustingVolume)
+        { if (phase == ControllerEventPhase.Pressed) expandedHost?.Close(); return true; }
+        if (button == ControllerButton.B && adjustingVolume)
         {
-            if (phase == ControllerEventPhase.Pressed) { backOwned = true; if (adjustingVolume) adjustingVolume = false; else expandedDialog?.Hide(); }
+            if (phase == ControllerEventPhase.Pressed) { backOwned = true; if (adjustingVolume) adjustingVolume = false; else expandedHost?.Close(); }
             return true;
         }
         if (IsImage) return HandleImage(button, phase);
-        if (button is not (ControllerButton.A or ControllerButton.LeftTrigger or ControllerButton.RightTrigger or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.RightStick)) return HasDialog;
+        if (button == ControllerButton.X && !IsExpanded) return false;
+        if (button is not (ControllerButton.A or ControllerButton.X or ControllerButton.LeftTrigger or ControllerButton.RightTrigger or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.RightStick)) return IsExpanded;
         if (phase == ControllerEventPhase.Released) return true;
+        if (button == ControllerButton.A && RevealVideoControls()) return true;
+        if (IsExpanded) videoChrome.Reveal();
         if (button == ControllerButton.A && phase == ControllerEventPhase.Pressed) ActivateFocusedControl();
+        else if (button == ControllerButton.X && phase == ControllerEventPhase.Pressed) Toggle();
         else if (button == ControllerButton.LeftBumper && phase == ControllerEventPhase.Pressed) Replay();
         else if (button == ControllerButton.RightBumper && phase == ControllerEventPhase.Pressed) ToggleLoop();
         else if (button == ControllerButton.RightStick && phase == ControllerEventPhase.Pressed) _ = ToggleExpandedAsync();
         else if (button is ControllerButton.LeftTrigger or ControllerButton.RightTrigger) Seek(button == ControllerButton.LeftTrigger ? -SeekStep : SeekStep);
         return true;
     }
-    private async Task ToggleExpandedAsync()
+    private void ReflowTransport()
     {
-        if (expandedDialog is { } existing) { existing.Hide(); return; }
-        if (!input || disposed || XamlRoot is null) return;
-        var root = XamlRoot;
-        var dialog = new ContentDialog { Title = IsImage ? "Image viewer" : "Video player", DefaultButton = ContentDialogButton.None, XamlRoot = root };
-        dialog.KeyDown += (_, args) =>
-        {
-            if (args.Key == Windows.System.VirtualKey.Escape) { args.Handled = true; dialog.Hide(); }
-        };
-        Input.GamepadKeyBoundary.ObserveDialog(dialog);
-        var availableWidth = Math.Max(280, Math.Min(1280, root.Size.Width - 96));
-        dialog.Resources["ContentDialogMaxWidth"] = availableWidth + 48;
-        dialog.Resources["ContentDialogMaxHeight"] = Math.Max(180, root.Size.Height - 32);
-        var holder = new Grid { Width = availableWidth, Height = Math.Max(180, Math.Min(900, root.Size.Height - 160)) };
-        holder.SizeChanged += (_, args) =>
-        {
-            if (ReferenceEquals(expandedDialog, dialog)) SizeCard(args.NewSize.Width, args.NewSize.Height);
-        };
-        var returnControl = FocusManager.GetFocusedElement(root) as Control;
-        expandedDialog = dialog; Content = null; holder.Children.Add(card); dialog.Content = holder;
-        Label(expand, "Collapse player", "MediaPlayer.Expand");
-        Label(imageExpand, "Collapse image", "MediaPlayer.Image.Expand");
-        expand.Content = new SymbolIcon(Symbol.BackToWindow);
-        imageExpand.Content = new SymbolIcon(Symbol.BackToWindow);
-        dialog.Opened += (_, _) =>
-        {
-            // The dialog template can reserve more title/footer space at large
-            // text scales. Bound the player to its real content viewport.
-            for (DependencyObject? ancestor = VisualTreeHelper.GetParent(holder); ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
-                if (ancestor is ScrollViewer scroll && scroll.ViewportHeight > 0)
-                { holder.Height = Math.Min(holder.Height, scroll.ViewportHeight); break; }
-            SizeCard(holder.ActualWidth, holder.Height);
-            (IsImage ? (Control)imageViewport : play).Focus(FocusState.Keyboard);
-        };
-        InteractionChanged?.Invoke();
-        try { using var colors = NativePopupTheme.Dialog(dialog, this); await dialog.ShowAsync(); }
-        catch (Exception error) when (error is not OutOfMemoryException) { Diagnostics.FrontendFailureLog.Current.Write("media-player-expand", error); }
-        finally
-        {
-            expandedDialog = null;
-            holder.Children.Remove(card); dialog.Content = null;
-            Label(expand, "Expand player", "MediaPlayer.Expand");
-            Label(imageExpand, "Expand image", "MediaPlayer.Image.Expand");
-            expand.Content = new SymbolIcon(Symbol.FullScreen);
-            imageExpand.Content = new SymbolIcon(Symbol.FullScreen);
-            if (!disposed) { Content = card; SizeCard(ActualWidth, ActualHeight); if (input) (returnControl is { IsLoaded: true, IsEnabled: true, Visibility: Visibility.Visible } ? returnControl : PreferredFocus).Focus(FocusState.Keyboard); }
-            InteractionChanged?.Invoke();
-        }
+        var width = card.ActualWidth;
+        var textScale = Math.Max(1, time.FontSize / 14);
+        playLabel.Visibility = replayLabel.Visibility = width < 640 * textScale ? Visibility.Collapsed : Visibility.Visible;
+        replay.Visibility = loop.Visibility = width < 360 * textScale ? Visibility.Collapsed : Visibility.Visible;
+        volume.Visibility = width < 400 * textScale ? Visibility.Collapsed : Visibility.Visible;
+        volume.Width = Math.Clamp(width * .18, 72, 160);
+        toolbar.ColumnSpacing = width < 420 * textScale ? 6 : 12;
+        if (input && !changingPlacement && XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused &&
+            controls.Contains(focused) && focused.Visibility != Visibility.Visible) play.Focus(FocusState.Keyboard);
     }
     internal void ApplyTheme(Brush background, Brush foreground, Brush muted, Brush selected, Brush border, Brush focus, double fontSize,
         Windows.UI.Text.FontWeight weight, FontFamily? font, double radius)
     {
         normalBrush = background; selectedBrush = selected;
-        card.Background = background; card.BorderBrush = border; card.CornerRadius = new(radius);
-        toolbar.Background = background; status.Foreground = foreground; time.Foreground = muted;
+        card.Background = background; card.BorderBrush = border; inlineRadius = new(radius); card.CornerRadius = IsExpanded ? new(0) : inlineRadius;
+        toolbar.Background = imageTools.Background = background;
+        toolbar.CornerRadius = imageTools.CornerRadius = new(radius);
+        imageZoom.Foreground = muted; status.Foreground = foreground; time.Foreground = muted;
         position.Foreground = focus; position.Background = border;
-        status.FontSize = time.FontSize = fontSize; status.FontWeight = time.FontWeight = weight;
+        imageZoom.FontSize = status.FontSize = time.FontSize = fontSize; imageZoom.FontWeight = status.FontWeight = time.FontWeight = weight;
         foreach (var control in controls.Concat(imageControls).Append(imageViewport).Append(position))
         {
             control.FocusVisualPrimaryBrush = focus; control.FocusVisualSecondaryBrush = background; control.UseSystemFocusVisuals = true;
@@ -428,7 +398,9 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             if (font is not null) button.FontFamily = font; else button.ClearValue(Control.FontFamilyProperty);
         }
         foreach (var label in new[] { playLabel, replayLabel }) { label.FontSize = fontSize; label.FontWeight = weight; if (font is not null) label.FontFamily = font; }
-        if (font is not null) { status.FontFamily = font; time.FontFamily = font; }
+        if (font is not null) { imageZoom.FontFamily = font; status.FontFamily = font; time.FontFamily = font; }
+        ReflowTransport(); LayoutImageTools();
+        imageViewport.UseSystemFocusVisuals = !IsExpanded;
     }
     private void SuspendPlayer()
     {
@@ -446,5 +418,5 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         }
     }
     public void Dispose()
-    { if (disposed) return; disposed = true; expandedDialog?.Hide(); lifetime.Cancel(); lifetime.Dispose(); timer.Stop(); theme?.Dispose(); ReleasePlayer(); image.Source = null; }
+    { if (disposed) return; disposed = true; expandedHost?.Close(); lifetime.Cancel(); lifetime.Dispose(); timer.Stop(); videoChrome.Stop(); theme?.Dispose(); ReleasePlayer(); image.Source = null; }
 }

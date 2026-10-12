@@ -53,21 +53,23 @@ internal sealed partial class WidgetViewPresenter
                 .. (keyboard.IsSensitive ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress,
                     keyboard.PasswordVisible ? "Hide password" : "Show password", ControllerButton.RightStick)] : [])];
         if (HasTransientControl) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)];
-        if (FocusedMediaPlayer is { HasDialog: true, CanControl: false })
+        if (FocusedMediaPlayer is { IsExpanded: true, CanControl: false })
             return (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)];
         if (FocusedMediaPlayer is { IsImage: true, CanControl: true } picture)
             return (ControllerGuideHint[])[new(ControllerPrompt.A, picture.PrimaryActionLabel, ControllerButton.A),
                 new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger),
                 new(ControllerPrompt.LeftStickMove, "Pan"), new(ControllerPrompt.LeftBumper, "Fit image", ControllerButton.LeftBumper),
                 new(ControllerPrompt.RightBumper, "Image / controls", ControllerButton.RightBumper),
-                new(ControllerPrompt.RightStickPress, picture.HasDialog ? "Collapse" : "Expand", ControllerButton.RightStick),
-                .. (picture.HasDialog ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)] : [])];
+                .. (picture.CanExpand ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress, picture.IsExpanded ? "Collapse" : "Expand", ControllerButton.RightStick)] : []),
+                .. (picture.IsExpanded ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)] : [])];
         if (FocusedMediaPlayer is { IsVideo: true, CanControl: true } media)
             return (ControllerGuideHint[])[new(ControllerPrompt.A, media.PrimaryActionLabel, ControllerButton.A),
+                .. (media.IsExpanded ? (ControllerGuideHint[])[new(ControllerPrompt.X, "Play / pause", ControllerButton.X)] : []),
                 new(ControllerPrompt.LeftTrigger, "Seek back", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Seek forward", ControllerButton.RightTrigger),
                 new(ControllerPrompt.LeftBumper, "Replay", ControllerButton.LeftBumper),
-                new(ControllerPrompt.RightBumper, "Loop", ControllerButton.RightBumper), new(ControllerPrompt.RightStickPress, media.HasDialog ? "Collapse" : "Expand", ControllerButton.RightStick),
-                .. (media.HasDialog || media.IsAdjustingVolume ? (ControllerGuideHint[])[new(ControllerPrompt.B, media.IsAdjustingVolume ? "Done" : "Back", ControllerButton.B)] : [])];
+                new(ControllerPrompt.RightBumper, "Loop", ControllerButton.RightBumper),
+                .. (media.CanExpand ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress, media.IsExpanded ? "Collapse" : "Expand", ControllerButton.RightStick)] : []),
+                .. (media.IsExpanded || media.IsAdjustingVolume ? (ControllerGuideHint[])[new(ControllerPrompt.B, media.IsAdjustingVolume ? "Done" : "Back", ControllerButton.B)] : [])];
         if (FocusedBrowser is { } browser)
             return browser.PresentedInPin
                 ? (ControllerGuideHint[])[new(ControllerPrompt.View, "Interact with pin", ControllerButton.View)]
