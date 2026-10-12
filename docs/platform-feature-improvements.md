@@ -711,3 +711,15 @@ of these new changes. No scope item is complete solely because it is planned.
   and installed Inno upgrade/recovery remain explicitly manual acceptance checks.
   Additional repositories/private authentication remain deferred. The main checkout,
   user settings and unrelated worktrees were preserved; no merge/push/publication.
+
+### Accepted integration and installer preparation
+
+- User accepted the changes and authorized merging to local main and creating
+  fresh Inno installers. This supersedes the earlier no-merge/no-installer boundary;
+  no push, tag, remote release or worktree cleanup is requested.
+- Advance the local distribution version to `0.1.0-preview.30` (file version
+  `0.1.0.29`, following the established numbering). Physical acceptance of the
+  candidate does not claim real installed upgrade/recovery qualification.
+- Preserve main's unrelated uncommitted Spotify/YouTube setup-handoff and SDK
+  edits. Build both installer editions from this clean accepted source, without
+  including those unaccepted changes. Keep the existing candidate running.
