@@ -855,3 +855,24 @@ of these new changes. No scope item is complete solely because it is planned.
   inline author shortcut preservation. Manual WinUI review covered ownership,
   source/decoder retention, theme subscriptions, input leases and focus bounds.
   Publication and launch receipts are kept in the same evidence directory.
+
+### Image navigation and layout correction (2026-10-12)
+
+- Right stick now pans the focused image canvas in inline, pinned and fullscreen
+  presentations. Left stick and D-pad always navigate; Down reaches the toolbar
+  at any zoom. Canvas panning consumes page-scroll input, including at Fit.
+  Browser pointer input stays on the left stick. Guide and accessibility text
+  describe the new mapping; the SDK contract is unchanged.
+- A viewport-sized layout container centers aspect-fit image pixels in both
+  axes. The image toolbar uses centered content-sized columns and wraps within
+  the available width, rather than distributing buttons across the entire card.
+- Debug build passed without warnings; all 65 native media checks passed in
+  `artifacts/media-right-stick-pan/native-final.json`. Checks cover pan ownership,
+  navigation while zoomed, centering, compact controls, fullscreen and existing
+  media lifecycle behavior. One initial test raced fullscreen's settled layout;
+  it now waits for placement completion before zooming. Live Capture Library
+  screenshots verify inline/fullscreen layout at 3840x2160, 225% DPI.
+- Manual WinUI review checked focus boundaries, radial input ownership, page
+  scroll exclusion, layout sizing, theme reuse and accessibility hints. No new
+  widget-specific path or platform interop was added. Physical controller
+  acceptance remains with the user; no merge or release is requested.

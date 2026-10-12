@@ -90,8 +90,8 @@ internal sealed partial class MediaPlayerView
         imageViewport.UseSystemFocusVisuals = !expanded;
         if (IsVideo) videoChrome.Reveal();
         if (!expanded) videoChrome.Stop();
-        imageTools.MaxWidth = expanded ? 640 : double.PositiveInfinity;
-        imageTools.HorizontalAlignment = HorizontalAlignment.Stretch;
+        imageTools.HorizontalAlignment = HorizontalAlignment.Center;
+        LayoutImageTools();
         toolbar.MaxWidth = expanded ? 960 : double.PositiveInfinity;
         InteractionChanged?.Invoke();
     }

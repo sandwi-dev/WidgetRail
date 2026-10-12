@@ -26,20 +26,49 @@ internal sealed partial class MediaPlayerView
         Check(image.Visibility == Visibility.Visible && player is null, "Screenshot preview decodes generated PNG without a player");
         SetActive(true, true);
         Check(CanControl && imageTools.Visibility == Visibility.Visible && imageViewport.Focus(FocusState.Keyboard), "Image viewer exposes focused controller controls");
+        await Task.Delay(100);
+        var imageCenter = image.TransformToVisual(imageCanvas).TransformPoint(new(image.ActualWidth / 2, image.ActualHeight / 2));
+        Check(Math.Abs(imageCenter.X - imageCanvas.ActualWidth / 2) < 1 && Math.Abs(imageCenter.Y - imageCanvas.ActualHeight / 2) < 1,
+            "Aspect-fit image is centered horizontally and vertically in its viewport canvas");
+        var toolsCenter = imageTools.TransformToVisual(body).TransformPoint(new(imageTools.ActualWidth / 2, 0));
+        Check(Math.Abs(toolsCenter.X - body.ActualWidth / 2) < 1 && imageTools.ColumnDefinitions.All(column => column.Width.IsAuto),
+            "Image controls form a centered content-sized group");
         Handle(ControllerButton.RightTrigger, ControllerEventPhase.Pressed);
         await Until(() => imageViewport.ZoomFactor > 1.1);
         var imageOffset = imageViewport.HorizontalOffset;
-        MoveFocus(FocusNavigationDirection.Right);
+        Check(!MoveFocus(FocusNavigationDirection.Right) && imageViewport.HorizontalOffset == imageOffset,
+            "Zoomed inline image leaves boundary navigation to the widget without panning");
+        PanImage(short.MaxValue, 0);
+        await Task.Delay(40);
+        Check(PanImage(short.MaxValue, 0), "Focused image consumes analog pan input");
         await Until(() => imageViewport.HorizontalOffset > imageOffset);
-        Check(true, "Image triggers zoom and directions pan the full-resolution picture");
+        Check(MoveFocus(FocusNavigationDirection.Down) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageFit),
+            "Directional navigation reaches image controls while zoomed");
+        Check(!PanImage(short.MaxValue, 0), "Image does not consume right-stick input while its toolbar is focused");
+        Check(MoveFocus(FocusNavigationDirection.Up) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport),
+            "Toolbar navigation returns to the image canvas");
         Handle(ControllerButton.LeftBumper, ControllerEventPhase.Pressed);
         await Until(() => imageViewport.ZoomFactor == 1);
+        Check(PanImage(short.MaxValue, 0), "Fit image consumes pan input to prevent parent page scrolling");
         ActualImageSize();
         await Until(() => Math.Abs(ImageFitScale * imageViewport.ZoomFactor * XamlRoot.RasterizationScale - 1) < .02);
         Check(true, "Actual-size image view maps source pixels to display pixels at the current DPI");
         FitImage(); await Until(() => imageViewport.ZoomFactor == 1);
         var imageExpanded = ToggleExpandedAsync();
         await Until(() => expandedHost is { IsLoaded: true, IsOpen: true } && imageTools.ActualHeight > 0);
+        await Until(() => !changingPlacement);
+        imageViewport.Focus(FocusState.Keyboard);
+        Handle(ControllerButton.RightTrigger, ControllerEventPhase.Pressed);
+        await Until(() => imageViewport.ZoomFactor > 1.1);
+        imageOffset = imageViewport.HorizontalOffset;
+        expandedHost!.MoveAnalog(short.MaxValue, 0);
+        await Task.Delay(40);
+        Check(expandedHost.MoveAnalog(short.MaxValue, 0), "Fullscreen host forwards analog pan to the image");
+        await Until(() => imageViewport.HorizontalOffset > imageOffset);
+        expandedHost.MoveFocus(FocusNavigationDirection.Down);
+        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageFit),
+            "Zoomed fullscreen image navigation reaches the toolbar");
+        FitImage(); await Until(() => imageViewport.ZoomFactor == 1);
         Check(imageTools.TransformToVisual(card).TransformPoint(new(0, imageTools.ActualHeight)).Y <= card.ActualHeight + 1,
             "Expanded image controls fit inside the visible media card");
         Check(card.ActualWidth <= expandedHost!.ActualWidth + 1 && card.ActualHeight <= expandedHost.ActualHeight + 1 &&

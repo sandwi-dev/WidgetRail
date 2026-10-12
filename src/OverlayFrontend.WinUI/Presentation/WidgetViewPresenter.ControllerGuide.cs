@@ -58,7 +58,8 @@ internal sealed partial class WidgetViewPresenter
         if (FocusedMediaPlayer is { IsImage: true, CanControl: true } picture)
             return (ControllerGuideHint[])[new(ControllerPrompt.A, picture.PrimaryActionLabel, ControllerButton.A),
                 new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger),
-                new(ControllerPrompt.LeftStickMove, "Pan"), new(ControllerPrompt.LeftBumper, "Fit image", ControllerButton.LeftBumper),
+                new(ControllerPrompt.LeftStickMove, "Navigate"), new(ControllerPrompt.RightStickMove, "Pan"),
+                new(ControllerPrompt.LeftBumper, "Fit image", ControllerButton.LeftBumper),
                 new(ControllerPrompt.RightBumper, "Image / controls", ControllerButton.RightBumper),
                 .. (picture.CanExpand ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress, picture.IsExpanded ? "Collapse" : "Expand", ControllerButton.RightStick)] : []),
                 .. (picture.IsExpanded ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)] : [])];

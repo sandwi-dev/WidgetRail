@@ -8,6 +8,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 
 internal sealed partial class MediaPlayerView
 {
+    private readonly Grid imageCanvas = new();
     private readonly ScrollViewer imageViewport = new()
     {
         ZoomMode = ZoomMode.Enabled, MinZoomFactor = .1f, MaxZoomFactor = 8,
@@ -17,7 +18,8 @@ internal sealed partial class MediaPlayerView
         HorizontalScrollMode = ScrollMode.Enabled, VerticalScrollMode = ScrollMode.Enabled,
         IsTabStop = true, UseSystemFocusVisuals = true, Visibility = Visibility.Collapsed,
     };
-    private readonly Grid imageTools = new() { ColumnSpacing = 8, RowSpacing = 8, Padding = new(8), Visibility = Visibility.Collapsed };
+    private readonly Grid imageTools = new() { ColumnSpacing = 8, RowSpacing = 8, Padding = new(8),
+        HorizontalAlignment = HorizontalAlignment.Center, Visibility = Visibility.Collapsed };
     private readonly Button zoomOut = new() { Content = "−" };
     private readonly Button zoomIn = new() { Content = "+" };
     private readonly Button imageFit = new() { Content = "Fit" };
@@ -30,11 +32,15 @@ internal sealed partial class MediaPlayerView
 
     private void InitializeImages()
     {
-        imageViewport.Content = image;
+        // Give the image a finite layout slot. ScrollViewer otherwise measures
+        // its direct image content for scrolling, leaving aspect-fit pixels at
+        // the leading edge even when content alignment is Center.
+        imageCanvas.Children.Add(image);
+        imageViewport.Content = imageCanvas;
         imageViewport.SizeChanged += (_, _) =>
         {
-            image.Width = Math.Max(1, imageViewport.ActualWidth);
-            image.Height = Math.Max(1, imageViewport.ActualHeight);
+            imageCanvas.Width = Math.Max(1, imageViewport.ActualWidth);
+            imageCanvas.Height = Math.Max(1, imageViewport.ActualHeight);
             UpdateImageZoomLabel();
         };
         imageControls = [zoomOut, zoomIn, imageFit, imageActual, imageExpand];
@@ -43,7 +49,7 @@ internal sealed partial class MediaPlayerView
         Label(imageFit, "Fit image", "MediaPlayer.Image.Fit");
         Label(imageActual, "Actual image size", "MediaPlayer.Image.ActualSize");
         Label(imageExpand, "Expand image", "MediaPlayer.Image.Expand");
-        AutomationProperties.SetName(imageViewport, "Image · use triggers to zoom and directions to pan");
+        AutomationProperties.SetName(imageViewport, "Image · use triggers to zoom, right stick to pan, and left stick or D-pad to navigate");
         AutomationProperties.SetAutomationId(imageViewport, "MediaPlayer.Image.Viewport");
         foreach (var control in imageControls)
         {
@@ -54,6 +60,7 @@ internal sealed partial class MediaPlayerView
         }
         imageTools.Children.Add(imageZoom);
         imageTools.SizeChanged += (_, _) => LayoutImageTools();
+        body.SizeChanged += (_, _) => LayoutImageTools();
         imageViewport.ViewChanged += (_, _) => UpdateImageZoomLabel();
         imageViewport.PointerWheelChanged += (_, args) =>
         {
@@ -93,10 +100,11 @@ internal sealed partial class MediaPlayerView
 
     private void LayoutImageTools()
     {
-        var columns = Math.Clamp((int)((imageTools.ActualWidth - 16) / (80 * Math.Max(1, imageActual.FontSize / 14))), 2, 6);
+        var availableWidth = Math.Max(0, body.ActualWidth - (IsExpanded ? 48 : 0) - 16);
+        var columns = Math.Clamp((int)(availableWidth / (80 * Math.Max(1, imageActual.FontSize / 14))), 2, 6);
         if (imageTools.ColumnDefinitions.Count == columns) return;
         imageTools.ColumnDefinitions.Clear(); imageTools.RowDefinitions.Clear();
-        for (var i = 0; i < columns; i++) imageTools.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        for (var i = 0; i < columns; i++) imageTools.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         for (var i = 0; i < (imageTools.Children.Count + columns - 1) / columns; i++) imageTools.RowDefinitions.Add(new() { Height = GridLength.Auto });
         for (var i = 0; i < imageTools.Children.Count; i++) { Grid.SetColumn((FrameworkElement)imageTools.Children[i], i % columns); Grid.SetRow((FrameworkElement)imageTools.Children[i], i / columns); }
     }
@@ -106,9 +114,11 @@ internal sealed partial class MediaPlayerView
     private long lastImagePan;
     internal bool PanImage(short x, short y)
     {
-        if (!input || !IsImage || XamlRoot is null || !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport) ||
-            imageViewport.ScrollableWidth < 1 && imageViewport.ScrollableHeight < 1)
+        if (!input || !IsImage || XamlRoot is null || !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport))
         { lastImagePan = 0; return false; }
+        // Consume at Fit too: a pan gesture must not scroll the containing page.
+        if (imageViewport.ScrollableWidth < 1 && imageViewport.ScrollableHeight < 1)
+        { lastImagePan = 0; return true; }
         var now = Environment.TickCount64;
         var elapsed = lastImagePan == 0 ? 0 : Math.Clamp((now - lastImagePan) / 1000d, 0, .05);
         lastImagePan = now;
@@ -118,15 +128,15 @@ internal sealed partial class MediaPlayerView
         return true;
     }
     private double ImageFitScale => resolved is { Width: > 0, Height: > 0 }
-        ? Math.Min(Math.Max(1, image.Width) / resolved.Width, Math.Max(1, image.Height) / resolved.Height) : 1;
+        ? Math.Min(Math.Max(1, imageCanvas.Width) / resolved.Width, Math.Max(1, imageCanvas.Height) / resolved.Height) : 1;
     private sealed record ImageViewportMemory(bool Fit, double Scale, double X, double Y);
     private ImageViewportMemory? RememberImageViewport()
     {
         if (!IsImage || resolved is not { Width: > 0, Height: > 0 }) return null;
         var zoom = imageViewport.ZoomFactor;
         var scale = ImageFitScale;
-        var x = (imageViewport.HorizontalOffset + imageViewport.ViewportWidth / 2 - (image.Width - resolved.Width * scale) * zoom / 2) / (resolved.Width * scale * zoom);
-        var y = (imageViewport.VerticalOffset + imageViewport.ViewportHeight / 2 - (image.Height - resolved.Height * scale) * zoom / 2) / (resolved.Height * scale * zoom);
+        var x = (imageViewport.HorizontalOffset + imageViewport.ViewportWidth / 2 - (imageCanvas.Width - resolved.Width * scale) * zoom / 2) / (resolved.Width * scale * zoom);
+        var y = (imageViewport.VerticalOffset + imageViewport.ViewportHeight / 2 - (imageCanvas.Height - resolved.Height * scale) * zoom / 2) / (resolved.Height * scale * zoom);
         if (imageViewport.ScrollableWidth < 1) x = .5;
         if (imageViewport.ScrollableHeight < 1) y = .5;
         return new(Math.Abs(zoom - 1) < .01, scale * zoom, x, y);
@@ -137,8 +147,8 @@ internal sealed partial class MediaPlayerView
         if (memory.Fit) { FitImage(); return; }
         var scale = ImageFitScale;
         var zoom = (float)Math.Clamp(memory.Scale / scale, imageViewport.MinZoomFactor, imageViewport.MaxZoomFactor);
-        var x = ((image.Width - resolved.Width * scale) / 2 + memory.X * resolved.Width * scale) * zoom - imageViewport.ViewportWidth / 2;
-        var y = ((image.Height - resolved.Height * scale) / 2 + memory.Y * resolved.Height * scale) * zoom - imageViewport.ViewportHeight / 2;
+        var x = ((imageCanvas.Width - resolved.Width * scale) / 2 + memory.X * resolved.Width * scale) * zoom - imageViewport.ViewportWidth / 2;
+        var y = ((imageCanvas.Height - resolved.Height * scale) / 2 + memory.Y * resolved.Height * scale) * zoom - imageViewport.ViewportHeight / 2;
         imageViewport.ChangeView(Math.Max(0, x), Math.Max(0, y), zoom, true);
     }
     private void ActualImageSize()
@@ -175,18 +185,7 @@ internal sealed partial class MediaPlayerView
         if (!input || XamlRoot is null) return false;
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (ReferenceEquals(focused, imageViewport) || ReferenceEquals(focused, this))
-        {
-            if (imageViewport.ZoomFactor <= 1.01)
-                return direction == FocusNavigationDirection.Down ? imageFit.Focus(FocusState.Keyboard) : IsExpanded;
-            var x = imageViewport.HorizontalOffset;
-            var y = imageViewport.VerticalOffset;
-            if (direction == FocusNavigationDirection.Left) x -= 48;
-            if (direction == FocusNavigationDirection.Right) x += 48;
-            if (direction == FocusNavigationDirection.Up) y -= 48;
-            if (direction == FocusNavigationDirection.Down) y += 48;
-            imageViewport.ChangeView(Math.Clamp(x, 0, imageViewport.ScrollableWidth), Math.Clamp(y, 0, imageViewport.ScrollableHeight), null, true);
-            return true;
-        }
+            return direction == FocusNavigationDirection.Down ? imageFit.Focus(FocusState.Keyboard) : IsExpanded;
         if (direction == FocusNavigationDirection.Up) return imageViewport.Focus(FocusState.Keyboard);
         var index = Array.IndexOf(imageControls, focused as Control);
         var next = index + (direction == FocusNavigationDirection.Left ? -1 : 1);

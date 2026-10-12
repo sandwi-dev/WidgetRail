@@ -71,15 +71,19 @@ presentation pauses playback; passive visible presentations can keep playing.
 Capture expiry/revocation clears already decoded content. Dispose/source replacement
 cancels outstanding loads and releases native player/source objects.
 
-For still images, LT/RT zoom, directions pan while the
-image viewport is focused, LB fits the image, and RB switches between the image
+For still images, LT/RT zoom and the right stick pans while the
+image viewport is focused. The left stick and D-pad navigate regardless of zoom;
+Down reaches the toolbar. LB fits the image, and RB switches between the image
 and its toolbar. A activates the focused control, R3 expands/collapses, and B
 closes expansion before returning to ordinary widget navigation. The image keeps
 its aspect ratio; host-issued original-resolution captures retain their supplied
-resolution for zooming. The focused canvas supports continuous stick panning;
+resolution for zooming. The focused canvas consumes right-stick input even at Fit,
+so panning never also scrolls the surrounding widget;
 mouse dragging and wheel zoom are also supported. Fit, actual-size (100%) and a
 zoom percentage are available in the toolbar. Expansion retains the viewed image
-position and scale; Fit remains Fit when the viewport changes. Touch zoom/scroll and native keyboard navigation remain
+position and scale. Aspect-fit images are centered in their viewport, with a compact
+centered toolbar that wraps for smaller surfaces.
+Fit remains Fit when the viewport changes. Touch zoom/scroll and native keyboard navigation remain
 available. All of this stays inside the host; it does not launch Windows Photos.
 
 Fullscreen media fills the available overlay viewport with aspect-fit rendering.

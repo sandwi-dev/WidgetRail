@@ -76,10 +76,8 @@ internal sealed partial class OverlayShellPage
         { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var radialNavigation = ReceiveRadialNavigation(frame);
         var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
-        var browserPointer = !radialNavigation && (IsMediaFullscreen
-            ? fullscreenLayer.MoveAnalog(frame.State.LeftThumbX, frame.State.LeftThumbY)
-            : pointerPresenter?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true ||
-              pointerPresenter?.MoveMediaPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true);
+        var browserPointer = !radialNavigation && !IsMediaFullscreen &&
+            pointerPresenter?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true;
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : browserPointer ? default : frame.StickNavigation;
         var next = direction.Direction switch
         {
@@ -106,7 +104,13 @@ internal sealed partial class OverlayShellPage
             }
             else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
-        if (radialInput.AllowScroll && (PinnedInputActive ? pinned!.Presenter : interactive && !IsMediaFullscreen ? surface : null) is { } current)
+        // Images own right-stick panning only while their canvas has focus.
+        // Left-stick/D-pad navigation remains available even when zoomed in.
+        var imagePan = !radialNavigation && radialInput.AllowScroll && (IsMediaFullscreen
+            ? fullscreenLayer.MoveAnalog(frame.State.RightThumbX, frame.State.RightThumbY)
+            : pointerPresenter?.PanMediaImage(frame.State.RightThumbX, frame.State.RightThumbY) == true);
+        if (!imagePan && radialInput.AllowScroll && !IsMediaFullscreen &&
+            (PinnedInputActive ? pinned!.Presenter : interactive ? surface : null) is { } current)
         {
             var now = Environment.TickCount64;
             var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, now);

@@ -19,7 +19,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private readonly Border card = new() { Padding = new(8), BorderThickness = new(1) };
     private readonly Grid stage = new();
     private readonly MediaPlayerElement video = new() { AreTransportControlsEnabled = false, AutoPlay = false, Stretch = Stretch.Uniform };
-    private readonly Image image = new() { Stretch = Stretch.Uniform };
+    private readonly Image image = new() { Stretch = Stretch.Uniform,
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock status = new() { Text = "Opening media…", TextWrapping = TextWrapping.Wrap };
     private readonly Grid toolbar = new() { ColumnSpacing = 12, Padding = new(8) };
     private readonly Button play = new() { IsTabStop = true, UseSystemFocusVisuals = true, MinHeight = 44, Padding = new(12, 8, 12, 8) };
