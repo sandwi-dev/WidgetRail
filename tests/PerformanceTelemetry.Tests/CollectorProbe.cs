@@ -21,7 +21,7 @@ internal static class CollectorProbe
             await pipe.WaitForConnectionAsync(deadline.Token);
             if (!CollectorProtocol.IsClient(pipe, process.Id)) throw new Exception("Wrong helper process");
             var hello = await CollectorProtocol.ReadAsync<CollectorHello>(pipe, deadline.Token);
-            if (hello.Version != 1 || hello.Nonce != nonce) throw new Exception("Handshake mismatch");
+            if (hello.Version != CollectorProtocol.Version || hello.Nonce != nonce) throw new Exception("Handshake mismatch");
             await CollectorProtocol.WriteAsync(pipe, new CollectorCommand(false), deadline.Token);
             var idle = await CollectorProtocol.ReadAsync<CollectorReading>(pipe, deadline.Token);
             CollectorProtocol.Validate(idle);

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Buffers;
+using System.Diagnostics;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.PerformanceTelemetry;
@@ -21,7 +22,7 @@ public sealed class PresentFrameAccumulator
     public const int MaximumHistorySamplesTotal = 262144;
     private readonly object _gate = new();
     private readonly Dictionary<(int ProcessId, string SwapChain), Samples> _streams = [];
-    private int _pid = -1, _chain = -1, _interval = -1;
+    private int _pid = -1, _chain = -1, _interval = -1, _timestamp = -1;
     private double _lastNow;
     private int _historyCount;
 
@@ -40,14 +41,22 @@ public sealed class PresentFrameAccumulator
                 _pid = Array.FindIndex(fields, v => v.Equals("ProcessID", StringComparison.OrdinalIgnoreCase));
                 _chain = Array.FindIndex(fields, v => v.Equals("SwapChainAddress", StringComparison.OrdinalIgnoreCase));
                 _interval = Array.FindIndex(fields, v => v.Equals("MsBetweenPresents", StringComparison.OrdinalIgnoreCase));
+                _timestamp = Array.FindIndex(fields, v => v.Equals("QPCTime", StringComparison.OrdinalIgnoreCase));
                 _streams.Clear(); _historyCount = 0;
-                return _pid >= 0 && _chain >= 0 && _interval >= 0;
+                return _pid >= 0 && _chain >= 0 && _interval >= 0 && _timestamp >= 0;
             }
-            if (_pid < 0 || _chain < 0 || _interval < 0 || fields.Length <= Math.Max(_interval, Math.Max(_pid, _chain)) ||
+            if (_pid < 0 || _chain < 0 || _interval < 0 || _timestamp < 0 ||
+                fields.Length <= Math.Max(_timestamp, Math.Max(_interval, Math.Max(_pid, _chain))) ||
                 !int.TryParse(fields[_pid], NumberStyles.None, CultureInfo.InvariantCulture, out var processId) || processId <= 0 ||
                 fields[_chain].Length is 0 or > 32 ||
                 !double.TryParse(fields[_interval], NumberStyles.Float, CultureInfo.InvariantCulture, out var milliseconds) ||
                 !double.IsFinite(milliseconds) || milliseconds < .1 || milliseconds > 10_000) return false;
+            // The QPC clock is shared with PresentMon. Arrival time can be a
+            // second or more later, or many historical frames can arrive at once.
+            if (!long.TryParse(fields[_timestamp], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks) || ticks < 0)
+                return false;
+            var frameSeconds = ticks / (double)Stopwatch.Frequency;
+            if (frameSeconds > nowSeconds || frameSeconds < nowSeconds - 60) return false;
             var key = (processId, fields[_chain]);
             if (!_streams.TryGetValue(key, out var samples))
             {
@@ -59,13 +68,14 @@ public sealed class PresentFrameAccumulator
                 }
                 _streams.Add(key, samples = new());
             }
-            samples.LastSeen = nowSeconds;
+            if (samples.History.TryPeek(out _) && frameSeconds < samples.LastSeen) return false;
+            samples.LastSeen = frameSeconds;
             while (samples.Values.Count != 0 &&
-                (samples.Values.Count >= MaximumSamplesPerStream || samples.Values.Peek().At < nowSeconds - 2))
+                (samples.Values.Count >= MaximumSamplesPerStream || samples.Values.Peek().At <= frameSeconds - 2))
                 samples.Values.Dequeue();
-            samples.Values.Enqueue((nowSeconds, milliseconds));
+            samples.Values.Enqueue((frameSeconds, milliseconds));
             while (samples.History.Count != 0 && (samples.History.Count >= MaximumHistorySamplesPerStream ||
-                samples.History.Peek().At < nowSeconds - 60)) { samples.History.Dequeue(); --_historyCount; }
+                samples.History.Peek().At <= frameSeconds - 60)) { samples.History.Dequeue(); --_historyCount; }
             if (_historyCount >= MaximumHistorySamplesTotal)
             {
                 // A global bound protects against applications with many busy swap chains.
@@ -73,7 +83,7 @@ public sealed class PresentFrameAccumulator
                 oldest.History.Dequeue(); --_historyCount;
                 oldest.TrimHistory();
             }
-            samples.History.Enqueue((nowSeconds, milliseconds)); ++_historyCount;
+            samples.History.Enqueue((frameSeconds, milliseconds)); ++_historyCount;
             return true;
         }
     }
@@ -86,8 +96,11 @@ public sealed class PresentFrameAccumulator
             { _historyCount -= _streams[stale].History.Count; _streams.Remove(stale); }
             foreach (var stream in _streams.Values)
             {
-                while (stream.Values.TryPeek(out var first) && first.At < nowSeconds - 2) stream.Values.Dequeue();
-                while (stream.History.TryPeek(out var first) && first.At < nowSeconds - 60) { stream.History.Dequeue(); --_historyCount; }
+                // Measure windows ending at the latest delivered frame. Delivery
+                // lag must not fabricate an empty one-second graph sample. Wall
+                // clock age above still expires streams that stop producing data.
+                while (stream.Values.TryPeek(out var first) && first.At <= stream.LastSeen - 2) stream.Values.Dequeue();
+                while (stream.History.TryPeek(out var first) && first.At <= stream.LastSeen - 60) { stream.History.Dequeue(); --_historyCount; }
                 stream.TrimHistory();
             }
             return _streams.Where(p => p.Value.Values.Count > 0).GroupBy(pair => pair.Key.ProcessId).Select(group =>
@@ -95,7 +108,7 @@ public sealed class PresentFrameAccumulator
                 var stream = group.MaxBy(pair => pair.Value.Values.Count).Value;
                 var dominant = stream.Values;
                 var history = stream.History;
-                var window = history.Count == 0 ? 0 : Math.Min(60, Math.Max(0, nowSeconds - history.Peek().At));
+                var window = history.Count == 0 ? 0 : Math.Min(60, Math.Max(0, stream.LastSeen - history.Peek().At));
                 FrameTimingStatistics? statistics = null;
                 if (history.Count > 0)
                 {
@@ -115,7 +128,7 @@ public sealed class PresentFrameAccumulator
                             low = 1000 * slowCount / slowSum;
                         }
                         statistics = new(1000 / mean, low, mean,
-                            dominant.Where(v => v.At >= nowSeconds - 1).Select(v => v.Milliseconds).DefaultIfEmpty(0).Max(),
+                            dominant.Where(v => v.At > stream.LastSeen - 1).Select(v => v.Milliseconds).DefaultIfEmpty(0).Max(),
                             history.Count, window);
                     }
                     finally { ArrayPool<double>.Shared.Return(intervals); }
@@ -126,7 +139,7 @@ public sealed class PresentFrameAccumulator
         }
     }
 
-    public void Clear() { lock (_gate) { _streams.Clear(); _historyCount = 0; _pid = _chain = _interval = -1; } }
+    public void Clear() { lock (_gate) { _streams.Clear(); _historyCount = 0; _pid = _chain = _interval = _timestamp = -1; } }
 
     private sealed class Samples
     {

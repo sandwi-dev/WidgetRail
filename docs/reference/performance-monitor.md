@@ -42,6 +42,10 @@ on the secure desktop. Accounts unable to approve elevation cannot use FPS yet.
   intervals for the process's busiest swap chain. It is not a guarantee of frames
   displayed, generated-frame rate, or game-engine simulation ticks. Multiple
   swap chains are not added together.
+- Rolling windows use PresentMon's QPC frame timestamps, not CSV delivery time.
+  Each window ends at the latest delivered frame; wall-clock frame age still
+  expires stalled streams. ETW can deliver frames in batches, so a delayed batch
+  does not become a burst of new frames or a fabricated zero frame-time sample.
 - Unknown metrics are null and display **—**, never zero. A game that is idle,
   minimized, protected or unsupported may produce no frames. Values expire.
 - Average FPS is 1000 divided by the mean individual frame interval over up to
@@ -67,9 +71,15 @@ on the secure desktop. Accounts unable to approve elevation cannot use FPS yet.
 The bundled Intel PresentMon console is pinned at 2.6.0 with a SHA256 lock in
 `eng/runtime-dependencies.json`. Publication downloads and verifies it; runtime
 verifies it again before execution and retains a read lock. Its MIT license ships
-beside it. Each trace has a unique WidgetRail name and a 120-second hard recording
-window. Cleanup stops only that exact session; another tool's PresentMon session
-is never stopped. GPU/input/display-detail tracking is disabled in this FPS path.
+beside it. Each trace has a unique WidgetRail name and runs continuously while
+requested, preserving statistics across the former two-minute restart boundary.
+Cleanup stops only that exact session; another tool's PresentMon session is never
+stopped. GPU-duration and input tracking are disabled. Display tracking remains
+enabled: standalone 2.6.0/Dawnwalker comparisons reproduced zero CSV output with
+`--no_track_display` and recovered readings by removing only that option.
+An unexpected collector exit requires explicit reenablement instead of repeatedly
+restarting. Only an explicit access-denied trace-start error is classified as a
+permissions failure; PresentMon exit code 6 also covers other startup failures.
 
 Local collector diagnostics are written by the unelevated Bridge to
 `diagnostics/fps-collector.log` under the settings root. Rotation keeps the current
@@ -78,7 +88,9 @@ bounded messages through collector protocol v3 and never writes diagnostic files
 Logs include session starts/stops, exit codes, ten-second row/reader health counters,
 connection failures and at most eight bounded stderr chunks per trace. Paths and
 control characters are sanitized; raw frame CSV, capture media and pipe credentials
-are not logged. The diagnostic update does not change FPS collection/restart policy.
+are not logged. Final row counts are logged after draining the output streams.
+Lost-event warnings can occur in successful captures too; they are diagnostic
+evidence, not proof of why readings are missing.
 
 ## SDK contract
 

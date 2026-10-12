@@ -791,3 +791,30 @@ of these new changes. No scope item is complete solely because it is planned.
   `artifacts/capture-viewer-polish/final-launch.json`. Re-enable FPS in that candidate
   to record diagnostics for another reproduction. No install, merge, push, release
   or worktree cleanup performed. Main's unrelated document edit remains untouched.
+
+### FPS collector correction (2026-10-12)
+
+- Standalone six-run comparison with the bundled PresentMon 2.6.0 reproduced
+  zero frames three times with the original flags. Removing only
+  `--no_track_display` recovered 3,137 Dawnwalker frame rows in 35 seconds.
+  Default tracking delivered 14,087 rows over a continuous 145-second run.
+  Receipts: main checkout `artifacts/fps-investigation/standalone-comparison-findings.json`.
+- Keep display tracking enabled and GPU/input tracking disabled. Remove the
+  scheduled 120-second restart, retaining explicit demand, authenticated helper
+  heartbeat, and exact-session shutdown. This is application-present FPS, not a
+  new displayed-FPS or generated-frame measurement mode.
+- Use QPC event timestamps for rolling statistics, with measurement windows
+  ending at the latest delivered frame and wall-clock expiry for stale streams.
+  Reject invalid/future/out-of-order timestamps. Distinguish access-denied startup
+  from other exit-code-6 failures; drain before final diagnostic counts and stop
+  retrying unexpected exits until explicit reenablement.
+- Validation: 12/12 focused telemetry tests pass. The final real-runner probe
+  collected 15,835 CSV rows (including the header) over 145 seconds, with zero
+  missing readings after warm-up, zero empty frame-time samples, a retained
+  sixty-second history, one session start, and clean stop on demand removal.
+  An earlier live run exposed empty current windows under delayed delivery;
+  anchoring windows to the latest measured frame corrected that regression.
+  Evidence: `artifacts/fps-monitor-fix/live-final.json`, `live-final-exit.txt` (0),
+  and `tests-03.binlog`. Manual C# review covered bounded retention, clock-domain
+  alignment, error classification, output draining, and exact-session cleanup.
+  No merge or release requested.

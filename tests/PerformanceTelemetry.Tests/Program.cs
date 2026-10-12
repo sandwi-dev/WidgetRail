@@ -4,6 +4,8 @@ using WidgetRail.PerformanceTelemetry;
 using WidgetRail.WindowsPerformanceProvider;
 
 if (args is ["--probe-helper", var helper]) return await CollectorProbe.RunAsync(helper);
+if (args is ["--probe-runner", var presentMon, var targetPid, var output])
+    return await RunnerProbe.RunAsync(presentMon, int.Parse(targetPid), output);
 
 if (args is ["--probe-system"])
 {
@@ -40,6 +42,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Collector diagnostics are bounded sanitized and rotated without privileged writes", Diagnostics),
     ("Rolling lows use the slowest individual frames, not sampled FPS", FrameStatistics),
     ("The sixty-second window removes old stutters", HistoryExpiry),
+    ("Batched frames retain event times and cannot refresh stale FPS", EventTimestamps),
+    ("Trace options and failures preserve continuous collection and accurate errors", SessionContract),
     ("On-demand native sampling is cached and warms again after idle", NativeSampling),
 };
 var failures = 0;
@@ -54,13 +58,50 @@ return failures == 0 ? 0 : 1;
 static PresentFrameAccumulator Create()
 {
     var accumulator = new PresentFrameAccumulator();
-    Check(accumulator.Observe("Application,ProcessID,SwapChainAddress,MsBetweenPresents", 0), "Header rejected");
+    Check(accumulator.Observe("Application,ProcessID,SwapChainAddress,MsBetweenPresents,QPCTime", 0), "Header rejected");
     return accumulator;
+}
+static bool Feed(PresentFrameAccumulator frames, string row, double now) =>
+    frames.Observe(row + "," + ((long)(now * Stopwatch.Frequency)).ToString(System.Globalization.CultureInfo.InvariantCulture), now);
+
+static Task EventTimestamps()
+{
+    var frames = Create();
+    static string Row(double at, double interval = 10) => FormattableString.Invariant($"game,123,0x1,{interval},{(long)(at * Stopwatch.Frequency)}");
+    // Five seconds arrive in one batch. The current window must only contain
+    // frames actually presented in the last two seconds, not the entire batch.
+    for (var i = 0; i < 500; i++) Check(frames.Observe(Row(i / 100d), 5), "Batch frame rejected");
+    var rate = frames.Snapshot(5).Single();
+    Check(rate.SampleCount == 200 && rate.FrameStatistics!.SampleCount == 500, "Arrival time defined the sample windows");
+    Check(frames.Snapshot(6.2).Single().FrameStatistics!.RecentWorstFrameMilliseconds == 10, "Delivery lag fabricated zero frame time");
+    Check(!frames.Observe(Row(1), 5), "Out-of-order frame admitted into ordered queue");
+    Check(!frames.Observe(Row(7), 5), "Future frame admitted");
+    Check(frames.Snapshot(8).Count == 0, "Old event retained fresh FPS");
+    Check(frames.Observe(Row(4), 8), "Recent history rejected");
+    Check(frames.Snapshot(8).Count == 0, "Late delivery revived expired FPS");
+    Check(!frames.Observe(Row(1), 70), "Expired history admitted");
+    var malformed = new PresentFrameAccumulator();
+    Check(!malformed.Observe("Application,ProcessID,SwapChainAddress,MsBetweenPresents", 0), "Missing timestamp accepted");
+    Check(!frames.Observe("game,123,0x1,10,NaN", 9), "Bad timestamp accepted");
+    return Task.CompletedTask;
+}
+
+static Task SessionContract()
+{
+    var info = PresentMonRunner.CollectionStartInfo("PresentMon.exe", "WidgetRail-FPS-test");
+    Check(info.ArgumentList.Contains("--qpc_time") && info.ArgumentList.Contains("--no_track_input") &&
+        info.ArgumentList.Contains("--no_track_gpu") && !info.ArgumentList.Contains("--no_track_display") &&
+        !info.ArgumentList.Contains("--timed") && !info.ArgumentList.Contains("--terminate_after_timed"), "Incorrect trace configuration");
+    Check(PresentMonRunner.FailureState(6, "error: failed to start trace session: access denied.\r\n") == "permission-required", "Lost permission diagnosis");
+    Check(PresentMonRunner.FailureState(6, "error: a trace session named test is already running.") == "failed", "Session collision mislabeled as permission");
+    Check(PresentMonRunner.FailureState(6, "error: failed to start trace session: error code 1450.") == "failed", "Resource failure mislabeled as permission");
+    Check(PresentMonRunner.FailureState(0, "") == "failed", "Unexpected clean exit silently restarts");
+    return Task.CompletedTask;
 }
 static Task Intervals()
 {
     var frames = Create();
-    for (var i = 0; i < 60; i++) Check(frames.Observe("\"game, special.exe\",123,0x1,16.6666667", i / 120d), "Frame rejected");
+    for (var i = 0; i < 60; i++) Check(Feed(frames, "\"game, special.exe\",123,0x1,16.6666667", i / 120d), "Frame rejected");
     var result = frames.Snapshot(1).Single();
     Check(Math.Abs(result.FramesPerSecond - 60) < .001 && result.SampleCount == 60, "Arrival rate was confused with actual FPS");
     return Task.CompletedTask;
@@ -68,23 +109,23 @@ static Task Intervals()
 static Task DominantChain()
 {
     var frames = Create();
-    for (var i = 0; i < 60; i++) frames.Observe("game,123,0x1,16.6666667", i / 60d);
-    for (var i = 0; i < 30; i++) frames.Observe("game,123,0x2,33.3333333", 1 + i / 60d);
+    for (var i = 0; i < 60; i++) Feed(frames, "game,123,0x1,16.6666667", i / 60d);
+    for (var i = 0; i < 30; i++) Feed(frames, "game,123,0x2,33.3333333", 1 + i / 60d);
     Check(Math.Abs(frames.Snapshot(1.6).Single().FramesPerSecond - 60) < .001, "Swap chains were added together");
     return Task.CompletedTask;
 }
 static Task StaleAndRestart()
 {
-    var frames = Create(); frames.Observe("game,1,0x1,10", .1);
+    var frames = Create(); Feed(frames, "game,1,0x1,10", .1);
     Check(frames.Snapshot(3).Count == 0, "Frozen FPS survived a stopped process");
-    frames.Observe("game,1,0x1,10", 3);
+    Feed(frames, "game,1,0x1,10", 3);
     frames.Clear(); Check(frames.Snapshot(3).Count == 0, "Collector restart retained old values");
     return Task.CompletedTask;
 }
 static Task FrameStatistics()
 {
     var frames = Create();
-    for (var i = 0; i < 1000; i++) frames.Observe($"game,123,0x1,{(i < 10 ? 100 : 10)}", i / 100d);
+    for (var i = 0; i < 1000; i++) Feed(frames, $"game,123,0x1,{(i < 10 ? 100 : 10)}", i / 100d);
     var rate = frames.Snapshot(10).Single();
     var summary = rate.FrameStatistics!;
     Check(summary.IsWellFormed(), "Generated invalid statistics");
@@ -92,16 +133,16 @@ static Task FrameStatistics()
     Check(Math.Abs(summary.OnePercentLowFramesPerSecond!.Value - 10) < .001, "Slowest one percent was not used");
     Check(Math.Abs(rate.FramesPerSecond - 100) < .001, "Current FPS no longer uses recent intervals");
     Check(summary.RecentWorstFrameMilliseconds == 10, "Old stutter leaked into recent graph sample");
-    var warming = Create(); warming.Observe("game,1,0x1,10", .1);
+    var warming = Create(); Feed(warming, "game,1,0x1,10", .1);
     Check(warming.Snapshot(1).Single().FrameStatistics!.OnePercentLowFramesPerSecond is null, "Low fabricated from too few frames");
     return Task.CompletedTask;
 }
 static Task HistoryExpiry()
 {
     var frames = Create();
-    for (var i = 0; i < 7000; i++) frames.Observe($"game,123,0x1,{(i < 100 ? 100 : 10)}", i / 100d);
+    for (var i = 0; i < 7000; i++) Feed(frames, $"game,123,0x1,{(i < 100 ? 100 : 10)}", i / 100d);
     var stats = frames.Snapshot(70).Single().FrameStatistics!;
-    Check(stats.SampleCount == 6000 && Math.Abs(stats.WindowSeconds - 60) < .001, "Window was not pruned to sixty seconds");
+    Check(stats.SampleCount is >= 6000 and <= 6001 && Math.Abs(stats.WindowSeconds - 60) < .02, "Window was not pruned to sixty seconds");
     Check(stats.OnePercentLowFramesPerSecond == 100, "Expired slow frames still affect lows");
     frames.Clear();
     Check(frames.Snapshot(70).Count == 0, "Cleared collection retains history");
@@ -111,16 +152,16 @@ static Task Malformed()
 {
     var frames = Create();
     foreach (var row in new[] { "game,1,0x1,NaN", "game,1,0x1,Infinity", "game,0,0x1,20", "game,1,0x1,-20", "game,1,0x1,0", "\"unterminated,1,0x1,20", new string('x', 8193) })
-        Check(!frames.Observe(row, 1), "Invalid frame admitted");
+        Check(!Feed(frames, row, 1), "Invalid frame admitted");
     Check(frames.Snapshot(1).Count == 0, "Bad data became a measured zero");
     return Task.CompletedTask;
 }
 static Task Bounded()
 {
     var frames = Create();
-    for (var i = 1; i <= 500; i++) frames.Observe($"game,{i},0x1,10", i / 1000d);
+    for (var i = 1; i <= 500; i++) Feed(frames, $"game,{i},0x1,10", i / 1000d);
     Check(frames.Snapshot(1).Count == PresentFrameAccumulator.MaximumStreams, "Stream bound exceeded");
-    for (var i = 0; i < 1500; i++) frames.Observe("game,500,0x1,1", 1);
+    for (var i = 0; i < 1500; i++) Feed(frames, "game,500,0x1,1", 1);
     Check(frames.Snapshot(1).Single(p => p.ProcessId == 500).SampleCount == PresentFrameAccumulator.MaximumSamplesPerStream, "Sample bound exceeded");
     return Task.CompletedTask;
 }
