@@ -1,6 +1,6 @@
 # Page navigation and live media transitions
 
-Status: implemented; candidate and physical validation in progress (2026-10-12).
+Status: candidate ready for physical validation (2026-10-12).
 
 ## Contract
 
@@ -21,7 +21,8 @@ Status: implemented; candidate and physical validation in progress (2026-10-12).
 - [x] Native media presentation lifetime and synchronized page placement
 - [x] Capture Library and Settings migration
 - [x] Focus/scroll restoration, cancellation, and reduced-motion checks
-- [ ] Native visual reproduction, final candidate and physical handoff
+- [x] Native visual reproduction, final candidate and physical handoff
+- [ ] User physical acceptance and integration
 
 Existing browser/window-preview ownership must remain intact. Renderers without a
 safe transition lifetime must use an explicit safe fallback; never remove the live-surface
@@ -56,3 +57,8 @@ guard indiscriminately. SDK authors declare navigation, not renderer workarounds
   on both this branch and unchanged main (before transition checks). Evidence:
   `styles-status.json` and `baseline-styles-status.json` in the artifact directory.
   The focused transition/media/widget/settings checks listed above pass.
+
+The final normal-profile developer candidate is built from `155fa2da` under
+`artifacts/page-transitions/candidate-final/0.1.0-preview.30` and was launched in
+Capture Library. Both production/developer folder catalogs passed integrity and
+icon admission (13/17 widgets). No installer, release, push or merge was performed.
