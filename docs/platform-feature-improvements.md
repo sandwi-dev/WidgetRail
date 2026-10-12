@@ -913,3 +913,30 @@ of these new changes. No scope item is complete solely because it is planned.
   animation cancellation/disposal, visual property restoration, theme brushes,
   reduced motion and preservation of playback/image state. No SDK/protocol
   changes, merge or release are part of this update.
+
+### Playing-video transition correction (2026-10-12)
+
+- The user's recording exposed a live native-video/XAML transform mismatch that
+  final-position checks had missed. Native media now animates through a WinUI
+  `CompositeTransform`/Storyboard owned by the shared fullscreen layer. The
+  existing duration, image/WebView animation, input lifetime and reduced-motion
+  policy remain shared. No frame-server mode, pause/resume workaround, second
+  decoder or screenshot-based transition was added.
+- Added playing/paused entrance and exit checks and original-transform cleanup.
+  The recorder-only validation mode uses a full-screen fixture and a short
+  attachment delay so intermediate rendered frames can be inspected. Evidence
+  lives in `artifacts/media-stable-video-motion`, including a moving 4K clip.
+- The separate late YouTube flicker is not confirmed as a zoom workaround:
+  neither its adapter nor its embedded return path changes page zoom. Two
+  experimental visibility/return-order changes were discarded after delayed
+  WebView native-attachment failures. The existing embedded return sequence is
+  retained. The expanded baseline test now exercises playing return and delayed
+  observations; it passes without those experiments. Do not claim the YouTube
+  flicker fixed by this native-media correction.
+- Final evidence: `native-final-4k.json` passes 78 checks; the windowed and
+  full-screen 30 fps recordings show native video following the XAML transform
+  while playing. `embedded-baseline-05.json` passes 16 checks and the process
+  remained responsive after delayed observations. The cross-root transfer
+  fixture passes 81 checks. Build completes with zero warnings/errors. Manual
+  review covered transform restoration, cancellation, retained playback,
+  reduced motion and renderer-specific routing within the shared host.

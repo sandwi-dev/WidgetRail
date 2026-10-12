@@ -25,7 +25,13 @@ internal sealed partial class CapturedMediaValidationPage : Page
             media.Height = Math.Max(180, ActualHeight - 48);
             media.UpdateLayout();
             var checks = new List<string>(); string? error = null;
-            try { await media.ValidateCapturePlaybackAsync(png, mp4, checks); }
+            try
+            {
+                // Allows an external window recorder to attach before the
+                // automatic fixture begins; not included in shipping builds.
+                if (Environment.GetCommandLineArgs().Contains("--record-media-transitions")) await Task.Delay(3000);
+                await media.ValidateCapturePlaybackAsync(png, mp4, checks);
+            }
             catch (Exception failure) { error = failure.ToString(); }
             finally { media.Dispose(); }
             if (error is null && Environment.GetCommandLineArgs().Contains("--media-player-preview"))

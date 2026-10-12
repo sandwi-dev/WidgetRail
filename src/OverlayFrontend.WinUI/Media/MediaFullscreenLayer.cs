@@ -31,7 +31,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Func<ControllerButton, ControllerEventPhase, bool> Handle,
         Action<FocusNavigationDirection> Navigate, Action Focus, Action Restore, Action ReturnFocus,
         Func<short, short, bool>? AnalogMove = null, Action? Settled = null,
-        Rect? Origin = null, Action? Prepare = null, FrameworkElement[]? Chrome = null)
+        Rect? Origin = null, Action? Prepare = null, FrameworkElement[]? Chrome = null,
+        bool UseXamlTransform = false)
     {
         internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }

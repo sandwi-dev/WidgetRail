@@ -19,6 +19,7 @@ internal sealed partial class MediaFullscreenLayer
     private readonly Border backdrop = new();
     private WidgetCompositionMotion? transition;
     private WidgetCompositionTarget? contentMotion, backdropMotion;
+    private MediaFullscreenXamlMotion? xamlMotion;
     private readonly List<WidgetCompositionTarget> chromeMotion = [];
     private bool entranceQueued;
 
@@ -26,7 +27,7 @@ internal sealed partial class MediaFullscreenLayer
     internal void ApplyMotion(AppearanceSettings appearance, bool animationsEnabled)
     {
         motionAppearance = appearance; systemAnimations = animationsEnabled;
-        if (MotionDuration == TimeSpan.Zero) transition?.Cancel();
+        if (MotionDuration == TimeSpan.Zero) CancelMotion();
     }
     private TimeSpan MotionDuration => WidgetMotionOptions.From(motionAppearance, systemAnimations)
         .Duration(Math.Clamp(TransitionDuration.TotalMilliseconds, 0, 1000));
@@ -36,7 +37,7 @@ internal sealed partial class MediaFullscreenLayer
         Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         backdrop.Background = (Brush)Application.Current.Resources["ApplicationPageBackgroundThemeBrush"];
         Children.Insert(0, backdrop);
-        SizeChanged += (_, _) => { if (IsTransitioning) transition?.Cancel(); };
+        SizeChanged += (_, _) => { if (IsTransitioning) CancelMotion(); };
         PreviewKeyDown += (_, args) =>
         {
             if (!IsTransitioning) return;
@@ -71,7 +72,8 @@ internal sealed partial class MediaFullscreenLayer
         if (MotionDuration > TimeSpan.Zero)
         {
             CreateMotionTargets(presentation);
-            contentMotion!.Set(InlinePose(presentation));
+            contentMotion?.Set(InlinePose(presentation));
+            xamlMotion?.Set(InlinePose(presentation));
             backdropMotion!.Set(WidgetMotionPose.Identity with { Opacity = 0 });
             foreach (var chrome in chromeMotion) chrome.Set(WidgetMotionPose.Identity with { Opacity = 0 });
         }
@@ -89,32 +91,42 @@ internal sealed partial class MediaFullscreenLayer
 
     private void CreateMotionTargets(Presentation presentation)
     {
-        if (contentMotion is not null) return;
+        if (transition is not null) return;
         var size = new Vector2((float)Math.Max(1, ActualWidth), (float)Math.Max(1, ActualHeight));
-        contentMotion = WidgetCompositionTarget.ForClippedDialog(presentation.Content, size);
-        contentMotion.SetAnchor(Vector3.Zero);
+        if (presentation.UseXamlTransform) xamlMotion = new(presentation.Content);
+        else
+        {
+            contentMotion = WidgetCompositionTarget.ForClippedDialog(presentation.Content, size);
+            contentMotion.SetAnchor(Vector3.Zero);
+        }
         backdropMotion = WidgetCompositionTarget.ForClippedDialog(backdrop, size);
         foreach (var chrome in presentation.Chrome ?? [])
             chromeMotion.Add(WidgetCompositionTarget.ForClippedDialog(chrome, size));
-        transition = new(contentMotion.Compositor, DispatcherQueue);
+        transition = new(backdropMotion.Compositor, DispatcherQueue);
     }
 
-    private Task<WidgetMotionOutcome> AnimateAsync(Presentation presentation, bool opening)
+    private async Task<WidgetMotionOutcome> AnimateAsync(Presentation presentation, bool opening)
     {
         var duration = MotionDuration;
-        if (duration == TimeSpan.Zero) { transition?.Cancel(); return Task.FromResult(WidgetMotionOutcome.Completed); }
+        if (duration == TimeSpan.Zero) { CancelMotion(); return WidgetMotionOutcome.Completed; }
         CreateMotionTargets(presentation);
         var full = WidgetMotionPose.Identity;
-        var inline = InlinePose(presentation);
         var hidden = full with { Opacity = 0 };
         var items = new List<WidgetMotionPlayback>
         {
-            new(contentMotion!, new(opening ? inline : full, opening ? full : inline, duration)),
             new(backdropMotion!, new(opening ? hidden : full, opening ? full : hidden, duration)),
         };
+        if (contentMotion is not null)
+        {
+            var inline = InlinePose(presentation);
+            items.Add(new(contentMotion, new(opening ? inline : full, opening ? full : inline, duration)));
+        }
         foreach (var chrome in chromeMotion)
             items.Add(new(chrome, new(opening ? hidden : full, opening ? full : hidden, duration)));
-        return transition!.PlayAsync(items);
+        var compositorPlayback = transition!.PlayAsync(items);
+        if (xamlMotion is not null)
+            await Task.WhenAll(compositorPlayback, xamlMotion.PlayAsync(opening ? full : InlinePose(presentation), duration));
+        return await compositorPlayback;
     }
 
     private async Task OpenTransitionAsync(Presentation presentation, long version)
@@ -154,8 +166,11 @@ internal sealed partial class MediaFullscreenLayer
         entranceQueued = false;
         transition?.Dispose(); transition = null;
         contentMotion?.Dispose(); contentMotion = null;
+        xamlMotion?.Dispose(); xamlMotion = null;
         backdropMotion?.Dispose(); backdropMotion = null;
         foreach (var chrome in chromeMotion) chrome.Dispose();
         chromeMotion.Clear();
     }
+
+    private void CancelMotion() { transition?.Cancel(); xamlMotion?.Cancel(); }
 }

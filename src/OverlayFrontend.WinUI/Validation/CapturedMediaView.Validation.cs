@@ -162,6 +162,7 @@ internal sealed partial class MediaPlayerView
         Check(speed.Focus(FocusState.Keyboard), "Speed control accepts focus before expansion");
         var expanded = ToggleExpandedAsync();
         await Until(() => expandedHost is { IsLoaded: true, IsOpen: true });
+        await CheckStableVideoTransition("Playing video entrance");
         await Until(() => !changingPlacement && expandedHost is { IsTransitioning: false });
         Check(card.Parent is MediaFullscreenLayer, "Expanded viewer uses the shared shell layer without dialog framing");
         Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Expansion preserves the focused transport control; actual=" +
@@ -174,7 +175,10 @@ internal sealed partial class MediaPlayerView
         Check(IsPlaying && ReferenceEquals(player,retained) && card.Parent is Microsoft.UI.Xaml.Controls.Grid,"Expanded view retains one player and playback state");
         Handle(ControllerButton.B,ControllerEventPhase.Pressed);
         Handle(ControllerButton.B,ControllerEventPhase.Released);
+        await CheckStableVideoTransition("Playing video exit");
         await expanded;
+        Check(ReferenceEquals(card.ReadLocalValue(UIElement.RenderTransformProperty), DependencyProperty.UnsetValue),
+            "Native video transition restores the original XAML transform after collapse");
         Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Collapse restores the same focused transport control");
         for (var cycle = 0; cycle < 3; cycle++)
         {
@@ -188,6 +192,14 @@ internal sealed partial class MediaPlayerView
                 "Repeated expansion retains the player and focus without visiting another control");
         }
         Check(IsPlaying && !IsExpanded && ReferenceEquals(Content,card) && ReferenceEquals(player,retained),"B restores inline player without recreating playback");
+        Toggle(); await Until(() => !IsPlaying);
+        var pausedExpansion = ToggleExpandedAsync();
+        await CheckStableVideoTransition("Paused video entrance");
+        await Until(() => !changingPlacement && expandedHost is { IsTransitioning: false });
+        expandedHost!.Close();
+        await CheckStableVideoTransition("Paused video exit");
+        await pausedExpansion;
+        Toggle(); await Until(() => IsPlaying);
         var rapid = ToggleExpandedAsync();
         await Until(() => IsExpanded);
         expandedHost!.Close();
@@ -269,6 +281,21 @@ internal sealed partial class MediaPlayerView
         static CaptureAttachment AttachmentFor(string path, string type, double duration) =>
             new(Guid.NewGuid().ToString("N"), type, 640, 360, new FileInfo(path).Length, duration, DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeMilliseconds());
         void Check(bool passed, string message) { if (!passed) throw new InvalidOperationException(message); checks.Add(message); }
+        async Task CheckStableVideoTransition(string label)
+        {
+            var wasPlaying = IsPlaying;
+            var retainedPlayer = player;
+            for (var frame = 0; frame < 4; frame++)
+            {
+                await Task.Delay(25);
+                var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(card);
+                visual.Properties.TryGetVector3("Translation", out var translation);
+                if (visual.Scale != System.Numerics.Vector3.One || translation != System.Numerics.Vector3.Zero || visual.Opacity != 1)
+                    throw new InvalidOperationException(label + " used a direct compositor transform for native video");
+            }
+            Check(ReferenceEquals(player, retainedPlayer) && IsPlaying == wasPlaying && !player!.IsVideoFrameServerEnabled,
+                label + " uses the XAML transform path and retains ordinary playback");
+        }
         static async Task Until(Func<bool> condition)
         {
             var end = Environment.TickCount64 + 10000;

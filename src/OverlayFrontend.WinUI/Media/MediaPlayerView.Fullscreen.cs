@@ -69,7 +69,7 @@ internal sealed partial class MediaPlayerView
                 changingPlacement = false;
                 (previous is { IsEnabled: true, Visibility: Visibility.Visible } ? previous : PreferredFocus).Focus(FocusState.Keyboard);
             }, PanImage, () => changingPlacement = false, Origin: origin,
-            Prepare: () => RestoreImageViewport(imageState), Chrome: [toolbar, imageTools]));
+            Prepare: () => RestoreImageViewport(imageState), Chrome: [toolbar, imageTools], UseXamlTransform: IsVideo));
     }
 
     private void SetExpandedLayout(bool expanded)

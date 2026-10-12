@@ -91,6 +91,13 @@ public sealed partial class MainWindow
         else if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is { } mediaResult)
         {
             AppWindow.Resize(new(1400, 1050));
+            if (arguments.Contains("--record-media-transitions"))
+            {
+                ShellCard.Margin = ShellCard.Padding = new(0);
+                ShellHeader.Visibility = Visibility.Collapsed;
+                ShellLayout.RowSpacing = 0;
+                AppWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+            }
             RootFrame.Content = new Validation.CapturedMediaValidationPage(mediaResult,
                 Shell.FrontendArguments.Value(arguments, "--capture-png") ?? throw new ArgumentException("Missing synthetic PNG."),
                 Shell.FrontendArguments.Value(arguments, "--capture-mp4") ?? throw new ArgumentException("Missing synthetic MP4."));

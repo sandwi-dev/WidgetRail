@@ -59,15 +59,24 @@ internal sealed partial class OverlayShellPage
                     if (ProductionLayout.Visibility == Visibility.Visible &&
                         (WidgetSurface.Width > widgetExtent.Width + 1 || WidgetSurface.Height > widgetExtent.Height + 1)) wideReveal = true;
                 });
-                await Click("media-shell.fullscreen"); await Until(() => IsMediaFullscreen && !fullscreenLayer.IsTransitioning);
+                await Click("media-shell.play"); await MediaUntil("!m.paused");
+                await Click("media-shell.fullscreen");
+                await CheckStableExternalTransition("Playing embedded video entrance");
+                await Until(() => IsMediaFullscreen && !fullscreenLayer.IsTransitioning);
                 Check(Math.Abs(WidgetSurface.Width - widgetExtent.Width) < 1 && Math.Abs(WidgetSurface.Height - widgetExtent.Height) < 1,
                     "fullscreen keeps the retained widget at its authored dimensions on an ultrawide viewport");
                 Check(ReferenceEquals(browser.Parent, fullscreenView.SurfaceHost), "fullscreen moves the existing browser");
                 await CheckHeldSeek(ControllerButton.RightTrigger, "fullscreen RT");
                 await CheckHeldSeek(ControllerButton.LeftTrigger, "fullscreen LT");
+                await core.ExecuteScriptAsync("document.getElementById('media').play()");
+                await MediaUntil("!m.paused");
                 await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
                 await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
+                await CheckStableExternalTransition("Playing embedded video exit");
                 await Until(() => !IsMediaFullscreen);
+                await Task.Delay(1200);
+                Check(ReferenceEquals(browser.Parent, Walk(surface!).OfType<WidgetMediaViewport>().Single().SurfaceHost) &&
+                    mediaOwner.IsReady(id), "Returned playing WebView remains in its ordinary viewport after delayed observations");
                 ProductionLayout.UnregisterPropertyChangedCallback(VisibilityProperty, visibilityToken);
                 Check(!wideReveal && Math.Abs(WidgetSurface.Width - widgetExtent.Width) < 1 &&
                     Math.Abs(WidgetSurface.Height - widgetExtent.Height) < 1,
@@ -156,6 +165,12 @@ internal sealed partial class OverlayShellPage
                 await SelectAsync(id, true);
                 Write(true, null);
 
+                async Task CheckStableExternalTransition(string label)
+                {
+                    await Task.Delay(100);
+                    await MediaUntil("!m.paused");
+                    Check(mediaOwner!.BrowserCreationCount == creations, label + " retains the playing WebView");
+                }
                 async Task MediaUntil(string predicate)
                 {
                     var deadline = Environment.TickCount64 + 10000;
