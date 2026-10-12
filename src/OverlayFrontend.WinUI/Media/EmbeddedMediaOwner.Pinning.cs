@@ -25,7 +25,7 @@ internal sealed partial class EmbeddedMediaOwner
         var id = displayed.Authority.WidgetId;
         if (retired || compact is not null || !visible || id != activeWidget || !destination.IsLoaded ||
             entries.GetValueOrDefault(id) is not { Document: { } document, Surface: { IsReady: true } surface } ||
-            MatchingViewport(id) is not { } ordinary || !ReferenceEquals(surface.Element.Parent, ordinary.Element.SurfaceHost)) return null;
+            MatchingViewport(id) is not { } ordinary || !ReferenceEquals(surface.Element.Parent, MainHost(id, ordinary))) return null;
         var receipt = session.EnterEmbeddedMediaCompact(displayed, document);
         ExitFullscreen();
         compact = receipt; compactHost = destination; compactInput = false;

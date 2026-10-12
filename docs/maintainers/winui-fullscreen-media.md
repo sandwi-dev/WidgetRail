@@ -7,8 +7,23 @@
 
 The existing SDK action `host.embeddedMediaSession.enterFullscreen` remains the
 entry declaration. The widget declares `OverlayFullscreen` capability; it does
-not hold fullscreen state. A trusted host presentation moves the existing admitted
+not hold fullscreen state. A trusted host presentation scales the existing admitted
 browser between its ordinary viewport and an aspect-fit fullscreen viewport.
+
+## Resident rendering update (2026-10-12)
+
+The production shell keeps embedded media in an `EmbeddedMediaStage` owned by the
+shared fullscreen layer. The widget's `MediaViewport` remains the layout/authority
+slot. The resident stage follows its bounds, rectangular clipping, scrolling and
+ancestor opacity. Fullscreen animates that stage without resizing or reparenting
+the WebView. This avoids WinUI's unload/reconnect and a stale-size video frame at
+the return boundary. The HTML viewport is held at the available aspect-fit render
+size, so inline presentation can retain a larger rendering surface than its slot.
+
+The existing cross-root transfer remains responsible for separate pinned windows.
+Native video and images keep their current renderer paths in the same shared
+fullscreen coordinator. The SDK contract, admission checks and controller mappings
+are unchanged. The earlier transfer-based implementation is recorded below.
 
 ## Session admission
 
@@ -58,7 +73,7 @@ WebView2 controller measured about 5.2 seconds on this machine; media admission 
 about 38 ms. A loading indicator makes initialization visible. Moving an existing
 browser between presentations avoids paying that controller startup cost again.
 
-The shell now provides one `MediaFullscreenView` with a native aspect-fit viewport,
+The initial shell implementation provided one `MediaFullscreenView` with a native aspect-fit viewport,
 responsive native buttons and semantic controller glyphs. The existing media owner
 moves the same browser into that destination and returns it on exit; it neither
 resolves the package again nor constructs another controller. The main widget stays

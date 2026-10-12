@@ -16,7 +16,7 @@ internal sealed partial class MediaFullscreenLayer
     internal TimeSpan TransitionDuration { get; set; } = DefaultTransitionDuration;
     private AppearanceSettings motionAppearance = AppearanceSettings.Default;
     private bool systemAnimations = true;
-    private readonly Border backdrop = new();
+    private readonly Border backdrop = new() { Visibility = Visibility.Collapsed };
     private WidgetCompositionMotion? transition;
     private WidgetCompositionTarget? contentMotion, backdropMotion;
     private MediaFullscreenXamlMotion? xamlMotion;
@@ -92,10 +92,10 @@ internal sealed partial class MediaFullscreenLayer
     {
         if (transition is not null) return;
         var size = new Vector2((float)Math.Max(1, ActualWidth), (float)Math.Max(1, ActualHeight));
-        if (presentation.UseXamlTransform) xamlMotion = new(presentation.Content);
+        if (presentation.UseXamlTransform) xamlMotion = new(presentation.MotionContent ?? presentation.Content);
         else
         {
-            contentMotion = WidgetCompositionTarget.ForClippedDialog(presentation.Content, size);
+            contentMotion = WidgetCompositionTarget.ForClippedDialog(presentation.MotionContent ?? presentation.Content, size);
             contentMotion.SetAnchor(Vector3.Zero);
         }
         backdropMotion = WidgetCompositionTarget.ForClippedDialog(backdrop, size);

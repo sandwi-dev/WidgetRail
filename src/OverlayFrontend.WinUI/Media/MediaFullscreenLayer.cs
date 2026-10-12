@@ -32,14 +32,14 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Action<FocusNavigationDirection> Navigate, Action Focus, Action Restore, Action ReturnFocus,
         Func<short, short, bool>? AnalogMove = null, Action? Settled = null,
         Rect? Origin = null, Action? Prepare = null, FrameworkElement[]? Chrome = null,
-        bool UseXamlTransform = false, Func<Rect?>? MediaBounds = null)
+        bool UseXamlTransform = false, Func<Rect?>? MediaBounds = null, FrameworkElement? MotionContent = null)
     {
         internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     internal MediaFullscreenLayer()
     {
-        Visibility = Visibility.Collapsed;
+        IsHitTestVisible = false;
         Children.Add(parking);
         HorizontalAlignment = HorizontalAlignment.Stretch;
         VerticalAlignment = VerticalAlignment.Stretch;
@@ -56,6 +56,12 @@ internal sealed partial class MediaFullscreenLayer : Grid
 
     internal void Attach(Grid root) { root.SetValue(HostProperty, this); root.Children.Add(this); }
     internal void Park(FrameworkElement content) => parking.Children.Add(content);
+    internal EmbeddedMediaStage CreateMediaStage(double aspectRatio)
+    {
+        var stage = new EmbeddedMediaStage(aspectRatio);
+        Children.Insert(Children.IndexOf(backdrop) + 1, stage);
+        return stage;
+    }
     internal static MediaFullscreenLayer? Find(DependencyObject source)
     {
         for (DependencyObject? item = source; item is not null; item = VisualTreeHelper.GetParent(item))
@@ -74,7 +80,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
         AutomationProperties.SetName(this, string.IsNullOrWhiteSpace(name) ? "Fullscreen media" : name);
         if (ReferenceEquals(presentation.Content.Parent, parking)) parking.Children.Remove(presentation.Content);
         Children.Add(presentation.Content);
-        Visibility = Visibility.Visible;
+        IsHitTestVisible = true;
+        backdrop.Visibility = Visibility.Visible;
         Changed?.Invoke();
         UpdateLayout();
         PrepareEntrance(presentation, version);
@@ -104,7 +111,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
         IsTransitioning = false;
         previous.Content.IsHitTestVisible = true;
         Children.Remove(previous.Content);
-        Visibility = Visibility.Collapsed;
+        IsHitTestVisible = false;
+        backdrop.Visibility = Visibility.Collapsed;
         previous.Restore();
         Changed?.Invoke();
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>

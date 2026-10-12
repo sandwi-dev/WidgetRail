@@ -22,6 +22,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         internal CancellationTokenSource Lifetime { get; } = new();
         internal WidgetPresentationEmbeddedMediaDocument? Document;
         internal EmbeddedMediaSurface? Surface;
+        internal EmbeddedMediaStage? Stage;
         internal Task? Resolving;
         internal bool IsResolving;
         internal long AttemptSequence;
@@ -50,9 +51,19 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     internal string? GetFailure(string widgetId) => failures.GetValueOrDefault(widgetId);
     internal int ResidentCount => entries.Count;
     internal int BrowserCreationCount { get; private set; }
+    internal Func<double, EmbeddedMediaStage>? CreateStage { get; set; }
+#if ENABLE_WIDGET_VALIDATION
+    internal Microsoft.UI.Xaml.Controls.WebView2? BrowserForValidation(string id) => entries.GetValueOrDefault(id)?.Surface?.Element as Microsoft.UI.Xaml.Controls.WebView2;
+    internal Grid? MediaHostForValidation(string id) => entries.GetValueOrDefault(id)?.Stage?.SurfaceHost;
+    internal bool CommandPendingForValidation(string id) => entries.GetValueOrDefault(id)?.Surface?.IsCommandPending == true;
+#endif
     internal void Refresh() => Reconcile();
     internal bool IsReady(string widgetId) => entries.GetValueOrDefault(widgetId)?.Surface?.IsReady == true;
-    internal bool IsParked(string widgetId) => entries.GetValueOrDefault(widgetId)?.Surface is { } surface && ReferenceEquals(surface.Element.Parent, parking);
+    internal bool IsParked(string widgetId) => entries.GetValueOrDefault(widgetId) is { Surface: { } surface } entry &&
+        (ReferenceEquals(surface.Element.Parent, parking) || entry.Stage is { HasSlot: false } stage &&
+            ReferenceEquals(surface.Element.Parent, stage.SurfaceHost) && !IsFullscreen(widgetId) && !IsCompact(widgetId));
+    private Grid MainHost(string id, Viewport ordinary) => entries.GetValueOrDefault(id)?.Stage is { } stage && stage.CanPresent(ordinary.Element.SurfaceHost)
+        ? stage.SurfaceHost : ordinary.Element.SurfaceHost;
 
     internal EmbeddedMediaOwner(PresentationSession session, Grid parking)
     {
@@ -215,6 +226,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             if (retired || !entries.TryGetValue(entry.WidgetId, out var current) || !ReferenceEquals(current, entry) ||
                 session.GetEmbeddedMediaState(document) is null) return;
             entry.Document = document;
+            entry.Stage = CreateStage?.Invoke(session.GetEmbeddedMediaState(document)!.Declaration.AspectRatio);
             SetFailure(entry.WidgetId, null);
             entry.Surface = new(session, document, startupTrace);
             entry.Surface.InputAuthority = () => CanAcceptInput(entry.WidgetId);
@@ -249,6 +261,14 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         target?.Element.SetMediaPinned(isCompact);
         target?.Element.SetMediaLoading(!isCompact && !surface.IsReady && surface.FailureCode is null);
         var destination = isCompact ? compactHost! : isFullscreen ? fullscreenHost! : target?.Element.SurfaceHost ?? parking;
+        if (entry.Stage is { } stage)
+        {
+            if (entry.Document is { } document && session.GetEmbeddedMediaState(document) is { } state) stage.Configure(state.Declaration.AspectRatio);
+            var local = target is null || stage.CanPresent(target.Element.SurfaceHost);
+            if (isFullscreen) stage.EnterFullscreen();
+            else stage.SetSlot(isCompact || !local ? null : target?.Element.SurfaceHost);
+            if (!isCompact && local) destination = stage.SurfaceHost;
+        }
         _ = surface.MoveTo(destination, isCompact || isFullscreen || target is not null,
             CanAcceptInput(entry.WidgetId));
         if (isCompact) CompactChanged?.Invoke();
@@ -267,6 +287,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             surface.Dispose();
             if (surface.Element.Parent is Panel parent) parent.Children.Remove(surface.Element);
         }
+        entry.Stage?.Dispose();
         var retirement = RetireAsync();
         retirements.Add(retirement);
         _ = ObserveAsync();

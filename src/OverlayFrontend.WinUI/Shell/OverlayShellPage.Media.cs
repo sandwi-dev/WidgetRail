@@ -34,6 +34,7 @@ internal sealed partial class OverlayShellPage
         { OpenExternal = OpenBrowserExternalAsync };
         mediaOwner = new(owner.Session, MediaParking)
         {
+            CreateStage = fullscreenLayer.CreateMediaStage,
             Diagnostic = (widget, code) =>
             {
                 System.Diagnostics.Trace.WriteLine("WinUI embedded media: " + code);
@@ -59,13 +60,16 @@ internal sealed partial class OverlayShellPage
             if (!fullscreenLayer.IsOpen)
             {
                 var previous = FocusManager.GetFocusedElement(XamlRoot) as Control;
+                var stage = mediaOwner.FullscreenStage;
                 var origin = fullscreenLayer.BoundsOf(mediaOwner.FullscreenOrigin);
                 if (origin is { } viewport) origin = MediaTransitionGeometry.Fit(viewport, state.Declaration.AspectRatio);
+                stage?.EnterFullscreen();
                 _ = fullscreenLayer.ShowAsync(new(fullscreenView, fullscreenView, HandleEmbeddedFullscreen,
                     fullscreenView.MoveFocus, fullscreenView.Enter,
                     () => { fullscreenView.Hide(); fullscreenLayer.Park(fullscreenView); mediaOwner?.ExitFullscreen(); },
                     () => { if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard); else QueueEntryFocus(); },
-                    Origin: origin, Chrome: fullscreenView.TransitionChrome, MediaBounds: () => fullscreenView.VideoBounds));
+                    Origin: origin, Chrome: fullscreenView.TransitionChrome, MediaBounds: () => stage?.VideoBounds ?? fullscreenView.VideoBounds,
+                    MotionContent: stage));
             }
         }
         else if (ReferenceEquals(fullscreenLayer.Owner, fullscreenView)) fullscreenLayer.Close(restoreFocus: false);

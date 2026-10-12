@@ -959,3 +959,37 @@ of these new changes. No scope item is complete solely because it is planned.
   `return-pixel-bounds.json` records the measured frame bounds. Physical YouTube
   confirmation remains with the user.
 - Final validation: 19 embedded-media checks, 79 native-media checks and 81 cross-root transfer checks pass. Both fixture processes remained responsive and closed normally. The Debug build has zero warnings/errors; review confirmed geometry-only changes with existing attachment and return ordering preserved.
+
+### YouTube fullscreen handoff correction (2026-10-12)
+
+- The user's recording disproved the endpoint-only fix. A real YouTube probe
+  reproduced a briefly undersized video frame; subsequent experiments also
+  exposed a blank return frame. WinUI delivered WebView Unloaded/Loaded during
+  the return even when the controller and document identities were retained.
+- Production embedded media now stays in an `EmbeddedMediaStage` in the shared
+  fullscreen layer. The same animation coordinator transforms its fitted pixels
+  between the authored slot and fullscreen. The browser keeps its parent and
+  render viewport throughout that transition. Slot movement, scrolling,
+  rectangular clipping and ancestor opacity remain host-owned. This uses a
+  stable aspect-fit rendering canvas, potentially larger than the inline slot;
+  it does not duplicate the browser, pause playback or snapshot video.
+- The existing cross-root WebView transfer remains unchanged for pin windows.
+  Native video and image renderer paths remain in the same fullscreen coordinator.
+  Author declarations, permissions and controller mappings are unchanged.
+- Added an opt-in real-provider reproduction (`--validate-youtube-fullscreen`,
+  with `--shell-no-controller`) that uses an isolated profile and the public
+  YouTube iframe demo video. Four paused/playing fullscreen cycles assert zero
+  native unloads, constant render size, original controller identity and exact
+  inline placement; clipping and movement checks follow. Validation-only code
+  remains excluded from shipping.
+- Evidence: `artifacts/youtube-transition-handoff/final-clipping.json` passes 14
+  checks; `embedded-final-04.json` passes 40 including production pin/unpin,
+  transports and repeated widget returns; `native-final.json` passes 79 native
+  media/image checks. Debug builds finish with zero warnings/errors. Test
+  processes remained responsive and closed normally. The sample pin fixture now
+  explicitly establishes looping playback instead of depending on earlier seek
+  positions and an earlier Loop-off command.
+- Hardware-encoded recordings achieve about 55-57 fps (60 requested). Inspected
+  entry/return frames no longer show the reproduced undersize/blank frame;
+  `final-youtube-pixel-coverage.json` and `clipping-contact.jpg` preserve the pixel
+  checks and visible clipping exercise. Physical acceptance remains with the user.

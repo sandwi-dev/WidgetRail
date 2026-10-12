@@ -879,14 +879,18 @@ controller. `SupportedPresentations` explicitly opts into `OverlayFullscreen`
 and/or `CompactPinned`; these are capabilities, not state, and the host owns
 which presentation currently holds the session.
 
-Entering and leaving fullscreen preserve the sealed adapter, controller,
-document, and playback session.
-Entering and leaving preserve the sealed adapter, controller, document, and
+Entering and leaving fullscreen preserve the sealed adapter, controller, document, and
 playback session. The host owns safe-work-area placement, aspect fit, DPI,
 native guide, focus, accessibility, and return to the authored layout.
 The inline `MediaViewport` keeps its authored layout slot, but centers its
 browser surface at the session's declared `AspectRatio` inside that slot.
 Letterboxing keeps the inline and fullscreen video shapes consistent.
+The renderer remains in a host-owned XAML layer across fullscreen transitions;
+its stable page viewport is scaled into the inline slot rather than resized and
+reparented at each transition. Treat `MediaViewport` as a presentation slot, not
+a promise that the HTML viewport equals its layout size. The host follows slot
+movement, scrolling, clipping and opacity. Pinning still transfers the retained
+renderer into a separate native window. No additional SDK option is required.
 
 Offer entry with the reserved `host.embeddedMediaSession.enterFullscreen` action; the
 host leaves the mode on B without routing it to the widget, and View remains

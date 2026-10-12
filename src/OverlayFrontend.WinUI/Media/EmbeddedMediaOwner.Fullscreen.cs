@@ -10,6 +10,7 @@ internal sealed partial class EmbeddedMediaOwner
     private WidgetMediaPresentation? fullscreen;
     internal event Action? FullscreenChanged;
     internal string? FullscreenWidgetId => fullscreen?.Document.Authority.WidgetId;
+    internal EmbeddedMediaStage? FullscreenStage => FullscreenWidgetId is { } id ? entries.GetValueOrDefault(id)?.Stage : null;
     internal Microsoft.UI.Xaml.FrameworkElement? FullscreenOrigin => FullscreenWidgetId is { } id ? MatchingViewport(id)?.Element.SurfaceHost : null;
     internal bool FullscreenCommandPending => fullscreen is not null &&
         entries.GetValueOrDefault(fullscreen.Document.Authority.WidgetId)?.Surface?.IsCommandPending == true;
@@ -35,7 +36,7 @@ internal sealed partial class EmbeddedMediaOwner
         if (retired || compact is not null || fullscreenHost is null || fullscreen is not null || !visible || !inputEnabled || id != activeWidget ||
             entries.GetValueOrDefault(id) is not { Document: { } document, Surface: { IsReady: true } surface } ||
             MatchingViewport(id) is not { } ordinary || !ordinary.Element.AcceptsInput ||
-            !ReferenceEquals(surface.Element.Parent, ordinary.Element.SurfaceHost) ||
+            !ReferenceEquals(surface.Element.Parent, MainHost(id, ordinary)) ||
             !ReferenceEquals(ordinary.Element.XamlRoot, fullscreenHost.XamlRoot)) return false;
         fullscreen = session.EnterEmbeddedMediaFullscreen(displayed, action, document);
         FullscreenChanged?.Invoke();

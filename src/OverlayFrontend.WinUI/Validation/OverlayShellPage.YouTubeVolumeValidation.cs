@@ -31,8 +31,8 @@ internal sealed partial class OverlayShellPage
                 await Until(() => FindNode(surface!.CurrentBinding!.View.Root, "youtube.link") is not null);
                 await Send("youtube.link.commit", "https://youtu.be/M7lc1UVf-VE");
                 await Until(() => mediaOwner?.IsReady("widgetrail.samples.youtube-video") == true);
-                await Until(() => Walk(surface!).OfType<WebView2>().Any());
-                var browser = Walk(surface!).OfType<WebView2>().Single();
+                await Until(() => mediaOwner!.BrowserForValidation("widgetrail.samples.youtube-video") is not null);
+                var browser = mediaOwner!.BrowserForValidation("widgetrail.samples.youtube-video")!;
 #pragma warning disable WUI4001 // Readiness is awaited above.
                 var core = browser.CoreWebView2;
 #pragma warning restore WUI4001

@@ -24,7 +24,7 @@ internal sealed partial class OverlayShellPage
                 await UnpinAsync(save: true);
                 await SelectAsync(id, true);
                 await Until(() => mediaOwner?.IsReady(id) == true);
-                var browser = Walk(surface!).OfType<WebView2>().Single();
+                var browser = mediaOwner!.BrowserForValidation(id)!;
 #pragma warning disable WUI4001 // Owner readiness above awaits the sealed document's initialization.
                 var core = browser.CoreWebView2;
 #pragma warning restore WUI4001
@@ -65,13 +65,18 @@ internal sealed partial class OverlayShellPage
                 Check(Math.Abs(inlineHost.ActualWidth / inlineHost.ActualHeight - 16d / 9) < .01,
                     "Inline browser viewport keeps the declared video aspect ratio before expansion");
                 var inlineVideo = MediaTransitionGeometry.Fit(fullscreenLayer.BoundsOf(inlineHost)!.Value, 16d / 9);
+                var renderSize = browser.ActualSize;
+                var renderParent = browser.Parent;
+                var unloads = 0;
+                void Unloaded(object sender, RoutedEventArgs args) { if (!browser.IsLoaded) ++unloads; }
+                browser.Unloaded += Unloaded;
                 await Click("media-shell.fullscreen");
                 await CheckStableExternalTransition("Playing embedded video entrance");
                 await Until(() => IsMediaFullscreen && !fullscreenLayer.IsTransitioning);
                 Check(fullscreenLayer.MediaEndpointMatches(inlineVideo), "Embedded video animation meets the exact fitted inline rectangle");
                 Check(Math.Abs(WidgetSurface.Width - widgetExtent.Width) < 1 && Math.Abs(WidgetSurface.Height - widgetExtent.Height) < 1,
                     "fullscreen keeps the retained widget at its authored dimensions on an ultrawide viewport");
-                Check(ReferenceEquals(browser.Parent, fullscreenView.SurfaceHost), "fullscreen moves the existing browser");
+                Check(ReferenceEquals(browser.Parent, renderParent), "fullscreen retains the attached browser in its resident layer");
                 await CheckHeldSeek(ControllerButton.RightTrigger, "fullscreen RT");
                 await CheckHeldSeek(ControllerButton.LeftTrigger, "fullscreen LT");
                 await core.ExecuteScriptAsync("document.getElementById('media').play()");
@@ -81,7 +86,9 @@ internal sealed partial class OverlayShellPage
                 await CheckStableExternalTransition("Playing embedded video exit");
                 await Until(() => !IsMediaFullscreen);
                 await Task.Delay(1200);
-                Check(ReferenceEquals(browser.Parent, Walk(surface!).OfType<WidgetMediaViewport>().Single().SurfaceHost) &&
+                browser.Unloaded -= Unloaded;
+                Check(unloads == 0 && browser.ActualSize == renderSize, "fullscreen does not unload or resize the live browser");
+                Check(ReferenceEquals(browser.Parent, mediaOwner.MediaHostForValidation(id)) &&
                     mediaOwner.IsReady(id), "Returned playing WebView remains in its ordinary viewport after delayed observations");
                 ProductionLayout.UnregisterPropertyChangedCallback(VisibilityProperty, visibilityToken);
                 Check(!wideReveal && Math.Abs(WidgetSurface.Width - widgetExtent.Width) < 1 &&
@@ -95,7 +102,13 @@ internal sealed partial class OverlayShellPage
                     await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, checks, error = (string?)null }));
                     return;
                 }
-                await Click("media-shell.play"); await MediaUntil("!m.paused");
+                // Inline Play/Pause were exercised above. Establish sustained
+                // playback for the longer pin-transfer exercise, independently
+                // of the earlier seek positions and Loop-off command.
+                await core.ExecuteScriptAsync("(()=>{const m=document.getElementById('media');m.loop=true;m.currentTime=0;void m.play();adapter.observe();})()");
+                await MediaUntil("!m.paused");
+                await Until(() => !mediaOwner.CommandPendingForValidation(id) && Walk(surface!).OfType<Control>().Any(control =>
+                    AutomationProperties.GetAutomationId(control) == "Widget.media-shell.play" && AutomationProperties.GetName(control) == "Pause local media"));
                 await PinMediaAsync(id); await Until(() => pinned?.Media is not null);
                 var pin = pinned!;
                 Check(pin.IsCurrent && !pin.Window.Interactive && ReferenceEquals(browser.Parent, pin.MediaView!.SurfaceHost),
@@ -156,8 +169,8 @@ internal sealed partial class OverlayShellPage
                 Check(pin.Window.OpacityPercent == 95, "media pin reuses opacity controls");
                 CancelPinnedAdjustment();
                 await SelectAsync(id, true); await UnpinAsync(save: true);
-                await Until(() => pinned is null && Walk(surface!).OfType<WebView2>().Any());
-                Check(ReferenceEquals(browser, Walk(surface!).OfType<WebView2>().Single()) && mediaOwner.BrowserCreationCount == creations,
+                await Until(() => pinned is null && mediaOwner.BrowserForValidation(id) is not null);
+                Check(ReferenceEquals(browser, mediaOwner.BrowserForValidation(id)) && mediaOwner.BrowserCreationCount == creations,
                     "unpin returns the original browser before peer root destruction");
                 for (var pass = 0; pass < 6; ++pass)
                 {

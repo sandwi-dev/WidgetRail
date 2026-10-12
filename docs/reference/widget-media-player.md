@@ -104,6 +104,12 @@ it does not enable frame-server playback, pause the video, capture screenshots,
 or introduce a new widget-authoring option.
 Transition endpoints match the fitted video rectangles, including letterbox
 offsets, rather than the surrounding card or fullscreen window dimensions.
+Embedded video remains attached to a resident XAML media layer across fullscreen
+entry and return. Its page viewport stays at the layer's aspect-fit rendering
+size; transforms place those pixels in the authored inline slot, following its
+scrolling, rectangular clipping and ancestor opacity. This avoids the native
+WebView unload/reconnect and resize that can briefly shrink or blank a frame.
+The separate pinned window still uses the existing asynchronous cross-root transfer.
 A floating toolbar overlays the media, with safe margins for focus outlines;
 there is no dialog title, fixed 1280-by-900 cap, or nested card border. Video controls
 auto-hide while playing, park focus on the media, and reveal without executing a
