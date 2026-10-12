@@ -723,3 +723,16 @@ of these new changes. No scope item is complete solely because it is planned.
 - Preserve main's unrelated uncommitted Spotify/YouTube setup-handoff and SDK
   edits. Build both installer editions from this clean accepted source, without
   including those unaccepted changes. Keep the existing candidate running.
+- Integration completed: main fast-forwarded to `9fc74116`; all 20 pre-existing
+  uncommitted file edits were restored and compared against their saved patch.
+  The release-packaging self-test needed its old counts updated for Marketplace;
+  it now also verifies Marketplace appears identically in both editions.
+- Gates passed: installer contracts, native cleanup fixture, 13 recovery checks,
+  release-packaging self-test, Inno syntax compilation, and both fresh shipping
+  payloads (13 production / 17 developer widgets).
+- Both Inno 6.7.3 installers are complete at
+  `C:/Users/dwive/Projects/WidgetRail/artifacts/installers/0.1.0-preview.30/`:
+  Production 103.9 MiB; Developer 111.3 MiB. SHA-256 checksums were reverified and
+  source/packaging commits both match `9fc74116`. Installer metadata and checksums
+  accompany them. This documentation checkpoint is subsequent to the build.
+- No installer executed, no push/tag/release created, and no worktrees removed.
