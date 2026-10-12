@@ -164,6 +164,8 @@ public sealed class PerformanceMonitorWidget : Widget
         {
             UI.Text("Performance Monitor", "performance.heading").Classes("performance-title"),
             UI.Select("Application", choices, "performance.target").Busy(busy),
+            UI.Button(Enabled(snapshot?.FpsState) ? "Stop FPS" : "Enable FPS", "performance.fps", "performance.fps.control")
+                .Busy(busy || snapshot?.FpsState == "enabling"),
             UI.Text(target?.ApplicationName ?? "No application selected", "performance.app").Classes("performance-subtitle"),
             UI.ResponsiveGrid("performance.frame-metrics", 170, 3,
                 Metric("FPS", Number(snapshot?.FramesPerSecond), "performance.fps.metric", "Application presents per second"),
@@ -186,8 +188,6 @@ public sealed class PerformanceMonitorWidget : Widget
                 Chart("CPU", cpuGraph, "performance.cpu.graph"), Chart("GPU", gpuGraph, "performance.gpu.graph"),
                 Chart("RAM", ramGraph, "performance.ram.graph"), Chart("VRAM", vramGraph, "performance.vram.graph")),
             UI.Text(error ?? Status(snapshot?.FpsState), "performance.status").Classes("performance-help"),
-            UI.Button(Enabled(snapshot?.FpsState) ? "Stop FPS" : "Enable FPS", "performance.fps", "performance.fps.control")
-                .Busy(busy || snapshot?.FpsState == "enabling"),
             UI.Text("Enable FPS requests Windows approval for a separate collector. WidgetRail stays unelevated. " +
                 "Collection pauses when this widget is neither visible nor pinned. Unavailable readings show —.", "performance.permission-help").Classes("performance-help"),
             UI.Button("Refresh", "performance.refresh", "performance.refresh").Busy(busy),
