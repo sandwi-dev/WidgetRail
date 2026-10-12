@@ -777,3 +777,17 @@ of these new changes. No scope item is complete solely because it is planned.
 - Review-page Stack/flex layout was checked in candidate 02: heading, transport
   and action buttons are all inside the page bounds at 225% scaling. FPS logs also
   record bounded state/target-PID/stream-count changes; telemetry 10/10 remains green.
+- Final candidate 03 (`62d45871`) passed both shipping catalog/integrity gates.
+  Actual assembled Capture Library verifies Escape and mouse Collapse returning
+  to visible inline controls, and zoom/expand/collapse for a saved 4K image. Thus
+  the standalone-preview UIA limitation did not reproduce in the real widget.
+- Final validation: Capture Library 22/22, telemetry 10/10, native media 38/38;
+  native Windows video thumbnail and assembled picture/clip flows verified.
+  Evidence: `artifacts/capture-viewer-polish/assembled-checks-final.json`, native
+  results, screenshot files and unique build binlogs. Physical controller/game
+  acceptance remains separate; collection policy is unchanged.
+- Closed isolated PID 54992 normally and launched the complete Developer candidate
+  with the normal profile, Capture Library selected, PID 10252. Receipt:
+  `artifacts/capture-viewer-polish/final-launch.json`. Re-enable FPS in that candidate
+  to record diagnostics for another reproduction. No install, merge, push, release
+  or worktree cleanup performed. Main's unrelated document edit remains untouched.
