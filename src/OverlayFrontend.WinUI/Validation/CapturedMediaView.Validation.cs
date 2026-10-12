@@ -50,10 +50,6 @@ internal sealed partial class MediaPlayerView
         Handle(ControllerButton.LeftBumper, ControllerEventPhase.Pressed);
         await Until(() => imageViewport.ZoomFactor == 1);
         Check(PanImage(short.MaxValue, 0), "Fit image consumes pan input to prevent parent page scrolling");
-        ActualImageSize();
-        await Until(() => Math.Abs(ImageFitScale * imageViewport.ZoomFactor * XamlRoot.RasterizationScale - 1) < .02);
-        Check(true, "Actual-size image view maps source pixels to display pixels at the current DPI");
-        FitImage(); await Until(() => imageViewport.ZoomFactor == 1);
         var imageExpanded = ToggleExpandedAsync();
         await Until(() => expandedHost is { IsLoaded: true, IsOpen: true } && imageTools.ActualHeight > 0);
         await Until(() => !changingPlacement);

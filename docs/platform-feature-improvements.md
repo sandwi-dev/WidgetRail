@@ -876,3 +876,11 @@ of these new changes. No scope item is complete solely because it is planned.
   scroll exclusion, layout sizing, theme reuse and accessibility hints. No new
   widget-specific path or platform interop was added. Physical controller
   acceptance remains with the user; no merge or release is requested.
+
+### Image toolbar simplification (2026-10-12)
+
+- Removed the actual-size/100% command, its pixel-to-DPI zoom calculation,
+  activation/event handlers and obsolete validation. The toolbar retains zoom
+  out/in, Fit, expand/collapse and the zoom percentage. Its wrapping now uses
+  the remaining child count. Shared scale calculations remain necessary for
+  the percentage and preserving image position across fullscreen transitions.

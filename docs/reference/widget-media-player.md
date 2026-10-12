@@ -79,7 +79,7 @@ closes expansion before returning to ordinary widget navigation. The image keeps
 its aspect ratio; host-issued original-resolution captures retain their supplied
 resolution for zooming. The focused canvas consumes right-stick input even at Fit,
 so panning never also scrolls the surrounding widget;
-mouse dragging and wheel zoom are also supported. Fit, actual-size (100%) and a
+mouse dragging and wheel zoom are also supported. Fit and a
 zoom percentage are available in the toolbar. Expansion retains the viewed image
 position and scale. Aspect-fit images are centered in their viewport, with a compact
 centered toolbar that wraps for smaller surfaces.

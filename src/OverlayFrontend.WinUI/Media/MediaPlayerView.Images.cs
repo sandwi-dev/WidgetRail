@@ -23,7 +23,6 @@ internal sealed partial class MediaPlayerView
     private readonly Button zoomOut = new() { Content = "−" };
     private readonly Button zoomIn = new() { Content = "+" };
     private readonly Button imageFit = new() { Content = "Fit" };
-    private readonly Button imageActual = new() { Content = "100%" };
     private readonly TextBlock imageZoom = new() { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly Button imageExpand = new() { Content = new SymbolIcon(Symbol.FullScreen) };
     private Control[] imageControls = [];
@@ -43,11 +42,10 @@ internal sealed partial class MediaPlayerView
             imageCanvas.Height = Math.Max(1, imageViewport.ActualHeight);
             UpdateImageZoomLabel();
         };
-        imageControls = [zoomOut, zoomIn, imageFit, imageActual, imageExpand];
+        imageControls = [zoomOut, zoomIn, imageFit, imageExpand];
         Label(zoomOut, "Zoom out", "MediaPlayer.Image.ZoomOut");
         Label(zoomIn, "Zoom in", "MediaPlayer.Image.ZoomIn");
         Label(imageFit, "Fit image", "MediaPlayer.Image.Fit");
-        Label(imageActual, "Actual image size", "MediaPlayer.Image.ActualSize");
         Label(imageExpand, "Expand image", "MediaPlayer.Image.Expand");
         AutomationProperties.SetName(imageViewport, "Image · use triggers to zoom, right stick to pan, and left stick or D-pad to navigate");
         AutomationProperties.SetAutomationId(imageViewport, "MediaPlayer.Image.Viewport");
@@ -94,14 +92,13 @@ internal sealed partial class MediaPlayerView
         zoomOut.Click += (_, _) => ZoomImage(-1);
         zoomIn.Click += (_, _) => ZoomImage(1);
         imageFit.Click += (_, _) => FitImage();
-        imageActual.Click += (_, _) => ActualImageSize();
         imageExpand.Click += async (_, _) => await ToggleExpandedAsync();
     }
 
     private void LayoutImageTools()
     {
         var availableWidth = Math.Max(0, body.ActualWidth - (IsExpanded ? 48 : 0) - 16);
-        var columns = Math.Clamp((int)(availableWidth / (80 * Math.Max(1, imageActual.FontSize / 14))), 2, 6);
+        var columns = Math.Clamp((int)(availableWidth / (80 * Math.Max(1, imageFit.FontSize / 14))), 2, imageTools.Children.Count);
         if (imageTools.ColumnDefinitions.Count == columns) return;
         imageTools.ColumnDefinitions.Clear(); imageTools.RowDefinitions.Clear();
         for (var i = 0; i < columns; i++) imageTools.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
@@ -151,14 +148,6 @@ internal sealed partial class MediaPlayerView
         var y = ((imageCanvas.Height - resolved.Height * scale) / 2 + memory.Y * resolved.Height * scale) * zoom - imageViewport.ViewportHeight / 2;
         imageViewport.ChangeView(Math.Max(0, x), Math.Max(0, y), zoom, true);
     }
-    private void ActualImageSize()
-    {
-        if (!input || !IsImage) return;
-        imageViewport.MinZoomFactor = .1f;
-        imageViewport.MaxZoomFactor = (float)Math.Max(8, 8 / ImageFitScale);
-        var zoom = (float)Math.Clamp(1 / (ImageFitScale * (XamlRoot?.RasterizationScale ?? 1)), imageViewport.MinZoomFactor, imageViewport.MaxZoomFactor);
-        imageViewport.ChangeView(null, null, zoom, true);
-    }
     private void UpdateImageZoomLabel() => imageZoom.Text = $"{ImageFitScale * imageViewport.ZoomFactor * (XamlRoot?.RasterizationScale ?? 1):P0}";
 
     private void FitImage() { imageViewport.ChangeView(0, 0, 1, disableAnimation: true); UpdateImageZoomLabel(); }
@@ -177,7 +166,6 @@ internal sealed partial class MediaPlayerView
         if (ReferenceEquals(focused, zoomOut)) ZoomImage(-1);
         else if (ReferenceEquals(focused, zoomIn)) ZoomImage(1);
         else if (ReferenceEquals(focused, imageExpand)) _ = ToggleExpandedAsync();
-        else if (ReferenceEquals(focused, imageActual)) ActualImageSize();
         else FitImage();
     }
     private bool MoveImageFocus(FocusNavigationDirection direction)
