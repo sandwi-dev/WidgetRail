@@ -52,8 +52,9 @@ public sealed partial class MainWindow : Window
             if (RootFrame.Content is Shell.OverlayShellPage browserShell)
             {
                 nativeBrowserDialog = new(DispatcherQueue, browserShell.SetNativeBrowserPickerActive,
-                    () => { if (!cleanupStarted && AppWindow.IsVisible) { Activate(); browserShell.QueueEntryFocus(); } });
+                    () => { if (!cleanupStarted && AppWindow.IsVisible) { Activate(); input?.AcquireForeground(); browserShell.RestoreNativeBrowserPickerFocus(); } });
                 browserShell.PrepareBrowserPicker = nativeBrowserDialog.Begin;
+                input.DeferExternalForegroundDismissal = nativeBrowserDialog.DeferExternalDismissal;
                 if (!arguments.Contains("--shell-no-controller"))
                 {
                     input.OwnsAuxiliaryControllerWindow = nativeBrowserDialog.OwnsControllerWindow;
@@ -62,6 +63,7 @@ public sealed partial class MainWindow : Window
 #if ENABLE_WIDGET_VALIDATION
                 browserShell.NativePickerFrameForValidation = nativeBrowserDialog.Receive;
                 browserShell.NativePickerReadyForValidation = () => nativeBrowserDialog.HasForeground;
+                browserShell.NativePickerStatusForValidation = () => nativeBrowserDialog.PointerStatus;
 #endif
                 input.OwnsAuxiliaryProcess = browserShell.OwnsBrowserUiProcess;
                 input.ExternalForegroundObserved += DismissForExternalForeground;

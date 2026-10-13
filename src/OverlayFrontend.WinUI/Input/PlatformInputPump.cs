@@ -33,6 +33,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     internal Func<uint, bool>? OwnsAuxiliaryProcess { get; set; }
     internal Func<nint, bool>? OwnsAuxiliaryControllerWindow { get; set; }
     internal Action<ControllerFrame>? AuxiliaryFrameReceived { get; set; }
+    internal Func<bool>? DeferExternalForegroundDismissal { get; set; }
     private nint controllerRoutingWindow;
     public event Action<Exception>? Failed;
     internal bool IsForeground => IsForegroundProcess();
@@ -140,7 +141,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     {
         if (session is null || !visible || controllerRecoveryBlocked) return;
         var candidate = GetForegroundWindow();
-        if (IsCurrentExternalForeground(candidate) && ExternalForegroundObserved is not null)
+        if (IsCurrentExternalForeground(candidate) && ExternalForegroundObserved is not null && DeferExternalForegroundDismissal?.Invoke() != true)
         {
             inputOwnership.Reset();
             session.ObserveForegroundTarget((nuint)candidate, true);

@@ -33,7 +33,7 @@ internal sealed partial class OverlayShellPage
         if (owner is null || mediaOwner is not null || retired) return;
         browserOwner = new(owner.Session, MediaParking, options.SettingsRoot)
         { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync, ChooseFiles = ShowBrowserFilePickerAsync,
-            Expand = ExpandBrowserAsync, PrepareScreenPicker = (source, token) => PrepareBrowserPicker?.Invoke(source.NativeBrowserProcessId, token) == true,
+            PrepareScreenPicker = PrepareBrowserScreenPickerAsync,
             ExpansionInvalidated = () => { if (expandedBrowser is not null) fullscreenLayer.Close(restoreFocus: false); } };
         browserOwner.ActivityChanged += RefreshWebappStatus;
         mediaOwner = new(owner.Session, MediaParking)

@@ -16,6 +16,7 @@ internal sealed partial class OverlayShellPage
 {
     internal Action<ControllerFrame>? NativePickerFrameForValidation { get; set; }
     internal Func<bool>? NativePickerReadyForValidation { get; set; }
+    internal Func<string>? NativePickerStatusForValidation { get; set; }
     internal void EnableWebAppValidation(string path, string? sharingSource = null)
     {
         BrowserOwner.FixtureBrowserArguments = "--use-fake-device-for-media-stream";

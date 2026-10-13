@@ -158,7 +158,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             if (!faulted)
             {
                 web.Visibility = visible && popup is null ? Visibility.Visible : Visibility.Collapsed;
-                web.IsHitTestVisible = input;
+                web.IsHitTestVisible = input || visible && nativeDialogPointerAccess;
                 if (visible && IsLoaded && initializing is null) initializing = InitializeAsync();
                 if (visible) { core?.Resume(); NavigatePending(); }
             }

@@ -30,7 +30,7 @@ internal sealed partial class BrowserSlot : ContentControl
     internal bool IsInteracting => Surface?.IsInteracting == true;
     internal bool IsBrowsing => Surface?.IsBrowsing == true;
     internal bool PresentedInPin { get; private set; }
-    private long pointerSampleAt;
+    private readonly Input.ControllerPointerMotion pointerMotion = new();
 
     internal BrowserSlot()
     {
@@ -102,12 +102,9 @@ internal sealed partial class BrowserSlot : ContentControl
     internal bool Scroll(double x, double y) => Surface?.Scroll(x, y) == true;
     internal bool MovePointer(short x, short y)
     {
-        var now = Environment.TickCount64;
-        var elapsed = pointerSampleAt == 0 ? 0 : Math.Clamp(now - pointerSampleAt, 0, 50);
-        pointerSampleAt = now;
-        if (!AcceptsInput || !IsBrowsing || Surface is not { HasDialog: false } surface) return false;
-        static double Axis(short value) => Math.Abs((int)value) < 7849 ? 0 : value / 32768d;
-        surface.MovePointer(Axis(x) * elapsed * .0006, -Axis(y) * elapsed * .0006);
+        if (!AcceptsInput || !IsBrowsing || Surface is not { HasDialog: false } surface) { pointerMotion.Reset(); return false; }
+        var delta = pointerMotion.Sample(x, y, Environment.TickCount64);
+        surface.MovePointer(delta.X, delta.Y);
         return true;
     }
     internal void Retire() { Retired = true; Active = false; AcceptsInput = false; PlacementChanged?.Invoke(); PlacementChanged = null; }

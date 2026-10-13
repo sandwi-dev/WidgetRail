@@ -26,10 +26,9 @@ internal sealed partial class OverlayShellPage
         { shell = Array.Empty<ControllerGuideHint>(); shellContext = "system-file-picker"; }
         else if (nativeBrowserPickerActive)
         {
-            shell = (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Navigate"),
-                new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Cancel", ControllerButton.B),
-                new(ControllerPrompt.LeftBumper, "Previous control", ControllerButton.LeftBumper),
-                new(ControllerPrompt.RightBumper, "Next control", ControllerButton.RightBumper)];
+            shell = (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"),
+                new(ControllerPrompt.A, "Click / hold to drag", ControllerButton.A),
+                new(ControllerPrompt.RightStickMove, "Scroll"), new(ControllerPrompt.B, "Cancel", ControllerButton.B)];
             shellContext = "native-browser-picker";
         }
         else if (LocalInstallActive)

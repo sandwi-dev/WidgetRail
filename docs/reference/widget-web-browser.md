@@ -243,23 +243,35 @@ and Close visible with a controller-scrollable command row.
 
 A visible interactive webapp can request screen sharing through the standard
 website API. WidgetRail asks for a one-shot confirmation identifying the widget
-and exact requesting HTTPS origin before allowing the Windows capture picker.
-No persistent screen-share permission is stored. Hidden pages cannot summon the
-picker. Closing the page cancels pending consent. The host expands the existing
-browser into its shared presentation layer before opening the picker: Chromium's
-chooser can clip its source list in small or pinned viewports. B returns the same
-live session to its original widget or pin. The native picker supports controller
-focus navigation: D-pad/left stick navigates, A selects, B cancels, and LB/RB move
-between controls. Mouse and keyboard remain available. The webpage pointer is
-suspended while this picker owns input.
+and exact requesting HTTPS origin before allowing WebView2/Chromium's native
+sharing chooser. No persistent screen-share permission is stored. Hidden pages
+cannot summon the chooser. Closing the page cancels pending consent.
 
-Selected-window video delivery and stopping the tracks have been verified using
-an opaque synthetic window, including a request originating in a pin. Native
-picker navigation, selection, cancellation and foreground return are verified
-with simulated controller frames. The host admits only the requested dialog in
-its own WebView2 process and uses Windows UI Automation to detect the actual
-dialog lifetime, since its enclosing browser window can survive dismissal. Those
-frames are never delivered to widgets or unrelated applications.
+Small or pinned viewports can clip Chromium's chooser, so the host temporarily
+expands the existing browser through its shared presentation layer. Choosing a
+source or cancelling automatically restores the original widget/pin and interaction.
+A browser already expanded before the request stays expanded.
+
+The chooser uses the browser's familiar pointer controls: left stick moves the
+system pointer, A clicks (hold to drag), right stick scrolls, and B cancels.
+There are no chooser-specific D-pad/bumper keyboard mappings. Physical mouse and
+keyboard remain available. Widget controller actions are suspended while the
+native dialog owns input. Its pointer transport shares browser motion/deadzone
+policy and is independent of the particular dialog's lifecycle adapter.
+
+The host admits only the requested dialog in its own WebView2 process and uses
+Windows UI Automation to identify its actual lifetime and screen bounds; the
+browser HWND itself can survive dismissal. Pointer clicks/scrolls are guarded by
+foreground ownership, dialog bounds and native-window hit testing. An outstanding
+controller mouse press is released on disconnect, lost focus or teardown.
+The native dialog retains mouse hit testing even while webpage controller input
+is suspended. A bounded completion handoff lets Chromium finish activating the
+selected source before WidgetRail restores placement/focus. Leaving a still-open
+chooser for another application relinquishes the dialog instead of stealing focus.
+
+Selected-window video delivery and track stopping have been verified with an
+opaque synthetic window using simulated analog/button controller frames through
+the real native chooser. These checks are distinct from physical-controller acceptance.
 
 Notifications use WebView2's default native notification UI after website
 permission is granted. A local fixture verifies that the website receives its

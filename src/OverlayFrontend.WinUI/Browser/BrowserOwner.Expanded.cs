@@ -6,7 +6,6 @@ internal sealed partial class BrowserOwner
 {
     private BrowserSlot? expandedSlot;
     private (string Widget, string Document)? expandedKey;
-    internal Func<BrowserSurface, CancellationToken, Task<bool>>? Expand { get; set; }
     internal Action? ExpansionInvalidated { get; set; }
 
     internal async Task<bool> ExpandAsync(BrowserSurface source, BrowserSlot destination)

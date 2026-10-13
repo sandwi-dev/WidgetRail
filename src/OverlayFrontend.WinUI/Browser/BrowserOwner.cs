@@ -36,7 +36,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternal { get; set; }
     internal Func<BrowserSurface, string, string, IReadOnlyList<Shell.HostDialogChoice>, CancellationToken, Task<string?>>? Choose { get; set; }
     internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
-    internal Func<BrowserSurface, CancellationToken, bool>? PrepareScreenPicker { get; set; }
+    internal Func<BrowserSurface, CancellationToken, Task<bool>>? PrepareScreenPicker { get; set; }
     internal int ResidentCount => entries.Count;
     internal int CreatedCount { get; private set; }
     internal int PlacementMoveCount { get; private set; }
@@ -181,8 +181,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             ReleasePopup = surface => popupOwners.Remove(surface),
                             ChangeRunning = ChangeRunningAsync,
                             Recover = RecoverAsync,
-                            Expand = (source, token) => Expand?.Invoke(source, token) ?? Task.FromResult(false),
-                            PrepareScreenPicker = (source, token) => PrepareScreenPicker?.Invoke(source, token) == true,
+                            PrepareScreenPicker = (source, token) => PrepareScreenPicker?.Invoke(source, token) ?? Task.FromResult(false),
                             ActivityChanged = () => { Refresh(); ActivityChanged?.Invoke(); },
                             CheckProviderAuthority = chosen.Document.ProviderDocument is null ? null : async token =>
                                 { _ = await session.ResolveProviderDocumentAsync(chosen.Authority, chosen.Document, token); },

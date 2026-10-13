@@ -20,6 +20,9 @@ internal sealed partial class OverlayShellPage
             await WebAppUntil(() => File.Exists(result + ".target"));
             pinned!.Window.Activate();
             await WebAppUntil(() => PinnedInputActive && browser.IsBrowsing);
+            var alreadyExpanded = Environment.GetCommandLineArgs().Contains("--webapp-sharing-already-expanded");
+            if (alreadyExpanded)
+                check(await ExpandBrowserAsync(browser, lifetime.Token), "User-expanded browser is ready before requesting sharing");
             await browser.EvaluateGestureFixtureAsync("""
                 window.shareState='pending';
                 navigator.mediaDevices.getDisplayMedia({video:true,audio:false}).then(async stream=>{
@@ -32,7 +35,11 @@ internal sealed partial class OverlayShellPage
                 },e=>window.shareState=e.name);
                 """);
             await choose(0);
-            await WebAppUntil(() => expandedBrowser?.Surface == browser && !fullscreenLayer.IsTransitioning);
+            try { await WebAppUntil(() => expandedBrowser?.Surface == browser && !fullscreenLayer.IsTransitioning); }
+            catch (TimeoutException error)
+            {
+                throw new InvalidOperationException($"Sharing preparation: expanded={expandedBrowser is not null} transition={fullscreenLayer.IsTransitioning} native={nativeBrowserPickerActive} state={await browser.EvaluateFixtureAsync("window.shareState")} trace={string.Join(";", browser.FixturePermissionTrace)}", error);
+            }
             check(browser.CompositionRoot.ActualWidth > 700 && browser.CompositionRoot.ActualHeight > 600,
                 "Pinned screen-sharing request expands the existing native viewport before the Windows picker");
             await File.WriteAllTextAsync(result + ".sharing-ready", JsonSerializer.Serialize(new { target = targetName, pid = Environment.ProcessId, targetPid = target.Id }));
@@ -44,18 +51,33 @@ internal sealed partial class OverlayShellPage
                 if (File.Exists(result + ".picker-command"))
                 {
                     var fields = (await File.ReadAllTextAsync(result + ".picker-command")).Trim().Split(' ');
-                    if (fields.Length == 2 && int.TryParse(fields[0], out var sequence) && sequence > lastCommand)
+                    if (fields.Length >= 2 && int.TryParse(fields[0], out var sequence) && sequence > lastCommand)
                     {
                         lastCommand = sequence;
                         deadline = Environment.TickCount64 + 60_000;
                         cancelRequested = fields[1] == "cancel";
-                        var pressed = fields[1] switch { "select" => 0x1000, "cancel" => 0x2000, "previous" => 0x100, "next" => 0x200, _ => 0 };
-                        var direction = fields[1] switch { "left" => NavigationDirection.Left, "right" => NavigationDirection.Right,
-                            "up" => NavigationDirection.Up, "down" => NavigationDirection.Down, _ => NavigationDirection.None };
                         var nativeReady = NativePickerReadyForValidation?.Invoke() == true;
-                        NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, PressedButtons = (ushort)pressed,
-                            DpadNavigation = new() { Direction = direction, Phase = direction == NavigationDirection.None ? NavigationPhase.None : NavigationPhase.Pressed } });
-                        await File.WriteAllTextAsync(result + ".picker-ack", JsonSerializer.Serialize(new { sequence, nativeReady }));
+                        if (fields[1] is "move" or "scroll" && fields.Length == 5 && short.TryParse(fields[2], out var x) &&
+                            short.TryParse(fields[3], out var y) && int.TryParse(fields[4], out var frames) && frames is >= 1 and <= 60)
+                        {
+                            for (var frame = 0; frame < frames; frame++)
+                            {
+                                NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, State = fields[1] == "move"
+                                    ? new() { LeftThumbX = x, LeftThumbY = y } : new() { RightThumbX = x, RightThumbY = y } });
+                                await Task.Delay(16);
+                            }
+                        }
+                        else if (fields[1] == "select")
+                        {
+                            NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, PressedButtons = 0x1000, State = new() { Buttons = 0x1000 } });
+                            await Task.Delay(50);
+                            NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, ReleasedButtons = 0x1000 });
+                        }
+                        else if (fields[1] == "cancel")
+                            NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, PressedButtons = 0x2000 });
+                        else if (fields[1] == "neutral")
+                            NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1 });
+                        await File.WriteAllTextAsync(result + ".picker-ack", JsonSerializer.Serialize(new { sequence, nativeReady, pointer = NativePickerStatusForValidation?.Invoke() }));
                     }
                 }
                 if (Environment.TickCount64 > deadline) throw new TimeoutException("Native sharing selection did not complete.");
@@ -70,11 +92,15 @@ internal sealed partial class OverlayShellPage
                 await browser.EvaluateFixtureAsync("shared.getTracks().forEach(t=>t.stop())");
                 check(await browser.EvaluateFixtureAsync("shared.getTracks().every(t=>t.readyState==='ended')") == "true", "Website stops its screen-sharing tracks");
             }
-            ReturnFromPinnedRequested?.Invoke();
-            await WebAppUntil(() => foreground && browser.IsBrowsing);
-            await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
-            await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
-            await WebAppUntil(() => expandedBrowser is null && PinnedInputActive && browser.IsBrowsing);
+            if (alreadyExpanded)
+            {
+                await WebAppUntil(() => !nativeBrowserPickerActive && foreground && expandedBrowser?.Surface == browser && browser.IsBrowsing);
+                check(true, "Picker dismissal preserves a browser that was already user-expanded");
+                await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
+                await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
+            }
+            await WebAppUntil(() => expandedBrowser is null && !nativeBrowserPickerActive && PinnedInputActive && browser.IsBrowsing);
+            check(true, alreadyExpanded ? "User can collapse the preserved expanded browser back to its original pin" : "Picker dismissal automatically restores the original pin and interaction without another B press");
         }
         finally
         {

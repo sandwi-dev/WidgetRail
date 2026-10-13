@@ -13,10 +13,52 @@ internal sealed partial class OverlayShellPage
     private readonly RightStickScroll expandedScroll = new();
     internal Func<uint, CancellationToken, bool>? PrepareBrowserPicker { get; set; }
     private bool nativeBrowserPickerActive;
+    private BrowserSlot? pickerExpansion;
+    private BrowserSurface? pickerBrowser;
     internal void SetNativeBrowserPickerActive(bool active)
     {
         nativeBrowserPickerActive = active;
+        pickerBrowser?.SetNativeDialogPointerAccess(active);
+        if (!active) RestoreBrowserPickerPlacement();
         ResetInputPresentation(); PublishControllerGuide();
+    }
+
+    internal void RestoreNativeBrowserPickerFocus()
+    {
+        // Temporary expansion owns focus restoration after its asynchronous detach.
+        if (!nativeBrowserPickerActive && !fullscreenLayer.IsTransitioning) QueueEntryFocus();
+    }
+
+    private void RestoreBrowserPickerPlacement()
+    {
+        var temporary = pickerExpansion;
+        pickerExpansion = null;
+        pickerBrowser?.SetNativeDialogPointerAccess(false);
+        pickerBrowser = null;
+        if (temporary is not null && ReferenceEquals(expandedBrowser, temporary))
+            fullscreenLayer.Close(restoreFocus: !retired && visible);
+    }
+
+    private async Task<bool> PrepareBrowserScreenPickerAsync(BrowserSurface browser, CancellationToken token)
+    {
+        if (nativeBrowserPickerActive || pickerExpansion is not null) return false;
+        var wasExpanded = expandedBrowser is not null;
+        var ready = false;
+        try
+        {
+            // Chromium's chooser is constrained by its WebView. Borrow sufficient
+            // space for this request, retaining an already user-expanded surface.
+            if (!await ExpandBrowserAsync(browser, token))
+            {
+                Diagnostics.FrontendFailureLog.Current.Write("native-browser-dialog-admission", null, "Sharing viewport preparation did not complete.");
+                return false;
+            }
+            if (!wasExpanded) pickerExpansion = expandedBrowser;
+            pickerBrowser = browser;
+            token.ThrowIfCancellationRequested();
+            return ready = PrepareBrowserPicker?.Invoke(browser.NativeBrowserProcessId, token) == true;
+        }
+        finally { if (!ready) RestoreBrowserPickerPlacement(); }
     }
 
     private async Task<bool> ExpandBrowserAsync(BrowserSurface browser, CancellationToken token)

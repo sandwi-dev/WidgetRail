@@ -51,10 +51,11 @@ HRESULT FindNativeDialog(IUIAutomationTreeWalker* walker, IUIAutomationElement* 
 // A Chromium dialog is an accessible native Window/RootView. The enclosing
 // browser HWND can remain alive after that dialog has disappeared.
 extern "C" WRAIL_OVERLAY_PLATFORM_API std::int32_t WRAIL_OVERLAY_PLATFORM_CALL
-WidgetRailOverlayPlatformQueryNativeBrowserDialog(std::uintptr_t window,
-    std::uint32_t expectedProcess, std::uint32_t close, std::uint32_t* present) noexcept {
-    if (!present || !window || !expectedProcess || close > 1) return E_INVALIDARG;
+WidgetRailOverlayPlatformQueryNativeBrowserDialogBounds(std::uintptr_t window,
+    std::uint32_t expectedProcess, std::uint32_t close, std::uint32_t* present, RECT* bounds) noexcept {
+    if (!present || !bounds || !window || !expectedProcess || close > 1) return E_INVALIDARG;
     *present = 0;
+    *bounds = {};
     const auto hwnd = reinterpret_cast<HWND>(window);
     DWORD process{};
     if (!IsWindow(hwnd) || !GetWindowThreadProcessId(hwnd, &process) || process != expectedProcess)
@@ -81,7 +82,8 @@ WidgetRailOverlayPlatformQueryNativeBrowserDialog(std::uintptr_t window,
                 int remaining = 128;
                 if (SUCCEEDED(result)) result = FindNativeDialog(walker.Get(), root.Get(), 0, remaining, GetTickCount64() + 1000, dialog);
                 if (SUCCEEDED(result) && dialog) {
-                    *present = 1;
+                    result = dialog->get_CurrentBoundingRectangle(bounds);
+                    if (SUCCEEDED(result) && bounds->right > bounds->left && bounds->bottom > bounds->top) *present = 1;
                     if (close) {
                         ComPtr<IUIAutomationWindowPattern> pattern;
                         result = dialog->GetCurrentPatternAs(UIA_WindowPatternId, IID_PPV_ARGS(&pattern));
@@ -93,4 +95,12 @@ WidgetRailOverlayPlatformQueryNativeBrowserDialog(std::uintptr_t window,
     }
     CoUninitialize();
     return result;
+}
+
+// Preserve the additive ABI used by earlier hosts; bounds are optional there.
+extern "C" WRAIL_OVERLAY_PLATFORM_API std::int32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformQueryNativeBrowserDialog(std::uintptr_t window,
+    std::uint32_t expectedProcess, std::uint32_t close, std::uint32_t* present) noexcept {
+    RECT bounds{};
+    return WidgetRailOverlayPlatformQueryNativeBrowserDialogBounds(window, expectedProcess, close, present, &bounds);
 }
