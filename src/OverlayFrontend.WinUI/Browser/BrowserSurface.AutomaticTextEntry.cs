@@ -23,9 +23,9 @@ internal sealed partial class BrowserSurface
           let field = document.activeElement;
           while (field?.shadowRoot?.activeElement) field = field.shadowRoot.activeElement;
           const supported = field instanceof HTMLTextAreaElement ||
-            field instanceof HTMLInputElement && ['text','search','url','email','tel'].includes(field.type);
-          if (!supported || !field.isConnected || field.disabled || field.readOnly || field.value.length > 2048) return null;
-          return hit === field || hit?.closest('label')?.control === field ? field : null;
+            field instanceof HTMLInputElement && ['text','search','url','email','tel','password'].includes(field.type) || field?.isContentEditable;
+          if (!supported || !field.isConnected || field.disabled || field.readOnly) return null;
+          return hit === field || field.contains(hit) || hit?.closest('label')?.control === field ? field : null;
         })
         """;
 

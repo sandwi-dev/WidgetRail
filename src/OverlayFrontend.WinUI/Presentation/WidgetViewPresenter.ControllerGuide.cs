@@ -48,7 +48,7 @@ internal sealed partial class WidgetViewPresenter
                 new(ControllerPrompt.RightBumper, "Caret right", ControllerButton.RightBumper),
                 new(ControllerPrompt.LeftTrigger, "Shift", ControllerButton.LeftTrigger),
                 new(ControllerPrompt.Y, "Clear", ControllerButton.Y),
-                new(ControllerPrompt.RightTrigger, "Done", ControllerButton.RightTrigger),
+                new(ControllerPrompt.RightTrigger, keyboard.CommitLabel, ControllerButton.RightTrigger),
                 new(ControllerPrompt.B, "Cancel", ControllerButton.B),
                 .. (keyboard.IsSensitive ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress,
                     keyboard.PasswordVisible ? "Hide password" : "Show password", ControllerButton.RightStick)] : [])];

@@ -367,9 +367,15 @@ internal sealed partial class OverlayShellPage
         };
         static void EditValue(BrowserSurface browser, string value)
         {
-            var content = (Microsoft.UI.Xaml.Controls.ScrollViewer)browser.FixtureEditor!.Content;
-            var body = (Microsoft.UI.Xaml.Controls.StackPanel)content.Content;
-            ((Microsoft.UI.Xaml.Controls.TextBox)body.Children[0]).Text = value;
+            var editor = FindEditor(browser.FixtureEditor!) ?? throw new InvalidOperationException("Browser keyboard editor is missing.");
+            editor.Text = value;
+            static Microsoft.UI.Xaml.Controls.TextBox? FindEditor(DependencyObject node)
+            {
+                if (node is Microsoft.UI.Xaml.Controls.TextBox text && Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "Widget.TextEntry.Editor") return text;
+                for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+                    if (FindEditor(VisualTreeHelper.GetChild(node, i)) is { } found) return found;
+                return null;
+            }
         }
         static async Task UntilScript(BrowserSurface browser, string condition)
         {

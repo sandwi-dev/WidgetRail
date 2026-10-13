@@ -11,6 +11,8 @@ internal sealed record BrowserHitPoint(double x, double y);
 internal sealed record BrowserArgument(string value);
 internal sealed record BrowserFieldCall(string objectId, string functionDeclaration, BrowserArgument[]? arguments = null, bool returnByValue = true);
 internal sealed record BrowserObject(string objectId);
+internal sealed record BrowserInsertText(string text);
+internal sealed record BrowserKeyEvent(string type, string key, string code, int windowsVirtualKeyCode, string? text = null);
 internal sealed record BrowserPinchGesture(double x, double y, double scaleFactor, int relativeSpeed = 800, string gestureSourceType = "mouse");
 internal sealed record BrowserDragEvent(string type, double x, double y, JsonElement data);
 
@@ -20,6 +22,8 @@ internal sealed record BrowserDragEvent(string type, double x, double y, JsonEle
 [JsonSerializable(typeof(BrowserHitPoint))]
 [JsonSerializable(typeof(BrowserFieldCall))]
 [JsonSerializable(typeof(BrowserObject))]
+[JsonSerializable(typeof(BrowserInsertText))]
+[JsonSerializable(typeof(BrowserKeyEvent))]
 [JsonSerializable(typeof(BrowserPinchGesture))]
 [JsonSerializable(typeof(BrowserDragEvent))]
 internal sealed partial class BrowserJsonContext : JsonSerializerContext;

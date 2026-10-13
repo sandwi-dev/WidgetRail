@@ -105,9 +105,11 @@ internal sealed partial class WidgetTextEntryDialog
                     // TextBox's character layout excludes its editor inset.
                     // Keep the supplemental caret on the same glyph edge as
                     // the native caret instead of drawing through the last glyph.
-                    rect.X += display.Padding.Left + display.BorderThickness.Left;
-                    rect.Y += display.Padding.Top + display.BorderThickness.Top;
-                    rect = display.TransformToVisual(editorHost).TransformBounds(rect);
+                    // Character positions are relative to the editor viewport;
+                    // using the whole TextBox misses its header on later lines.
+                    rect.X += clip.X + display.Padding.Left + display.BorderThickness.Left;
+                    rect.Y += clip.Y + display.Padding.Top + display.BorderThickness.Top;
+                    rect.Height = Math.Min(rect.Height, display.FontSize * 1.4);
                 }
                 catch (ArgumentException)
                 {
@@ -119,8 +121,10 @@ internal sealed partial class WidgetTextEntryDialog
             }
             var width = Math.Max(2, 2 * interfaceScale);
             var delta = rect.X < clip.Left ? rect.X - clip.Left : rect.X + width > clip.Right ? rect.X + width - clip.Right : 0;
-            if (Math.Abs(delta) > .5)
-                scroll.ChangeView(Math.Clamp(scroll.HorizontalOffset + delta, 0, scroll.ScrollableWidth), null, null, true);
+            var vertical = multiline ? rect.Y < clip.Top ? rect.Y - clip.Top : rect.Bottom > clip.Bottom ? rect.Bottom - clip.Bottom : 0 : 0;
+            if (Math.Abs(delta) > .5 || Math.Abs(vertical) > .5)
+                scroll.ChangeView(Math.Clamp(scroll.HorizontalOffset + delta, 0, scroll.ScrollableWidth),
+                    Math.Clamp(scroll.VerticalOffset + vertical, 0, scroll.ScrollableHeight), null, true);
             controllerCaret.Width = width;
             controllerCaret.Height = Math.Min(rect.Height, clip.Height);
             controllerCaret.Fill = native.Foreground;

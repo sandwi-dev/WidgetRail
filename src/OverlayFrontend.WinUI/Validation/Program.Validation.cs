@@ -13,6 +13,7 @@ internal static partial class Program
         if (Shell.FrontendArguments.Value(arguments, "--validate-capture-discovery") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-webapp") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-editing") is not null) { fixture = true; return; }
         string[] early = ["--validate-controller", "--replay-controller", "--validate-window-preview",
             "--validate-shell-status", "--validate-production-shell", "--validate-gamepad-boundary",
             "--validate-embedded-media", "--validate-package-icons", "--validate-shell-sizing",

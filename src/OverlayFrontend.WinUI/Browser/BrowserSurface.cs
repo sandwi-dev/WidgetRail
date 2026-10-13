@@ -134,6 +134,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         presentationInputRequested = acceptsInput;
         visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging;
         if (!visible) CancelSiteDecisions();
+        if (!input) editorOwnedButtons.Clear();
         web.IsTabStop = input;
         foreach (var button in buttons) { button.IsTabStop = input; button.IsHitTestVisible = input; }
         if (!input) { toolbarFocused = false; libraryDialog?.Hide(); backReleaseOwned = false; CancelPointer(); CancelEdit(); interacting = false; browsing = false; wheelX = wheelY = 0; cursorDirty = false; }
@@ -190,6 +191,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal bool HandleButton(ControllerButton button, ControllerEventPhase phase)
     {
+        if (phase == ControllerEventPhase.Released && editorOwnedButtons.Remove(button)) return true;
+        if (editDialog is null && editorOwnedButtons.Contains(button)) return true;
         if (button == ControllerButton.A && chromeOwnedA)
         { if (phase == ControllerEventPhase.Released) chromeOwnedA = false; return true; }
         if (button == ControllerButton.B && backReleaseOwned)
@@ -203,7 +206,11 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             if (button == ControllerButton.B && phase == ControllerEventPhase.Pressed) backReleaseOwned = true;
             libraryChoice.Handle(button, phase); return true;
         }
-        if (editDialog is { } dialog) { dialog.Handle(button, phase); return true; }
+        if (editDialog is { } dialog)
+        {
+            if (phase == ControllerEventPhase.Pressed) editorOwnedButtons.Add(button);
+            dialog.Handle(button, phase); return true;
+        }
         if (HasDialog) return true;
         if (button == ControllerButton.B && toolbarFocused && document.Options.Chrome == BrowserChrome.OnDemand)
         {
@@ -327,7 +334,10 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             core.HistoryChanged += (_, _) => UpdateChrome();
             core.DocumentTitleChanged += (_, _) => UpdateAddress();
             core.SourceChanged += (_, _) => { UpdateAddress(); if (!loading) RecordVisit(); };
-            core.PermissionRequested += PermissionRequested;
+            // WinRT event senders can be another managed projection of the same
+            // COM object. Capture our controller identity for stale-event checks.
+            var permissionOwner = core;
+            core.PermissionRequested += (_, args) => PermissionRequested(permissionOwner, args);
             core.DownloadStarting += (_, args) => { args.Cancel = true; args.Handled = true; ShowStatus("Use Open externally to download files."); };
             core.NewWindowRequested += (_, args) =>
             {

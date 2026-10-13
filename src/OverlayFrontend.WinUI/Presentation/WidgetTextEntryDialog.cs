@@ -33,10 +33,15 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     internal IDisposable? ThemeLease { get; set; }
     internal bool IsSensitive => password is not null;
     internal bool PasswordVisible { get; private set; }
+    private readonly bool multiline;
+    internal bool SubmitRequested { get; private set; }
+    internal string CommitLabel { get; }
     internal Action? GuideChanged { get; set; }
 
-    internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish)
+    internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish, bool multiline = false, bool allowSubmit = false, string commitLabel = "Done")
     {
+        this.multiline = multiline && node.TextEntryInputKind != TextEntryInputKind.Sensitive;
+        CommitLabel = commitLabel;
         Input.GamepadKeyBoundary.ObserveDialog(this);
         this.finish = finish;
         maximumLength = node.TextEntryMaximumLength ?? ProtocolConstants.MaximumTextEntryLength;
@@ -56,8 +61,10 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         }
         else
         {
-            text = new TextBox { Text = node.TextEntryValue ?? string.Empty, MaxLength = maximumLength,
-                Header = node.TextEntryPlaceholder ?? "Text", IsSpellCheckEnabled = false, IsTextPredictionEnabled = false };
+            text = new TextBox { AcceptsReturn = this.multiline, TextWrapping = this.multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
+                Text = node.TextEntryValue ?? string.Empty, MaxLength = maximumLength,
+                Header = node.TextEntryPlaceholder ?? "Text", IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
+                MaxHeight = this.multiline ? 160 : double.PositiveInfinity };
             text.Select(text.Text.Length, 0);
             body.Children.Add(text);
         }
@@ -80,7 +87,14 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         AddKey("Clear", "Clear", 5, IsSensitive ? 2 : 3, IsSensitive ? 2 : 3, Clear, ControllerPrompt.Y);
         if (IsSensitive) AddKey("Show", "Reveal", 5, 4, 2, TogglePassword, ControllerPrompt.RightStickPress);
         AddKey("Cancel", "Cancel", 5, 6, 2, () => Complete(false), ControllerPrompt.B);
-        AddKey("Done", "Commit", 5, 8, 2, () => Complete(true), ControllerPrompt.RightTrigger);
+        AddKey(commitLabel, "Commit", 5, 8, 2, () => Complete(true), ControllerPrompt.RightTrigger);
+        if (this.multiline || allowSubmit)
+        {
+            keys.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            if (this.multiline) AddKey("New line", "NewLine", 6, 0, allowSubmit ? 5 : 10, () => Insert("\n"));
+            if (allowSubmit) AddKey("Apply + Enter", "Submit", 6, this.multiline ? 5 : 0, this.multiline ? 5 : 10,
+                () => { SubmitRequested = true; Complete(true); });
+        }
         WidgetControllerPrompts.Changed += RefreshPrompts;
         RefreshPrompts();
         RefreshCharacters();
@@ -135,7 +149,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         }
         // Focused virtual keys retain native Enter/Space activation, including
         // Cancel. The commit shortcut applies only within the native editor.
-        if (key == Windows.System.VirtualKey.Enter && editorFocused) { Complete(true); return true; }
+        if (key == Windows.System.VirtualKey.Enter && editorFocused && !multiline) { Complete(true); return true; }
         if (key == Windows.System.VirtualKey.Back && !editorFocused) { Backspace(); return true; }
         if (!editorFocused && !control && !shift && key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right)
         { MoveCaret(key == Windows.System.VirtualKey.Left ? -1 : 1); return true; }
@@ -179,6 +193,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             if (family is null) control.ClearValue(Control.FontFamilyProperty);
             else control.FontFamily = family;
         }
+        if (multiline && text is not null) { text.MinHeight = 96 * zoom; text.MaxHeight = 160 * zoom; }
         foreach (var (button, icon, _, _) in prompts)
         {
             icon.FontSize = 18 * zoom;
