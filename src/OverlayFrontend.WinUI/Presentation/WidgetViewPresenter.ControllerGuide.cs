@@ -65,7 +65,7 @@ internal sealed partial class WidgetViewPresenter
                 .. (picture.IsExpanded ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)] : [])];
         if (FocusedMediaPlayer is { IsVideo: true, CanControl: true } media)
             return (ControllerGuideHint[])[new(ControllerPrompt.A, media.PrimaryActionLabel, ControllerButton.A),
-                .. (media.IsExpanded ? (ControllerGuideHint[])[new(ControllerPrompt.X, "Play / pause", ControllerButton.X)] : []),
+                new(ControllerPrompt.X, "Play / pause", ControllerButton.X),
                 new(ControllerPrompt.LeftTrigger, "Seek back", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Seek forward", ControllerButton.RightTrigger),
                 new(ControllerPrompt.LeftBumper, "Replay", ControllerButton.LeftBumper),
                 new(ControllerPrompt.RightBumper, "Loop", ControllerButton.RightBumper),

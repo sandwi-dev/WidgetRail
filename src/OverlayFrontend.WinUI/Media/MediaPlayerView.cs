@@ -355,7 +355,6 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             return true;
         }
         if (IsImage) return HandleImage(button, phase);
-        if (button == ControllerButton.X && !IsExpanded) return false;
         if (button is not (ControllerButton.A or ControllerButton.X or ControllerButton.LeftTrigger or ControllerButton.RightTrigger or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.RightStick)) return IsExpanded;
         if (phase == ControllerEventPhase.Released) return true;
         if (button == ControllerButton.A && RevealVideoControls()) return true;

@@ -220,7 +220,17 @@ internal sealed partial class MediaPlayerView
         Check(!fullscreen.IsTransitioning && card.IsHitTestVisible, "Reduced motion settles expansion without transforms");
         fullscreen.Close(); await reduced;
         fullscreen.ApplyMotion(WidgetRail.PlatformSettings.AppearanceSettings.Default, true);
-        Check(!Handle(ControllerButton.X, ControllerEventPhase.Pressed), "Inline X remains available to widget shortcuts");
+        player!.Pause(); await Until(() => !IsPlaying);
+        Check(Handle(ControllerButton.X, ControllerEventPhase.Pressed), "Inline player consumes X for playback");
+        await Until(() => IsPlaying);
+        Check(Handle(ControllerButton.X, ControllerEventPhase.Repeated) && Handle(ControllerButton.X, ControllerEventPhase.Released),
+            "Inline player owns the complete X gesture");
+        await Task.Delay(100);
+        Check(IsPlaying, "Holding or releasing X does not toggle playback again");
+        Handle(ControllerButton.X, ControllerEventPhase.Pressed);
+        await Until(() => !IsPlaying);
+        Handle(ControllerButton.X, ControllerEventPhase.Released);
+        Check(!IsPlaying, "A second inline X press pauses playback");
         var controlsCheck = ToggleExpandedAsync();
         await Until(() => IsExpanded && !changingPlacement && expandedHost is { IsTransitioning: false });
         videoChrome.Hide();
