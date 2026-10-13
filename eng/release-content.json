@@ -30,9 +30,16 @@
     "power",
     "display-profiles",
     "browser",
+    "discord",
     "game-help"
   ],
   "developerWidgets": [
+    {
+      "id": "discord",
+      "project": "samples/DiscordWidget",
+      "assembly": "Discord",
+      "runtime": "Discord"
+    },
     {
       "id": "browser",
       "project": "samples/BrowserWidget",

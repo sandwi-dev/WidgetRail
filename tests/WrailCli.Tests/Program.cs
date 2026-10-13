@@ -129,7 +129,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
-    ("New ships five deterministic template profiles", AdvancedTemplateProfiles),
+    ("New ships six deterministic template profiles", AdvancedTemplateProfiles),
+    ("Webapp scaffolding rejects unsafe URLs before publishing", WebAppScaffoldRejectsUnsafeUrls),
     ("Media template authors typed pinned layouts end to end", MediaTemplatePinnedLayouts),
     ("Embedded media template closes its lifecycle and adapter contract", EmbeddedMediaTemplateEndToEnd),
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
@@ -1081,8 +1082,9 @@ static async Task AdvancedTemplateProfiles()
         var destination = Path.Combine(temp.Path, typeName);
         var id = $"dev.templates.{profile}";
         var created = await RunCli(
-            "new", "widget", typeName, "--template", profile,
-            "--output", destination, "--id", id, "--publisher", "dev.templates");
+            ["new", "widget", typeName, "--template", profile,
+            "--output", destination, "--id", id, "--publisher", "dev.templates",
+            .. (profile == "webapp" ? new[] { "--url", "https://example.com/app?x=\"quoted\"" } : Array.Empty<string>())]);
         Assert.True(created.Code == 0, "create: " + created.Error);
         Assert.Contains($"Template: {profile}", created.Output);
 
@@ -1119,9 +1121,25 @@ static async Task AdvancedTemplateProfiles()
         "new", "widget", "InvalidStarter", "--template", "unknown",
         "--output", invalidTarget);
     Assert.Equal(2, invalid.Code);
-    Assert.Contains("Choose basic, data, media, embedded-media, or multipage", invalid.Error);
+    Assert.Contains("Choose basic, data, media, embedded-media, multipage, or webapp", invalid.Error);
     Assert.True(!Directory.Exists(invalidTarget),
         "An invalid template selection published a partial target.");
+}
+
+static async Task WebAppScaffoldRejectsUnsafeUrls()
+{
+    using var temp = new TemporaryDirectory();
+    foreach (var url in new[] { "http://example.com", "file:///C:/private", "https://user:password@example.com", "javascript:alert(1)", " https://example.com" })
+    {
+        var destination = Path.Combine(temp.Path, Guid.NewGuid().ToString("N"));
+        var result = await RunCli("new", "widget", "UnsafeWebapp", "--template", "webapp", "--url", url, "--output", destination);
+        Assert.Equal(2, result.Code);
+        Assert.True(!Directory.Exists(destination), "Rejected webapp created a destination.");
+    }
+    var missing = await RunCli("new", "widget", "MissingUrl", "--template", "webapp", "--output", Path.Combine(temp.Path, "missing"));
+    Assert.Equal(2, missing.Code);
+    var ignored = await RunCli("new", "widget", "WrongTemplate", "--url", "https://example.com", "--output", Path.Combine(temp.Path, "wrong"));
+    Assert.Equal(2, ignored.Code);
 }
 
 static async Task MediaTemplatePinnedLayouts()

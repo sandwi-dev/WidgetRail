@@ -105,7 +105,8 @@ internal sealed class BrowserOwner : IAsyncDisposable
                     // Input readiness changes while entering a widget and must
                     // never shuttle that page between XAML roots.
                     var chosen = group.OrderByDescending(binding => binding.Slot.Pinned).ThenByDescending(binding => binding.Slot.AcceptsInput).First();
-                    if (entries.TryGetValue(group.Key, out var existing) && existing.Surface.ProviderReference != chosen.Document.ProviderDocument)
+                    if (entries.TryGetValue(group.Key, out var existing) &&
+                        (existing.Surface.ProviderReference != chosen.Document.ProviderDocument || !existing.Surface.UsesProfile(chosen.Document)))
                         await RetireAsync(group.Key, existing);
                     if (!entries.TryGetValue(group.Key, out var entry))
                     {
@@ -128,12 +129,12 @@ internal sealed class BrowserOwner : IAsyncDisposable
                                 !session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
                         }
                         BrowserLibraryStore? library = null;
-                        if (chosen.Document.ProviderDocument is null && !libraries.TryGetValue(group.Key.Widget, out library))
+                        var profileName = BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document);
+                        if (chosen.Document.ProviderDocument is null && !libraries.TryGetValue(profileName, out library))
                         {
-                            var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(group.Key.Widget)));
-                            library = await BrowserLibraryStore.LoadAsync(Path.Combine(profileRoot, "Library", key + ".json"), lifetime.Token);
+                            library = await BrowserLibraryStore.LoadAsync(Path.Combine(profileRoot, "Library", BrowserProfileIdentity.LibraryFileName(group.Key.Widget, chosen.Document)), lifetime.Token);
                             if (retired) break;
-                            libraries[group.Key.Widget] = library;
+                            libraries[profileName] = library;
                             if (slots.GetValueOrDefault(chosen.Slot)?.Document != chosen.Document ||
                                 !session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
                         }
@@ -217,7 +218,7 @@ internal sealed class BrowserOwner : IAsyncDisposable
     {
         entries.Remove(key); entry.Slot?.SetSurface(null);
         await entry.Surface.DisposeAsync();
-        if (!entries.Keys.Any(other => other.Widget == key.Widget) && libraries.Remove(key.Widget, out var library))
+        if (!entries.Values.Any(other => other.Surface.ProfileName == entry.Surface.ProfileName) && libraries.Remove(entry.Surface.ProfileName, out var library))
             await library.DrainAsync();
         if (entry.Surface.Parent is Panel parent) parent.Children.Remove(entry.Surface);
     }

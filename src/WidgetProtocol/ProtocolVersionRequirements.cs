@@ -371,6 +371,8 @@ internal sealed class ProtocolVersionRequirements
                     Add("captured-media", ProtocolConstants.CapturedMediaVersion, path, "CapturedMedia requires protocol version 67 or later.");
                     break;
                 case ViewNodeKind.WebBrowser:
+                    if (node.WebBrowser?.Options is { } browserOptions && browserOptions != new WebBrowserOptions())
+                        Add("webapp", ProtocolConstants.WebAppVersion, path, "Webapp options require protocol version 81 or later.");
                     if (node.WebBrowser?.ProviderDocument is not null)
                         Add("provider-document", ProtocolConstants.ProviderDocumentVersion, path, "Restricted documents require protocol version 69 or later.");
                     Add("web-browser", ProtocolConstants.WebBrowserVersion, path,

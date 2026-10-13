@@ -10,11 +10,11 @@ internal static partial class NewCommand
         CancellationToken cancellationToken = default)
     {
         var parsed = new CommandArguments(
-            args, "--output", "--id", "--publisher", "--template");
+            args, "--output", "--id", "--publisher", "--template", "--url");
         if (parsed.Positionals.Count != 2 || parsed.Positionals[0] != "widget")
             throw new CliUsageException(
                 "Usage: wrail new widget <Name> [--output <directory>] [--id <id>] " +
-                "[--publisher <id>] [--template <basic|data|media|embedded-media|multipage>]");
+                "[--publisher <id>] [--template <basic|data|media|embedded-media|multipage|webapp>] [--url <https-url>]");
 
         var name = parsed.Positionals[1];
         if (!TypeNameRegex().IsMatch(name))
@@ -29,7 +29,16 @@ internal static partial class NewCommand
         var profile = parsed.Option("--template") ?? "basic";
         if (!WidgetTemplateProfiles.All.Contains(profile, StringComparer.Ordinal))
             throw new CliUsageException(
-                $"Unknown widget template '{profile}'. Choose basic, data, media, embedded-media, or multipage.");
+                $"Unknown widget template '{profile}'. Choose basic, data, media, embedded-media, multipage, or webapp.");
+        var url = parsed.Option("--url");
+        if (profile == "webapp")
+        {
+            if (!WidgetProtocol.WebBrowserDocument.IsWebUrl(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https")
+                throw new CliUsageException("The webapp template requires --url with an HTTPS website address, without embedded credentials.");
+            url = uri.AbsoluteUri;
+        }
+        else if (url is not null)
+            throw new CliUsageException("--url is only supported with --template webapp.");
         var target = Path.GetFullPath(parsed.Option("--output") ?? Path.Combine(Environment.CurrentDirectory, name));
         if (File.Exists(target) || Directory.Exists(target))
             throw new CliUsageException(
@@ -45,6 +54,9 @@ internal static partial class NewCommand
             ["{{SdkPackageId}}"] = sdkPackage.PackageId,
             ["{{SdkVersion}}"] = sdkPackage.Version,
             ["{{TemplateProfile}}"] = profile,
+            // JSON strings are also valid C# string literals, including escaped
+            // quotes and backslashes; never interpolate a raw URL into source.
+            ["{{WebAppUrlLiteral}}"] = System.Text.Json.JsonSerializer.Serialize(url ?? ""),
         };
 
         var created = await ControllerWidgetScaffolder.GenerateAsync(
@@ -81,7 +93,7 @@ internal static partial class NewCommand
 internal static class WidgetTemplateProfiles
 {
     internal static readonly string[] All =
-        ["basic", "data", "media", "embedded-media", "multipage"];
+        ["basic", "data", "media", "embedded-media", "multipage", "webapp"];
 }
 
 internal static class TemplateLocator

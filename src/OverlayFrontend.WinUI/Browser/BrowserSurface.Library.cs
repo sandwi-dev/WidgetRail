@@ -18,10 +18,11 @@ internal sealed partial class BrowserSurface
     {
         CancelPointer(); wheelX = wheelY = 0; cursorDirty = false;
         if (toolbarFocused)
-        { toolbarFocused = false; interacting = browsing = true; FocusInteraction?.Invoke(); }
+        { toolbarFocused = false; UpdateChromeVisibility(); interacting = browsing = true; FocusInteraction?.Invoke(); }
         else
         {
             toolbarFocused = true; interacting = true; browsing = false;
+            UpdateChromeVisibility();
             (rememberedToolbar is { IsEnabled: true, Visibility: Visibility.Visible } remembered ? remembered : addressButton).Focus(FocusState.Keyboard);
         }
         DrawCursor(); InteractionChanged?.Invoke();

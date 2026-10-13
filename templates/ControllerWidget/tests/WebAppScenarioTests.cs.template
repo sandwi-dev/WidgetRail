@@ -1,0 +1,19 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WidgetRail.WidgetProtocol;
+
+namespace {{Publisher}}.{{WidgetName}}.Tests;
+
+[TestClass]
+public sealed class ScenarioTests
+{
+    [TestMethod]
+    public void WebappUsesPublicBrowserContract()
+    {
+        var snapshot = new {{WidgetName}}().Render().CreateSnapshot("{{WidgetId}}", 1);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        var page = snapshot.Root.Children.Single().WebBrowser!;
+        Assert.AreEqual(BrowserChrome.OnDemand, page.Options.Chrome);
+        Assert.AreEqual(BrowserStorage.Persistent, page.Options.Storage);
+        Assert.AreEqual(BrowserInteractionMode.InteractOnFocus, page.InteractionMode);
+    }
+}

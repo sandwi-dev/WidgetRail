@@ -41,9 +41,12 @@ internal sealed partial class BrowserSurface
             header.Visibility = Visibility.Collapsed;
             bookmark.Visibility = bookmarks.Visibility = history.Visibility = Visibility.Collapsed;
         }
-        Children.Add(header); SetRow(progress, 1); Children.Add(progress);
+        SetRow(progress, 1); Children.Add(progress);
         web.DefaultBackgroundColor = Microsoft.UI.Colors.Transparent;
         viewport.Children.Add(web); viewport.Children.Add(welcome); viewport.Children.Add(cursor); SetRow(viewport, 2); Children.Add(viewport);
+        // On-demand controls overlay the page instead of resizing the native
+        // surface (and reflowing a webapp) each time LS is pressed.
+        Children.Add(header);
         SetRow(status, 3); Children.Add(status);
         AutomationProperties.SetLiveSetting(status, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         UpdateChrome();
@@ -73,7 +76,7 @@ internal sealed partial class BrowserSurface
     }
     private void UpdateChrome()
     {
-        header.Visibility = IsProviderContent ? Visibility.Collapsed : Visibility.Visible;
+        UpdateChromeVisibility();
         back.IsEnabled = !faulted && core?.CanGoBack == true;
         forward.IsEnabled = !faulted && core?.CanGoForward == true;
         reload.IsEnabled = core is not null && !faulted;
@@ -85,6 +88,13 @@ internal sealed partial class BrowserSurface
         UpdateBookmark();
         if (external is not null) external.IsEnabled = core is not null && !faulted && WidgetProtocol.WebBrowserDocument.IsWebUrl(core.Source);
         InteractionChanged?.Invoke();
+    }
+    private void UpdateChromeVisibility()
+    {
+        var onDemand = document.Options.Chrome == WidgetProtocol.BrowserChrome.OnDemand;
+        SetRow(header, onDemand ? 2 : 0);
+        header.VerticalAlignment = VerticalAlignment.Top;
+        header.Visibility = !IsProviderContent && (!onDemand || toolbarFocused) ? Visibility.Visible : Visibility.Collapsed;
     }
     private void UpdateBookmark()
     {

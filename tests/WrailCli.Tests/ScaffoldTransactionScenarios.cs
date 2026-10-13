@@ -246,7 +246,7 @@ internal static class ScaffoldTransactionScenarios
         public string TemplateRoot { get; }
         public string Target { get; }
         public JsonObject Manifest { get; }
-        public JsonArray Files => Manifest["profiles"]!.AsArray()[0]!["files"]!.AsArray();
+        public JsonArray Files => Manifest["profiles"]!.AsArray().Single(profile => profile!["id"]!.GetValue<string>() == "basic")!["files"]!.AsArray();
         public JsonObject FirstFile => Files[0]!.AsObject();
 
         public void AddFile(

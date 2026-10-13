@@ -18,6 +18,7 @@ wrail doctor
 wrail releases example/widgets
 wrail doctor .\\VolumeControl --json
 wrail new widget VolumeControl --id dev.example.volume-control --template basic
+wrail new widget Discord --template webapp --url https://discord.com/app
 dotnet build .\\VolumeControl\\VolumeControl.csproj -c Release
 dotnet run --project .\\VolumeControl\\tests\\VolumeControl.Tests.csproj -c Release
 wrail validate .\\VolumeControl
@@ -89,7 +90,7 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   model, host API requirements, architectures, pinned support and package size.
   Add `--json` for versioned metadata. It does not verify publisher identity.
 - `new widget` selects the closed version-2 `basic`, `data`, `media`,
-  `embedded-media`, or `multipage` controller-first C# template inventory and a
+  `embedded-media`, `multipage`, or `webapp` controller-first C# template inventory and a
   matching `WidgetRail.WidgetSdk` package in `.widgetrail/packages`. Its
   `template.json` is a closed inventory of bounded text templates and
   byte-preserved binary assets; undeclared, missing, duplicate, traversing,

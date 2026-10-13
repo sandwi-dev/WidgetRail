@@ -41,6 +41,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal bool IsReady => core is not null && !retired && !faulted;
     internal bool IsNavigationInProgress => loading;
     internal bool IsToolbarVisible => header.Visibility == Visibility.Visible;
+    internal bool UsesProfile(WebBrowserDocument next) => BrowserProfileIdentity.SameProfile(document, next);
+    internal string ProfileName => profile;
     internal double EnvironmentInitializationMilliseconds { get; private set; }
     internal double ControllerInitializationMilliseconds { get; private set; }
     internal double DocumentNavigationMilliseconds { get; private set; }
@@ -83,7 +85,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         this.library = library;
         this.widgetId = widgetId;
         this.document = document; this.environment = environment; this.providerHtml = providerHtml;
-        profile = "browser-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(widgetId)))[..32];
+        profile = BrowserProfileIdentity.Name(widgetId, document);
         CreateChrome();
         AutomationProperties.SetName(web, document.AccessibleName);
         AutomationProperties.SetAutomationId(web, "Browser.WebView");
@@ -91,7 +93,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         Unloaded += (_, _) => { chromeTheme?.Dispose(); chromeTheme = null; };
         viewport.SizeChanged += (_, args) =>
         { DrawCursor(); if (Math.Abs(args.NewSize.Width - args.PreviousSize.Width) > 1) Run(RefreshProviderHeightAsync); };
-        web.GotFocus += (_, _) => { if (input && !HasDialog) { toolbarFocused = false; interacting = true; browsing = true; UseDesktopPointer(); InteractionChanged?.Invoke(); } };
+        web.GotFocus += (_, _) => { if (input && !HasDialog) { toolbarFocused = false; UpdateChromeVisibility(); interacting = true; browsing = true; UseDesktopPointer(); InteractionChanged?.Invoke(); } };
         web.PointerMoved += (_, args) =>
         {
             if (input && args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
@@ -113,6 +115,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (document.InteractionMode != next.InteractionMode)
         { CancelPointer(); interacting = browsing = false; }
         document = next;
+        UpdateChrome();
         AutomationProperties.SetName(web, document.AccessibleName);
         NavigatePending();
         RefreshInteractionFocus();
@@ -126,6 +129,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         web.IsTabStop = input;
         foreach (var button in buttons) { button.IsTabStop = input; button.IsHitTestVisible = input; }
         if (!input) { toolbarFocused = false; libraryDialog?.Hide(); backReleaseOwned = false; CancelPointer(); CancelEdit(); interacting = false; browsing = false; wheelX = wheelY = 0; cursorDirty = false; }
+        UpdateChromeVisibility();
         DrawCursor();
         try
         {
@@ -193,6 +197,11 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         }
         if (editDialog is { } dialog) { dialog.Handle(button, phase); return true; }
         if (HasDialog) return true;
+        if (button == ControllerButton.B && toolbarFocused && document.Options.Chrome == BrowserChrome.OnDemand)
+        {
+            if (phase == ControllerEventPhase.Pressed) { backReleaseOwned = true; ToggleToolbar(); }
+            return true;
+        }
         if (button == ControllerButton.LeftStick && !IsProviderContent)
         { if (phase == ControllerEventPhase.Pressed) ToggleToolbar(); return true; }
         if (toolbarFocused && button == ControllerButton.A)
@@ -268,7 +277,9 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             var env = await environment().WaitAsync(lifetime.Token);
             EnvironmentInitializationMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(initializationStarted).TotalMilliseconds;
             if (retired) return;
-            var options = env.CreateCoreWebView2ControllerOptions(); options.ProfileName = profile; options.IsInPrivateModeEnabled = true;
+            var options = env.CreateCoreWebView2ControllerOptions();
+            options.ProfileName = profile;
+            options.IsInPrivateModeEnabled = document.Options.Storage == BrowserStorage.Private;
             var controllerStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             await web.EnsureCoreWebView2Async(env, options);
             ControllerInitializationMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(controllerStarted).TotalMilliseconds;
@@ -286,6 +297,13 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             {
                 if (IsProviderContent && args.Uri != document.Url)
                 { args.Cancel = true; if (args.IsUserInitiated && input) Run(() => OpenProviderLinkAsync(args.Uri)); return; }
+                if (!IsProviderContent && args.IsUserInitiated && !args.IsRedirected && BrowserNavigationPolicy.OpenExternally(document, args.Uri))
+                {
+                    args.Cancel = true;
+                    var destination = new Uri(args.Uri);
+                    if (input && OpenExternal is { } open) Run(async () => { await open(destination, lifetime.Token); });
+                    return;
+                }
                 if (args.Uri != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(args.Uri)) { args.Cancel = true; ShowStatus("This link cannot open inside WidgetRail."); return; }
                 navigationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 pageEpoch++; CancelPointer(); CancelEdit(); loading = true; UpdateChrome(); ShowStatus(null);
@@ -306,7 +324,13 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             {
                 args.Handled = true;
                 if (input && args.IsUserInitiated && WebBrowserDocument.IsWebUrl(args.Uri))
-                { if (IsProviderContent) Run(() => OpenProviderLinkAsync(args.Uri)); else core.Navigate(args.Uri); }
+                {
+                    var url = args.Uri;
+                    if (IsProviderContent) Run(() => OpenProviderLinkAsync(url));
+                    else if (BrowserNavigationPolicy.OpenExternally(document, url))
+                    { if (OpenExternal is { } open) Run(async () => { await open(new Uri(url), lifetime.Token); }); }
+                    else core.Navigate(url);
+                }
             };
             core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
             core.BasicAuthenticationRequested += (_, args) => args.Cancel = true;

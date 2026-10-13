@@ -1,0 +1,23 @@
+# {{WidgetName}}
+
+A pinnable webapp using the public `UI.WebBrowser` element. Requires a host supporting protocol 81.
+
+The host owns rendering, controller input, cookies, website permissions, and browser lifetime. This widget does not receive page text, tokens, or browser objects. No website-specific scripts are generated.
+
+## Configuration
+
+Edit the `WebBrowserDocument` in `src/{{WidgetName}}.cs`:
+
+- `Url`: starting HTTPS page. Keep `Id` stable and advance `NavigationId` only for an intentional new navigation, never on render.
+- `Options.Chrome`: `OnDemand` gives the page full space; LS opens browser controls. `Toolbar` keeps controls visible.
+- `Options.Storage`: `Persistent` retains website login between app runs; `Private` does not. Login is isolated from other widgets and desktop browsers.
+- `Options.ProfileKey`: bounded lowercase account key, for example `personal` or `work`. Different elements with the same widget/account/storage identity share website state. This is not a filesystem path.
+- `Options.ExternalLinks`: `OtherOriginsInWindows` keeps the app in its starting origin and opens user-selected offsite links externally. Use `InWidget` for a general browser.
+- `Options.Background`: `KeepAlive` requests bounded background residency for connected apps. The user retains control of sessions and permissions. This is not an authorization to use the microphone or camera.
+- `BrowserInteractionMode.InteractOnFocus`: controller interaction starts on focus; B follows framework navigation. Use `ActivateToInteract` when the page sits among other controls.
+
+The manifest enables ordinary full-widget pinning. Website features and authentication depend on WebView2 compatibility and should be tested against the real site. Do not assume a successful page load proves voice, screen sharing, or account recovery.
+
+## Build and test
+
+The generated project includes the local SDK feed. Build `{{WidgetName}}.csproj`, then use `wrail preview`, `wrail validate`, and `wrail pack` as with other widgets. `widgetrail.scenarios.json` supplies a deterministic declarative preview; it does not log into the website.

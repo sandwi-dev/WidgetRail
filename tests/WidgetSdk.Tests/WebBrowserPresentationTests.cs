@@ -24,6 +24,16 @@ internal static class WebBrowserPresentationTests
         var hostBack = first with { Root = first.Root with { Children = [first.Root.Children[0] with { WebBrowser = document with { InteractionMode = BrowserInteractionMode.InteractOnFocus } }] } };
         Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(hostBack)).Root.Children[0].WebBrowser?.InteractionMode == BrowserInteractionMode.InteractOnFocus);
         Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(first)).Root.Children[0].WebBrowser == document);
+        var webapp = document with { Options = WebBrowserOptions.WebApp with { Background = BrowserBackgroundMode.KeepAlive, ProfileKey = "personal" } };
+        var appView = new WidgetView(UI.WebBrowser(webapp, BrowserInteractionMode.InteractOnFocus, "app")).CreateSnapshot("example.app", 1);
+        Check(appView.ProtocolVersion == ProtocolConstants.WebAppVersion);
+        Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(appView)).Root.WebBrowser?.Options == webapp.Options);
+        Check(ViewSnapshotValidator.Validate(appView with { ProtocolVersion = 80 }).Any(error => error.Code == "feature_requires_version"));
+        foreach (var key in new[] { "", "../outside", "C:\\profile", "Work", new string('a', 65) })
+            Check(!(webapp with { Options = webapp.Options with { ProfileKey = key } }).IsWellFormed());
+        Check(!(webapp with { Options = webapp.Options with { Chrome = (BrowserChrome)99 } }).IsWellFormed());
+        Check(!(webapp with { Url = "http://example.com" }).IsWellFormed());
+        Check(!(attribution.Root.Children[0].WebBrowser! with { Options = WebBrowserOptions.WebApp }).IsWellFormed());
         Check(ViewSnapshotValidator.Validate(first with { ProtocolVersion = 65 }).Any(error => error.Code == "feature_requires_version"));
         foreach (var url in new[] { "file:///C:/x", "javascript:alert(1)", "data:text/html,test", "https://user:pw@example.com", " https://example.com", "https://example.com/\n" })
             Check(!(document with { Url = url }).IsWellFormed());

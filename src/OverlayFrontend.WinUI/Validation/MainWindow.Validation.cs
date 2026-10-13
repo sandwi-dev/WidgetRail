@@ -88,6 +88,10 @@ public sealed partial class MainWindow
             AppWindow.Resize(new(1100, 900));
             RootFrame.Content = new Validation.ProviderDocumentValidationPage(documentResult);
         }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp") is { } webappResult)
+            RootFrame.Content = new Validation.WebAppValidationPage(webappResult,
+                Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."),
+                arguments.Contains("--verify-webapp-profile"));
         else if (Shell.FrontendArguments.Value(arguments, "--validate-capture-discovery") is { } discoveryResult)
             RootFrame.Content = new Validation.CaptureDiscoveryValidationPage(discoveryResult, arguments.Contains("--full-discovery"));
         else if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is { } mediaResult)
