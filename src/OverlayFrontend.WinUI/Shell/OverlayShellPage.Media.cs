@@ -32,7 +32,8 @@ internal sealed partial class OverlayShellPage
     {
         if (owner is null || mediaOwner is not null || retired) return;
         browserOwner = new(owner.Session, MediaParking, options.SettingsRoot)
-        { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync, ChooseFiles = ShowBrowserFilePickerAsync };
+        { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync, ChooseFiles = ShowBrowserFilePickerAsync,
+            Expand = ExpandBrowserAsync, ExpansionInvalidated = () => { if (expandedBrowser is not null) fullscreenLayer.Close(restoreFocus: false); } };
         browserOwner.ActivityChanged += RefreshWebappStatus;
         mediaOwner = new(owner.Session, MediaParking)
         {
@@ -79,6 +80,7 @@ internal sealed partial class OverlayShellPage
 
     private void RefreshFullscreenChrome()
     {
+        RefreshExpandedBrowser();
         var showing = fullscreenLayer.IsOpen;
         ShellOverlayLayer.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
         surface?.SettleWidgetResize();

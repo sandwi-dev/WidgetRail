@@ -34,7 +34,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Action<FocusNavigationDirection> Navigate, Action Focus, Action Restore, Action ReturnFocus,
         Func<short, short, bool>? AnalogMove = null, Action? Settled = null,
         Rect? Origin = null, Action? Prepare = null, FrameworkElement[]? Chrome = null,
-        bool UseXamlTransform = false, Func<Rect?>? MediaBounds = null, FrameworkElement? MotionContent = null)
+        bool UseXamlTransform = false, Func<Rect?>? MediaBounds = null, FrameworkElement? MotionContent = null,
+        Func<short, short, bool>? PointerMove = null, Func<Task>? BeforeDetach = null)
     {
         internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -123,7 +124,16 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Changed?.Invoke();
         if (restoreFocus && !entranceQueued && IsLoaded && CanRestoreFocus?.Invoke() != false)
             _ = CloseTransitionAsync(previous, version);
-        else CompleteClose(previous, version, restoreFocus);
+        else _ = ReleaseAndCloseAsync(previous, version, restoreFocus);
+    }
+
+    private async Task ReleaseAndCloseAsync(Presentation previous, long version, bool restoreFocus)
+    {
+        if (version != generation || !ReferenceEquals(current, previous)) return;
+        try { if (previous.BeforeDetach is { } release) await release(); }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        { Diagnostics.FrontendFailureLog.Current.Write("expanded-presentation-release", error); }
+        CompleteClose(previous, version, restoreFocus);
     }
 
     private void CompleteClose(Presentation previous, long version, bool restoreFocus)
@@ -152,6 +162,7 @@ internal sealed partial class MediaFullscreenLayer : Grid
     internal void FocusContent() { if (!IsTransitioning) current?.Focus(); }
     internal void MoveFocus(FocusNavigationDirection direction) { if (!IsTransitioning) current?.Navigate(direction); }
     internal bool MoveAnalog(short x, short y) => !IsTransitioning && current?.AnalogMove?.Invoke(x, y) == true;
+    internal bool MovePointer(short x, short y) => !IsTransitioning && current?.PointerMove?.Invoke(x, y) == true;
     internal bool Route(ControllerButton button, ControllerEventPhase phase)
     {
         if (phase == ControllerEventPhase.Released && ownedButtons.Remove(button))

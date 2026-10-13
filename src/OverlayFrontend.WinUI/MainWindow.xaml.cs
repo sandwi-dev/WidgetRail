@@ -48,8 +48,11 @@ public sealed partial class MainWindow : Window
         {
             gamepadKeys = new(ShellRoot, () => !cleanupStarted && input is { IsActive: true, IsForeground: true } && AppWindow.IsVisible);
             input.Failed += _ => gamepadKeys.Dispose();
-            if (RootFrame.Content is Shell.OverlayShellPage)
+            if (RootFrame.Content is Shell.OverlayShellPage browserShell)
+            {
+                input.OwnsAuxiliaryProcess = browserShell.OwnsBrowserUiProcess;
                 input.ExternalForegroundObserved += DismissForExternalForeground;
+            }
         }
         AppWindow.Closing += (sender, args) =>
         {

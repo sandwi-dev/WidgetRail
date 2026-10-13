@@ -100,3 +100,15 @@ styles and focus decisions while trying the widget.
 Read [Core concepts](concepts.md), then [State and updates](widget-model.md).
 The [authoring guide](widget-authoring-guide.md) helps you choose a path from
 this first button to data, navigation, styling, and media.
+
+To wrap an existing website, the same CLI offers a webapp template:
+
+```powershell
+& $wrail new widget Discord --template webapp --url https://discord.com/app
+```
+
+It creates a pinnable SDK widget with a persistent, isolated website profile and
+on-demand browser controls. The host supplies controller editing, permissions,
+popups and session controls; the widget does not implement a browser or receive
+cookies. See [Hosted browser and webapps](../reference/widget-web-browser.md) for
+configuration, background behavior and compatibility limits.

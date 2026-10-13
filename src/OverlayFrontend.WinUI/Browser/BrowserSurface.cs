@@ -32,6 +32,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     private readonly SemaphoreSlim pointer = new(1, 1);
     private Task? initializing;
     private CoreWebView2? core;
+    private uint browserProcessId;
     private WebBrowserDocument document;
     private long appliedNavigation;
     private bool retired, visible, input, browsing, interacting, pointerPump, faulted;
@@ -40,6 +41,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal bool IsInteracting => popup?.IsInteracting ?? interacting;
     internal bool IsBrowsing => popup?.IsBrowsing ?? browsing;
     internal bool IsReady => core is not null && !retired && !faulted;
+    internal bool OwnsNativeUiProcess(uint process) => process != 0 && visible && IsReady && browserProcessId == process;
     internal bool IsNavigationInProgress => popup?.IsNavigationInProgress ?? loading;
     internal bool IsToolbarVisible => popup?.IsToolbarVisible ?? (header.Visibility == Visibility.Visible);
     internal bool UsesProfile(WebBrowserDocument next) => BrowserProfileIdentity.SameProfile(document, next);
@@ -144,7 +146,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && popup is null;
         popup?.SetPresentation(isVisible, acceptsInput);
         if (!visible) CancelSiteDecisions();
-        if (!input) editorOwnedButtons.Clear();
+        if (!input) { editorOwnedButtons.Clear(); chromeOwnedA = false; }
         web.IsTabStop = input;
         foreach (var button in buttons) { button.IsTabStop = input; button.IsHitTestVisible = input; }
         if (!input) { toolbarFocused = false; libraryDialog?.Hide(); backReleaseOwned = false; CancelPointer(); CancelEdit(); interacting = false; browsing = false; wheelX = wheelY = 0; cursorDirty = false; }
@@ -323,6 +325,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             ControllerInitializationMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(controllerStarted).TotalMilliseconds;
             if (retired) return;
             core = web.CoreWebView2;
+            browserProcessId = core.BrowserProcessId;
             InitializeDrag();
             var settings = core.Settings;
             settings.AreHostObjectsAllowed = false; settings.IsWebMessageEnabled = false;

@@ -224,7 +224,8 @@ internal sealed partial class OverlayShellPage
                 // Native dialog teardown can finish focus restoration after
                 // ShowAsync completes. Re-enter through the presenter's logical
                 // memory instead of relying on a possibly stale Control reference.
-                if (pinnedOwner is not null) pinnedOwner.Enter();
+                if (expandedBrowser is not null) fullscreenLayer.FocusContent();
+                else if (pinnedOwner is not null) pinnedOwner.Enter();
                 else if (MainFocusEnabled) original?.Enter(restoreNativeFocus: true);
                 else if (!interactive) FocusTray();
             }

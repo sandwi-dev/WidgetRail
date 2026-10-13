@@ -28,6 +28,9 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     public event Action<ControllerFrame>? FrameReceived;
     public event Action? ToggleRequested;
     internal event Action<nint>? ExternalForegroundObserved;
+    // This excludes host-owned auxiliary UI from dismissal only. It never
+    // grants that process overlay/controller input ownership.
+    internal Func<uint, bool>? OwnsAuxiliaryProcess { get; set; }
     public event Action<Exception>? Failed;
     internal bool IsForeground => IsForegroundProcess();
     internal bool IsActive => !closed && visible && session is not null;
@@ -250,7 +253,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
         var current = GetForegroundWindow();
         GetWindowThreadProcessId(current, out var process);
         return !closed && ForegroundDismissalPolicy.ShouldDismiss(visible, observed, current,
-            current != 0 && IsWindow(current) != 0, process, (uint)Environment.ProcessId);
+            current != 0 && IsWindow(current) != 0, process, (uint)Environment.ProcessId, OwnsAuxiliaryProcess?.Invoke(process) == true);
     }
 
     private static bool IsForegroundProcess()

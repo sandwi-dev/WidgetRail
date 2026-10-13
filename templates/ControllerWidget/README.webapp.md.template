@@ -12,11 +12,16 @@ Edit the `WebBrowserDocument` in `src/{{WidgetName}}.cs`:
 - `Options.Chrome`: `OnDemand` gives the page full space; LS opens browser controls. `Toolbar` keeps controls visible.
 - `Options.Storage`: `Persistent` retains website login between app runs; `Private` does not. Login is isolated from other widgets and desktop browsers.
 - `Options.ProfileKey`: bounded lowercase account key, for example `personal` or `work`. Different elements with the same widget/account/storage identity share website state. This is not a filesystem path.
-- `Options.ExternalLinks`: `OtherOriginsInWindows` keeps the app in its starting origin and opens user-selected offsite links externally. Use `InWidget` for a general browser.
+- `Options.ExternalLinks`: `OtherOriginsInWindows` opens ordinary user-selected offsite links in Windows. This is not an origin allowlist: authentication redirects can cross origins. Use `InWidget` for ordinary navigation within the element.
+- `Options.Popups`: the preset uses `Hosted` to preserve authentication popups' opener and shared profile. `ReplacePage` navigates the current page; `SystemBrowser` opens HTTP(S) popup URLs in Windows, without shared cookies or opener. Popup routing is independent of ordinary links.
 - `Options.Background`: the webapp preset uses `KeepAlive` for bounded background residency. The host holds the owning worker's residency automatically; no matching manifest residency setting is needed. Use `Automatic` for pages that can be unloaded while hidden. Users can stop a session from website controls or the tray menu. This is not an authorization to use the microphone or camera.
 - `BrowserInteractionMode.InteractOnFocus`: controller interaction starts on focus; B follows framework navigation. Use `ActivateToInteract` when the page sits among other controls.
 
 The manifest enables ordinary full-widget pinning. Website features and authentication depend on WebView2 compatibility and should be tested against the real site. Do not assume a successful page load proves voice, screen sharing, or account recovery.
+
+Keep a stable browser declaration published while its background session is needed. Removing that document, disabling the widget, or stopping its session closes the page and ends its connections. Multiple documents with the same widget/account/storage share website data; changing account or storage recreates the browser controller. Neither author code nor widget IPC receives that data.
+
+LS reveals the native controls. Menu opens page actions; B closes a transient toolbar or hosted popup before following normal framework navigation. Website permissions, clear-data, text prompts, file uploads/downloads and session controls are host UI. Windows file pickers currently require mouse/keyboard. Notifications require a running page; push while WidgetRail is closed is unsupported. Never generate site-specific DOM scripts or implement cookie handling in the widget.
 
 ## Build and test
 

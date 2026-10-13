@@ -22,12 +22,12 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
-        var keyboard = (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
+        var keyboard = expandedBrowser?.Surface?.ControllerTextEntry ?? (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
         var delivered = false;
         try { ReceiveCore(frame, out delivered); }
         finally
         {
-            var current = (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
+            var current = expandedBrowser?.Surface?.ControllerTextEntry ?? (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
             if (keyboard is not null)
             {
                 if (delivered && (foreground || PinnedInputActive) && ReferenceEquals(keyboard, current))
@@ -76,8 +76,9 @@ internal sealed partial class OverlayShellPage
         { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var radialNavigation = ReceiveRadialNavigation(frame);
         var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
-        var browserPointer = !radialNavigation && !IsMediaFullscreen &&
-            pointerPresenter?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true;
+        var browserPointer = !radialNavigation && (IsMediaFullscreen
+            ? fullscreenLayer.MovePointer(frame.State.LeftThumbX, frame.State.LeftThumbY)
+            : pointerPresenter?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : browserPointer ? default : frame.StickNavigation;
         var next = direction.Direction switch
         {

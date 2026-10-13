@@ -6,7 +6,6 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     internal BrowserOwner? BrowserOwner { get; set; }
-    private long browserPointerAt;
     private BrowserSlot? FocusedBrowser => bindings.Values.Select(binding => binding.Element).OfType<BrowserSlot>()
         .FirstOrDefault(slot => slot.AcceptsInput && slot.Surface?.HasDialog == true) ??
         (FocusedBinding() is { Element: BrowserSlot slot } binding && Navigable(binding) ? slot : null);
@@ -30,13 +29,6 @@ internal sealed partial class WidgetViewPresenter
     }
     internal bool MoveBrowserPointer(short x, short y)
     {
-        var now = Environment.TickCount64;
-        if (FocusedBrowser is not { IsBrowsing: true } slot || slot.Surface?.HasDialog == true || !presentationInputEnabled)
-        { browserPointerAt = now; return false; }
-        var elapsed = browserPointerAt == 0 ? 0 : Math.Clamp(now - browserPointerAt, 0, 50);
-        browserPointerAt = now;
-        slot.Surface!.MovePointer(Axis(x) * elapsed * .0006, -Axis(y) * elapsed * .0006);
-        return true;
-        static double Axis(short value) => Math.Abs((int)value) < 7849 ? 0 : value / 32768d;
+        return presentationInputEnabled && FocusedBrowser?.MovePointer(x, y) == true;
     }
 }

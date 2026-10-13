@@ -150,7 +150,7 @@ internal sealed partial class MediaFullscreenLayer
         try { await AnimateAsync(presentation, opening: false); }
         catch (Exception error) when (error is not OutOfMemoryException)
         { System.Diagnostics.Trace.WriteLine($"Fullscreen exit animation skipped: {error.GetType().Name}"); }
-        finally { CompleteClose(presentation, version, restoreFocus: true); }
+        finally { await ReleaseAndCloseAsync(presentation, version, restoreFocus: true); }
     }
 
     private void ResetTransition()

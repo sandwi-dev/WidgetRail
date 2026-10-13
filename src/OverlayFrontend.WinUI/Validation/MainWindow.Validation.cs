@@ -103,6 +103,21 @@ public sealed partial class MainWindow
         else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-files") is { } filesResult)
             RootFrame.Content = new Validation.WebAppFilesValidationPage(filesResult,
                 Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."), arguments.Contains("--webapp-native-pickers"));
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-site") is { } siteResult)
+        {
+            AppWindow.Resize(new(1700, 1500));
+            RootFrame.Content = new Validation.WebAppSiteValidationPage(siteResult,
+                Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."),
+                Shell.FrontendArguments.Value(arguments, "--webapp-site") ?? throw new ArgumentException("A test URL is required."),
+                Shell.FrontendArguments.Value(arguments, "--webapp-registration"));
+        }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-sharing") is { } sharingResult)
+        {
+            AppWindow.Resize(new(2000, 2200));
+            RootFrame.Content = new Validation.WebAppSharingValidationPage(sharingResult,
+                Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."),
+                Shell.FrontendArguments.Value(arguments, "--webapp-sharing-source") ?? throw new ArgumentException("A synthetic sharing source is required."), Activate);
+        }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-dialogs") is { } dialogResult)
         {
             AppWindow.Resize(new(1700, 1400));
@@ -207,6 +222,8 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-webapp-shell") is { } webappResult)
+            page.EnableWebAppValidation(webappResult, Shell.FrontendArguments.Value(arguments, "--webapp-sharing-source"));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-game-help") is { } helpResult)
             page.EnableGameHelpValidation(helpResult, ShowOverlay, () => !AppWindow.IsVisible && taskHandoff is null);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-browser") is { } browserResult)

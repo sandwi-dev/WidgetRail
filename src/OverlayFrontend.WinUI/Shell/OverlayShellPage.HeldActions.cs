@@ -18,6 +18,8 @@ internal sealed partial class OverlayShellPage
             return ((pin, compact.Authority.WidgetInstanceId, compact.Authority.RuntimeGeneration, compact.Declaration.Id, button), !mediaOwner.CompactCommandPending);
         if (IsMediaFullscreen && mediaOwner?.FullscreenState is { } full)
             return ((fullscreenView, full.Authority.WidgetId, full.Authority.WidgetInstanceId, full.Authority.RuntimeGeneration, full.Declaration.Id, button), !mediaOwner.FullscreenCommandPending);
+        if (expandedBrowser is { AcceptsInput: true } browser)
+            return browser.Surface?.CaptureZoomGesture(button) is { } gesture ? ((browser, gesture), true) : null;
         if (PinnedInputActive) return pinned?.Presenter?.CaptureHeldAction(button);
         if (interactive) return RecoveryVisible ? null : surface?.CaptureHeldAction(button);
         if (!reordering && FocusedTrayWidget() is { } widget && DashboardFrame(widget) is { } frame &&

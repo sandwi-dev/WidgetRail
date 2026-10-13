@@ -22,6 +22,11 @@ if (args is ["--export-gallery-scroll", var galleryDirectory, var galleryStylePa
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
+if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "webapp-fixture.marker")))
+{
+    await BridgeWebAppFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
+    return 0;
+}
 if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "game-help-fixture.marker")))
 {
     await BridgeGameHelpFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
@@ -426,6 +431,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             : instance == "media-player.instance" ? new MediaPlayerScenarios.Probe()
             : instance == "browser.instance" ? new WidgetRail.Samples.Browser.BrowserWidget()
             : instance == "browser-modes.instance" ? new ActivationBrowserFixture()
+            : instance.StartsWith("webapp-", StringComparison.Ordinal) ? new WebAppFrameworkFixture(instance == "webapp-idle.instance")
             : instance is "intent-source.instance" or "intent-target.instance"
             ? new IntentBridgeProbeWidget(instance == "intent-target.instance")
             : string.Equals(instance, "pinned-presenter.instance", StringComparison.Ordinal)

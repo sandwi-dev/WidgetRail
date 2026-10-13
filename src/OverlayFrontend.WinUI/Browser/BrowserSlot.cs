@@ -21,6 +21,7 @@ internal sealed partial class BrowserSlot : ContentControl
     internal bool Active { get; set; }
     internal bool AcceptsInput { get; set; }
     internal bool Pinned { get; set; }
+    internal bool Expanded { get; set; }
     internal bool Retired { get; private set; }
     internal bool IsProviderDocument { get; set; }
     private Windows.Foundation.Rect providerViewport;
@@ -29,6 +30,7 @@ internal sealed partial class BrowserSlot : ContentControl
     internal bool IsInteracting => Surface?.IsInteracting == true;
     internal bool IsBrowsing => Surface?.IsBrowsing == true;
     internal bool PresentedInPin { get; private set; }
+    private long pointerSampleAt;
 
     internal BrowserSlot()
     {
@@ -98,5 +100,15 @@ internal sealed partial class BrowserSlot : ContentControl
     internal bool HandleButton(ControllerButton button, ControllerEventPhase phase) => Surface?.HandleButton(button, phase) == true;
     internal bool MoveFocus(FocusNavigationDirection direction) => Surface?.MoveFocus(direction) == true;
     internal bool Scroll(double x, double y) => Surface?.Scroll(x, y) == true;
+    internal bool MovePointer(short x, short y)
+    {
+        var now = Environment.TickCount64;
+        var elapsed = pointerSampleAt == 0 ? 0 : Math.Clamp(now - pointerSampleAt, 0, 50);
+        pointerSampleAt = now;
+        if (!AcceptsInput || !IsBrowsing || Surface is not { HasDialog: false } surface) return false;
+        static double Axis(short value) => Math.Abs((int)value) < 7849 ? 0 : value / 32768d;
+        surface.MovePointer(Axis(x) * elapsed * .0006, -Axis(y) * elapsed * .0006);
+        return true;
+    }
     internal void Retire() { Retired = true; Active = false; AcceptsInput = false; PlacementChanged?.Invoke(); PlacementChanged = null; }
 }

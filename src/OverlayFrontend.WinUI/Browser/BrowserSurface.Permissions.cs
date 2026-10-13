@@ -13,7 +13,15 @@ internal sealed partial class BrowserSurface
     private readonly SemaphoreSlim siteDecisionGate = new(1, 1);
     private CancellationTokenSource? siteDecisions;
     private int queuedSiteDecisions;
+    private readonly Dictionary<string, int> queuedSiteOrigins = new(StringComparer.Ordinal);
     private readonly HashSet<Task> pendingSiteDecisions = [];
+
+    private bool CanQueueSiteDecision(string? origin) => origin is not null && !HasDialog && queuedSiteDecisions < 4 &&
+        (CanRequestSiteDecision || CanCompleteSiteDecision && queuedSiteOrigins.ContainsKey(origin));
+    private void QueueSiteDecision(string origin)
+    { queuedSiteOrigins[origin] = queuedSiteOrigins.GetValueOrDefault(origin) + 1; queuedSiteDecisions++; }
+    private void CompleteSiteDecision(string origin)
+    { if (--queuedSiteOrigins[origin] == 0) queuedSiteOrigins.Remove(origin); queuedSiteDecisions--; }
 
     private void RunSiteDecision(Func<Task> decision)
     {
@@ -42,17 +50,17 @@ internal sealed partial class BrowserSurface
         args.SavesInProfile = false;
         var origin = BrowserSiteIdentity.Origin(args.Uri);
         var description = PermissionDescription(args.PermissionKind);
-        if (!CanRequestSiteDecision || Choose is null || HasDialog || origin is null || description is null || queuedSiteDecisions >= 4) return;
+        if (Choose is null || description is null || !CanQueueSiteDecision(origin)) return;
         var deferral = args.GetDeferral();
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
-        queuedSiteDecisions++;
+        QueueSiteDecision(origin!);
         RunSiteDecision(async () =>
         {
             var admitted = false;
             try
             {
                 await siteDecisionGate.WaitAsync(token); admitted = true;
-                if (!CanRequestSiteDecision || !ReferenceEquals(sender, core) || Choose is not { } choose) return;
+                if (!CanCompleteSiteDecision || !ReferenceEquals(sender, core) || Choose is not { } choose) return;
                 var answer = await choose(this, "Website permission", $"{document.AccessibleName}\n{origin}\n\nAllow this website to {description}?",
                     (HostDialogChoice[])[new("once", "Allow once"), new("allow", "Always allow for this profile"), new("deny", "Block for this profile")], token);
                 token.ThrowIfCancellationRequested();
@@ -63,7 +71,7 @@ internal sealed partial class BrowserSurface
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             finally
             {
-                queuedSiteDecisions--;
+                CompleteSiteDecision(origin!);
                 if (admitted) siteDecisionGate.Release();
                 deferral.Complete();
             }

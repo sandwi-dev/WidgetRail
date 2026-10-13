@@ -39,6 +39,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal int ResidentCount => entries.Count;
     internal int CreatedCount { get; private set; }
     internal int PlacementMoveCount { get; private set; }
+    internal bool OwnsNativeUiProcess(uint process) => !retired && entries.Values.Any(entry => entry.Surface.OwnsNativeUiProcess(process));
 
     internal BrowserOwner(Session session, Grid parking, string settingsRoot)
     {
@@ -85,16 +86,32 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     {
         if (retired) return;
         dirty = true;
-        if (reconciliation is null || reconciliation.IsCompleted) reconciliation = ReconcileAsync();
+        if (reconciliation is null || reconciliation.IsCompleted) reconciliation = ReconcileAfterLayoutAsync();
+    }
+    private async Task ReconcileAfterLayoutAsync()
+    {
+        // Loaded/Unloaded can fire inside a XAML child-collection mutation.
+        // Never reparent WebView2 reentrantly from those callbacks.
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!parking.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ready.TrySetResult())) return;
+        await ready.Task;
+        if (!retired) await ReconcileAsync();
     }
     private void Changed(object? sender, WidgetPresentationChangedEventArgs args) => parking.DispatcherQueue.TryEnqueue(Refresh);
     private void CatalogChanged(object? sender, EventArgs args) => parking.DispatcherQueue.TryEnqueue(Refresh);
     private async Task<CoreWebView2Environment> EnvironmentAsync()
     {
-        environment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, profileRoot, null).AsTask();
+        CoreWebView2EnvironmentOptions? options = null;
+#if ENABLE_WIDGET_VALIDATION
+        if (FixtureBrowserArguments is { } arguments) options = new() { AdditionalBrowserArguments = arguments };
+#endif
+        environment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, profileRoot, options).AsTask();
         try { return await environment; }
         catch { environment = null; throw; }
     }
+#if ENABLE_WIDGET_VALIDATION
+    internal static string? FixtureBrowserArguments { get; set; }
+#endif
     private async Task ReconcileAsync()
     {
         try
@@ -102,6 +119,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             while (dirty && !retired)
             {
                 dirty = false;
+                SynchronizeExpandedBinding();
                 foreach (var pair in entries.ToArray())
                 {
                     if (!session.IsWebBrowserSessionCurrent(pair.Value.Authority, pair.Key.Document))
@@ -116,7 +134,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     // A pin owns the durable page until it is removed/hidden.
                     // Input readiness changes while entering a widget and must
                     // never shuttle that page between XAML roots.
-                    var chosen = group.OrderByDescending(binding => binding.Slot.Pinned).ThenByDescending(binding => binding.Slot.AcceptsInput).First();
+                    var chosen = group.OrderByDescending(binding => binding.Slot.Expanded).ThenByDescending(binding => binding.Slot.Pinned).ThenByDescending(binding => binding.Slot.AcceptsInput).First();
                     if (entries.TryGetValue(group.Key, out var existing) &&
                         (existing.Surface.ProviderReference != chosen.Document.ProviderDocument || !existing.Surface.UsesProfile(chosen.Document)))
                         await RetireAsync(group.Key, existing);
@@ -162,6 +180,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             ReleasePopup = surface => popupOwners.Remove(surface),
                             ChangeRunning = ChangeRunningAsync,
                             Recover = RecoverAsync,
+                            Expand = (source, token) => Expand?.Invoke(source, token) ?? Task.FromResult(false),
                             ActivityChanged = () => { Refresh(); ActivityChanged?.Invoke(); },
                             CheckProviderAuthority = chosen.Document.ProviderDocument is null ? null : async token =>
                                 { _ = await session.ResolveProviderDocumentAsync(chosen.Authority, chosen.Document, token); },
@@ -179,8 +198,11 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     if (!ReferenceEquals(entries.GetValueOrDefault(group.Key), entry)) continue;
                     if (!ReferenceEquals(entry.Slot, chosen.Slot) || !ReferenceEquals(entry.Surface.Parent, chosen.Slot.Host))
                     {
+                        var expanding = chosen.Slot.Expanded || entry.Slot?.Expanded == true;
                         entry.Slot?.SetSurface(null);
-                        entry.Surface.SetPresentation(false, false);
+                        // A visible placement transfer must not cancel the
+                        // screen-sharing consent that requested expansion.
+                        entry.Surface.SetPresentation(expanding && entry.Surface.CanCompleteSiteDecision, false);
                         await MoveAsync(entry.Surface, chosen.Slot.Host);
                         if (retired) break;
                         entry.Slot = chosen.Slot;
@@ -214,7 +236,6 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         if (ReferenceEquals(surface.Parent, target)) return;
         PlacementMoveCount++;
         var native = surface.CompositionRoot;
-        var acrossRoots = surface.XamlRoot is { } root && target.XamlRoot is { } next && !ReferenceEquals(root, next);
         var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void Unloaded(object sender, RoutedEventArgs args) { if (!native.IsLoaded) unloaded.TrySetResult(); }
         native.Unloaded += Unloaded;
@@ -222,9 +243,11 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         {
             var wasLoaded = native.IsLoaded;
             if (surface.Parent is Panel previous) previous.Children.Remove(surface);
-            // As with the media surface, allow WebView2's Unloaded to disconnect
-            // its composition target before binding it to a different XAML root.
-            if (acrossRoots && wasLoaded) await unloaded.Task.WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            // A detached ancestor may already report a null XamlRoot while its
+            // WebView is still unloading. Drain that native detach even within
+            // one root; otherwise collapsing an expanded subtree can reattach
+            // the controller while its previous composition target is retiring.
+            if (wasLoaded) await unloaded.Task.WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
         }
         finally { native.Unloaded -= Unloaded; }
         if (retired) return;
@@ -238,8 +261,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         try
         {
             target.Children.Add(surface);
-            if (acrossRoots && target.IsLoaded && !ReferenceEquals(target, parking) && !native.IsLoaded)
+            if (target.IsLoaded && !ReferenceEquals(target, parking) && !native.IsLoaded)
                 await loaded.Task.WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            if (target.IsLoaded && !ReferenceEquals(target, parking)) target.UpdateLayout();
         }
         finally { native.Loaded -= Loaded; }
     }

@@ -4,6 +4,6 @@ namespace WidgetRail.OverlayFrontend.WinUI.Input;
 internal static class ForegroundDismissalPolicy
 {
     internal static bool ShouldDismiss(bool visible, nint observed, nint current, bool valid,
-        uint foregroundProcess, uint hostProcess) => visible && observed != 0 && observed == current &&
-        valid && foregroundProcess != 0 && foregroundProcess != hostProcess;
+        uint foregroundProcess, uint hostProcess, bool ownedAuxiliary = false) => visible && observed != 0 && observed == current &&
+        valid && foregroundProcess != 0 && foregroundProcess != hostProcess && !ownedAuxiliary;
 }

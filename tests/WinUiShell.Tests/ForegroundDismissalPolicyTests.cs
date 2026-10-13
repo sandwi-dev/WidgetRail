@@ -7,6 +7,12 @@ namespace WinUiShell.Tests;
 public sealed class ForegroundDismissalPolicyTests
 {
     [TestMethod]
+    public void OwnedBrowserPickerKeepsOverlayVisibleWithoutExemptingOtherApplications()
+    {
+        Assert.IsFalse(ForegroundDismissalPolicy.ShouldDismiss(true, 10, 10, true, 2, 1, ownedAuxiliary: true));
+        Assert.IsTrue(ForegroundDismissalPolicy.ShouldDismiss(true, 20, 20, true, 3, 1, ownedAuxiliary: false));
+    }
+    [TestMethod]
     public void ExternalApplicationDismissesVisibleOverlay() =>
         Assert.IsTrue(ForegroundDismissalPolicy.ShouldDismiss(true, 10, 10, true, 2, 1));
 

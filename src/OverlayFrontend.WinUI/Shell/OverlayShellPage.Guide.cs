@@ -40,6 +40,14 @@ internal sealed partial class OverlayShellPage
         }
         else if (reordering)
         { shell = ControllerGuideModel.TrayHints(true); shellContext = "reorder"; }
+        else if (expandedBrowser is { } browser)
+        {
+            var hints = browser.Surface?.ControllerTextEntry is { } keyboard
+                ? WidgetViewPresenter.CaptureKeyboardGuide(keyboard) : WidgetViewPresenter.CaptureBrowserGuide(browser);
+            shell = hints.Any(hint => hint.Button == ControllerButton.B) ? hints
+                : (ControllerGuideHint[])[.. hints, new(ControllerPrompt.B, "Return to widget", ControllerButton.B)];
+            shellContext = (browser, browser.Surface?.IsBrowsing, browser.Surface?.HasDialog);
+        }
         if (shell is not null)
         {
             WaitForGuideLayout(null);

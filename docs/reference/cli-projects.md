@@ -6,6 +6,20 @@ tests. New authors can use the shorter [quickstart](../developers/widget-quickst
 Set `$wrail` to the installed `wrail.cmd` or the source-built CLI executable.
 Use a directory you can dedicate to the example.
 
+For a pinnable website instead of a custom widget UI, use the existing scaffolder:
+
+```powershell
+& $wrail new widget Discord --template webapp --url https://discord.com/app
+```
+
+This generates a normal SDK project using `UI.WebBrowser` and
+`WebBrowserOptions.WebApp`, with a manifest, styles, deterministic scenario,
+tests and local SDK feed. It does not generate a browser engine, authentication
+code or site-specific scripts. The generated README explains profile isolation,
+on-demand chrome, popup/link policies and bounded background sessions. See the
+[browser reference](widget-web-browser.md) for the shared framework behavior and
+platform limitations. Website permissions remain user decisions.
+
 ## Generate, build, and run the test
 
 <!-- canonical-author-journey:create-build-test -->

@@ -159,13 +159,13 @@ See the [widget authoring guide](../../docs/developers/widget-authoring-guide.md
 full contracts and design rationale.
 
 
-## Current SDK examples (0.1.26)
+## Current SDK examples
 
 | Page | Examples and source |
 | --- | --- |
 | Controls | `UI.SettingsField`, direct and A-to-adjust sliders, focus-preserving `Busy` versus `Disabled`, alongside existing Switch/Select/Picker/Scrubber examples. |
 | Text | Ordinary and sensitive text entry, `UI.RichText` with focusable `UI.InlineLink`, expandable content, `ScrollRevealRequest`, and scrolling beyond the last focusable control. |
-| Web & media | One selected live surface: `UI.WebBrowser` with both explicit interaction modes; `UI.MediaPlayer` inline or in `WidgetView.WithModal`; `UI.ProviderContent`; screenshot/video capture previews. |
+| Web & media | One selected live surface: `UI.WebBrowser` with both explicit interaction modes; a persistent webapp with account-profile and background-session controls; `UI.MediaPlayer` inline or in `WidgetView.WithModal`; `UI.ProviderContent`; screenshot/video capture previews. |
 | Utilities | Web intents, Windows-browser override, direct YouTube playback, YouTube search with result feedback and a declared web fallback; authored Summary and Level controls pins plus full-widget pinning. |
 
 The new copyable examples are in `SdkGalleryWidget.Modern.cs`. Existing layout,

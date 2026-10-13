@@ -240,14 +240,22 @@ A visible interactive webapp can request screen sharing through the standard
 website API. WidgetRail asks for a one-shot confirmation identifying the widget
 and exact requesting HTTPS origin before allowing the Windows capture picker.
 No persistent screen-share permission is stored. Hidden pages cannot summon the
-picker. Closing the page cancels pending consent. The Windows picker and actual
-selected-window sharing remain compatibility/physical acceptance checks; the
-native cancellation path is verified without capturing any display.
+picker. Closing the page cancels pending consent. The host expands the existing
+browser into its shared presentation layer before opening the picker: Chromium's
+chooser can clip its source list in small or pinned viewports. B returns the same
+live session to its original widget or pin. The Windows picker requires a mouse
+or keyboard; it is not a controller-authored WidgetRail dialog.
+
+Selected-window video delivery and stopping the tracks have been verified using
+an opaque synthetic window, including a request originating in a pin. Final
+foreground-return validation remains pending. Native picker UI belongs to the
+live WebView2 browser process and must not dismiss the overlay; recognizing that
+process does not give it WidgetRail controller input ownership.
 
 Notifications use WebView2's default native notification UI after website
 permission is granted. A local fixture verifies that the website receives its
-`show` event. Notification interaction and real Discord behavior still require
-validation. This supports document notifications while the webapp is resident;
+`show` event. Click-to-reopen a hidden widget has not been implemented or verified;
+real Discord notification behavior still requires validation. This supports document notifications while the webapp is resident;
 WebView2 does not support push notifications while WidgetRail is closed.
 
 ### Website messages and page actions

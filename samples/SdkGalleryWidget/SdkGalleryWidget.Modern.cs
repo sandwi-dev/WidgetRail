@@ -16,6 +16,8 @@ public sealed partial class SdkGalleryWidget
         public ScrollRevealRequest? Reveal { get; init; }
         public string Surface { get; init; } = "none";
         public bool ActivateBrowser { get; init; } = true;
+        public bool WebAppWorkProfile { get; init; }
+        public bool WebAppKeepAlive { get; init; }
         public bool ModalOpen { get; init; }
         public bool Loop { get; init; }
         public string MediaUrl { get; init; } = "";
@@ -81,8 +83,8 @@ public sealed partial class SdkGalleryWidget
         var content = new List<WidgetElement>
         {
             UI.SectionHeader("Web and media", "gallery.surfaces.header", description: "One live demo at a time. Playback never starts automatically."),
-            UI.Select("Demo", new[] { "none", "browser", "player", "document", "capture" }.Select(mode =>
-                new SelectOption("gallery.surface.option." + mode, mode switch { "none" => "Choose a demo", "browser" => "Browser", "player" => "Native media player", "document" => "Provider document", _ => "Capture preview" },
+            UI.Select("Demo", new[] { "none", "browser", "webapp", "player", "document", "capture" }.Select(mode =>
+                new SelectOption("gallery.surface.option." + mode, mode switch { "none" => "Choose a demo", "browser" => "Browser", "webapp" => "Persistent webapp", "player" => "Native media player", "document" => "Provider document", _ => "Capture preview" },
                     "gallery.surface." + mode, state.Surface == mode)).ToArray(), "gallery.surfaces.choose", "Choose a web or media demo"),
             UI.Text(state.Status, "gallery.surfaces.status"),
         };
@@ -93,6 +95,19 @@ public sealed partial class SdkGalleryWidget
                 content.Add(UI.Text("On: A enters and B leaves interaction. Off: focus starts interaction and B follows the normal host back behavior. Y opens URL/Google search; LS opens the toolbar.", "gallery.browser.help"));
                 content.Add(UI.WebBrowser(new("gallery.browser", 1, WebBrowserDocument.StartPage, "Gallery browser"),
                     state.ActivateBrowser ? BrowserInteractionMode.ActivateToInteract : BrowserInteractionMode.InteractOnFocus, "gallery.browser").Classes("gallery-live-surface"));
+                break;
+            case "webapp":
+                content.Add(UI.Switch("Use separate work profile", state.WebAppWorkProfile, "gallery.webapp.account", "gallery.webapp.account"));
+                content.Add(UI.Switch("Keep session when Gallery is hidden", state.WebAppKeepAlive, "gallery.webapp.background", "gallery.webapp.background"));
+                content.Add(UI.Text("Persistent website data is isolated by widget and profile. LS opens controls, permissions and clear-data; Menu opens page actions. Switching profiles reloads the page. Leaving this demo removes its declaration and closes the session.", "gallery.webapp.help"));
+                content.Add(UI.WebBrowser(new("gallery.webapp", 1, "https://example.com", "Gallery webapp")
+                {
+                    Options = WebBrowserOptions.WebApp with
+                    {
+                        ProfileKey = state.WebAppWorkProfile ? "gallery.work" : "gallery.personal",
+                        Background = state.WebAppKeepAlive ? BrowserBackgroundMode.KeepAlive : BrowserBackgroundMode.Automatic,
+                    },
+                }, BrowserInteractionMode.InteractOnFocus, "gallery.webapp").Classes("gallery-live-surface"));
                 break;
             case "player":
                 content.Add(UI.Text("The bundled clip works offline. Optionally enter a direct HTTP(S) media URL; a web page or YouTube URL is not a media file.", "gallery.player.help"));
@@ -196,7 +211,7 @@ public sealed partial class SdkGalleryWidget
         if (action.ActionId.StartsWith("gallery.surface.", StringComparison.Ordinal))
         {
             var mode = action.ActionId["gallery.surface.".Length..];
-            if (mode is "none" or "browser" or "player" or "document" or "capture") _demo.Update(s => s with { Surface = mode });
+            if (mode is "none" or "browser" or "webapp" or "player" or "document" or "capture") _demo.Update(s => s with { Surface = mode });
             return true;
         }
         switch (action.ActionId)
@@ -207,6 +222,8 @@ public sealed partial class SdkGalleryWidget
             case "gallery.message": _demo.Update(s => s with { Messages = s.Messages + 1, Reveal = new((s.Reveal?.RequestId ?? 0) + 1, "gallery.page-scroll", "gallery.message." + (s.Messages + 1)) }); break;
             case "gallery.level" when action.RequestedValue is { } value && double.IsFinite(value): _demo.Update(s => s with { Level = Math.Clamp(value, 0, 100) }); break;
             case "gallery.browser.mode": _demo.Update(s => s with { ActivateBrowser = !s.ActivateBrowser }); break;
+            case "gallery.webapp.account": _demo.Update(s => s with { WebAppWorkProfile = !s.WebAppWorkProfile }); break;
+            case "gallery.webapp.background": _demo.Update(s => s with { WebAppKeepAlive = !s.WebAppKeepAlive }); break;
             case "gallery.media.modal.open": _demo.Update(s => s with { ModalOpen = true }); break;
             case "gallery.media.modal.close": _demo.Update(s => s with { ModalOpen = false }); break;
             case "gallery.media.loop": _demo.Update(s => s with { Loop = !s.Loop, MediaRevision = s.MediaRevision + 1 }); break;

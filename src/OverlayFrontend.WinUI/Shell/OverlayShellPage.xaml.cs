@@ -549,6 +549,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
         foreground = value;
+        RefreshExpandedBrowser();
         if (value) intentForegroundAcquired?.TrySetResult();
         // The main HWND also deactivates when focus transfers to the pinned
         // peer. That peer owns its activation/loss notifications; treating
@@ -622,6 +623,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void ResetInputPresentation()
     {
+        RefreshExpandedBrowser();
         heldAction.Reset();
         ResetTrayInteraction();
         rightStick.Reset();
