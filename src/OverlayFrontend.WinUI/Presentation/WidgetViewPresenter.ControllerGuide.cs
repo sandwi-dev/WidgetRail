@@ -97,7 +97,7 @@ internal sealed partial class WidgetViewPresenter
                 new(ControllerPrompt.LeftTrigger, "Shift", ControllerButton.LeftTrigger),
                 new(ControllerPrompt.Y, "Clear", ControllerButton.Y),
                 new(ControllerPrompt.RightTrigger, keyboard.CommitLabel, ControllerButton.RightTrigger),
-                new(ControllerPrompt.B, "Cancel", ControllerButton.B),
+                new(ControllerPrompt.B, keyboard.DismissLabel, ControllerButton.B),
                 .. (keyboard.IsSensitive ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress,
                     keyboard.PasswordVisible ? "Hide password" : "Show password", ControllerButton.RightStick)] : [])];
 
@@ -110,7 +110,8 @@ internal sealed partial class WidgetViewPresenter
                 ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Reopen page", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B)]
                 : browser.Surface?.IsToolbarFocused == true
                 ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.LeftStickMove, "Navigate"),
-                    new(ControllerPrompt.LeftStickPress, "Page", ControllerButton.LeftStick)]
+                    new(ControllerPrompt.LeftStickPress, "Page", ControllerButton.LeftStick),
+                    .. (browser.Surface?.ToolbarBackReturnsToPage == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Page", ControllerButton.B)] : [])]
                 : browser.IsBrowsing && browser.Surface?.IsProviderContent == true
                 ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
                     new(ControllerPrompt.A, "Open search", ControllerButton.A), new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger),
@@ -122,10 +123,10 @@ internal sealed partial class WidgetViewPresenter
                 ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
                     new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.LeftBumper, "Previous", ControllerButton.LeftBumper),
                     new(ControllerPrompt.RightBumper, "Forward", ControllerButton.RightBumper), new(ControllerPrompt.X, browser.Surface?.IsNavigationInProgress == true ? "Stop" : "Reload", ControllerButton.X),
-                    new(ControllerPrompt.Y, "Address", ControllerButton.Y), new(ControllerPrompt.RightStickPress, "Type", ControllerButton.RightStick),
+                    new(ControllerPrompt.Y, "Address", ControllerButton.Y),
                     new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger),
                     new(ControllerPrompt.LeftStickPress, "Toolbar", ControllerButton.LeftStick), new(ControllerPrompt.Menu, "Page actions", ControllerButton.Menu),
-                    .. (browser.Surface?.HasPopup == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Close popup", ControllerButton.B)] : browser.Surface?.RequiresActivation == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Leave interaction", ControllerButton.B)] : [])]
+                    .. (browser.Surface?.HasAttachedPopup == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Close popup", ControllerButton.B)] : browser.Surface?.RequiresActivation == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Leave interaction", ControllerButton.B)] : [])]
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Interact", ControllerButton.A),
                     new(ControllerPrompt.B, "Back", ControllerButton.B)];
 

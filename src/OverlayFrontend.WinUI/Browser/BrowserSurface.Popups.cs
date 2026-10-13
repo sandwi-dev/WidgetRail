@@ -9,6 +9,8 @@ internal sealed partial class BrowserSurface
 {
     private readonly bool isPopup;
     private BrowserSurface? popup;
+    private bool popupDetached;
+    private BrowserSurface? AttachedPopup => popupDetached ? null : popup;
     private Grid? popupLayer;
     private Task? popupClosing;
     private Task? popupOpening;
@@ -17,9 +19,49 @@ internal sealed partial class BrowserSurface
     internal Func<BrowserSurface, bool>? ReservePopup { get; set; }
     internal Action<BrowserSurface>? ReleasePopup { get; set; }
     internal Action? CloseRequested { get; set; }
+    internal Action<BrowserSurface>? PopupClosed { get; set; }
+    internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
+    internal Func<BrowserSurface, bool>? PopupIsPinned { get; set; }
+    internal Func<BrowserSurface, Grid, CancellationToken, Task<CoreWebView2>>? PreparePopup { get; set; }
     internal bool HasPopup => popup is not null || openingPopup;
-    internal BrowserSurface ActiveSurface => popup?.ActiveSurface ?? this;
+    internal bool HasAttachedPopup => AttachedPopup is not null;
+    internal BrowserSurface ActiveSurface => AttachedPopup?.ActiveSurface ?? this;
+    internal BrowserSurface? PinnablePopup => !retired && !openingPopup && popupClosing is not { IsCompleted: false } && popup is { IsReady: true } child ? child : null;
+    internal bool IsDetachedPopup(BrowserSurface child) => popupDetached && ReferenceEquals(popup, child);
     internal bool Owns(BrowserSurface source) => ReferenceEquals(this, source) || popup?.Owns(source) == true;
+    internal IEnumerable<FrameworkElement> NativeCompositionRoots
+    {
+        get
+        {
+            yield return CompositionRoot;
+            if (AttachedPopup is { } child)
+                foreach (var root in child.NativeCompositionRoots) yield return root;
+        }
+    }
+
+    internal Grid? DetachPopup(BrowserSurface child)
+    {
+        if (!ReferenceEquals(PinnablePopup, child) || popupDetached || popupLayer is null) return null;
+        child.SetPresentation(false, false);
+        popupDetached = true;
+        popupLayer.Visibility = Visibility.Collapsed;
+        SetPresentation(visible, presentationInputRequested);
+        return popupLayer;
+    }
+
+    internal bool RestorePopup(BrowserSurface child)
+    {
+        if (retired || !IsDetachedPopup(child) || popupLayer is null || !child.IsReady) return false;
+        popupDetached = false;
+        popupLayer.Visibility = Visibility.Visible;
+        child.IsInteractionFocused = () => IsInteractionFocused?.Invoke() == true;
+        child.FocusInteraction = () => FocusInteraction?.Invoke();
+        child.ExitInteraction = () => Run(ClosePopupAsync);
+        child.InteractionChanged = () => InteractionChanged?.Invoke();
+        SetPresentation(visible, presentationInputRequested);
+        InteractionChanged?.Invoke();
+        return true;
+    }
 
     private void NewWindowRequested(CoreWebView2NewWindowRequestedEventArgs args)
     {
@@ -59,6 +101,8 @@ internal sealed partial class BrowserSurface
                 }, environment, library: library, popup: true)
                 {
                     OpenExternal = OpenExternal, Choose = Choose, ChooseFiles = ChooseFiles, ChangeProfile = ChangeProfile, PrepareScreenPicker = PrepareScreenPicker,
+                    ReceiveNotification = ReceiveNotification, InvalidateNotifications = InvalidateNotifications,
+                    RequestPopupPin = RequestPopupPin, PopupIsPinned = PopupIsPinned,
                     IsInteractionFocused = () => IsInteractionFocused?.Invoke() == true,
                     FocusInteraction = () => FocusInteraction?.Invoke(),
                     ExitInteraction = () => Run(ClosePopupAsync),
@@ -67,13 +111,19 @@ internal sealed partial class BrowserSurface
                     Recover = async _ => { await ClosePopupAsync(); ShowStatus("The popup closed. Retry the action on the page to open it again."); },
                 };
                 popup = child;
-                popupLayer = new Grid { Children = { child } };
+                popupLayer = new Grid();
                 SetRowSpan(popupLayer, RowDefinitions.Count); Children.Add(popupLayer);
-                SetPresentation(visible, presentationInputRequested);
-                var childCore = await child.PopupCoreAsync(popupCancellation.Token);
+                CoreWebView2 childCore;
+                if (PreparePopup is { } prepare) childCore = await prepare(child, popupLayer, popupCancellation.Token);
+                else
+                {
+                    popupLayer.Children.Add(child);
+                    childCore = await child.PrepareCoreAsync(popupCancellation.Token);
+                }
                 if (retired || !ReferenceEquals(popup, child)) return;
                 args.NewWindow = childCore;
                 child.appliedNavigation = child.document.NavigationId;
+                SetPresentation(visible, presentationInputRequested);
                 child.Enter();
                 ActivityChanged?.Invoke();
             }
@@ -93,7 +143,7 @@ internal sealed partial class BrowserSurface
         }
     }
 
-    private async Task<CoreWebView2> PopupCoreAsync(CancellationToken token)
+    internal async Task<CoreWebView2> PrepareCoreAsync(CancellationToken token)
     {
         if (!IsLoaded)
         {
@@ -105,7 +155,7 @@ internal sealed partial class BrowserSurface
         }
         initializing ??= InitializeAsync();
         await initializing.WaitAsync(TimeSpan.FromSeconds(15), token);
-        return IsReady ? core! : throw new InvalidOperationException("Popup controller is unavailable.");
+        return IsReady ? core! : throw new InvalidOperationException("Browser controller is unavailable.");
     }
 
     internal Task ClosePopupAsync()
@@ -125,6 +175,9 @@ internal sealed partial class BrowserSurface
             if (ReferenceEquals(popup, child))
             {
                 popup = null;
+                popupDetached = false;
+                PopupClosed?.Invoke(child);
+                if (child.Parent is Panel host) host.Children.Remove(child);
                 if (popupLayer is { } layer) { layer.Children.Clear(); Children.Remove(layer); }
                 popupLayer = null;
                 ReleasePopup?.Invoke(this);

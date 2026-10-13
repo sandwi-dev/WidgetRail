@@ -37,6 +37,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal Func<BrowserSurface, string, string, IReadOnlyList<Shell.HostDialogChoice>, CancellationToken, Task<string?>>? Choose { get; set; }
     internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
     internal Func<BrowserSurface, CancellationToken, Task<bool>>? PrepareScreenPicker { get; set; }
+    internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
     internal int ResidentCount => entries.Count;
     internal int CreatedCount { get; private set; }
     internal int PlacementMoveCount { get; private set; }
@@ -45,6 +46,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal BrowserOwner(Session session, Grid parking, string settingsRoot)
     {
         this.session = session; this.parking = parking; profileRoot = Path.Combine(settingsRoot, "WebBrowser");
+        NotificationPreferences = new(Path.Combine(settingsRoot, "webapp-notifications.json"));
+        notificationPreferencesLoading = LoadNotificationPreferencesAsync();
         session.PresentationChanged += Changed; session.CatalogChanged += CatalogChanged;
     }
     internal void Bind(WidgetPresentationFrame frame, string elementId, BrowserSlot slot,
@@ -68,6 +71,11 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal async Task ReleaseSlotsAsync(IReadOnlyList<BrowserSlot> released)
     {
         if (released.Count == 0 || retired) return;
+        if (popupReconciliation is { } popupTransfer)
+        {
+            try { await popupTransfer; }
+            finally { if (ReferenceEquals(popupReconciliation, popupTransfer)) popupReconciliation = null; }
+        }
         while (reconciliation is { } pending)
         {
             await pending;
@@ -145,7 +153,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                         if (changingProfiles.Contains(BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document))) continue;
                         if (entries.Count + retiringEntries.Count >= 4)
                         {
-                            var oldest = entries.Where(pair => !pair.Value.Retained && !pair.Value.Surface.BackgroundFaulted && pair.Value.Slot?.CanDisplay != true).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
+                            var oldest = entries.Where(pair => !pair.Value.Retained && !pair.Value.Surface.BackgroundFaulted && pair.Value.Slot?.CanDisplay != true &&
+                                !(popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Parent, pair.Value.Surface))).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
                             if (oldest.Value is null) { chosen.Slot.SetMessage(retiringEntries.Count > 0 ? "Closing the previous browser session…" : "Stop another webapp session before opening this one."); continue; }
                             await RetireAsync(oldest.Key, oldest.Value);
                         }
@@ -176,9 +185,16 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
                             Choose = (source, title, message, choices, token) => Choose?.Invoke(source, title, message, choices, token) ?? Task.FromResult<string?>(null),
                             ChangeProfile = ChangeProfileAsync,
+                            ReceiveNotification = ReceiveNotification,
+                            InvalidateNotifications = source => Notifications.InvalidateOwner(source),
                             ChooseFiles = (source, request, token) => ChooseFiles?.Invoke(source, request, token) ?? Task.FromResult(Array.Empty<string>()),
                             ReservePopup = ReservePopup,
                             ReleasePopup = surface => popupOwners.Remove(surface),
+                            PopupClosed = PopupClosed,
+                            PreparePopup = PreparePopupAsync,
+                            RequestPopupPin = session.GetState(group.Key.Widget)?.LastGood?.Descriptor.FullWidgetPinningSupported == true && RequestPopupPin is not null
+                                ? source => RequestPopupPin?.Invoke(source) ?? Task.CompletedTask : null,
+                            PopupIsPinned = source => popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Child, source),
                             ChangeRunning = ChangeRunningAsync,
                             Recover = RecoverAsync,
                             PrepareScreenPicker = (source, token) => PrepareScreenPicker?.Invoke(source, token) ?? Task.FromResult(false),
@@ -187,6 +203,13 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                                 { _ = await session.ResolveProviderDocumentAsync(chosen.Authority, chosen.Document, token); },
                         };
                         entry = new(chosen.Authority, surface); entries.Add(group.Key, entry); CreatedCount++;
+                        // WinUI can move composition across XamlRoots while the
+                        // native WebView retains its original creation HWND.
+                        // Create on the durable host, never on a disposable pin.
+                        parking.Children.Add(surface);
+                        try { await surface.PrepareCoreAsync(lifetime.Token); }
+                        catch (InvalidOperationException) when (surface.NeedsRecovery) { /* The initialized error surface still needs placement. */ }
+                        if (retired) break;
                     }
                     entry.LastUse = Environment.TickCount64;
                     entry.Surface.Update(chosen.Document);
@@ -232,41 +255,53 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("browser-placement", error); }
     }
-    private async Task MoveAsync(BrowserSurface surface, Grid target)
+    private async Task MoveAsync(BrowserSurface surface, Grid target, Func<bool>? stillCurrent = null)
     {
+        if (stillCurrent?.Invoke() == false) return;
         if (ReferenceEquals(surface.Parent, target)) return;
         PlacementMoveCount++;
-        var native = surface.CompositionRoot;
-        var unloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Unloaded(object sender, RoutedEventArgs args) { if (!native.IsLoaded) unloaded.TrySetResult(); }
-        native.Unloaded += Unloaded;
+        var native = surface.NativeCompositionRoots.ToArray();
+        var unloading = native.Where(root => root.IsLoaded).ToDictionary(root => root,
+            _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        void Unloaded(object sender, RoutedEventArgs args)
+        {
+            foreach (var (root, completion) in unloading)
+                if (!root.IsLoaded) completion.TrySetResult();
+        }
+        foreach (var root in unloading.Keys) root.Unloaded += Unloaded;
         try
         {
-            var wasLoaded = native.IsLoaded;
             if (surface.Parent is Panel previous) previous.Children.Remove(surface);
             // A detached ancestor may already report a null XamlRoot while its
             // WebView is still unloading. Drain that native detach even within
             // one root; otherwise collapsing an expanded subtree can reattach
             // the controller while its previous composition target is retiring.
-            if (wasLoaded) await unloaded.Task.WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            // Attached pop-outs carry their own controller. All controllers in
+            // this subtree must detach before any old peer can be destroyed.
+            await Task.WhenAll(unloading.Values.Select(completion => completion.Task)).WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
         }
-        finally { native.Unloaded -= Unloaded; }
-        if (retired) return;
+        finally { foreach (var root in unloading.Keys) root.Unloaded -= Unloaded; }
+        if (retired || stillCurrent?.Invoke() == false) return;
 #if ENABLE_WIDGET_VALIDATION
         if (BeforeAttachForValidation is { } wait) await wait();
-        if (retired) return;
+        if (retired || stillCurrent?.Invoke() == false) return;
 #endif
-        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Loaded(object sender, RoutedEventArgs args) { if (native.IsLoaded && ReferenceEquals(native.XamlRoot, target.XamlRoot)) loaded.TrySetResult(); }
-        native.Loaded += Loaded;
+        var loading = native.ToDictionary(root => root, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        void Loaded(object sender, RoutedEventArgs args)
+        {
+            foreach (var (root, completion) in loading)
+                if (root.IsLoaded && ReferenceEquals(root.XamlRoot, target.XamlRoot)) completion.TrySetResult();
+        }
+        foreach (var root in native) root.Loaded += Loaded;
         try
         {
             target.Children.Add(surface);
-            if (target.IsLoaded && !ReferenceEquals(target, parking) && !native.IsLoaded)
-                await loaded.Task.WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            Loaded(target, null!);
+            if (target.IsLoaded && !ReferenceEquals(target, parking))
+                await Task.WhenAll(loading.Values.Select(completion => completion.Task)).WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
             if (target.IsLoaded && !ReferenceEquals(target, parking)) target.UpdateLayout();
         }
-        finally { native.Loaded -= Loaded; }
+        finally { foreach (var root in native) root.Loaded -= Loaded; }
     }
     private Task RetireAsync((string Widget, string Document) key, Entry entry)
     {
@@ -306,6 +341,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         finally { retiringEntries.Remove(key); if (!retired) parking.DispatcherQueue.TryEnqueue(Refresh); }
     }
     private Task? disposal;
+    private readonly Task notificationPreferencesLoading;
     internal void BeginShutdown()
     {
         if (retired) return; retired = true; lifetime.Cancel();
@@ -315,9 +351,15 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         BeginShutdown();
+        try { await notificationPreferencesLoading; } catch (OperationCanceledException) { }
+        Notifications.Dispose(); NotificationBannerRequested = null;
         foreach (var slot in slots.Keys) { slot.PlacementChanged = null; slot.SetSurface(null); } slots.Clear();
         if (reconciliation is not null) await reconciliation;
-        foreach (var pair in entries.ToArray()) await RetireAsync(pair.Key, pair.Value);
+        if (popupReconciliation is { } popupTransfer)
+            try { await popupTransfer; } catch (OperationCanceledException) { }
+        await popupPlacement.WaitAsync();
+        try { foreach (var pair in entries.ToArray()) await RetireAsync(pair.Key, pair.Value); }
+        finally { popupPlacement.Release(); }
         if (retirements.Count != 0) await Task.WhenAll(retirements.ToArray());
         lifetime.Dispose();
     }

@@ -27,6 +27,9 @@ internal sealed partial class MediaFullscreenLayer : Grid
     internal bool IsOpen => current is not null;
     internal object? Owner => current?.Owner;
     internal Func<bool>? CanRestoreFocus { get; set; }
+#if ENABLE_WIDGET_VALIDATION
+    internal Action<string>? TraceForValidation { get; set; }
+#endif
     internal event Action? Changed;
 
     internal sealed record Presentation(object Owner, FrameworkElement Content,
@@ -114,6 +117,9 @@ internal sealed partial class MediaFullscreenLayer : Grid
 
     internal void Close(bool restoreFocus = true)
     {
+#if ENABLE_WIDGET_VALIDATION
+        TraceForValidation?.Invoke($"close restore={restoreFocus} allowed={CanRestoreFocus?.Invoke()} current={current is not null} closing={closing} callers=" + string.Join('/', new System.Diagnostics.StackTrace(1, false).GetFrames().Take(4).Select(frame => frame.GetMethod()?.Name)));
+#endif
         if (current is not { } previous) return;
         if (closing && restoreFocus) return;
         var version = ++generation;
@@ -152,6 +158,9 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Changed?.Invoke();
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
+#if ENABLE_WIDGET_VALIDATION
+            TraceForValidation?.Invoke($"closed restore={restoreFocus} generation={generation == version} empty={current is null} allowed={CanRestoreFocus?.Invoke()}");
+#endif
             if (generation == version || !ReferenceEquals(current?.Owner, previous.Owner)) previous.Settled?.Invoke();
             if (restoreFocus && generation == version && current is null && CanRestoreFocus?.Invoke() != false)
                 previous.ReturnFocus();

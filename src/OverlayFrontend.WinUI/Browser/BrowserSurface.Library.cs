@@ -12,7 +12,9 @@ internal sealed partial class BrowserSurface
     private bool toolbarFocused, chromeOwnedA;
     private Button? rememberedToolbar;
     private readonly Dictionary<Button, Action> chromeCommands = [];
-    internal bool IsToolbarFocused => popup?.IsToolbarFocused ?? toolbarFocused;
+    internal bool IsToolbarFocused => AttachedPopup?.IsToolbarFocused ?? toolbarFocused;
+    internal bool ToolbarBackReturnsToPage => AttachedPopup?.ToolbarBackReturnsToPage ??
+        (toolbarFocused && (isPopup || document.Options.Chrome == WidgetRail.WidgetProtocol.BrowserChrome.OnDemand));
 
     private void ToggleToolbar()
     {

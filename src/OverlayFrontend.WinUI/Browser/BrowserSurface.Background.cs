@@ -13,7 +13,7 @@ internal sealed partial class BrowserSurface
     internal bool KeepsBackgroundSession => RequestsBackgroundSession && !sessionStopped && !faulted;
     internal bool SessionStopped => sessionStopped;
     internal bool BackgroundFaulted => RequestsBackgroundSession && faulted && !sessionStopped;
-    internal bool NeedsRecovery => popup?.NeedsRecovery ?? faulted;
+    internal bool NeedsRecovery => AttachedPopup?.NeedsRecovery ?? faulted;
     internal string SessionName => document.AccessibleName;
     internal Func<BrowserSurface, bool, Task<bool>>? ChangeRunning { get; set; }
     internal Action? ActivityChanged { get; set; }

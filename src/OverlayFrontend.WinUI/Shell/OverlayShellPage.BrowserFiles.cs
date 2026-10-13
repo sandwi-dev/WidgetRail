@@ -14,11 +14,12 @@ internal sealed partial class OverlayShellPage
         if (retired || !visible || SystemFilePickerOpen || HostChoiceActive || LocalInstallActive || !browser.CanCompleteSiteDecision || browser.XamlRoot is not { } root) return [];
         var pin = pinned is { } current && ReferenceEquals(root, current.Window.AutomationRoot.XamlRoot) ? current : null;
         if (pin is null && !ReferenceEquals(root, XamlRoot)) return [];
-        var presenter = pin?.Presenter ?? surface;
+        var presenter = pin is null ? surface : pin.Presenter;
         var focus = FocusManager.GetFocusedElement(root) as Control;
         SystemFilePickerOpen = true;
         presenter?.SetAutomaticFocusEnabled(false);
         presenter?.SetPresentationInputEnabled(false);
+        pin?.SetInput(false);
         shellOwnedReleases.Add(ControllerButton.A);
         ResetInputPresentation(); PublishControllerGuide();
         try
@@ -33,6 +34,7 @@ internal sealed partial class OverlayShellPage
             {
                 presenter?.SetPresentationInputEnabled(pin is null ? interactive && !switching && activeWidget == requestedWidget : PinnedInputActive);
                 presenter?.SetAutomaticFocusEnabled(pin is null ? MainFocusEnabled : PinnedInputActive);
+                pin?.SetInput(PinnedInputActive);
                 if (focus is { IsLoaded: true, IsEnabled: true }) focus.Focus(FocusState.Keyboard);
                 else if (pin is null) QueueEntryFocus();
             }

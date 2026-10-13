@@ -54,7 +54,7 @@ browsing when the element receives admitted input focus and lets B follow normal
 widget/tray routing. There is no separate Back flag. LS toggles between the page and native toolbar. Left stick moves the pointer, right stick scrolls,
 A presses the mouse button, holding it while moving the stick drags, and releasing
 it releases the mouse button. D-pad also moves the pointer. Toolbar left/right navigation selects commands, and LS or Down returns to the page. LB/RB navigate history, X reloads/stops, Y edits the current address,
-LT/RT zoom out/in (including held repeat), R3 edits the selected text field, and
+LT/RT zoom out/in (including held repeat), A opens editable fields, and
 Menu opens page actions at the pointer; Open externally remains in the toolbar. The press used to enter Interact never clicks the page.
 Opening a dialog or losing input cancels a held pointer outside the page.
 HTML drag-and-drop uses Chromium's drag interception and delivery only for the
@@ -76,18 +76,18 @@ input merely because its page is ready. The A gesture that enters the widget is
 consumed by the shell, including its release. Focus loss cancels held page input.
 Mode selection is required in `UI.WebBrowser(document, interactionMode, id)`;
 missing or unknown modes in protocol declarations are rejected.
-The address/text dialog consumes B to cancel and resumes interaction; preparation
-is cancellable too, and late responses cannot reopen cancelled edits.
+The address dialog consumes B to cancel its draft. A live page keyboard consumes B
+to close while keeping edits. Preparation is cancellable too, and late responses
+cannot reopen cancelled edits.
 
 Address and page text use the existing themed controller text-entry dialog.
 Page text supports ordinary editable inputs, textareas, passwords and rich
 contenteditable controls, including fields in open shadow roots. Password entry
-starts empty and replaces the password without importing an existing secret.
+shows only masks for existing text and sends incremental editing commands.
 Rich editing inserts at the captured selection through native browser input,
-preserving surrounding formatting and mention nodes. Apply updates the field;
-Apply + Enter is an explicit, separate submission action. Cross-origin frame
-editing still requires compatibility validation. A
-native remote-object reference identifies the exact field. Commit checks that
+preserving surrounding formatting and mention nodes. Send Enter is an explicit,
+separate action. Same-origin and cross-origin iframe editing is validated with synthetic pages, including frame reloads.
+A native remote-object reference identifies the exact field. Every command checks that
 the document and focus are still current and the field remains connected and
 editable. Navigation, loss of input and worker retirement revoke the edit; a
 replacement field with the same HTML ID never inherits it. Fixed host scripts
@@ -138,14 +138,22 @@ A completed controller A-click on an ordinary editable text field opens the same
 controller keyboard automatically. The press alone never opens it, and dragging
 or selecting text while holding A suppresses automatic editing. The host hit-tests
 the completed click, resolves the exact focused field (including open shadow roots
-and associated labels), and reuses the existing validated read/commit path. Clicking
-elsewhere does not reopen an older focused field. R3 remains available to reopen
-editing. Mouse clicks and keyboard Tab navigation do not trigger this dialog.
+and associated labels). Clicking elsewhere does not reopen an older focused field;
+clicking the same field again reopens its keyboard. Mouse clicks and keyboard Tab
+navigation do not trigger this dialog.
+
+Browser fields use live editing: native incremental insert/key commands update the
+page as you type, preserving its selection, undo and rich-editor nodes. B/Done
+close the keyboard while retaining those edits; Send Enter explicitly sends an
+Enter key to the website. The host shows a bounded preview and receives only masks
+for existing password text. Widget `UI.TextEntry` fields, address entry and website
+text prompts remain buffered until confirmed. This does not add per-keystroke SDK
+events or expose page contents to widgets.
 
 Automatic editing includes supported ordinary fields, passwords and rich editors.
-Read-only controls are excluded. Cross-origin frame editing remains unverified. New
+Read-only controls are excluded. Frame editing supports up to eight nested frames, including separate renderer processes. Rotated, skewed, mirrored or perspective-transformed frame ancestors are excluded because the pointer cannot be mapped reliably by this path. New
 navigation, a newer gesture, input loss or cancelling preparation prevents late
-opening; replacing the captured field rejects its commit.
+opening; replacing the captured field rejects further live commands.
 
 ## Local bookmarks and history
 
@@ -239,6 +247,23 @@ remain unsupported. Closing, stopping, clearing a profile or retiring the root
 drains child initialization and native resources. Narrow toolbars keep address
 and Close visible with a controller-scrollable command row.
 
+For widgets that support full-widget pinning, a hosted child provides **Pin
+pop-out** in its toolbar and as a tray pin choice. Replacing a pin uses the same
+single-pin placement/opacity controls. The existing child moves into that pin;
+its URL is not opened a second time and its opener/profile stay intact. The
+parent remains usable. B leaves pinned interaction; it does not close the child.
+**Return pop-out to widget** removes the pin and restores the live child to its
+parent. **Close pop-out**, parent-session Stop, profile changes and widget
+retirement end the child. An ordinary parent navigation retains the normal
+browser opener/window semantics until its session is replaced or stopped.
+
+The host initializes root and child controllers in its durable main XamlRoot
+before borrowing a visible slot. This keeps native controller lifetime independent
+of disposable pin windows. Pin/expanded transfers share the same detach/load
+routine, including all attached child controllers. No extra author API, URL
+cloning, site selectors or media extraction are involved. This supports actual
+hosted new-window pop-outs, not arbitrary in-page media or Picture-in-Picture.
+
 ### Screen sharing and notifications
 
 A visible interactive webapp can request screen sharing through the standard
@@ -292,11 +317,27 @@ Share/Cancel using A, and toggles audio on/off on a cancelled request (no audio
 stream is started). B cancellation is available in the driver through `-CancelWithB`.
 These checks are distinct from physical-controller acceptance.
 
-Notifications use WebView2's default native notification UI after website
-permission is granted. A local fixture verifies that the website receives its
-`show` event. Click-to-reopen a hidden widget has not been implemented or verified;
-real Discord notification behavior still requires validation. This supports document notifications while the webapp is resident;
-WebView2 does not support push notifications while WidgetRail is closed.
+Notifications use WidgetRail's own presentation after website permission is
+granted. The host handles WebView2 notification events; Windows notification UI is
+not used. Per-widget tray preferences select Banner + list, List only, or Off.
+Quiet passive banners last four seconds without taking focus or making a sound.
+While the overlay is visible, its pending indicator updates instead. A burst can
+update the current banner without extending its deadline; an eight-second quiet
+interval follows. Website replacement tags are scoped to widget/profile/origin.
+
+The tray notification list offers A to open the exact originating page (including
+its existing pin), X to dismiss a focused entry, B to close the list and Clear all.
+Expiry hides only the banner. Pending entries remain until opened, dismissed or
+withdrawn by the website. A stale page leaves a dismissible entry, never a click
+sent to a replacement session. The bounded inbox keeps up to 256 entries and
+reports overflow rather than silently expiring old items. Preferences survive
+restarts; actionable pending notifications are session-only.
+
+Native callbacks, list actions, banners and main/pin activation are covered by
+synthetic fixtures. Actual Discord emission and conversation navigation remain
+physical acceptance checks. Only document notifications emitted while the webapp
+is resident are supported; website-specific in-page toasts, reply/call actions and
+push while WidgetRail is closed are not provided by this API.
 
 ### Website messages and page actions
 

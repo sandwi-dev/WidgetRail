@@ -10,6 +10,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private BrowserSlot? expandedBrowser;
+#if ENABLE_WIDGET_VALIDATION
+    private readonly List<string> expansionFocusTrace = [];
+#endif
     private readonly RightStickScroll expandedScroll = new();
     internal Func<uint, Func<Input.ControllerPointerAppearance>, CancellationToken, bool>? PrepareBrowserPicker { get; set; }
     private bool nativeBrowserPickerActive;
@@ -131,6 +134,7 @@ internal sealed partial class OverlayShellPage
                 fullscreenLayer.Close(restoreFocus: false);
         }
     }
+
 
     private void RefreshExpandedBrowser()
     {

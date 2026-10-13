@@ -37,9 +37,16 @@ internal sealed partial class OverlayShellPage
                   window.shared=stream; window.sharedStreams.push(stream);
                   const track=stream.getVideoTracks()[0];window.shareSettings=track.getSettings();
                   if(shareSettings.displaySurface!=='window'){stream.getTracks().forEach(t=>t.stop());window.shareState='wrong-source';return;}
-                  const video=document.createElement('video');video.muted=true;video.srcObject=stream;
-                  video.style='width:160px;height:100px';document.body.append(video);await video.play();
+                  const video=document.createElement('video');video.muted=true;
+                  // The source is static: subscribe before playback can consume
+                  // its first (and potentially only new) decoded frame.
                   video.requestVideoFrameCallback(()=>window.shareState='ready');
+                  video.srcObject=stream;
+                  // Keep the decoded-frame probe visible after returning to a
+                  // small pin. Earlier streams remain live, but their previews
+                  // must not push this round's video outside the viewport.
+                  window.sharePreview?.remove();window.sharePreview=video;
+                  video.style='position:fixed;right:0;top:0;width:160px;height:100px';document.body.append(video);await video.play();
                 },e=>window.shareState=e.name);
                 """);
             await choose(0);
@@ -99,7 +106,8 @@ internal sealed partial class OverlayShellPage
                             x = position.X, y = position.Y, circleVisible = position.Visible, window = (long)(NativePickerWindowForValidation?.Invoke() ?? 0), pointer = NativePickerStatusForValidation?.Invoke() }));
                     }
                 }
-                if (Environment.TickCount64 > deadline) throw new TimeoutException("Native sharing selection did not complete.");
+                if (Environment.TickCount64 > deadline) throw new TimeoutException("Native sharing selection did not complete. Synthetic state: " +
+                    await browser.EvaluateFixtureAsync("JSON.stringify({state:window.shareState,streams:sharedStreams.map(s=>s.getTracks().map(t=>({state:t.readyState,kind:t.kind}))),videos:[...document.querySelectorAll('video')].map(v=>({ready:v.readyState,paused:v.paused,time:v.currentTime,rect:v.getBoundingClientRect().toJSON()}))})"));
                 await Task.Delay(100);
             }
             if (cancelRequested)

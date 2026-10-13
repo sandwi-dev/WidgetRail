@@ -5,12 +5,18 @@ internal sealed partial class BrowserOwner
     private readonly HashSet<string> changingProfiles = [];
     internal BrowserSurface[] PermissionTargets(string widgetId) => retired ? [] : entries
         .Where(pair => pair.Key.Widget == widgetId && session.IsWebBrowserSessionCurrent(pair.Value.Authority, pair.Key.Document))
-        .Select(pair => pair.Value.Surface.ActiveSurface).Where(page => page.IsReady && page.CanCompleteSiteDecision).ToArray();
+        .Select(pair => pair.Value.Surface.ActiveSurface)
+        .Concat(popupPresentation is { IsCurrent: true } popup && popup.WidgetId == widgetId ? [popup.Child] : Array.Empty<BrowserSurface>())
+        .Distinct().Where(page => page.IsReady && page.CanCompleteSiteDecision).ToArray();
 
     private async Task<bool> ChangeProfileAsync(BrowserSurface source, BrowserProfileChange change, CancellationToken token)
     {
-        if (retired || !source.CanCompleteSiteDecision || source.NativeProfile is not { } profile ||
-            !entries.Values.Any(entry => entry.Surface.Owns(source)) || !changingProfiles.Add(source.ProfileName)) return false;
+        var root = entries.Values.FirstOrDefault(entry => entry.Surface.Owns(source))?.Surface;
+        // A child closes while this operation parks the profile. Its Profile
+        // wrapper becomes invalid with that controller, even though the same
+        // account remains alive in its parent. Use the surviving root wrapper.
+        if (retired || !source.CanCompleteSiteDecision || root?.NativeProfile is not { } profile ||
+            root.ProfileName != source.ProfileName || !changingProfiles.Add(source.ProfileName)) return false;
         token = lifetime.Token;
         var parked = entries.Values.Select(entry => entry.Surface).Where(surface => surface.ProfileName == source.ProfileName)
             .Select(surface => (Surface: surface, Url: surface.CurrentUrl)).ToArray();

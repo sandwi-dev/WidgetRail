@@ -181,7 +181,8 @@ internal sealed partial class OverlayShellPage
         finally { browserExternalPending = false; }
     }
 
-    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null, bool directDecisionButtons = false, PinnedSurface? pinnedOwner = null)
+    private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null, bool directDecisionButtons = false, PinnedSurface? pinnedOwner = null,
+        Action<HostChoiceDialog>? configure = null)
     {
         var original = pinnedOwner is null ? surface : pinnedOwner.Presenter;
         bool Current() => pinnedOwner is null ? foreground && ReferenceEquals(surface, original) :
@@ -194,6 +195,7 @@ internal sealed partial class OverlayShellPage
         dialog.ConstrainMessageViewport(root.Size.Height);
         if (primaryButtonText is not null) dialog.PrimaryButtonText = primaryButtonText;
         hostChoiceDialog = dialog;
+        configure?.Invoke(dialog);
         hostChoicePin = pinnedOwner;
         pinnedOwner?.SetInput(false);
         original?.SetPresentationInputEnabled(false);

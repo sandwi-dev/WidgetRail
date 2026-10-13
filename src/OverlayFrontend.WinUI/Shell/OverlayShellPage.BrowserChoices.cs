@@ -26,7 +26,9 @@ internal sealed partial class OverlayShellPage
         var count = browserOwner?.BackgroundSessionCount ?? 0;
         var failed = browserOwner?.FailedBackgroundSessionCount ?? 0;
         WebappStatus.Text = failed > 0 ? $"Webapps: {count} running · {failed} disconnected" : $"Webapps running: {count}";
-        WebappStatus.Visibility = count + failed > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+        var notifications = browserOwner?.Notifications.Entries.Count ?? 0;
+        if (notifications > 0) WebappStatus.Text += $" · Notifications: {notifications}";
+        WebappStatus.Visibility = count + failed + notifications > 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
         Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(WebappStatus, browserOwner?.BackgroundSessionNames ?? "");
     }
 

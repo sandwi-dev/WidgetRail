@@ -47,6 +47,9 @@ if ($gameInputReference.Count -ne 1) { throw 'Expected exactly one Microsoft.Gam
 $gameInputVersion = [string]$gameInputReference[0].Version
 $nugetRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
 $gameInputDirectory = Join-Path $nugetRoot "microsoft.gameinput\$gameInputVersion"
+$webViewReference = @($dependencies.Project.ItemGroup.PackageReference | Where-Object Include -EQ 'Microsoft.Web.WebView2')
+if ($webViewReference.Count -ne 1) { throw 'Expected one WebView2 native header dependency.' }
+$webViewDirectory = Join-Path $nugetRoot ("microsoft.web.webview2\" + [string]$webViewReference[0].Version)
 if (-not $NoRestore) {
     $restoreLog = Join-Path $logDirectory ("restore-" + [guid]::NewGuid().ToString('N') + '.binlog')
     & dotnet restore $dependencyProject --nologo "-bl:$restoreLog"
@@ -104,6 +107,8 @@ $sources = @(
     'GuideInputCompatibility.cpp', 'OverlayProcessOwner.cpp', 'ControllerOpenShortcut.cpp', 'NativeBrowserDialogAutomation.cpp', 'ControllerCursorWindow.cpp'
 ) | ForEach-Object { Join-Path $platformDirectory $_ }
 $sources += (Join-Path $viGEmDirectory 'src\ViGEmClient.cpp')
+$sources += (Join-Path $platformDirectory 'BrowserNotifications.cpp')
+$includeArguments += @("/I$webViewDirectory\build\native\include", "/I$webViewDirectory\build\native\include-winrt")
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 # Explicit static CRT matches the legacy build's cl default and avoids adding a
 # redistributable DLL dependency solely for the WinUI platform boundary.

@@ -20,6 +20,7 @@ internal sealed partial class BrowserSurface
         VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
         IsTabStop = false };
     private Button? closePopupButton;
+    private Button? pinPopupButton;
     private bool compactHeader;
 
     private void CreateChrome()
@@ -28,10 +29,10 @@ internal sealed partial class BrowserSurface
         RowDefinitions.Add(new() { Height = new(2) });
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
-        for (var i = 0; i < (isPopup ? 11 : 10); ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
+        for (var i = 0; i < (isPopup ? 12 : 10); ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
         back = Add("Previous page", "Browser.Back", Symbol.Back, 0, () => { if (core?.CanGoBack == true) core.GoBack(); });
         forward = Add("Forward", "Browser.Forward", Symbol.Forward, 1, () => { if (core?.CanGoForward == true) core.GoForward(); });
-        addressButton = Add("Search Google or enter a URL", "Browser.Address", Symbol.Globe, 2, () => Run(() => EditAsync(true)));
+        addressButton = Add("Search Google or enter a URL", "Browser.Address", Symbol.Globe, 2, () => Run(EditAddressAsync));
         addressButton.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         addressButton.Content = address; address.Text = document.Url == WidgetProtocol.WebBrowserDocument.StartPage ? "Search Google or enter a URL" : new Uri(document.Url).IdnHost;
         reload = Add("Reload", "Browser.Reload", Symbol.Refresh, 3, Reload);
@@ -42,7 +43,11 @@ internal sealed partial class BrowserSurface
         history = Add("History", "Browser.History", Symbol.Clock, 7, () => Run(() => ShowLibraryAsync(false)));
         external = Add("Open externally", "Browser.External", Symbol.Link, 8, () => Run(OpenExternallyAsync));
         Add("Website permissions and data", "Browser.SiteControls", Symbol.Setting, 9, () => Run(ShowSiteControlsAsync));
-        if (isPopup) closePopupButton = Add("Close popup", "Browser.ClosePopup", Symbol.Cancel, 10, () => CloseRequested?.Invoke());
+        if (isPopup)
+        {
+            pinPopupButton = Add("Pin pop-out", "Browser.PinPopup", Symbol.Pin, 10, () => { if (RequestPopupPin is { } request) Run(() => request(this)); });
+            closePopupButton = Add("Close pop-out", "Browser.ClosePopup", Symbol.Cancel, 11, () => CloseRequested?.Invoke());
+        }
         header.SizeChanged += (_, args) => ArrangeChrome(args.NewSize.Width);
         if (IsProviderContent)
         {
@@ -104,6 +109,13 @@ internal sealed partial class BrowserSurface
     }
     private void UpdateChromeVisibility()
     {
+        if (pinPopupButton is { } pin)
+        {
+            pin.Visibility = RequestPopupPin is null ? Visibility.Collapsed : Visibility.Visible;
+            var pinned = PopupIsPinned?.Invoke(this) == true;
+            var label = pinned ? "Return pop-out to widget" : "Pin pop-out";
+            AutomationProperties.SetName(pin, label); ToolTipService.SetToolTip(pin, label);
+        }
         var onDemand = document.Options.Chrome == WidgetProtocol.BrowserChrome.OnDemand;
         SetRow(header, onDemand ? 2 : 0);
         header.VerticalAlignment = VerticalAlignment.Top;

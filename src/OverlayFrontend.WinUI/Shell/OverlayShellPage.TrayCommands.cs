@@ -204,7 +204,12 @@ internal sealed partial class OverlayShellPage
             AddPinnedCommands(descriptor, (label, id, action) => Add(label, id, action,
                 id == "Pin.Interact" ? ControllerButton.View : null));
             if (browserOwner?.PermissionTargets(descriptor.Id).Length > 0)
+            {
                 Add("Website permissions", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor));
+                Add("Notification preferences", "Browser.NotificationPreferences", () => ShowNotificationPreferencesAsync(descriptor));
+            }
+            if (browserOwner is { } notificationOwner)
+                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
             if (browserOwner?.HasRunningSession(descriptor.Id) == true)
                 Add("Stop webapp session", "Browser.Stop", () => StopBrowserWidgetAsync(descriptor));
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y);

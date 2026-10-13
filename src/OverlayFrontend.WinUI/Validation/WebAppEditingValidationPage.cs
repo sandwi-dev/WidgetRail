@@ -35,11 +35,15 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
     {
         theme.Attach(this); theme.Update(null, AppearanceSettings.Default);
         Task<CoreWebView2Environment>? environment = null;
-        BrowserSurface.FixturePage = _ => Html;
+        BrowserSurface.FixturePage = url => new Uri(url).AbsolutePath == "/field"
+            ? "<!doctype html><style>body{margin:0}input{box-sizing:border-box;width:100%;height:80px}</style><input id=inside value=synthetic-frame><script>document.documentElement.dataset.inputs='0';document.addEventListener('input',e=>{if(e.isTrusted)document.documentElement.dataset.inputs=String(Number(document.documentElement.dataset.inputs)+1)});document.addEventListener('mousedown',e=>document.documentElement.dataset.pointer=e.target.tagName+':'+e.clientX+','+e.clientY);</script>"
+            : Html;
         browser = new("fixture.editor", new("editor", 1, "https://editor.fixture.invalid/", "Editor fixture")
         { InteractionMode = BrowserInteractionMode.InteractOnFocus, Options = WebBrowserOptions.WebApp },
             () => environment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, profileRoot, null).AsTask())
         { IsInteractionFocused = () => true };
+        if (Environment.GetCommandLineArgs().Contains("--webapp-editor-small"))
+        { browser.Width = 400; browser.Height = 320; }
         Content = new Grid { Margin = new(24), Children = { browser } };
         Loaded += async (_, _) =>
         {
@@ -49,70 +53,152 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
                 browser.SetPresentation(true, true);
                 await Until(() => browser.IsReady && !browser.IsNavigationInProgress && browser.CurrentTitle == "Editor fixture");
                 browser.Enter();
-                await Edit("document.getElementById('plain').focus()", "changed");
-                Check(await Eval("document.getElementById('plain').value==='changed' && window.enters===0"), "Apply edits a plain field without submitting");
-                Check(await Eval("window.nativeInputs>0 && window.beforeInputs>0"), "Browser insertion emits trusted editor input events");
-                await Edit("document.getElementById('area').focus()", "first\nsecond");
-                Check(await Eval("document.getElementById('area').value==='first\\nsecond' && window.enters===0"), "Multiline textarea edits do not send Enter");
-                await Edit("document.getElementById('password').focus()", "synthetic-replacement", password: true);
-                Check(await Eval("document.getElementById('password').value==='synthetic-replacement'"), "Protected password replacement reaches the selected field");
-                await Edit("document.getElementById('rich').focus();let r=document.createRange();r.selectNodeContents(document.getElementById('tail'));r.collapse(false);let s=getSelection();s.removeAllRanges();s.addRange(r)", " added\nnext");
-                Check(await Eval("document.getElementById('rich').innerText.includes('added') && document.getElementById('bold')===originalBold && document.getElementById('mention')===originalMention"), "Rich insertion preserves formatting and mention nodes");
-                await Edit("document.getElementById('plain').focus()", "cancelled", cancel: true);
-                Check(await Eval("document.getElementById('plain').value==='changed'"), "Cancel leaves the page unchanged");
-                await Edit("document.getElementById('plain').focus()", "stale", stale: true);
-                Check(await Eval("document.getElementById('plain').value==='newer'"), "A newer page edit is not overwritten");
-                await Edit("document.getElementById('plain').focus()", "submitted", submit: true);
-                Check(await Eval("document.getElementById('plain').value==='submitted' && window.enters===1"), "Only Apply plus Enter submits an explicit page key");
-
-                async Task Edit(string select, string value, bool password = false, bool cancel = false, bool stale = false, bool submit = false)
+                if (Environment.GetCommandLineArgs().Contains("--webapp-frame-probe") || Environment.GetCommandLineArgs().Contains("--webapp-frame-editing"))
                 {
-                    await browser.EvaluateFixtureAsync(select);
+                    var frameUrl = Environment.GetCommandLineArgs().Contains("--webapp-frame-same-origin") ? "https://editor.fixture.invalid/field" : "https://other-editor.invalid/field";
+                    await browser.EvaluateFixtureAsync("window.frameReady=false;window.frame=document.createElement('iframe');frame.id='frame';frame.style='display:block;width:300px;height:120px;border:0';frame.onload=()=>frameReady=true;frame.src=" + JsonSerializer.Serialize(frameUrl) + ";document.body.append(frame)");
+                    var deadline = Environment.TickCount64 + 10_000;
+                    while (await browser.EvaluateFixtureAsync("frameReady") != "true")
+                    { if (Environment.TickCount64 > deadline) throw new TimeoutException("Synthetic frame did not load."); await Task.Delay(30); }
+                    if (Environment.GetCommandLineArgs().Contains("--webapp-frame-editing"))
+                    {
+                        await browser.ClickFrameFieldForValidationAsync();
+                        await Until(() => browser.FixtureEditor is { IsLoaded: true });
+                        var frameEditor = browser.FixtureEditor!;
+                        frameEditor.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true);
+                        frameEditor.InsertForValidation("live cross-origin edit");
+                        await frameEditor.WaitForLiveInputAsync();
+                        using var state = JsonDocument.Parse(await browser.ReadLiveFrameForValidationAsync());
+                        var value = state.RootElement.GetProperty("result").GetProperty("value");
+                        if (value.GetProperty("value").GetString() != "live cross-origin edit" || value.GetProperty("inputs").GetString() == "0")
+                            throw new InvalidOperationException("Cross-origin native editing failed: " + state.RootElement);
+                        await browser.EvaluateFixtureAsync("frameReady=false;frame.src=frame.src+'?again=1'");
+                        deadline = Environment.TickCount64 + 10_000;
+                        while (await browser.EvaluateFixtureAsync("frameReady") != "true")
+                        { if (Environment.TickCount64 > deadline) throw new TimeoutException("Synthetic frame did not reload."); await Task.Delay(30); }
+                        frameEditor.InsertForValidation("must not reach replacement");
+                        await frameEditor.WaitForLiveInputAsync();
+                        browser.HandleButton(ControllerButton.B, ControllerEventPhase.Pressed);
+                        browser.HandleButton(ControllerButton.B, ControllerEventPhase.Released);
+                        await Until(() => browser.FixtureEditor is null);
+                        await browser.ClickFrameFieldForValidationAsync();
+                        await Until(() => browser.FixtureEditor is { IsLoaded: true });
+                        if (browser.FixtureEditor!.TakeValue() != "synthetic-frame") throw new InvalidOperationException("Old frame edit reached the replacement document.");
+                        browser.HandleButton(ControllerButton.B, ControllerEventPhase.Pressed);
+                        browser.HandleButton(ControllerButton.B, ControllerEventPhase.Released);
+                        await Until(() => browser.FixtureEditor is null);
+                        await File.WriteAllTextAsync(result, JsonSerializer.Serialize(new { passed = true, kind = "frame-editing", frameUrl, state = value, staleFrameRejected = true, reopened = true }));
+                        await DisposeAsync(); return;
+                    }
+                    var evidence = await browser.ProbeFrameNodeForValidationAsync();
+                    await File.WriteAllTextAsync(result, evidence);
+                    await DisposeAsync();
+                    return;
+                }
+                var dialog = await Open("plain");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-live-layout-review"))
+                {
+                    await Task.Delay(200);
+                    await CaptureDialogAsync(dialog, Path.ChangeExtension(result, ".png"));
+                    dialog.RestoreFocus();
+                    await Task.Delay(100);
+                    var focusSteps = new List<string>();
+                    for (var i = 0; i < 5; i++)
+                    {
+                        dialog.MoveFocus(Microsoft.UI.Xaml.Input.FocusNavigationDirection.Down); await Task.Delay(100);
+                        focusSteps.Add(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(dialog.XamlRoot) is DependencyObject focused ? AutomationProperties.GetAutomationId(focused) : "none");
+                    }
+                    var submit = FindElement(dialog, "Widget.TextEntry.Submit")!;
+                    var footer = submit.TransformToVisual(dialog).TransformBounds(new(0, 0, submit.ActualWidth, submit.ActualHeight));
+                    await CaptureDialogAsync(dialog, Path.ChangeExtension(result, ".footer.png"));
+                    await File.WriteAllTextAsync(result, JsonSerializer.Serialize(new { ready = true, kind = "layout-review",
+                        browserHeight = browser.ActualHeight, keyboardHeight = dialog.ActualHeight, viewportHeight = browser.CompositionRoot.ActualHeight,
+                        focusSteps, footerVisible = footer.Top >= 0 && footer.Bottom <= dialog.ActualHeight && footer.Left >= 0 && footer.Right <= dialog.ActualWidth }));
+                    return;
+                }
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true);
+                dialog.InsertForValidation("changed");
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('plain').value==='changed' && window.enters===0"), "Live text reaches the field before the keyboard closes, without submitting");
+                Check(await Eval("window.nativeInputs>0 && window.beforeInputs>0"), "Browser insertion emits trusted beforeinput/input events");
+                await Close(dialog);
+                Check(await Eval("document.getElementById('plain').value==='changed'"), "B closes the keyboard and retains live text");
+                dialog = await Open("plain");
+                Check(dialog.TakeValue() == "changed", "A reopens the same already-focused field without R3");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.End);
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.Back);
+                dialog.InsertForValidation("!");
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('plain').value==='change!'"), "Caret and backspace edit the browser's own text");
+                await Close(dialog);
+                dialog = await Open("area");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true);
+                dialog.InsertForValidation("first\nsecond");
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('area').value==='first\\nsecond' && window.enters===0"), "Live multiline insertion preserves newlines without sending Enter");
+                await Close(dialog);
+                dialog = await Open("password");
+                Check(!dialog.TakeValue().Contains("synthetic", StringComparison.Ordinal) && dialog.TakeValue().All(c => c == '●'), "Password preview contains masks only, never the existing secret");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true);
+                dialog.InsertForValidation("synthetic-replacement");
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('password').value==='synthetic-replacement'") && dialog.TakeValue().All(c=>c=='●'), "Live password input reaches the page without echoing secrets into the keyboard");
+                await Close(dialog);
+                dialog = await Open("tail");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.End);
+                dialog.InsertForValidation(" added\nnext");
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('rich').innerText.includes('added') && document.getElementById('bold')===originalBold && document.getElementById('mention')===originalMention"), "Live rich insertion preserves existing formatting and mention nodes");
+                await Close(dialog);
+                dialog = await Open("plain");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter);
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("window.enters===1"), "An explicit Enter reaches the website");
+                await browser.EvaluateFixtureAsync("document.getElementById('area').focus()");
+                dialog.InsertForValidation("wrong target");
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("!document.getElementById('area').value.includes('wrong target')"), "A changed browser focus cannot redirect queued text to another field");
+                await Close(dialog);
+                dialog = await Open("plain");
+                browser.NavigateForValidation("https://editor.fixture.invalid/next");
+                await Until(() => browser.FixtureEditor is null);
+                Check(true, "Navigation retires the keyboard and its exact-field input destination");
+
+                async Task<WidgetTextEntryDialog> Open(string id)
+                {
                     browser.Enter();
-                    browser.HandleButton(ControllerButton.RightStick, ControllerEventPhase.Pressed);
-                    browser.HandleButton(ControllerButton.RightStick, ControllerEventPhase.Released);
+                    await browser.ClickFieldForValidationAsync(id);
                     await Until(() => browser.FixtureEditor is { IsLoaded: true });
-                    var dialog = browser.FixtureEditor!;
-                    if (select.Contains("'area'", StringComparison.Ordinal) && await browser.EvaluateFixtureAsync("document.getElementById('area').value.includes('\\n')") == "true")
-                        Check(dialog.TakeValue().Contains('\n') || dialog.TakeValue().Contains('\r'), "Existing multiline text survives keyboard initialization");
-                    if (password) Check(dialog.IsSensitive && dialog.TakeValue().Length == 0, "Password dialog never imports an existing password");
-                    var editor = FindElement(dialog, "Widget.TextEntry.Editor");
-                    if (editor is PasswordBox secret) secret.Password = value;
-                    else ((TextBox)editor!).Text = value;
-                    if (stale) await browser.EvaluateFixtureAsync("document.getElementById('plain').value='newer'");
-                    if (submit)
-                    {
-                        var button = FindElement(dialog, "Widget.TextEntry.Submit") as Button ?? throw new InvalidOperationException("Submit control missing.");
-                        button.Focus(FocusState.Keyboard); dialog.Activate();
-                    }
-                    else browser.HandleButton(cancel ? ControllerButton.B : ControllerButton.RightTrigger, ControllerEventPhase.Pressed);
+                    return browser.FixtureEditor!;
+                }
+                async Task Close(WidgetTextEntryDialog editor)
+                {
+                    browser.HandleButton(ControllerButton.B, ControllerEventPhase.Pressed);
                     await Until(() => browser.FixtureEditor is null);
-                    if (!submit)
-                    {
-                        var zoom = await browser.EvaluateFixtureAsync("visualViewport.scale");
-                        browser.HandleButton(cancel ? ControllerButton.B : ControllerButton.RightTrigger, ControllerEventPhase.Repeated);
-                        await Until(() => browser.FixtureZoomIdle);
-                        Check(await browser.EvaluateFixtureAsync("visualViewport.scale") == zoom, "Closing keyboard retains held-button ownership until release");
-                        browser.HandleButton(cancel ? ControllerButton.B : ControllerButton.RightTrigger, ControllerEventPhase.Released);
-                    }
-                    // Text commit is asynchronous after the native dialog closes.
-                    await Task.Delay(120);
+                    var zoom = await browser.EvaluateFixtureAsync("visualViewport.scale");
+                    browser.HandleButton(ControllerButton.B, ControllerEventPhase.Repeated);
+                    Check(await browser.EvaluateFixtureAsync("visualViewport.scale") == zoom, "Closing keeps the held controller button owned until release");
+                    browser.HandleButton(ControllerButton.B, ControllerEventPhase.Released);
                 }
                 async Task<bool> Eval(string script) => await browser.EvaluateFixtureAsync(script) == "true";
                 void Check(bool passed, string name) { if (!passed) throw new InvalidOperationException(name); checks.Add(name); }
             }
-            catch (Exception failure) { error = failure.ToString(); }
+            catch (Exception failure) { error = failure + "\nSynthetic pointer trace: " + string.Join(";", browser.FixturePointerTrace); }
             if (error is null && Environment.GetCommandLineArgs().Contains("--review-webapp-editor"))
             {
-                await browser.EvaluateFixtureAsync("document.getElementById('area').focus()");
+                try
+                {
+                await Until(() => browser.IsReady && !browser.IsNavigationInProgress && browser.CurrentTitle == "Editor fixture");
+                await browser.EvaluateFixtureAsync("document.getElementById('area').value='first\\nsecond'");
                 browser.Enter();
-                browser.HandleButton(ControllerButton.RightStick, ControllerEventPhase.Pressed);
-                browser.HandleButton(ControllerButton.RightStick, ControllerEventPhase.Released);
+                await browser.ClickFieldForValidationAsync("area");
                 await Until(() => browser.FixtureEditor is { IsLoaded: true });
                 await Task.Delay(100);
                 if (!browser.FixtureEditor!.TakeValue().Contains('\n') && !browser.FixtureEditor.TakeValue().Contains('\r'))
                     throw new InvalidOperationException("Multiline review lost existing lines.");
                 await CaptureDialogAsync(browser.FixtureEditor!, Path.ChangeExtension(result, ".png"));
+                }
+                catch (Exception failure) { error = failure + "\nSynthetic pointer trace: " + string.Join(";", browser.FixturePointerTrace); }
             }
             else await DisposeAsync();
             await File.WriteAllTextAsync(result, JsonSerializer.Serialize(new { passed = error is null, checks, error }));

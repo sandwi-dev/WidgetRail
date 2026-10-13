@@ -19,19 +19,21 @@ internal sealed partial class OverlayShellPage
         internal WidgetViewPresenter? Presenter { get; } = presenter;
         internal WidgetMediaPresentation? Media;
         internal MediaFullscreenView? MediaView;
+        internal Browser.BrowserPopupPresentation? Popup;
         internal ShellChromeStyles? MediaStyles;
         internal Func<bool>? MediaCurrent;
-        internal string WidgetId => Selection?.WidgetId ?? Media!.Document.Authority.WidgetId;
-        internal string LayoutId => Selection?.LayoutId ?? CompactMediaLayout;
-        internal bool IsCurrent => Selection?.IsCurrent ?? MediaCurrent?.Invoke() == true;
+        internal string WidgetId => Selection?.WidgetId ?? Popup?.WidgetId ?? Media!.Document.Authority.WidgetId;
+        internal string LayoutId => Selection?.LayoutId ?? (Popup is null ? CompactMediaLayout : PopupPinLayout);
+        internal bool IsCurrent => Selection?.IsCurrent ?? Popup?.IsCurrent ?? MediaCurrent?.Invoke() == true;
         internal void SetInput(bool enabled)
         {
             Presenter?.SetPresentationInputEnabled(enabled);
             Presenter?.SetAutomaticFocusEnabled(enabled);
             MediaView?.SetInteraction(enabled);
+            if (Popup is { } popup) { popup.Slot.AcceptsInput = enabled; popup.Slot.PlacementChanged?.Invoke(); }
         }
         internal void Enter()
-        { if (Presenter is { } widget) widget.Enter(restoreNativeFocus: true); else MediaView?.Enter(); }
+        { if (Presenter is { } widget) widget.Enter(restoreNativeFocus: true); else if (Popup is { } popup) { popup.Slot.Focus(FocusState.Keyboard); popup.Slot.Enter(); } else MediaView?.Enter(); }
         internal PinnedWidgetWindow Window { get; } = window;
         internal PinnedPlacementLimits Limits { get; set; } = limits;
         internal PinnedMonitor Monitor { get; set; } = monitor;
@@ -72,12 +74,19 @@ internal sealed partial class OverlayShellPage
         pinnedPreferences = await pinnedStore.LoadAsync(lifetime.Token);
     }
 
-    private sealed record PinChoice(string Label, string AutomationId, string LayoutId, bool Media = false);
+    private sealed record PinChoice(string Label, string AutomationId, string LayoutId, bool Media = false, bool Popup = false, Browser.BrowserSurface? PopupSource = null);
 
     private List<PinChoice> GetPinChoices(BridgeWidgetDescriptor descriptor)
     {
         var choices = new List<PinChoice>();
         if (owner?.Session.GetState(descriptor.Id)?.LastGood is not { } frame) return choices;
+        if (descriptor.FullWidgetPinningSupported && browserOwner is { } browsers)
+        {
+            var popups = browsers.PinnablePopups(descriptor.Id).Where(child => !ReferenceEquals(pinned?.Popup?.Child, child)).ToArray();
+            for (var index = 0; index < popups.Length; index++)
+                choices.Add(new(popups.Length == 1 ? "Pin pop-out" : "Pin pop-out: " + popups[index].PermissionTargetLabel,
+                    "Pin.Popup." + index, PopupPinLayout, Popup: true, PopupSource: popups[index]));
+        }
         if (descriptor.PinningSupported && mediaOwner?.CanPin(descriptor.Id, pinned?.Media) == true &&
             frame.Snapshot.EmbeddedMediaSession?.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) == true)
             choices.Add(new("Pin media", "Pin.Media", CompactMediaLayout, Media: true));
@@ -94,9 +103,9 @@ internal sealed partial class OverlayShellPage
         var choices = GetPinChoices(descriptor);
         if (pinned is { } current)
         {
-            if (current.WidgetId != descriptor.Id && choices.Count > 0)
+            if (choices.Any(choice => current.WidgetId != descriptor.Id || choice.LayoutId != current.LayoutId || choice.Popup))
                 add("Replace pin", "Pin.Replace", () => ReplacePinAsync(descriptor, current));
-            add("Unpin widget", "Pin.Remove", () => UnpinAsync(save: true));
+            add(current.Popup is null ? "Unpin widget" : "Return pop-out to widget", "Pin.Remove", () => UnpinAsync(save: true));
             add("Move / resize pinned widget", "Pin.Adjust", BeginPinnedAdjustmentAsync);
             add($"Change pinned opacity: {current.Window.OpacityPercent}%", "Pin.Opacity", () => BeginPinnedAdjustmentAsync(opacityOnly: true));
             add("Interact with pinned widget", "Pin.Interact", EnterPinnedAsync);
@@ -107,7 +116,7 @@ internal sealed partial class OverlayShellPage
     }
 
     private Task ExecutePinChoiceAsync(string widgetId, PinChoice choice, PinnedSurface? expected = null) =>
-        choice.Media ? PinMediaAsync(widgetId, expected) : PinAsync(widgetId, choice.LayoutId, expected);
+        choice.Popup ? PinBrowserPopupAsync(widgetId, expected, choice.PopupSource) : choice.Media ? PinMediaAsync(widgetId, expected) : PinAsync(widgetId, choice.LayoutId, expected);
 
     private async Task ReplacePinAsync(BridgeWidgetDescriptor descriptor, PinnedSurface expected)
     {
@@ -380,6 +389,7 @@ internal sealed partial class OverlayShellPage
         { current.Window.Hide(); _ = UnpinAsync(save: false, current); return; }
         if (state.LastGood is not { } frame) return;
         if (current.Media is not null) { RefreshCompactView(); return; }
+        if (current.Popup is not null) return;
         try
         {
             var projection = owner.Session.ResolvePinnedProjection(frame, current.LayoutId);
@@ -420,13 +430,18 @@ internal sealed partial class OverlayShellPage
         if (ReferenceEquals(hostChoicePin, current)) hostChoiceDialog?.Hide();
         if (ReferenceEquals(intentPinnedTarget, current)) intentCancellation?.Cancel();
         CancelPinnedAdjustment();
+        ExitPinnedInteraction(restoreMain: !retired && visible);
         current.FocusAcquired?.TrySetCanceled();
         current.FocusAcquired = null;
         pinned = null;
-        if (current.Media is not null && mediaOwner is not null) await mediaOwner.ReleaseCompactAsync();
-        current.Window.Hide();
-        try { if (current.Presenter is { } presenter) await presenter.DisposeAsync(); }
-        finally { current.MediaStyles?.Dispose(); current.Window.Dispose(); }
+        try
+        {
+            if (current.Popup is { } popup && browserOwner is not null) await browserOwner.ReleasePopupPresentationAsync(popup);
+            if (current.Media is not null && mediaOwner is not null) await mediaOwner.ReleaseCompactAsync();
+            current.Window.Hide();
+            if (current.Presenter is { } presenter) await presenter.DisposeAsync();
+        }
+        finally { current.Popup?.Slot.Retire(); current.MediaStyles?.Dispose(); current.Window.Dispose(); }
         if (owner is not null && owner.Session.GetState(current.WidgetId)?.LastGood is { } frame)
         {
             if (current.Selection is { } selection) await RevokePinSelectionAsync(selection, frame);
@@ -471,7 +486,7 @@ internal sealed partial class OverlayShellPage
             CancelPinnedAdjustment();
             if (owner?.Session.GetState(current.WidgetId)?.LastGood is { } frame)
             {
-                var hints = current.Media is not null ? CompactMediaHints : owner.Session.ResolvePinnedProjection(frame, current.LayoutId).Snapshot.Surface;
+                var hints = current.Popup is not null ? PopupPinHints : current.Media is not null ? CompactMediaHints : owner.Session.ResolvePinnedProjection(frame, current.LayoutId).Snapshot.Surface;
                 current.Limits = ResolvePinnedLimits(hints, appearance.InterfaceScale);
                 ReconcilePinnedPlacementEnvironment(current);
             }

@@ -21,6 +21,9 @@ internal sealed partial class OverlayShellPage
                     new(ControllerPrompt.B, "Cancel", ControllerButton.B, Required: true), new(ControllerPrompt.RightStickMove, "Scroll")]
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
             shellContext = "host-choice";
+            if (hostChoiceDialog?.SupportsDismissChoice == true)
+                shell = (ControllerGuideHint[])[new(ControllerPrompt.A, "Open", ControllerButton.A),
+                    new(ControllerPrompt.X, "Dismiss", ControllerButton.X), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
         }
         else if (SystemFilePickerOpen)
         { shell = Array.Empty<ControllerGuideHint>(); shellContext = "system-file-picker"; }
@@ -54,6 +57,14 @@ internal sealed partial class OverlayShellPage
             shell = hints.Any(hint => hint.Button == ControllerButton.B) ? hints
                 : (ControllerGuideHint[])[.. hints, new(ControllerPrompt.B, "Return to widget", ControllerButton.B)];
             shellContext = (browser, browser.Surface?.IsBrowsing, browser.Surface?.HasDialog);
+        }
+        else if (PinnedInputActive && pinned?.Popup is { } popup)
+        {
+            var hints = popup.Child.ControllerTextEntry is { } keyboard
+                ? WidgetViewPresenter.CaptureKeyboardGuide(keyboard) : WidgetViewPresenter.CaptureBrowserGuide(popup.Slot);
+            shell = hints.Any(hint => hint.Button == ControllerButton.B) ? hints
+                : (ControllerGuideHint[])[.. hints, new(ControllerPrompt.B, "Return to overlay", ControllerButton.B)];
+            shellContext = (popup, popup.Child.IsBrowsing, popup.Child.HasDialog);
         }
         if (shell is not null)
         {

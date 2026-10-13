@@ -28,6 +28,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     private readonly Func<Task<CoreWebView2Environment>> environment;
     private readonly string profile;
     private readonly string widgetId;
+    internal string WidgetId => widgetId;
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim pointer = new(1, 1);
     private Task? initializing;
@@ -38,20 +39,20 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     private bool retired, visible, input, browsing, interacting, pointerPump, faulted;
     private double cursorX = .5, cursorY = .5, wheelX, wheelY;
     private bool cursorDirty;
-    internal bool IsInteracting => popup?.IsInteracting ?? interacting;
-    internal bool IsBrowsing => popup?.IsBrowsing ?? browsing;
+    internal bool IsInteracting => AttachedPopup?.IsInteracting ?? interacting;
+    internal bool IsBrowsing => AttachedPopup?.IsBrowsing ?? browsing;
     internal bool IsReady => core is not null && !retired && !faulted;
-    internal bool OwnsNativeUiProcess(uint process) => process != 0 && visible && IsReady && browserProcessId == process;
+    internal bool OwnsNativeUiProcess(uint process) => process != 0 && (visible && IsReady && browserProcessId == process || popup?.OwnsNativeUiProcess(process) == true);
     internal uint NativeBrowserProcessId => IsReady ? browserProcessId : 0;
-    internal bool IsNavigationInProgress => popup?.IsNavigationInProgress ?? loading;
-    internal bool IsToolbarVisible => popup?.IsToolbarVisible ?? (header.Visibility == Visibility.Visible);
+    internal bool IsNavigationInProgress => AttachedPopup?.IsNavigationInProgress ?? loading;
+    internal bool IsToolbarVisible => AttachedPopup?.IsToolbarVisible ?? (header.Visibility == Visibility.Visible);
     internal bool UsesProfile(WebBrowserDocument next) => BrowserProfileIdentity.SameProfile(document, next);
     internal string ProfileName => profile;
     internal double EnvironmentInitializationMilliseconds { get; private set; }
     internal double ControllerInitializationMilliseconds { get; private set; }
     internal double DocumentNavigationMilliseconds { get; private set; }
     private long navigationStarted;
-    internal object? CaptureZoomGesture(ControllerButton button) => popup is { } child ? child.CaptureZoomGesture(button) : input && browsing && !HasDialog && !loading &&
+    internal object? CaptureZoomGesture(ControllerButton button) => AttachedPopup is { } child ? child.CaptureZoomGesture(button) : input && browsing && !HasDialog && !loading &&
         button is ControllerButton.LeftTrigger or ControllerButton.RightTrigger ? (this, pageEpoch, editGeneration, button) : null;
     internal string? CurrentUrl => core?.Source;
     internal string? CurrentTitle => core?.DocumentTitle;
@@ -73,7 +74,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal BrowserLibraryStore? FixtureLibraryStore => library;
     internal void CloseControllerForValidation() => web.Close();
     internal List<string> FixturePointerTrace { get; } = [];
-    internal async Task<string> EvaluateFixtureAsync(string script) => await core!.ExecuteScriptAsync(script);
+    internal async Task<string> EvaluateFixtureAsync(string script) => await core!.ExecuteScriptAsync(script).AsTask().WaitAsync(TimeSpan.FromSeconds(8));
     internal async Task CrashRendererFixtureAsync()
     {
         try { await core!.CallDevToolsProtocolMethodAsync("Page.crash", "{}").AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
@@ -109,7 +110,10 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         Unloaded += (_, _) => { chromeTheme?.Dispose(); chromeTheme = null; };
         viewport.SizeChanged += (_, args) =>
         { DrawCursor(); if (Math.Abs(args.NewSize.Width - args.PreviousSize.Width) > 1) Run(RefreshProviderHeightAsync); };
-        web.GotFocus += (_, _) => { if (input && !HasDialog) { toolbarFocused = false; UpdateChromeVisibility(); interacting = true; browsing = true; UseDesktopPointer(); InteractionChanged?.Invoke(); } };
+        // Focus alone does not identify the input source. A controller's CDP
+        // mouse-down can focus WebView too; cancelling here loses its mouse-up.
+        // Real pointer events below own the mouse/controller handoff.
+        web.GotFocus += (_, _) => { if (input && !HasDialog) { toolbarFocused = false; UpdateChromeVisibility(); interacting = true; browsing = true; InteractionChanged?.Invoke(); } };
         web.PointerMoved += (_, args) =>
         {
             if (input && args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
@@ -144,8 +148,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (retired) return;
         var wasInteracting = interacting;
         presentationInputRequested = acceptsInput;
-        visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && popup is null;
-        popup?.SetPresentation(isVisible, acceptsInput);
+        visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && AttachedPopup is null;
+        AttachedPopup?.SetPresentation(isVisible, acceptsInput);
         if (!visible) CancelSiteDecisions();
         if (!input) { editorOwnedButtons.Clear(); chromeOwnedA = false; }
         web.IsTabStop = input;
@@ -157,7 +161,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         {
             if (!faulted)
             {
-                web.Visibility = visible && popup is null ? Visibility.Visible : Visibility.Collapsed;
+                web.Visibility = visible && AttachedPopup is null ? Visibility.Visible : Visibility.Collapsed;
                 web.IsHitTestVisible = input || visible && nativeDialogPointerAccess;
                 if (visible && IsLoaded && initializing is null) initializing = InitializeAsync();
                 if (visible) { core?.Resume(); NavigatePending(); }
@@ -181,7 +185,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 
     internal void RefreshInteractionFocus()
     {
-        if (popup is { } child) { child.RefreshInteractionFocus(); return; }
+        if (AttachedPopup is { } child) { child.RefreshInteractionFocus(); return; }
         if (retired || HasDialog) return;
         var before = interacting;
         if (!input || IsInteractionFocused?.Invoke() != true)
@@ -196,7 +200,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 
     internal void Enter()
     {
-        if (popup is { } child) { child.Enter(); return; }
+        if (AttachedPopup is { } child) { child.Enter(); return; }
         if (visible && presentationInputRequested && faulted && Recover is { } recover) { Run(() => recover(this)); return; }
         if (!input) return;
         if (core is null || faulted || HasDialog) return;
@@ -210,7 +214,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     {
         if (button == ControllerButton.B && backReleaseOwned)
         { if (phase == ControllerEventPhase.Released) backReleaseOwned = false; return true; }
-        if (popup is { } child)
+        if (AttachedPopup is { } child)
         {
             if (button == ControllerButton.B && !child.HasDialog && !child.IsToolbarFocused)
             { if (phase == ControllerEventPhase.Pressed) { backReleaseOwned = true; Run(ClosePopupAsync); } return true; }
@@ -266,8 +270,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         else if (button == ControllerButton.LeftBumper && !sessionStopped && core?.CanGoBack == true) core.GoBack();
         else if (button == ControllerButton.RightBumper && !sessionStopped && core?.CanGoForward == true) core.GoForward();
         else if (button == ControllerButton.X) Reload();
-        else if (button == ControllerButton.Y) Run(() => EditAsync(addressEntry: true));
-        else if (button == ControllerButton.RightStick) Run(() => EditAsync(addressEntry: false));
+        else if (button == ControllerButton.Y) Run(EditAddressAsync);
         else if (button == ControllerButton.Menu) Run(OpenContextMenuAsync);
         else if (button == ControllerButton.LeftTrigger) ChangeZoom(-.1);
         else if (button == ControllerButton.RightTrigger) ChangeZoom(.1);
@@ -275,7 +278,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
-        if (popup is { } child) return child.MoveFocus(direction);
+        if (AttachedPopup is { } child) return child.MoveFocus(direction);
         if (!input || !interacting) return false;
         if (libraryDialog is { } libraryChoice) { libraryChoice.MoveFocus(direction); return true; }
         if (editDialog is { } dialog) { dialog.MoveFocus(direction); return true; }
@@ -287,7 +290,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal bool Scroll(double x, double y)
     {
-        if (popup is { } child) return child.Scroll(x, y);
+        if (AttachedPopup is { } child) return child.Scroll(x, y);
         if (!input || !interacting || core is null) return false;
         if (HasDialog || toolbarFocused) return true;
         if (x == 0 && y == 0) return true;
@@ -297,7 +300,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal void MovePointer(double x, double y)
     {
-        if (popup is { } child) { child.MovePointer(x, y); return; }
+        if (AttachedPopup is { } child) { child.MovePointer(x, y); return; }
         if (!input || !browsing || HasDialog || x == 0 && y == 0) return;
         UseControllerInput();
         cursorX = Math.Clamp(cursorX + x, .01, .99); cursorY = Math.Clamp(cursorY + y, .01, .99);
@@ -348,6 +351,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                 }
                 if (args.Uri != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(args.Uri)) { args.Cancel = true; ShowStatus("This link cannot open inside WidgetRail."); return; }
                 CancelSiteDecisions();
+                InvalidateNotifications?.Invoke(this);
                 navigationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 pageEpoch++; CancelPointer(); CancelEdit(); loading = true; UpdateChrome(); ShowStatus(null);
             };
@@ -365,6 +369,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             // COM object. Capture our controller identity for stale-event checks.
             var permissionOwner = core;
             core.PermissionRequested += (_, args) => PermissionRequested(permissionOwner, args);
+            InitializeNotifications(permissionOwner);
             core.ScreenCaptureStarting += (_, args) => ScreenCaptureStarting(permissionOwner, args);
             core.DownloadStarting += (_, args) => DownloadStarting(permissionOwner, args);
             core.NewWindowRequested += (_, args) => NewWindowRequested(args);
@@ -383,7 +388,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                         ShowStatus("The page is not responding. Reload it or stop its session from the tray menu.");
                     return;
                 }
-                faulted = true; CancelEdit(); CancelSiteDecisions(); browsing = interacting = false; DrawCursor();
+                faulted = true; InvalidateNotifications?.Invoke(this); CancelEdit(); CancelSiteDecisions(); browsing = interacting = false; DrawCursor();
                 ShowStatus("The page disconnected. Press A to reopen it."); UpdateChrome();
                 ActivityChanged?.Invoke();
             };
@@ -393,7 +398,9 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
             if (!IsProviderContent && FixturePage is not null)
             {
-                core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+                // Include requests initiated by out-of-process iframe reloads.
+                // The deprecated two-argument filter misses those documents.
+                core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
                 core.WebResourceRequested += (_, args) =>
                 {
                     var html = FixturePage?.Invoke(args.Request.Uri) ?? "<!doctype html><title>Blocked test request</title>";
@@ -484,6 +491,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (retired) return; SetPresentation(false, false); retired = true; lifetime.Cancel();
+        InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;
+        nativeNotifications?.Dispose(); nativeNotifications = null;
         if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());
         await DrainPopupAsync();
         CloseFiles();

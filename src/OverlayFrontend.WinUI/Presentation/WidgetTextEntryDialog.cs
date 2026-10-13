@@ -7,7 +7,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
-/// <summary>Host-owned edit session. Only a final commit leaves this control.</summary>
+/// <summary>Host-owned keyboard with buffered widget commits or incremental browser edits.</summary>
 internal sealed partial class WidgetTextEntryDialog : ContentDialog
 {
     private const string Letters = "1234567890qwertyuiopasdfghjkl-zxcvbnm,./";
@@ -38,8 +38,10 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     internal string CommitLabel { get; }
     internal Action? GuideChanged { get; set; }
 
-    internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish, bool multiline = false, bool allowSubmit = false, string commitLabel = "Done", string? description = null)
+    internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish, bool multiline = false, bool allowSubmit = false, string commitLabel = "Done", string? description = null,
+        Func<KeyboardEdit, Task<KeyboardTextState>>? liveEdit = null)
     {
+        this.liveEdit = liveEdit;
         this.multiline = multiline && node.TextEntryInputKind != TextEntryInputKind.Sensitive;
         CommitLabel = commitLabel;
         Input.GamepadKeyBoundary.ObserveDialog(this);
@@ -47,13 +49,14 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         maximumLength = node.TextEntryMaximumLength ?? ProtocolConstants.MaximumTextEntryLength;
         heading.Text = node.AccessibilityLabel ?? node.TextEntryPlaceholder ?? "Enter text";
         Title = heading;
+        if (IsLive) { Title = null; heading.Visibility = Visibility.Collapsed; body.Children.Add(heading); }
         AutomationProperties.SetName(this, heading.Text);
         AutomationProperties.SetAutomationId(this, "Widget.TextEntry.Dialog");
         DefaultButton = ContentDialogButton.None;
         IsPrimaryButtonEnabled = false;
         Resources["ContentDialogMaxWidth"] = 760d;
         if (!string.IsNullOrEmpty(description)) body.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap });
-        if (node.TextEntryInputKind == TextEntryInputKind.Sensitive)
+        if (node.TextEntryInputKind == TextEntryInputKind.Sensitive && !IsLive)
         {
             password = new PasswordBox { MaxLength = maximumLength, PasswordRevealMode = PasswordRevealMode.Hidden,
                 Header = node.TextEntryPlaceholder ?? "Private text" };
@@ -67,6 +70,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
                 Header = node.TextEntryPlaceholder ?? "Text", IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
                 MaxHeight = this.multiline ? 160 : double.PositiveInfinity };
             text.Select(text.Text.Length, 0);
+            if (IsLive) { text.IsReadOnly = true; text.IsTabStop = false; text.Header = null; }
             body.Children.Add(text);
         }
         var editor = (Control?)text ?? password!;
@@ -87,14 +91,14 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         AddKey("Backspace", "Backspace", 5, 0, IsSensitive ? 2 : 3, Backspace, ControllerPrompt.X);
         AddKey("Clear", "Clear", 5, IsSensitive ? 2 : 3, IsSensitive ? 2 : 3, Clear, ControllerPrompt.Y);
         if (IsSensitive) AddKey("Show", "Reveal", 5, 4, 2, TogglePassword, ControllerPrompt.RightStickPress);
-        AddKey("Cancel", "Cancel", 5, 6, 2, () => Complete(false), ControllerPrompt.B);
+        AddKey(DismissLabel, "Cancel", 5, 6, 2, () => Complete(false), ControllerPrompt.B);
         AddKey(commitLabel, "Commit", 5, 8, 2, () => Complete(true), ControllerPrompt.RightTrigger);
         if (this.multiline || allowSubmit)
         {
             keys.RowDefinitions.Add(new() { Height = GridLength.Auto });
             if (this.multiline) AddKey("New line", "NewLine", 6, 0, allowSubmit ? 5 : 10, () => Insert("\n"));
-            if (allowSubmit) AddKey("Apply + Enter", "Submit", 6, this.multiline ? 5 : 0, this.multiline ? 5 : 10,
-                () => { SubmitRequested = true; Complete(true); });
+            if (allowSubmit) AddKey(IsLive ? "Send Enter" : "Apply + Enter", "Submit", 6, this.multiline ? 5 : 0, this.multiline ? 5 : 10,
+                () => { if (IsLive) SendLive(new(KeyboardEditKind.Key, Key: "Enter", KeyCode: 13)); else { SubmitRequested = true; Complete(true); } });
         }
         WidgetControllerPrompts.Changed += RefreshPrompts;
         RefreshPrompts();
@@ -108,10 +112,12 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         {
             if (needsInitialFocus && !completed && args.TrySetNewFocusedElement(characters[10])) needsInitialFocus = false;
         };
+        if (IsLive) Opened += (_, _) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        { if (!completed && characters[10].IsLoaded) characters[10].Focus(FocusState.Keyboard); });
         GotFocus += (_, _) =>
         {
             if (FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key))
-            { if (!ReferenceEquals(rememberedKey, key)) repeat.CancelCharacter(); rememberedKey = key; }
+            { if (!ReferenceEquals(rememberedKey, key)) repeat.CancelCharacter(); rememberedKey = key; key.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }); }
             RefreshCaret();
         };
         Closing += (_, _) => { if (!completed) Complete(false); };
@@ -127,7 +133,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         CharacterReceived += (_, args) =>
         {
             // Space belongs to native Button activation while a key has focus.
-            if (!completed && args.Character > 32 && FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key))
+            if (!completed && args.Character > 32 && (IsLive || FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key)))
             { Insert(char.ConvertFromUtf32((int)args.Character)); args.Handled = true; }
         };
     }
@@ -137,6 +143,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         if (completed) return false;
         repeat.Reset();
         if (key == Windows.System.VirtualKey.Escape) { Complete(false); return true; }
+        if (HandleLiveKey(key, control, shift)) return true;
         var editorFocused = ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
         // The controller keyboard owns initial focus. A physical paste shortcut
         // should still reach the native editor, without reading or logging the
@@ -168,7 +175,10 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     private void ConstrainWidth()
     {
         if (XamlRoot is not { } root) return;
-        body.Width = Math.Max(1, Math.Min(640 * interfaceScale, root.Size.Width - 120 * interfaceScale));
+        body.Width = Math.Max(1, Math.Min(640 * interfaceScale, Math.Min(root.Size.Width, liveHostWidth) - (IsLive ? 28 : 120) * interfaceScale));
+        foreach (var (key, _, _, _) in prompts)
+            ((TextBlock)((StackPanel)key.Content).Children[1]).Visibility = IsLive && liveHostWidth < 540 * interfaceScale
+                ? Visibility.Collapsed : Visibility.Visible;
     }
     internal void ApplyPopupMetrics(double zoom, double size, Windows.UI.Text.FontWeight weight, FontFamily? family)
     {
@@ -177,7 +187,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         interfaceScale = zoom;
         Resources["ContentDialogMaxWidth"] = 760 * zoom;
         Resources["ContentDialogMinWidth"] = 320 * zoom;
-        Resources["ContentDialogPadding"] = new Thickness(24 * zoom);
+        Resources["ContentDialogPadding"] = new Thickness((IsLive ? 12 : 24) * zoom);
         Resources["ContentDialogTitleMargin"] = new Thickness(0, 0, 0, 12 * zoom);
         keys.ColumnSpacing = keys.RowSpacing = 4 * zoom;
         body.Spacing = 12 * zoom;
@@ -189,12 +199,12 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         {
             control.FontSize = size;
             control.FontWeight = weight;
-            control.MinHeight = 36 * zoom;
+            control.MinHeight = (IsLive ? 30 : 36) * zoom;
             control.Padding = new Thickness(4 * zoom);
             if (family is null) control.ClearValue(Control.FontFamilyProperty);
             else control.FontFamily = family;
         }
-        if (multiline && text is not null) { text.MinHeight = 96 * zoom; text.MaxHeight = 160 * zoom; }
+        if (multiline && text is not null) { text.MinHeight = (IsLive ? 36 : 96) * zoom; text.MaxHeight = (IsLive ? 64 : 160) * zoom; }
         foreach (var (button, icon, _, _) in prompts)
         {
             icon.FontSize = 18 * zoom;
@@ -207,6 +217,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             else label.FontFamily = family;
         }
         ConstrainWidth();
+        if (IsLive && double.IsFinite(liveHostHeight)) ConstrainLiveHost(liveHostWidth, liveHostHeight);
         ApplyCaretMetrics();
     }
     internal string TakeValue() => text?.Text ?? password?.Password ?? string.Empty;
@@ -218,6 +229,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         completed = true;
         if (XamlRoot is { } root) root.Changed -= RootChanged;
         finish = null;
+        liveEdit = null; liveQueue.Clear();
         GuideChanged = null;
         WidgetControllerPrompts.Changed -= RefreshPrompts;
         if (text is not null) text.Text = string.Empty;
@@ -249,6 +261,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
             target = commands.Keys.Where(item => Grid.GetRow(item) == nextRow)
                 .OrderBy(item => Math.Abs(Grid.GetColumn(item) + Grid.GetColumnSpan(item) / 2d - center)).FirstOrDefault();
         }
+        target?.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
         target?.Focus(FocusState.Keyboard);
     }
     internal void Activate()
@@ -284,6 +297,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         var key = new Button { Content = label, Padding = new Thickness(4), MinWidth = 0, MinHeight = 36,
             HorizontalAlignment = HorizontalAlignment.Stretch, XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled };
         AutomationProperties.SetAutomationId(key, "Widget.TextEntry." + id);
+        if (!string.IsNullOrEmpty(label)) ToolTipService.SetToolTip(key, label);
         key.Click += (_, _) => { if (!completed) action(); };
         commands.Add(key, action);
         if (prompt is { } semantic)
@@ -345,6 +359,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     private void Complete(bool commit)
     {
         if (completed) return;
+        if (IsLive) { if (!finishingLive) _ = FinishLiveAsync(commit); return; }
         completed = true;
         repeat.Reset();
         finish?.Invoke(commit);
@@ -352,17 +367,20 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     private void Clear()
     {
         repeat.Reset();
+        if (IsLive) { SendLive(new(KeyboardEditKind.Clear)); return; }
         if (text is not null) text.Text = string.Empty;
         if (password is not null) password.Password = string.Empty;
     }
     private void MoveCaret(int delta)
     {
+        if (IsLive) { SendLive(new(KeyboardEditKind.Key, Key: delta < 0 ? "ArrowLeft" : "ArrowRight", KeyCode: delta < 0 ? 37 : 39)); return; }
         if (text is not null) text.Select(TextEntryEditing.Move(text.Text, text.SelectionStart, text.SelectionLength, delta), 0);
         else if (password is not null) secretCaret = TextEntryEditing.Move(password.Password, secretCaret, 0, delta);
         RefreshCaret();
     }
     private void Insert(string value)
     {
+        if (IsLive) { SendLive(new(KeyboardEditKind.Insert, value)); return; }
         if (text is not null)
         {
             if (TextEntryEditing.Insert(text.Text, text.SelectionStart, text.SelectionLength, value, maximumLength) is not { } edit) return;
@@ -379,6 +397,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     }
     private void Backspace()
     {
+        if (IsLive) { SendLive(new(KeyboardEditKind.Key, Key: "Backspace", KeyCode: 8)); return; }
         if (text is not null)
         {
             var edit = TextEntryEditing.Backspace(text.Text, text.SelectionStart, text.SelectionLength);

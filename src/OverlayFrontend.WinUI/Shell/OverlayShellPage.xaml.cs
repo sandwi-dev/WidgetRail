@@ -486,6 +486,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) ExitPinnedInteraction(restoreMain: false);
         interactionAdmission.Invalidate();
         visible = value;
+        if (value) HideNotificationBanner();
         RefreshStartupPresentation();
         // Reopen can await worker/lifecycle admission. Keep the last committed
         // pixels visible during that wait; its inactive presenter still rejects
@@ -823,6 +824,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         interactionAdmission.Invalidate();
         retired = true;
+        DisposeNotificationBanner();
         PrepareNativeShutdown();
         localInstallCancellation?.Cancel();
         openingIndicator?.Dispose();

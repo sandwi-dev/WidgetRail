@@ -22,12 +22,12 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
-        var keyboard = expandedBrowser?.Surface?.ControllerTextEntry ?? (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
+        var keyboard = ActiveControllerKeyboard;
         var delivered = false;
         try { ReceiveCore(frame, out delivered); }
         finally
         {
-            var current = expandedBrowser?.Surface?.ControllerTextEntry ?? (PinnedInputActive ? pinned?.Presenter : interactive ? surface : null)?.ControllerTextEntry;
+            var current = ActiveControllerKeyboard;
             if (keyboard is not null)
             {
                 if (delivered && (foreground || PinnedInputActive) && ReferenceEquals(keyboard, current))
@@ -36,6 +36,9 @@ internal sealed partial class OverlayShellPage
             }
         }
     }
+
+    private Presentation.WidgetTextEntryDialog? ActiveControllerKeyboard => expandedBrowser?.Surface?.ControllerTextEntry ??
+        (PinnedInputActive ? pinned?.Popup?.Child.ControllerTextEntry ?? pinned?.Presenter?.ControllerTextEntry : interactive ? surface?.ControllerTextEntry : null);
 
     private void ReceiveCore(ControllerFrame frame, out bool delivered)
     {
@@ -79,7 +82,9 @@ internal sealed partial class OverlayShellPage
         var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
         var browserPointer = !radialNavigation && (IsMediaFullscreen
             ? fullscreenLayer.MovePointer(frame.State.LeftThumbX, frame.State.LeftThumbY)
-            : pointerPresenter?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true);
+            : PinnedInputActive && pinned?.Popup is { } popup
+                ? popup.Slot.MovePointer(frame.State.LeftThumbX, frame.State.LeftThumbY)
+                : pointerPresenter?.MoveBrowserPointer(frame.State.LeftThumbX, frame.State.LeftThumbY) == true);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : browserPointer ? default : frame.StickNavigation;
         var next = direction.Direction switch
         {
@@ -96,6 +101,7 @@ internal sealed partial class OverlayShellPage
             {
                 if (pinned!.Presenter is { } widget) widget.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);
                 else if (pinned.MediaView is { } media) media.MoveFocus(next);
+                else pinned.Popup?.Slot.MoveFocus(next);
             }
 
             else if (interactive && RecoveryVisible) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = StatusChrome });
@@ -111,7 +117,12 @@ internal sealed partial class OverlayShellPage
         var imagePan = !radialNavigation && radialInput.AllowScroll && (IsMediaFullscreen
             ? fullscreenLayer.MoveAnalog(frame.State.RightThumbX, frame.State.RightThumbY)
             : pointerPresenter?.PanMediaImage(frame.State.RightThumbX, frame.State.RightThumbY) == true);
-        if (!imagePan && radialInput.AllowScroll && !IsMediaFullscreen &&
+        if (!imagePan && radialInput.AllowScroll && !IsMediaFullscreen && PinnedInputActive && pinned?.Popup is { } scrollingPopup)
+        {
+            var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
+            if (delta.X != 0 || delta.Y != 0) scrollingPopup.Slot.Scroll(delta.X, delta.Y);
+        }
+        else if (!imagePan && radialInput.AllowScroll && !IsMediaFullscreen &&
             (PinnedInputActive ? pinned!.Presenter : interactive ? surface : null) is { } current)
         {
             var now = Environment.TickCount64;
@@ -178,7 +189,7 @@ internal sealed partial class OverlayShellPage
                 }
                 if (PinnedInputActive)
                 {
-                    var accepted = pin.Media is not null ? RouteCompactButton(pin, button, phase) :
+                    var accepted = pin.Popup is { } popup ? popup.Slot.HandleButton(button, phase) : pin.Media is not null ? RouteCompactButton(pin, button, phase) :
                         await pin.Presenter!.HandleControllerButtonAsync(button, phase, origin, cancellationToken: lifetime.Token);
                     if (!accepted && button == ControllerButton.B && phase == ControllerEventPhase.Pressed && ReferenceEquals(pinned, pin))
                     { shellOwnedReleases.Add(button); ExitPinnedInteraction(restoreMain: true); }

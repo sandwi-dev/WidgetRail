@@ -25,6 +25,7 @@ internal sealed partial class OverlayShellPage
         BrowserSurface.FixturePage = url => "<!doctype html><title>Shell " + new Uri(url).AbsolutePath + "</title><body style='background:#203040;color:white;font:22px sans-serif'>Local webapp fixture<input id='upload' type='file'><div contenteditable='true'>Synthetic editor</div></body>";
         Loaded += async (_, _) =>
         {
+            fullscreenLayer.TraceForValidation = message => expansionFocusTrace.Add(message);
             var checks = new List<string>(); string? error = null; var step = "startup";
             try
             {
@@ -83,6 +84,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntilScript(first, "window.permissionResult==='granted'");
                 await WebAppUntil(() => first.IsBrowsing && !HostChoiceActive);
                 Check(first.IsBrowsing && !HostChoiceActive, "Native permission confirmation restores main browser interaction");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-notifications")) await VerifyNotificationsAsync(first, Check);
                 await Toolbar(first, "Browser.SiteControls"); await Choose(0); await Choose(2); await Choose(2);
                 await WebAppUntilPermission(first, CoreWebView2PermissionKind.Notifications, CoreWebView2PermissionState.Deny);
                 await WebAppUntil(() => !HostChoiceActive && !first.IsNavigationInProgress && first.CurrentTitle == "Shell /primary");
@@ -124,12 +126,14 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntilScript(first, "window.permissionResult==='granted'");
                 await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(PinnedInputActive && first.IsBrowsing, "Pinned confirmation restores its original interaction owner");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-notifications")) await VerifyPinnedNotificationAsync(first, Check);
                 await first.EvaluateGestureFixtureAsync("window.open('https://shell.fixture.invalid/popup')");
                 await WebAppUntil(() => first.HasPopup && first.ActiveSurface.CurrentTitle == "Shell /popup");
                 Check(ReferenceEquals(first.ActiveSurface.XamlRoot, pinned.Window.AutomationRoot.XamlRoot), "Hosted popup stays in the pinned webapp window");
                 await Press(ControllerButton.B); await WebAppUntil(() => !first.HasPopup);
                 await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(PinnedInputActive && first.IsBrowsing, "Closing a pinned popup preserves its parent and pin interaction");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-popup-presentation")) await VerifyPopupPresentationAsync(first, Check);
                 Check(await ExpandBrowserAsync(first, lifetime.Token), "Pinned browser expands through the same placement owner");
                 await WebAppUntil(() => foreground && first.IsBrowsing && expandedBrowser?.Surface == first);
                 Check(ReferenceEquals(first.XamlRoot, XamlRoot), "Expanded pinned browser uses the full shell viewport");
@@ -210,8 +214,8 @@ internal sealed partial class OverlayShellPage
                         "Shutdown drains recovered and retained controllers without parking them into retiring XAML roots");
                 }
             }
-            catch (Exception failure) { error = failure.ToString(); }
-            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = error is null, step, checks, error, pages = Slots(surface).Select(slot => new { ready = slot.Surface?.IsReady, loading = slot.Surface?.IsNavigationInProgress, title = slot.Surface?.CurrentTitle, profile = slot.Surface?.ProfileName, permissions = slot.Surface?.FixturePermissionTrace }).ToArray(), retained = browserOwner?.BackgroundSessionCount }));
+            catch (Exception failure) { error = failure.ToString(); hostChoiceDialog?.Hide(); await Task.Delay(100); }
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = error is null, step, checks, error, expansionFocusTrace, pinState = new { exists = pinned is not null, current = pinned?.IsCurrent, interactive = pinned?.Window.Interactive, focused = pinned?.HasForeground, foreground, expanded = expandedBrowser is not null }, pages = Slots(surface).Select(slot => new { ready = slot.Surface?.IsReady, loading = slot.Surface?.IsNavigationInProgress, title = slot.Surface?.CurrentTitle, profile = slot.Surface?.ProfileName, permissions = slot.Surface?.FixturePermissionTrace }).ToArray(), retained = browserOwner?.BackgroundSessionCount }));
 
             async Task<BrowserSurface> CurrentBrowser()
             {

@@ -47,7 +47,16 @@ function Find-Control([string]$Name, [string]$Type = '') {
 function Send-Controller([string]$Command) {
     $script:sequence++
     [IO.File]::WriteAllText($Result + '.picker-command.tmp', "$script:sequence $Command")
-    Move-Item -LiteralPath ($Result + '.picker-command.tmp') -Destination ($Result + '.picker-command') -Force
+    # The fixture briefly opens the old command without delete sharing. Publish
+    # atomically after that read, never expose a partially rewritten command.
+    $publishDeadline = [DateTime]::UtcNow.AddSeconds(1)
+    while ($true) {
+        try { [IO.File]::Move($Result + '.picker-command.tmp', $Result + '.picker-command', $true); break }
+        catch [IO.IOException] {
+            if ([DateTime]::UtcNow -ge $publishDeadline) { throw }
+            Start-Sleep -Milliseconds 10
+        }
+    }
     $until = [DateTime]::UtcNow.AddSeconds(3)
     do {
         Start-Sleep -Milliseconds 100

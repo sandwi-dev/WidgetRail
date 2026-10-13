@@ -46,7 +46,32 @@ use LB/RB to position it. Ordinary text retains its native selection.
 Physical keyboard paste remains available, including Ctrl+V and Shift+Insert.
 When a virtual key has focus, physical Left/Right move the text caret; Enter and
 Space activate the selected key. Enter submits when the text editor has focus.
-Hiding the overlay or leaving the widget cancels an unsubmitted edit.
+Hiding the overlay or leaving the widget cancels an unsubmitted widget-field draft.
+
+Browser and webapp fields work differently: point at a field and click A to open
+the keyboard, including a field that already has focus. These edits reach the page
+as you type. B or Done closes the keyboard and keeps the edits; **Send Enter** is
+the explicit action for sending an Enter key to the website. Existing password text
+is represented only by masks. Widget fields, browser addresses and website text
+prompts keep the draft/confirm behavior described above.
+
+## Webapps and notifications
+
+In a webapp, the left stick moves the pointer, A clicks, and the right stick scrolls.
+LS opens Website controls; its actions have direct labels. Website permissions can
+also be changed from the widget's tray menu, including restoring a blocked microphone.
+
+A hosted pop-out can offer **Pin pop-out** in its controls and the tray. This keeps
+the existing live page pinned while its parent remains usable. View switches to the
+pin; B returns to the overlay. **Return pop-out to widget** moves it back. Stopping
+the parent session also closes its pop-out.
+
+After granting a website notification permission, select **Notification preferences**
+in its widget tray menu to choose Banner + list, List only, or Off. Quiet banners
+disappear after four seconds; pending notifications stay in the tray's
+**Notifications** list. There, A opens the originating page, X dismisses the focused
+entry, and B closes the list without clearing it. Windows notification UI is not used.
+Pending entries last for the current WidgetRail session; the preference survives restarts.
 
 ## Choose a widget switcher
 

@@ -16,7 +16,12 @@ internal sealed partial class HostChoiceDialog : ContentDialog
 {
     private readonly ListView choices = new() { MaxHeight = 320, SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch };
-    private readonly IReadOnlyList<HostDialogChoice> entries;
+    private readonly List<HostDialogChoice> entries;
+    private readonly HashSet<string> reportedChoices = [];
+    private bool opened, reportingQueued;
+    internal event Action<string>? DismissChoiceRequested;
+    internal event Action<string>? ChoiceShown;
+    internal bool SupportsDismissChoice => DismissChoiceRequested is not null;
     private readonly ScrollViewer? messageViewport;
     private readonly RightStickScroll messageScroll = new();
     internal bool SupportsMessageScroll => messageViewport is not null;
@@ -25,7 +30,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
 
     internal HostChoiceDialog(string title, string message, IReadOnlyList<HostDialogChoice> entries, bool directDecisionButtons = false)
     {
-        this.entries = entries;
+        this.entries = entries.ToList();
         Input.GamepadKeyBoundary.ObserveDialog(this);
         AutomationProperties.SetAutomationId(this, "Host.Choice.Dialog");
         AutomationProperties.SetAutomationId(choices, "Host.Choice.Options");
@@ -59,13 +64,12 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         {
             for (var index = 0; index < entries.Count; index++)
             {
-                var item = new ListViewItem { Content = entries[index].Label, Tag = index,
-                    HorizontalContentAlignment = HorizontalAlignment.Left };
+                var item = CreateChoice(entries[index]);
                 AutomationProperties.SetAutomationId(item, "Host.Choice.Option." + index);
                 choices.Items.Add(item);
             }
             choices.SelectedIndex = 0;
-            choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: int index }) Choose(index); };
+            choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: string id }) Choose(this.entries.FindIndex(entry => entry.Id == id)); };
             if (entries.Count > 1) content.Children.Add(choices);
             // List entries are already direct actions (pointer, Enter and A).
             // A second generic "Open" button obscures destructive action intent.
@@ -78,8 +82,12 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         Content = content;
         Opened += (_, _) =>
         {
+            opened = true;
             (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
+            QueueVisibleChoices();
         };
+        choices.LayoutUpdated += ChoicesLayoutUpdated;
+        Closed += (_, _) => { opened = false; choices.LayoutUpdated -= ChoicesLayoutUpdated; };
         Loaded += (_, _) =>
         {
             // ContentDialog performs its initial content focus during opening.
@@ -91,6 +99,64 @@ internal sealed partial class HostChoiceDialog : ContentDialog
             });
         };
     }
+    private ListViewItem CreateChoice(HostDialogChoice entry)
+    {
+        var item = new ListViewItem { Content = new TextBlock { Text = entry.Label, TextWrapping = TextWrapping.Wrap, MaxLines = 5 },
+            Tag = entry.Id, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetAutomationId(item, "Host.Choice.Item." + entry.Id);
+        item.EffectiveViewportChanged += (_, _) => QueueVisibleChoices();
+        return item;
+    }
+    private void ChoicesLayoutUpdated(object? sender, object args) => QueueVisibleChoices();
+    private void QueueVisibleChoices()
+    {
+        if (!opened || reportingQueued || ChoiceShown is null || reportedChoices.Count == entries.Count) return;
+        reportingQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            reportingQueued = false;
+            if (!opened || !choices.IsLoaded || choices.ActualWidth <= 0 || choices.ActualHeight <= 0) return;
+            // Opened can precede the first list layout. Inspect after layout and
+            // viewport changes, and call native providers outside XAML layout.
+            foreach (var item in choices.Items.OfType<ListViewItem>())
+            {
+                if (!item.IsLoaded || item.Tag is not string id || reportedChoices.Contains(id)) continue;
+                var rect = item.TransformToVisual(choices).TransformBounds(new(0, 0, item.ActualWidth, item.ActualHeight));
+                rect.Intersect(new(0, 0, choices.ActualWidth, choices.ActualHeight));
+                if (rect.Width > 0 && rect.Height > 0 && reportedChoices.Add(id)) ChoiceShown?.Invoke(id);
+            }
+        });
+    }
+    internal void RemoveChoice(string id)
+    {
+        var index = entries.FindIndex(entry => entry.Id == id);
+        if (index < 0) return;
+        var focused = ListFocused();
+        var selected = choices.SelectedIndex;
+        reportedChoices.Remove(id);
+        entries.RemoveAt(index); choices.Items.RemoveAt(index);
+        if (entries.Count == 0) { choices.SelectedIndex = -1; return; }
+        choices.SelectedIndex = Math.Clamp(selected - (index < selected ? 1 : 0), 0, entries.Count - 1);
+        if (focused && index == selected) (choices.SelectedItem as Control)?.Focus(FocusState.Keyboard);
+    }
+    internal void UseActionList()
+    {
+        PrimaryButtonText = "";
+        if (Content is StackPanel panel && !panel.Children.Contains(choices)) panel.Children.Add(choices);
+    }
+    internal void AppendChoice(HostDialogChoice entry, string? beforeId = null)
+    {
+        if (entries.Any(value => value.Id == entry.Id)) return;
+        var index = beforeId is null ? -1 : entries.FindIndex(value => value.Id == beforeId);
+        if (index < 0) index = entries.Count;
+        entries.Insert(index, entry); choices.Items.Insert(index, CreateChoice(entry));
+    }
+    internal void UpdateChoice(HostDialogChoice entry)
+    {
+        var index = entries.FindIndex(value => value.Id == entry.Id);
+        if (index < 0) return;
+        entries[index] = entry;
+        if (choices.Items[index] is ListViewItem { Content: TextBlock text }) text.Text = entry.Label;
+    }
 
     protected override void OnApplyTemplate()
     {
@@ -101,6 +167,8 @@ internal sealed partial class HostChoiceDialog : ContentDialog
             AutomationProperties.SetAutomationId(primary, "Host.Choice.Primary");
         if (GetTemplateChild("SecondaryButton") is Control secondary)
             AutomationProperties.SetAutomationId(secondary, "Host.Choice.Secondary");
+        if (GetTemplateChild("CloseButton") is Control close)
+            AutomationProperties.SetAutomationId(close, "Host.Choice.Close");
     }
 
     private void Choose(int index)
@@ -151,6 +219,8 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     {
         if (!ControllerArmed || phase != ControllerEventPhase.Pressed) return;
         if (button == ControllerButton.B) { ControllerArmed = false; Hide(); }
+        else if (button == ControllerButton.X && SupportsDismissChoice && ListFocused() && choices.SelectedItem is ListViewItem { Tag: string id })
+            DismissChoiceRequested?.Invoke(id);
         else if (button == ControllerButton.A)
         {
             if (ListFocused()) Choose(choices.SelectedIndex);

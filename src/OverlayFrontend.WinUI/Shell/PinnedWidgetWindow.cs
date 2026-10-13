@@ -51,6 +51,12 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     internal Windows.Graphics.SizeInt32 ClientSize => window.ClientSize;
     internal PinnedBounds Bounds => new(window.Position.X, window.Position.Y, window.Size.Width, window.Size.Height);
     internal int OpacityPercent { get; private set; } = 100;
+    internal void SetHostIdentity(string title, string automationId)
+    {
+        window.Title = title;
+        AutomationProperties.SetName(automationRoot, title);
+        AutomationProperties.SetAutomationId(automationRoot, automationId);
+    }
 
     private readonly nint mainWindow;
     internal PinnedWidgetWindow(string name, nint mainWindow = 0)
