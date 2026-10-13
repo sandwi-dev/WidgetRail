@@ -131,4 +131,12 @@ focused native video returns to the inline player. No capture was deleted.
 
 The broad production-shell fixture stops at its radial Back assertion after 92
 checks on both this change and unchanged `bc535391`; both results are preserved.
-It is excluded from passing totals. Complete candidate handoff is pending.
+It is excluded from passing totals.
+
+The complete candidate from `c088e53f` is in
+`artifacts/presentation-layering/candidate/0.1.0-preview.30`. Production/developer
+catalog admission passed (13/17 widgets). The trimmed candidate's modal was
+visually checked over native video; its Cancel control appeared once in automation
+and a real pointer click returned to the visible preview without hiding the
+overlay. Evidence: `release-dialog.png` and `release-smoke.json`.
+It is running in Capture Library for physical acceptance. No merge or installer.
