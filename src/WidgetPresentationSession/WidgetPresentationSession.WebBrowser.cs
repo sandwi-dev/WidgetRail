@@ -4,6 +4,16 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed partial class WidgetPresentationSession
 {
+    /// <summary>Host-only native session residency. Does not grant background input or widget capabilities.</summary>
+    public async Task<bool> SetWebBrowserRetentionAsync(WidgetPresentationAuthority authority, string documentId, bool retain,
+        CancellationToken cancellationToken = default)
+    {
+        if (authority.WorkerRun is null || retain && !IsWebBrowserSessionCurrent(authority, documentId)) return false;
+        var result = await RequestAsync(WidgetBridge.BridgeMessageTypes.BrowserRetention,
+            new WidgetBridge.BridgeBrowserRetention(authority.WidgetId, authority.WorkerRun, documentId, retain),
+            WidgetBridge.BridgeMessageTypes.BrowserRetention, cancellationToken).ConfigureAwait(false);
+        return WidgetBridge.BridgeJson.FromElement<WidgetBridge.BridgeBrowserRetentionResult>(result.Payload).Retained;
+    }
     /// <summary>Validates an actual displayed browser node without granting widget access to its page.</summary>
     public WebBrowserDocument ResolveWebBrowserDocument(WidgetPresentationFrame displayed, string elementId,
         WidgetPinnedSelection? selection = null, WidgetPinnedProjection? projection = null)

@@ -10,7 +10,7 @@ internal sealed partial class WidgetViewPresenter
 {
     internal event Action? ControllerGuideChanged;
     internal object ControllerGuideContext => (activeScope, HasTransientControl, adjustingSlider?.Identity.Id,
-        FocusedBrowser?.IsInteracting, FocusedBrowser?.IsBrowsing, FocusedBrowser?.Surface?.HasDialog, FocusedBrowser?.PresentedInPin, FocusedBrowser?.Surface?.RequiresActivation, FocusedBrowser?.Surface?.IsProviderContent);
+        FocusedBrowser?.IsInteracting, FocusedBrowser?.IsBrowsing, FocusedBrowser?.Surface?.HasDialog, FocusedBrowser?.PresentedInPin, FocusedBrowser?.Surface?.RequiresActivation, FocusedBrowser?.Surface?.IsProviderContent, FocusedBrowser?.Surface?.SessionStopped, FocusedBrowser?.Surface?.NeedsRecovery);
     internal bool IsGuidePresentationReady(bool requireFocus)
     {
         if (disposed || applying || !presentationActive || frame is null || !IsLoaded) return false;
@@ -76,6 +76,8 @@ internal sealed partial class WidgetViewPresenter
                 ? (ControllerGuideHint[])[new(ControllerPrompt.View, "Interact with pin", ControllerButton.View)]
                 : browser.Surface?.HasDialog == true
                 ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Cancel", ControllerButton.B)]
+                : browser.Surface?.NeedsRecovery == true
+                ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Reopen page", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B)]
                 : browser.Surface?.IsToolbarFocused == true
                 ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.LeftStickMove, "Navigate"),
                     new(ControllerPrompt.LeftStickPress, "Page", ControllerButton.LeftStick)]
@@ -83,6 +85,9 @@ internal sealed partial class WidgetViewPresenter
                 ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
                     new(ControllerPrompt.A, "Open search", ControllerButton.A), new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger),
                     new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger), new(ControllerPrompt.B, "Back", ControllerButton.B)]
+                : browser.IsBrowsing && browser.Surface?.SessionStopped == true
+                ? (ControllerGuideHint[])[new(ControllerPrompt.X, "Restart webapp", ControllerButton.X),
+                    new(ControllerPrompt.LeftStickPress, "Website controls", ControllerButton.LeftStick), new(ControllerPrompt.B, "Back", ControllerButton.B)]
                 : browser.IsBrowsing
                 ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
                     new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.LeftBumper, "Previous", ControllerButton.LeftBumper),

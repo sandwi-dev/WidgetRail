@@ -100,6 +100,9 @@ public sealed partial class MainWindow
         }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-capture-discovery") is { } discoveryResult)
             RootFrame.Content = new Validation.CaptureDiscoveryValidationPage(discoveryResult, arguments.Contains("--full-discovery"));
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-background") is { } backgroundResult)
+            RootFrame.Content = new Validation.WebAppBackgroundValidationPage(backgroundResult,
+                Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."));
         else if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is { } mediaResult)
         {
             AppWindow.Resize(new(1400, 1050));

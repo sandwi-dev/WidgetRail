@@ -73,16 +73,18 @@ internal sealed partial class BrowserSurface
     private void Reload()
     {
         if (core is null || faulted) return;
+        if (sessionStopped)
+        { if (ChangeRunning is { } change) Run(async () => { if (!await change(this, true)) ShowStatus("This webapp could not restart. Stop another background session and try again."); }); return; }
         if (loading) core.Stop(); else core.Reload();
     }
     private void UpdateChrome()
     {
         UpdateChromeVisibility();
-        back.IsEnabled = !faulted && core?.CanGoBack == true;
-        forward.IsEnabled = !faulted && core?.CanGoForward == true;
+        back.IsEnabled = !faulted && !sessionStopped && core?.CanGoBack == true;
+        forward.IsEnabled = !faulted && !sessionStopped && core?.CanGoForward == true;
         reload.IsEnabled = core is not null && !faulted;
         reload.Content = new SymbolIcon(loading ? Symbol.Cancel : Symbol.Refresh);
-        var label = loading ? "Stop loading" : "Reload";
+        var label = sessionStopped ? "Restart webapp" : loading ? "Stop loading" : "Reload";
         AutomationProperties.SetName(reload, label); ToolTipService.SetToolTip(reload, label);
         progress.IsIndeterminate = (loading || core is null) && !faulted;
         progress.Visibility = progress.IsIndeterminate ? Visibility.Visible : Visibility.Collapsed;

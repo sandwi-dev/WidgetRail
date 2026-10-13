@@ -30,6 +30,7 @@ internal enum BridgeRequestKind
     EmbeddedMediaPlaybackEvent,
     RestartWidget,
     SetWidgetLifecycle,
+    BrowserRetention,
     Action,
     PrepareIntent,
     CommitIntent,
@@ -78,7 +79,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
-            BridgeRequestKind.SetWidgetLifecycle or
+            BridgeRequestKind.SetWidgetLifecycle or BridgeRequestKind.BrowserRetention or
             BridgeRequestKind.PrepareIntent or BridgeRequestKind.CommitIntent or BridgeRequestKind.CancelIntent or BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
             BridgeRequestKind.ConnectProtectedWifi or
@@ -100,7 +101,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
-            BridgeRequestKind.SetWidgetLifecycle or
+            BridgeRequestKind.SetWidgetLifecycle or BridgeRequestKind.BrowserRetention or
             BridgeRequestKind.PrepareIntent or BridgeRequestKind.CommitIntent or BridgeRequestKind.CancelIntent or BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
             BridgeRequestKind.ConnectProtectedWifi or
@@ -186,6 +187,8 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.SetWidgetLifecycle => Widget(
                     BridgeJson.FromElement<BridgeWidgetLifecycleRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.SetWidgetLifecycle),
+                BridgeMessageTypes.BrowserRetention => Widget(
+                    BridgeJson.FromElement<BridgeBrowserRetention>(request.Payload).WidgetId, BridgeRequestKind.BrowserRetention),
                 BridgeMessageTypes.Action => Widget(
                     BridgeJson.FromElement<BridgeActionRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.Action),

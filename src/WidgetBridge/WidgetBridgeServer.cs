@@ -757,6 +757,13 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 .ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.BrowserRetention:
+        {
+            var retained = await _registry.SetBrowserRetentionAsync(BridgeJson.FromElement<BridgeBrowserRetention>(request.Payload),
+                _sessionCancellation, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.BrowserRetention, request.RequestId, new BridgeBrowserRetentionResult(retained), cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.PinnedAction:
         {
             var pinnedRequest = BridgeJson.FromElement<BridgePinnedActionRequest>(request.Payload);

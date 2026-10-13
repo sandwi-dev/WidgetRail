@@ -17,17 +17,25 @@ internal sealed partial class BrowserSurface
     private async Task ShowSiteControlsAsync()
     {
         if (!CanRequestSiteDecision || HasDialog || siteControlsPending || Choose is not { } choose || core is not { } current) return;
-        var origin = BrowserSiteIdentity.Origin(current.Source);
+        var origin = BrowserSiteIdentity.Origin(sessionStopped ? document.Url : current.Source);
         if (origin is null) { ShowStatus("Open an HTTPS website to manage its permissions."); return; }
         siteControlsPending = true;
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
         try
         {
             var selection = await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}",
-                (HostDialogChoice[])[new("permissions", "Website permissions"), new("clear", "Clear website data for this profile")], token);
+                (HostDialogChoice[])[new("permissions", "Website permissions"), new("clear", "Clear website data for this profile"),
+                    new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)")], token);
             token.ThrowIfCancellationRequested();
             if (!CanRequestSiteDecision || !ReferenceEquals(core, current)) return;
             BrowserProfileChange? change = null;
+            if (selection == "session" && ChangeRunning is { } run)
+            {
+                if (sessionStopped) await run(this, true);
+                else if (await choose(this, "Stop webapp session?", "This ends calls and connections. Saved login data is kept.",
+                    (HostDialogChoice[])[new("stop", "Stop session")], token) == "stop") await run(this, false);
+                return;
+            }
             if (selection == "permissions")
             {
                 var permissions = (await current.Profile.GetNonDefaultPermissionSettingsAsync()).Where(p =>
@@ -89,6 +97,6 @@ internal sealed partial class BrowserSurface
         profileChanging = false;
         SetPresentation(visible, presentationInputRequested);
         if (!retired) ShowStatus(null);
-        if (!pendingNavigation && !retired && !faulted && core is { } current && WidgetProtocol.WebBrowserDocument.IsWebUrl(url)) current.Navigate(url);
+        if (!pendingNavigation && !sessionStopped && !retired && !faulted && core is { } current && WidgetProtocol.WebBrowserDocument.IsWebUrl(url)) current.Navigate(url);
     }
 }

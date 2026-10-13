@@ -38,6 +38,7 @@ public sealed record WebBrowserOptions
     {
         Chrome = BrowserChrome.OnDemand,
         Storage = BrowserStorage.Persistent,
+        Background = BrowserBackgroundMode.KeepAlive,
         ExternalLinks = BrowserExternalLinkMode.OtherOriginsInWindows,
     };
 }

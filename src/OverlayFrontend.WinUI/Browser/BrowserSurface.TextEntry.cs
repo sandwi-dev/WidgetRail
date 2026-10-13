@@ -82,7 +82,7 @@ internal sealed partial class BrowserSurface
                 if (destination is null) { ShowStatus("Enter a valid web address or a shorter Google search."); return; }
                 editDialog = null; // NavigationStarting revokes other pending edits.
                 toolbarFocused = false;
-                current.Navigate(destination);
+                await NavigateRequestedAsync(destination);
             }
             else
             {

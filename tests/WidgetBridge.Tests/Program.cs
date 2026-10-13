@@ -84,6 +84,8 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Background browser retention is bounded worker-scoped and never grants input", BridgeClientRegistryScenarios.BackgroundBrowserRetention),
+    ("Background browser retention crosses the real pipe without reviving workers", BridgeClientRegistryScenarios.BrowserRetentionPipe),
     ("Media player source crosses both pipes for inline and pinned projections", MediaPlayerScenarios.ThroughPipes),
     ("Media player resolves sealed assets URLs and authorized local files", MediaPlayerScenarios.Sources),
     ("Media player source resolution rejects forged and stale declarations", MediaPlayerScenarios.Authority),

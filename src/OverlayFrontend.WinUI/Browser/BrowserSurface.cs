@@ -15,7 +15,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 {
     private readonly WebView2 web = new() { IsTabStop = false, XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Disabled };
     private readonly Grid viewport = new();
-    private readonly TextBlock welcome = new() { Text = "Search Google or open a URL, bookmark, or recent page.\nPress LS for the toolbar, or Y to search or enter an address.",
+    private const string EmptyBrowserMessage = "Search Google or open a URL, bookmark, or recent page.\nPress LS for the toolbar, or Y to search or enter an address.";
+    private readonly TextBlock welcome = new() { Text = EmptyBrowserMessage,
         TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         Margin = new(32), MaxWidth = 460, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new(12, 8, 12, 8), Visibility = Visibility.Collapsed };
@@ -70,6 +71,11 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal void CloseControllerForValidation() => web.Close();
     internal List<string> FixturePointerTrace { get; } = [];
     internal async Task<string> EvaluateFixtureAsync(string script) => await core!.ExecuteScriptAsync(script);
+    internal async Task CrashRendererFixtureAsync()
+    {
+        try { await core!.CallDevToolsProtocolMethodAsync("Page.crash", "{}").AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
+        catch (Exception) { /* A crashed renderer cannot complete its command reply. */ }
+    }
     internal async Task EvaluateGestureFixtureAsync(string script)
     {
         using var result = JsonDocument.Parse(await core!.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
@@ -120,10 +126,12 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         { ShowStatus("The browser navigation changed without a new request."); return; }
         if (document.InteractionMode != next.InteractionMode)
         { CancelPointer(); interacting = browsing = false; }
+        var newNavigation = next.NavigationId > document.NavigationId;
         document = next;
         UpdateChrome();
         AutomationProperties.SetName(web, document.AccessibleName);
-        NavigatePending();
+        if (sessionStopped && newNavigation) Run(() => NavigateRequestedAsync(next.Url));
+        else NavigatePending();
         RefreshInteractionFocus();
     }
 
@@ -160,6 +168,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             CancelEdit(); DrawCursor(); UpdateChrome();
             ShowStatus("The browser could not resume. Use Reload widget to reopen it.");
             Diagnostics.FrontendFailureLog.Current.Write("browser-presentation", error);
+            ActivityChanged?.Invoke();
         }
         RefreshInteractionFocus();
         if (wasInteracting != interacting) InteractionChanged?.Invoke();
@@ -181,6 +190,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 
     internal void Enter()
     {
+        if (visible && presentationInputRequested && faulted && Recover is { } recover) { Run(() => recover(this)); return; }
         if (!input) return;
         if (core is null || faulted || HasDialog) return;
         toolbarFocused = false; interacting = browsing = true;
@@ -240,8 +250,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             CancelPointer(); interacting = browsing = false; DrawCursor(); ExitInteraction?.Invoke();
             InteractionChanged?.Invoke();
         }
-        else if (button == ControllerButton.LeftBumper && core?.CanGoBack == true) core.GoBack();
-        else if (button == ControllerButton.RightBumper && core?.CanGoForward == true) core.GoForward();
+        else if (button == ControllerButton.LeftBumper && !sessionStopped && core?.CanGoBack == true) core.GoBack();
+        else if (button == ControllerButton.RightBumper && !sessionStopped && core?.CanGoForward == true) core.GoForward();
         else if (button == ControllerButton.X) Reload();
         else if (button == ControllerButton.Y) Run(() => EditAsync(addressEntry: true));
         else if (button == ControllerButton.RightStick) Run(() => EditAsync(addressEntry: false));
@@ -354,7 +364,21 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
             core.BasicAuthenticationRequested += (_, args) => args.Cancel = true;
             core.ServerCertificateErrorDetected += (_, args) => args.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
-            core.ProcessFailed += (_, _) => { faulted = true; CancelEdit(); browsing = false; DrawCursor(); ShowStatus("The browser stopped. Use Reload widget to restart it."); UpdateChrome(); };
+            core.ScriptDialogOpening += (_, args) =>
+            { if (profileChanging && args.Kind == CoreWebView2ScriptDialogKind.Beforeunload) args.Accept(); };
+            core.ProcessFailed += (_, args) =>
+            {
+                Diagnostics.FrontendFailureLog.Current.Write("browser-process-failed", null, $"widget={widgetId} kind={args.ProcessFailedKind}");
+                if (!RequiresPageRecovery(args.ProcessFailedKind))
+                {
+                    if (args.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+                        ShowStatus("The page is not responding. Reload it or stop its session from the tray menu.");
+                    return;
+                }
+                faulted = true; CancelEdit(); CancelSiteDecisions(); browsing = interacting = false; DrawCursor();
+                ShowStatus("The page disconnected. Press A to reopen it."); UpdateChrome();
+                ActivityChanged?.Invoke();
+            };
             ConfigureProviderDocument(env);
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
             if (!IsProviderContent && FixturePage is not null)
@@ -371,11 +395,11 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error)
-        { if (!retired) { faulted = true; ShowStatus("The browser could not start. Use Reload widget to retry."); UpdateChrome(); Diagnostics.FrontendFailureLog.Current.Write("browser-start", error); } }
+        { if (!retired) { faulted = true; ShowStatus("The browser could not start. Use Restart widget to retry."); UpdateChrome(); Diagnostics.FrontendFailureLog.Current.Write("browser-start", error); ActivityChanged?.Invoke(); } }
     }
     private void NavigatePending()
     {
-        if (!visible || retired || faulted || profileChanging || core is null || appliedNavigation >= document.NavigationId) return;
+        if (!visible || retired || faulted || profileChanging || sessionStopped || core is null || appliedNavigation >= document.NavigationId) return;
         appliedNavigation = document.NavigationId; NavigationCount++;
         core.Navigate(document.Url);
     }
@@ -451,6 +475,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     {
         if (retired) return; SetPresentation(false, false); retired = true; lifetime.Cancel();
         Choose = null;
+        ChangeRunning = null; ActivityChanged = null; Recover = null;
         chromeTheme?.Dispose(); chromeTheme = null;
         if (dragReceiver is not null)
         {

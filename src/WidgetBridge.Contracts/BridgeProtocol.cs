@@ -66,6 +66,7 @@ internal static class BridgeMessageTypes
     public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
     public const string RestartWidget = "restart-widget";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
+    public const string BrowserRetention = "browser-retention";
     public const string Snapshot = "snapshot";
     public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";

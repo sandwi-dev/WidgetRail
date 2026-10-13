@@ -37,9 +37,15 @@
             </Border>
             <Grid x:Name="MediaParking" Visibility="Collapsed" IsHitTestVisible="False"
                   AutomationProperties.AccessibilityView="Raw" />
-            <ContentControl x:Name="TrayHelp" Grid.Row="2" IsTabStop="False"
+            <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ContentControl x:Name="TrayHelp" IsTabStop="False"
                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
                             AutomationProperties.AutomationId="Overlay.TrayHelp" />
+                <TextBlock x:Name="WebappStatus" Grid.Column="1" MaxWidth="240" VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" Visibility="Collapsed"
+                           AutomationProperties.AutomationId="Overlay.WebappStatus" AutomationProperties.LiveSetting="Polite" />
+            </Grid>
             <Grid x:Name="RailRegion" Grid.Row="4" VerticalAlignment="Center" ColumnSpacing="14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="LeadingStatusColumn" Width="0" />

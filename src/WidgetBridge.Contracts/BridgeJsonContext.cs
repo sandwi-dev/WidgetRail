@@ -38,6 +38,8 @@ namespace WidgetRail.WidgetBridge;
 [JsonSerializable(typeof(BridgeEmbeddedMediaBundle))]
 [JsonSerializable(typeof(BridgeEmbeddedMediaPlaybackEventRequest))]
 [JsonSerializable(typeof(BridgeWidgetLifecycleRequest))]
+[JsonSerializable(typeof(BridgeBrowserRetention))]
+[JsonSerializable(typeof(BridgeBrowserRetentionResult))]
 [JsonSerializable(typeof(BridgePresentationEstablishment))]
 [JsonSerializable(typeof(BridgePinnedActionRequest))]
 [JsonSerializable(typeof(BridgePinnedArtworkRequest))]

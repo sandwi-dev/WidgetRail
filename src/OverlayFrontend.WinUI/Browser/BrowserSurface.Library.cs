@@ -87,7 +87,7 @@ internal sealed partial class BrowserSurface
             if (!input || retired) return;
             if (dialog.ClearHistory) { pendingVisit = null; await library.ClearHistoryAsync(lifetime.Token); }
             if (input && !retired && dialog.SelectedUrl is { } url && WidgetProtocol.WebBrowserDocument.IsWebUrl(url))
-            { libraryDialog = null; toolbarFocused = false; browsing = interacting = true; core?.Navigate(url); }
+            { libraryDialog = null; toolbarFocused = false; browsing = interacting = true; await NavigateRequestedAsync(url); }
         }
         finally
         {

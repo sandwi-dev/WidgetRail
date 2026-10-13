@@ -17,6 +17,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         internal BrowserSurface Surface = surface;
         internal BrowserSlot? Slot;
         internal long LastUse;
+        internal bool Retained;
+        internal bool RetentionAttempted;
+        internal readonly SemaphoreSlim SessionGate = new(1, 1);
     }
     private readonly Session session;
     private readonly Grid parking;
@@ -24,6 +27,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private readonly Dictionary<string, BrowserLibraryStore> libraries = new(StringComparer.Ordinal);
     private readonly Dictionary<BrowserSlot, Binding> slots = [];
     private readonly Dictionary<(string Widget, string Document), Entry> entries = [];
+    private readonly HashSet<(string Widget, string Document)> retiringEntries = [];
+    private readonly HashSet<Task> retirements = [];
     private Task<CoreWebView2Environment>? environment;
     private Task? reconciliation;
     private bool dirty, retired;
@@ -65,6 +70,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             await pending;
             if (ReferenceEquals(pending, reconciliation)) break;
         }
+        if (retirements.Count != 0) await Task.WhenAll(retirements.ToArray());
         // If a native transfer failed before detachment, close that controller
         // before the old window goes away rather than retain a poisoned handle.
         foreach (var pair in entries.ToArray())
@@ -96,8 +102,12 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             {
                 dirty = false;
                 foreach (var pair in entries.ToArray())
+                {
                     if (!session.IsWebBrowserSessionCurrent(pair.Value.Authority, pair.Key.Document))
                         await RetireAsync(pair.Key, pair.Value);
+                    else if (pair.Value.Retained && !pair.Value.Surface.KeepsBackgroundSession)
+                        await SynchronizeRetentionAsync(pair.Key, pair.Value);
+                }
                 foreach (var group in slots.Values.Where(binding => binding.Slot.CanDisplay &&
                     session.IsWebBrowserSessionCurrent(binding.Authority, binding.Document.Id)).ToArray()
                     .GroupBy(binding => (Widget: binding.Authority.WidgetId, Document: binding.Document.Id)))
@@ -111,11 +121,12 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                         await RetireAsync(group.Key, existing);
                     if (!entries.TryGetValue(group.Key, out var entry))
                     {
+                        if (retiringEntries.Contains(group.Key)) continue;
                         if (changingProfiles.Contains(BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document))) continue;
-                        if (entries.Count >= 4)
+                        if (entries.Count + retiringEntries.Count >= 4)
                         {
-                            var oldest = entries.Where(pair => pair.Value.Slot?.CanDisplay != true).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
-                            if (oldest.Value is null) { chosen.Slot.SetMessage("Close another browser page before opening this one."); continue; }
+                            var oldest = entries.Where(pair => !pair.Value.Retained && !pair.Value.Surface.BackgroundFaulted && pair.Value.Slot?.CanDisplay != true).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
+                            if (oldest.Value is null) { chosen.Slot.SetMessage(retiringEntries.Count > 0 ? "Closing the previous browser session…" : "Stop another webapp session before opening this one."); continue; }
                             await RetireAsync(oldest.Key, oldest.Value);
                         }
                         IReadOnlyList<string>? providerHtml = null;
@@ -145,6 +156,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
                             Choose = (source, title, message, choices, token) => Choose?.Invoke(source, title, message, choices, token) ?? Task.FromResult<string?>(null),
                             ChangeProfile = ChangeProfileAsync,
+                            ChangeRunning = ChangeRunningAsync,
+                            Recover = RecoverAsync,
+                            ActivityChanged = () => { Refresh(); ActivityChanged?.Invoke(); },
                             CheckProviderAuthority = chosen.Document.ProviderDocument is null ? null : async token =>
                                 { _ = await session.ResolveProviderDocumentAsync(chosen.Authority, chosen.Document, token); },
                         };
@@ -152,6 +166,13 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     }
                     entry.LastUse = Environment.TickCount64;
                     entry.Surface.Update(chosen.Document);
+                    if (!await SynchronizeRetentionAsync(group.Key, entry))
+                    {
+                        chosen.Slot.SetMessage("A background webapp cannot start right now. Stop another webapp session and try again.");
+                        await RetireAsync(group.Key, entry);
+                        continue;
+                    }
+                    if (!ReferenceEquals(entries.GetValueOrDefault(group.Key), entry)) continue;
                     if (!ReferenceEquals(entry.Slot, chosen.Slot) || !ReferenceEquals(entry.Surface.Parent, chosen.Slot.Host))
                     {
                         entry.Slot?.SetSurface(null);
@@ -161,7 +182,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                         entry.Slot = chosen.Slot;
                     }
                     var current = slots.GetValueOrDefault(chosen.Slot);
-                    if (current is not null && current.Slot.CanDisplay && session.IsWebBrowserSessionCurrent(current.Authority, current.Document.Id))
+                    if (ReferenceEquals(entries.GetValueOrDefault(group.Key), entry) && current is not null && current.Slot.CanDisplay && session.IsWebBrowserSessionCurrent(current.Authority, current.Document.Id))
                     {
                         chosen.Slot.SetSurface(entry.Surface);
                         entry.Surface.SetPresentation(true, chosen.Slot.AcceptsInput);
@@ -218,13 +239,42 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         }
         finally { native.Loaded -= Loaded; }
     }
-    private async Task RetireAsync((string Widget, string Document) key, Entry entry)
+    private Task RetireAsync((string Widget, string Document) key, Entry entry)
     {
+        if (!ReferenceEquals(entries.GetValueOrDefault(key), entry) || !retiringEntries.Add(key)) return Task.CompletedTask;
         entries.Remove(key); entry.Slot?.SetSurface(null);
-        await entry.Surface.DisposeAsync();
-        if (!entries.Values.Any(other => other.Surface.ProfileName == entry.Surface.ProfileName) && libraries.Remove(entry.Surface.ProfileName, out var library))
-            await library.DrainAsync();
-        if (entry.Surface.Parent is Panel parent) parent.Children.Remove(entry.Surface);
+        var task = RetireCoreAsync(key, entry);
+        retirements.RemoveWhere(retirement => retirement.IsCompleted);
+        retirements.Add(task);
+        return task;
+    }
+
+    private async Task RetireCoreAsync((string Widget, string Document) key, Entry entry)
+    {
+        try
+        {
+            await entry.SessionGate.WaitAsync();
+            try
+            {
+                await entry.Surface.DisposeAsync();
+                if (entry.Retained || entry.RetentionAttempted)
+                {
+                    try
+                    {
+                        using var release = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                        await session.SetWebBrowserRetentionAsync(entry.Authority, key.Document, false, release.Token);
+                    }
+                    catch (Exception error) when (error is not OutOfMemoryException)
+                    { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("browser-retention-release", error); }
+                }
+            }
+            finally { entry.SessionGate.Release(); }
+            ActivityChanged?.Invoke();
+            if (!entries.Values.Any(other => other.Surface.ProfileName == entry.Surface.ProfileName) && libraries.Remove(entry.Surface.ProfileName, out var library))
+                await library.DrainAsync();
+            if (entry.Surface.Parent is Panel parent) parent.Children.Remove(entry.Surface);
+        }
+        finally { retiringEntries.Remove(key); if (!retired) parking.DispatcherQueue.TryEnqueue(Refresh); }
     }
     public async ValueTask DisposeAsync()
     {
@@ -233,6 +283,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         foreach (var slot in slots.Keys) { slot.PlacementChanged = null; slot.SetSurface(null); } slots.Clear();
         if (reconciliation is not null) await reconciliation;
         foreach (var pair in entries.ToArray()) await RetireAsync(pair.Key, pair.Value);
+        if (retirements.Count != 0) await Task.WhenAll(retirements.ToArray());
         lifetime.Dispose();
     }
 }

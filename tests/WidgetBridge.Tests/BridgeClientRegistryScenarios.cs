@@ -6,7 +6,7 @@ using WidgetRail.WidgetSdk;
 using WidgetRail.PlatformBroker;
 using WidgetRail.PlatformDiagnostics;
 
-internal static class BridgeClientRegistryScenarios
+internal static partial class BridgeClientRegistryScenarios
 {
     internal static async Task DashboardRevalidatesCompatiblePublication()
     {

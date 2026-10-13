@@ -33,6 +33,7 @@ internal sealed partial class OverlayShellPage
         if (owner is null || mediaOwner is not null || retired) return;
         browserOwner = new(owner.Session, MediaParking, options.SettingsRoot)
         { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync };
+        browserOwner.ActivityChanged += RefreshWebappStatus;
         mediaOwner = new(owner.Session, MediaParking)
         {
             CreateStage = fullscreenLayer.CreateMediaStage,

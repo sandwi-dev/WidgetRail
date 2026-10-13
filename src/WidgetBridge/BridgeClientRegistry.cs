@@ -1986,6 +1986,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
     {
         var policy = WidgetResidencyPolicies.Resolve(registration.Configured.ResidencyPolicy);
         if (policy.Mode != WidgetResidencyMode.UnloadAfterIdle ||
+            HasBrowserRetention(registration) ||
             registration.HostLifecycle != WidgetLifecycleState.Background ||
             !registration.Client.IsRunning || policy.IdleDuration is not { } delay)
             return;
@@ -2074,6 +2075,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             try
             {
                 if (!registration.IsIdleUnloadCurrent(generation) ||
+                    HasBrowserRetention(registration) ||
                     !IsCurrent(registration) ||
                     registration.HostLifecycle != WidgetLifecycleState.Background ||
                     !registration.Client.IsRunning ||

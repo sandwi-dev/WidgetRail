@@ -203,6 +203,8 @@ internal sealed partial class OverlayShellPage
             trayMenu = menu;
             AddPinnedCommands(descriptor, (label, id, action) => Add(label, id, action,
                 id == "Pin.Interact" ? ControllerButton.View : null));
+            if (browserOwner?.HasRunningSession(descriptor.Id) == true)
+                Add("Stop webapp session", "Browser.Stop", () => StopBrowserWidgetAsync(descriptor));
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y);
             Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true);
             var quickActionStart = menu.Flyout.Items.Count;

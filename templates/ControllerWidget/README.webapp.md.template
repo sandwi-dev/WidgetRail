@@ -13,7 +13,7 @@ Edit the `WebBrowserDocument` in `src/{{WidgetName}}.cs`:
 - `Options.Storage`: `Persistent` retains website login between app runs; `Private` does not. Login is isolated from other widgets and desktop browsers.
 - `Options.ProfileKey`: bounded lowercase account key, for example `personal` or `work`. Different elements with the same widget/account/storage identity share website state. This is not a filesystem path.
 - `Options.ExternalLinks`: `OtherOriginsInWindows` keeps the app in its starting origin and opens user-selected offsite links externally. Use `InWidget` for a general browser.
-- `Options.Background`: `KeepAlive` requests bounded background residency for connected apps. The user retains control of sessions and permissions. This is not an authorization to use the microphone or camera.
+- `Options.Background`: the webapp preset uses `KeepAlive` for bounded background residency. The host holds the owning worker's residency automatically; no matching manifest residency setting is needed. Use `Automatic` for pages that can be unloaded while hidden. Users can stop a session from website controls or the tray menu. This is not an authorization to use the microphone or camera.
 - `BrowserInteractionMode.InteractOnFocus`: controller interaction starts on focus; B follows framework navigation. Use `ActivateToInteract` when the page sits among other controls.
 
 The manifest enables ordinary full-widget pinning. Website features and authentication depend on WebView2 compatibility and should be tested against the real site. Do not assume a successful page load proves voice, screen sharing, or account recovery.
