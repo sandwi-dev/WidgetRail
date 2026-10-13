@@ -31,10 +31,20 @@ Baseline: `e819cf80` on main. Work branch: `codex/webapp-framework` in the exist
 | Popup/authentication lifecycle | Generic native and full-shell paths verified | Opener/postMessage, shared profile, window.close, bounds, startup cancellation and pinned child ownership tested. Real Discord authentication remains unverified. |
 | Upload/download and context actions | Native and real-picker paths verified | File input identity/cancellation, download bytes/cancellation, native picker disposal, Menu/context/script dialogs and shell hide cancellation tested. Remaining expanded variants are listed below. |
 | Background activity and recovery | Native and full-shell paths verified | Worker-idle survival, native media across pin/unpin, four retained roots without eviction, Stop/capacity, visible crash state and owner-mediated recovery pass. Real calls remain user acceptance. |
-| Screen sharing and notifications | Partial native verification | Synthetic window selection/frame delivery/stopping from a pin passes; final foreground-return fix needs desktop validation. Native notification onshow verified; hidden-widget click activation is not implemented. |
+| Screen sharing and notifications | Chooser physically accepted; notification activation outstanding | User accepted candidate 06 after the A-click fix. Repeated sharing, audio toggling/cancellation and automatic pin return have native fixture coverage. Native notification onshow verified; hidden-widget click activation is not implemented. |
 | CLI webapp scaffold and Discord | Authoring foundation verified | Existing `wrail new widget --template webapp --url` extended; all six templates generate/build/test/preview/validate/package deterministically. Discord generated through CLI and builds. Checked-in consumer and candidate catalog added; real-site/pin checks pending. |
 | Documentation and gallery | Updated; final audit pending | Webapp gallery with profiles/background controls passes 13 checks. CLI/template/SDK/reference docs updated; six templates build/test/preview/validate/package deterministically. |
-| Complete candidate | Built and launched; final acceptance gates outstanding | Both editions pass catalog/integrity checks. Developer candidate from 953ffc09 launched on SDK Gallery; see exact path and pending gates below. |
+| Complete candidate | Candidate 06 launched; chooser accepted; broader gates outstanding | Both editions pass catalog/integrity checks. Candidate source 55cf7aeb; existing profile retained. Shutdown audit, remaining lifecycle checks and real Discord call/editing acceptance are separate. |
+
+## Current remaining work (after candidate 06 acceptance)
+
+- User confirmed the native sharing chooser now works. Do not carry the superseded picker-input/foreground-return blockers forward from the historical entries below.
+- Investigate the recorded shutdown placement error after renderer crash/recovery; establish clean disposal without trying to move an already-retired native controller. Cause is not yet confirmed.
+- Implement or explicitly defer notification activation that opens the owning hidden widget; native notification display alone is not that feature. Push while WidgetRail is closed remains a WebView2 limitation.
+- Finish the targeted lifecycle audit for expanded hide/profile changes, controller keyboard ownership and shared fullscreen regressions. Reconcile documentation and the current ledger with accumulated evidence.
+- Remaining account-dependent acceptance: persistent Discord login after restart, channel/rich-editor interaction, actual microphone/camera calls through hide/reopen/pin changes, reconnect and Stop session. The user's chooser acceptance does not claim these separate checks passed.
+- Broader webapp limitations remain explicit: Windows upload/save pickers require mouse/keyboard; controller editing inside embedded frames needs assessment; directory/File System Access workflows and unsupported authentication schemes use external-browser alternatives where possible. No Discord-specific adapter is planned.
+- SDK preset, CLI webapp template, Discord consumer, gallery and both candidate catalogs are implemented. No merge/push/release/installers/worktree cleanup is authorized by this status question.
 
 ## Baseline investigation
 
