@@ -32,6 +32,16 @@ internal static class WebBrowserPresentationTests
         foreach (var key in new[] { "", "../outside", "C:\\profile", "Work", new string('a', 65) })
             Check(!(webapp with { Options = webapp.Options with { ProfileKey = key } }).IsWellFormed());
         Check(!(webapp with { Options = webapp.Options with { Chrome = (BrowserChrome)99 } }).IsWellFormed());
+        Check(!(webapp with { Options = webapp.Options with { Popups = (BrowserPopupMode)99 } }).IsWellFormed());
+        Check(webapp.Options.Popups == BrowserPopupMode.Hosted);
+        foreach (var mode in Enum.GetValues<BrowserPopupMode>())
+        {
+            var popupView = new WidgetView(UI.WebBrowser(document with { Options = new() { Popups = mode } },
+                BrowserInteractionMode.InteractOnFocus, "popup.policy")).CreateSnapshot("example.app", 2);
+            Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(popupView)).Root.WebBrowser?.Options.Popups == mode);
+            if (mode != BrowserPopupMode.ReplacePage)
+                Check(ViewSnapshotValidator.Validate(popupView with { ProtocolVersion = 80 }).Any(error => error.Code == "feature_requires_version"));
+        }
         Check(!(webapp with { Url = "http://example.com" }).IsWellFormed());
         Check(!(attribution.Root.Children[0].WebBrowser! with { Options = WebBrowserOptions.WebApp }).IsWellFormed());
         Check(ViewSnapshotValidator.Validate(first with { ProtocolVersion = 65 }).Any(error => error.Code == "feature_requires_version"));

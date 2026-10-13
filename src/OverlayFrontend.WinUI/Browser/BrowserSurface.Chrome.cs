@@ -14,6 +14,13 @@ internal sealed partial class BrowserSurface
     private Button back = null!, forward = null!, reload = null!, addressButton = null!, bookmark = null!, bookmarks = null!, history = null!, external = null!;
     private readonly TextBlock zoomLabel = new() { Text = "100%", VerticalAlignment = VerticalAlignment.Center };
     private IDisposable? chromeTheme;
+    private readonly StackPanel compactCommands = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
+    private readonly ScrollViewer compactCommandScroll = new()
+    { HorizontalScrollMode = ScrollMode.Enabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        IsTabStop = false };
+    private Button? closePopupButton;
+    private bool compactHeader;
 
     private void CreateChrome()
     {
@@ -21,7 +28,7 @@ internal sealed partial class BrowserSurface
         RowDefinitions.Add(new() { Height = new(2) });
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
-        for (var i = 0; i < 10; ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
+        for (var i = 0; i < (isPopup ? 11 : 10); ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
         back = Add("Previous page", "Browser.Back", Symbol.Back, 0, () => { if (core?.CanGoBack == true) core.GoBack(); });
         forward = Add("Forward", "Browser.Forward", Symbol.Forward, 1, () => { if (core?.CanGoForward == true) core.GoForward(); });
         addressButton = Add("Search Google or enter a URL", "Browser.Address", Symbol.Globe, 2, () => Run(() => EditAsync(true)));
@@ -35,6 +42,8 @@ internal sealed partial class BrowserSurface
         history = Add("History", "Browser.History", Symbol.Clock, 7, () => Run(() => ShowLibraryAsync(false)));
         external = Add("Open externally", "Browser.External", Symbol.Link, 8, () => Run(OpenExternallyAsync));
         Add("Website permissions and data", "Browser.SiteControls", Symbol.Setting, 9, () => Run(ShowSiteControlsAsync));
+        if (isPopup) closePopupButton = Add("Close popup", "Browser.ClosePopup", Symbol.Cancel, 10, () => CloseRequested?.Invoke());
+        header.SizeChanged += (_, args) => ArrangeChrome(args.NewSize.Width);
         if (IsProviderContent)
         {
             // Restricted documents have no navigation chrome, including during
@@ -63,6 +72,7 @@ internal sealed partial class BrowserSurface
         {
             if (!input || HasDialog || XamlRoot is null || !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button)) return;
             CancelPointer(); toolbarFocused = true; rememberedToolbar = button; interacting = true; browsing = false;
+            button.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
             DrawCursor(); InteractionChanged?.Invoke();
         };
         button.Click += (_, _) => { if (input && !retired && !HasDialog) command(); };
@@ -98,6 +108,37 @@ internal sealed partial class BrowserSurface
         SetRow(header, onDemand ? 2 : 0);
         header.VerticalAlignment = VerticalAlignment.Top;
         header.Visibility = !IsProviderContent && (!onDemand || toolbarFocused) ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void ArrangeChrome(double width)
+    {
+        if (width <= 0 || IsProviderContent) return;
+        var compact = width < 640;
+        if (compact == compactHeader) return;
+        var focused = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as Button;
+        compactHeader = compact;
+        header.Children.Clear(); compactCommands.Children.Clear(); compactCommandScroll.Content = null;
+        header.ColumnDefinitions.Clear(); header.RowDefinitions.Clear();
+        if (compact)
+        {
+            header.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            header.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            header.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            SetRow(addressButton, 0); SetColumn(addressButton, 0); header.Children.Add(addressButton);
+            if (closePopupButton is { } close) { SetRow(close, 0); SetColumn(close, 1); header.Children.Add(close); }
+            foreach (var button in buttons.Where(b => b != addressButton && b != closePopupButton)) compactCommands.Children.Add(button);
+            compactCommandScroll.Content = compactCommands; SetRow(compactCommandScroll, 1); SetColumn(compactCommandScroll, 0);
+            SetColumnSpan(compactCommandScroll, 2); header.Children.Add(compactCommandScroll);
+        }
+        else
+        {
+            for (var i = 0; i < buttons.Count; i++)
+            {
+                header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
+                SetRow(buttons[i], 0); SetColumn(buttons[i], i); header.Children.Add(buttons[i]);
+            }
+        }
+        if (focused is not null && buttons.Contains(focused)) focused.Focus(FocusState.Keyboard);
     }
     private void UpdateBookmark()
     {

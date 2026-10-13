@@ -23,9 +23,9 @@ internal sealed partial class BrowserSurface
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
         try
         {
-            var selection = await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}",
-                (HostDialogChoice[])[new("permissions", "Website permissions"), new("clear", "Clear website data for this profile"),
-                    new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)")], token);
+            HostDialogChoice[] options = [new("permissions", "Website permissions"), new("clear", "Clear website data for this profile"),
+                .. (ChangeRunning is null ? Array.Empty<HostDialogChoice>() : [new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)")])];
+            var selection = await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", options, token);
             token.ThrowIfCancellationRequested();
             if (!CanRequestSiteDecision || !ReferenceEquals(core, current)) return;
             BrowserProfileChange? change = null;

@@ -36,8 +36,10 @@ Its address entry accepts up to 2,048 characters. Extended text entry requires
 protocol 66; existing SDK fields keep their 96-character default and all commits
 remain bounded by the individual control declaration.
 
-The host lazily creates an InPrivate profile isolated by widget, retains at most
-four browser controllers, and retires them with the worker/document lifetime.
+The host lazily creates a profile isolated by widget and account. Private storage
+is the ordinary-browser default; persistent storage is explicit. Up to four root
+browser sessions and two hosted popup controllers can be resident. The owner
+retires them with the worker/document lifetime.
 Main and pinned presentations borrow the same controller; crossing XAML roots
 waits for the native child's unload/load lifecycle. Native history and navigation
 survive compatible widget updates.
@@ -78,9 +80,13 @@ The address/text dialog consumes B to cancel and resumes interaction; preparatio
 is cancellable too, and late responses cannot reopen cancelled edits.
 
 Address and page text use the existing themed controller text-entry dialog.
-Page text supports ordinary editable input and textarea controls up to 2,048
-characters, including fields in open shadow roots. Passwords, cross-origin frame
-editors and rich contenteditable controls use the external browser for now. A
+Page text supports ordinary editable inputs, textareas, passwords and rich
+contenteditable controls, including fields in open shadow roots. Password entry
+starts empty and replaces the password without importing an existing secret.
+Rich editing inserts at the captured selection through native browser input,
+preserving surrounding formatting and mention nodes. Apply updates the field;
+Apply + Enter is an explicit, separate submission action. Cross-origin frame
+editing still requires compatibility validation. A
 native remote-object reference identifies the exact field. Commit checks that
 the document and focus are still current and the field remains connected and
 editable. Navigation, loss of input and worker retirement revoke the edit; a
@@ -92,13 +98,19 @@ The toolbar provides Back, Forward, Reload/Stop and Open externally. External
 opening uses the existing release-aware handoff, including returning from pinned
 interaction to the main foreground owner first.
 
-Site permissions, downloads, external URI schemes, basic authentication and bad
-certificates are denied. User-initiated HTTP(S) popups stay in the same browser;
-other popups are suppressed. Password saving, autofill, host objects, web messages,
-developer tools, script dialogs and default context menus are disabled. The host
+Supported website permissions use host prompts identifying the widget and exact
+HTTPS origin, with Allow once, Always allow and Block choices. Website controls
+revoke saved decisions or clear all website data for the selected profile.
+Downloads, external URI schemes, basic authentication and bad certificates remain
+denied at this implementation checkpoint. Popup routing is configured separately
+from ordinary link routing, as described below. Password saving, autofill, host
+objects, web messages, developer tools, script dialogs and default context menus
+remain disabled pending the file/dialog/context workstream. The host
 sends only fixed browser commands; page contents and scripting APIs never cross
 widget IPC. Use Open externally for unsupported site workflows. A browser process
-failure has a visible recovery message; Reload widget creates a new lifetime.
+failure has a visible recovery message; A reopens the page with a new controller.
+A failed authentication popup closes on recovery so the user can retry the action
+from its unchanged parent page.
 
 The browser is separate from the sealed embedded-media adapter and does not
 change that adapter's origin or resource restrictions. Synthetic checks cover
@@ -123,9 +135,8 @@ and associated labels), and reuses the existing validated read/commit path. Clic
 elsewhere does not reopen an older focused field. R3 remains available to reopen
 editing. Mouse clicks and keyboard Tab navigation do not trigger this dialog.
 
-Automatic editing retains the existing supported fields: ordinary text/search/URL/
-email/telephone inputs and text areas, up to 2,048 characters. Password fields,
-read-only controls, rich editors and cross-origin frames do not trigger it. New
+Automatic editing includes supported ordinary fields, passwords and rich editors.
+Read-only controls are excluded. Cross-origin frame editing remains unverified. New
 navigation, a newer gesture, input loss or cancelling preparation prevents late
 opening; replacing the captured field rejects its commit.
 
@@ -139,8 +150,10 @@ confirmation. Bookmarks are bounded to 100 and recent unique pages to 200.
 
 URL/title metadata persists under the active settings profile's
 `WebBrowser/Library/<widget-id-hash>.json`. Widgets cannot read this metadata via
-IPC. Restricted provider-attribution documents are excluded. Page cookies remain
-in the existing in-private WebView profile. Rapid URL updates are coalesced and
+IPC. Restricted provider-attribution documents are excluded. Named accounts and
+persistent profiles use separate library files; the original private/default
+profile keeps its existing library filename. Website cookies follow the declared
+Storage policy and never cross widget IPC. Rapid URL updates are coalesced and
 writes are serialized and replaced atomically. Failed or non-HTTP(S) pages are not
 recorded. `WebBrowserDocument.StartPage` (`about:blank`, protocol 73) loads no site
 and is neither recorded nor bookmarkable. Other `about:` URLs remain unsupported.
@@ -156,3 +169,81 @@ sources. An empty submission leaves the current page unchanged.
 
 LB is labelled Previous and RB Forward; they navigate browser history without
 changing B's ordinary widget/tray behavior.
+
+## Webapp configuration (protocol 81)
+
+```csharp
+var page = new WebBrowserDocument("webapp.session", 1,
+    "https://discord.com/app", "Discord")
+{
+    Options = WebBrowserOptions.WebApp with { ProfileKey = "personal" }
+};
+UI.WebBrowser(page, BrowserInteractionMode.InteractOnFocus, "webapp.page");
+```
+
+The CLI uses the same API:
+
+```text
+wrail new widget Discord --template webapp --url https://discord.com/app
+```
+
+`WebBrowserOptions.WebApp` is a preset, not a separate element or rendering engine.
+
+| Option | Ordinary default | Webapp preset |
+| --- | --- | --- |
+| Chrome | Toolbar | OnDemand (LS reveals controls without resizing the page) |
+| Storage | Private | Persistent |
+| ProfileKey | default | default |
+| Background | Automatic | KeepAlive |
+| ExternalLinks | InWidget | OtherOriginsInWindows |
+| Popups | ReplacePage | Hosted |
+
+Profile keys use 1–64 lowercase letters, digits, dots, dashes or underscores.
+They are account labels, never paths. Profiles are namespaced by widget identity
+and storage type. No widget receives cookies, tokens, native browser objects or
+website permission authority. Provider documents keep their restricted defaults.
+
+KeepAlive requests bounded host/worker retention even when the widget is hidden
+or parked. It does not grant background input or unrestricted widget execution.
+Stop session unloads the page, ending connections and calls while keeping saved
+login data. The tray reports running/disconnected sessions and offers Stop.
+Native fake-device media persistence is verified; real Discord calls and full-shell
+pin/recovery behavior remain acceptance checks.
+
+### Popups and authentication
+
+`ExternalLinks` controls ordinary user-initiated top-level link navigation. It is
+not an origin allowlist; redirects can cross origins for authentication.
+`Popups` independently controls new-window requests:
+
+- ReplacePage navigates the current page; it cannot preserve an opener relationship.
+- Hosted creates a bounded child in the same widget/account profile, preserving
+  `window.opener`, `postMessage` and `window.close`. Its toolbar always identifies
+  the origin and provides Close. B returns from child toolbar to child page, then
+  closes the child and returns to the existing parent.
+- SystemBrowser opens HTTP(S) popup URLs through the existing Windows handoff.
+  Windows does not share the hosted profile or opener; auth flows requiring them
+  should use Hosted.
+
+Each root can host one popup; the host permits at most two globally. Nested and
+non-user-initiated popups are rejected. Hosted about:blank startup is supported
+for authentication flows that navigate the new window afterwards. Non-web schemes
+remain unsupported. Closing, stopping, clearing a profile or retiring the root
+drains child initialization and native resources. Narrow toolbars keep address
+and Close visible with a controller-scrollable command row.
+
+### Screen sharing and notifications
+
+A visible interactive webapp can request screen sharing through the standard
+website API. WidgetRail asks for a one-shot confirmation identifying the widget
+and exact requesting HTTPS origin before allowing the Windows capture picker.
+No persistent screen-share permission is stored. Hidden pages cannot summon the
+picker. Closing the page cancels pending consent. The Windows picker and actual
+selected-window sharing remain compatibility/physical acceptance checks; the
+native cancellation path is verified without capturing any display.
+
+Notifications use WebView2's default native notification UI after website
+permission is granted. A local fixture verifies that the website receives its
+`show` event. Notification interaction and real Discord behavior still require
+validation. This supports document notifications while the webapp is resident;
+WebView2 does not support push notifications while WidgetRail is closed.

@@ -14,6 +14,9 @@ public enum BrowserBackgroundMode { Automatic = 0, KeepAlive = 1 }
 [JsonConverter(typeof(JsonStringEnumConverter<BrowserExternalLinkMode>))]
 public enum BrowserExternalLinkMode { InWidget = 0, OtherOriginsInWindows = 1 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<BrowserPopupMode>))]
+public enum BrowserPopupMode { ReplacePage = 0, Hosted = 1, SystemBrowser = 2 }
+
 /// <summary>
 /// Host-owned browser policy. These options never grant website permissions or
 /// expose browser data to the widget. ProfileKey is namespaced by widget identity.
@@ -27,9 +30,11 @@ public sealed record WebBrowserOptions
     public BrowserBackgroundMode Background { get; init; }
     /// <summary>OtherOriginsInWindows sends user-initiated offsite top-level links to Windows.</summary>
     public BrowserExternalLinkMode ExternalLinks { get; init; }
+    /// <summary>New-window requests are independent of ordinary link navigation.</summary>
+    public BrowserPopupMode Popups { get; init; }
 
     public bool IsWellFormed() => Enum.IsDefined(Chrome) && Enum.IsDefined(Storage) &&
-        Enum.IsDefined(Background) && Enum.IsDefined(ExternalLinks) &&
+        Enum.IsDefined(Background) && Enum.IsDefined(ExternalLinks) && Enum.IsDefined(Popups) &&
         ProfileKey is { Length: > 0 and <= 64 } &&
         ProfileKey.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '-' or '_');
 
@@ -39,6 +44,7 @@ public sealed record WebBrowserOptions
         Chrome = BrowserChrome.OnDemand,
         Storage = BrowserStorage.Persistent,
         Background = BrowserBackgroundMode.KeepAlive,
+        Popups = BrowserPopupMode.Hosted,
         ExternalLinks = BrowserExternalLinkMode.OtherOriginsInWindows,
     };
 }

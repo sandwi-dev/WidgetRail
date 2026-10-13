@@ -37,18 +37,18 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     private bool retired, visible, input, browsing, interacting, pointerPump, faulted;
     private double cursorX = .5, cursorY = .5, wheelX, wheelY;
     private bool cursorDirty;
-    internal bool IsInteracting => interacting;
-    internal bool IsBrowsing => browsing;
+    internal bool IsInteracting => popup?.IsInteracting ?? interacting;
+    internal bool IsBrowsing => popup?.IsBrowsing ?? browsing;
     internal bool IsReady => core is not null && !retired && !faulted;
-    internal bool IsNavigationInProgress => loading;
-    internal bool IsToolbarVisible => header.Visibility == Visibility.Visible;
+    internal bool IsNavigationInProgress => popup?.IsNavigationInProgress ?? loading;
+    internal bool IsToolbarVisible => popup?.IsToolbarVisible ?? (header.Visibility == Visibility.Visible);
     internal bool UsesProfile(WebBrowserDocument next) => BrowserProfileIdentity.SameProfile(document, next);
     internal string ProfileName => profile;
     internal double EnvironmentInitializationMilliseconds { get; private set; }
     internal double ControllerInitializationMilliseconds { get; private set; }
     internal double DocumentNavigationMilliseconds { get; private set; }
     private long navigationStarted;
-    internal object? CaptureZoomGesture(ControllerButton button) => input && browsing && !HasDialog && !loading &&
+    internal object? CaptureZoomGesture(ControllerButton button) => popup is { } child ? child.CaptureZoomGesture(button) : input && browsing && !HasDialog && !loading &&
         button is ControllerButton.LeftTrigger or ControllerButton.RightTrigger ? (this, pageEpoch, editGeneration, button) : null;
     internal string? CurrentUrl => core?.Source;
     internal string? CurrentTitle => core?.DocumentTitle;
@@ -92,8 +92,9 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 #endif
     }
 
-    internal BrowserSurface(string widgetId, WebBrowserDocument document, Func<Task<CoreWebView2Environment>> environment, IReadOnlyList<string>? providerHtml = null, BrowserLibraryStore? library = null)
+    internal BrowserSurface(string widgetId, WebBrowserDocument document, Func<Task<CoreWebView2Environment>> environment, IReadOnlyList<string>? providerHtml = null, BrowserLibraryStore? library = null, bool popup = false)
     {
+        isPopup = popup;
         this.library = library;
         this.widgetId = widgetId;
         this.document = document; this.environment = environment; this.providerHtml = providerHtml;
@@ -140,7 +141,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (retired) return;
         var wasInteracting = interacting;
         presentationInputRequested = acceptsInput;
-        visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging;
+        visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && popup is null;
+        popup?.SetPresentation(isVisible, acceptsInput);
         if (!visible) CancelSiteDecisions();
         if (!input) editorOwnedButtons.Clear();
         web.IsTabStop = input;
@@ -152,7 +154,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         {
             if (!faulted)
             {
-                web.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                web.Visibility = visible && popup is null ? Visibility.Visible : Visibility.Collapsed;
                 web.IsHitTestVisible = input;
                 if (visible && IsLoaded && initializing is null) initializing = InitializeAsync();
                 if (visible) { core?.Resume(); NavigatePending(); }
@@ -176,6 +178,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 
     internal void RefreshInteractionFocus()
     {
+        if (popup is { } child) { child.RefreshInteractionFocus(); return; }
         if (retired || HasDialog) return;
         var before = interacting;
         if (!input || IsInteractionFocused?.Invoke() != true)
@@ -190,6 +193,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 
     internal void Enter()
     {
+        if (popup is { } child) { child.Enter(); return; }
         if (visible && presentationInputRequested && faulted && Recover is { } recover) { Run(() => recover(this)); return; }
         if (!input) return;
         if (core is null || faulted || HasDialog) return;
@@ -201,12 +205,18 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal bool HandleButton(ControllerButton button, ControllerEventPhase phase)
     {
+        if (button == ControllerButton.B && backReleaseOwned)
+        { if (phase == ControllerEventPhase.Released) backReleaseOwned = false; return true; }
+        if (popup is { } child)
+        {
+            if (button == ControllerButton.B && !child.HasDialog && !child.IsToolbarFocused)
+            { if (phase == ControllerEventPhase.Pressed) { backReleaseOwned = true; Run(ClosePopupAsync); } return true; }
+            return child.HandleButton(button, phase);
+        }
         if (phase == ControllerEventPhase.Released && editorOwnedButtons.Remove(button)) return true;
         if (editDialog is null && editorOwnedButtons.Contains(button)) return true;
         if (button == ControllerButton.A && chromeOwnedA)
         { if (phase == ControllerEventPhase.Released) chromeOwnedA = false; return true; }
-        if (button == ControllerButton.B && backReleaseOwned)
-        { if (phase == ControllerEventPhase.Released) backReleaseOwned = false; return true; }
         if (!input || !interacting) return false;
         if (!HasDialog && phase == ControllerEventPhase.Pressed) UseControllerInput();
         if (editPending && button == ControllerButton.B && phase == ControllerEventPhase.Pressed)
@@ -222,7 +232,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             dialog.Handle(button, phase); return true;
         }
         if (HasDialog) return true;
-        if (button == ControllerButton.B && toolbarFocused && document.Options.Chrome == BrowserChrome.OnDemand)
+        if (button == ControllerButton.B && toolbarFocused && (isPopup || document.Options.Chrome == BrowserChrome.OnDemand))
         {
             if (phase == ControllerEventPhase.Pressed) { backReleaseOwned = true; ToggleToolbar(); }
             return true;
@@ -262,6 +272,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
+        if (popup is { } child) return child.MoveFocus(direction);
         if (!input || !interacting) return false;
         if (libraryDialog is { } libraryChoice) { libraryChoice.MoveFocus(direction); return true; }
         if (editDialog is { } dialog) { dialog.MoveFocus(direction); return true; }
@@ -273,6 +284,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal bool Scroll(double x, double y)
     {
+        if (popup is { } child) return child.Scroll(x, y);
         if (!input || !interacting || core is null) return false;
         if (HasDialog || toolbarFocused) return true;
         if (x == 0 && y == 0) return true;
@@ -282,6 +294,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     internal void MovePointer(double x, double y)
     {
+        if (popup is { } child) { child.MovePointer(x, y); return; }
         if (!input || !browsing || HasDialog || x == 0 && y == 0) return;
         UseControllerInput();
         cursorX = Math.Clamp(cursorX + x, .01, .99); cursorY = Math.Clamp(cursorY + y, .01, .99);
@@ -348,19 +361,10 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             // COM object. Capture our controller identity for stale-event checks.
             var permissionOwner = core;
             core.PermissionRequested += (_, args) => PermissionRequested(permissionOwner, args);
+            core.ScreenCaptureStarting += (_, args) => ScreenCaptureStarting(permissionOwner, args);
             core.DownloadStarting += (_, args) => { args.Cancel = true; args.Handled = true; ShowStatus("Use Open externally to download files."); };
-            core.NewWindowRequested += (_, args) =>
-            {
-                args.Handled = true;
-                if (input && args.IsUserInitiated && WebBrowserDocument.IsWebUrl(args.Uri))
-                {
-                    var url = args.Uri;
-                    if (IsProviderContent) Run(() => OpenProviderLinkAsync(url));
-                    else if (BrowserNavigationPolicy.OpenExternally(document, url))
-                    { if (OpenExternal is { } open) Run(async () => { await open(new Uri(url), lifetime.Token); }); }
-                    else core.Navigate(url);
-                }
-            };
+            core.NewWindowRequested += (_, args) => NewWindowRequested(args);
+            core.WindowCloseRequested += (_, _) => CloseRequested?.Invoke();
             core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
             core.BasicAuthenticationRequested += (_, args) => args.Cancel = true;
             core.ServerCertificateErrorDetected += (_, args) => args.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
@@ -399,7 +403,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     private void NavigatePending()
     {
-        if (!visible || retired || faulted || profileChanging || sessionStopped || core is null || appliedNavigation >= document.NavigationId) return;
+        if (isPopup || !visible || retired || faulted || profileChanging || sessionStopped || core is null || appliedNavigation >= document.NavigationId) return;
         appliedNavigation = document.NavigationId; NavigationCount++;
         core.Navigate(document.Url);
     }
@@ -408,7 +412,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (retired || faulted || core is null || !Uri.TryCreate(core.Source, UriKind.Absolute, out var uri)) return;
         var title = core.DocumentTitle ?? "";
         welcome.Visibility = core.Source == WebBrowserDocument.StartPage ? Visibility.Visible : Visibility.Collapsed;
-        address.Text = core.Source == WebBrowserDocument.StartPage ? "Search Google or enter a URL" : uri.IdnHost + (title.Length == 0 ? "" : " · " + title[..Math.Min(180, title.Length)]);
+        address.Text = isPopup ? (BrowserSiteIdentity.Origin(core.Source) ?? (core.Source == WebBrowserDocument.StartPage ? "New popup" : "Untrusted origin")) : core.Source == WebBrowserDocument.StartPage ? "Search Google or enter a URL" : uri.IdnHost + (title.Length == 0 ? "" : " · " + title[..Math.Min(180, title.Length)]);
         AutomationProperties.SetName(address, address.Text);
         UpdateBookmark();
     }
@@ -474,6 +478,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (retired) return; SetPresentation(false, false); retired = true; lifetime.Cancel();
+        if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());
+        await DrainPopupAsync();
         Choose = null;
         ChangeRunning = null; ActivityChanged = null; Recover = null;
         chromeTheme?.Dispose(); chromeTheme = null;

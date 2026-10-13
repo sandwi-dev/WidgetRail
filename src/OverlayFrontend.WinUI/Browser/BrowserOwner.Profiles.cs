@@ -7,14 +7,16 @@ internal sealed partial class BrowserOwner
     private async Task<bool> ChangeProfileAsync(BrowserSurface source, BrowserProfileChange change, CancellationToken token)
     {
         if (retired || !source.CanRequestSiteDecision || source.NativeProfile is not { } profile ||
-            !entries.Values.Any(entry => ReferenceEquals(entry.Surface, source)) || !changingProfiles.Add(source.ProfileName)) return false;
+            !entries.Values.Any(entry => entry.Surface.Owns(source)) || !changingProfiles.Add(source.ProfileName)) return false;
+        token = lifetime.Token;
         var parked = entries.Values.Select(entry => entry.Surface).Where(surface => surface.ProfileName == source.ProfileName)
             .Select(surface => (Surface: surface, Url: surface.CurrentUrl)).ToArray();
         try
         {
             // Stop every live document before mutating shared storage. Otherwise
             // another view could keep a microphone alive or rewrite login data.
-            foreach (var (surface, _) in parked) await surface.ParkForProfileChangeAsync(token);
+            foreach (var (surface, _) in parked)
+            { await surface.DrainPopupAsync(); await surface.ParkForProfileChangeAsync(token); }
             token.ThrowIfCancellationRequested();
             if (change.ClearData)
             {

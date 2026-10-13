@@ -12,6 +12,7 @@ internal sealed partial class BrowserSurface
     {
         get
         {
+            if (popup is { } child) return child.HasNativeKeyboardFocus;
             if (!input || web.XamlRoot is not { } root) return false;
             for (var node = FocusManager.GetFocusedElement(root) as DependencyObject;
                  node is not null; node = VisualTreeHelper.GetParent(node))

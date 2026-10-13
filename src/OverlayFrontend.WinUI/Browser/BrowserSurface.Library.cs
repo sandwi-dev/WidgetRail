@@ -12,7 +12,7 @@ internal sealed partial class BrowserSurface
     private bool toolbarFocused, chromeOwnedA;
     private Button? rememberedToolbar;
     private readonly Dictionary<Button, Action> chromeCommands = [];
-    internal bool IsToolbarFocused => toolbarFocused;
+    internal bool IsToolbarFocused => popup?.IsToolbarFocused ?? toolbarFocused;
 
     private void ToggleToolbar()
     {
@@ -29,9 +29,18 @@ internal sealed partial class BrowserSurface
     }
     private void MoveToolbar(FocusNavigationDirection direction)
     {
+        if (compactHeader && XamlRoot is { } root)
+        {
+            var focused = FocusManager.GetFocusedElement(root) as Button;
+            if (direction == FocusNavigationDirection.Up && focused != addressButton && focused != closePopupButton)
+            { addressButton.Focus(FocusState.Keyboard); return; }
+            if (direction == FocusNavigationDirection.Down && (focused == addressButton || focused == closePopupButton))
+            { compactCommands.Children.OfType<Button>().FirstOrDefault(button => button.IsEnabled)?.Focus(FocusState.Keyboard); return; }
+        }
         if (direction == FocusNavigationDirection.Down) { ToggleToolbar(); return; }
         if (direction is not (FocusNavigationDirection.Left or FocusNavigationDirection.Right)) return;
-        var available = buttons.Where(button => button.IsEnabled && button.Visibility == Visibility.Visible).ToArray();
+        var available = buttons.Where(button => button.IsEnabled && button.Visibility == Visibility.Visible)
+            .OrderBy(button => compactHeader ? button == addressButton ? 0 : button == closePopupButton ? 1 : 2 : 0).ToArray();
         var index = Array.IndexOf(available, FocusManager.GetFocusedElement(XamlRoot) as Button);
         var next = Math.Clamp(index + (direction == FocusNavigationDirection.Left ? -1 : 1), 0, available.Length - 1);
         rememberedToolbar = available[next];

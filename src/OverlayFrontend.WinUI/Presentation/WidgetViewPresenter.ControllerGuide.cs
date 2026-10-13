@@ -95,7 +95,7 @@ internal sealed partial class WidgetViewPresenter
                     new(ControllerPrompt.Y, "Address", ControllerButton.Y), new(ControllerPrompt.RightStickPress, "Type", ControllerButton.RightStick),
                     new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger),
                     new(ControllerPrompt.LeftStickPress, "Toolbar", ControllerButton.LeftStick), new(ControllerPrompt.Menu, "Open externally", ControllerButton.Menu),
-                    .. (browser.Surface?.RequiresActivation == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Leave interaction", ControllerButton.B)] : [])]
+                    .. (browser.Surface?.HasPopup == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Close popup", ControllerButton.B)] : browser.Surface?.RequiresActivation == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Leave interaction", ControllerButton.B)] : [])]
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Interact", ControllerButton.A),
                     new(ControllerPrompt.B, "Back", ControllerButton.B)];
         var focused = FocusedBinding();

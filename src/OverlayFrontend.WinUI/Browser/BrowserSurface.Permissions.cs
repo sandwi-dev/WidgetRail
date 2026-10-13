@@ -10,6 +10,16 @@ internal sealed partial class BrowserSurface
     private readonly SemaphoreSlim siteDecisionGate = new(1, 1);
     private CancellationTokenSource? siteDecisions;
     private int queuedSiteDecisions;
+    private readonly HashSet<Task> pendingSiteDecisions = [];
+
+    private void RunSiteDecision(Func<Task> decision)
+    {
+        var pending = ObserveAsync(decision);
+        if (pending.IsCompleted) return;
+        pendingSiteDecisions.Add(pending);
+        _ = ForgetAsync();
+        async Task ForgetAsync() { await pending; pendingSiteDecisions.Remove(pending); }
+    }
 
     private void CancelSiteDecisions()
     {
@@ -33,7 +43,7 @@ internal sealed partial class BrowserSurface
         var deferral = args.GetDeferral();
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
         queuedSiteDecisions++;
-        Run(async () =>
+        RunSiteDecision(async () =>
         {
             var admitted = false;
             try

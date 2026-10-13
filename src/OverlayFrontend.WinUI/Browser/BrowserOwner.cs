@@ -156,6 +156,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
                             Choose = (source, title, message, choices, token) => Choose?.Invoke(source, title, message, choices, token) ?? Task.FromResult<string?>(null),
                             ChangeProfile = ChangeProfileAsync,
+                            ReservePopup = ReservePopup,
+                            ReleasePopup = surface => popupOwners.Remove(surface),
                             ChangeRunning = ChangeRunningAsync,
                             Recover = RecoverAsync,
                             ActivityChanged = () => { Refresh(); ActivityChanged?.Invoke(); },

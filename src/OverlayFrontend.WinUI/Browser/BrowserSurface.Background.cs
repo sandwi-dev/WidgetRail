@@ -13,13 +13,14 @@ internal sealed partial class BrowserSurface
     internal bool KeepsBackgroundSession => RequestsBackgroundSession && !sessionStopped && !faulted;
     internal bool SessionStopped => sessionStopped;
     internal bool BackgroundFaulted => RequestsBackgroundSession && faulted && !sessionStopped;
-    internal bool NeedsRecovery => faulted;
+    internal bool NeedsRecovery => popup?.NeedsRecovery ?? faulted;
     internal string SessionName => document.AccessibleName;
     internal Func<BrowserSurface, bool, Task<bool>>? ChangeRunning { get; set; }
     internal Action? ActivityChanged { get; set; }
     internal Func<BrowserSurface, Task>? Recover { get; set; }
     internal async Task StopDocumentAsync(CancellationToken token)
     {
+        await DrainPopupAsync();
         try { await ParkForProfileChangeAsync(token); sessionStopped = true; }
         finally { profileChanging = false; SetPresentation(visible, presentationInputRequested); }
         welcome.Text = faulted ? "Webapp session stopped.\nPress A to reopen it." : "Webapp session stopped.\nPress X or choose Reload to open it again.";
