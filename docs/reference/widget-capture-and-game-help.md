@@ -15,7 +15,6 @@ For foreground capture, declare only `system.apps.windows.capture.v1`.
 No application list or window selection is required:
 
 ```csharp
-var supported = await HostServices.Capture.GetCapabilitiesAsync(cancellationToken);
 var options = new CaptureSessionRequest {
     Recording = new RecordingOptions(1280, 720, 15, 3_000_000, 10),
     Preparation = new CapturePreparation(3),
@@ -43,13 +42,26 @@ Audio defaults to None. When advertised, Application audio includes the captured
 process and its child processes, encoded as 48 kHz stereo AAC at 128 kbps.
 System-wide and microphone audio are not supported. Cursor inclusion is configurable.
 
-Encoder discovery runs once on demand, off the UI thread, without recording a
-screen or writing a file. Startup and screenshot-only requests do not initialize
-video encoders. Each envelope checks its minimum and maximum bitrate through the
+Use `GetCapabilitiesAsync(token)` for the complete settings catalog. For a
+recording action, `ValidateAsync` and `StartAsync` discover only a supporting
+profile and the requested audio mode. `GetRecordingCapabilitiesAsync(recording,
+token)` exposes that narrower discovery to widget authors; passing null finds the
+recommended silent profile without surveying the rest of the catalog. Capture
+Library uses this to retain its preferred 1080p/30 hardware default and supported
+fallbacks. No saved configuration is silently replaced.
+
+Encoder discovery runs on demand, off the UI thread, without recording a screen
+or writing a file. Results are shared by profile and audio mode across concurrent
+callers and the full catalog. Startup and screenshot-only requests do not initialize
+video encoders; silent recording does not initialize audio. Each envelope checks its minimum and maximum bitrate through the
 actual Media Foundation pipeline. The hardware path verifies the selected MFT's
 hardware identity and fails if Windows chose software. Capture startup initializes
 the exact requested output again; a runtime failure never silently changes encoder
-or quality. Discovery is cached for the frontend session.
+or quality. Discovery is cached for the frontend session and discarded on restart;
+runtime encoder initialization still detects device/driver failures. The host capture queue continues serving
+requests while catalog discovery runs; caller cancellation cannot cancel a shared
+probe needed by another widget. Slow native probes are recorded with profile,
+audio mode, and elapsed time, without application names or media content.
 
 Audio discovery initializes process loopback against the host's own process only;
 it does not capture another application's audio or retain PCM. Application audio

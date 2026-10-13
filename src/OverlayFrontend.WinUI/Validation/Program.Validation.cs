@@ -10,6 +10,7 @@ internal static partial class Program
         if (Shell.FrontendArguments.Value(arguments, "--validate-permission-dialog") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-context-capture") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-capture-discovery") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is not null) { fixture = true; return; }
         string[] early = ["--validate-controller", "--replay-controller", "--validate-window-preview",
             "--validate-shell-status", "--validate-production-shell", "--validate-gamepad-boundary",

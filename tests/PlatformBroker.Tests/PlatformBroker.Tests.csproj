@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Capture\CaptureEncoderDiscovery.cs" Link="CaptureEncoderDiscovery.cs" />
   </ItemGroup>
 </Project>

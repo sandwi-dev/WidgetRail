@@ -12,7 +12,8 @@ public sealed partial class WidgetBridgeServer
         {
             case BridgeMessageTypes.CaptureCapabilities:
                 var capabilities = BridgeJson.FromElement<BridgeCaptureCapabilities>(request.Payload);
-                captures.SetCapabilities(capabilities.Capabilities, capabilities.EncodingProbed);
+                if (capabilities.DiscoveryId is { } discoveryId) captures.SetRecordingCapabilities(discoveryId, capabilities.Capabilities);
+                else captures.SetCapabilities(capabilities.Capabilities, capabilities.EncodingProbed);
                 await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(true), token).ConfigureAwait(false);
                 break;
             case BridgeMessageTypes.TakeCapture:
@@ -22,7 +23,8 @@ public sealed partial class WidgetBridgeServer
                 if (pending is not null && (widget is null || !await CaptureAllowedAsync(pending.Widget, token).ConfigureAwait(false)))
                 { captures.Complete(new(pending.RequestId, 0, 0, 0, "permission_denied")); pending = null; }
                 await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureTake(pending, widget?.Id) {
-                    NeedsCapabilities = captures.NeedsCapabilities, NeedsEncodingCapabilities = captures.NeedsEncodingCapabilities }, token).ConfigureAwait(false);
+                    NeedsCapabilities = captures.NeedsCapabilities, NeedsEncodingCapabilities = captures.NeedsEncodingCapabilities,
+                    RecordingDiscoveries = captures.RecordingDiscoveries }, token).ConfigureAwait(false);
                 break;
             case BridgeMessageTypes.CheckCapture:
                 var check = BridgeJson.FromElement<BridgeCaptureReference>(request.Payload);

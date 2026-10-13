@@ -4,6 +4,12 @@ Capture Library is included in both installer editions. It keeps screenshots and
 configurable clips only when you explicitly save them. There is no automatic game
 recording, upload, or eviction of saved media.
 
+Recording checks only the saved video profile and its requested audio mode. With
+no saved profile, it selects the first verified recommendation (1080p/30 hardware
+preferred, with supported fallbacks). Opening Settings discovers the full catalog.
+Both paths share encoder results for the overlay process lifetime; recording does
+not need to initialize every quality/audio combination before confirmation.
+
 ## Controller flow
 
 - **Y / Take screenshot** uses the saved image settings (original resolution by default).

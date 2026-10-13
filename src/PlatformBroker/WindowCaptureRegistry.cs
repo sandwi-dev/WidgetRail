@@ -16,7 +16,7 @@ public sealed record HostCaptureCompletion(string RequestId, int Width, int Heig
 public sealed record HostCaptureAttachment(CaptureAttachment Attachment, string Path, [property: JsonIgnore] string RequiredCapability = PlatformCapabilities.WindowCaptureV1);
 
 /// <summary>Single-process capability owner. Every operation remains scoped to the original broker object.</summary>
-internal sealed class WindowCaptureRegistry(TimeProvider? time = null, long maximumBytes = CaptureLimits.MaximumTotalBytes) : IDisposable
+internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, long maximumBytes = CaptureLimits.MaximumTotalBytes) : IDisposable
 {
     internal const int CapabilityDiscoveryTimeoutSeconds = 15;
     internal static WindowCaptureRegistry Shared { get; } = new();
@@ -73,11 +73,11 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null, long maxi
             if (encodingProbed) encodingReady.TrySetResult(capabilities);
         }
     }
-    internal WindowCaptureTicket EnqueueConfigured(object owner, BrokerWidgetIdentity widget, CaptureSessionRequest options)
+    internal WindowCaptureTicket EnqueueConfigured(object owner, BrokerWidgetIdentity widget, CaptureSessionRequest options, CaptureCapabilities? verified = null)
     {
         lock (gate)
         {
-            var validation = capabilities.Validate(options);
+            var validation = (verified ?? capabilities).Validate(options);
             if (!validation.Supported) throw Error(validation.ErrorCode!);
             return Enqueue(owner, widget, options.Recording is null ? WindowCaptureKind.Screenshot : WindowCaptureKind.Video,
                 options.Screenshot?.MaximumWidth is null && options.Recording is null ? CaptureImageResolution.Original : CaptureImageResolution.Context, options);
@@ -375,6 +375,8 @@ internal sealed class WindowCaptureRegistry(TimeProvider? time = null, long maxi
         {
             if (disposed) return; disposed = true; sweeper?.Dispose();
             capabilityReady.TrySetCanceled(); encodingReady.TrySetCanceled();
+            foreach (var discovery in recordingDiscoveries.Values) discovery.Ready.TrySetCanceled();
+            recordingDiscoveries.Clear();
             foreach (var entry in entries.Values) Delete(entry.Request.OutputPath);
             entries.Clear();
             foreach (var path in pendingDeletes.Keys.ToArray()) Delete(path);

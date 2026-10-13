@@ -21,6 +21,13 @@ internal static class CaptureApplicationMetadataScenarios
         await session.PublishCaptureCapabilitiesAsync(basic, deadline.Token, encodingProbed: false);
         if (pending.IsCompleted) throw new Exception("Image-only support falsely completed an encoding query.");
         var full = basic with { RecordingProfiles = [new("hardware",1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)] };
+        var targeted = registry.GetRecordingCapabilitiesAsync(new(), deadline.Token);
+        next = await session.TakeCaptureAsync(deadline.Token);
+        var discovery = next.RecordingDiscoveries.Single();
+        if (discovery.Query.Recording is not null) throw new Exception("Recommended query changed across host pipe.");
+        await session.PublishCaptureCapabilitiesAsync(full, deadline.Token, discoveryId: discovery.Id);
+        if ((await targeted).RecordingProfiles.Count != 1 || pending.IsCompleted)
+            throw new Exception("Targeted discovery must complete independently of the full catalog.");
         await session.PublishCaptureCapabilitiesAsync(full, deadline.Token);
         if ((await pending).RecordingProfiles.Single().Encoder != CaptureEncoderMode.Hardware)
             throw new Exception("Probed encoder capabilities were lost across the host pipe.");

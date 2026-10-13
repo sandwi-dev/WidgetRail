@@ -7,17 +7,31 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
 {
     internal async Task<JsonElement> ExecuteAsync(string operation, JsonElement payload, CancellationToken token)
     {
-        if (operation is "capture.capabilities" or "capture.validate" or "capture.start")
+        if (operation == "capture.recording-capabilities")
         {
-            var includeEncoding = true;
-            if (operation == "capture.capabilities") BrokerCapabilityDomains.DemandEmptyPayload(payload);
-            else
+            return BrokerJson.ToElement(await WindowCaptureRegistry.Shared.GetRecordingCapabilitiesAsync(
+                BrokerJson.ParsePayload<CaptureRecordingQuery>(payload), token).ConfigureAwait(false));
+        }
+        if (operation == "capture.capabilities")
+        {
+            BrokerCapabilityDomains.DemandEmptyPayload(payload);
+            await WindowCaptureRegistry.Shared.GetCapabilitiesAsync(token).ConfigureAwait(false);
+        }
+        if (operation is "capture.validate" or "capture.start")
+        {
+            var options = BrokerJson.ParsePayload<CaptureSessionRequest>(payload);
+            if (!options.IsWellFormed())
             {
-                var options = BrokerJson.ParsePayload<CaptureSessionRequest>(payload);
-                if (!options.IsWellFormed()) return Execute(operation, payload, token);
-                includeEncoding = options.Recording is not null;
+                if (operation == "capture.validate") return BrokerJson.ToElement(new CaptureConfigurationValidation(false, "invalid_capture_options"));
+                throw new BrokerException("invalid_capture_options", "Invalid capture options.");
             }
-            await WindowCaptureRegistry.Shared.GetCapabilitiesAsync(token, includeEncoding).ConfigureAwait(false);
+            var captureRegistry = WindowCaptureRegistry.Shared;
+            var available = options.Recording is { } video
+                ? await captureRegistry.GetRecordingCapabilitiesAsync(new(video), token).ConfigureAwait(false)
+                : await captureRegistry.GetCapabilitiesAsync(token, includeEncoding: false).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            return operation == "capture.validate" ? BrokerJson.ToElement(available.Validate(options)) :
+                BrokerJson.ToElement(captureRegistry.EnqueueConfigured(this, identity, options, available));
         }
         if (!operation.StartsWith("capture-library.", StringComparison.Ordinal)) return Execute(operation, payload, token);
         if (library is null) throw new BrokerException("capture_library_unavailable", "Capture Library is unavailable.");

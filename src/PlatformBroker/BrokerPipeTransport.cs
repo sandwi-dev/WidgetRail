@@ -60,7 +60,7 @@ internal static class BrokerPipeRequestTimeoutPolicy
         // discovery in the frontend. Both pipe ends must outlive that bounded
         // registry wait; ordinary status/read/cancel requests remain short.
         if (request.CapabilityId == PlatformCapabilities.WindowCaptureV1 &&
-            request.Operation is "capture.capabilities" or "capture.validate" or "capture.start")
+            request.Operation is "capture.capabilities" or "capture.recording-capabilities" or "capture.validate" or "capture.start")
         {
             var deadline = TimeSpan.FromSeconds(WindowCaptureRegistry.CapabilityDiscoveryTimeoutSeconds + 5);
             return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;

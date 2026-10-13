@@ -93,6 +93,14 @@ public sealed record CaptureCapabilities(bool Available, IReadOnlyList<CaptureIm
 
 public sealed record CaptureConfigurationValidation(bool Supported, string? ErrorCode = null);
 
+/// <summary>Discover a recording profile without surveying unrelated formats. Null selects the recommended silent profile.</summary>
+public sealed record CaptureRecordingQuery(RecordingOptions? Recording = null)
+{
+    public bool IsWellFormed() => Recording is null || Recording.IsWellFormed();
+    // Duration affects admission, not encoder availability. Keep shared discovery keys stable.
+    public CaptureRecordingQuery Normalize() => new(Recording is { } recording ? recording with { MaximumDurationSeconds = 5 } : null);
+}
+
 /// <summary>Actual encoded output, independent of the widget that requested or retained it.</summary>
 public sealed record CaptureMediaProperties(int SourceWidth, int SourceHeight, int RequestedFramesPerSecond = 0,
     int EncodedFrames = 0, int MissedFrames = 0, CaptureEncoderMode? Encoder = null, CaptureAudioMode Audio = CaptureAudioMode.None)

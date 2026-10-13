@@ -12,6 +12,7 @@ public static class WidgetCaptureCapabilities
     public static WidgetCapabilityOperation<CaptureAttachmentRequest, WidgetCapabilityAcknowledgement> Discard { get; } = new(Permission, "capture.discard");
     public static WidgetCapabilityOperation<CaptureReadRequest, CaptureReadChunk> Read { get; } = new(Permission, "capture.read");
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, CaptureCapabilities> Capabilities { get; } = new(Permission, "capture.capabilities");
+    public static WidgetCapabilityOperation<CaptureRecordingQuery, CaptureCapabilities> RecordingCapabilities { get; } = new(Permission, "capture.recording-capabilities");
     public static WidgetCapabilityOperation<CaptureSessionRequest, CaptureConfigurationValidation> Validate { get; } = new(Permission, "capture.validate");
     public static WidgetCapabilityOperation<CaptureSessionRequest, WindowCaptureTicket> Start { get; } = new(Permission, "capture.start");
     public static WidgetCapabilityOperation<WindowCaptureTicket, WidgetCapabilityAcknowledgement> Stop { get; } = new(Permission, "capture.stop");
@@ -26,6 +27,15 @@ public sealed class WidgetCaptureService
     public async ValueTask<CaptureCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default)
     {
         var result = await client.InvokeAsync(WidgetCaptureCapabilities.Capabilities, new(), cancellationToken).ConfigureAwait(false);
+        if (result is null || !result.IsWellFormed()) throw Malformed();
+        return result with { ImageFormats = result.ImageFormats.ToArray(), RecordingProfiles = result.RecordingProfiles.ToArray(), AudioModes = result.AudioModes.ToArray() };
+    }
+    /// <summary>Discover only profiles supporting these recording settings. Null finds the recommended silent profile. Use GetCapabilitiesAsync for the complete settings catalog.</summary>
+    public async ValueTask<CaptureCapabilities> GetRecordingCapabilitiesAsync(RecordingOptions? recording = null, CancellationToken cancellationToken = default)
+    {
+        var query = new CaptureRecordingQuery(recording);
+        if (!query.IsWellFormed()) throw new ArgumentException("Invalid recording options.", nameof(recording));
+        var result = await client.InvokeAsync(WidgetCaptureCapabilities.RecordingCapabilities, query, cancellationToken).ConfigureAwait(false);
         if (result is null || !result.IsWellFormed()) throw Malformed();
         return result with { ImageFormats = result.ImageFormats.ToArray(), RecordingProfiles = result.RecordingProfiles.ToArray(), AudioModes = result.AudioModes.ToArray() };
     }

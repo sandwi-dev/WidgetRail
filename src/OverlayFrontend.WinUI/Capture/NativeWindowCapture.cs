@@ -8,55 +8,34 @@ namespace WidgetRail.OverlayFrontend.WinUI.Capture;
 
 internal static partial class NativeWindowCapture
 {
-    private static readonly Lazy<Task<CaptureCapabilities>> capabilities = new(() => Task.Run(ProbeCapabilities));
+    private static readonly CaptureEncoderDiscovery discovery = new(
+        () => Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported(), ProbeProfile, ProbeApplicationAudio);
+    private static readonly Lazy<Task<CaptureCapabilities>> capabilities = new(() => discovery.DiscoverAsync());
     internal static Task<CaptureCapabilities> GetCapabilitiesAsync() => capabilities.Value;
+    internal static Task<CaptureCapabilities> GetRecordingCapabilitiesAsync(CaptureRecordingQuery query) => discovery.DiscoverAsync(query);
     internal static CaptureCapabilities ImageCapabilities() => Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported()
         ? new(true, (CaptureImageFormat[])[CaptureImageFormat.Png], Array.Empty<CaptureRecordingProfile>(),
             (CaptureAudioMode[])[CaptureAudioMode.None], true, CaptureLimits.MaximumRecordingSeconds)
         : CaptureCapabilities.Unavailable;
-    private static unsafe CaptureCapabilities ProbeCapabilities()
+    private static unsafe bool ProbeApplicationAudio()
     {
-        if (!Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported()) return CaptureCapabilities.Unavailable;
-        CaptureRecordingProfile[] qualified = [
-            new("720p15-software", 1280, 720, 15, 1_000_000, 6_000_000, CaptureEncoderMode.Software),
-            new("720p15-hardware", 1280, 720, 15, 1_000_000, 6_000_000, CaptureEncoderMode.Hardware),
-            new("1080p30-hardware", 1920, 1080, 30, 3_000_000, 12_000_000, CaptureEncoderMode.Hardware),
-            new("1080p60-hardware", 1920, 1080, 60, 6_000_000, 20_000_000, CaptureEncoderMode.Hardware),
-            new("2160p30-hardware", 3840, 2160, 30, 12_000_000, 30_000_000, CaptureEncoderMode.Hardware)];
-        var supported = new List<CaptureRecordingProfile>();
-        var audioProbe = new EncodingProbe { Size = (uint)sizeof(EncodingProbe), Version = 1 };
-        var applicationAudio = ProbeAudio(ref audioProbe) >= 0 && audioProbe.Supported == 1;
-        foreach (var profile in qualified)
-        {
-            var options = new Options { Size = (uint)sizeof(Options), Version = 3, Kind = 2,
-                MaximumWidth = (uint)profile.MaximumWidth, MaximumHeight = (uint)profile.MaximumHeight,
-                FramesPerSecond = (uint)profile.FramesPerSecond, Bitrate = (uint)profile.MaximumBitrate,
-                DurationSeconds = 1, Encoder = (uint)profile.Encoder, MaximumBytes = CaptureLimits.MaximumAttachmentBytes };
-            var result = new EncodingProbe { Size = (uint)sizeof(EncodingProbe), Version = 1 };
-            if (ProbeEncoding(in options, ref result) < 0 || result.Supported != 1 ||
-                (result.Hardware == 1) != (profile.Encoder == CaptureEncoderMode.Hardware)) continue;
-            options.Bitrate = (uint)profile.MinimumBitrate;
-            result = new() { Size = (uint)sizeof(EncodingProbe), Version = 1 };
-            if (ProbeEncoding(in options, ref result) < 0 || result.Supported != 1 ||
-                (result.Hardware == 1) != (profile.Encoder == CaptureEncoderMode.Hardware)) continue;
-            supported.Add(profile);
-            // AudioModes applies to every advertised profile. Only offer audio
-            // when the AAC/video combination initializes across their bounds.
-            if (applicationAudio)
-            {
-                options.AudioMode = (uint)CaptureAudioMode.Application;
-                foreach (var bitrate in new[] { profile.MinimumBitrate, profile.MaximumBitrate })
-                {
-                    options.Bitrate = (uint)bitrate;
-                    result = new() { Size = (uint)sizeof(EncodingProbe), Version = 1 };
-                    if (ProbeEncoding(in options, ref result) < 0 || result.Supported != 1 ||
-                        (result.Hardware == 1) != (profile.Encoder == CaptureEncoderMode.Hardware)) applicationAudio = false;
-                }
-            }
-        }
-        return new(true, (CaptureImageFormat[])[CaptureImageFormat.Png], supported.ToArray(),
-            applicationAudio && supported.Count > 0 ? (CaptureAudioMode[])[CaptureAudioMode.None, CaptureAudioMode.Application] :
-                (CaptureAudioMode[])[CaptureAudioMode.None], true, CaptureLimits.MaximumRecordingSeconds);
+        var result = new EncodingProbe { Size = (uint)sizeof(EncodingProbe), Version = 1 };
+        return ProbeAudio(ref result) >= 0 && result.Supported == 1;
+    }
+    private static unsafe bool ProbeProfile(CaptureRecordingProfile profile, int bitrate, bool audio)
+    {
+        var options = new Options { Size = (uint)sizeof(Options), Version = 3, Kind = 2,
+            MaximumWidth = (uint)profile.MaximumWidth, MaximumHeight = (uint)profile.MaximumHeight,
+            FramesPerSecond = (uint)profile.FramesPerSecond, Bitrate = (uint)bitrate,
+            DurationSeconds = 1, Encoder = (uint)profile.Encoder, MaximumBytes = CaptureLimits.MaximumAttachmentBytes,
+            AudioMode = audio ? (uint)CaptureAudioMode.Application : 0 };
+        var result = new EncodingProbe { Size = (uint)sizeof(EncodingProbe), Version = 1 };
+        var available = ProbeEncoding(in options, ref result) >= 0 && result.Supported == 1 &&
+            (result.Hardware == 1) == (profile.Encoder == CaptureEncoderMode.Hardware);
+        if (result.ElapsedMilliseconds >= 500)
+            Diagnostics.FrontendFailureLog.Current.Write("capture-discovery-slow", null,
+                $"profile={profile.Id} audio={audio} supported={available} elapsedMs={result.ElapsedMilliseconds:F0}");
+        return available;
     }
     internal static unsafe NativePreviewTarget ForegroundTarget()
     {
@@ -109,7 +88,7 @@ internal static partial class NativeWindowCapture
     {
         if (request.Options is { } options)
         {
-            var available = options.Recording is null ? ImageCapabilities() : await GetCapabilitiesAsync().WaitAsync(token).ConfigureAwait(false);
+            var available = options.Recording is null ? ImageCapabilities() : await GetRecordingCapabilitiesAsync(new(options.Recording)).WaitAsync(token).ConfigureAwait(false);
             var validation = available.Validate(options);
             if (!validation.Supported) throw new BrokerException(validation.ErrorCode!, "The requested capture settings are unavailable.");
         }

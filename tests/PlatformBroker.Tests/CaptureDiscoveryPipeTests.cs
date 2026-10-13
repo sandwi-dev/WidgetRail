@@ -12,7 +12,7 @@ internal static class CaptureDiscoveryPipeTests
         var options = new BrokerPipeTransportOptions { RequestTimeout = TimeSpan.FromMilliseconds(50) };
         var request = new BrokerRequestEnvelope(BrokerJson.ProtocolVersion, 1, identity,
             PlatformCapabilities.WindowCaptureV1, "capture.capabilities", BrokerJson.ToElement(new { }));
-        foreach (var operation in new[] { "capture.capabilities", "capture.validate", "capture.start" })
+        foreach (var operation in new[] { "capture.capabilities", "capture.recording-capabilities", "capture.validate", "capture.start" })
             Check(BrokerPipeRequestTimeoutPolicy.Resolve(options, request with { Operation = operation }) == TimeSpan.FromSeconds(20));
         foreach (var operation in new[] { "capture.status", "capture.read", "capture.cancel", "capture.stop" })
             Check(BrokerPipeRequestTimeoutPolicy.Resolve(options, request with { Operation = operation }) == options.RequestTimeout);
@@ -40,6 +40,11 @@ internal static class CaptureDiscoveryPipeTests
         var capabilities = new CaptureCapabilities(true, [CaptureImageFormat.Png],
             [new("test",1280,720,15,1_000_000,6_000_000,CaptureEncoderMode.Software)],
             [CaptureAudioMode.None,CaptureAudioMode.Application],true,120);
+        var targeted = client.RequestAsync(PlatformCapabilities.WindowCaptureV1, "capture.recording-capabilities", new CaptureRecordingQuery());
+        await Until(() => WindowCaptureRegistry.Shared.RecordingDiscoveries.Count == 1);
+        var probe = WindowCaptureRegistry.Shared.RecordingDiscoveries.Single();
+        WindowCaptureRegistry.Shared.SetRecordingCapabilities(probe.Id, capabilities);
+        Check((await targeted).Succeeded && !discovery.IsCompleted);
         WindowCaptureRegistry.Shared.SetCapabilities(capabilities);
         var response = await discovery.WaitAsync(TimeSpan.FromSeconds(2));
         Check(response.Succeeded);

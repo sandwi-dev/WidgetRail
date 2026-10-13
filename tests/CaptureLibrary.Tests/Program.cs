@@ -41,6 +41,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Capture Library controller flow reviews before saving and confirms deletion", WidgetFlow),
     ("SDK generic capture reads route saved references through library permission", SdkRouting),
     ("Capture settings persist, retain unsupported quality, and reject oversized clips before capture", SettingsFlow),
+    ("Recording requests only its profile and preserves the recommended default", RecordingDiscovery),
     ("High-entropy thumbnails stream within broker bounds and honor library-read revocation", ThumbnailTransport),
     ("Missing library permission offers a scoped Settings intent without prompting", PermissionLink),
     ("Capture action waits for permission then continues without a widget reload", PermissionContinuation),
@@ -377,6 +378,33 @@ static async Task WidgetFlow()
     }
     finally { saveGate.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
 }
+static async Task RecordingDiscovery()
+{
+    var id = new string('D',32); var starts = 0; var queries = new List<CaptureRecordingQuery>();
+    var capabilities = new CaptureCapabilities(true, [CaptureImageFormat.Png],
+        [new("1080p30-hardware",1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)], [CaptureAudioMode.None], true,120);
+    var client = new WidgetTestHostServicesBuilder().WithPrivateState(new())
+        .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([],0,0,0))
+        .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
+        .WithHandler(WidgetCaptureCapabilities.Capabilities, (_, _) => throw new Exception("Recording surveyed the entire catalog"))
+        .WithHandler(WidgetCaptureCapabilities.RecordingCapabilities, (query, _) => { queries.Add(query); return ValueTask.FromResult(capabilities); })
+        .WithHandler(WidgetCaptureCapabilities.Validate, (request, _) => ValueTask.FromResult(capabilities.Validate(request)))
+        .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => {
+            Check(request.Recording is { MaximumWidth: 1920, MaximumHeight: 1080, FramesPerSecond: 30, Encoder: CaptureEncoderMode.Hardware, Audio: CaptureAudioMode.None });
+            ++starts; return ValueTask.FromResult(new WindowCaptureTicket(id)); })
+        .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(id,WindowCapturePhase.Cancelled))
+        .WithResponse(WidgetCaptureCapabilities.Cancel, new WidgetCapabilityAcknowledgement(true)).Build();
+    var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
+    IEnumerable<ViewNode> Walk(ViewNode n) => new[] {n}.Concat(n.Children.SelectMany(Walk));
+    async Task Ready() { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)); while (Walk(widget.RenderSnapshot("recording-discovery",1).Root).Any(n=>n.IsBusy == true)) await Task.Delay(10,timeout.Token); }
+    try
+    {
+        await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive); await Ready();
+        for (var i=0;i<2;i++) { await widget.OnActionAsync(new("capture-library.video","capture-library.video")); await Ready(); }
+        Check(starts==2 && queries.Count==2 && queries[0].Recording is null && queries[1].Recording?.MaximumWidth==1920);
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
 static async Task SettingsFlow()
 {
     var savedState = new WidgetTestPrivateState(); var starts = 0;
@@ -387,6 +415,7 @@ static async Task SettingsFlow()
         .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
         .WithPrivateState(savedState)
         .WithHandler(WidgetCaptureCapabilities.Capabilities, (_, _) => ValueTask.FromResult(capabilities))
+        .WithHandler(WidgetCaptureCapabilities.RecordingCapabilities, (_, _) => ValueTask.FromResult(capabilities))
         .WithHandler(WidgetCaptureCapabilities.Validate, (request, _) => ValueTask.FromResult(capabilities.Validate(request)))
         .WithHandler(WidgetCaptureCapabilities.Start, (_, _) => { starts++; throw new Exception("Invalid settings reached capture start"); }).Build();
     CaptureLibraryWidget widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);

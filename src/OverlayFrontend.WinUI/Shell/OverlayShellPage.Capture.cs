@@ -9,6 +9,7 @@ internal sealed partial class OverlayShellPage
 {
     internal Func<CancellationToken, Task<bool>>? HideForCaptureRequested { get; set; }
     private Task? capturePump, capturing;
+    private readonly HashSet<string> captureDiscoveries = [];
     private async Task PumpCaptureAsync()
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(350));
@@ -23,7 +24,8 @@ internal sealed partial class OverlayShellPage
                     if (next.NeedsCapabilities)
                         await owner.Session.PublishCaptureCapabilitiesAsync(NativeWindowCapture.ImageCapabilities(), lifetime.Token, encodingProbed: false);
                     if (next.NeedsEncodingCapabilities)
-                        await owner.Session.PublishCaptureCapabilitiesAsync(await NativeWindowCapture.GetCapabilitiesAsync().WaitAsync(lifetime.Token), lifetime.Token);
+                        BeginCaptureDiscovery(null);
+                    foreach (var discovery in next.RecordingDiscoveries) BeginCaptureDiscovery(discovery);
                     if (next.Request is not null) capturing = RunCaptureAsync(next);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
@@ -33,6 +35,27 @@ internal sealed partial class OverlayShellPage
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-pump", error); }
+    }
+    private void BeginCaptureDiscovery(HostCaptureDiscovery? discovery)
+    {
+        var key = discovery?.Id ?? "catalog";
+        if (!captureDiscoveries.Add(key)) return;
+        _ = PublishAsync();
+        async Task PublishAsync()
+        {
+            try
+            {
+                var capabilities = await (discovery is null ? NativeWindowCapture.GetCapabilitiesAsync() :
+                    NativeWindowCapture.GetRecordingCapabilitiesAsync(discovery.Query)).WaitAsync(lifetime.Token);
+                await owner!.Session.PublishCaptureCapabilitiesAsync(capabilities, lifetime.Token, discoveryId: discovery?.Id);
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-discovery", error);
+            }
+            finally { captureDiscoveries.Remove(key); }
+        }
     }
     private async Task RunCaptureAsync(BridgeCaptureTake next)
     {

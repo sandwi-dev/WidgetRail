@@ -98,7 +98,11 @@ public sealed partial class CaptureLibraryWidget : Widget
             {
                 await LoadPreferencesAsync(context.CancellationToken);
                 await RequirePermissionsAsync([WidgetCaptureCapabilities.Permission], context.CancellationToken);
-                if (kind == WindowCaptureKind.Video) await LoadSettingsAsync(context.CancellationToken);
+                if (kind == WindowCaptureKind.Video)
+                {
+                    var capabilities = await HostServices.Capture.GetRecordingCapabilitiesAsync(model.Value.Preferences?.Video, context.CancellationToken);
+                    model.Update(s => s with { Preferences = s.Preferences is { Video: null } preferences ? preferences with { Video = DefaultVideo(capabilities) } : s.Preferences });
+                }
                 var settings = model.Value.Preferences ?? throw new WidgetCapabilityException("capture_preferences_invalid", "Invalid saved settings.");
                 var request = settings.Request(kind);
                 var validation = await HostServices.Capture.ValidateAsync(request, context.CancellationToken);
