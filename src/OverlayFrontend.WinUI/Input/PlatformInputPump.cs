@@ -31,6 +31,9 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     // This excludes host-owned auxiliary UI from dismissal only. It never
     // grants that process overlay/controller input ownership.
     internal Func<uint, bool>? OwnsAuxiliaryProcess { get; set; }
+    internal Func<nint, bool>? OwnsAuxiliaryControllerWindow { get; set; }
+    internal Action<ControllerFrame>? AuxiliaryFrameReceived { get; set; }
+    private nint controllerRoutingWindow;
     public event Action<Exception>? Failed;
     internal bool IsForeground => IsForegroundProcess();
     internal bool IsActive => !closed && visible && session is not null;
@@ -147,10 +150,13 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
         }
         var foreground = IsForegroundProcess();
         session.SetWindowState(true, foreground);
-        var ownership = inputOwnership.Update(true, foreground);
+        var auxiliary = OwnsAuxiliaryControllerWindow?.Invoke(candidate) == true;
+        var routingWindow = foreground ? ownedWindow : auxiliary ? candidate : 0;
+        if (routingWindow != controllerRoutingWindow) { controllerRoutingWindow = routingWindow; inputOwnership.Reset(); }
+        var ownership = inputOwnership.Update(true, foreground || auxiliary);
         // Foreground restoration is a fresh input boundary. Prime held state so
         // input used in another application cannot become a new overlay press.
-        if (ownership.Prime) session.PrimeController(true, Now);
+        if (ownership.Prime) session.PrimeController(foreground, Now);
         session.RetryPendingNotifications();
         for (var count = 0; count < 16; ++count)
         {
@@ -176,12 +182,17 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
             }
             if (ownership.Deliver)
             {
-                AdjustHandoffReleaseValidationFrame(ref releaseFrame);
-                handoffRelease.Observe(releaseFrame);
-                FrameReceived?.Invoke(frame);
+                if (auxiliary) AuxiliaryFrameReceived?.Invoke(frame);
+                else
+                {
+                    AdjustHandoffReleaseValidationFrame(ref releaseFrame);
+                    handoffRelease.Observe(releaseFrame);
+                    FrameReceived?.Invoke(frame);
+                }
             }
             if (closed || !visible) return;
-            if (ownership.Deliver && !IsForegroundProcess()) { inputOwnership.Reset(); return; }
+            if (ownership.Deliver && (auxiliary ? OwnsAuxiliaryControllerWindow?.Invoke(GetForegroundWindow()) != true : !IsForegroundProcess()))
+            { inputOwnership.Reset(); return; }
             if (frame.RemainingFrames == 0) break;
         }
     }

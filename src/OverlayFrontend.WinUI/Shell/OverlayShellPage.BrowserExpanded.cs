@@ -11,6 +11,13 @@ internal sealed partial class OverlayShellPage
 {
     private BrowserSlot? expandedBrowser;
     private readonly RightStickScroll expandedScroll = new();
+    internal Func<uint, CancellationToken, bool>? PrepareBrowserPicker { get; set; }
+    private bool nativeBrowserPickerActive;
+    internal void SetNativeBrowserPickerActive(bool active)
+    {
+        nativeBrowserPickerActive = active;
+        ResetInputPresentation(); PublishControllerGuide();
+    }
 
     private async Task<bool> ExpandBrowserAsync(BrowserSurface browser, CancellationToken token)
     {
@@ -81,7 +88,7 @@ internal sealed partial class OverlayShellPage
     {
         if (expandedBrowser is not { } slot) return;
         if (!visible || retired) { if (!fullscreenLayer.IsClosing) fullscreenLayer.Close(restoreFocus: false); return; }
-        slot.AcceptsInput = foreground && !fullscreenLayer.IsTransitioning && !HostChoiceActive && !SystemFilePickerOpen && !LocalInstallActive;
+        slot.AcceptsInput = foreground && !fullscreenLayer.IsTransitioning && !HostChoiceActive && !SystemFilePickerOpen && !LocalInstallActive && !nativeBrowserPickerActive;
         slot.Surface?.SetPresentation(true, slot.AcceptsInput);
         slot.RefreshFocusPresentation();
     }

@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal sealed partial class BrowserSurface
 {
     internal Func<BrowserSurface, CancellationToken, Task<bool>>? Expand { get; set; }
+    internal Func<BrowserSurface, CancellationToken, bool>? PrepareScreenPicker { get; set; }
     private void ScreenCaptureStarting(CoreWebView2 owner, CoreWebView2ScreenCaptureStartingEventArgs args)
     {
         // Screen sharing is an explicit, one-shot decision. A website must not
@@ -25,7 +26,7 @@ internal sealed partial class BrowserSurface
                 await siteDecisionGate.WaitAsync(token); admitted = true;
                 if (!CanCompleteSiteDecision || !ReferenceEquals(owner, core) || Choose is not { } choose) return;
                 var answer = await choose(this, "Share your screen?",
-                    $"{document.AccessibleName}\n{origin}\n\nThe webapp will expand for the Windows picker. Choose a window or display using a mouse or keyboard. This website can see the selection and hear any audio you enable until you stop sharing or stop the webapp session. Press B after choosing to return to the widget.",
+                    $"{document.AccessibleName}\n{origin}\n\nThe webapp will expand for the sharing picker. Use the D-pad to navigate, A to select, LB/RB to move between controls, and B to cancel. Mouse and keyboard also work. This website can see the selection and hear any audio you enable until you stop sharing or stop the webapp session.",
                     (HostDialogChoice[])[new("choose", "Choose what to share")], token);
                 token.ThrowIfCancellationRequested();
                 accepted = answer == "choose" && CanCompleteSiteDecision && ReferenceEquals(owner, core);
@@ -37,6 +38,8 @@ internal sealed partial class BrowserSurface
                     accepted = false;
                     accepted = await expand(this, token) && CanCompleteSiteDecision && ReferenceEquals(owner, core);
                 }
+                if (accepted && PrepareScreenPicker is { } prepare)
+                    accepted = prepare(this, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             finally

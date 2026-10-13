@@ -10,12 +10,18 @@ internal static class Program
         if (args.Length != 2 || !Path.IsPathFullyQualified(args[1])) return 2;
         ApplicationConfiguration.Initialize();
         using var font = new Font(SystemFonts.DefaultFont.FontFamily, 20);
-        using var window = new Form { Text = args[0], StartPosition = FormStartPosition.Manual,
+        using var window = new SharingTargetForm { Text = args[0], StartPosition = FormStartPosition.Manual,
             Location = new(40, 40), ClientSize = new(720, 480), BackColor = Color.DarkSlateBlue };
         window.Controls.Add(new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
             Text = "Synthetic sharing target\nNo accounts or user data", ForeColor = Color.White, Font = font });
         window.Shown += (_, _) => File.WriteAllText(args[1], "ready");
         Application.Run(window);
         return 0;
+    }
+
+    // A capture source must not steal foreground from the overlay being tested.
+    private sealed class SharingTargetForm : Form
+    {
+        protected override bool ShowWithoutActivation => true;
     }
 }

@@ -100,7 +100,12 @@ interaction to the main foreground owner first.
 
 Supported website permissions use host prompts identifying the widget and exact
 HTTPS origin, with Allow once, Always allow and Block choices. Website controls
-revoke saved decisions or clear all website data for the selected profile.
+manage permissions or clear all website data for the selected profile. A visible
+browser widget also exposes **Website permissions** in its tray menu. Microphone,
+camera and the other supported permissions are always listed with explicit
+**Ask next time / Allow / Block** choices, including when no decision was saved.
+Changing a permission reloads pages in that profile and ends active calls; it
+does not clear login data. Ask also resets a temporary decision.
 Uploads and downloads use origin-labelled confirmation and Windows file pickers.
 Script dialogs and standard context menus use the existing controller dialog
 framework. External URI schemes, HTTP basic authentication and invalid certificates
@@ -243,14 +248,18 @@ No persistent screen-share permission is stored. Hidden pages cannot summon the
 picker. Closing the page cancels pending consent. The host expands the existing
 browser into its shared presentation layer before opening the picker: Chromium's
 chooser can clip its source list in small or pinned viewports. B returns the same
-live session to its original widget or pin. The Windows picker requires a mouse
-or keyboard; it is not a controller-authored WidgetRail dialog.
+live session to its original widget or pin. The native picker supports controller
+focus navigation: D-pad/left stick navigates, A selects, B cancels, and LB/RB move
+between controls. Mouse and keyboard remain available. The webpage pointer is
+suspended while this picker owns input.
 
 Selected-window video delivery and stopping the tracks have been verified using
-an opaque synthetic window, including a request originating in a pin. Final
-foreground-return validation remains pending. Native picker UI belongs to the
-live WebView2 browser process and must not dismiss the overlay; recognizing that
-process does not give it WidgetRail controller input ownership.
+an opaque synthetic window, including a request originating in a pin. Native
+picker navigation, selection, cancellation and foreground return are verified
+with simulated controller frames. The host admits only the requested dialog in
+its own WebView2 process and uses Windows UI Automation to detect the actual
+dialog lifetime, since its enclosing browser window can survive dismissal. Those
+frames are never delivered to widgets or unrelated applications.
 
 Notifications use WebView2's default native notification UI after website
 permission is granted. A local fixture verifies that the website receives its

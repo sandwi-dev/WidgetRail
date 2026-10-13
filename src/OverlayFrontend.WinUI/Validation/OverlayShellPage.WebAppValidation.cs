@@ -14,6 +14,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
+    internal Action<ControllerFrame>? NativePickerFrameForValidation { get; set; }
+    internal Func<bool>? NativePickerReadyForValidation { get; set; }
     internal void EnableWebAppValidation(string path, string? sharingSource = null)
     {
         BrowserOwner.FixtureBrowserArguments = "--use-fake-device-for-media-stream";
@@ -61,6 +63,8 @@ internal sealed partial class OverlayShellPage
                 await Toolbar(first, "Browser.SiteControls");
                 await Choose(1);
                 await Choose(0);
+                await WebAppUntilScript(first, "location.origin==='https://shell.fixture.invalid' && localStorage.getItem('shared-test')===null");
+                await WebAppUntilScript(second, "location.origin==='https://shell.fixture.invalid' && !document.cookie.includes('shared-test=present')");
                 await WebAppUntil(() => !HostChoiceActive && !first.IsNavigationInProgress && !second.IsNavigationInProgress && first.CurrentTitle == "Shell /primary" && second.CurrentTitle == "Shell /secondary");
                 Check(await first.EvaluateFixtureAsync("localStorage.getItem('shared-test')===null") == "true" &&
                     await second.EvaluateFixtureAsync("!document.cookie.includes('shared-test=present')") == "true", "Clear-data confirmation parks and resets every live view of the profile");
@@ -74,10 +78,28 @@ internal sealed partial class OverlayShellPage
                 await first.EvaluateGestureFixtureAsync("window.permissionResult='pending';Notification.requestPermission().then(p=>window.permissionResult=p)");
                 await Choose(1);
                 await WebAppUntilScript(first, "window.permissionResult==='granted'");
+                await WebAppUntil(() => first.IsBrowsing && !HostChoiceActive);
                 Check(first.IsBrowsing && !HostChoiceActive, "Native permission confirmation restores main browser interaction");
-                await Toolbar(first, "Browser.SiteControls"); await Choose(0); await Choose(0);
+                await Toolbar(first, "Browser.SiteControls"); await Choose(0); await Choose(2); await Choose(2);
+                await WebAppUntilPermission(first, CoreWebView2PermissionKind.Notifications, CoreWebView2PermissionState.Deny);
                 await WebAppUntil(() => !HostChoiceActive && !first.IsNavigationInProgress && first.CurrentTitle == "Shell /primary");
                 Check(await first.EvaluateFixtureAsync("Notification.permission==='denied'") == "true", "Website controls revoke a remembered native permission");
+
+                step = "tray microphone recovery";
+                await first.NativeProfile!.SetPermissionStateAsync(CoreWebView2PermissionKind.Microphone, "https://shell.fixture.invalid", CoreWebView2PermissionState.Deny);
+                var descriptor = catalogItems.Single(item => item.Id == "webapp-a");
+                await ShowTrayMenuAsync(descriptor);
+                await WebAppUntil(() => trayMenu?.Items.Any(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Browser.Permissions") == true);
+                var permissionCommand = trayMenu!.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Browser.Permissions");
+                permissionCommand.Command.Execute(null);
+                await Choose(0); await Choose(1);
+                await WebAppUntilPermission(first, CoreWebView2PermissionKind.Microphone, CoreWebView2PermissionState.Allow);
+                await WebAppUntil(() => !HostChoiceActive && !first.IsNavigationInProgress && first.CurrentTitle == "Shell /primary");
+                Check((await first.NativeProfile.GetNonDefaultPermissionSettingsAsync()).Any(p => p.PermissionKind == CoreWebView2PermissionKind.Microphone && p.PermissionState == CoreWebView2PermissionState.Allow),
+                    "Tray Website permissions changes a denied microphone to Allow");
+                await first.NativeProfile.SetPermissionStateAsync(CoreWebView2PermissionKind.Microphone, "https://shell.fixture.invalid", CoreWebView2PermissionState.Default);
+                await SelectAsync("webapp-a", enterWidget: true);
+                await WebAppUntil(() => first.IsBrowsing);
 
                 step = "pinned dialogs";
                 await PinAsync("webapp-a", WidgetPinnedProjection.FullWidgetLayoutId);
@@ -93,11 +115,13 @@ internal sealed partial class OverlayShellPage
                 Check(bounds.Top >= 0 && bounds.Bottom <= hostChoiceDialog.XamlRoot.Size.Height + 1, "Pinned dialog confirmation remains inside the visible window");
                 await Choose(0);
                 await WebAppUntilScript(first, "window.permissionResult==='granted'");
+                await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(PinnedInputActive && first.IsBrowsing, "Pinned confirmation restores its original interaction owner");
                 await first.EvaluateGestureFixtureAsync("window.open('https://shell.fixture.invalid/popup')");
                 await WebAppUntil(() => first.HasPopup && first.ActiveSurface.CurrentTitle == "Shell /popup");
                 Check(ReferenceEquals(first.ActiveSurface.XamlRoot, pinned.Window.AutomationRoot.XamlRoot), "Hosted popup stays in the pinned webapp window");
                 await Press(ControllerButton.B); await WebAppUntil(() => !first.HasPopup);
+                await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(PinnedInputActive && first.IsBrowsing, "Closing a pinned popup preserves its parent and pin interaction");
                 Check(await ExpandBrowserAsync(first, lifetime.Token), "Pinned browser expands through the same placement owner");
                 await WebAppUntil(() => foreground && first.IsBrowsing && expandedBrowser?.Surface == first);
@@ -229,5 +253,11 @@ internal sealed partial class OverlayShellPage
         var end = Environment.TickCount64 + 15_000;
         while (await page.EvaluateFixtureAsync(condition) != "true")
         { if (Environment.TickCount64 > end) throw new TimeoutException("Webapp shell script timed out: " + condition); await Task.Delay(25); }
+    }
+    private static async Task WebAppUntilPermission(BrowserSurface page, CoreWebView2PermissionKind kind, CoreWebView2PermissionState state)
+    {
+        var end = Environment.TickCount64 + 15_000;
+        while (!(await page.NativeProfile!.GetNonDefaultPermissionSettingsAsync()).Any(p => p.PermissionKind == kind && p.PermissionState == state))
+        { if (Environment.TickCount64 > end) throw new TimeoutException("Native permission update did not complete."); await Task.Delay(25); }
     }
 }

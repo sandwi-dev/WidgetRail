@@ -42,6 +42,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal bool IsBrowsing => popup?.IsBrowsing ?? browsing;
     internal bool IsReady => core is not null && !retired && !faulted;
     internal bool OwnsNativeUiProcess(uint process) => process != 0 && visible && IsReady && browserProcessId == process;
+    internal uint NativeBrowserProcessId => IsReady ? browserProcessId : 0;
     internal bool IsNavigationInProgress => popup?.IsNavigationInProgress ?? loading;
     internal bool IsToolbarVisible => popup?.IsToolbarVisible ?? (header.Visibility == Visibility.Visible);
     internal bool UsesProfile(WebBrowserDocument next) => BrowserProfileIdentity.SameProfile(document, next);

@@ -3,6 +3,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal sealed partial class BrowserOwner
 {
     private readonly HashSet<string> changingProfiles = [];
+    internal BrowserSurface[] PermissionTargets(string widgetId) => retired ? [] : entries
+        .Where(pair => pair.Key.Widget == widgetId && session.IsWebBrowserSessionCurrent(pair.Value.Authority, pair.Key.Document))
+        .Select(pair => pair.Value.Surface.ActiveSurface).Where(page => page.IsReady && page.CanCompleteSiteDecision).ToArray();
 
     private async Task<bool> ChangeProfileAsync(BrowserSurface source, BrowserProfileChange change, CancellationToken token)
     {

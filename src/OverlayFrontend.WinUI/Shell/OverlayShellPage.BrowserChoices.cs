@@ -3,6 +3,23 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     internal bool OwnsBrowserUiProcess(uint process) => !retired && visible && browserOwner?.OwnsNativeUiProcess(process) == true;
+    private async Task ManageBrowserPermissionsAsync(WidgetRail.WidgetBridge.BridgeWidgetDescriptor widget)
+    {
+        if (retired || !visible || !foreground || browserOwner is not { } browsers) return;
+        var pages = browsers.PermissionTargets(widget.Id);
+        if (pages.Length == 0) return;
+        var index = 0;
+        if (pages.Length > 1)
+        {
+            var choices = pages.Select((page, i) => new HostDialogChoice(i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                page.PermissionTargetLabel)).ToArray();
+            var selected = await ShowHostChoiceAsync("Website permissions", "Choose a website and profile.", choices, lifetime.Token);
+            if (!int.TryParse(selected, out index) || index < 0 || index >= pages.Length) return;
+        }
+        if (!browsers.PermissionTargets(widget.Id).Contains(pages[index])) return;
+        await pages[index].ShowPermissionsFromHostAsync((_, title, message, choices, token) =>
+            ShowHostChoiceAsync(title, message, choices, token));
+    }
     private void RefreshWebappStatus()
     {
         if (retired) return;

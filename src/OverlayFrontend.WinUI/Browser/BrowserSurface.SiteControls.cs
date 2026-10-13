@@ -11,12 +11,20 @@ internal sealed partial class BrowserSurface
 {
     internal Func<BrowserSurface, BrowserProfileChange, CancellationToken, Task<bool>>? ChangeProfile { get; set; }
     internal CoreWebView2Profile? NativeProfile => core?.Profile;
+    internal string PermissionTargetLabel => $"{document.AccessibleName} · {BrowserSiteIdentity.Origin(sessionStopped ? document.Url : core?.Source ?? document.Url)} · {document.Options.ProfileKey}";
     private bool siteControlsPending;
     private bool profileChanging, presentationInputRequested;
 
-    private async Task ShowSiteControlsAsync()
+    private Task ShowSiteControlsAsync() => ShowSiteControlsCoreAsync(false, Choose, false);
+
+    internal Task ShowPermissionsFromHostAsync(Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>> choose) =>
+        ShowSiteControlsCoreAsync(true, choose, true);
+
+    private async Task ShowSiteControlsCoreAsync(bool permissionsOnly,
+        Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>>? choose,
+        bool hostInvoked)
     {
-        if (!CanRequestSiteDecision || HasDialog || siteControlsPending || Choose is not { } choose || core is not { } current) return;
+        if (!(hostInvoked ? CanCompleteSiteDecision : CanRequestSiteDecision) || HasDialog || siteControlsPending || choose is null || core is not { } current) return;
         var origin = BrowserSiteIdentity.Origin(sessionStopped ? document.Url : current.Source);
         if (origin is null) { ShowStatus("Open an HTTPS website to manage its permissions."); return; }
         siteControlsPending = true;
@@ -26,7 +34,7 @@ internal sealed partial class BrowserSurface
             HostDialogChoice[] options = [new("permissions", "Website permissions"), new("clear", "Clear website data for this profile"),
                 .. (downloads.Count == 0 ? Array.Empty<HostDialogChoice>() : [new("downloads", $"Downloads ({downloads.Count})")]),
                 .. (ChangeRunning is null ? Array.Empty<HostDialogChoice>() : [new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)")])];
-            var selection = await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", options, token);
+            var selection = permissionsOnly ? "permissions" : await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", options, token);
             token.ThrowIfCancellationRequested();
             if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
             if (selection == "downloads") { await ManageDownloadsAsync(token); return; }
@@ -40,16 +48,20 @@ internal sealed partial class BrowserSurface
             }
             if (selection == "permissions")
             {
-                var permissions = (await current.Profile.GetNonDefaultPermissionSettingsAsync()).Where(p =>
-                    BrowserSiteIdentity.Origin(p.PermissionOrigin) == origin).Take(32).ToArray();
+                var saved = (await current.Profile.GetNonDefaultPermissionSettingsAsync()).Where(p =>
+                    BrowserSiteIdentity.Origin(p.PermissionOrigin) == origin).ToDictionary(p => p.PermissionKind, p => p.PermissionState);
+                var permissions = WebsitePermissions;
                 var choices = permissions.Select((p, i) => new HostDialogChoice(i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    $"{p.PermissionKind}: {(p.PermissionState == CoreWebView2PermissionState.Allow ? "allowed — revoke" : "blocked — ask next time")}")).ToArray();
-                selection = await choose(this, "Website permissions", origin + (choices.Length == 0 ? "\nNo saved permission decisions. Temporary grants end when the page closes." : "\nChanging a permission reloads every page in this profile and ends active calls."), choices, token);
+                    $"{p.Label} · {PermissionSettingLabel(saved.GetValueOrDefault(p.Kind, CoreWebView2PermissionState.Default))}")).ToArray();
+                selection = await choose(this, "Website permissions", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}\n\nChoose a permission to change its saved setting.", choices, token);
                 if (int.TryParse(selection, out var index) && index >= 0 && index < permissions.Length)
                 {
                     var permission = permissions[index];
-                    change = new(false, origin, permission.PermissionKind,
-                        permission.PermissionState == CoreWebView2PermissionState.Allow ? CoreWebView2PermissionState.Deny : CoreWebView2PermissionState.Default);
+                    selection = await choose(this, permission.Label, $"{origin}\n\nChanging this setting reloads every page in this profile and ends active calls. Choosing Ask also clears a temporary decision.",
+                        (HostDialogChoice[])[new("ask", "Ask next time"), new("allow", "Allow"), new("block", "Block")], token);
+                    if (selection is "ask" or "allow" or "block")
+                        change = new(false, origin, permission.Kind, selection == "allow" ? CoreWebView2PermissionState.Allow :
+                            selection == "block" ? CoreWebView2PermissionState.Deny : CoreWebView2PermissionState.Default);
                 }
             }
             else if (selection == "clear")
@@ -71,6 +83,19 @@ internal sealed partial class BrowserSurface
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         finally { siteControlsPending = false; }
     }
+
+    private static readonly (CoreWebView2PermissionKind Kind, string Label)[] WebsitePermissions =
+    [
+        (CoreWebView2PermissionKind.Microphone, "Microphone"),
+        (CoreWebView2PermissionKind.Camera, "Camera"),
+        (CoreWebView2PermissionKind.Notifications, "Notifications"),
+        (CoreWebView2PermissionKind.Geolocation, "Location"),
+        (CoreWebView2PermissionKind.ClipboardRead, "Read clipboard"),
+        (CoreWebView2PermissionKind.Autoplay, "Automatic media playback"),
+        (CoreWebView2PermissionKind.MultipleAutomaticDownloads, "Multiple downloads"),
+    ];
+    private static string PermissionSettingLabel(CoreWebView2PermissionState state) => state switch
+    { CoreWebView2PermissionState.Allow => "Allow", CoreWebView2PermissionState.Deny => "Block", _ => "Ask" };
 
     internal async Task<string?> ParkForProfileChangeAsync(CancellationToken token)
     {

@@ -8,6 +8,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly Microsoft.UI.System.ThemeSettings themeSettings;
     private Input.PlatformInputPump? input;
+    private Input.NativeBrowserDialogController? nativeBrowserDialog;
     private Input.OverlayKeyboardShortcut? keyboardShortcut;
     private int keyboardSettingsVersion;
     private readonly Input.ControllerInputTrace? controllerTrace;
@@ -50,6 +51,18 @@ public sealed partial class MainWindow : Window
             input.Failed += _ => gamepadKeys.Dispose();
             if (RootFrame.Content is Shell.OverlayShellPage browserShell)
             {
+                nativeBrowserDialog = new(DispatcherQueue, browserShell.SetNativeBrowserPickerActive,
+                    () => { if (!cleanupStarted && AppWindow.IsVisible) { Activate(); browserShell.QueueEntryFocus(); } });
+                browserShell.PrepareBrowserPicker = nativeBrowserDialog.Begin;
+                if (!arguments.Contains("--shell-no-controller"))
+                {
+                    input.OwnsAuxiliaryControllerWindow = nativeBrowserDialog.OwnsControllerWindow;
+                    input.AuxiliaryFrameReceived = nativeBrowserDialog.Receive;
+                }
+#if ENABLE_WIDGET_VALIDATION
+                browserShell.NativePickerFrameForValidation = nativeBrowserDialog.Receive;
+                browserShell.NativePickerReadyForValidation = () => nativeBrowserDialog.HasForeground;
+#endif
                 input.OwnsAuxiliaryProcess = browserShell.OwnsBrowserUiProcess;
                 input.ExternalForegroundObserved += DismissForExternalForeground;
             }
@@ -280,6 +293,7 @@ public sealed partial class MainWindow : Window
     {
         if (cleanupStarted) return;
         cleanupStarted = true;
+        nativeBrowserDialog?.Dispose(); nativeBrowserDialog = null;
         RetireDevelopment();
         CancelTaskHandoff();
         keyboardShortcut?.Dispose(); keyboardShortcut = null;

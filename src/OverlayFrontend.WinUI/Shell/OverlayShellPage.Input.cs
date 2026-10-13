@@ -42,6 +42,7 @@ internal sealed partial class OverlayShellPage
         delivered = false;
         if (ReceiveSystemFilePicker(frame) || ReceiveLocalInstall(frame)) return;
         if (ReceiveHostChoice(frame)) return;
+        if (nativeBrowserPickerActive) { heldAction.Reset(); rightStick.Reset(); return; }
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); radialInput.Reset(); }
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
@@ -157,6 +158,7 @@ internal sealed partial class OverlayShellPage
         }
         if (retired || !visible) return;
         if (SystemFilePickerOpen) return;
+        if (nativeBrowserPickerActive) return;
         if (LocalInstallActive) { localInstallDialog?.Handle(button, phase); return; }
         if (hostChoiceDialog is { } dialog)
         { if (visible && HostChoiceHasForeground) dialog.Handle(button, phase); return; }
