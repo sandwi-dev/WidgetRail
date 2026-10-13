@@ -141,6 +141,17 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         await lane.WaitAsync(admission.Token).ConfigureAwait(false);
         try { await _pendingCapacity.WaitAsync(admission.Token).ConfigureAwait(false); }
         catch { lane.Release(); throw; }
+        // A local serialization failure cannot corrupt the wire. Serialize after
+        // admission to bound allocations, but before registering a pending reply
+        // or entering the terminal write-failure path.
+        System.Text.Json.JsonElement serializedPayload;
+        try { serializedPayload = BridgeJson.ToElement(payload); }
+        catch
+        {
+            _pendingCapacity.Release();
+            lane.Release();
+            throw;
+        }
         var requestId = Interlocked.Increment(ref _requestId);
         var completion = new TaskCompletionSource<BridgeEnvelope>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -173,7 +184,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
                 {
                     Type = type,
                     RequestId = requestId,
-                    Payload = BridgeJson.ToElement(payload),
+                    Payload = serializedPayload,
                 };
                 // Run after waiting for transport capacity/the write gate, so
                 // foreground eligibility cannot be captured from an earlier UI

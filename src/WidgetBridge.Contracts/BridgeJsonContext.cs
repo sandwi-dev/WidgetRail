@@ -16,6 +16,7 @@ namespace WidgetRail.WidgetBridge;
 [JsonSerializable(typeof(WidgetRail.WidgetProtocol.WidgetPermissionTicket))]
 [JsonSerializable(typeof(BridgeCaptureReference))]
 [JsonSerializable(typeof(BridgeCaptureCurrent))]
+[JsonSerializable(typeof(BridgeCaptureFolderResult))]
 [JsonSerializable(typeof(BridgeCaptureAttachmentRequest))]
 [JsonSerializable(typeof(WidgetRail.PlatformBroker.HostCaptureCompletion))]
 [JsonSerializable(typeof(WidgetRail.PlatformBroker.HostCaptureAttachment))]

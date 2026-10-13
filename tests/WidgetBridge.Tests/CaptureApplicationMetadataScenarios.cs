@@ -5,6 +5,43 @@ using WidgetRail.WidgetProtocol;
 
 internal static class CaptureApplicationMetadataScenarios
 {
+    internal static async Task FolderMessagesThroughHostPipe()
+    {
+        // Debug normally permits reflection fallback. Require the same generated
+        // metadata that the trimmed frontend uses before exercising the wire.
+        var info = BridgeJsonContext.Default.GetTypeInfo(typeof(BridgeCaptureFolderResult))
+            ?? throw new Exception("Folder completion is missing generated JSON metadata.");
+        var id = Guid.NewGuid().ToString("N");
+        var folder = new HostCaptureFolderRequest(id, new("example.capture", "example.publisher", "instance"),
+            Path.Combine(Path.GetTempPath(), "capture-folder-test"));
+        var take = new BridgeCaptureTake(null, null) { OpenFolder = folder, FolderWidgetId = "example.capture" };
+        var takeInfo = BridgeJsonContext.Default.GetTypeInfo(typeof(BridgeCaptureTake))!;
+        var takeJson = System.Text.Json.JsonSerializer.Serialize(take, takeInfo);
+        if (System.Text.Json.JsonSerializer.Deserialize(takeJson, takeInfo) is not BridgeCaptureTake decodedTake ||
+            decodedTake.OpenFolder != folder || decodedTake.FolderWidgetId != take.FolderWidgetId)
+            throw new Exception("Generated folder request did not round-trip.");
+        foreach (var opened in new[] { false, true })
+        {
+            var value = new BridgeCaptureFolderResult(id, opened);
+            var json = System.Text.Json.JsonSerializer.Serialize(value, info);
+            if (System.Text.Json.JsonSerializer.Deserialize(json, info) is not BridgeCaptureFolderResult decoded || decoded != value)
+                throw new Exception("Generated folder completion did not round-trip.");
+        }
+        var pipe = "capture-folder-" + Guid.NewGuid().ToString("N");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await using var server = new WidgetBridgeServer(pipe, new([]));
+        var serving = server.RunAsync(TimeSpan.FromSeconds(3), deadline.Token);
+        await using var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token);
+        foreach (var opened in new[] { false, true })
+        {
+            await session.CompleteCaptureFolderAsync(id, opened, deadline.Token);
+            if (await session.IsCaptureFolderCurrentAsync(id, deadline.Token)) throw new Exception("An expired folder request was revived.");
+            _ = await session.TakeCaptureAsync(deadline.Token);
+            _ = await session.TakePermissionAsync(deadline.Token);
+        }
+        await session.DisposeAsync();
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
     internal static async Task DiscoveryThroughHostPipe()
     {
         var pipe = "capture-discovery-" + Guid.NewGuid().ToString("N");

@@ -8,6 +8,39 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed class BridgeLifetimeTests
 {
     [TestMethod]
+    public async Task LocalSerializationFailureRetainsConnectionAndRequestCapacity()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var server = new ScriptedBridgeServer();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            foreach (var expected in new[] { "valid", BridgeMessageTypes.Stop })
+            {
+                var request = await channel.ReadAsync(deadline.Token);
+                Assert.AreEqual(expected, request.Type, "Invalid payload must not reach the pipe.");
+                await channel.WriteAsync(new BridgeEnvelope
+                {
+                    Type = BridgeMessageTypes.Acknowledged, RequestId = request.RequestId,
+                    Payload = BridgeJson.ToElement(new BridgeEmptyPayload()),
+                }, deadline.Token);
+            }
+        });
+        await using var transport = await BridgePresentationTransport.ConnectAsync(server.PipeName,
+            new() { MaximumPendingRequests = 1 }, deadline.Token);
+        var failures = 0;
+        transport.Failed += _ => Interlocked.Increment(ref failures);
+        transport.Start();
+        for (var attempt = 0; attempt < 3; attempt++)
+            await Assert.ThrowsExactlyAsync<NotSupportedException>(() =>
+                transport.RequestAsync("invalid", new { Unsupported = typeof(string) }, deadline.Token));
+        var response = await transport.RequestAsync("valid", new BridgeEmptyPayload(), deadline.Token);
+        Assert.AreEqual(BridgeMessageTypes.Acknowledged, response.Type);
+        await transport.DisposeAsync();
+        await serverTask.WaitAsync(deadline.Token);
+        Assert.AreEqual(0, failures);
+    }
+
+    [TestMethod]
     public async Task ShutdownInterruptsBlockedWriteGateAndCapacityAndDrainsConcurrentDisposals()
     {
         await using var server = new ScriptedBridgeServer();
