@@ -20,6 +20,7 @@ internal sealed partial class OverlayShellPage
     private void InitializeFullscreenView()
     {
         fullscreenLayer.Attach((Grid)Content);
+        Presentation.PresentationLayers.Order(ShellOverlayLayer, Presentation.PresentationLayer.ShellOverlay);
         fullscreenLayer.Park(fullscreenView);
         fullscreenLayer.CanRestoreFocus = () => !retired && visible && foreground;
         fullscreenLayer.Changed += RefreshFullscreenChrome;

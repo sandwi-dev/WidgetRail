@@ -11,15 +11,21 @@ internal sealed partial class WidgetViewPresenter
         foreach (var binding in bindings.Values)
         {
             if (binding.Element is not WidgetModalLayer layer) continue;
-            layer.ApplyAppearance(appearance, systemAnimationsEnabled);
             var node = declarations[binding.Identity.Id].Node;
             var dialog = node.Children[1];
+            // Dialog motion uses a compositor timeline. External/native surfaces
+            // need the page renderer's synchronized placement contract; until a
+            // dialog has that contract, keep it stable instead of fading a live
+            // swap chain or moving a WebView on a different clock.
+            layer.ApplyAppearance(HasDialogSurface(dialog) ? appearance with { AnimateWidgetModals = false } : appearance, systemAnimationsEnabled);
             layer.Configure(bindings[node.Children[0].Id].LayoutElement, bindings[dialog.Id].LayoutElement,
                 Length(dialog, "width") ?? 760, Length(dialog, "height") ?? 640,
                 Length(dialog, "max-width") ?? double.PositiveInfinity,
                 Length(dialog, "max-height") ?? double.PositiveInfinity, bindings[dialog.Id].Element);
         }
     }
+    private static bool HasDialogSurface(ViewNode node) => node.Kind is ViewNodeKind.MediaPlayer or ViewNodeKind.CapturedMedia or
+        ViewNodeKind.MediaViewport or ViewNodeKind.WebBrowser or ViewNodeKind.WindowPreview || node.Children.Any(HasDialogSurface);
 
     private bool IsModalDialog(Declaration declaration, IReadOnlyDictionary<string, Declaration> plan) =>
         declaration.ParentId is { } parent && plan.TryGetValue(parent, out var owner) &&

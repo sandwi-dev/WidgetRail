@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--presentation-layer-fixtures") is { } layerFixtures)
+        { await PresentationLayersAsync(layerFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--page-navigation-fixtures") is { } pageFixtures)
         { await PageNavigationAsync(pageFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gallery-scroll-fixtures") is { } galleryFixtures)

@@ -36,7 +36,7 @@ internal sealed partial class NativePopupTheme
     { var owner = Find(origin); return owner?.Track(() => owner.Apply(dialog)); }
     private static NativePopupTheme? Find(FrameworkElement origin)
     {
-        for (DependencyObject? current = origin; current is not null; current = VisualTreeHelper.GetParent(current))
+        for (DependencyObject? current = origin; current is not null; current = PresentationLayers.LogicalParent(current))
             if (current is FrameworkElement element && Owners.TryGetValue(element, out var owner)) return owner;
         return null;
     }

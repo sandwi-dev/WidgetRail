@@ -68,7 +68,7 @@ internal sealed partial class WidgetContextIndicator : Panel, IDisposable
     }
     private static Brush? BackgroundFor(DependencyObject element)
     {
-        for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        for (DependencyObject? current = element; current is not null; current = PresentationLayers.LogicalParent(current))
         {
             var brush = current switch { Control control => control.Background, Panel panel => panel.Background, Border border => border.Background, _ => null };
             if (brush is SolidColorBrush { Color.A: > 0 } || brush is GradientBrush gradient && gradient.GradientStops.Any(stop => stop.Color.A > 0)) return brush;

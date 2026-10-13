@@ -114,4 +114,21 @@ it is local diagnostic evidence, not a general performance guarantee. Timing
 samples are in `frame-timings.json`. Film inspection also covers Reveal, Cover
 slide, and None. Original Vertical slide preference was restored.
 
-User physical acceptance remains pending. No merge, push, installer or release.
+The user accepted the page animations. Integration remains pending the subsequent
+shared presentation-layer correction; no merge, push, installer or release.
+
+## Shared layering follow-up
+
+The user found a widget modal beneath resident video and requested a general host
+solution. The root layer policy, dialog portals, logical ownership bridge and
+renderer-wide native-dialog motion fallback are documented in
+`docs/maintainers/presentation-layers.md`. Validation covers 24 layering checks,
+38 existing modal checks, 79 media/fullscreen checks and 62 page-navigation checks.
+Live desktop capture confirms the delete dialog and its scrim paint above playing
+video. A real pointer click on Cancel closes only the dialog, keyboard Right moves
+between its actions, fullscreen transport remains clickable, and Escape from the
+focused native video returns to the inline player. No capture was deleted.
+
+The broad production-shell fixture stops at its radial Back assertion after 92
+checks on both this change and unchanged `bc535391`; both results are preserved.
+It is excluded from passing totals. Complete candidate handoff is pending.

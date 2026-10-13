@@ -20,6 +20,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
     private readonly Grid parking = new() { Visibility = Visibility.Collapsed };
     private IDisposable? theme;
     private bool closing;
+    private PresentationLayers? layers;
+    private readonly HashSet<MediaPresentationStage> stages = [];
     internal bool IsTransitioning { get; private set; }
     internal bool IsClosing => closing;
     internal bool IsOpen => current is not null;
@@ -46,20 +48,38 @@ internal sealed partial class MediaFullscreenLayer : Grid
         TabFocusNavigation = KeyboardNavigationMode.Cycle;
         InitializeTransition();
         AutomationProperties.SetAutomationId(this, "Overlay.MediaFullscreenLayer");
-        KeyDown += (_, args) =>
-        {
-            if (args.Key == Windows.System.VirtualKey.Escape && IsOpen) { args.Handled = true; Close(); }
-        };
         Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.FullscreenMedia(this); };
         Unloaded += (_, _) => { Close(restoreFocus: false); theme?.Dispose(); theme = null; };
     }
 
-    internal void Attach(Grid root) { root.SetValue(HostProperty, this); root.Children.Add(this); }
+    internal void Attach(Grid root)
+    {
+        root.SetValue(HostProperty, this);
+        layers = PresentationLayers.Attach(root);
+        Children.Remove(backdrop);
+        layers.Add(backdrop, PresentationLayer.FullscreenBackdrop);
+        layers.Add(this, PresentationLayer.FullscreenChrome);
+        // Media and its chrome are sibling paint layers, but share one input
+        // boundary. A focused native video must obey Escape/transition gating too.
+        root.KeyDown += (_, args) =>
+        {
+            if (args.Key == Windows.System.VirtualKey.Escape && IsOpen) { args.Handled = true; Close(); }
+        };
+        root.PreviewKeyDown += (_, args) =>
+        {
+            if (!IsTransitioning) return;
+            args.Handled = true;
+            if (args.Key == Windows.System.VirtualKey.Escape) Close();
+        };
+    }
     internal void Park(FrameworkElement content) => parking.Children.Add(content);
     internal MediaPresentationStage CreateMediaStage(double aspectRatio)
     {
         var stage = new MediaPresentationStage(aspectRatio);
-        Children.Insert(Children.IndexOf(backdrop) + 1, stage);
+        if (layers is null) throw new InvalidOperationException("Attach the presentation host before creating resident media.");
+        layers.Add(stage, PresentationLayer.ContentMedia);
+        stages.Add(stage);
+        stage.Released = () => stages.Remove(stage);
         stage.SetCovered(IsOpen);
         return stage;
     }
@@ -75,7 +95,7 @@ internal sealed partial class MediaFullscreenLayer : Grid
         if (IsOpen) throw new InvalidOperationException("A media presentation is already expanded.");
         var version = ++generation;
         current = presentation;
-        foreach (var stage in Children.OfType<MediaPresentationStage>())
+        foreach (var stage in stages)
             stage.SetCovered(!ReferenceEquals(stage, presentation.MotionContent));
         IsTransitioning = true;
         presentation.Content.IsHitTestVisible = false;
@@ -99,6 +119,7 @@ internal sealed partial class MediaFullscreenLayer : Grid
         closing = true;
         IsTransitioning = true;
         previous.Content.IsHitTestVisible = false;
+        if (previous.MotionContent is { } media) media.IsHitTestVisible = false;
         Changed?.Invoke();
         if (restoreFocus && !entranceQueued && IsLoaded && CanRestoreFocus?.Invoke() != false)
             _ = CloseTransitionAsync(previous, version);
@@ -117,7 +138,7 @@ internal sealed partial class MediaFullscreenLayer : Grid
         IsHitTestVisible = false;
         backdrop.Visibility = Visibility.Collapsed;
         previous.Restore();
-        foreach (var stage in Children.OfType<MediaPresentationStage>()) stage.SetCovered(false);
+        foreach (var stage in stages) stage.SetCovered(false);
         Changed?.Invoke();
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {

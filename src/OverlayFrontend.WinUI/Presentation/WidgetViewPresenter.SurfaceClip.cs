@@ -10,6 +10,7 @@ internal sealed partial class WidgetViewPresenter
     private CompositionRoundedRectangleGeometry? surfaceGeometry;
     private CompositionGeometricClip? surfaceClip;
     private double surfaceRadius;
+    internal double SurfaceCornerRadius => surfaceRadius;
 
     // The shell background and widget tree are siblings. Rounding the background
     // alone cannot clip an opaque widget root or its compositor animations.

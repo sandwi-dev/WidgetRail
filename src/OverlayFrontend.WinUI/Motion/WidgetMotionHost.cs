@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Windows.Foundation;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 
@@ -81,7 +82,12 @@ internal sealed partial class WidgetMotionStage : Panel
     internal WidgetOutgoingLayer Outgoing { get; } = new();
     internal FrameworkElement? Current { get; private set; }
     internal FrameworkElement? Modal { get; private set; }
-    internal WidgetMotionStage() => Children.Add(Outgoing);
+    private PresentationPortal? modalPortal;
+    internal WidgetMotionStage()
+    {
+        Children.Add(Outgoing);
+        Loaded += (_, _) => MountModal();
+    }
     protected override AutomationPeer OnCreateAutomationPeer() => new StagePeer(this);
     private sealed partial class StagePeer(WidgetMotionStage owner) : FrameworkElementAutomationPeer(owner)
     {
@@ -90,6 +96,8 @@ internal sealed partial class WidgetMotionStage : Panel
         protected override List<AutomationPeer> GetChildrenCore()
         {
             var active = owner.Modal ?? owner.Current;
+            if (owner.modalPortal is not null && owner.Modal is { } modal && CreatePeerForElement(modal) is { } peer)
+                return [peer];
             // Reuse native descendant peers; the stable visual parent remains
             // mounted but is not an accessibility destination behind a modal.
             return base.GetChildrenCore()?.Where(peer => peer is FrameworkElementAutomationPeer element &&
@@ -109,11 +117,30 @@ internal sealed partial class WidgetMotionStage : Panel
     internal void SetModal(FrameworkElement? value)
     {
         if (ReferenceEquals(Modal, value)) return;
+        modalPortal?.Dispose(); modalPortal = null;
         if (Modal is not null) Children.Remove(Modal);
         Modal = value;
-        if (value is not null) Children.Insert(Children.Count - 1, value);
+        MountModal();
         FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
         InvalidateMeasure();
+    }
+    private void MountModal()
+    {
+        if (Modal is null || modalPortal is not null) return;
+        if (PresentationLayers.Find(this) is { } layers)
+        {
+            Children.Remove(Modal);
+            modalPortal = new(layers, this, Modal);
+        }
+        else if (!Children.Contains(Modal)) Children.Insert(Children.Count - 1, Modal);
+    }
+    internal PresentationPortal? RetainModalPortal()
+    {
+        if (modalPortal is not { } portal) return null;
+        modalPortal = null; Modal = null;
+        portal.RetainForExit();
+        FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
+        return portal;
     }
     internal void SetCurrent(FrameworkElement? value)
     {
@@ -127,14 +154,14 @@ internal sealed partial class WidgetMotionStage : Panel
     protected override Size MeasureOverride(Size availableSize)
     {
         Current?.Measure(availableSize);
-        Modal?.Measure(availableSize);
+        if (modalPortal is null) Modal?.Measure(availableSize);
         Outgoing.Measure(availableSize);
         return Current?.DesiredSize ?? new();
     }
     protected override Size ArrangeOverride(Size finalSize)
     {
         Current?.Arrange(new(new(), finalSize));
-        Modal?.Arrange(new(new(), finalSize));
+        if (modalPortal is null) Modal?.Arrange(new(new(), finalSize));
         Outgoing.Arrange(new(new(), finalSize));
         return finalSize;
     }

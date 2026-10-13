@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Media;
 
@@ -20,6 +21,8 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
     private double aspectRatio;
     private bool fullscreen, disposed, observing, covered, pageMotion;
     internal bool HasSlot => slot is not null;
+    internal Grid? PlacementAnchor => slot;
+    internal Action? Released { get; set; }
     internal bool CanPresent(Grid target) => XamlRoot is null || ReferenceEquals(XamlRoot, target.XamlRoot);
     internal Rect VideoBounds => SurfaceHost.TransformToVisual(this).TransformBounds(new(0, 0, SurfaceHost.ActualWidth, SurfaceHost.ActualHeight));
 
@@ -77,16 +80,14 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         for (DependencyObject? item = target; item is UIElement element && !ReferenceEquals(item, layer); item = VisualTreeHelper.GetParent(item))
         {
             if (element.Visibility != Visibility.Visible) { Visibility = Visibility.Collapsed; return; }
-            Rect? clip = element.Clip is RectangleGeometry rectangle ? rectangle.Rect :
-                element is ScrollViewer or ScrollContentPresenter && element is FrameworkElement frame ? new(0, 0, frame.ActualWidth, frame.ActualHeight) : null;
+            var clip = PresentationLayers.LocalClip(element);
             if (clip is { } value) visible.Intersect(Map(element.TransformToVisual(layer).TransformBounds(value)));
         }
         for (DependencyObject? item = viewport; item is UIElement element; item = VisualTreeHelper.GetParent(item))
         {
             if (element.Visibility != Visibility.Visible) { Visibility = Visibility.Collapsed; return; }
             if (ReferenceEquals(item, viewport)) continue;
-            Rect? clip = element.Clip is RectangleGeometry rectangle ? rectangle.Rect :
-                element is ScrollViewer or ScrollContentPresenter && element is FrameworkElement frame ? new(0, 0, frame.ActualWidth, frame.ActualHeight) : null;
+            var clip = PresentationLayers.LocalClip(element);
             if (clip is { } value) visible.Intersect(element.TransformToVisual(root).TransformBounds(value));
         }
         visible.Intersect(new(0, 0, root.ActualWidth, root.ActualHeight));
@@ -105,6 +106,8 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         var changed = !ReferenceEquals(slot, value) || fullscreen;
         slot = value;
         fullscreen = false;
+        IsHitTestVisible = false;
+        PresentationLayers.Order(this, PresentationLayers.MediaLayer(value));
         Observe(value is not null);
         if (changed && !pageMotion) FollowOpacity();
         ApplyPlacement();
@@ -115,6 +118,7 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         if (fullscreen) return;
         EndPageMotion();
         fullscreen = true;
+        PresentationLayers.Order(this, PresentationLayer.FullscreenMedia);
         Observe(false);
         var visual = ElementCompositionPreview.GetElementVisual(this);
         visual.StopAnimation("Opacity"); visual.Opacity = 1;
@@ -179,8 +183,7 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         for (DependencyObject? item = target; item is UIElement element; item = VisualTreeHelper.GetParent(item))
         {
             if (element.Visibility != Visibility.Visible) { Visibility = Visibility.Collapsed; return; }
-            Rect? clip = element.Clip is RectangleGeometry rectangle ? rectangle.Rect :
-                element is ScrollViewer or ScrollContentPresenter && element is FrameworkElement frame ? new(0, 0, frame.ActualWidth, frame.ActualHeight) : null;
+            var clip = PresentationLayers.LocalClip(element);
             if (clip is { } value) visible.Intersect(element.TransformToVisual(root).TransformBounds(value));
         }
         Place(bounds, visible);
@@ -217,12 +220,14 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
 
     public void Dispose()
     {
+        if (disposed) return;
         Visibility = Visibility.Collapsed;
         disposed = true; slot = null;
         Observe(false);
         ElementCompositionPreview.GetElementVisual(this).StopAnimation("Opacity");
         LayoutUpdated -= OnLayout;
         if (Parent is Panel parent) parent.Children.Remove(this);
+        Released?.Invoke(); Released = null;
     }
 
     internal void SetPageBackground(Brush? brush)

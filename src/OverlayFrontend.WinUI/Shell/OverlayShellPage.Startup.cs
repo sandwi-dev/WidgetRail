@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using WidgetRail.OverlayFrontend.WinUI.Motion;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
@@ -20,7 +21,7 @@ internal sealed partial class OverlayShellPage
         startupIndicator = new(ResolveTrayIconAsync)
         { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetAutomationId(startupIndicator, "Overlay.Startup");
-        Canvas.SetZIndex(startupIndicator, 20);
+        PresentationLayers.Order(startupIndicator, PresentationLayer.Startup);
         ProductionRoot.Children.Add(startupIndicator);
         PreviewKeyDown += (_, args) =>
         {

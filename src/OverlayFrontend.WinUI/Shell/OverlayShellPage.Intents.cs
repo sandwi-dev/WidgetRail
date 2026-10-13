@@ -232,7 +232,7 @@ internal sealed partial class OverlayShellPage
 
         bool WithinOriginal(DependencyObject node)
         {
-            for (var current = node; current is not null; current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current))
+            for (var current = node; current is not null; current = Presentation.PresentationLayers.LogicalParent(current))
                 if (ReferenceEquals(current, original) || pinnedOwner is not null && ReferenceEquals(current, pinnedOwner.Window.AutomationRoot)) return true;
             return false;
         }

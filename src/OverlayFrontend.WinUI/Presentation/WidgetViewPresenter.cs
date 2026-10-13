@@ -109,19 +109,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         Loaded += (_, _) => QueueEntryFocus();
         SizeChanged += (_, _) => { SettleTransitions(); SettleModalExit(); RefreshResponsiveLayout(); };
         Unloaded += (_, _) => { DismissTransientControl(); if (!IsLoaded) { directionalScroll = null; SettleTransitions(); SettleModalExit(); } };
-        GotFocus += (_, _) => { RememberFocus(); NotifyControllerGuideChanged(); };
-        GettingFocus += OnGettingFocus;
-        PreviewKeyDown += DirectionalKeyDown;
-        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { CancelGroupEntry(); CancelScrollReveal(); }), true);
-        AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, _) => CancelScrollReveal()), true);
-        AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
-        {
-            if (Input.GamepadKeyBoundary.Owns(this, args)) return;
-            if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.Left or
-                Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Home or
-                Windows.System.VirtualKey.End or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or
-                Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space or Windows.System.VirtualKey.Escape) CancelGroupEntry();
-        }), true);
+        AttachPresentationInput(this);
     }
 
     public void Apply(WidgetPresentationFrame next) => ApplyBinding(WidgetPresentationBinding.ForMain(next));

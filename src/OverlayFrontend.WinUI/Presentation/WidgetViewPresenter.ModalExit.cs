@@ -13,6 +13,7 @@ internal sealed partial class WidgetViewPresenter
         internal WidgetModalLayer Layer { get; } = layer;
         internal HashSet<Binding> Retained { get; } = [];
         internal EventHandler<object>? LayoutReady;
+        internal PresentationPortal? Portal;
     }
     private ModalExit? closingModal;
     internal bool HasClosingModal => closingModal is not null;
@@ -26,6 +27,7 @@ internal sealed partial class WidgetViewPresenter
         if (!presentationActive || !sameOwner || incomingModal || !IsLoaded || motionStage is null || options.Reduced || !options.AnimateDialogs) return null;
         var prior = declarations.Values.FirstOrDefault(d => d.Node.Kind == ViewNodeKind.ModalLayer);
         if (prior is null || bindings[prior.Node.Id].Element is not WidgetModalLayer layer || Bounds(layer) is not { } bounds) return null;
+        if (HasDialogSurface(prior.Node.Children[1])) return null;
         var parentId = prior.Node.Children[0].Id;
         // A close retains pixels only when the original parent survives this
         // publication. Runtime/page replacement retires everything immediately.
@@ -34,6 +36,8 @@ internal sealed partial class WidgetViewPresenter
         var exit = new ModalExit(layer);
         exit.Retained.Add(bindings[prior.Node.Id]);
         Collect(prior.Node.Children[1]);
+        exit.Portal = ReferenceEquals(motionStage.Modal, layer) ? motionStage.RetainModalPortal() : null;
+        if (exit.Portal is not null) { layer.IsHitTestVisible = false; closingModal = exit; return exit; }
         if (ReferenceEquals(motionStage.Modal, layer)) motionStage.SetModal(null);
         else if (VisualTreeHelper.GetParent(layer) is Panel owner) owner.Children.Remove(layer);
         layer.Width = bounds.Width; layer.Height = bounds.Height; layer.Margin = new();
@@ -83,6 +87,7 @@ internal sealed partial class WidgetViewPresenter
         closingModal = null;
         if (exit.LayoutReady is not null) LayoutUpdated -= exit.LayoutReady;
         exit.Layer.Dispose();
+        exit.Portal?.Dispose();
         motionStage?.Outgoing.Children.Remove(exit.Layer);
         foreach (var binding in exit.Retained) Retire(binding);
     }

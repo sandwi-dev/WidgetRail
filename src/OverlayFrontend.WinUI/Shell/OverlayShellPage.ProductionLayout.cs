@@ -133,7 +133,7 @@ internal sealed partial class OverlayShellPage
     {
         if (IsMediaFullscreen || args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse &&
             !args.GetCurrentPoint(ProductionRoot).Properties.IsLeftButtonPressed) return;
-        for (var node = args.OriginalSource as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
+        for (var node = args.OriginalSource as DependencyObject; node is not null; node = Presentation.PresentationLayers.LogicalParent(node))
             // Popup routed input can reach this root even though its visual
             // ancestry lives outside WidgetSurface. It is still UI content.
             if (ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter or MenuFlyoutPresenter or MenuFlyoutItemBase or ContentDialog || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView)) return;

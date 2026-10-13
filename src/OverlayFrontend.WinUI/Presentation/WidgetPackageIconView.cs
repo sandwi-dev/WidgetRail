@@ -100,7 +100,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
         if (XamlRoot is not { } root || Content is not (Image or ImageIcon)) return;
         ObserveRoot();
         var roots = new List<Shell.OverlayScaleRoot>();
-        for (DependencyObject? parent = this; parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        for (DependencyObject? parent = this; parent is not null; parent = PresentationLayers.LogicalParent(parent))
             if (parent is Shell.OverlayScaleRoot zoom) roots.Add(zoom);
         if (!roots.SequenceEqual(zoomRoots.Select(value => value.Root)))
         {

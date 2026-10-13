@@ -36,6 +36,7 @@ internal sealed class NativeTextScaleScope
             {
                 FrameworkElement span when spanParents.TryGetValue(span, out var paragraph) => paragraph,
                 TextElement text => text.ElementStart.VisualParent,
+                PresentationPortal or Media.MediaPresentationStage => PresentationLayers.LogicalParent(current),
                 FrameworkElement { Parent: { } parent } => parent,
                 _ => VisualTreeHelper.GetParent(current),
             })

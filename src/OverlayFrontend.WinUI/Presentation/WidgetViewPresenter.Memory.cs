@@ -73,7 +73,7 @@ internal sealed partial class WidgetViewPresenter
 
     private static bool IsMemoryVisible(FrameworkElement element)
     {
-        for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        for (DependencyObject? current = element; current is not null; current = PresentationLayers.LogicalParent(current))
             if (current is FrameworkElement { Visibility: Visibility.Collapsed }) return false;
         return true;
     }

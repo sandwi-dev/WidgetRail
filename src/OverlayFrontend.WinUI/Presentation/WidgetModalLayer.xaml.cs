@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Motion;
 using WidgetRail.PlatformSettings;
+using Microsoft.UI.Xaml.Automation.Peers;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -82,4 +83,10 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     }
 
     public void Dispose() { motion?.Dispose(); motion = null; }
+    protected override AutomationPeer OnCreateAutomationPeer() => new ModalPeer(this);
+    private sealed partial class ModalPeer(FrameworkElement owner) : FrameworkElementAutomationPeer(owner)
+    {
+        protected override bool IsControlElementCore() => false;
+        protected override bool IsContentElementCore() => false;
+    }
 }

@@ -13,7 +13,7 @@ internal sealed partial class WidgetViewPresenter
     internal static (double Width, double Height) ViewportFor(FrameworkElement element)
     {
         FrameworkElement owner = element;
-        for (DependencyObject? parent = element; parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        for (DependencyObject? parent = element; parent is not null; parent = PresentationLayers.LogicalParent(parent))
             if (parent is WidgetViewPresenter presenter && !presenter.presentationOnly) owner = presenter;
         return (owner.ActualWidth, owner.ActualHeight);
     }

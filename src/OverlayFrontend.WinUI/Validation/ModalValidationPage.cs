@@ -36,6 +36,7 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
         widget = new Border { Width = 600, Height = 250, Child = presenter,
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new(20, 40, 0, 0) };
         Content = new Grid { Children = { status, widget } };
+        new Media.MediaFullscreenLayer().Attach((Grid)Content);
         presenter.Failed = error => failure = error;
         presenter.DispatchActionAsync = request => { actions.Add(request); return Task.CompletedTask; };
         Loaded += (_, _) => running ??= RunAsync();
@@ -84,7 +85,7 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
             var activePeers = AutomationIds(presenter).ToHashSet(StringComparer.Ordinal);
             Check(activePeers.Contains("Widget.play") && !activePeers.Contains("Widget.game.12"),
                 "native modal automation exposes the dialog without inactive parent controls");
-            CheckLocalBounds(panel, "dialog is bounded inside corner-positioned widget");
+            await CheckLocalBoundsAsync(panel, "dialog is bounded inside corner-positioned widget");
 
             var modalScroll = (ScrollViewer)Find(modal + ".scroll")!;
             await Until(() => modalScroll.ScrollableHeight > 0);
@@ -113,10 +114,10 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
 
             widget.Width = 330; widget.Height = 180;
             await Until(() => panel.ActualWidth < 330 && panel.ActualHeight < 180);
-            CheckLocalBounds(panel, "dialog reclamps on small widget resize");
+            await CheckLocalBoundsAsync(panel, "dialog reclamps on small widget resize");
             widget.Width = 600; widget.Height = 250;
             await Until(() => panel.ActualWidth > 500 && panel.ActualHeight > 200);
-            CheckLocalBounds(panel, "dialog expands again without stale small bounds");
+            await CheckLocalBoundsAsync(panel, "dialog expands again without stale small bounds");
 
             ((Button)Find("second")!).Focus(FocusState.Keyboard);
             modal = "details.game13"; Apply();
@@ -218,11 +219,18 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
             styles));
     }
 
-    private void CheckLocalBounds(FrameworkElement panel, string name)
+    private async Task CheckLocalBoundsAsync(FrameworkElement panel, string name)
     {
-        var location = panel.TransformToVisual(widget).TransformPoint(new(0, 0));
-        Check(location.X >= 15 && location.Y >= 15 && location.X + panel.ActualWidth <= widget.ActualWidth - 15 &&
-            location.Y + panel.ActualHeight <= widget.ActualHeight - 15, name);
+        // A root-level portal has a separate compositor transform. Native size
+        // settlement alone doesn't mean its cross-branch transform has committed.
+        await Until(Inside);
+        Check(Inside(), name);
+        bool Inside()
+        {
+            var location = panel.TransformToVisual(widget).TransformPoint(new(0, 0));
+            return location.X >= 15 && location.Y >= 15 && location.X + panel.ActualWidth <= widget.ActualWidth - 15 &&
+                location.Y + panel.ActualHeight <= widget.ActualHeight - 15;
+        }
     }
     private static IEnumerable<string> AutomationIds(FrameworkElement root)
     {
@@ -252,7 +260,7 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
     }
     private string FocusedId => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused
         ? AutomationProperties.GetAutomationId(focused) : string.Empty;
-    private FrameworkElement? Find(string id) => Find(presenter, "Widget." + id);
+    private FrameworkElement? Find(string id) => Find(Content, "Widget." + id);
     private static FrameworkElement? Find(DependencyObject element, string id)
     {
         if (element is FrameworkElement candidate && AutomationProperties.GetAutomationId(candidate) == id) return candidate;

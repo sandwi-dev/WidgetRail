@@ -34,16 +34,9 @@ internal sealed partial class MediaFullscreenLayer
 
     private void InitializeTransition()
     {
-        Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         backdrop.Background = (Brush)Application.Current.Resources["ApplicationPageBackgroundThemeBrush"];
         Children.Insert(0, backdrop);
         SizeChanged += (_, _) => { if (IsTransitioning) CancelMotion(); };
-        PreviewKeyDown += (_, args) =>
-        {
-            if (!IsTransitioning) return;
-            args.Handled = true;
-            if (args.Key == Windows.System.VirtualKey.Escape) Close();
-        };
     }
 
     internal Rect? BoundsOf(FrameworkElement? element)

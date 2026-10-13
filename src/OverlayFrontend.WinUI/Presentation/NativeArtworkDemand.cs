@@ -73,7 +73,7 @@ internal sealed class NativeArtworkDemand : IDisposable
             root = nextRoot; root.Changed += RootChanged;
         }
         var nextZoom = new List<Shell.OverlayScaleRoot>();
-        for (DependencyObject? parent = target; parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        for (DependencyObject? parent = target; parent is not null; parent = PresentationLayers.LogicalParent(parent))
         {
             if (parent is FrameworkElement { Visibility: Visibility.Collapsed }) return;
             if (parent is Shell.OverlayScaleRoot zoom) nextZoom.Add(zoom);
@@ -108,8 +108,9 @@ internal sealed class NativeArtworkDemand : IDisposable
         var width = target.ActualWidth;
         var height = target.ActualHeight;
         var envelope = 1d;
-        for (DependencyObject? parent = target; parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        for (DependencyObject? parent = target; parent is not null; parent = PresentationLayers.LogicalParent(parent))
         {
+            if (parent is PresentationPortal or Media.MediaPresentationStage) continue; // Placement already represents the logical ancestors' zoom.
             if (parent is not FrameworkElement element) continue;
             if (NativeComputedStyleAdapter.For(element) is { } style) envelope *= style.ArtworkScaleEnvelope;
             // Layout zoom lives in RenderTransform. Facade/compositor Scale is
