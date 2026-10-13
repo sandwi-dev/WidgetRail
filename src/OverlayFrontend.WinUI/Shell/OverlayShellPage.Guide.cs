@@ -22,6 +22,8 @@ internal sealed partial class OverlayShellPage
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
             shellContext = "host-choice";
         }
+        else if (SystemFilePickerOpen)
+        { shell = Array.Empty<ControllerGuideHint>(); shellContext = "system-file-picker"; }
         else if (LocalInstallActive)
         {
             shell = SystemFilePickerOpen ? Array.Empty<ControllerGuideHint>() : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A),

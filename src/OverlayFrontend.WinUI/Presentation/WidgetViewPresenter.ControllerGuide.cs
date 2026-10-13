@@ -94,7 +94,7 @@ internal sealed partial class WidgetViewPresenter
                     new(ControllerPrompt.RightBumper, "Forward", ControllerButton.RightBumper), new(ControllerPrompt.X, browser.Surface?.IsNavigationInProgress == true ? "Stop" : "Reload", ControllerButton.X),
                     new(ControllerPrompt.Y, "Address", ControllerButton.Y), new(ControllerPrompt.RightStickPress, "Type", ControllerButton.RightStick),
                     new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger),
-                    new(ControllerPrompt.LeftStickPress, "Toolbar", ControllerButton.LeftStick), new(ControllerPrompt.Menu, "Open externally", ControllerButton.Menu),
+                    new(ControllerPrompt.LeftStickPress, "Toolbar", ControllerButton.LeftStick), new(ControllerPrompt.Menu, "Page actions", ControllerButton.Menu),
                     .. (browser.Surface?.HasPopup == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Close popup", ControllerButton.B)] : browser.Surface?.RequiresActivation == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Leave interaction", ControllerButton.B)] : [])]
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Interact", ControllerButton.A),
                     new(ControllerPrompt.B, "Back", ControllerButton.B)];

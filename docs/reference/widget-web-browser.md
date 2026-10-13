@@ -55,7 +55,7 @@ widget/tray routing. There is no separate Back flag. LS toggles between the page
 A presses the mouse button, holding it while moving the stick drags, and releasing
 it releases the mouse button. D-pad also moves the pointer. Toolbar left/right navigation selects commands, and LS or Down returns to the page. LB/RB navigate history, X reloads/stops, Y edits the current address,
 LT/RT zoom out/in (including held repeat), R3 edits the selected text field, and
-Menu opens externally. The press used to enter Interact never clicks the page.
+Menu opens page actions at the pointer; Open externally remains in the toolbar. The press used to enter Interact never clicks the page.
 Opening a dialog or losing input cancels a held pointer outside the page.
 HTML drag-and-drop uses Chromium's drag interception and delivery only for the
 controller-owned gesture. Drag data is bounded, stays inside its browser, and
@@ -101,11 +101,13 @@ interaction to the main foreground owner first.
 Supported website permissions use host prompts identifying the widget and exact
 HTTPS origin, with Allow once, Always allow and Block choices. Website controls
 revoke saved decisions or clear all website data for the selected profile.
-Downloads, external URI schemes, basic authentication and bad certificates remain
-denied at this implementation checkpoint. Popup routing is configured separately
-from ordinary link routing, as described below. Password saving, autofill, host
-objects, web messages, developer tools, script dialogs and default context menus
-remain disabled pending the file/dialog/context workstream. The host
+Uploads and downloads use origin-labelled confirmation and Windows file pickers.
+Script dialogs and standard context menus use the existing controller dialog
+framework. External URI schemes, HTTP basic authentication and invalid certificates
+remain denied; use the external browser for those unsupported authentication
+workflows. Popup routing is configured separately from ordinary link routing.
+Password saving, autofill, host objects, web messages and developer tools remain
+disabled. The host
 sends only fixed browser commands; page contents and scripting APIs never cross
 widget IPC. Use Open externally for unsupported site workflows. A browser process
 failure has a visible recovery message; A reopens the page with a new controller.
@@ -198,7 +200,7 @@ wrail new widget Discord --template webapp --url https://discord.com/app
 | ExternalLinks | InWidget | OtherOriginsInWindows |
 | Popups | ReplacePage | Hosted |
 
-Profile keys use 1–64 lowercase letters, digits, dots, dashes or underscores.
+Profile keys use 1â€“64 lowercase letters, digits, dots, dashes or underscores.
 They are account labels, never paths. Profiles are namespaced by widget identity
 and storage type. No widget receives cookies, tokens, native browser objects or
 website permission authority. Provider documents keep their restricted defaults.
@@ -247,3 +249,40 @@ permission is granted. A local fixture verifies that the website receives its
 `show` event. Notification interaction and real Discord behavior still require
 validation. This supports document notifications while the webapp is resident;
 WebView2 does not support push notifications while WidgetRail is closed.
+
+### Website messages and page actions
+
+Alerts, confirmations and leave-page questions identify the requesting website
+and use the host chooser. Website text prompts use the controller keyboard, with
+the full bounded message in its scrollable body and an explicit Submit action.
+B cancels. Navigating away, hiding or retiring the page cancels outstanding
+dialogs. A confirmed Stop/clear-data action accepts beforeunload so a website
+cannot veto the user's decision to end its session.
+
+Menu sends a native right-click at the controller pointer. Website-owned context
+menus remain website UI. Standard Chromium menus use the themed host chooser,
+including submenus, without exposing native command IDs to widget code.
+
+### Files
+
+Ordinary HTML file inputs use Windows Open dialogs after a confirmation showing
+the widget and requesting frame's origin. Multiple selection is supported up to
+32 files. Cancelling preserves an existing selection; replacing the input or
+navigating while the picker is open invalidates the selection. Windows pickers
+currently require mouse/keyboard. They block overlay shortcuts while open.
+Directory uploads and File System Access API workflows are not advertised.
+
+Downloads require a confirmation and a Windows Save destination for each file.
+Windows overwrite confirmation and WebView2's file security checks remain in
+place. Files are never opened automatically. Up to two downloads per surface can
+run; Website controls lists running downloads with cancellation. Stopping the
+session, clearing its profile or retiring it cancels remaining downloads. A
+website requesting repeated downloads receives a separate permission prompt;
+allowing it does not bypass per-file save confirmation.
+
+File paths stay between the native picker and its originating browser controller.
+They are not widget IPC results or SDK file grants. A completed user selection
+does not depend on the timing of native-picker foreground restoration, but still
+requires the same live, visible document and uncancelled request. Picker
+cancellation closes only the application's owned common dialog and waits for its
+native completion before releasing the modal input scope.

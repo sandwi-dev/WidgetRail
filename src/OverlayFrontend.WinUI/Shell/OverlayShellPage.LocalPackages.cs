@@ -19,7 +19,7 @@ internal sealed partial class OverlayShellPage
 
     private async Task InstallLocalWidgetAsync(WidgetActionRequest request)
     {
-        if (LocalInstallActive || owner is null) return;
+        if (LocalInstallActive || SystemFilePickerOpen || owner is null) return;
         var session = owner.Session;
         session.ValidateLocalWidgetInstall(request.Displayed, request.Action);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);

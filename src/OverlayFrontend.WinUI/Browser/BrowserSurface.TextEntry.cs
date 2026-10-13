@@ -12,7 +12,7 @@ internal sealed partial class BrowserSurface
     internal WidgetTextEntryDialog? ControllerTextEntry => popup is { } child ? child.ControllerTextEntry : input && interacting && !retired ? editDialog : null;
     private bool editPending;
     private long pageEpoch, editGeneration;
-    internal bool HasDialog => popup?.HasDialog == true || editPending || editDialog is not null || libraryDialog is not null;
+    internal bool HasDialog => popup?.HasDialog == true || webDialogPending || editPending || editDialog is not null || libraryDialog is not null;
     // Fixed host scripts. No widget-supplied code, DOM handle or page text crosses IPC.
     // A remote object refers to the exact focused field, including its document.
     private const string FocusedField = "(() => { let e = document.activeElement; while(e?.shadowRoot?.activeElement) e=e.shadowRoot.activeElement; return e; })()";

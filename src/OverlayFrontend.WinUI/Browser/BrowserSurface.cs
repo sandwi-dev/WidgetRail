@@ -265,7 +265,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         else if (button == ControllerButton.X) Reload();
         else if (button == ControllerButton.Y) Run(() => EditAsync(addressEntry: true));
         else if (button == ControllerButton.RightStick) Run(() => EditAsync(addressEntry: false));
-        else if (button == ControllerButton.Menu) Run(OpenExternallyAsync);
+        else if (button == ControllerButton.Menu) Run(OpenContextMenuAsync);
         else if (button == ControllerButton.LeftTrigger) ChangeZoom(-.1);
         else if (button == ControllerButton.RightTrigger) ChangeZoom(.1);
         return true;
@@ -326,7 +326,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             InitializeDrag();
             var settings = core.Settings;
             settings.AreHostObjectsAllowed = false; settings.IsWebMessageEnabled = false;
-            settings.AreDevToolsEnabled = false; settings.AreDefaultContextMenusEnabled = false;
+            settings.AreDevToolsEnabled = false; settings.AreDefaultContextMenusEnabled = !IsProviderContent;
             settings.AreDefaultScriptDialogsEnabled = false; settings.AreBrowserAcceleratorKeysEnabled = false;
             settings.IsPasswordAutosaveEnabled = false; settings.IsGeneralAutofillEnabled = false;
             settings.IsStatusBarEnabled = false; settings.IsBuiltInErrorPageEnabled = false;
@@ -362,14 +362,14 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             var permissionOwner = core;
             core.PermissionRequested += (_, args) => PermissionRequested(permissionOwner, args);
             core.ScreenCaptureStarting += (_, args) => ScreenCaptureStarting(permissionOwner, args);
-            core.DownloadStarting += (_, args) => { args.Cancel = true; args.Handled = true; ShowStatus("Use Open externally to download files."); };
+            core.DownloadStarting += (_, args) => DownloadStarting(permissionOwner, args);
             core.NewWindowRequested += (_, args) => NewWindowRequested(args);
             core.WindowCloseRequested += (_, _) => CloseRequested?.Invoke();
             core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
             core.BasicAuthenticationRequested += (_, args) => args.Cancel = true;
             core.ServerCertificateErrorDetected += (_, args) => args.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
-            core.ScriptDialogOpening += (_, args) =>
-            { if (profileChanging && args.Kind == CoreWebView2ScriptDialogKind.Beforeunload) args.Accept(); };
+            core.ScriptDialogOpening += (_, args) => ScriptDialogOpening(permissionOwner, args);
+            core.ContextMenuRequested += (_, args) => ContextMenuRequested(permissionOwner, args);
             core.ProcessFailed += (_, args) =>
             {
                 Diagnostics.FrontendFailureLog.Current.Write("browser-process-failed", null, $"widget={widgetId} kind={args.ProcessFailedKind}");
@@ -383,6 +383,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                 ShowStatus("The page disconnected. Press A to reopen it."); UpdateChrome();
                 ActivityChanged?.Invoke();
             };
+            await InitializeFilesAsync();
+            if (retired) return;
             ConfigureProviderDocument(env);
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
             if (!IsProviderContent && FixturePage is not null)
@@ -480,6 +482,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (retired) return; SetPresentation(false, false); retired = true; lifetime.Cancel();
         if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());
         await DrainPopupAsync();
+        CloseFiles();
         Choose = null;
         ChangeRunning = null; ActivityChanged = null; Recover = null;
         chromeTheme?.Dispose(); chromeTheme = null;

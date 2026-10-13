@@ -32,7 +32,7 @@ internal sealed partial class OverlayShellPage
     {
         if (owner is null || mediaOwner is not null || retired) return;
         browserOwner = new(owner.Session, MediaParking, options.SettingsRoot)
-        { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync };
+        { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync, ChooseFiles = ShowBrowserFilePickerAsync };
         browserOwner.ActivityChanged += RefreshWebappStatus;
         mediaOwner = new(owner.Session, MediaParking)
         {

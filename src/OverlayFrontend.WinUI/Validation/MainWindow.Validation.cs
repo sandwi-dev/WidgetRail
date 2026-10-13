@@ -100,6 +100,15 @@ public sealed partial class MainWindow
         }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-capture-discovery") is { } discoveryResult)
             RootFrame.Content = new Validation.CaptureDiscoveryValidationPage(discoveryResult, arguments.Contains("--full-discovery"));
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-files") is { } filesResult)
+            RootFrame.Content = new Validation.WebAppFilesValidationPage(filesResult,
+                Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."), arguments.Contains("--webapp-native-pickers"));
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-dialogs") is { } dialogResult)
+        {
+            AppWindow.Resize(new(1700, 1400));
+            RootFrame.Content = new Validation.WebAppDialogsValidationPage(dialogResult,
+                Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."));
+        }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-capabilities") is { } capabilityResult)
             RootFrame.Content = new Validation.WebAppCapabilitiesValidationPage(capabilityResult,
                 Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."));

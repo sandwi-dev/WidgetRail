@@ -24,10 +24,12 @@ internal sealed partial class BrowserSurface
         try
         {
             HostDialogChoice[] options = [new("permissions", "Website permissions"), new("clear", "Clear website data for this profile"),
+                .. (downloads.Count == 0 ? Array.Empty<HostDialogChoice>() : [new("downloads", $"Downloads ({downloads.Count})")]),
                 .. (ChangeRunning is null ? Array.Empty<HostDialogChoice>() : [new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)")])];
             var selection = await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", options, token);
             token.ThrowIfCancellationRequested();
-            if (!CanRequestSiteDecision || !ReferenceEquals(core, current)) return;
+            if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
+            if (selection == "downloads") { await ManageDownloadsAsync(token); return; }
             BrowserProfileChange? change = null;
             if (selection == "session" && ChangeRunning is { } run)
             {
@@ -58,7 +60,7 @@ internal sealed partial class BrowserSurface
                 if (selection == "clear") change = new(true);
             }
             token.ThrowIfCancellationRequested();
-            if (change is not null && CanRequestSiteDecision && ReferenceEquals(core, current) && ChangeProfile is { } apply)
+            if (change is not null && CanCompleteSiteDecision && ReferenceEquals(core, current) && ChangeProfile is { } apply)
             {
                 // Navigation intentionally cancels page-scoped prompts. The
                 // confirmed profile operation instead belongs to owner lifetime.
@@ -72,6 +74,7 @@ internal sealed partial class BrowserSurface
 
     internal async Task<string?> ParkForProfileChangeAsync(CancellationToken token)
     {
+        CancelDownloads();
         if (core is not { } current || retired || faulted) return null;
         profileChanging = true;
         SetPresentation(visible, presentationInputRequested);

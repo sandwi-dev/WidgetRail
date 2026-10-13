@@ -31,7 +31,7 @@ internal sealed partial class OverlayShellPage
 
     private async Task InvokeIntentAsync(WidgetActionRequest request)
     {
-        if (intentCancellation is not null || HostChoiceActive || LocalInstallActive || owner is null) return;
+        if (intentCancellation is not null || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || owner is null) return;
         var session = owner.Session;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         intentCancellation = cancellation;
@@ -186,7 +186,7 @@ internal sealed partial class OverlayShellPage
         var original = pinnedOwner is null ? surface : pinnedOwner.Presenter;
         bool Current() => pinnedOwner is null ? foreground && ReferenceEquals(surface, original) :
             ReferenceEquals(pinned, pinnedOwner) && pinnedOwner.IsCurrent && PinnedInputActive;
-        if (HostChoiceActive || LocalInstallActive || retired || !visible || !Current()) return null;
+        if (HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || retired || !visible || !Current()) return null;
         var root = pinnedOwner?.Window.AutomationRoot.XamlRoot ?? XamlRoot;
         var originalFocus = FocusManager.GetFocusedElement(root) as Control;
         var originalState = original?.CapturePresentationState();

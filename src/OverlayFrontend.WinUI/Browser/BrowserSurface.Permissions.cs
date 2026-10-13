@@ -7,6 +7,9 @@ internal sealed partial class BrowserSurface
 {
     internal Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>>? Choose { get; set; }
     internal bool CanRequestSiteDecision => !retired && !faulted && visible && input && !IsProviderContent;
+    // Native/modal UI temporarily owns input. A confirmed decision may complete
+    // before the shell's foreground notification restores browser input.
+    internal bool CanCompleteSiteDecision => !retired && !faulted && visible && !profileChanging && !IsProviderContent;
     private readonly SemaphoreSlim siteDecisionGate = new(1, 1);
     private CancellationTokenSource? siteDecisions;
     private int queuedSiteDecisions;
@@ -53,7 +56,7 @@ internal sealed partial class BrowserSurface
                 var answer = await choose(this, "Website permission", $"{document.AccessibleName}\n{origin}\n\nAllow this website to {description}?",
                     (HostDialogChoice[])[new("once", "Allow once"), new("allow", "Always allow for this profile"), new("deny", "Block for this profile")], token);
                 token.ThrowIfCancellationRequested();
-                if (!CanRequestSiteDecision || !ReferenceEquals(sender, core)) return;
+                if (!CanCompleteSiteDecision || !ReferenceEquals(sender, core)) return;
                 args.State = answer is "once" or "allow" ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
                 args.SavesInProfile = answer is "allow" or "deny";
             }
@@ -79,6 +82,7 @@ internal sealed partial class BrowserSurface
         CoreWebView2PermissionKind.Notifications => "show notifications",
         CoreWebView2PermissionKind.ClipboardRead => "read your clipboard",
         CoreWebView2PermissionKind.Autoplay => "play audio automatically",
+        CoreWebView2PermissionKind.MultipleAutomaticDownloads => "request multiple downloads (each file still requires a save location)",
         _ => null,
     };
 }

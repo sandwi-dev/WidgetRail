@@ -40,7 +40,7 @@ internal sealed partial class OverlayShellPage
     private void ReceiveCore(ControllerFrame frame, out bool delivered)
     {
         delivered = false;
-        if (ReceiveLocalInstall(frame)) return;
+        if (ReceiveSystemFilePicker(frame) || ReceiveLocalInstall(frame)) return;
         if (ReceiveHostChoice(frame)) return;
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); radialInput.Reset(); }
@@ -155,6 +155,7 @@ internal sealed partial class OverlayShellPage
             return;
         }
         if (retired || !visible) return;
+        if (SystemFilePickerOpen) return;
         if (LocalInstallActive) { localInstallDialog?.Handle(button, phase); return; }
         if (hostChoiceDialog is { } dialog)
         { if (visible && HostChoiceHasForeground) dialog.Handle(button, phase); return; }

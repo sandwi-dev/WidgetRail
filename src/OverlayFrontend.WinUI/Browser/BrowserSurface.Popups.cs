@@ -58,7 +58,7 @@ internal sealed partial class BrowserSurface
                     Options = document.Options with { Chrome = BrowserChrome.Toolbar, ExternalLinks = BrowserExternalLinkMode.InWidget, Background = BrowserBackgroundMode.Automatic },
                 }, environment, library: library, popup: true)
                 {
-                    OpenExternal = OpenExternal, Choose = Choose, ChangeProfile = ChangeProfile,
+                    OpenExternal = OpenExternal, Choose = Choose, ChooseFiles = ChooseFiles, ChangeProfile = ChangeProfile,
                     IsInteractionFocused = () => IsInteractionFocused?.Invoke() == true,
                     FocusInteraction = () => FocusInteraction?.Invoke(),
                     ExitInteraction = () => Run(ClosePopupAsync),

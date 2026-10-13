@@ -35,6 +35,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private readonly CancellationTokenSource lifetime = new();
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternal { get; set; }
     internal Func<BrowserSurface, string, string, IReadOnlyList<Shell.HostDialogChoice>, CancellationToken, Task<string?>>? Choose { get; set; }
+    internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
     internal int ResidentCount => entries.Count;
     internal int CreatedCount { get; private set; }
     internal int PlacementMoveCount { get; private set; }
@@ -156,6 +157,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
                             Choose = (source, title, message, choices, token) => Choose?.Invoke(source, title, message, choices, token) ?? Task.FromResult<string?>(null),
                             ChangeProfile = ChangeProfileAsync,
+                            ChooseFiles = (source, request, token) => ChooseFiles?.Invoke(source, request, token) ?? Task.FromResult(Array.Empty<string>()),
                             ReservePopup = ReservePopup,
                             ReleasePopup = surface => popupOwners.Remove(surface),
                             ChangeRunning = ChangeRunningAsync,

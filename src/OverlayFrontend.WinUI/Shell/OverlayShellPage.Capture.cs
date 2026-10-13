@@ -45,7 +45,7 @@ internal sealed partial class OverlayShellPage
         var opened=false;
         try
         {
-            if(!retired && visible && foreground && interactive && activeWidget==widgetId && !HostChoiceActive && !LocalInstallActive && OpenCaptureFolderRequested is { } open)
+            if(!retired && visible && foreground && interactive && activeWidget==widgetId && !HostChoiceActive && !LocalInstallActive && !SystemFilePickerOpen && OpenCaptureFolderRequested is { } open)
                 opened=await open(folder.Path,()=>owner!.Session.IsCaptureFolderCurrentAsync(folder.Id,lifetime.Token),lifetime.Token);
         }
         catch(Exception error) when(error is not OutOfMemoryException)
@@ -93,7 +93,7 @@ internal sealed partial class OverlayShellPage
         var recording = false;
         try
         {
-            if (retired || !visible || !foreground || !interactive || activeWidget != next.WidgetId || HostChoiceActive || LocalInstallActive)
+            if (retired || !visible || !foreground || !interactive || activeWidget != next.WidgetId || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen)
                 throw new OperationCanceledException();
             var video = request.Kind == WindowCaptureKind.Video;
             var delay = preparation.DelaySeconds == 0 ? "after WidgetRail hides" : $"after a {preparation.DelaySeconds}-second countdown";

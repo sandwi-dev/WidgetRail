@@ -38,7 +38,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
     internal string CommitLabel { get; }
     internal Action? GuideChanged { get; set; }
 
-    internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish, bool multiline = false, bool allowSubmit = false, string commitLabel = "Done")
+    internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish, bool multiline = false, bool allowSubmit = false, string commitLabel = "Done", string? description = null)
     {
         this.multiline = multiline && node.TextEntryInputKind != TextEntryInputKind.Sensitive;
         CommitLabel = commitLabel;
@@ -52,6 +52,7 @@ internal sealed partial class WidgetTextEntryDialog : ContentDialog
         DefaultButton = ContentDialogButton.None;
         IsPrimaryButtonEnabled = false;
         Resources["ContentDialogMaxWidth"] = 760d;
+        if (!string.IsNullOrEmpty(description)) body.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap });
         if (node.TextEntryInputKind == TextEntryInputKind.Sensitive)
         {
             password = new PasswordBox { MaxLength = maximumLength, PasswordRevealMode = PasswordRevealMode.Hidden,

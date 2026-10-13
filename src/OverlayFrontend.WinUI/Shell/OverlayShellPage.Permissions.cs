@@ -13,7 +13,7 @@ internal sealed partial class OverlayShellPage
         {
             while (await timer.WaitForNextTickAsync(lifetime.Token))
             {
-                if (permissionPrompt is { IsCompleted: false } || HostChoiceActive || LocalInstallActive) continue;
+                if (permissionPrompt is { IsCompleted: false } || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen) continue;
                 try
                 {
                     var pending = await owner!.Session.TakePermissionAsync(lifetime.Token);
@@ -34,7 +34,7 @@ internal sealed partial class OverlayShellPage
         cancellation.CancelAfter(TimeSpan.FromMinutes(2));
         var token = cancellation.Token; Task? renewal = null;
         var sourcePin = PinnedInputActive && pinned?.WidgetId == prompt.WidgetId ? pinned : null;
-        bool Eligible() => !retired && visible && !LocalInstallActive && (sourcePin is not null
+        bool Eligible() => !retired && visible && !LocalInstallActive && !SystemFilePickerOpen && (sourcePin is not null
             ? ReferenceEquals(pinned, sourcePin) && sourcePin.IsCurrent && PinnedInputActive
             : foreground && interactive && activeWidget == prompt.WidgetId);
         try

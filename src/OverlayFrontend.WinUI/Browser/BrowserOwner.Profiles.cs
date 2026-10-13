@@ -6,7 +6,7 @@ internal sealed partial class BrowserOwner
 
     private async Task<bool> ChangeProfileAsync(BrowserSurface source, BrowserProfileChange change, CancellationToken token)
     {
-        if (retired || !source.CanRequestSiteDecision || source.NativeProfile is not { } profile ||
+        if (retired || !source.CanCompleteSiteDecision || source.NativeProfile is not { } profile ||
             !entries.Values.Any(entry => entry.Surface.Owns(source)) || !changingProfiles.Add(source.ProfileName)) return false;
         token = lifetime.Token;
         var parked = entries.Values.Select(entry => entry.Surface).Where(surface => surface.ProfileName == source.ProfileName)
