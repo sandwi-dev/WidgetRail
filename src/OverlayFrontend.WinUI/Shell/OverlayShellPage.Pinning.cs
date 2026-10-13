@@ -52,6 +52,7 @@ internal sealed partial class OverlayShellPage
     private long pinIntent;
     internal event Action? ReturnFromPinnedRequested;
     private bool PinnedInputActive => pinned is { Window.Interactive: true, HasForeground: true };
+    internal void ReconcilePinnedWindowOrder() => pinned?.Window.ReconcileOrder();
     private bool PinnedInteractionRequested => pinned?.Window.Interactive == true;
     private bool MainFocusEnabled => visible && interactive && foreground && !switching && activeWidget == requestedWidget &&
         !PinnedInteractionRequested && !PinnedAdjustmentActive && !LocalInstallActive && !SystemFilePickerOpen && !HostChoiceActive;
@@ -168,7 +169,7 @@ internal sealed partial class OverlayShellPage
                     }
                     var hints = projection.Snapshot.Surface;
                     var saved = pinnedPreferences.Placements.GetValueOrDefault(widgetId);
-                    window = new(frame.Descriptor.Name);
+                    window = new(frame.Descriptor.Name, (nint)hostWindow);
                     var prepared = await PreparePinnedPlacementAsync(window, hints, saved);
                     if (retired || intent != pinIntent || !selection.IsCurrent)
                         throw new WidgetPresentationSessionException("pinned_input_stale", "Pinned placement owner retired.");

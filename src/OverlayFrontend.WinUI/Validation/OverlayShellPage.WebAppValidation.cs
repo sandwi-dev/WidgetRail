@@ -107,13 +107,17 @@ internal sealed partial class OverlayShellPage
                 step = "pinned dialogs";
                 await PinAsync("webapp-a", WidgetPinnedProjection.FullWidgetLayoutId);
                 await WebAppUntil(() => Slots(pinned?.Presenter).Any(slot => slot.Surface == first));
+                ReconcilePinnedWindowOrder();
+                Check(WindowBelow(pinned!.Window.Handle, (nint)hostWindow), "Passive browser pin is behind the main overlay");
                 await EnterPinnedAsync();
                 await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
+                Check(WindowBelow((nint)hostWindow, pinned.Window.Handle), "Interacting browser pin is above the main overlay without replacing its session");
                 await first.NativeProfile!.SetPermissionStateAsync(CoreWebView2PermissionKind.Notifications, "https://shell.fixture.invalid", CoreWebView2PermissionState.Default);
                 await first.EvaluateGestureFixtureAsync("window.permissionResult='pending';Notification.requestPermission().then(p=>window.permissionResult=p)");
                 await WebAppUntil(() => hostChoiceDialog?.IsLoaded == true);
                 Check(ReferenceEquals(hostChoiceDialog!.XamlRoot, pinned!.Window.AutomationRoot.XamlRoot), "Pinned website consent uses the owning native window");
-                var primary = FindControl<Button>(hostChoiceDialog, "Host.Choice.Primary")!;
+                Check(string.IsNullOrEmpty(hostChoiceDialog.PrimaryButtonText), "Multi-option website choices use direct actions without a redundant Open button");
+                var primary = FindControl<ListView>(hostChoiceDialog, "Host.Choice.Options")!;
                 var bounds = primary.TransformToVisual(pinned.Window.AutomationRoot).TransformBounds(new(0, 0, primary.ActualWidth, primary.ActualHeight));
                 Check(bounds.Top >= 0 && bounds.Bottom <= hostChoiceDialog.XamlRoot.Size.Height + 1, "Pinned dialog confirmation remains inside the visible window");
                 await Choose(0);
@@ -196,6 +200,15 @@ internal sealed partial class OverlayShellPage
                 await Press(ControllerButton.A);
                 await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface is { IsReady: true } page && page != first));
                 Check(await (await CurrentBrowser()).EvaluateFixtureAsync("typeof window.fakeStream==='undefined'") == "true", "Recovery creates a fresh page through the placement owner");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-shutdown"))
+                {
+                    step = "shutdown";
+                    var moves = browserOwner.PlacementMoveCount;
+                    PrepareNativeShutdown();
+                    await DisposeAsync();
+                    Check(browserOwner.ResidentCount == 0 && browserOwner.PlacementMoveCount == moves,
+                        "Shutdown drains recovered and retained controllers without parking them into retiring XAML roots");
+                }
             }
             catch (Exception failure) { error = failure.ToString(); }
             await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = error is null, step, checks, error, pages = Slots(surface).Select(slot => new { ready = slot.Surface?.IsReady, loading = slot.Surface?.IsNavigationInProgress, title = slot.Surface?.CurrentTitle, profile = slot.Surface?.ProfileName, permissions = slot.Surface?.FixturePermissionTrace }).ToArray(), retained = browserOwner?.BackgroundSessionCount }));
@@ -239,6 +252,20 @@ internal sealed partial class OverlayShellPage
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
             foreach (var child in Slots(VisualTreeHelper.GetChild(root, i))) yield return child;
     }
+    private static bool WindowBelow(nint window, nint above)
+    {
+        // WinUI has hidden popup HWNDs between visible windows. Assert relative
+        // order, not immediate native adjacency after activation creates one.
+        for (var count = 0; count < 512 && window != 0; count++)
+        {
+            window = NativePreviousWindow(window, 3);
+            if (window == above) return true;
+        }
+        return false;
+    }
+    [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "GetWindow")]
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+    private static partial nint NativePreviousWindow(nint window, uint command);
     private static T? FindControl<T>(DependencyObject root, string id) where T : DependencyObject
     {
         if (root is T control && AutomationProperties.GetAutomationId(root) == id) return control;

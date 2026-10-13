@@ -67,9 +67,13 @@ internal sealed partial class HostChoiceDialog : ContentDialog
             choices.SelectedIndex = 0;
             choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: int index }) Choose(index); };
             if (entries.Count > 1) content.Children.Add(choices);
-            PrimaryButtonText = entries.Count == 1 ? entries[0].Label : "Open";
-            choices.SelectionChanged += (_, _) => IsPrimaryButtonEnabled = choices.SelectedIndex >= 0;
-            PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(choices.SelectedIndex); };
+            // List entries are already direct actions (pointer, Enter and A).
+            // A second generic "Open" button obscures destructive action intent.
+            if (entries.Count == 1)
+            {
+                PrimaryButtonText = entries[0].Label;
+                PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(0); };
+            }
         }
         Content = content;
         Opened += (_, _) =>

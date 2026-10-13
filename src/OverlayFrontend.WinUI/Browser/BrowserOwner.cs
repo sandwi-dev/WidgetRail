@@ -305,10 +305,16 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         }
         finally { retiringEntries.Remove(key); if (!retired) parking.DispatcherQueue.TryEnqueue(Refresh); }
     }
-    public async ValueTask DisposeAsync()
+    private Task? disposal;
+    internal void BeginShutdown()
     {
         if (retired) return; retired = true; lifetime.Cancel();
         session.PresentationChanged -= Changed; session.CatalogChanged -= CatalogChanged;
+    }
+    public ValueTask DisposeAsync() => new(disposal ??= DisposeCoreAsync());
+    private async Task DisposeCoreAsync()
+    {
+        BeginShutdown();
         foreach (var slot in slots.Keys) { slot.PlacementChanged = null; slot.SetSurface(null); } slots.Clear();
         if (reconciliation is not null) await reconciliation;
         foreach (var pair in entries.ToArray()) await RetireAsync(pair.Key, pair.Value);

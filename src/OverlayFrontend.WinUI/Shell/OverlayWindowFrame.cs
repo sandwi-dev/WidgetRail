@@ -5,6 +5,31 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// <summary>Suppress Windows 11's DWM outline on transparent overlay windows.</summary>
 internal static partial class OverlayWindowFrame
 {
+    internal static void PlaceBelow(nint window, nint above)
+    {
+        // NOACTIVATE | NOMOVE | NOSIZE | NOOWNERZORDER. Change stacking only,
+        // without recreating/reparenting native media or transferring focus.
+        if (GetWindow(window, 3) == above) return; // GW_HWNDPREV
+        if (SetWindowPos(window, above, 0, 0, 0, 0, 0x213) == 0)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+    }
+
+    internal static void KeepTopmost(nint window)
+    {
+        // Do not repeatedly raise an already-topmost passive window over other
+        // applications' menus/dialogs. Promotion is only needed after demotion.
+        if ((GetWindowLongPtrW(window, -20) & 8) != 0) return;
+        if (SetWindowPos(window, -1, 0, 0, 0, 0, 0x213) == 0)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+    }
+
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    internal static partial int IsWindowVisible(nint window);
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial nint GetWindow(nint window, uint command);
+
     internal static void SetExtendedStyleWithoutActivation(nint hwnd, nint style)
     {
         const int extendedStyleIndex = -20;

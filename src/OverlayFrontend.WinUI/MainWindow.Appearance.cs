@@ -40,8 +40,12 @@ public sealed partial class MainWindow
         var display = OverlayDisplayArea.Resolve(AppWindow.Id, AppWindow.Id);
         if (display is null) return;
         var area = display.OuterBounds;
-        try { desktopBackdrop.Apply(WinRT.Interop.WindowNative.GetWindowHandle(this), area, color,
-            page.Appearance.BackdropOpacity, AppWindow.IsVisible); }
+        try
+        {
+            desktopBackdrop.Apply(WinRT.Interop.WindowNative.GetWindowHandle(this), area, color,
+                page.Appearance.BackdropOpacity, AppWindow.IsVisible);
+            page.ReconcilePinnedWindowOrder();
+        }
         catch (Exception error)
         {
             backdropAvailable = false;

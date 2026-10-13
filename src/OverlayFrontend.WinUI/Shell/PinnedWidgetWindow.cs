@@ -52,8 +52,10 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     internal PinnedBounds Bounds => new(window.Position.X, window.Position.Y, window.Size.Width, window.Size.Height);
     internal int OpacityPercent { get; private set; } = 100;
 
-    internal PinnedWidgetWindow(string name)
+    private readonly nint mainWindow;
+    internal PinnedWidgetWindow(string name, nint mainWindow = 0)
     {
+        this.mainWindow = mainWindow;
         AutomationProperties.SetAutomationId(automationRoot, "Overlay.PinnedContent");
         AutomationProperties.SetName(automationRoot, "Pinned widget — " + name);
         scaleRoot.Children.Add(content);
@@ -147,6 +149,7 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
         if (!IsVisible) window.Show(activateWindow: false);
         SizeIsland(); island.SiteBridge.Show();
         OverlayWindowFrame.SuppressBorder(Handle);
+        ReconcileOrder();
         UpdateFocusVisibility();
     }
     private void SizeIsland()
@@ -170,6 +173,7 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
             : style | ExtendedWindowStyle.NoActivate | ExtendedWindowStyle.Transparent;
         OverlayWindowFrame.SetExtendedStyleWithoutActivation(Handle, (nint)(uint)style);
         content.IsHitTestVisible = enabled;
+        ReconcileOrder();
         // Passive content remains readable. The coordinator must also reject
         // automation actions through its presentation admission callback.
         AutomationProperties.SetAccessibilityView(content, enabled ? AccessibilityView.Content : AccessibilityView.Raw);
@@ -177,6 +181,16 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
         // Do not set IsEnabled on the presentation: that would apply disabled
         // widget styles just because the host window is click-through. The
         // coordinator separately gates presenter entry and action admission.
+    }
+    internal void ReconcileOrder()
+    {
+        if (disposed || mainWindow == 0 || !IsVisible) return;
+        if (OverlayWindowFrame.IsWindowVisible(mainWindow) != 0)
+        {
+            if (Interactive) OverlayWindowFrame.PlaceBelow(mainWindow, Handle);
+            else OverlayWindowFrame.PlaceBelow(Handle, mainWindow);
+        }
+        else OverlayWindowFrame.KeepTopmost(Handle);
     }
     internal void SetOpacity(int percent)
     {

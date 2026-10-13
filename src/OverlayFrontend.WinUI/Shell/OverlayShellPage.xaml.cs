@@ -818,10 +818,12 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     }
 
     public ValueTask DisposeAsync() => new(disposal ??= StopAsync());
+    internal void PrepareNativeShutdown() => browserOwner?.BeginShutdown();
     private async Task StopAsync()
     {
         interactionAdmission.Invalidate();
         retired = true;
+        PrepareNativeShutdown();
         localInstallCancellation?.Cancel();
         openingIndicator?.Dispose();
         intentCancellation?.Cancel();
@@ -856,8 +858,15 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             }
             try
             {
-                try { await RemovePinnedCoreAsync(); }
-                finally { await DisposeWidgetSurfacesAsync(); }
+                // Native controllers must close while their XamlRoot/slot hosts
+                // still exist. Unbinding first would try to park them during
+                // teardown, sometimes after WinUI has retired their composition.
+                try { if (browserOwner is not null) await browserOwner.DisposeAsync(); }
+                finally
+                {
+                    try { await RemovePinnedCoreAsync(); }
+                    finally { await DisposeWidgetSurfacesAsync(); }
+                }
             }
             finally
             {

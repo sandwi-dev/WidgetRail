@@ -27,7 +27,7 @@ internal sealed partial class OverlayShellPage
                     frame.Snapshot.EmbeddedMediaSession?.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) != true) return;
                 await RemovePinnedCoreAsync();
                 var saved = pinnedPreferences.Placements.GetValueOrDefault(widgetId);
-                var window = new PinnedWidgetWindow(frame.Descriptor.Name);
+                var window = new PinnedWidgetWindow(frame.Descriptor.Name, (nint)hostWindow);
                 var view = new MediaFullscreenView(compact: true);
                 var chrome = new ShellChromeStyles();
                 PinnedSurface? created = null;

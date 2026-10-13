@@ -302,6 +302,7 @@ public sealed partial class MainWindow : Window
         CancelTaskHandoff();
         keyboardShortcut?.Dispose(); keyboardShortcut = null;
         input?.SetVisible(false);
+        (RootFrame.Content as Shell.OverlayShellPage)?.PrepareNativeShutdown();
         AppWindow.Hide();
         RetireOverlayMotion();
         desktopBackdrop?.Dispose();
