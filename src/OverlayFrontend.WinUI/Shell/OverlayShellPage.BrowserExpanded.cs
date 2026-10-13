@@ -11,8 +11,14 @@ internal sealed partial class OverlayShellPage
 {
     private BrowserSlot? expandedBrowser;
     private readonly RightStickScroll expandedScroll = new();
-    internal Func<uint, CancellationToken, bool>? PrepareBrowserPicker { get; set; }
+    internal Func<uint, Func<Input.ControllerPointerAppearance>, CancellationToken, bool>? PrepareBrowserPicker { get; set; }
     private bool nativeBrowserPickerActive;
+    private string? nativeBrowserPickerStatus;
+    internal void SetNativeBrowserPickerStatus(string? status)
+    {
+        if (nativeBrowserPickerStatus == status) return;
+        nativeBrowserPickerStatus = status; PublishControllerGuide();
+    }
     private BrowserSlot? pickerExpansion;
     private BrowserSurface? pickerBrowser;
     internal void SetNativeBrowserPickerActive(bool active)
@@ -56,7 +62,7 @@ internal sealed partial class OverlayShellPage
             if (!wasExpanded) pickerExpansion = expandedBrowser;
             pickerBrowser = browser;
             token.ThrowIfCancellationRequested();
-            return ready = PrepareBrowserPicker?.Invoke(browser.NativeBrowserProcessId, token) == true;
+            return ready = PrepareBrowserPicker?.Invoke(browser.NativeBrowserProcessId, () => browser.PointerAppearance, token) == true;
         }
         finally { if (!ready) RestoreBrowserPickerPlacement(); }
     }

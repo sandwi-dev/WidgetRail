@@ -28,8 +28,8 @@ internal sealed partial class OverlayShellPage
         {
             shell = (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"),
                 new(ControllerPrompt.A, "Click / hold to drag", ControllerButton.A),
-                new(ControllerPrompt.RightStickMove, "Scroll"), new(ControllerPrompt.B, "Cancel", ControllerButton.B)];
-            shellContext = "native-browser-picker";
+                new(ControllerPrompt.RightStickMove, "Scroll"), new(ControllerPrompt.B, nativeBrowserPickerStatus ?? "Cancel", ControllerButton.B)];
+            shellContext = ("native-browser-picker", nativeBrowserPickerStatus);
         }
         else if (LocalInstallActive)
         {

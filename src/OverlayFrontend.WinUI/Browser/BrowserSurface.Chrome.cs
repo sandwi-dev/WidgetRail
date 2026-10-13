@@ -154,6 +154,14 @@ internal sealed partial class BrowserSurface
         status.Text = value ?? "";
         status.Visibility = string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
     }
+    internal Input.ControllerPointerAppearance PointerAppearance => new(
+        ColorOf(cursor.Background, 0xFFFFFFFF), ColorOf(cursor.BorderBrush, 0xFF000000));
+    private static uint ColorOf(Brush brush, uint fallback)
+    {
+        if (brush is not SolidColorBrush solid) return fallback;
+        var color = solid.Color;
+        return ((uint)color.A << 24) | ((uint)color.R << 16) | ((uint)color.G << 8) | color.B;
+    }
     private void AttachTheme()
     {
         chromeTheme?.Dispose();

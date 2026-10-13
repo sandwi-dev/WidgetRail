@@ -101,7 +101,7 @@ $sources = @(
     'DualSenseHidReader.cpp', 'ControllerIsolationHostSession.cpp', 'LocalControllerPolicy.cpp',
     'HidHideConfigurationAdapter.cpp', 'ViGEmOutputAdapter.cpp', 'OverlayPlatformPolicy.cpp',
     'OverlayPlatformPlacement.cpp', 'OverlayPlatformTargeting.cpp', 'OverlayProcessInterop.cpp',
-    'GuideInputCompatibility.cpp', 'OverlayProcessOwner.cpp', 'ControllerOpenShortcut.cpp', 'NativeBrowserDialogAutomation.cpp'
+    'GuideInputCompatibility.cpp', 'OverlayProcessOwner.cpp', 'ControllerOpenShortcut.cpp', 'NativeBrowserDialogAutomation.cpp', 'ControllerCursorWindow.cpp'
 ) | ForEach-Object { Join-Path $platformDirectory $_ }
 $sources += (Join-Path $viGEmDirectory 'src\ViGEmClient.cpp')
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
@@ -114,7 +114,7 @@ $arguments = @('/nologo', '/MP2', '/FS', '/MT', '/std:c++20', '/utf-8', '/EHsc',
     "/Fo:$objectDirectory\", "/Fe:$OutputDirectory\OverlayPlatformInterop.dll", '/link',
     "/IMPLIB:$OutputDirectory\OverlayPlatformInterop.lib", "/PDB:$OutputDirectory\OverlayPlatformInterop.pdb",
     '/SUBSYSTEM:WINDOWS'
-) + $libraryArguments + @('gameinput.lib', 'user32.lib', 'hid.lib', 'xinput9_1_0.lib', 'bcrypt.lib',
+) + $libraryArguments + @('gameinput.lib', 'user32.lib', 'gdi32.lib', 'hid.lib', 'xinput9_1_0.lib', 'bcrypt.lib',
     'advapi32.lib', 'shell32.lib', 'setupapi.lib', 'cfgmgr32.lib', 'ole32.lib', 'oleaut32.lib',
     'ntdll.lib', 'userenv.lib', 'ws2_32.lib')
 $originalPath = $env:PATH

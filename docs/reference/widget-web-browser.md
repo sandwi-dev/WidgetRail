@@ -253,17 +253,28 @@ source or cancelling automatically restores the original widget/pin and interact
 A browser already expanded before the request stays expanded.
 
 The chooser uses the browser's familiar pointer controls: left stick moves the
-system pointer, A clicks (hold to drag), right stick scrolls, and B cancels.
+controller circle, A clicks (hold to drag), right stick scrolls, and B cancels.
 There are no chooser-specific D-pad/bumper keyboard mappings. Physical mouse and
 keyboard remain available. Widget controller actions are suspended while the
 native dialog owns input. Its pointer transport shares browser motion/deadzone
 policy and is independent of the particular dialog's lifecycle adapter.
 
-The host admits only the requested dialog in its own WebView2 process and uses
-Windows UI Automation to identify its actual lifetime and screen bounds; the
-browser HWND itself can survive dismissal. Pointer clicks/scrolls are guarded by
-foreground ownership, dialog bounds and native-window hit testing. An outstanding
-controller mouse press is released on disconnect, lost focus or teardown.
+The host searches the requesting WebView2 process's windows for the actual sharing
+chooser using native accessibility structure. An active share creates a separate
+indicator window, so the number of browser windows is not treated as dialog identity.
+Webpage accessibility subtrees and window titles are not inspected. Unknown or failed
+detection keeps the modal input/placement boundary active; it does not mean closed.
+Two successful absent observations confirm dismissal. Diagnostic state transitions
+include window counts and result codes without website content.
+
+The circle uses the browser's diameter and theme colors in a tiny nonactivating,
+click-through native visual above the chooser. Controller mouse messages target only
+the admitted native root/children at the circle's virtual position; they do not move
+the physical mouse or replace the Windows cursor. Ordinary desktop input hides the
+circle; controller activity shows it again. The physical mouse keeps its own location.
+The pointer transport, motion policy and visual are reusable independently of the
+sharing-specific accessibility detector. An outstanding controller press is cancelled
+on disconnect, lost focus or teardown without leaving a global mouse button held.
 The native dialog retains mouse hit testing even while webpage controller input
 is suspended. A bounded completion handoff lets Chromium finish activating the
 selected source before WidgetRail restores placement/focus. Leaving a still-open
@@ -271,7 +282,10 @@ chooser for another application relinquishes the dialog instead of stealing focu
 
 Selected-window video delivery and track stopping have been verified with an
 opaque synthetic window using simulated analog/button controller frames through
-the real native chooser. These checks are distinct from physical-controller acceptance.
+the real native chooser. The repeat fixture keeps earlier streams alive across
+share → cancel change → share, and verifies dragging, scrolling, circle presentation,
+mouse/controller handoff, unchanged physical cursor position and automatic return.
+These checks are distinct from physical-controller acceptance.
 
 Notifications use WebView2's default native notification UI after website
 permission is granted. A local fixture verifies that the website receives its

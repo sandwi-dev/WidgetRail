@@ -21,7 +21,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         Margin = new(32), MaxWidth = 460, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new(12, 8, 12, 8), Visibility = Visibility.Collapsed };
     private readonly TextBlock address = new() { TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
-    private readonly Border cursor = new() { Width = 16, Height = 16, CornerRadius = new(8), BorderThickness = new(2),
+    private readonly Border cursor = new() { Width = Input.ControllerPointerAppearance.Diameter, Height = Input.ControllerPointerAppearance.Diameter, CornerRadius = new(Input.ControllerPointerAppearance.Diameter / 2), BorderThickness = new(Input.ControllerPointerAppearance.Border),
         IsHitTestVisible = false,
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed };
     private readonly List<Button> buttons = [];

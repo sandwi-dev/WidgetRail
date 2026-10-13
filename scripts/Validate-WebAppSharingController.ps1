@@ -1,9 +1,9 @@
 # Drives only the explicitly launched local sharing fixture. Native control
 # geometry is read through UIA; actions use analog controller frames, never UIA Invoke or direct cursor writes.
-param([Parameter(Mandatory)][string]$Result, [switch]$Cancel)
+param([Parameter(Mandatory)][string]$Result, [switch]$Cancel, [ValidateRange(1, 3)][int]$Round = 1)
 $ErrorActionPreference = 'Stop'
 $deadline = [DateTime]::UtcNow.AddSeconds(40)
-while (!(Test-Path -LiteralPath ($Result + '.sharing-ready'))) {
+while (!(Test-Path -LiteralPath ($Result + '.sharing-ready')) -or [int](Get-Content -LiteralPath ($Result + '.sharing-ready') -Raw | ConvertFrom-Json).round -lt $Round) {
     if (Test-Path -LiteralPath $Result) { throw (Get-Content -LiteralPath $Result -Raw) }
     if ([DateTime]::UtcNow -gt $deadline) { throw 'Sharing fixture did not become ready.' }
     Start-Sleep -Milliseconds 100
@@ -18,10 +18,10 @@ if ($ownerProcess.Name -ne 'OverlayFrontend.WinUI.exe' -or !$ownerProcess.Comman
 }
 $browser = @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.ParentProcessId -eq $fixture.pid -and $_.CommandLine -notlike '*--type=*' })
 if ($browser.Count -ne 1) { throw 'Expected one owned browser process.' }
-$native = @(winapp ui list-windows -a $browser[0].ProcessId --json | ConvertFrom-Json)
-if ($native.Count -ne 1) { throw 'Expected one native sharing window.' }
-$window = $native[0].hwnd
+$script:window = 0
+$script:virtualCursor = [pscustomobject]@{ X=0; Y=0 }
 $script:sequence = if (Test-Path -LiteralPath ($Result + '.picker-ack')) { [int](Get-Content -LiteralPath ($Result + '.picker-ack') -Raw | ConvertFrom-Json).sequence } else { 0 }
+$script:sequence = [Math]::Max($Round * 10000, $script:sequence)
 $evidence = [Collections.Generic.List[object]]::new()
 Add-Type @'
 using System;
@@ -37,7 +37,7 @@ public static class SharingPointerProbe {
     }
 }
 '@
-function Cursor { [SharingPointerProbe]::Read() }
+function Cursor { $script:virtualCursor }
 function Find-Control([string]$Name) {
     $match = @( (winapp ui search $Name -w $window --json | ConvertFrom-Json).matches | Where-Object { $_.name -eq $Name -and !$_.isOffscreen } )
     if ($match.Count -ne 1) { throw "Expected one visible native control: $Name" }
@@ -51,11 +51,13 @@ function Send-Controller([string]$Command) {
     do {
         Start-Sleep -Milliseconds 100
         $ack = if (Test-Path -LiteralPath ($Result + '.picker-ack')) { Get-Content -LiteralPath ($Result + '.picker-ack') -Raw | ConvertFrom-Json } else { $null }
-    } while (($null -eq $ack -or $ack.sequence -ne $script:sequence) -and [DateTime]::UtcNow -lt $until)
-    if ($null -eq $ack -or $ack.sequence -ne $script:sequence) { throw 'Native controller command was not acknowledged.' }
+    } while (($null -eq $ack -or $ack.sequence -ne $script:sequence -or $ack.round -ne $Round) -and [DateTime]::UtcNow -lt $until)
+    if ($null -eq $ack -or $ack.sequence -ne $script:sequence -or $ack.round -ne $Round) { throw 'Native controller command was not acknowledged.' }
+    $script:virtualCursor = [pscustomobject]@{ X=$ack.x; Y=$ack.y }
+    if ($ack.window -ne 0) { $script:window = $ack.window }
     $cursor = Cursor
-    $evidence.Add(@{command=$Command;nativeForeground=$ack.nativeReady;x=$cursor.X;y=$cursor.Y})
-    $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath ($Result + '.controller-evidence.json') -Encoding utf8NoBOM
+    $evidence.Add(@{command=$Command;nativeForeground=$ack.nativeReady;circle=$ack.circleVisible;x=$cursor.X;y=$cursor.Y})
+    $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath ($Result + ".round-$Round.controller-evidence.json") -Encoding utf8NoBOM
     return $ack.nativeReady
 }
 function Move-To($Control) {
@@ -70,8 +72,20 @@ function Move-To($Control) {
     }
     throw 'Analog pointer did not reach the native control.'
 }
-for ($i=0; $i -lt 12; $i++) { if (Send-Controller neutral) { break }; Start-Sleep -Milliseconds 100 }
+for ($i=0; $i -lt 12; $i++) { if ((Send-Controller neutral) -and $evidence[$evidence.Count-1].circle) { break }; Start-Sleep -Milliseconds 100 }
 if (!$evidence[$evidence.Count-1].nativeForeground) { throw 'Native dialog did not receive focus.' }
+$circleWindow = @(winapp ui list-windows -a $fixturePid --json | ConvertFrom-Json | Where-Object { $_.className -eq 'WidgetRail.ControllerPointer.v1' })
+if ($circleWindow.Count -ne 1 -or $circleWindow[0].isForeground) { throw 'Expected one nonactivating controller-circle window.' }
+winapp ui screenshot -w $circleWindow[0].hwnd -o ($Result + ".round-$Round.circle.png") --json | Out-Null
+if ($Round -eq 1) {
+    winapp ui hover Cancel -w $window --json | Out-Null
+    $null = Send-Controller neutral
+    if ($evidence[$evidence.Count-1].circle) { throw 'Desktop mouse input did not hide the circle.' }
+    $null = Send-Controller 'move 9000 0 3'
+    if (!$evidence[$evidence.Count-1].circle) { throw 'Controller input did not restore the circle.' }
+}
+$physicalStart = [SharingPointerProbe]::Read()
+if (!$evidence[$evidence.Count-1].circle) { throw 'Controller circle was not visible on entry.' }
 if ($Cancel) {
     Move-To (Find-Control 'Cancel')
     $null = Send-Controller cancel
@@ -90,11 +104,15 @@ else {
     $source = Find-Control $fixture.target
     $source.height = [Math]::Min(80, $source.height)
     Move-To $source
-    $null = Send-Controller select
+    $null = Send-Controller press
+    $null = Send-Controller 'move 9000 0 3'
+    $null = Send-Controller release
     $share = Find-Control 'Share'
     if (!$share.isEnabled) { throw 'Native Share control is not enabled.' }
     Move-To $share
     $null = Send-Controller select
 }
-$evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath ($Result + '.controller-evidence.json') -Encoding utf8NoBOM
+$physicalEnd = [SharingPointerProbe]::Read()
+if ($physicalStart.X -ne $physicalEnd.X -or $physicalStart.Y -ne $physicalEnd.Y) { throw 'Controller navigation moved the physical mouse.' }
+$evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath ($Result + ".round-$Round.controller-evidence.json") -Encoding utf8NoBOM
 Write-Output 'Controller-only native picker commands completed; no UIA activation or direct test-driver clicks were used.'

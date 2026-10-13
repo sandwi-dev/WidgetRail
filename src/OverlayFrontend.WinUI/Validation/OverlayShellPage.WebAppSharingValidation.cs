@@ -23,10 +23,15 @@ internal sealed partial class OverlayShellPage
             var alreadyExpanded = Environment.GetCommandLineArgs().Contains("--webapp-sharing-already-expanded");
             if (alreadyExpanded)
                 check(await ExpandBrowserAsync(browser, lifetime.Token), "User-expanded browser is ready before requesting sharing");
+            var rounds = Environment.GetCommandLineArgs().Contains("--webapp-sharing-repeat") ? 3 : 1;
+            var lastCommand = 0;
+            ushort heldButtons = 0;
+            for (var round = 1; round <= rounds; round++)
+            {
             await browser.EvaluateGestureFixtureAsync("""
-                window.shareState='pending';
+                window.shareState='pending'; window.sharedStreams ??= []; window.previousStreamCount=sharedStreams.length;
                 navigator.mediaDevices.getDisplayMedia({video:true,audio:false}).then(async stream=>{
-                  window.shared=stream;
+                  window.shared=stream; window.sharedStreams.push(stream);
                   const track=stream.getVideoTracks()[0];window.shareSettings=track.getSettings();
                   if(shareSettings.displaySurface!=='window'){stream.getTracks().forEach(t=>t.stop());window.shareState='wrong-source';return;}
                   const video=document.createElement('video');video.muted=true;video.srcObject=stream;
@@ -42,9 +47,8 @@ internal sealed partial class OverlayShellPage
             }
             check(browser.CompositionRoot.ActualWidth > 700 && browser.CompositionRoot.ActualHeight > 600,
                 "Pinned screen-sharing request expands the existing native viewport before the Windows picker");
-            await File.WriteAllTextAsync(result + ".sharing-ready", JsonSerializer.Serialize(new { target = targetName, pid = Environment.ProcessId, targetPid = target.Id }));
+            await File.WriteAllTextAsync(result + ".sharing-ready", JsonSerializer.Serialize(new { target = targetName, pid = Environment.ProcessId, targetPid = target.Id, round }));
             var deadline = Environment.TickCount64 + 180_000;
-            var lastCommand = 0;
             var cancelRequested = false;
             while (await browser.EvaluateFixtureAsync("window.shareState==='pending'") == "true")
             {
@@ -63,9 +67,19 @@ internal sealed partial class OverlayShellPage
                             for (var frame = 0; frame < frames; frame++)
                             {
                                 NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, State = fields[1] == "move"
-                                    ? new() { LeftThumbX = x, LeftThumbY = y } : new() { RightThumbX = x, RightThumbY = y } });
+                                    ? new() { Buttons = heldButtons, LeftThumbX = x, LeftThumbY = y } : new() { Buttons = heldButtons, RightThumbX = x, RightThumbY = y } });
                                 await Task.Delay(16);
                             }
+                        }
+                        else if (fields[1] == "press")
+                        {
+                            heldButtons = 0x1000;
+                            NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, PressedButtons = heldButtons, State = new() { Buttons = heldButtons } });
+                        }
+                        else if (fields[1] == "release")
+                        {
+                            NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, ReleasedButtons = heldButtons });
+                            heldButtons = 0;
                         }
                         else if (fields[1] == "select")
                         {
@@ -77,20 +91,21 @@ internal sealed partial class OverlayShellPage
                             NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, PressedButtons = 0x2000 });
                         else if (fields[1] == "neutral")
                             NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1 });
-                        await File.WriteAllTextAsync(result + ".picker-ack", JsonSerializer.Serialize(new { sequence, nativeReady, pointer = NativePickerStatusForValidation?.Invoke() }));
+                        var position = NativePickerPositionForValidation?.Invoke() ?? default;
+                        await File.WriteAllTextAsync(result + ".picker-ack", JsonSerializer.Serialize(new { round, sequence, nativeReady,
+                            x = position.X, y = position.Y, circleVisible = position.Visible, window = (long)(NativePickerWindowForValidation?.Invoke() ?? 0), pointer = NativePickerStatusForValidation?.Invoke() }));
                     }
                 }
                 if (Environment.TickCount64 > deadline) throw new TimeoutException("Native sharing selection did not complete.");
                 await Task.Delay(100);
             }
             if (cancelRequested)
-                check(await browser.EvaluateFixtureAsync("window.shareState==='NotAllowedError' && !window.shared") == "true", "Controller B cancels the native sharing picker without creating a stream");
+                check(await browser.EvaluateFixtureAsync("window.shareState==='NotAllowedError' && sharedStreams.length===previousStreamCount && sharedStreams.every(s=>s.getTracks().every(t=>t.readyState==='live'))") == "true", "Controller B cancels the native sharing picker without creating a stream");
             else
             {
                 check(await browser.EvaluateFixtureAsync("window.shareState==='ready' && shared.getAudioTracks().length===0") == "true",
                     "Native picker delivers a video frame from the explicitly selected synthetic window");
-                await browser.EvaluateFixtureAsync("shared.getTracks().forEach(t=>t.stop())");
-                check(await browser.EvaluateFixtureAsync("shared.getTracks().every(t=>t.readyState==='ended')") == "true", "Website stops its screen-sharing tracks");
+
             }
             if (alreadyExpanded)
             {
@@ -101,6 +116,10 @@ internal sealed partial class OverlayShellPage
             }
             await WebAppUntil(() => expandedBrowser is null && !nativeBrowserPickerActive && PinnedInputActive && browser.IsBrowsing);
             check(true, alreadyExpanded ? "User can collapse the preserved expanded browser back to its original pin" : "Picker dismissal automatically restores the original pin and interaction without another B press");
+            check(await browser.EvaluateFixtureAsync("sharedStreams.every(s=>s.getTracks().every(t=>t.readyState==='live'))") == "true", $"Round {round}: earlier streams survive chooser completion/cancellation");
+            }
+            await browser.EvaluateFixtureAsync("sharedStreams.forEach(s=>s.getTracks().forEach(t=>t.stop()))");
+            check(await browser.EvaluateFixtureAsync("sharedStreams.every(s=>s.getTracks().every(t=>t.readyState==='ended'))") == "true", "Website stops all screen-sharing tracks after repeated requests");
         }
         finally
         {

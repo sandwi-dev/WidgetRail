@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ControllerPointerMotion.cs" Link="ControllerPointerMotion.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\NativeDialogLifetime.cs" Link="NativeDialogLifetime.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserProfileIdentity.cs" Link="BrowserProfileIdentity.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserNavigationPolicy.cs" Link="BrowserNavigationPolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserSiteIdentity.cs" Link="BrowserSiteIdentity.cs" />

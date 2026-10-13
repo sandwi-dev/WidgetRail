@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using WidgetRail.OverlayPlatformClient;
@@ -16,10 +15,12 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     private CancellationToken token;
     private uint process;
     private nint target;
-    private long expires;
+    private readonly NativeDialogLifetime state = new();
+    private Func<ControllerPointerAppearance>? appearance;
+    private readonly Action<string?> reportStatus;
     private long generation;
     private long commandVersion;
-    private bool modalConfirmed, seenDialog;
+    private bool modalConfirmed, pointerInitialized;
     private long nextInspection;
     private long externalSince;
     private long completionStarted, foregroundSettledAt;
@@ -27,23 +28,25 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     private Task? inspection, closing;
     private readonly NativeDialogPointerInput pointer = new();
     private NativeDialogPointerInput.Bounds bounds;
-    internal bool Active { get; private set; }
+    internal bool Active => state.Phase != NativeDialogPhase.Inactive;
     internal bool HasForeground => OwnsForeground(GetForegroundWindow());
     // Chromium may activate the selected sharing source before closing its dialog.
     // Resolve this short handoff before the shell mistakes it for an ordinary app switch.
-    internal bool DeferExternalDismissal() => Active && seenDialog;
+    internal bool DeferExternalDismissal() => Active && state.HasOpened;
 #if ENABLE_WIDGET_VALIDATION
     internal string PointerStatus => pointer.Status;
+    internal (int X, int Y, bool Visible) PointerPosition => pointer.Position;
+    internal nint DialogWindow => target;
 #endif
 
-    internal NativeBrowserDialogController(DispatcherQueue queue, Action<bool> changed, Action returnFocus)
+    internal NativeBrowserDialogController(DispatcherQueue queue, Action<bool> changed, Action returnFocus, Action<string?> reportStatus)
     {
-        this.queue = queue; this.changed = changed; this.returnFocus = returnFocus;
+        this.queue = queue; this.changed = changed; this.returnFocus = returnFocus; this.reportStatus = reportStatus;
         timer = queue.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(25);
         timer.Tick += (_, _) => ObserveWindow();
     }
 
-    internal bool Begin(uint browserProcess, CancellationToken cancellationToken)
+    internal bool Begin(uint browserProcess, Func<ControllerPointerAppearance> appearance, CancellationToken cancellationToken)
     {
         if (Active || inspection is { IsCompleted: false } || closing is { IsCompleted: false } || browserProcess == 0 || cancellationToken.IsCancellationRequested) return false;
         GetWindowThreadProcessId(GetForegroundWindow(), out var foregroundProcess);
@@ -53,11 +56,12 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
             return false;
         }
         process = browserProcess; target = 0;
-        modalConfirmed = seenDialog = false; nextInspection = 0; commandVersion = 0;
+        modalConfirmed = pointerInitialized = false; this.appearance = appearance; nextInspection = 0; commandVersion = 0;
         pointer.Reset(); bounds = default; externalSince = completionStarted = 0;
-        token = cancellationToken; expires = Environment.TickCount64 + 10_000;
+        token = cancellationToken; state.Begin(Environment.TickCount64);
         var version = ++generation;
-        Active = true;
+        reportStatus(null);
+        Trace("begin", 0, 0);
         cancellation = token.Register(() => queue.TryEnqueue(() => { if (version == generation) End(cancel: true); }));
         changed(true); timer.Start();
         return true;
@@ -66,7 +70,12 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     private void ObserveWindow()
     {
         if (!Active) return;
-        if (!OwnsForeground(GetForegroundWindow())) pointer.Reset();
+        if (target == 0 || GetForegroundWindow() != target) pointer.Reset();
+        else
+        {
+            if (modalConfirmed && !pointerInitialized) { pointer.Center(bounds); pointerInitialized = true; }
+            pointer.ObservePhysicalInput(); PaintPointer();
+        }
         if (token.IsCancellationRequested) { End(cancel: true); return; }
         if (completionStarted != 0)
         {
@@ -78,76 +87,106 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
             if (now - foregroundSettledAt >= 150 || now - completionStarted >= 1000) End(cancel: false);
             return;
         }
-        if (seenDialog && IsExternalForeground())
+        if (state.HasOpened && IsExternalForeground())
         {
             if (externalSince == 0) { externalSince = Environment.TickCount64; nextInspection = 0; }
             else if (Environment.TickCount64 - externalSince > 1500) { End(cancel: true); return; }
         }
         else externalSince = 0;
-        if (target != 0 && !IsTarget()) { End(cancel: false); return; }
-        if (!seenDialog && Environment.TickCount64 >= expires) { End(cancel: false); return; }
-        // WebView2 may create its native dialog host before raising the
-        // ScreenCaptureStarting deferral. The admitted request owns the sole
-        // visible native window, including that already-created host.
-        if (target == 0)
-        {
-            var candidates = Windows(process).ToArray();
-            if (candidates.Length != 1) return; // Never guess between multiple native windows.
-            target = candidates[0];
-        }
         if (inspection is { IsCompleted: false } || Environment.TickCount64 < nextInspection) return;
         nextInspection = Environment.TickCount64 + 150;
-        inspection = InspectAsync(target, process, generation, commandVersion);
+        inspection = InspectAsync(process, generation, commandVersion);
     }
 
-    private async Task InspectAsync(nint window, uint expectedProcess, long version, long command)
+    private async Task InspectAsync(uint expectedProcess, long version, long command)
     {
-        var result = await Task.Run(() => QueryDialog(window, expectedProcess, false));
-        if (!Active || version != generation || target != window || command != commandVersion) return;
-        modalConfirmed = result.Present == true;
-        if (result.Present == false && seenDialog)
+        var result = await Task.Run(() => FindDialog(expectedProcess, false));
+        if (!Active || version != generation || command != commandVersion) return;
+        var previous = state.Phase;
+        modalConfirmed = result.Result >= 0 && result.Window != 0;
+        state.Observe(result.Result >= 0 ? result.Window != 0 : null, Environment.TickCount64);
+        if (state.Phase != previous) Trace(state.Phase.ToString(), result.Result, result.Inspected, result.Window);
+        if (state.Phase == NativeDialogPhase.Failed)
         {
-            completionStarted = foregroundSettledAt = Environment.TickCount64;
-            completionForeground = GetForegroundWindow();
-            return;
+            if (previous != NativeDialogPhase.Failed) reportStatus("Chooser unavailable · B to cancel");
+            return; // Keep the modal/placement lease. Unknown is not closed.
         }
-        if (result.Present != true) return;
-        // A still-open native dialog plus another app in front is an intentional
-        // departure. Relinquish the lease; never pull that app's focus back.
-        if (seenDialog && IsExternalForeground() && externalSince != 0 && Environment.TickCount64 - externalSince >= 150)
+        if (state.Phase == NativeDialogPhase.Completing)
+        {
+            pointer.Reset();
+            completionStarted = foregroundSettledAt = Environment.TickCount64;
+            completionForeground = GetForegroundWindow(); return;
+        }
+        if (!modalConfirmed) return;
+        if (state.HasOpened && IsExternalForeground() && externalSince != 0 && Environment.TickCount64 - externalSince >= 150)
         { End(cancel: true); return; }
-        bounds = result.Bounds;
-        var first = !seenDialog; seenDialog = true;
+        var first = target == 0 || target != result.Window;
+        target = result.Window; bounds = result.Bounds; reportStatus(null);
         var foreground = GetForegroundWindow();
         GetWindowThreadProcessId(foreground, out var foregroundProcess);
-        if (first && (foregroundProcess == (uint)Environment.ProcessId || foreground == target))
+        if (first && (foregroundProcess == (uint)Environment.ProcessId || foregroundProcess == process))
         {
             _ = SetForegroundWindow(target);
-            if (OwnsForeground(GetForegroundWindow())) pointer.Center(bounds);
+            if (OwnsForeground(GetForegroundWindow())) { pointer.Center(bounds); pointerInitialized = true; PaintPointer(); }
         }
     }
+
+    private void PaintPointer()
+    {
+        if (target == 0) return;
+        try { pointer.Paint(Math.Max(96u, GetDpiForWindow(target)), appearance?.Invoke() ?? ControllerPointerAppearance.Default); }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        { pointer.Reset(); Diagnostics.FrontendFailureLog.Current.Write("native-dialog-cursor", error); }
+    }
+    private void Trace(string phase, int result, uint inspected, nint candidate = 0) =>
+        Diagnostics.FrontendFailureLog.Current.Write("native-browser-dialog", null,
+            $"generation={generation} phase={phase} browserPid={process} hwnd={(candidate != 0 ? candidate : target)} inspected={inspected} result=0x{result:X8}");
 
     internal bool OwnsForeground(nint window) => Active && modalConfirmed && target != 0 && window == target && IsTarget();
     internal bool OwnsControllerWindow(nint window)
     {
-        if (!Active || !modalConfirmed || target == 0 || !IsTarget()) return false;
+        if (!Active) return false;
         GetWindowThreadProcessId(window, out var owner);
-        return window == target || owner == (uint)Environment.ProcessId;
+        return owner == (uint)Environment.ProcessId || owner == process;
     }
 
     internal void Receive(ControllerFrame frame)
     {
-        if (frame.Connected == 0 || frame.Primed != 0) { pointer.Reset(); return; }
+        if (frame.Connected == 0) { pointer.Reset(); return; }
+        if (frame.Primed != 0) { pointer.ReleaseInput(); return; }
         var foreground = GetForegroundWindow();
         if (!OwnsControllerWindow(foreground)) { pointer.Reset(); return; }
-        if (foreground != target) { _ = SetForegroundWindow(target); return; }
         if ((frame.PressedButtons & 0x2000) != 0)
-        { pointer.Reset(); SendKey(0x1B); InvalidateAfterActivation(); return; }
-        if (pointer.Receive(frame, bounds, () => OwnsForeground(GetForegroundWindow()), OwnsPointerWindow))
+        {
+            GetWindowThreadProcessId(foreground, out var foregroundProcess);
+            if (foregroundProcess != process) return;
+            pointer.Reset(); state.RequestCancellation(); SendKey(0x1B); InvalidateAfterActivation(); return;
+        }
+        if (!modalConfirmed || !IsTarget()) return;
+        if (foreground != target) { _ = SetForegroundWindow(target); return; }
+        if (pointer.Receive(frame, bounds, () => OwnsForeground(GetForegroundWindow()), ResolvePointerWindow))
             InvalidateAfterActivation();
+        PaintPointer();
     }
 
-    private bool OwnsPointerWindow(nint window) => window != 0 && (window == target || IsChild(target, window) != 0);
+    private nint ResolvePointerWindow(NativeDialogPointerInput.Point screen)
+    {
+        if (!IsTarget()) return 0;
+        // Resolve within the admitted root. A transparent circle window must never
+        // become the input target, and no unrelated top-level window is eligible.
+        var current = target;
+        for (var depth = 0; depth < 16; depth++)
+        {
+            var client = screen;
+            if (ScreenToClient(current, ref client) == 0) return 0;
+            var child = ChildWindowFromPointEx(current, client, 7);
+            if (child == 0 || child == current) break;
+            GetWindowThreadProcessId(child, out var owner);
+            if (owner != process) return 0;
+            current = child;
+        }
+        return current;
+    }
 
     private bool IsExternalForeground()
     {
@@ -165,7 +204,8 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
 
     private unsafe void SendKey(ushort key, bool shift = false)
     {
-        if (!OwnsForeground(GetForegroundWindow())) return;
+        GetWindowThreadProcessId(GetForegroundWindow(), out var foregroundProcess);
+        if (!Active || foregroundProcess != process) return;
         // Do not alter a physical keyboard chord or leave synthetic keys held.
         foreach (var modifier in new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C })
             if ((GetAsyncKeyState(modifier) & 0x8000) != 0) return;
@@ -203,52 +243,30 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
         pointer.Reset();
         var foreground = GetForegroundWindow();
         GetWindowThreadProcessId(foreground, out var foregroundProcess);
-        var restore = !cancel && (seenDialog || foreground == target || foregroundProcess == (uint)Environment.ProcessId || foreground == 0);
-        if (cancel && IsTarget())
+        var restore = !cancel && (state.HasOpened || foreground == target || foregroundProcess == (uint)Environment.ProcessId || foreground == 0);
+        if (cancel)
         {
-            var window = target; var expectedProcess = process;
+            var expectedProcess = process;
             // Close the accessible dialog, never its reusable browser HWND.
-            closing = Task.Run(() => QueryDialog(window, expectedProcess, true));
+            closing = Task.Run(() => FindDialog(expectedProcess, true));
         }
-        ++generation; Active = false; timer.Stop(); cancellation.Dispose(); target = 0; process = 0;
+        Trace(cancel ? "cancelled" : "completed", 0, 0);
+        ++generation; state.End(); appearance = null; reportStatus(null); timer.Stop(); cancellation.Dispose(); target = 0; process = 0;
         if (restore) returnFocus();
         changed(false);
     }
 
-    public void Dispose() => End(cancel: true);
+    public void Dispose() { End(cancel: true); pointer.Dispose(); }
 
-    private static (bool? Present, NativeDialogPointerInput.Bounds Bounds) QueryDialog(nint window, uint process, bool close)
+    private static (int Result, nint Window, NativeDialogPointerInput.Bounds Bounds, uint Inspected) FindDialog(uint process, bool close)
     {
         try
         {
-            var result = QueryNativeBrowserDialog((nuint)window, process, close ? 1u : 0u, out var present, out var bounds);
-            return (result >= 0 ? present != 0 : null, bounds);
+            var result = FindSharingDialog(process, close ? 1u : 0u, out var window, out var bounds, out var inspected);
+            return (result, (nint)window, bounds, inspected);
         }
         catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException)
-        { Diagnostics.FrontendFailureLog.Current.Write("native-browser-dialog-automation", error); return (null, default); }
-    }
-
-    private sealed record WindowSearch(uint Process, HashSet<nint> Results);
-    private static unsafe HashSet<nint> Windows(uint process)
-    {
-        var search = new WindowSearch(process, []);
-        var handle = GCHandle.Alloc(search);
-        try { _ = EnumWindows(&CollectWindow, GCHandle.ToIntPtr(handle)); }
-        finally { handle.Free(); }
-        return search.Results;
-    }
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-    private static int CollectWindow(nint window, nint context)
-    {
-        try
-        {
-            var search = (WindowSearch)GCHandle.FromIntPtr(context).Target!;
-            GetWindowThreadProcessId(window, out var owner);
-            if (owner == search.Process && IsWindowVisible(window) != 0) search.Results.Add(window);
-        }
-        catch { return 0; } // Exceptions cannot cross the native callback boundary.
-        return 1;
+        { Diagnostics.FrontendFailureLog.Current.Write("native-browser-dialog-automation", error); return (unchecked((int)0x80004005), 0, default, 0); }
     }
 
     private static NativeInput Key(ushort key, bool released) => new()
@@ -267,9 +285,6 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     private struct MouseInput { internal int X, Y; internal uint Data, Flags, Time; internal nuint Extra; }
 
     // Borrowed HWNDs; only the native dialog created during this request is controlled.
-    [LibraryImport("user32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static unsafe partial int EnumWindows(delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint context);
     [LibraryImport("user32.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial uint GetWindowThreadProcessId(nint window, out uint process);
@@ -293,8 +308,14 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     private static unsafe partial uint SendInput(uint count, NativeInput* inputs, int size);
     [LibraryImport("user32.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int IsChild(nint parent, nint child);
-    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformQueryNativeBrowserDialogBounds")]
+    private static partial nint ChildWindowFromPointEx(nint parent, NativeDialogPointerInput.Point point, uint flags);
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int ScreenToClient(nint window, ref NativeDialogPointerInput.Point point);
+    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformFindSharingDialog")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
-    private static partial int QueryNativeBrowserDialog(nuint window, uint process, uint close, out uint present, out NativeDialogPointerInput.Bounds bounds);
+    private static partial int FindSharingDialog(uint process, uint close, out nuint window, out NativeDialogPointerInput.Bounds bounds, out uint inspected);
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial uint GetDpiForWindow(nint window);
 }
