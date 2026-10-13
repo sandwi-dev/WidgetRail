@@ -158,7 +158,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.GetPlatformAppearance => Appearance(request.Payload),
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
                 BridgeMessageTypes.CaptureCapabilities or BridgeMessageTypes.TakeCapture or BridgeMessageTypes.CheckCapture or BridgeMessageTypes.RecordingCapture or
-                    BridgeMessageTypes.CompleteCapture or BridgeMessageTypes.ResolveMediaPlayer or BridgeMessageTypes.ResolveCaptureAttachment or BridgeMessageTypes.ResolveProviderDocument => BridgeRequestKey.Global(BridgeRequestKind.Capture),
+                    BridgeMessageTypes.CompleteCapture or BridgeMessageTypes.CompleteCaptureFolder or BridgeMessageTypes.CheckCaptureFolder or BridgeMessageTypes.ResolveMediaPlayer or BridgeMessageTypes.ResolveCaptureAttachment or BridgeMessageTypes.ResolveProviderDocument => BridgeRequestKey.Global(BridgeRequestKind.Capture),
                 BridgeMessageTypes.TakePermission or BridgeMessageTypes.CheckPermission or BridgeMessageTypes.CompletePermission => BridgeRequestKey.Global(BridgeRequestKind.Permissions),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),

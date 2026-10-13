@@ -342,6 +342,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        CaptureLibrary?.Dispose();
         if (_performance is IAsyncDisposable performance) await performance.DisposeAsync().ConfigureAwait(false);
         if (_displays is not null) _displays.EventPublished -= ForwardDisplayEvent;
         if (_displays is IAsyncDisposable displays) await displays.DisposeAsync().ConfigureAwait(false);

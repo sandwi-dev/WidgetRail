@@ -26,7 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Saved originals survive store recreation; repeat saves deduplicate; exports are exact", Persistence),
     ("Corrupt data cannot be opened or exported", Corruption),
     ("Damaged metadata remains visible and deletable", DamagedMetadata),
-    ("Storage limits preserve existing items and permit retry after deletion", Quotas),
+    ("Disk space checks preserve existing items and permit retry after deletion", Quotas),
     ("Orphaned copies are cleaned without evicting saved originals", Orphans),
     ("Linked storage and export directories are refused without touching their targets", LinkedPaths),
     ("Deleting a leased original is logical immediately and cleans disk after release", LeasedDelete),
@@ -42,12 +42,21 @@ var tests = new (string Name, Func<Task> Run)[]
     ("SDK generic capture reads route saved references through library permission", SdkRouting),
     ("Capture settings persist, retain unsupported quality, and reject oversized clips before capture", SettingsFlow),
     ("Recording requests only its profile and preserves the recommended default", RecordingDiscovery),
+    ("Indexed gallery pages avoid rescanning and exceed the old 200-item quota", IndexedGallery),
+    ("External renames edits and deletes refresh indexed captures and thumbnails", ExternalChanges),
+    ("Opening the capture folder is cancellable and owned by the host handoff", FolderHandoff),
+    ("A damaged disposable index rebuilds without changing saved media", IndexRecovery),
     ("High-entropy thumbnails stream within broker bounds and honor library-read revocation", ThumbnailTransport),
     ("Missing library permission offers a scoped Settings intent without prompting", PermissionLink),
     ("Capture action waits for permission then continues without a widget reload", PermissionContinuation),
     ("Capture Library theme compiles with supported logical text alignment", Style),
 };
 var failures = 0;
+if(args is ["--test-prefix",var prefix])
+{
+    tests=tests.Where(test=>test.Name.StartsWith(prefix,StringComparison.Ordinal)).ToArray();
+    if(tests.Length==0) throw new ArgumentException("No CaptureLibrary tests matched the requested prefix.");
+}
 foreach (var test in tests) try { await test.Run(); Console.WriteLine("PASS " + test.Name); } catch (Exception error) { failures++; Console.WriteLine("FAIL " + test.Name + ": " + error); }
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} passed"); return failures == 0 ? 0 : 1;
 
@@ -74,12 +83,12 @@ static async Task Persistence()
     Check(File.ReadAllBytes(Path.Combine(f.Exports, exported.FileName)).SequenceEqual(f.Bytes));
     await restarted.DeleteAsync(saved.Id, default); await restarted.DeleteAsync(saved.Id, default);
     Check((await restarted.ListAsync(0, default)).TotalCount == 0);
-    Check(File.Exists(Path.Combine(f.Exports, exported.FileName)), "Deletion removed an export");
+    Check(!File.Exists(Path.Combine(f.Exports, exported.FileName)), "Deletion left the canonical saved file behind");
 }
 static async Task Corruption()
 {
     using var f = new Fixture(); var saved = await f.Store.SaveAsync(f.Source, default);
-    File.WriteAllBytes(Path.Combine(f.Library, saved.Id + ".png"), [0, 1]);
+    File.WriteAllBytes(f.MediaPath(saved.Id), [0, 1]);
     await Reject(async () => { await using var read = await f.Store.OpenAsync(saved.Id, CaptureImageResolution.Original, default); });
     await Reject(async () => { await f.Store.ExportAsync(saved.Id, default); });
     await f.Store.DeleteAsync(saved.Id, default); Check((await f.Store.ListAsync(0, default)).TotalCount == 0);
@@ -88,19 +97,20 @@ static async Task DamagedMetadata()
 {
     using var f = new Fixture(); var item = await f.Store.SaveAsync(f.Source, default);
     File.WriteAllText(Path.Combine(f.Library, item.Id + ".json"), "not json");
-    var page = await f.Store.ListAsync(0, default); Check(page.Items.Single().Available == false && CaptureLibraryLimits.Valid(page));
+    var page = await f.Store.ListAsync(0, default, refresh: true); Check(page.Items.Single().Available == false && CaptureLibraryLimits.Valid(page));
     await f.Store.DeleteAsync(item.Id, default); Check((await f.Store.ListAsync(0, default)).TotalCount == 0);
 }
 static async Task Quotas()
 {
-    using var f = new Fixture(); var store = new CaptureLibraryStore(f.Library, f.Exports, null, 1, 20);
+    using var f = new Fixture(); using var store = new CaptureLibraryStore(f.Library, f.Exports)
+    { AvailableFreeBytes=()=>16L*1024*1024+20-Directory.EnumerateFiles(f.Exports).Sum(p=>new FileInfo(p).Length) };
     var first = await store.SaveAsync(f.Source, default);
     Check((await store.SaveAsync(f.Source, default)).Id == first.Id);
     var other = f.Bytes.ToArray(); other[^1] = 1; File.WriteAllBytes(f.Source.Path, other);
     await Reject(async () => { await store.SaveAsync(f.Source, default); });
     Check((await store.ListAsync(0, default)).TotalCount == 1);
     await store.DeleteAsync(first.Id, default);
-    var tooSmall = new CaptureLibraryStore(f.Library, f.Exports, null, 10, 10);
+    using var tooSmall = new CaptureLibraryStore(f.Library, f.Exports) { AvailableFreeBytes=()=>16L*1024*1024+10 };
     await Reject(async () => { await tooSmall.SaveAsync(f.Source, default); });
     Check((await store.ListAsync(0, default)).TotalCount == 0);
     await store.SaveAsync(f.Source, default); Check((await store.ListAsync(0, default)).TotalCount == 1);
@@ -111,8 +121,8 @@ static async Task Orphans()
     File.WriteAllBytes(Path.Combine(f.Library, new string('A', 32) + ".png"), f.Bytes);
     File.WriteAllText(Path.Combine(f.Library, new string('A', 32) + ".json.pending"), "interrupted transaction marker");
     File.WriteAllBytes(Path.Combine(f.Library, "context-" + new string('B', 32) + ".png"), f.Bytes);
-    var page = await f.Store.ListAsync(0, default);
-    Check(page.TotalCount == 1 && page.StoredBytes == f.Bytes.Length && File.Exists(Path.Combine(f.Library, saved.Id + ".png")));
+    var page = await f.Store.ListAsync(0, default, refresh: true);
+    Check(page.TotalCount == 1 && page.StoredBytes == f.Bytes.Length && File.Exists(f.MediaPath(saved.Id)));
 }
 static async Task LinkedPaths()
 {
@@ -132,9 +142,8 @@ static async Task LinkedPaths()
     await Junction(f.Library, outside);
     try { await Reject(async () => { await f.Store.ListAsync(0, default); }); Check(File.ReadAllText(marker) == "unchanged"); }
     finally { Directory.Delete(f.Library); }
-    var saved = await f.Store.SaveAsync(f.Source, default);
     await Junction(f.Exports, outside);
-    try { await Reject(async () => { await f.Store.ExportAsync(saved.Id, default); }); Check(Directory.GetFiles(outside).Length == 1); }
+    try { await Reject(async () => { await f.Store.SaveAsync(f.Source, default); }); Check(Directory.GetFiles(outside).Length == 1); }
     finally { Directory.Delete(f.Exports); }
 }
 static async Task LeasedDelete()
@@ -147,7 +156,7 @@ static async Task LeasedDelete()
         Check(read.Stream.ReadByte() == f.Bytes[0], "Existing reader was broken by delete");
     }
     await f.Store.ListAsync(0, default);
-    Check(!File.Exists(Path.Combine(f.Library, saved.Id + ".png")) && !File.Exists(Path.Combine(f.Library, saved.Id + ".deleted")));
+    Check(!File.Exists(f.MediaPath(saved.Id)) && !File.Exists(Path.Combine(f.Library, saved.Id + ".deleted")));
 }
 static async Task PendingByteBudget()
 {
@@ -173,10 +182,10 @@ static async Task MissingMetadata()
 {
     using var f = new Fixture(); var saved = await f.Store.SaveAsync(f.Source, default);
     File.Delete(Path.Combine(f.Library, saved.Id + ".json"));
-    var page = await f.Store.ListAsync(0, default);
-    Check(page.TotalCount == 1 && !page.Items.Single().Available && File.Exists(Path.Combine(f.Library, saved.Id + ".png")), "Missing metadata evicted a saved original");
+    var page = await f.Store.ListAsync(0, default, refresh: true);
+    Check(page.TotalCount == 1 && !page.Items.Single().Available && File.Exists(f.MediaPath(saved.Id)), "Missing metadata evicted a saved original");
     await f.Store.DeleteAsync(saved.Id, default);
-    Check((await f.Store.ListAsync(0, default)).TotalCount == 0 && !File.Exists(Path.Combine(f.Library, saved.Id + ".png")));
+    Check((await f.Store.ListAsync(0, default)).TotalCount == 0 && !File.Exists(f.MediaPath(saved.Id)));
 }
 static async Task Paging()
 {
@@ -237,6 +246,14 @@ static async Task BrokerAuthority()
     Check(imported.Origin == CaptureAttachmentOrigin.SavedLibrary);
     await Reject(() => Call(PlatformCapabilities.CaptureLibraryManageV1, "capture-library.delete", new CaptureLibraryReference(saved.Id)));
     await Reject(() => Call(PlatformCapabilities.WindowCaptureV1, PlatformCapabilities.WindowCaptureRequest, new WindowCaptureRequest(WindowCaptureKind.Screenshot)));
+    await consent.SetDecisionAsync(Fixture.Identity,PlatformCapabilities.CaptureLibraryManageV1,ConsentDecision.Grant); await broker.RefreshConsentAsync();
+    var opening=Call(PlatformCapabilities.CaptureLibraryManageV1,"capture-library.open-folder",new {});
+    using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(3))) while(CaptureLibraryFolderRequests.Pending is null) await Task.Delay(10,timeout.Token);
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    CaptureLibraryFolderRequests.Complete(CaptureLibraryFolderRequests.Pending!.Id,true);
+    Check((await opening).GetProperty("acknowledged").GetBoolean(),"Intentional handoff cancelled an authorized folder request");
+    await Reject(()=>Call(PlatformCapabilities.CaptureLibraryManageV1,"capture-library.open-folder",new {}));
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
     await consent.SetDecisionAsync(Fixture.Identity, PlatformCapabilities.CaptureLibraryReadV1, ConsentDecision.Deny); await broker.RefreshConsentAsync();
     await Reject(() => Call(PlatformCapabilities.CaptureLibraryReadV1, "capture-library.read", new CaptureReadRequest(imported.Id, 0)));
     await Reject(() => Task.FromResult(WindowCaptureRegistry.Shared.Resolve(Fixture.Identity, imported.Id)));
@@ -405,6 +422,79 @@ static async Task RecordingDiscovery()
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
+static async Task IndexedGallery()
+{
+    using var f=new Fixture();
+    for(var i=0;i<240;i++)
+    {
+        var bytes=f.Bytes.ToArray(); BitConverter.GetBytes(i).CopyTo(bytes,8); await File.WriteAllBytesAsync(f.Source.Path,bytes);
+        await f.Store.SaveAsync(f.Source,default);
+    }
+    await f.Store.ListAsync(0,default,refresh:true);
+    var reads=f.Store.MetadataReads; var reconciliations=f.Store.Reconciliations;
+    var watch=System.Diagnostics.Stopwatch.StartNew();
+    for(var page=0;page<12;page++)
+    {
+        var result=await f.Store.ListAsync(page*20,default);
+        Check(result.TotalCount==240 && result.Items.Count==20 && result.StoredBytes==240*f.Bytes.Length && CaptureLibraryLimits.Valid(result));
+    }
+    Check(f.Store.MetadataReads==reads && f.Store.Reconciliations==reconciliations,"Paging reread metadata files or enumerated the library");
+    Console.WriteLine($"Indexed gallery: 12 pages / 240 captures in {watch.Elapsed.TotalMilliseconds:F1} ms; no directory reconciliation or metadata-file reads.");
+    Check(!Directory.EnumerateFiles(f.Library,"*.png").Any() && Directory.EnumerateFiles(f.Exports,"*.png").Count()==240);
+    using var restart=new CaptureLibraryStore(f.Library,f.Exports);
+    Check((await restart.ListAsync(220,default)).Items.Count==20 && restart.MetadataReads==0,"Persistent index was discarded on restart");
+}
+static async Task ExternalChanges()
+{
+    using var f=new Fixture(); var inspections=0; var thumbnails=0;
+    using var store=new CaptureLibraryStore(f.Library,f.Exports,null, async (_,path,token)=>
+    {
+        thumbnails++; var bytes=new byte[24]; f.Bytes.AsSpan(0,8).CopyTo(bytes);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(16,4),100);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(20,4),100);
+        await File.WriteAllBytesAsync(path,bytes,token); return new(100,100);
+    },(path,previous,_)=> { inspections++; return Task.FromResult(previous with {Width=200,ByteLength=new FileInfo(path).Length}); });
+    var item=await store.SaveAsync(f.Source,default);
+    await store.ThumbnailAsync(item.Id,default); await store.ThumbnailAsync(item.Id,default); Check(thumbnails==1);
+    var path=f.MediaPath(item.Id); var renamed=Path.Combine(f.Exports,"Renamed capture.png"); File.Move(path,renamed);
+    using(var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+    {
+        while((await store.ExportAsync(item.Id,timeout.Token)).FileName!="Renamed capture.png") await Task.Delay(20,timeout.Token);
+    }
+    var changed=f.Bytes.Concat(new byte[]{1}).ToArray(); await File.WriteAllBytesAsync(renamed,changed);
+    await store.ThumbnailAsync(item.Id,default); Check(thumbnails==2 && inspections==1);
+    await using(var media=await store.OpenAsync(item.Id,CaptureImageResolution.Original,default)) Check(media.Media.Width==200 && media.Stream.Length==changed.Length);
+    File.Delete(renamed);
+    var missing=await store.ListAsync(0,default,refresh:true); Check(!missing.Items.Single().Available && missing.StoredBytes==0);
+    await store.DeleteAsync(item.Id,default); Check((await store.ListAsync(0,default)).TotalCount==0);
+}
+static async Task FolderHandoff()
+{
+    using var f=new Fixture();
+    using var cancel=new CancellationTokenSource();
+    var first=CaptureLibraryFolderRequests.OpenAsync(Fixture.Identity,f.Exports,cancel.Token);
+    var old=CaptureLibraryFolderRequests.Pending!; cancel.Cancel();
+    try { await first; throw new Exception("Folder cancellation ignored"); } catch(OperationCanceledException) { }
+    Check(CaptureLibraryFolderRequests.Pending is null);
+    var next=CaptureLibraryFolderRequests.OpenAsync(Fixture.Identity,f.Exports,default);
+    CaptureLibraryFolderRequests.Complete(old.Id,true); Check(!next.IsCompleted);
+    CaptureLibraryFolderRequests.Complete(CaptureLibraryFolderRequests.Pending!.Id,true);
+    Check(await next && CaptureLibraryFolderRequests.Pending is null);
+    PlatformCapabilities.TryGet(PlatformCapabilities.CaptureLibraryManageV1,out var capability);
+    Check(capability.Operations.Contains("capture-library.open-folder") && !capability.AllowsBackgroundForOperation("capture-library.open-folder"));
+}
+static async Task IndexRecovery()
+{
+    using var f=new Fixture(); var item=await f.Store.SaveAsync(f.Source,default);
+    var original=f.MediaPath(item.Id);
+    f.Store.Dispose();
+    await File.WriteAllTextAsync(Path.Combine(f.Library,"library.sqlite"),"damaged index");
+    await File.WriteAllTextAsync(Path.Combine(f.Library,new string('E',32)+".deleted"),"interrupted deletion marker");
+    using var rebuilt=new CaptureLibraryStore(f.Library,f.Exports);
+    Check((await rebuilt.ListAsync(0,default)).Items.Single().Id==item.Id);
+    Check(File.ReadAllBytes(original).SequenceEqual(f.Bytes));
+    Check(Directory.EnumerateFiles(f.Library,"library.sqlite.corrupt-*").Count()==1);
+}
 static async Task SettingsFlow()
 {
     var savedState = new WidgetTestPrivateState(); var starts = 0;
@@ -526,5 +616,6 @@ sealed class Fixture : IDisposable
         Source = new(new(Guid.NewGuid().ToString("N"), "image/png", 100, 100, Bytes.Length, 0, DateTimeOffset.UtcNow.AddMinutes(30).ToUnixTimeMilliseconds()),path);
         Store = new(Library, Exports);
     }
-    public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+    internal string MediaPath(string id) => Directory.Exists(Exports) ? Directory.EnumerateFiles(Exports, "*"+id+".*").FirstOrDefault() ?? Path.Combine(Library,id+".png") : Path.Combine(Library,id+".png");
+    public void Dispose() { Store.Dispose(); if (Directory.Exists(Root)) Directory.Delete(Root, true); }
 }

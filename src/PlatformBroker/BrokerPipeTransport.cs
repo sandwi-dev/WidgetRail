@@ -56,6 +56,9 @@ internal static class BrokerPipeRequestTimeoutPolicy
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
+        // Opening Explorer uses the host's release-aware handoff, not the ordinary short read deadline.
+        if (request.CapabilityId == PlatformCapabilities.CaptureLibraryManageV1 && request.Operation == "capture-library.open-folder")
+            return options.RequestTimeout > TimeSpan.FromSeconds(20) ? options.RequestTimeout : TimeSpan.FromSeconds(20);
         // The first configured-capture request can wait for lazy encoder/audio
         // discovery in the frontend. Both pipe ends must outlive that bounded
         // registry wait; ordinary status/read/cancel requests remain short.

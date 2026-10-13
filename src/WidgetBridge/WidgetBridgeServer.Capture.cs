@@ -19,12 +19,28 @@ public sealed partial class WidgetBridgeServer
             case BridgeMessageTypes.TakeCapture:
                 var pending = captures.Take();
                 var (catalog, _) = _registry.CatalogSnapshot();
+                var folder = CaptureLibraryFolderRequests.Pending;
+                var folderWidget = folder is null ? null : catalog.Widgets.FirstOrDefault(item=>item.InstanceId==folder.Widget.InstanceId);
+                if(folder is not null && (folderWidget is null || !await CaptureAllowedAsync(folder.Widget,token,PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false)))
+                { CaptureLibraryFolderRequests.Complete(folder.Id,false); folder=null; }
                 var widget = pending is null ? null : catalog.Widgets.FirstOrDefault(item => item.InstanceId == pending.Widget.InstanceId);
                 if (pending is not null && (widget is null || !await CaptureAllowedAsync(pending.Widget, token).ConfigureAwait(false)))
                 { captures.Complete(new(pending.RequestId, 0, 0, 0, "permission_denied")); pending = null; }
                 await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureTake(pending, widget?.Id) {
                     NeedsCapabilities = captures.NeedsCapabilities, NeedsEncodingCapabilities = captures.NeedsEncodingCapabilities,
-                    RecordingDiscoveries = captures.RecordingDiscoveries }, token).ConfigureAwait(false);
+                    RecordingDiscoveries = captures.RecordingDiscoveries, OpenFolder=folder, FolderWidgetId=folderWidget?.Id }, token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CompleteCaptureFolder:
+                var folderResult=BridgeJson.FromElement<BridgeCaptureFolderResult>(request.Payload);
+                CaptureLibraryFolderRequests.Complete(folderResult.Id,folderResult.Opened);
+                await ReplyAsync(request.Type,request.RequestId,new BridgeCaptureCurrent(true),token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CheckCaptureFolder:
+                var folderCheck=BridgeJson.FromElement<BridgeCaptureReference>(request.Payload);
+                var folderPending=CaptureLibraryFolderRequests.Pending;
+                var folderCurrent=folderPending is not null && folderPending.Id==folderCheck.RequestId &&
+                    await CaptureAllowedAsync(folderPending.Widget,token,PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false);
+                await ReplyAsync(request.Type,request.RequestId,new BridgeCaptureCurrent(folderCurrent),token).ConfigureAwait(false);
                 break;
             case BridgeMessageTypes.CheckCapture:
                 var check = BridgeJson.FromElement<BridgeCaptureReference>(request.Payload);
@@ -80,7 +96,7 @@ public sealed partial class WidgetBridgeServer
 
     private async Task<bool> CaptureAllowedAsync(BrokerWidgetIdentity identity, CancellationToken token, string capability = PlatformCapabilities.WindowCaptureV1)
     {
-        if (capability is not (PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibraryReadV1)) return false;
+        if (capability is not (PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibraryReadV1 or PlatformCapabilities.CaptureLibraryManageV1)) return false;
         var (catalog, _) = _registry.CatalogSnapshot();
         var descriptor = catalog.Widgets.FirstOrDefault(item => item.InstanceId == identity.InstanceId);
         if (descriptor is null || _consentStore is null) return false;

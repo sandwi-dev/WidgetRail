@@ -10,6 +10,34 @@ namespace WidgetRail.GameHelpWidget.Tests;
 public sealed class GameHelpTests
 {
     [TestMethod]
+    public async Task SavedCapturePagingCanPassTheFormerTwoHundredItemLimit()
+    {
+        var offsets=new List<int>();
+        var media=new CaptureAttachment(new string('A',32),"image/png",100,100,1000,0,long.MaxValue);
+        var client=new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetPermissionCapabilities.Request,new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
+            .WithHandler(WidgetCaptureLibraryCapabilities.List,(request,_)=>
+            {
+                offsets.Add(request.Offset);
+                return ValueTask.FromResult(new CaptureLibraryPage([new((request.Offset+1).ToString("x32"),media,1)],request.Offset,240,240000));
+            }).Build();
+        var widget=WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(new FakeService()),client);
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);
+            await Until(()=>Walk(Snapshot(widget).Root).Any(n=>n.Id=="help.composer"));
+            for(var offset=0;offset<=220;offset+=20)
+            {
+                await widget.OnActionAsync(new(offset==0?"library.open":"library.next","help.library.next"));
+                var id="help.library.item."+(offset+1).ToString("x32");
+                await Until(()=>Walk(Snapshot(widget).Root).Any(n=>n.Id==id && n.IsBusy!=true));
+            }
+            Assert.AreEqual(220,offsets.Last());
+            Assert.AreEqual(0,ViewSnapshotValidator.Validate(Snapshot(widget)).Count);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+    [TestMethod]
     public async Task SavedCaptureSelectionOpensContextPreviewAndWaitsForExplicitSend()
     {
         var service = new FakeService();

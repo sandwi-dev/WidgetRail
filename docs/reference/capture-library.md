@@ -25,13 +25,15 @@ not need to initialize every quality/audio combination before confirmation.
   overlay to finish a recording early and review it. Reopening during preparation cancels.
 - Preview uses the shared native media player and grows with the available viewport.
   Images support controller zoom/pan and an expanded viewer. Choose **Save to library** or
-  **Discard**. Leaving an unsaved capture does not retain it across worker restarts.
+  **Discard**. Save writes the original directly to **Pictures → WidgetRail → Captures**.
+  Leaving an unsaved capture does not retain it across worker restarts.
 - Browse a responsive thumbnail grid by application, date and media type, with 20 items per page.
-  Open an item to preview, export, or delete. Delete starts on Cancel and affects
-  only the library original; exported files remain. Missing/damaged entries stay
+  Open an item to preview, open the folder, or delete. Delete starts on Cancel and
+  removes that same public PNG/MP4 file. Missing/damaged entries stay
   visible and can be deleted even when preview fails.
-- Exports go to **Pictures → WidgetRail → Captures** with unique PNG/MP4 filenames.
-  No native file picker is required. Busy buttons retain their focus identity.
+- **Open folder** opens the saved location in Windows Explorer through the host's
+  normal release-aware foreground handoff. No separate export copy or file picker
+  is required. Busy buttons retain their focus identity.
 
 Game Help's **Add context → Choose saved capture** and its in-chat context choices
 open the same library. Selection creates a temporary context copy and opens the
@@ -53,7 +55,10 @@ window capture: it is not a full-desktop image and does not bypass protected
 content. Target changes/loss, resize, cancellation, or reopening the overlay
 still terminate a pending recording rather than substituting another window.
 
-The library allows **200 items / 2 GiB**; it asks you to delete or export when full.
+Saved captures have no fixed item-count or aggregate-byte quota. Saves check free
+disk space and report write failures without evicting existing files. Total capture
+count and size appear in Capture settings, not above the gallery. Per-capture and
+temporary-attachment bounds remain separate from saved storage.
 Original files remain unchanged when a consumer requests a context-sized rendition.
 Game Help requests that smaller rendition to fit its existing API payload budget.
 The shared Windows codec adapter contains no Gemini-specific logic.
@@ -71,7 +76,7 @@ are retired with the owning worker or the authority that allowed the read.
 | `system.apps.windows.capture.v1` | Existing host-confirmed capture; original-resolution screenshot request is explicit |
 | `media.capture-library.read.v1` | List/open saved captures, read/release temporary library references, obtain image/video thumbnails, including while background |
 | `media.capture-library.save.v1` | Explicit interactive save of this widget's owned temporary media |
-| `media.capture-library.manage.v1` | Explicit interactive deletion and export to the fixed Pictures destination |
+| `media.capture-library.manage.v1` | Explicit interactive deletion and opening the fixed Pictures folder |
 
 Read access covers the user's shared saved library, including other widgets' saved
 captures. It grants no authority to initiate screen capture. Save/manage operations
@@ -114,20 +119,23 @@ The production Capture Library widget and Game Help are working author examples.
 
 ## Storage and failure behavior
 
-Profile storage is `%LOCALAPPDATA%\WidgetRail\capture-library` (or the selected
-host profile). Metadata contains IDs, dimensions, type, application/window display
-context, save time and SHA256; widgets never receive local storage paths.
+Profile metadata, the SQLite index and derived caches are under
+`%LOCALAPPDATA%\WidgetRail\capture-library-v2` (or the selected host profile).
+Original PNG/MP4 files are in Pictures → WidgetRail → Captures. Metadata contains
+IDs, dimensions, type, application/window display context, save time, filename,
+content revision and SHA256; widgets never receive arbitrary local storage paths.
 
 Media is copied under a held read lease, then metadata is atomically published.
 Identical saved content/metadata deduplicates, making repeated Save safe after a
-lost acknowledgement. Open/export recheck integrity. Failed saves clean their own
+lost acknowledgement. Open rechecks integrity, caching successful verification
+against the file's length, timestamp and expected hash. Failed saves clean their own
 partial output; later operations clean recognized orphan copies and finish only
-previously requested deletions. Linked storage/export paths are refused. Export
-publishes a new file only after its complete copy succeeds.
+previously requested deletions. Linked storage/media paths are refused. The index
+is disposable: a corrupt index is preserved for diagnostics and rebuilt from
+metadata without modifying saved originals.
 
-Thumbnails are host-derived PNGs bounded to 256×144 and 160 KiB, cached alongside
-the original and deleted with it. Up to 200 derivatives add at most 31.25 MiB
-outside the 2 GiB original-media quota; there is no automatic original eviction.
+Thumbnails are host-derived PNGs bounded to 256×144 and 160 KiB, kept in the private
+cache and deleted with their capture. There is no automatic original eviction.
 The SDK reads each thumbnail in bounded chunks under library-read authority.
 It consumes no temporary capture slot. The grid uses lazy artwork handles, never
 original media or inline image blobs in widget snapshots. Invalid cached derivatives
@@ -183,6 +191,24 @@ checks. No private desktop/game screenshot was taken for these automated tests.
 For widget authors, ReadContentAsync allocates the encoded attachment size (up to 128 MiB for an original image), so size the worker budget appropriately. The library's own preview/export flows do not materialize the original in widget memory; Game Help reads only its bounded context copy.
 
 A missing metadata file is not treated as proof of an unfinished save: its original remains as an unavailable entry until you explicitly delete it. Automatic partial-copy cleanup requires a transaction marker written before copying media.
+
+The gallery uses a persistent SQLite index with an ordered page query and cached
+count/byte totals. File notifications update individual entries; startup, explicit
+Refresh and watcher overflow reconcile the folder. List requests do not decode or
+hash every capture. Thumbnails are generated lazily and cached; content revisions
+invalidate artwork after edits. Recognized renames while the host is running are
+followed, and missing files become unavailable entries. Externally edited media
+is re-inspected when preview/artwork is requested, within the same media bounds.
+
+The new index, metadata and thumbnail cache live in the profile's
+`capture-library-v2` directory. There is no migration of the old private library:
+old files remain untouched, and new captures use the public folder. The gallery
+indexes explicitly saved captures, not arbitrary files copied into Pictures.
+The older SDK `ExportAsync` entry point returns the existing public filename for
+compatibility; it no longer creates another copy. New code should use
+`OpenFolderAsync`. `RefreshAsync` explicitly reconciles external changes;
+ordinary `ListAsync` reads indexed pages. Include each item's `Revision` in artwork
+handles so a changed file cannot keep showing cached pixels.
 
 LB/RB change pages in Capture Library and Game Help's saved-capture picker. Page changes explicitly focus and reveal the first new row; the footer also shows the page number.
 

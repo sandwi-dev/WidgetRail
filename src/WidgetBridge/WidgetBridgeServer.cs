@@ -370,6 +370,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.CheckCapture:
         case BridgeMessageTypes.RecordingCapture:
         case BridgeMessageTypes.CompleteCapture:
+        case BridgeMessageTypes.CompleteCaptureFolder:
+        case BridgeMessageTypes.CheckCaptureFolder:
         case BridgeMessageTypes.ResolveCaptureAttachment:
             await HandleCaptureAsync(request, cancellationToken).ConfigureAwait(false);
             return;

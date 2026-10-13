@@ -330,7 +330,7 @@ Keep the full objective active until all five are ready for physical testing.
   Five-second video remains 1280x720/15fps/3Mbps/no audio/8MiB; assess higher-resolution
   costs separately, not bundled silently into screenshot improvements.
 - Add a reusable capture-library service with separate read, save and manage/export
-  permissions. It uses opaque IDs, a profile-scoped store, 200 saved items / 2 GiB,
+  permissions. The initial version used opaque IDs, a profile-scoped store and a 200-item / 2 GiB quota (superseded by the public-folder/indexed design in `docs/maintainers/capture-storage.md`),
   atomic metadata publication, integrity hashes and no automatic eviction. Explicit
   saves survive worker/app restarts. Temporary attachments remain expiring and owned.
 - Reopening saved media issues a fresh owned temporary attachment. Native preview

@@ -15,6 +15,7 @@ public static class WidgetCaptureLibraryCapabilities
     public static WidgetCapabilityOperation<CaptureLibrarySaveRequest, CaptureLibraryItem> Save { get; } = new(SavePermission, "capture-library.save");
     public static WidgetCapabilityOperation<CaptureLibraryReference, WidgetCapabilityAcknowledgement> Delete { get; } = new(ManagePermission, "capture-library.delete");
     public static WidgetCapabilityOperation<CaptureLibraryReference, CaptureLibraryExport> Export { get; } = new(ManagePermission, "capture-library.export");
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetCapabilityAcknowledgement> OpenFolder { get; } = new(ManagePermission, "capture-library.open-folder");
 }
 
 /// <summary>Explicitly saved media shared by the user's widgets, with separate permissions.</summary>
@@ -22,6 +23,12 @@ public sealed class WidgetCaptureLibraryService
 {
     private readonly IWidgetCapabilityClient client;
     internal WidgetCaptureLibraryService(IWidgetCapabilityClient client) => this.client = client;
+    /// <summary>Open the saved captures folder through the host's foreground handoff. No arbitrary path is accepted.</summary>
+    public async ValueTask OpenFolderAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.OpenFolder,new(),cancellationToken).ConfigureAwait(false);
+        if (result?.Acknowledged != true) throw Malformed();
+    }
     /// <summary>Returns bounded PNG artwork without importing an original or consuming a temporary capture slot.</summary>
     public async ValueTask<CaptureLibraryThumbnail> GetThumbnailAsync(string id, CancellationToken cancellationToken = default)
     {
@@ -44,8 +51,16 @@ public sealed class WidgetCaptureLibraryService
     }
     public async ValueTask<CaptureLibraryPage> ListAsync(int offset = 0, CancellationToken cancellationToken = default)
     {
-        if (offset is < 0 or > CaptureLibraryLimits.MaximumItems) throw new ArgumentOutOfRangeException(nameof(offset));
+        if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
         var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.List, new(offset), cancellationToken).ConfigureAwait(false);
+        if (!CaptureLibraryLimits.Valid(result) || result.Offset != offset) throw Malformed();
+        return result;
+    }
+    /// <summary>Explicitly reconcile external folder changes, then return a page. Ordinary ListAsync uses the index.</summary>
+    public async ValueTask<CaptureLibraryPage> RefreshAsync(int offset = 0, CancellationToken cancellationToken = default)
+    {
+        if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+        var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.List, new(offset, true), cancellationToken).ConfigureAwait(false);
         if (!CaptureLibraryLimits.Valid(result) || result.Offset != offset) throw Malformed();
         return result;
     }
@@ -69,12 +84,13 @@ public sealed class WidgetCaptureLibraryService
         DemandId(id); var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.Delete, new(id), cancellationToken).ConfigureAwait(false);
         if (result?.Acknowledged != true) throw Malformed();
     }
+    /// <summary>Compatibility API: returns the existing public file name; no duplicate is created. Prefer OpenFolderAsync.</summary>
     public async ValueTask<CaptureLibraryExport> ExportAsync(string id, CancellationToken cancellationToken = default)
     {
         DemandId(id); var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.Export, new(id), cancellationToken).ConfigureAwait(false);
-        if (result is null || result.ByteLength is <= 0 or > CaptureLimits.MaximumAttachmentBytes || result.FileName is not { Length: > 0 and <= 120 } ||
-            result.FileName.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_' and not '.') || result.FileName.Contains("..", StringComparison.Ordinal) ||
-            !result.FileName.EndsWith(".png", StringComparison.Ordinal) && !result.FileName.EndsWith(".mp4", StringComparison.Ordinal)) throw Malformed();
+        if (result is null || result.ByteLength is <= 0 or > CaptureLimits.MaximumAttachmentBytes || result.FileName is not { Length: > 0 and <= 240 } ||
+            result.FileName.Any(c => char.IsControl(c) || c is '/' or '\\' or ':' or '"' or '<' or '>' or '|' or '?' or '*') ||
+            !result.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase) && !result.FileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)) throw Malformed();
         return result;
     }
     public async ValueTask ReleaseAsync(CaptureAttachment attachment, CancellationToken cancellationToken = default)

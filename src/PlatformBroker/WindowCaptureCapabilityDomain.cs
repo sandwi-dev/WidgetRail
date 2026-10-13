@@ -40,7 +40,14 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         {
             switch (operation)
             {
-                case "capture-library.list": return BrokerJson.ToElement(await library.ListAsync(BrokerJson.ParsePayload<CaptureLibraryListRequest>(payload).Offset, token).ConfigureAwait(false));
+                case "capture-library.list":
+                    var list = BrokerJson.ParsePayload<CaptureLibraryListRequest>(payload);
+                    return BrokerJson.ToElement(await library.ListAsync(list.Offset, token, list.Refresh).ConfigureAwait(false));
+                case "capture-library.open-folder":
+                    BrokerCapabilityDomains.DemandEmptyPayload(payload);
+                    if (!await CaptureLibraryFolderRequests.OpenAsync(identity,await library.FolderAsync(token).ConfigureAwait(false),token).ConfigureAwait(false))
+                        throw new BrokerException("capture_library_folder_unavailable","Windows could not open the captures folder.");
+                    return BrokerCapabilityDomains.Acknowledged();
                 case "capture-library.thumbnail":
                     var thumbnailRequest = BrokerJson.ParsePayload<CaptureLibraryThumbnailRequest>(payload);
                     if (thumbnailRequest.Offset is < 0 or >= CaptureLibraryLimits.MaximumThumbnailBytes) throw new BrokerException("invalid_payload", "Invalid thumbnail offset.");
@@ -65,6 +72,10 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         }
         catch (System.Runtime.InteropServices.COMException)
         { throw new BrokerException("capture_library_invalid_media", "Windows could not decode this saved capture."); }
+        catch (IOException error) when ((error.HResult & 0xffff) is 39 or 112)
+        { throw new BrokerException("capture_library_disk_full", "There is not enough disk space to save the capture."); }
+        catch (Microsoft.Data.Sqlite.SqliteException error)
+        { throw new BrokerException(error.SqliteErrorCode == 13 ? "capture_library_disk_full" : "capture_library_io_failed", "Capture Library could not update its index."); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         { throw new BrokerException("capture_library_io_failed", "Capture Library could not read or write its files. Check storage and retry."); }
     }

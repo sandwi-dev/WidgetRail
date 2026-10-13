@@ -38,7 +38,7 @@ public static class CapabilityPresentation
         PlatformCapabilities.WindowCaptureV1 => "Capture an application window",
         PlatformCapabilities.CaptureLibraryReadV1 => "Browse and read your saved captures",
         PlatformCapabilities.CaptureLibrarySaveV1 => "Save captures to your library",
-        PlatformCapabilities.CaptureLibraryManageV1 => "Delete and export saved captures",
+        PlatformCapabilities.CaptureLibraryManageV1 => "Manage saved captures",
         PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
         PlatformCapabilities.PerformanceReadV1 => "Read system usage, game frame rates and open window titles",
         PlatformCapabilities.PerformanceFpsControlV1 => "Request Windows approval to enable FPS collection",
@@ -134,7 +134,7 @@ public static class CapabilityPresentation
         PlatformCapabilities.CaptureLibrarySaveV1 =>
             "Keep this widget's temporary captures in your shared library across restarts. Saving is explicit and does not upload media.",
         PlatformCapabilities.CaptureLibraryManageV1 =>
-            "Delete saved originals and export copies to Pictures/WidgetRail/Captures. Previously exported copies are not deleted with the library item.",
+            "Delete saved PNG/MP4 files from Pictures/WidgetRail/Captures and open that folder in Windows Explorer.",
         PlatformCapabilities.TaskWindowsPreviewV1 =>
             "Display window contents inside the overlay. Previews are view-only.",
         PlatformCapabilities.PerformanceReadV1 =>

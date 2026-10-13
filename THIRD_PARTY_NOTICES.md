@@ -3,6 +3,19 @@
 WidgetRail includes or uses the third-party components below. These retain
 their own licenses; the project license does not replace these terms.
 
+## Capture Library index: Microsoft.Data.Sqlite and SQLitePCLRaw
+
+Microsoft.Data.Sqlite 8.0.31: https://github.com/dotnet/efcore
+Copyright (c) .NET Foundation and Contributors. License: MIT.
+
+SQLitePCLRaw 2.1.12: https://github.com/ericsink/SQLitePCL.raw
+Copyright 2014-2024 SourceGear, LLC. License: Apache-2.0.
+This includes its bundled SQLite native library; SQLite itself is public domain
+(https://sqlite.org/copyright.html).
+
+The complete MIT and Apache license texts are retained in `third_party/SQLite`
+and copied to the application's `licenses` directory.
+
 ## WinUIEx 2.9.3 (WinUI frontend)
 
 Project: https://github.com/dotMorten/WinUIEx

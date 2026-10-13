@@ -115,6 +115,11 @@ public sealed partial class CaptureLibraryWidget
             UI.Text("Capture settings", "capture-library.settings.title").Classes("capture-title"),
             UI.Button("Back to library", "capture-library.settings.back", "capture-library.settings.back"),
         };
+        if(state.Page is { } library) items.Add(UI.Stack("capture-library.settings.storage",
+            UI.Text("Storage","capture-library.settings.storage.title").Classes("capture-heading"),
+            UI.Text($"{library.TotalCount} saved captures · {library.StoredBytes / 1048576d:0.0} MiB","capture-library.settings.storage.usage").Classes("capture-help"),
+            UI.Text("Pictures → WidgetRail → Captures. Saved captures have no fixed item or storage quota.","capture-library.settings.storage.location").Classes("capture-help"),
+            UI.Button("Open folder","capture-library.folder","capture-library.settings.folder").Busy(state.Busy)).Classes("capture-settings-section"));
         if (state.Capabilities is { } capabilities && state.Preferences is { } preferences)
         {
             var image = preferences.Image ?? new(); var video = preferences.Video ?? DefaultVideo(capabilities); var prep = preferences.Preparation ?? new();
@@ -177,12 +182,14 @@ public sealed partial class CaptureLibraryWidget
 
     public override async ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(WidgetArtworkHandle handle, CancellationToken cancellationToken = default)
     {
-        if (model.Value.Page?.Items.Any(item => item.Id == handle.Value && item.Available) != true) return null;
+        var item=model.Value.Page?.Items.FirstOrDefault(item=>ArtworkKey(item)==handle.Value && item.Available);
+        if(item is null) return null;
         try
         {
-            var thumbnail = await HostServices.CaptureLibrary.GetThumbnailAsync(handle.Value, cancellationToken);
+            var thumbnail = await HostServices.CaptureLibrary.GetThumbnailAsync(item.Id, cancellationToken);
             return new(WidgetArtworkContentType.Png, thumbnail.Bytes);
         }
         catch (WidgetCapabilityException) { return null; }
     }
+    private static string ArtworkKey(CaptureLibraryItem item)=>item.Id+"."+item.Revision.ToString("x",System.Globalization.CultureInfo.InvariantCulture);
 }

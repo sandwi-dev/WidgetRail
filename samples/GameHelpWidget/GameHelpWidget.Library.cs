@@ -16,7 +16,7 @@ public sealed partial class GameHelpWidget
         if (state.Busy || state.Capturing || state.LibraryBusy) return true;
         if (action.ActionId is "library.open" or "library.next" or "library.previous")
         {
-            var offset = action.ActionId == "library.open" ? 0 : Math.Clamp((state.LibraryPage?.Offset ?? 0) + (action.ActionId == "library.next" ? 20 : -20), 0, CaptureLibraryLimits.MaximumItems);
+            var offset = action.ActionId == "library.open" ? 0 : (int)Math.Clamp((long)(state.LibraryPage?.Offset ?? 0) + (action.ActionId == "library.next" ? 20 : -20), 0, int.MaxValue);
             model.Update(s => s with { LibraryOpen = true, LibraryBusy = true, CaptureOptions = false, Error = null });
             Operations.RunLatest("library", async context =>
             {

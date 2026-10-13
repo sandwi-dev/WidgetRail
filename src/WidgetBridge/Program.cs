@@ -110,9 +110,9 @@ internal static class Program
                 performance: new WidgetRail.WindowsPerformanceProvider.WindowsPerformanceBackend(applicationBackend,
                     Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Performance", "PerformanceCollector.exe")),
                     new WidgetRail.PerformanceTelemetry.FpsDiagnosticLog(Path.Combine(settingsPaths.RootDirectory, "diagnostics", "fps-collector.log")).Write),
-                captureLibrary: new CaptureLibraryStore(Path.Combine(settingsPaths.RootDirectory, "capture-library"),
+                captureLibrary: new CaptureLibraryStore(Path.Combine(settingsPaths.RootDirectory, "capture-library-v2"),
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "WidgetRail", "Captures"),
-                    WindowsCaptureImageCodec.CreateContextAsync, WindowsCaptureImageCodec.CreateThumbnailAsync));
+                    WindowsCaptureImageCodec.CreateContextAsync, WindowsCaptureImageCodec.CreateThumbnailAsync, WindowsCaptureImageCodec.InspectAsync));
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget,

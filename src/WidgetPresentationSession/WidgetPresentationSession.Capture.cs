@@ -5,6 +5,10 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed partial class WidgetPresentationSession
 {
+    public async Task<bool> IsCaptureFolderCurrentAsync(string id,CancellationToken token=default) =>
+        BridgeJson.FromElement<BridgeCaptureCurrent>((await RequestAsync(BridgeMessageTypes.CheckCaptureFolder,new BridgeCaptureReference(id),BridgeMessageTypes.CheckCaptureFolder,token).ConfigureAwait(false)).Payload).Current;
+    public async Task CompleteCaptureFolderAsync(string id,bool opened,CancellationToken token=default) =>
+        _=await RequestAsync(BridgeMessageTypes.CompleteCaptureFolder,new BridgeCaptureFolderResult(id,opened),BridgeMessageTypes.CompleteCaptureFolder,token).ConfigureAwait(false);
     public async Task PublishCaptureCapabilitiesAsync(WidgetRail.WidgetProtocol.CaptureCapabilities capabilities, CancellationToken token = default, bool encodingProbed = true, string? discoveryId = null) =>
         _ = await RequestAsync(BridgeMessageTypes.CaptureCapabilities, new BridgeCaptureCapabilities(capabilities, encodingProbed, discoveryId), BridgeMessageTypes.CaptureCapabilities, token).ConfigureAwait(false);
     public async Task<BridgeCaptureCurrent> GetCaptureStateAsync(string id, CancellationToken token = default) =>

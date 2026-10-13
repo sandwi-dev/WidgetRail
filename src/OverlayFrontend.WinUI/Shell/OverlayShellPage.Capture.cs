@@ -10,6 +10,8 @@ internal sealed partial class OverlayShellPage
     internal Func<CancellationToken, Task<bool>>? HideForCaptureRequested { get; set; }
     private Task? capturePump, capturing;
     private readonly HashSet<string> captureDiscoveries = [];
+    internal Func<string,Func<Task<bool>>,CancellationToken,Task<bool>>? OpenCaptureFolderRequested { get; set; }
+    private Task? openingCaptureFolder;
     private async Task PumpCaptureAsync()
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(350));
@@ -26,6 +28,8 @@ internal sealed partial class OverlayShellPage
                     if (next.NeedsEncodingCapabilities)
                         BeginCaptureDiscovery(null);
                     foreach (var discovery in next.RecordingDiscoveries) BeginCaptureDiscovery(discovery);
+                    if(next.OpenFolder is { } folder && openingCaptureFolder is not { IsCompleted:false })
+                        openingCaptureFolder=OpenCaptureFolderAsync(folder,next.FolderWidgetId);
                     if (next.Request is not null) capturing = RunCaptureAsync(next);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
@@ -35,6 +39,23 @@ internal sealed partial class OverlayShellPage
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-pump", error); }
+    }
+    private async Task OpenCaptureFolderAsync(HostCaptureFolderRequest folder,string? widgetId)
+    {
+        var opened=false;
+        try
+        {
+            if(!retired && visible && foreground && interactive && activeWidget==widgetId && !HostChoiceActive && !LocalInstallActive && OpenCaptureFolderRequested is { } open)
+                opened=await open(folder.Path,()=>owner!.Session.IsCaptureFolderCurrentAsync(folder.Id,lifetime.Token),lifetime.Token);
+        }
+        catch(Exception error) when(error is not OutOfMemoryException)
+        { if(!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-folder",error); }
+        finally
+        {
+            try { if(!retired) await owner!.Session.CompleteCaptureFolderAsync(folder.Id,opened,lifetime.Token); }
+            catch(Exception error) when(error is not OutOfMemoryException)
+            { if(!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-folder-completion",error); }
+        }
     }
     private void BeginCaptureDiscovery(HostCaptureDiscovery? discovery)
     {

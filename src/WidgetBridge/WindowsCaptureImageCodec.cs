@@ -9,6 +9,20 @@ namespace WidgetRail.WidgetBridge;
 /// <summary>Generic image rendition adapter; original library files are never rewritten.</summary>
 internal static class WindowsCaptureImageCodec
 {
+    internal static async Task<WidgetProtocol.CaptureAttachment> InspectAsync(string path,WidgetProtocol.CaptureAttachment previous,CancellationToken token)
+    {
+        var size=new FileInfo(path).Length;
+        if(size<=0 || size>WidgetProtocol.CaptureLimits.MaximumAttachmentBytes) throw new BrokerException("capture_library_invalid_media","Edited capture exceeds the supported media size.");
+        var file=await StorageFile.GetFileFromPathAsync(path).AsTask(token).ConfigureAwait(false);
+        if(previous.ContentType=="video/mp4")
+        {
+            var properties=await file.Properties.GetVideoPropertiesAsync().AsTask(token).ConfigureAwait(false);
+            return previous with { Width=(int)properties.Width,Height=(int)properties.Height,DurationSeconds=properties.Duration.TotalSeconds,ByteLength=size,Properties=null };
+        }
+        using var stream=await file.OpenReadAsync().AsTask(token).ConfigureAwait(false);
+        var decoder=await BitmapDecoder.CreateAsync(stream).AsTask(token).ConfigureAwait(false);
+        return previous with { Width=(int)decoder.PixelWidth,Height=(int)decoder.PixelHeight,ByteLength=size,Properties=null };
+    }
     internal static Task<CaptureImageDimensions> CreateContextAsync(string inputPath, string outputPath, CancellationToken token) =>
         CreateAsync(inputPath, outputPath, 1920, 1080, WidgetProtocol.CaptureLimits.MaximumContextBytes, token);
     internal static async Task<CaptureImageDimensions> CreateThumbnailAsync(string inputPath, string outputPath, CancellationToken token)

@@ -44,19 +44,19 @@ public sealed partial class CaptureLibraryWidget : Widget
                 Work(LoadSettingsAsync); break;
             case "capture-library.photo": Capture(WindowCaptureKind.Screenshot); break;
             case "capture-library.video": Capture(WindowCaptureKind.Video); break;
-            case "capture-library.refresh": Load(state.Page?.Offset ?? 0); break;
-            case "capture-library.next": Load(Math.Min(CaptureLibraryLimits.MaximumItems, (state.Page?.Offset ?? 0) + CaptureLibraryLimits.PageSize), enterPage: true); break;
+            case "capture-library.refresh": Work(async token => { var page=await HostServices.CaptureLibrary.RefreshAsync(state.Page?.Offset??0,token); model.Update(s=>s with {Page=page}); }); break;
+            case "capture-library.next": Load((int)Math.Min(int.MaxValue, (long)(state.Page?.Offset ?? 0) + CaptureLibraryLimits.PageSize), enterPage: true); break;
             case "capture-library.previous": Load(Math.Max(0, (state.Page?.Offset ?? 0) - CaptureLibraryLimits.PageSize), enterPage: true); break;
             case "capture-library.back":
                 Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             case "capture-library.save" when state.Preview is { } preview:
-                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.SavePermission], token); var item = await HostServices.CaptureLibrary.SaveAsync(preview, token); model.Update(s => s with { SelectedId = item.Id, Message = "Saved to your library. The original stays here across restarts." }); }); break;
-            case "capture-library.export" when state.SelectedId is { } id:
-                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); var file = await HostServices.CaptureLibrary.ExportAsync(id, token); model.Update(s => s with { Message = "Exported to Pictures → WidgetRail → Captures: " + file.FileName }); }); break;
+                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.SavePermission], token); var item = await HostServices.CaptureLibrary.SaveAsync(preview, token); model.Update(s => s with { SelectedId = item.Id, Message = "Saved to Pictures → WidgetRail → Captures." }); }); break;
+            case "capture-library.folder":
+                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.OpenFolderAsync(token); }); break;
             case "capture-library.delete" when state.SelectedId is not null: model.Update(s => s with { ConfirmDelete = true }); break;
             case "capture-library.delete.cancel": model.Update(s => s with { ConfirmDelete = false }); break;
             case "capture-library.delete.confirm" when state.ConfirmDelete && state.SelectedId is { } deleted:
-                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.DeleteAsync(deleted, token); await ReleaseAsync(state, token); model.Update(s => s with { SelectedId = null, Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false, Message = "Removed from the library. Previously exported copies are unchanged." }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
+                Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.DeleteAsync(deleted, token); await ReleaseAsync(state, token); model.Update(s => s with { SelectedId = null, Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false, Message = "Deleted the saved file from Pictures → WidgetRail → Captures." }); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             default:
                 if (action.ActionId.StartsWith("capture-library.open.", StringComparison.Ordinal))
                 {
@@ -173,7 +173,7 @@ public sealed partial class CaptureLibraryWidget : Widget
             if (state.SelectedId is null) actions.Add(UI.Button("Save to library", "capture-library.save", "capture-library.save").Busy(state.Busy));
             else
             {
-                actions.Add(UI.Button("Export", "capture-library.export", "capture-library.export").Busy(state.Busy));
+                actions.Add(UI.Button("Open folder", "capture-library.folder", "capture-library.folder").Busy(state.Busy));
                 actions.Add(UI.Button("Delete", "capture-library.delete", "capture-library.delete").Busy(state.Busy));
             }
             actions.Add(UI.Button(state.SelectedId is null ? "Discard" : "Back to library", "capture-library.back", "capture-library.back").Busy(state.Busy));
@@ -182,19 +182,19 @@ public sealed partial class CaptureLibraryWidget : Widget
         }
         else
         {
-            items.Add(UI.ResponsiveGrid("capture-library.capture-actions", 160, 3,
+            items.Add(UI.ResponsiveGrid("capture-library.capture-actions", 150, 4,
                 UI.Button("Take screenshot", "capture-library.photo", "capture-library.photo").Busy(state.Busy),
                 UI.Button("Record clip", "capture-library.video", "capture-library.video").Busy(state.Busy),
-                UI.Button("Capture settings", "capture-library.settings", "capture-library.settings").Busy(state.Busy)));
+                UI.Button("Capture settings", "capture-library.settings", "capture-library.settings").Busy(state.Busy),
+                UI.Button("Open folder", "capture-library.folder", "capture-library.folder").Busy(state.Busy)));
             if (state.Page is { } page)
             {
-                items.Add(UI.Text($"{page.TotalCount} / {CaptureLibraryLimits.MaximumItems} saved · {page.StoredBytes / 1048576d:0.0} MiB / 2 GiB", "capture-library.usage").Classes("capture-help"));
                 var entries = new List<WidgetElement>();
                 foreach (var item in page.Items)
                 {
                     var id = "capture-library.item." + item.Id;
                     WidgetElement artwork = item.Available
-                        ? UI.Artwork(new WidgetArtworkHandle(item.Id), id + ".thumbnail", item.Media.ContentType == "image/png" ? "Screenshot thumbnail" : "Video thumbnail", ImageFit.Cover).Classes("capture-thumbnail")
+                        ? UI.Artwork(new WidgetArtworkHandle(ArtworkKey(item)), id + ".thumbnail", item.Media.ContentType == "image/png" ? "Screenshot thumbnail" : "Video thumbnail", ImageFit.Cover).Classes("capture-thumbnail")
                         : UI.Text(item.Available ? "Video clip" : "Unavailable", id + ".placeholder").Classes("capture-thumbnail-placeholder");
                     entries.Add(UI.ActionSurface("capture-library.open." + item.Id, id, Describe(item.Media), ActionSurfaceOrientation.Vertical,
                         artwork,
@@ -243,7 +243,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         };
         if (state.ConfirmDelete)
             view = view.WithModal(new WidgetModal("capture-library.confirm", "Delete saved capture?",
-                UI.Stack("capture-library.confirm.content", UI.Text("This removes the library original. Previously exported copies remain.", "capture-library.confirm.help"),
+                UI.Stack("capture-library.confirm.content", UI.Text("This permanently deletes the saved file from Pictures → WidgetRail → Captures.", "capture-library.confirm.help"),
                     UI.Row("capture-library.confirm.actions", UI.Button("Cancel", "capture-library.delete.cancel", "capture-library.delete.cancel").Busy(state.Busy),
                         UI.Button("Delete", "capture-library.delete.confirm", "capture-library.delete.confirm").Busy(state.Busy))), "capture-library.delete.cancel", "capture-library.delete.cancel"));
         return view;
@@ -256,9 +256,9 @@ public sealed partial class CaptureLibraryWidget : Widget
         "capture_preferences_conflict" or "private_state_revision_conflict" => "Capture settings changed elsewhere. Reopen Capture settings and try again.",
         "permission_cancelled" => "Permission request cancelled. Nothing was changed.",
         "permission_unavailable" => "Permission approval is unavailable right now. Return to this widget and try again, or manage access in Settings.",
-        "permission_denied" or "capability_not_declared" => "Allow Capture Library's required permissions in Settings → Widgets. Deleting and exporting also need its optional manage permission.",
+        "permission_denied" or "capability_not_declared" => "Allow Capture Library's required permissions in Settings → Widgets. Deleting captures and opening the folder also need its optional manage permission.",
         "capture_library_linked_path" => "This storage location uses a link that WidgetRail cannot follow. Your existing data was not changed.",
-        "capture_library_full" => "Your library is full. Export or delete saved captures before saving another.",
+        "capture_library_disk_full" => "There is not enough free disk space to save this capture. Free some space and try again.",
         "capture_too_large" or "capture_output_budget_too_small" => "The capture exceeds its size limit. Use a lower resolution or shorter recording and try again.",
         "capture_encoding_unsupported" or "capture_duration_unsupported" or "capture_image_format_unsupported" or "capture_audio_unsupported" => "Those capture settings are unavailable on this PC. Choose a supported option.",
         "capture_limit" => "Too many temporary captures are open. Return to the library and try again.",
