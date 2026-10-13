@@ -26,7 +26,7 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     private long completionStarted, foregroundSettledAt;
     private nint completionForeground;
     private Task? inspection, closing;
-    private readonly NativeDialogPointerInput pointer = new();
+    private readonly NativeDialogPointerInput pointer;
     private NativeDialogPointerInput.Bounds bounds;
     internal bool Active => state.Phase != NativeDialogPhase.Inactive;
     internal bool HasForeground => OwnsForeground(GetForegroundWindow());
@@ -39,9 +39,10 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     internal nint DialogWindow => target;
 #endif
 
-    internal NativeBrowserDialogController(DispatcherQueue queue, Action<bool> changed, Action returnFocus, Action<string?> reportStatus)
+    internal NativeBrowserDialogController(DispatcherQueue queue, Action<bool> changed, Action returnFocus, Action<string?> reportStatus, Action<string> traceInput)
     {
         this.queue = queue; this.changed = changed; this.returnFocus = returnFocus; this.reportStatus = reportStatus;
+        pointer = new(traceInput);
         timer = queue.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(25);
         timer.Tick += (_, _) => ObserveWindow();
     }
@@ -70,7 +71,7 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
     private void ObserveWindow()
     {
         if (!Active) return;
-        if (target == 0 || GetForegroundWindow() != target) pointer.Reset();
+        if (target == 0 || GetForegroundWindow() != target) pointer.Reset("foreground-lost");
         else
         {
             if (modalConfirmed && !pointerInitialized) { pointer.Center(bounds); pointerInitialized = true; }
@@ -152,7 +153,7 @@ internal sealed partial class NativeBrowserDialogController : IDisposable
 
     internal void Receive(ControllerFrame frame)
     {
-        if (frame.Connected == 0) { pointer.Reset(); return; }
+        if (frame.Connected == 0) { pointer.Reset("disconnected"); return; }
         if (frame.Primed != 0) { pointer.ReleaseInput(); return; }
         var foreground = GetForegroundWindow();
         if (!OwnsControllerWindow(foreground)) { pointer.Reset(); return; }

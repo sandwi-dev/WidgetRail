@@ -270,8 +270,10 @@ include window counts and result codes without website content.
 The circle uses the browser's diameter and theme colors in a tiny nonactivating,
 click-through native visual above the chooser. Controller mouse messages target only
 the admitted native root/children at the circle's virtual position; they do not move
-the physical mouse or replace the Windows cursor. Ordinary desktop input hides the
-circle; controller activity shows it again. The physical mouse keeps its own location.
+the physical mouse or replace the Windows cursor. Desktop mouse movement or mouse
+button changes hide the circle; controller activity shows it again. Keyboard and
+gamepad-related Windows input do not cancel a held controller click. The physical
+mouse keeps its own location.
 The pointer transport, motion policy and visual are reusable independently of the
 sharing-specific accessibility detector. An outstanding controller press is cancelled
 on disconnect, lost focus or teardown without leaving a global mouse button held.
@@ -285,6 +287,9 @@ opaque synthetic window using simulated analog/button controller frames through
 the real native chooser. The repeat fixture keeps earlier streams alive across
 share → cancel change → share, and verifies dragging, scrolling, circle presentation,
 mouse/controller handoff, unchanged physical cursor position and automatic return.
+It also interleaves Windows keyboard/gamepad-key events with held A, clicks native
+Share/Cancel using A, and toggles audio on/off on a cancelled request (no audio
+stream is started). B cancellation is available in the driver through `-CancelWithB`.
 These checks are distinct from physical-controller acceptance.
 
 Notifications use WebView2's default native notification UI after website

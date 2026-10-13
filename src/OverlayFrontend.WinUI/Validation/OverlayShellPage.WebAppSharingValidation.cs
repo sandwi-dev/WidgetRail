@@ -28,9 +28,12 @@ internal sealed partial class OverlayShellPage
             ushort heldButtons = 0;
             for (var round = 1; round <= rounds; round++)
             {
+            // Exercise audio chooser controls only on the cancelled round. Never
+            // start a system/microphone audio stream in this synthetic fixture.
+            await browser.EvaluateFixtureAsync(round == 2 ? "window.testAudio=true" : "window.testAudio=false");
             await browser.EvaluateGestureFixtureAsync("""
                 window.shareState='pending'; window.sharedStreams ??= []; window.previousStreamCount=sharedStreams.length;
-                navigator.mediaDevices.getDisplayMedia({video:true,audio:false}).then(async stream=>{
+                navigator.mediaDevices.getDisplayMedia({video:true,audio:window.testAudio}).then(async stream=>{
                   window.shared=stream; window.sharedStreams.push(stream);
                   const track=stream.getVideoTracks()[0];window.shareSettings=track.getSettings();
                   if(shareSettings.displaySurface!=='window'){stream.getTracks().forEach(t=>t.stop());window.shareState='wrong-source';return;}
@@ -59,7 +62,7 @@ internal sealed partial class OverlayShellPage
                     {
                         lastCommand = sequence;
                         deadline = Environment.TickCount64 + 60_000;
-                        cancelRequested = fields[1] == "cancel";
+                        cancelRequested = fields[1] is "cancel" or "cancel-click";
                         var nativeReady = NativePickerReadyForValidation?.Invoke() == true;
                         if (fields[1] is "move" or "scroll" && fields.Length == 5 && short.TryParse(fields[2], out var x) &&
                             short.TryParse(fields[3], out var y) && int.TryParse(fields[4], out var frames) && frames is >= 1 and <= 60)
@@ -81,7 +84,7 @@ internal sealed partial class OverlayShellPage
                             NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, ReleasedButtons = heldButtons });
                             heldButtons = 0;
                         }
-                        else if (fields[1] == "select")
+                        else if (fields[1] is "select" or "cancel-click")
                         {
                             NativePickerFrameForValidation?.Invoke(new ControllerFrame { Connected = 1, PressedButtons = 0x1000, State = new() { Buttons = 0x1000 } });
                             await Task.Delay(50);
@@ -100,7 +103,7 @@ internal sealed partial class OverlayShellPage
                 await Task.Delay(100);
             }
             if (cancelRequested)
-                check(await browser.EvaluateFixtureAsync("window.shareState==='NotAllowedError' && sharedStreams.length===previousStreamCount && sharedStreams.every(s=>s.getTracks().every(t=>t.readyState==='live'))") == "true", "Controller B cancels the native sharing picker without creating a stream");
+                check(await browser.EvaluateFixtureAsync("window.shareState==='NotAllowedError' && sharedStreams.length===previousStreamCount && sharedStreams.every(s=>s.getTracks().every(t=>t.readyState==='live'))") == "true", "Controller cancels the native sharing picker without creating a stream");
             else
             {
                 check(await browser.EvaluateFixtureAsync("window.shareState==='ready' && shared.getAudioTracks().length===0") == "true",

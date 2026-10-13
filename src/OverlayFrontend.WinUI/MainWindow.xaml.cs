@@ -52,7 +52,7 @@ public sealed partial class MainWindow : Window
             if (RootFrame.Content is Shell.OverlayShellPage browserShell)
             {
                 nativeBrowserDialog = new(DispatcherQueue, browserShell.SetNativeBrowserPickerActive,
-                    () => { if (!cleanupStarted && AppWindow.IsVisible) { Activate(); input?.AcquireForeground(); browserShell.RestoreNativeBrowserPickerFocus(); } }, browserShell.SetNativeBrowserPickerStatus);
+                    () => { if (!cleanupStarted && AppWindow.IsVisible) { Activate(); input?.AcquireForeground(); browserShell.RestoreNativeBrowserPickerFocus(); } }, browserShell.SetNativeBrowserPickerStatus, input.TraceInput);
                 browserShell.PrepareBrowserPicker = nativeBrowserDialog.Begin;
                 input.DeferExternalForegroundDismissal = nativeBrowserDialog.DeferExternalDismissal;
                 if (!arguments.Contains("--shell-no-controller"))

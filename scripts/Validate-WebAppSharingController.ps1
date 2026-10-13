@@ -1,7 +1,8 @@
 # Drives only the explicitly launched local sharing fixture. Native control
 # geometry is read through UIA; actions use analog controller frames, never UIA Invoke or direct cursor writes.
-param([Parameter(Mandatory)][string]$Result, [switch]$Cancel, [ValidateRange(1, 3)][int]$Round = 1)
+param([Parameter(Mandatory)][string]$Result, [switch]$Cancel, [switch]$CancelWithB, [ValidateRange(1, 3)][int]$Round = 1)
 $ErrorActionPreference = 'Stop'
+if ($CancelWithB -and !$Cancel) { throw '-CancelWithB requires -Cancel.' }
 $deadline = [DateTime]::UtcNow.AddSeconds(40)
 while (!(Test-Path -LiteralPath ($Result + '.sharing-ready')) -or [int](Get-Content -LiteralPath ($Result + '.sharing-ready') -Raw | ConvertFrom-Json).round -lt $Round) {
     if (Test-Path -LiteralPath $Result) { throw (Get-Content -LiteralPath $Result -Raw) }
@@ -38,8 +39,8 @@ public static class SharingPointerProbe {
 }
 '@
 function Cursor { $script:virtualCursor }
-function Find-Control([string]$Name) {
-    $match = @( (winapp ui search $Name -w $window --json | ConvertFrom-Json).matches | Where-Object { $_.name -eq $Name -and !$_.isOffscreen } )
+function Find-Control([string]$Name, [string]$Type = '') {
+    $match = @( (winapp ui search $Name -w $window --json | ConvertFrom-Json).matches | Where-Object { $_.name -eq $Name -and !$_.isOffscreen -and (!$Type -or $_.type -eq $Type) } )
     if ($match.Count -ne 1) { throw "Expected one visible native control: $Name" }
     return $match[0]
 }
@@ -61,8 +62,11 @@ function Send-Controller([string]$Command) {
     return $ack.nativeReady
 }
 function Move-To($Control) {
-    $x = $Control.x + $Control.width / 2; $y = $Control.y + $Control.height / 2
     for ($i=0; $i -lt 80; $i++) {
+        # Chromium can reorder sources as thumbnails arrive. Follow current
+        # geometry, not a tile's position from the initial asynchronous scan.
+        if ($i % 4 -eq 0 -and $Control.name) { $Control = Find-Control $Control.name $Control.type }
+        $x = $Control.x + $Control.width / 2; $y = $Control.y + [Math]::Min(80, $Control.height) / 2
         $cursor = Cursor
         $dx = $x - $cursor.X; $dy = $y - $cursor.Y
         if ([Math]::Abs($dx) -le 8 -and [Math]::Abs($dy) -le 8) { return }
@@ -71,6 +75,15 @@ function Move-To($Control) {
         $null = Send-Controller "move $([int]$axisX) $([int]$axisY) 1"
     }
     throw 'Analog pointer did not reach the native control.'
+}
+function Press-WithKeyboardActivity {
+    $null = Send-Controller press
+    # GetLastInputInfo changes even though the mouse never moved. This must not
+    # steal the controller gesture or hide its circle before the release.
+    winapp ui send-keys shift -w $window --via send-input --json | Out-Null
+    winapp ui send-keys 'vk=0xC3' -w $window --via send-input --json | Out-Null
+    $null = Send-Controller observe
+    if (!$evidence[$evidence.Count-1].circle) { throw 'Unrelated keyboard activity hid the controller circle.' }
 }
 for ($i=0; $i -lt 12; $i++) { if ((Send-Controller neutral) -and $evidence[$evidence.Count-1].circle) { break }; Start-Sleep -Milliseconds 100 }
 if (!$evidence[$evidence.Count-1].nativeForeground) { throw 'Native dialog did not receive focus.' }
@@ -87,30 +100,45 @@ if ($Round -eq 1) {
 $physicalStart = [SharingPointerProbe]::Read()
 if (!$evidence[$evidence.Count-1].circle) { throw 'Controller circle was not visible on entry.' }
 if ($Cancel) {
+    if ($Round -eq 2) {
+        $audio = Find-Control 'Share with system audio' 'Button'
+        if ($audio.toggleState -ne 'off') { throw 'Audio must initially be disabled.' }
+        Move-To $audio
+        Press-WithKeyboardActivity
+        $null = Send-Controller release
+        if ((Find-Control 'Share with system audio' 'Button').toggleState -ne 'on') { throw 'A did not enable the native audio switch.' }
+        Press-WithKeyboardActivity
+        $null = Send-Controller release
+        if ((Find-Control 'Share with system audio' 'Button').toggleState -ne 'off') { throw 'A did not disable the native audio switch.' }
+    }
     Move-To (Find-Control 'Cancel')
-    $null = Send-Controller cancel
+    if ($CancelWithB) { $null = Send-Controller cancel } else { $null = Send-Controller cancel-click }
 }
 else {
+    $grid = Find-Control 'Window' 'Tab'
+    Move-To ([pscustomobject]@{x=$grid.x; y=$grid.y+100; width=$grid.width; height=60})
     $source = Find-Control $fixture.target
     # UIA reports full tile bounds even when the lower half is clipped by the viewport.
     # Start inside the visible thumbnail and exercise right-stick scrolling before selecting.
     $originalY = $source.y
-    $source.height = [Math]::Min(80, $source.height)
-    Move-To $source
     $null = Send-Controller 'scroll 0 -22000 10'
     $source = Find-Control $fixture.target
     if ($source.y -ge $originalY) { throw 'Right-stick scrolling did not move the source grid.' }
     $null = Send-Controller 'scroll 0 22000 30'
     $source = Find-Control $fixture.target
-    $source.height = [Math]::Min(80, $source.height)
+    for ($i=0; $i -lt 10 -and $source.y + 80 -gt $grid.y + $grid.height; $i++) {
+        $null = Send-Controller 'scroll 0 -22000 5'
+        $source = Find-Control $fixture.target
+    }
     Move-To $source
-    $null = Send-Controller press
+    Press-WithKeyboardActivity
     $null = Send-Controller 'move 9000 0 3'
     $null = Send-Controller release
     $share = Find-Control 'Share'
     if (!$share.isEnabled) { throw 'Native Share control is not enabled.' }
     Move-To $share
-    $null = Send-Controller select
+    Press-WithKeyboardActivity
+    $null = Send-Controller release
 }
 $physicalEnd = [SharingPointerProbe]::Read()
 if ($physicalStart.X -ne $physicalEnd.X -or $physicalStart.Y -ne $physicalEnd.Y) { throw 'Controller navigation moved the physical mouse.' }
