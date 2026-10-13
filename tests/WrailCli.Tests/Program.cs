@@ -1087,6 +1087,7 @@ static async Task AdvancedTemplateProfiles()
             .. (profile == "webapp" ? new[] { "--url", "https://example.com/app?x=\"quoted\"" } : Array.Empty<string>())]);
         Assert.True(created.Code == 0, "create: " + created.Error);
         Assert.Contains($"Template: {profile}", created.Output);
+        Assert.True(File.Exists(Path.Combine(destination, "styles", "default.wrss")), "Generated widget must include its default stylesheet for bundled distribution.");
 
         var project = Path.Combine(destination, typeName + ".csproj");
         var build = await RunProcessAsync(

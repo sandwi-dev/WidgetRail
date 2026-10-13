@@ -12,6 +12,30 @@ Widgets access platform providers through the protected `HostServices` property.
 Production services are attached exactly once by `WidgetWorkerBootstrap` before
 `OnCreatedAsync`; a widget cannot replace them after creation.
 
+For a website or webapp, use the shared host-owned browser element:
+
+```csharp
+var page = new WebBrowserDocument("app.session", 1, "https://example.com/app", "My app")
+{
+    Options = WebBrowserOptions.WebApp with { ProfileKey = "personal" }
+};
+var browser = UI.WebBrowser(page, BrowserInteractionMode.InteractOnFocus, "app.page");
+```
+
+The webapp preset supplies on-demand chrome (LS), persistent website data,
+hosted popups, external offsite links, and bounded background retention. Profiles
+are isolated by widget; `ProfileKey` separates accounts within a widget. Ordinary
+browser defaults remain private and do not request background retention. The
+explicit interaction mode controls both entry and B behavior. Reuse the document
+ID across renders; increment its navigation ID only to request a new URL.
+
+The host owns website permissions, password/rich-text entry, files, native
+placement and recovery. Widgets receive no cookies, tokens or DOM access.
+`KeepAlive` does not grant microphone or camera permission. For the same setup
+through the CLI, run `wrail new widget MyApp --template webapp --url https://example.com/app`.
+See [Hosted browser and webapps](../../docs/reference/widget-web-browser.md) for
+configuration, controller mappings, pinning, supported flows and limitations.
+
 For dense controller surfaces, use `UI.VerticalScroll` or
 `UI.HorizontalScroll`; the host owns clipping, focus-follow, and restored
 offsets. A view may also provide bounded `WidgetSurfaceHints` so compact and
@@ -61,7 +85,7 @@ Copy it beside the entry document (optionally as the package-local alias
 and load the same relative path before the provider driver.
 
 ```xml
-<PackageReference Include="WidgetRail.WidgetSdk" Version="0.3.0-dev"
+<PackageReference Include="WidgetRail.WidgetSdk" Version="0.4.1-dev"
                   GeneratePathProperty="true" />
 <None Include="$(PkgWidgetRail_WidgetSdk)\contentFiles\any\any\WidgetRail\EmbeddedMediaAdapterRuntime.js"
       Link="media\adapter-runtime.js"

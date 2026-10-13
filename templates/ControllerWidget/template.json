@@ -12,6 +12,7 @@
         { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
         { "source": "README.webapp.md.template", "destination": "README.md", "kind": "text" },
         { "source": "profiles/webapp.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
+        { "source": "styles/webapp.wrss", "destination": "styles/default.wrss", "kind": "binary" },
         { "source": "tests/NuGet.Config.template", "destination": "tests/NuGet.Config", "kind": "text" },
         { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
         { "source": "tests/WebAppScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
