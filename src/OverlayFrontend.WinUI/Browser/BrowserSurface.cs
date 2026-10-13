@@ -70,6 +70,12 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal void CloseControllerForValidation() => web.Close();
     internal List<string> FixturePointerTrace { get; } = [];
     internal async Task<string> EvaluateFixtureAsync(string script) => await core!.ExecuteScriptAsync(script);
+    internal async Task EvaluateGestureFixtureAsync(string script)
+    {
+        using var result = JsonDocument.Parse(await core!.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
+            "{\"expression\":" + JsonSerializer.Serialize(script) + ",\"userGesture\":true}"));
+        if (result.RootElement.TryGetProperty("exceptionDetails", out var error)) throw new InvalidOperationException("Fixture script failed: " + error);
+    }
 #endif
     [System.Diagnostics.Conditional("ENABLE_WIDGET_VALIDATION")]
     [System.Diagnostics.Conditional("ENABLE_TRIMMED_CONTROL_VALIDATION")]
@@ -125,7 +131,9 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     {
         if (retired) return;
         var wasInteracting = interacting;
-        visible = isVisible && !retired; input = visible && acceptsInput && !faulted;
+        presentationInputRequested = acceptsInput;
+        visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging;
+        if (!visible) CancelSiteDecisions();
         web.IsTabStop = input;
         foreach (var button in buttons) { button.IsTabStop = input; button.IsHitTestVisible = input; }
         if (!input) { toolbarFocused = false; libraryDialog?.Hide(); backReleaseOwned = false; CancelPointer(); CancelEdit(); interacting = false; browsing = false; wheelX = wheelY = 0; cursorDirty = false; }
@@ -305,6 +313,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                     return;
                 }
                 if (args.Uri != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(args.Uri)) { args.Cancel = true; ShowStatus("This link cannot open inside WidgetRail."); return; }
+                CancelSiteDecisions();
                 navigationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                 pageEpoch++; CancelPointer(); CancelEdit(); loading = true; UpdateChrome(); ShowStatus(null);
             };
@@ -318,7 +327,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             core.HistoryChanged += (_, _) => UpdateChrome();
             core.DocumentTitleChanged += (_, _) => UpdateAddress();
             core.SourceChanged += (_, _) => { UpdateAddress(); if (!loading) RecordVisit(); };
-            core.PermissionRequested += (_, args) => { args.State = CoreWebView2PermissionState.Deny; args.Handled = true; };
+            core.PermissionRequested += PermissionRequested;
             core.DownloadStarting += (_, args) => { args.Cancel = true; args.Handled = true; ShowStatus("Use Open externally to download files."); };
             core.NewWindowRequested += (_, args) =>
             {
@@ -356,7 +365,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     private void NavigatePending()
     {
-        if (!visible || retired || faulted || core is null || appliedNavigation >= document.NavigationId) return;
+        if (!visible || retired || faulted || profileChanging || core is null || appliedNavigation >= document.NavigationId) return;
         appliedNavigation = document.NavigationId; NavigationCount++;
         core.Navigate(document.Url);
     }
@@ -431,6 +440,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (retired) return; SetPresentation(false, false); retired = true; lifetime.Cancel();
+        Choose = null;
         chromeTheme?.Dispose(); chromeTheme = null;
         if (dragReceiver is not null)
         {

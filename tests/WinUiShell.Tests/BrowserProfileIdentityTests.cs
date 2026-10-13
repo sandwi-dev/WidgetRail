@@ -39,6 +39,18 @@ public sealed class BrowserProfileIdentityTests
     }
 
     [TestMethod]
+    public void ConsentIdentityOmitsPathsCredentialsAndUnicodeConfusables()
+    {
+        Assert.AreEqual("https://example.com", BrowserSiteIdentity.Origin("https://example.com:443/login?token=secret"));
+        Assert.AreEqual("https://example.com:8443", BrowserSiteIdentity.Origin("https://example.com:8443/"));
+        Assert.AreEqual("https://xn--bcher-kva.example", BrowserSiteIdentity.Origin("https://bücher.example/"));
+        Assert.IsNull(BrowserSiteIdentity.Origin("https://user:secret@example.com"));
+        Assert.IsNull(BrowserSiteIdentity.Origin("http://example.com"));
+        Assert.IsNull(BrowserSiteIdentity.Origin("file:///C:/private"));
+        Assert.AreEqual("https://[::1]", BrowserSiteIdentity.Origin("https://[::1]/"));
+    }
+
+    [TestMethod]
     public void StorageChangesRequireControllerReplacementButChromeChangesDoNot()
     {
         var app = App();

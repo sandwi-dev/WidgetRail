@@ -7,6 +7,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserProfileIdentity.cs" Link="BrowserProfileIdentity.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserNavigationPolicy.cs" Link="BrowserNavigationPolicy.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserSiteIdentity.cs" Link="BrowserSiteIdentity.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserAddressInput.cs" Link="BrowserAddressInput.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserLibraryStore.cs" Link="BrowserLibraryStore.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\DirectionalFocusPolicy.cs" Link="DirectionalFocusPolicy.cs" />

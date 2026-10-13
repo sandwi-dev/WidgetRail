@@ -21,7 +21,7 @@ internal sealed partial class BrowserSurface
         RowDefinitions.Add(new() { Height = new(2) });
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
-        for (var i = 0; i < 9; ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
+        for (var i = 0; i < 10; ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
         back = Add("Previous page", "Browser.Back", Symbol.Back, 0, () => { if (core?.CanGoBack == true) core.GoBack(); });
         forward = Add("Forward", "Browser.Forward", Symbol.Forward, 1, () => { if (core?.CanGoForward == true) core.GoForward(); });
         addressButton = Add("Search Google or enter a URL", "Browser.Address", Symbol.Globe, 2, () => Run(() => EditAsync(true)));
@@ -34,6 +34,7 @@ internal sealed partial class BrowserSurface
         bookmarks = Add("Bookmarks", "Browser.Bookmarks", Symbol.Library, 6, () => Run(() => ShowLibraryAsync(true)));
         history = Add("History", "Browser.History", Symbol.Clock, 7, () => Run(() => ShowLibraryAsync(false)));
         external = Add("Open externally", "Browser.External", Symbol.Link, 8, () => Run(OpenExternallyAsync));
+        Add("Website permissions and data", "Browser.SiteControls", Symbol.Setting, 9, () => Run(ShowSiteControlsAsync));
         if (IsProviderContent)
         {
             // Restricted documents have no navigation chrome, including during

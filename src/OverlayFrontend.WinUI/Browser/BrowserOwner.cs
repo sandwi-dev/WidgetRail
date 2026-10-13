@@ -8,7 +8,7 @@ using Session = WidgetRail.WidgetPresentationSession.WidgetPresentationSession;
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 /// <summary>Owns browser/controller lifetime; presenters borrow slots without recreating pages.</summary>
-internal sealed class BrowserOwner : IAsyncDisposable
+internal sealed partial class BrowserOwner : IAsyncDisposable
 {
     private sealed record Binding(WidgetPresentationAuthority Authority, WebBrowserDocument Document, BrowserSlot Slot);
     private sealed class Entry(WidgetPresentationAuthority authority, BrowserSurface surface)
@@ -29,6 +29,7 @@ internal sealed class BrowserOwner : IAsyncDisposable
     private bool dirty, retired;
     private readonly CancellationTokenSource lifetime = new();
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternal { get; set; }
+    internal Func<BrowserSurface, string, string, IReadOnlyList<Shell.HostDialogChoice>, CancellationToken, Task<string?>>? Choose { get; set; }
     internal int ResidentCount => entries.Count;
     internal int CreatedCount { get; private set; }
     internal int PlacementMoveCount { get; private set; }
@@ -110,6 +111,7 @@ internal sealed class BrowserOwner : IAsyncDisposable
                         await RetireAsync(group.Key, existing);
                     if (!entries.TryGetValue(group.Key, out var entry))
                     {
+                        if (changingProfiles.Contains(BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document))) continue;
                         if (entries.Count >= 4)
                         {
                             var oldest = entries.Where(pair => pair.Value.Slot?.CanDisplay != true).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
@@ -141,6 +143,8 @@ internal sealed class BrowserOwner : IAsyncDisposable
                         var surface = new BrowserSurface(group.Key.Widget, chosen.Document, EnvironmentAsync, providerHtml, library)
                         {
                             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
+                            Choose = (source, title, message, choices, token) => Choose?.Invoke(source, title, message, choices, token) ?? Task.FromResult<string?>(null),
+                            ChangeProfile = ChangeProfileAsync,
                             CheckProviderAuthority = chosen.Document.ProviderDocument is null ? null : async token =>
                                 { _ = await session.ResolveProviderDocumentAsync(chosen.Authority, chosen.Document, token); },
                         };
