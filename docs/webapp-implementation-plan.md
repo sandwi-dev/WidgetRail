@@ -2,7 +2,7 @@
 
 ## Objective and authority
 
-Implement the user's full webapp goal, with Discord as a pinnable consumer of public SDK and CLI authoring mechanisms. Work independently until a complete candidate is ready for physical acceptance. Do not merge, push, publish, create installers, or remove worktrees. Account login, sending real messages, and joining calls are reserved for the user. Local fixtures may exercise equivalent behaviour without accessing user credentials or accounts.
+Implement the user's full webapp goal, with Discord as a pinnable consumer of public SDK and CLI authoring mechanisms. Work independently until a complete candidate is ready for physical acceptance. The user subsequently accepted all changes and authorized local integration into main. Do not push, publish, create installers, or remove worktrees. Account login, sending real messages, and joining calls are reserved for the user. Local fixtures may exercise equivalent behaviour without accessing user credentials or accounts.
 
 Baseline: `e819cf80` on main. Work branch: `codex/webapp-framework` in the existing `platform-feature-roadmap/WidgetRail` worktree. Preserve main's unrelated `docs/implementation-agent-goal.md` edit. The previous capture candidate may be closed and relaunched as necessary.
 
@@ -21,7 +21,7 @@ Baseline: `e819cf80` on main. Work branch: `codex/webapp-framework` in the exist
 
 ## Work and evidence ledger
 
-Autonomous implementation and validation are complete, including popup placement and adjustment-mode pin ordering. Candidate **09** is built and running on SDK Gallery with the preserved physical profile/Guide shortcut. Latest shell run 84 passes **112** native checks through shutdown; **215** managed tests pass. Earlier live-keyboard (18), buffered-keyboard (105), frame reload and three-round sharing checks remain recorded below. Both candidate catalogs/inventories pass (14 Production / 18 Developer widgets). Physical/account-dependent acceptance remains with the user. Exact artifacts and checklists are below.
+Autonomous implementation and validation are complete, including popup placement and adjustment-mode pin ordering. Candidate **09** is built and running on SDK Gallery with the preserved physical profile/Guide shortcut. Latest shell run 84 passes **112** native checks through shutdown; **215** managed tests pass. Earlier live-keyboard (18), buffered-keyboard (105), frame reload and three-round sharing checks remain recorded below. Both candidate catalogs/inventories pass (14 Production / 18 Developer widgets). The user has accepted all changes and authorized merging to main. This acceptance does not expand the scope of the recorded automated evidence. Exact artifacts and checklists are below.
 
 | Workstream | Status | Required evidence |
 | --- | --- | --- |
@@ -36,16 +36,16 @@ Autonomous implementation and validation are complete, including popup placement
 | Screen sharing and notifications | Implemented and synthetic native paths verified | Run 79 passes notification lifecycle/list/banner/main/pin activation and three native chooser rounds (share/cancel/share), audio toggle only in cancelled round, decoded frames and preserved streams. Actual Discord notification emission remains physical. |
 | CLI webapp scaffold and Discord | Authoring foundation verified | Existing `wrail new widget --template webapp --url` extended; all six templates generate/build/test/preview/validate/package deterministically. Discord generated through CLI and builds in candidate 07. Generic pin paths verified; account-dependent acceptance remains physical. |
 | Documentation and gallery | Updated and reviewed | Webapp gallery with profiles/background controls passes 13 checks. CLI/template/SDK/reference docs updated; six templates build/test/preview/validate/package deterministically. Candidate 07 launches successfully on SDK Gallery. |
-| Complete candidate | Candidate 08 built, verified and launched | Production 14 / Developer 18 widget catalog and inventory checks pass. Source `a1e50a1d`; PID and launch evidence in `candidate-webapps-08-handoff.json`. Physical profile and Guide preserved. |
+| Complete candidate | Candidate 09 accepted by user | Production 14 / Developer 18 widget catalog and inventory checks pass. Source `77630a75`; launch evidence in `candidate-webapps-09-handoff.json`. Physical profile and Guide preserved. |
 
 ## Current remaining work (supersedes historical next-step entries)
 
 - User confirmed the native sharing chooser now works. Do not carry the superseded picker-input/foreground-return blockers forward from the historical entries below.
 - Shared pin ordering, direct Website controls, A-only live browser editing, hosted pop-out pinning, custom notifications and shutdown fixes are implemented. Run 79 verifies the combined native lifecycle, input and notification paths. Windows notification UI is suppressed. Native COM notification ownership avoids the reproduced WinRT finalizer-thread crash.
-- Autonomous work is complete: both folders are built from a clean local source checkpoint, catalogs/integrity verified, and the Developer candidate is running with the preserved physical profile and Guide shortcut. No installer or release was created. The remaining work is the user's physical/account-dependent acceptance below.
-- Remaining account-dependent acceptance: persistent Discord login after restart, channel/rich-editor interaction, actual microphone/camera calls through hide/reopen/pin changes, reconnect and Stop session. The user's chooser acceptance does not claim these separate checks passed.
+- Autonomous work is complete: both folders are built from a clean local source checkpoint, catalogs/integrity verified, and the Developer candidate is running with the preserved physical profile and Guide shortcut. No installer or release was created. The user has accepted the candidate and authorized local integration into main.
+- Account-dependent coverage not claimed by automated validation: persistent Discord login after restart, channel/rich-editor interaction, actual microphone/camera calls through hide/reopen/pin changes, reconnect and Stop session. The user's chooser acceptance does not claim these separate checks passed.
 - Broader webapp limitations remain explicit: Windows upload/save pickers require mouse/keyboard; frame editing excludes rotated/skewed/mirrored/perspective-transformed ancestors and depths beyond eight; directory/File System Access workflows and unsupported authentication schemes use external-browser alternatives where possible. No Discord-specific adapter is used.
-- SDK preset, CLI webapp template, Discord consumer, gallery and both candidate catalogs are implemented. No merge/push/release/installers/worktree cleanup is authorized by this status question.
+- SDK preset, CLI webapp template, Discord consumer, gallery and both candidate catalogs are implemented. Local merge is now authorized by the user. Push/release/installers/worktree cleanup remain outside this request.
 
 ## Additional usability and content-pinning work (user feedback after candidate 06)
 
@@ -411,3 +411,7 @@ User reported that move/resize and opacity adjustment left the pin behind the ma
 - Developer candidate 09 is running on SDK Gallery, PID **69832**, responsive with the visible Gallery header verified by UI Automation. The same physical profile is retained; platform settings and popup preferences hashes are unchanged, and the opening shortcut remains **Guide**. Browser storage was preserved without inspecting credentials or opening Discord. Evidence: `artifacts/webapps/candidate-webapps-09-handoff.json`.
 - Physical follow-up: with a pin overlapping the main widget, enter Move/resize and Change opacity. The pin should rise above the widget while adjusting, remain stable as the shell updates, then return behind the widget after Save or Cancel. Repeat with a hosted pop-out if desired. Widget content must not consume adjustment input.
 - Native checks: **112 passed**. The earlier **215 managed checks** remain applicable; this follow-up changes native window ordering only. No merge, push, release, installer or worktree removal was performed.
+
+## Acceptance and local integration
+
+The user accepted all changes after candidate 09 and authorized merging the complete webapp branch into main. The accepted code is unchanged; the existing 112 native and 215 managed checks, candidate integrity checks and review evidence apply. Integration preserves main's unrelated docs/implementation-agent-goal.md edit and leaves the running candidate/profile intact. No push, release, installer creation or worktree removal is part of this integration.
