@@ -12,8 +12,13 @@ internal static class Program
         using var font = new Font(SystemFonts.DefaultFont.FontFamily, 20);
         using var window = new SharingTargetForm { Text = args[0], StartPosition = FormStartPosition.Manual,
             Location = new(40, 40), ClientSize = new(720, 480), BackColor = Color.DarkSlateBlue };
-        window.Controls.Add(new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
-            Text = "Synthetic sharing target\nNo accounts or user data", ForeColor = Color.White, Font = font });
+        var label = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
+            Text = "Synthetic sharing target\nNo accounts or user data", ForeColor = Color.White, Font = font };
+        window.Controls.Add(label);
+        using var timer = new System.Windows.Forms.Timer { Interval = 100 };
+        var frame = 0;
+        timer.Tick += (_, _) => label.Text = $"Synthetic sharing target\nNo accounts or user data\nFrame {++frame}";
+        timer.Start();
         window.Shown += (_, _) => File.WriteAllText(args[1], "ready");
         Application.Run(window);
         return 0;

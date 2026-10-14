@@ -66,6 +66,11 @@ internal sealed partial class WebAppBackgroundValidationPage : Page, IAsyncDispo
                 Check(await Eval("document.visibilityState==='hidden' && stream.getTracks().every(t=>t.readyState==='live') && p1.connectionState==='connected'"), "Media continues while native surface is hidden and parked");
                 parking.Children.Remove(browser); active.Children.Add(browser); browser.SetPresentation(true, true);
                 Check(await Eval("p1.connectionState==='connected'"), "Returning to the page preserves the same connection");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-memory"))
+                {
+                    await WebAppMemoryValidation.RunAsync(browser, "stream", result, Check);
+                    await WebAppMemoryValidation.VerifyPolicyAsync(browser, Check);
+                }
                 await browser.EvaluateGestureFixtureAsync("window.onbeforeunload=()=> 'Active session'");
                 await browser.StopDocumentAsync(CancellationToken.None);
                 Check(browser.SessionStopped && browser.CurrentUrl == WebBrowserDocument.StartPage && await Eval("typeof window.stream==='undefined'"), "Stop unloads the document, including its media and connections");

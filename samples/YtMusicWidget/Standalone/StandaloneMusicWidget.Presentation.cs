@@ -122,7 +122,9 @@ public sealed partial class StandaloneMusicWidget
                 "notifications.toggle", "notifications.toggle").Selected(notificationSettings.Enabled).Classes("music-secondary"),
             UI.Text("Artwork, song, artist and duration when tracks change. Works with the overlay open or hidden; banners clear automatically without entering the notification list.",
                 "notifications.description").Classes("music-copy"),
-            .. (notificationSettings.Enabled ? (WidgetElement[])[UI.Slider(notificationSettings.BackgroundOpacity, 40, 100, 5, "notifications.opacity", "notifications.opacity",
+            .. (notificationSettings.Enabled ? (WidgetElement[])[
+                UI.Text($"Banner opacity · {notificationSettings.BackgroundOpacity}%", "notifications.opacity.label").Classes("music-copy"),
+                UI.Slider(notificationSettings.BackgroundOpacity, 40, 100, 5, "notifications.opacity", "notifications.opacity",
                 "Banner background opacity", notificationSettings.BackgroundOpacity + "%").RequireControllerActivation()
                 ] : [])]).Classes("music-setup-notifications"));
         children.Add(UI.ControllerHint(ControllerButton.B, "Back to music", "setup.back.hint"));

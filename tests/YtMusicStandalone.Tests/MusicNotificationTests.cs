@@ -41,10 +41,14 @@ internal static class MusicNotificationTests
             for (var i = 0; i < 100 && !Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Id == "notifications.toggle"); i++) await Task.Delay(20);
             Check(Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "Song-change banners: Off"), "First setup exposes the default-off option");
             await widget.OnActionAsync(new("notifications.toggle", "notifications.toggle"));
+            Check(Nodes(widget.Render().CreateSnapshot("test", 2).Root).Any(n => n.Text == "Banner opacity · 100%"),
+                "Enabled banner settings visibly identify the opacity slider");
             service.SetPlayback(true);
             await Task.Delay(450);
             lock (published) Check(published.Any(n => n.Notification?.Title == "A song title" && !n.UpdateOnly), "Widget publishes a track banner through SDK");
             await widget.OnActionAsync(new("notifications.opacity", "notifications.opacity", RequestedValue: 70));
+            Check(Nodes(widget.Render().CreateSnapshot("test", 3).Root).Any(n => n.Text == "Banner opacity · 70%"),
+                "Visible opacity label follows controller adjustment");
             await widget.OnActionAsync(new("panel.back", "panel.back"));
             int before; lock (published) before = published.Count;
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);

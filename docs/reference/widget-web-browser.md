@@ -287,6 +287,21 @@ login data. The tray reports running/disconnected sessions and offers Stop.
 Native fake-device media persistence is verified; real Discord calls and full-shell
 pin/recovery behavior remain acceptance checks.
 
+Hidden browser pages request WebView2's `MemoryUsageTargetLevel.Low` after 15
+seconds continuously hidden. This shared policy also covers hosted pop-outs and
+provider documents; a visible pin remains at Normal. Normal is restored before
+showing the page. Quick switches cancel the delayed reduction, and repeated
+hidden layout updates do not restart its deadline. The delay is defined in
+`BrowserSurface.HiddenMemoryDelay`.
+
+Low is a best-effort working-set reduction, not suspension or a memory limit.
+Scripts, connections, notifications, calls and screen sharing remain allowed;
+there is no website-specific call detection. Memory may be paged back in as
+needed, so lower resident memory does not imply lower committed memory or CPU.
+The host does not call `TrySuspendAsync`. Unsupported/failed optimization leaves
+the page running and logs one diagnostic per surface. Widget authors need no
+additional option or lifecycle callback.
+
 ### Popups and authentication
 
 `ExternalLinks` controls ordinary user-initiated top-level link navigation. It is

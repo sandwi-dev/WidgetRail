@@ -198,11 +198,26 @@ internal sealed partial class OverlayShellPage
                 await first.EvaluateFixtureAsync("localStorage.setItem('widget-a-only','present')");
                 await SelectAsync("webapp-idle");
                 await Task.Delay(6500);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-memory-policy"))
+                {
+                    await WebAppUntil(() => ((WebView2)first.CompositionRoot).CoreWebView2.MemoryUsageTargetLevel == CoreWebView2MemoryUsageTargetLevel.Low);
+                    Check(!((WebView2)first.CompositionRoot).CoreWebView2.IsSuspended,
+                        "Retained webapp uses Low memory target while hidden without suspending its document");
+                    await first.NativeProfile!.SetPermissionStateAsync(CoreWebView2PermissionKind.Notifications, "https://shell.fixture.invalid", CoreWebView2PermissionState.Allow);
+                    await browserOwner!.NotificationPreferences.SetAsync("webapp-a", NotificationPresentation.ListOnly, lifetime.Token);
+                    await first.EvaluateFixtureAsync("new Notification('Low memory fixture',{tag:'memory-policy'})");
+                    await WebAppUntil(() => browserOwner.Notifications.Entries.Any(entry => entry.Title == "Low memory fixture"));
+                    Check(true, "Hidden Low-memory webapp still delivers website notifications to the shared inbox");
+                    browserOwner.Notifications.Clear();
+                }
                 Check(owner!.Session.IsWebBrowserSessionCurrent(authority, "app.primary") &&
                     await first.EvaluateFixtureAsync("fakeStream.getTracks().every(t=>t.readyState==='live')") == "true", "Background retention survives real worker idle timeout without ending fake media");
                 Check(browserOwner!.BackgroundSessionCount == 1, "The session owner retains the hidden running webapp");
                 await SelectAsync("webapp-a");
                 Check(ReferenceEquals((await CurrentBrowser()), first) && await first.EvaluateFixtureAsync("window.mediaState==='ready'") == "true", "Returning to the webapp preserves its native document and stream");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-memory-policy"))
+                    Check(((WebView2)first.CompositionRoot).CoreWebView2.MemoryUsageTargetLevel == CoreWebView2MemoryUsageTargetLevel.Normal,
+                        "Returning from another widget restores Normal on the retained browser");
 
                 step = "resource limits";
                 foreach (var id in new[] { "webapp-b", "webapp-c", "webapp-d" })

@@ -161,15 +161,16 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         {
             if (!faulted)
             {
+                UpdateMemoryPolicy(); // Restore Normal before exposing the native page.
                 web.Visibility = visible && AttachedPopup is null ? Visibility.Visible : Visibility.Collapsed;
                 web.IsHitTestVisible = input || visible && nativeDialogPointerAccess;
                 if (visible && IsLoaded && initializing is null) initializing = InitializeAsync();
-                if (visible) { core?.Resume(); NavigatePending(); }
+                if (visible) NavigatePending();
             }
         }
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException)
         {
-            faulted = true; input = false; interacting = browsing = false;
+            faulted = true; DisposeMemoryPolicy(); input = false; interacting = browsing = false;
             ++pointerEpoch; pointerPressed = nativePointerDown = false; pointerCore = null; dragData = null;
             core = null;
             try { web.Close(); }
@@ -389,7 +390,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                         ShowStatus("The page is not responding. Reload it or stop its session from the tray menu.");
                     return;
                 }
-                faulted = true; InvalidateNotifications?.Invoke(this); CancelEdit(); CancelSiteDecisions(); browsing = interacting = false; DrawCursor();
+                faulted = true; DisposeMemoryPolicy(); InvalidateNotifications?.Invoke(this); CancelEdit(); CancelSiteDecisions(); browsing = interacting = false; DrawCursor();
                 ShowStatus("The page disconnected. Press A to reopen it."); UpdateChrome();
                 ActivityChanged?.Invoke();
             };
@@ -491,7 +492,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
-        if (retired) return; SetPresentation(false, false); retired = true; ResetPointerVisual(); lifetime.Cancel();
+        if (retired) return; SetPresentation(false, false); retired = true; DisposeMemoryPolicy(); ResetPointerVisual(); lifetime.Cancel();
         InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;
         nativeNotifications?.Dispose(); nativeNotifications = null;
         if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());

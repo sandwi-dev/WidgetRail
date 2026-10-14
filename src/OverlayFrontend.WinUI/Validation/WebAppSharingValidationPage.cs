@@ -19,15 +19,20 @@ internal sealed partial class WebAppSharingValidationPage : Page, IAsyncDisposab
         if (!Path.IsPathFullyQualified(sourceExecutable) || !File.Exists(sourceExecutable)) throw new ArgumentException("A built synthetic sharing source is required.");
         Task<CoreWebView2Environment>? environment = null;
         BrowserSurface.FixturePage = _ => "<!doctype html><title>Local sharing fixture</title><body>Local screen-sharing validation. Select only the synthetic target window.</body>";
+        var targetName = "WidgetRail synthetic sharing target " + Environment.ProcessId;
+        var memoryTrial = Environment.GetCommandLineArgs().Contains("--webapp-memory");
+        // Only this exact generated window can be automatically selected. Never
+        // use the fake-picker flag, which may choose the entire desktop.
+        var options = memoryTrial ? new CoreWebView2EnvironmentOptions
+            { AdditionalBrowserArguments = "--auto-select-desktop-capture-source=\"" + targetName + "\"" } : null;
         browser = new("fixture.sharing", new("sharing", 1, "https://share.fixture.invalid/", "Local sharing fixture")
         { InteractionMode = BrowserInteractionMode.InteractOnFocus, Options = WebBrowserOptions.WebApp },
-            () => environment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, profileRoot, null).AsTask())
-        { IsInteractionFocused = () => true };
+            () => environment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, profileRoot, options).AsTask())
+        { IsInteractionFocused = () => true, PrepareScreenPicker = (_, _) => Task.FromResult(true) };
         Content = browser;
         Loaded += async (_, _) =>
         {
             var checks = new List<string>(); string? error = null; string? metadata = null;
-            var targetName = "WidgetRail synthetic sharing target " + Environment.ProcessId;
             try
             {
                 // The picker must see an actual visible window to select.
@@ -63,6 +68,11 @@ internal sealed partial class WebAppSharingValidationPage : Page, IAsyncDisposab
                 await UntilScript("window.shareState!=='pending'", 90);
                 Check(await browser.EvaluateFixtureAsync("window.shareState==='ready'") == "true", "Window sharing delivers a decoded frame from the explicitly selected synthetic target");
                 metadata = await browser.EvaluateFixtureAsync("JSON.stringify({surface:shareSettings.displaySurface,width:shareSettings.width,height:shareSettings.height,audio:shared.getAudioTracks().length})");
+                if (memoryTrial)
+                {
+                    await WebAppMemoryValidation.RunAsync(browser, "shared", result, Check);
+                    await WebAppMemoryValidation.VerifyPolicyAsync(browser, Check);
+                }
                 await browser.EvaluateFixtureAsync("shared.getTracks().forEach(t=>t.stop())");
                 Check(await browser.EvaluateFixtureAsync("shared.getTracks().every(t=>t.readyState==='ended')") == "true", "Website can stop the sharing tracks cleanly");
             }
