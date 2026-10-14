@@ -38,7 +38,11 @@ internal sealed partial class OverlayShellPage
                 if (Environment.GetCommandLineArgs().Contains("--webapp-passive-pin"))
                 {
                     step = "passive pin visibility";
-                    await VerifyPassiveBrowserPinAsync(first, path, Check);
+                    var cycleArgument = Environment.GetCommandLineArgs().FirstOrDefault(arg => arg.StartsWith("--webapp-pin-cycles=", StringComparison.Ordinal));
+                    var cycles = cycleArgument is null ? 1 : int.Parse(cycleArgument.Split('=', 2)[1], System.Globalization.CultureInfo.InvariantCulture);
+                    if (cycles is < 1 or > 10) throw new ArgumentOutOfRangeException(nameof(cycles));
+                    for (var cycle = 1; cycle <= cycles; cycle++)
+                        await VerifyPassiveBrowserPinAsync(first, cycles == 1 ? path : path + ".cycle-" + cycle, Check);
                     await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
                     return;
                 }

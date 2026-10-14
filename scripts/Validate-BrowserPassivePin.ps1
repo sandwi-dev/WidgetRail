@@ -5,7 +5,11 @@ param(
     [Parameter(Mandatory)][string]$OutputPath,
     [switch]$Radial,
     [switch]$Popup,
-    [string]$MatteSource
+    [string]$MatteSource,
+    # Explicit opt-in: transparent pixels can expose another application.
+    # Use only with permission to capture the pin's actual screen rectangle.
+    [switch]$CapturePinScreenRectangle,
+    [ValidateRange(1, 10)][int]$Cycles = 1
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -38,12 +42,20 @@ $arguments = @(('--shell-config="{0}"' -f $configPath), '--shell-no-controller',
     ('--validate-webapp-shell="{0}"' -f $result), '--webapp-passive-pin', '--webapp-pin-raster')
 if ($Radial) { $arguments += '--webapp-passive-pin-radial' }
 if ($Popup) { $arguments += '--webapp-passive-pin-popup' }
+if ($Cycles -gt 1) { $arguments += "--webapp-pin-cycles=$Cycles" }
 $process = Start-Process -FilePath $frontendPath -WorkingDirectory (Split-Path $frontendPath) -WindowStyle Hidden -PassThru -ArgumentList $arguments
 $process.Id | Set-Content "$result.pid"
 $rasters = @()
-    foreach ($stage in @('passive','passive-hidden','passive-reopened','interactive','passive-after-input')) {
+    $observations = foreach ($cycle in 1..$Cycles) {
+        foreach ($stage in @('passive','passive-hidden','passive-reopened','interactive','passive-after-input')) {
+            [pscustomobject]@{ Cycle=$cycle; Stage=$stage; Prefix=$(if ($Cycles -eq 1) { "$result.$stage" } else { "$result.cycle-$cycle.$stage" }) }
+        }
+    }
+    foreach ($observation in $observations) {
+        $stage = $observation.Stage
+        $stagePrefix = $observation.Prefix
         $deadline = [DateTime]::UtcNow.AddSeconds(60)
-        $statePath = "$result.$stage.json"
+        $statePath = "$stagePrefix.json"
         while (!(Test-Path -LiteralPath $statePath)) {
             if ((Test-Path -LiteralPath $result) -or $process.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw "Stopped before $stage. Result: $result" }
             Start-Sleep -Milliseconds 100
@@ -55,7 +67,11 @@ $rasters = @()
             catch { Start-Sleep -Milliseconds 50 }
         }
         if (!$state) { throw "Incomplete observation: $stage" }
-        if ($stage -eq 'passive-hidden' -and $matteProcess) {
+        if ($CapturePinScreenRectangle) {
+            & "$PSScriptRoot/Capture-WinUiTestWindow.ps1" -AppPid $process.Id -WindowHandle ([string]$state.hwnd) `
+                -OutputPath "$stagePrefix.screen.png" -PassivePeer:(!$state.interactive)
+        }
+        elseif ($stage -eq 'passive-hidden' -and $matteProcess) {
             $coverage = Get-Content -LiteralPath $matteReady -Raw | ConvertFrom-Json
             if ($matteProcess.HasExited -or $state.bounds.X -lt $coverage.X -or $state.bounds.Y -lt $coverage.Y -or
                 $state.bounds.X + $state.bounds.Width -gt $coverage.X + $coverage.Width -or
@@ -67,12 +83,12 @@ $rasters = @()
                 $graphics = [Drawing.Graphics]::FromImage($screen)
                 try { $graphics.CopyFromScreen([int]$state.bounds.X, [int]$state.bounds.Y, 0, 0, $screen.Size) }
                 finally { $graphics.Dispose() }
-                $screen.Save("$result.$stage.screen.png", [Drawing.Imaging.ImageFormat]::Png)
+                $screen.Save("$stagePrefix.screen.png", [Drawing.Imaging.ImageFormat]::Png)
             } finally { $screen.Dispose() }
         }
-        & winapp ui screenshot -w $state.hwnd -o "$result.$stage.png" --json
+        & winapp ui screenshot -w $state.hwnd -o "$stagePrefix.png" --json
         if ($LASTEXITCODE -ne 0) { throw 'Native screenshot failed.' }
-        $bitmap = [Drawing.Bitmap]::new("$result.$stage.png")
+        $bitmap = [Drawing.Bitmap]::new("$stagePrefix.png")
         try {
             $green = 0; $total = 0
             # Sample the synthetic solid-color page interior, away from text,
@@ -84,17 +100,17 @@ $rasters = @()
                     if ($pixel.R -lt 30 -and $pixel.G -gt 90 -and $pixel.B -gt 40 -and $pixel.B -lt 100) { $green++ }
                 }
             }
-            $rasters += [pscustomobject]@{ stage=$stage; green=$green; total=$total; passed=($green / $total -ge .9) }
+            $rasters += [pscustomobject]@{ cycle=$observation.Cycle; stage=$stage; green=$green; total=$total; passed=($green / $total -ge .9) }
         }
         finally { $bitmap.Dispose() }
-        New-Item -ItemType File -Path "$result.$stage.captured" | Out-Null
+        New-Item -ItemType File -Path "$stagePrefix.captured" | Out-Null
     }
     $rasters | ConvertTo-Json | Set-Content "$result.rasters.json"
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     while (!(Test-Path -LiteralPath $result) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
     $summary = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
     if (!$summary.passed -or @($rasters | Where-Object { !$_.passed }).Count) { throw "Passive pin validation failed; inspect $result and its rasters." }
-    Write-Output "PASS five native pin rasters and $($summary.checks.Count) lifecycle checks ($result)."
+    Write-Output "PASS $($rasters.Count) native pin rasters and $($summary.checks.Count) lifecycle checks ($result)."
 }
 finally {
     if ($process -and !$process.HasExited) {

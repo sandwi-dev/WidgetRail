@@ -284,6 +284,12 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             // Attached pop-outs carry their own controller. All controllers in
             // this subtree must detach before any old peer can be destroyed.
             await Task.WhenAll(unloading.Values.Select(completion => completion.Task)).WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            // Unloaded acknowledges XAML detachment, not submission of the old
+            // composition tree. Commit that detach before the same native
+            // visual target is attached to another root. Otherwise a passive
+            // peer can remain transparent until an unrelated visual update.
+            if (unloading.Count != 0)
+                await Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread().RequestCommitAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
         }
         finally { foreach (var root in unloading.Keys) root.Unloaded -= Unloaded; }
         if (retired || stillCurrent?.Invoke() == false) return;
