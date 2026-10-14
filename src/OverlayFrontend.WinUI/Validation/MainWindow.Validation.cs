@@ -94,6 +94,8 @@ public sealed partial class MainWindow
                 arguments.Contains("--verify-webapp-profile"), arguments.Contains("--webapp-permissions"));
         else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-spatial") is { } spatialResult)
         {
+            var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
+            AppWindow.ResizeClient(new((int)Math.Ceiling(1000 * scale), (int)Math.Ceiling(800 * scale)));
             RootFrame.Content = new Validation.WebAppSpatialValidationPage(spatialResult,
                 Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? Path.Combine(Path.GetTempPath(), "WidgetRailSpatial", Guid.NewGuid().ToString("N")));
         }

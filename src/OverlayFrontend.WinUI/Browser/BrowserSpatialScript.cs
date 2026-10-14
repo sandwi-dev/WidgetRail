@@ -7,7 +7,7 @@ internal static class BrowserSpatialScript
     ((p, anchor = null) => {
       const items=[], frames=[], start=performance.now();
       const vv=visualViewport, view={x:vv?.offsetLeft??0,y:vv?.offsetTop??0,w:vv?.width??innerWidth,h:vv?.height??innerHeight};
-      let styles=new WeakMap(), clips=new WeakMap();
+      let styles=new WeakMap(), clips=new WeakMap(), actions=new WeakMap();
       const style=e=>{let s=styles.get(e);if(!s){s=getComputedStyle(e);styles.set(e,s);}return s;};
       const parent=e=>e.assignedSlot??e.parentElement??e.getRootNode()?.host??null;
       const inside=(root,e)=>{for(let n=0;e&&n<128;e=parent(e),n++)if(e===root)return true;return false;};
@@ -28,9 +28,20 @@ internal static class BrowserSpatialScript
           e.isContentEditable&&!parent(e)?.isContentEditable||e.hasAttribute('onclick');
       }
       function eligible(e){
-        if(e.matches(':disabled')||e.getAttribute('aria-disabled')==='true'||e.inert)return false;
-        if(semantic(e))return true;
-        return style(e).cursor==='pointer'&&(!parent(e)||style(parent(e)).cursor!=='pointer');
+        if(actions.has(e))return actions.get(e);
+        let action=false;
+        if(!e.matches(':disabled')&&e.getAttribute('aria-disabled')!=='true'&&!e.inert){
+          if(semantic(e))action=true;
+          else if(style(e).cursor==='pointer'){
+            action=true;
+            // A cursor-styled icon inside an actionable button is decoration,
+            // not a second navigation origin. Explicit nested controls still
+            // qualify above through their own semantics/click attributes.
+            for(let a=parent(e),n=0;a&&n<128;a=parent(a),n++)
+              if(semantic(a)||style(a).cursor==='pointer'){action=false;break;}
+          }
+        }
+        actions.set(e,action);return action;
       }
       function clip(e,depth=0){
         if(!e)return view;
@@ -111,7 +122,7 @@ internal static class BrowserSpatialScript
       }
       if(!anchor||anchor.container.isConnected)walk(anchor?.container??document.documentElement);
       return {items,frames,view,visited,truncated,elapsed:performance.now()-start,point,clip,hit,parent,style,intersect,rect,p,eligible,inScope,inside,
-        refresh(){styles=new WeakMap();clips=new WeakMap();}};
+        refresh(){styles=new WeakMap();clips=new WeakMap();actions=new WeakMap();}};
     })
     """;
     internal const string Describe = """

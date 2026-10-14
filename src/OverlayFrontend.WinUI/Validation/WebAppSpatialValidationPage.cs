@@ -46,6 +46,12 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                 browser.SetPresentation(true, true);
                 await Until(() => browser.IsReady && !browser.IsNavigationInProgress && browser.CurrentTitle == "Spatial fixture");
                 browser.Enter();
+                Check(await browser.EvaluateFixtureAsync("innerWidth>=600&&innerHeight>=300") == "true", "Spatial fixture has a usable CSS viewport at the current display DPI");
+                await Body("<button id=source style='position:absolute;left:100px;top:160px;width:240px;height:40px;cursor:default'>Source<span id=decoration style='position:absolute;left:185px;top:8px;width:24px;height:24px;cursor:pointer'>*</span></button><button id=leftTarget class=fixed style='left:100px;top:40px'>Left</button><button id=rightTarget class=fixed style='left:275px;top:40px'>Right</button>");
+                await PointAt("source"); await Jump(FocusNavigationDirection.Up, "leftTarget");
+                await PointAt("decoration");
+                await Jump(FocusNavigationDirection.Up, "leftTarget");
+                Check(true, "Decorative pointer-cursor descendants do not change the source geometry of a semantic button");
                 await Body("<button id=a class=fixed style='left:40px;top:40px'>A</button><button id=b class=fixed style='left:200px;top:40px'>B</button><button id=d class=fixed style='left:200px;top:150px'>D</button>");
                 await PointAt("a");
                 await Jump(FocusNavigationDirection.Right, "b");
@@ -256,7 +262,9 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                 browser.MoveFocus(direction);
                 await Until(() => !browser.SpatialBusyForValidation);
                 await Task.Delay(60);
-                Check(await browser.EvaluateFixtureAsync("lastMove") == JsonSerializer.Serialize(expected), "Directional target: " + expected + " actual=" + await browser.EvaluateFixtureAsync("lastMove"));
+                var targetPointer = browser.SpatialPointerForValidation;
+                var targetId = await browser.EvaluateFixtureAsync(FormattableString.Invariant($"document.elementFromPoint({targetPointer.X}*visualViewport.width+visualViewport.offsetLeft,{targetPointer.Y}*visualViewport.height+visualViewport.offsetTop)?.id"));
+                Check(await browser.EvaluateFixtureAsync("lastMove") == JsonSerializer.Serialize(expected), "Directional target: " + expected + " actual=" + await browser.EvaluateFixtureAsync("lastMove") + " logicalTarget=" + targetId + " move=" + browser.LastSpatialMoveForValidation);
                 if (browser.LastSpatialMoveForValidation is { } move) timings.Add(move);
             }
         };

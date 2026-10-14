@@ -78,6 +78,10 @@ regions, lists, resize separators and hover-only rows are skipped unless they
 also expose an action. Explicit click attributes and pointer-cursor affordances
 remain fallbacks for custom controls. Ordinary jumps must advance from the actual
 pointer position, including when only part of a control is clickable.
+Pointer-cursor decorations inside an actionable parent share that parent's
+navigation geometry; they do not become extra targets or change the source
+rectangle. Descendants with their own interactive semantics or explicit click
+attributes remain independent controls.
 
 List membership uses DOM ownership, not just overlapping screen rectangles.
 After scrolling, the host retains the scrolled region and original source, then
