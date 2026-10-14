@@ -24,6 +24,8 @@ internal sealed partial class OverlayShellPage
             if (hostChoiceDialog?.SupportsDismissChoice == true)
                 shell = (ControllerGuideHint[])[.. (hostChoiceDialog.FocusedChoiceIsActionable ? new ControllerGuideHint[] { new(ControllerPrompt.A, "Open", ControllerButton.A) } : []),
                     new(ControllerPrompt.X, "Dismiss", ControllerButton.X), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
+            if (hostChoicePin is not null)
+                shell = (ControllerGuideHint[])[.. shell, new(ControllerPrompt.View, "Leave pin", ControllerButton.View)];
         }
         else if (!interactive && notificationBell.FocusState != FocusState.Unfocused)
         {

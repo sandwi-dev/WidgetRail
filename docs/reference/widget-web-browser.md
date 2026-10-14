@@ -170,7 +170,18 @@ Changing a permission reloads pages in that profile and ends active calls; it
 does not clear login data. Ask also resets a temporary decision.
 Uploads and downloads use origin-labelled confirmation and Windows file pickers.
 Script dialogs and standard context menus use the existing controller dialog
-framework. External URI schemes, HTTP basic authentication and invalid certificates
+framework. Choice lists fit their available window height and scroll to the
+controller-selected item, with the action footer kept visible. Page actions
+shows the website origin without repeating the widget name.
+
+Dialogs and the controller keyboard remain available inside an interactive pin.
+View dismisses the pin's host choice dialog and leaves pin interaction; B dismisses
+the dialog while staying in the pin. Losing pin interaction or hiding the overlay
+also dismisses its transient framework UI, so a passive pin cannot retain a
+dialog that blocks reentry. Browser sessions and already-applied live text edits
+remain intact; an unfinished website prompt is cancelled.
+
+External URI schemes, HTTP basic authentication and invalid certificates
 remain denied; use the external browser for those unsupported authentication
 workflows. Popup routing is configured separately from ordinary link routing.
 Password saving, autofill, host objects, web messages and developer tools remain

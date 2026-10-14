@@ -25,11 +25,8 @@ internal sealed partial class HostChoiceDialog
         choices.ItemContainerTransitions = new Microsoft.UI.Xaml.Media.Animation.TransitionCollection();
         CloseButtonText = "Close";
         UseActionList();
-        if (Content is StackPanel content)
-        {
-            content.MaxWidth = double.PositiveInfinity;
-            content.Children.Insert(0, panelStatus);
-        }
+        content.MaxWidth = double.PositiveInfinity;
+        details.Children.Insert(0, panelStatus);
         AutomationProperties.SetAutomationId(panelStatus, "Overlay.NotificationStatus");
         AutomationProperties.SetLiveSetting(panelStatus, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
         Resources["ContentDialogSmokeFill"] = new SolidColorBrush(Microsoft.UI.Colors.Transparent);

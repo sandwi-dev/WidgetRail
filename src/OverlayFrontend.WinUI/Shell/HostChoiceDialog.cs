@@ -16,9 +16,14 @@ internal sealed partial class HostChoiceDialog : ContentDialog
 {
     private readonly ListView choices = new() { MaxHeight = 320, SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly Grid content = new() { RowSpacing = 8, MaxWidth = 480 };
+    private readonly StackPanel details = new() { Spacing = 8 };
     private readonly List<HostDialogChoice> entries;
     private readonly HashSet<string> reportedChoices = [];
     private bool opened, reportingQueued;
+#if ENABLE_WIDGET_VALIDATION
+    internal bool IsOpenForValidation => opened;
+#endif
     private Func<HostDialogChoice, UIElement>? choiceContent;
     internal Func<string, bool>? KeepOpenOnChoice { get; set; }
     internal Func<string, bool>? ChoiceIsActionable { get; set; }
@@ -42,11 +47,12 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     internal bool RememberChoice => rememberChoice?.IsChecked == true;
     internal void AddRememberChoice(string label)
     {
-        if (rememberChoice is not null || Content is not StackPanel panel) return;
+        if (rememberChoice is not null) return;
         rememberChoice = new CheckBox { Content = label, IsChecked = false };
         AutomationProperties.SetAutomationId(rememberChoice, "Host.Choice.Remember");
         AutomationProperties.SetName(rememberChoice, label);
-        panel.Children.Add(rememberChoice);
+        Grid.SetRow(rememberChoice, 2);
+        content.Children.Add(rememberChoice);
     }
     internal event Action<string>? DismissChoiceRequested;
     internal event Action<string>? ChoiceShown;
@@ -60,13 +66,22 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     internal HostChoiceDialog(string title, string message, IReadOnlyList<HostDialogChoice> entries, bool directDecisionButtons = false)
     {
         this.entries = entries.ToList();
+        Resources["ContentDialogPadding"] = new Thickness(16);
+        Resources["ContentDialogTitleMargin"] = new Thickness(0, 0, 0, 8);
         Input.GamepadKeyBoundary.ObserveDialog(this);
         AutomationProperties.SetAutomationId(this, "Host.Choice.Dialog");
         AutomationProperties.SetAutomationId(choices, "Host.Choice.Options");
         AutomationProperties.SetName(choices, "Available options");
         Title = title; CloseButtonText = entries.Count == 0 ? "Done" : "Cancel";
         DefaultButton = ContentDialogButton.Close;
-        var content = new StackPanel { Spacing = 12, MaxWidth = 480 };
+        // Give the list a finite remaining-height row. A vertical StackPanel
+        // measures it without a height limit, leaving the outer dialog to clip
+        // items that the list incorrectly considers already visible.
+        content.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        content.Children.Add(details);
+        Grid.SetRow(choices, 1);
         if (!string.IsNullOrWhiteSpace(message))
         {
             var text = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap };
@@ -77,9 +92,9 @@ internal sealed partial class HostChoiceDialog : ContentDialog
                     VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 AutomationProperties.SetAutomationId(messageViewport, "Host.Choice.Message");
                 AutomationProperties.SetName(messageViewport, "Dialog details. Scroll to read more.");
-                content.Children.Add(messageViewport);
+                details.Children.Add(messageViewport);
             }
-            else content.Children.Add(text);
+            else details.Children.Add(text);
         }
         if (directDecisionButtons)
         {
@@ -180,7 +195,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     internal void UseActionList()
     {
         PrimaryButtonText = "";
-        if (Content is StackPanel panel && !panel.Children.Contains(choices)) panel.Children.Add(choices);
+        if (!content.Children.Contains(choices)) content.Children.Add(choices);
     }
     internal void AppendChoice(HostDialogChoice entry, string? beforeId = null)
     {

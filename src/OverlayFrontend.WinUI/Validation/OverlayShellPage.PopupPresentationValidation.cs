@@ -80,6 +80,7 @@ internal sealed partial class OverlayShellPage
         await Press(ControllerButton.View);
         await WebAppUntil(() => PinnedInputActive && child.IsBrowsing);
         check(ReferenceEquals(pin.Popup!.Slot.Surface, child), "View enters the same pinned live pop-out through shared controller routing");
+        if (Environment.GetCommandLineArgs().Contains("--webapp-pin-dialog-lifecycle")) await VerifyPinnedDialogExitAsync(child, check);
         await VerifySpatialRoutingAsync(child, "pinned pop-out", check);
         await child.EvaluateFixtureAsync("window.editor=document.createElement('input');editor.id='popup-editor';editor.style='position:fixed;left:10px;top:10px;width:200px;height:50px';document.body.append(editor)");
         await child.ClickFieldForValidationAsync("popup-editor");

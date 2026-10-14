@@ -162,6 +162,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntilScript(first, "window.permissionResult==='granted'");
                 await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(PinnedInputActive && first.IsBrowsing, "Pinned confirmation restores its original interaction owner");
+                if (Environment.GetCommandLineArgs().Contains("--webapp-pin-dialog-lifecycle")) await VerifyPinnedDialogExitAsync(first, Check);
                 if (Environment.GetCommandLineArgs().Contains("--webapp-notifications")) await VerifyPinnedNotificationAsync(first, Check);
                 await first.EvaluateGestureFixtureAsync("window.open('https://shell.fixture.invalid/popup')");
                 await WebAppUntil(() => first.HasPopup && first.ActiveSurface.CurrentTitle == "Shell /popup");

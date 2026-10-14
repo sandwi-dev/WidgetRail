@@ -16,6 +16,7 @@ internal sealed partial class OverlayShellPage
     private TaskCompletionSource? intentForegroundAcquired;
     private bool browserExternalPending;
     private HostChoiceDialog? hostChoiceDialog;
+    private TaskCompletionSource? hostChoiceCompletion;
     private PinnedSurface? hostChoicePin;
     private bool HostChoiceActive => hostChoiceDialog is not null;
     private bool HostChoiceHasForeground => hostChoicePin is { } pin
@@ -184,6 +185,10 @@ internal sealed partial class OverlayShellPage
     private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null, bool directDecisionButtons = false, PinnedSurface? pinnedOwner = null,
         Action<HostChoiceDialog>? configure = null)
     {
+        // Input ownership is released immediately on pin exit, but WinUI's
+        // native modal teardown must finish before another dialog is shown.
+        if (!HostChoiceActive && hostChoiceCompletion is { } closing)
+            await closing.Task.WaitAsync(token);
         var original = pinnedOwner is null ? surface : pinnedOwner.Presenter;
         bool Current() => pinnedOwner is null ? foreground && ReferenceEquals(surface, original) :
             ReferenceEquals(pinned, pinnedOwner) && pinnedOwner.IsCurrent && PinnedInputActive;
@@ -201,20 +206,32 @@ internal sealed partial class OverlayShellPage
         original?.SetPresentationInputEnabled(false);
         original?.SetAutomaticFocusEnabled(false);
         ResetInputPresentation(); PublishControllerGuide();
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        hostChoiceCompletion = completion;
         try
         {
             using var theme = NativePopupTheme.Dialog(dialog, original ?? pinnedOwner?.Window.AutomationRoot ?? (FrameworkElement)this);
             using var dismiss = token.Register(() => DispatcherQueue.TryEnqueue(() => dialog.Hide()));
+            if (!ReferenceEquals(hostChoiceDialog, dialog) || !Current()) return null;
             await dialog.ShowAsync();
             token.ThrowIfCancellationRequested();
-            return dialog.SelectedId;
+            return ReferenceEquals(hostChoiceDialog, dialog) ? dialog.SelectedId : null;
         }
         finally
         {
-            hostChoiceDialog = null;
-            hostChoicePin = null;
-            ResetInputPresentation(); PublishControllerGuide();
-            if (!retired && visible && Current())
+            if (ReferenceEquals(hostChoiceCompletion, completion)) hostChoiceCompletion = null;
+            completion.TrySetResult();
+            // Explicit pin exit revokes ownership before Hide's asynchronous
+            // teardown. A retired dialog must not clear a newer dialog or
+            // restore input/focus after the user has left its pin.
+            var ownsDialog = ReferenceEquals(hostChoiceDialog, dialog);
+            if (ownsDialog)
+            {
+                hostChoiceDialog = null;
+                hostChoicePin = null;
+                ResetInputPresentation(); PublishControllerGuide();
+            }
+            if (ownsDialog && !retired && visible && Current())
             {
                 var enabled = pinnedOwner is not null || MainFocusEnabled;
                 if (originalState is not null) original?.RestorePresentationState(originalState);
@@ -245,9 +262,31 @@ internal sealed partial class OverlayShellPage
         }
     }
 
+    private void DismissPinnedHostChoice(PinnedSurface pin)
+    {
+        if (!ReferenceEquals(hostChoicePin, pin) || hostChoiceDialog is not { } dialog) return;
+        hostChoiceDialog = null;
+        hostChoicePin = null;
+        dialog.ResetController();
+        dialog.Hide();
+        ResetInputPresentation(); PublishControllerGuide();
+    }
+
+    private void HandleHostChoiceButton(HostChoiceDialog dialog, ControllerButton button, ControllerEventPhase phase)
+    {
+        if (!visible || !HostChoiceHasForeground || !ReferenceEquals(hostChoiceDialog, dialog)) return;
+        if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed && hostChoicePin is not null)
+            ExitPinnedInteraction(restoreMain: true);
+        else dialog.Handle(button, phase);
+    }
+
     private bool ReceiveHostChoice(ControllerFrame frame)
     {
         if (hostChoiceDialog is not { } dialog) return false;
+        // Recover stale ownership even if a native lifecycle notification was
+        // missed. Consume this frame; subsequent input follows normal routing.
+        if (hostChoicePin is { } pin && (!visible || !HostChoiceHasForeground))
+        { DismissPinnedHostChoice(pin); return true; }
         heldAction.Reset(); rightStick.Reset();
         foreach (var (mask, button) in Buttons)
             if ((frame.ReleasedButtons & mask) != 0) shellOwnedReleases.Remove(button);
@@ -265,7 +304,7 @@ internal sealed partial class OverlayShellPage
         };
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None) dialog.MoveFocus(next);
         foreach (var (mask, button) in Buttons)
-            if ((frame.PressedButtons & mask) != 0) { shellOwnedReleases.Add(button); dialog.Handle(button, ControllerEventPhase.Pressed); }
+            if ((frame.PressedButtons & mask) != 0) { shellOwnedReleases.Add(button); HandleHostChoiceButton(dialog, button, ControllerEventPhase.Pressed); }
         return true;
     }
 }

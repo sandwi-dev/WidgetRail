@@ -324,7 +324,9 @@ internal sealed partial class OverlayShellPage
 
     private void ExitPinnedInteraction(bool restoreMain)
     {
-        if (pinned is not { Window.Interactive: true } current) return;
+        if (pinned is not { } current) return;
+        DismissPinnedHostChoice(current);
+        if (!current.Window.Interactive) return;
         current.FocusAcquired?.TrySetCanceled();
         current.FocusAcquired = null;
         // Retain the widget's logical target before revoking input. The window

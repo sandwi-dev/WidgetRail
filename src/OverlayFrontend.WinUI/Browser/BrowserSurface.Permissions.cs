@@ -29,7 +29,15 @@ internal sealed partial class BrowserSurface
         if (pending.IsCompleted) return;
         pendingSiteDecisions.Add(pending);
         _ = ForgetAsync();
-        async Task ForgetAsync() { await pending; pendingSiteDecisions.Remove(pending); }
+        async Task ForgetAsync()
+        {
+            await pending;
+            pendingSiteDecisions.Remove(pending);
+            // Host dialog teardown restores the slot's focus before the native
+            // browser deferral finishes. Reconcile once HasDialog clears, using
+            // current input ownership; never re-enter a pin the user has left.
+            RefreshInteractionFocus();
+        }
     }
 
     private void CancelSiteDecisions()
