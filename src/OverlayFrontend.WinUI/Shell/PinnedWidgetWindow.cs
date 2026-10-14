@@ -10,6 +10,8 @@ using WinUIEx.Messaging;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
+internal enum PeerWindowLayer { Pin, Notification }
+
 /// <summary>Peer native window. The coordinator owns widget/session and input authority.</summary>
 internal sealed partial class PinnedWidgetWindow : IDisposable
 {
@@ -59,9 +61,11 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     }
 
     private readonly nint mainWindow;
-    internal PinnedWidgetWindow(string name, nint mainWindow = 0)
+    private readonly PeerWindowLayer layer;
+    internal PinnedWidgetWindow(string name, nint mainWindow = 0, PeerWindowLayer layer = PeerWindowLayer.Pin)
     {
         this.mainWindow = mainWindow;
+        this.layer = layer;
         AutomationProperties.SetAutomationId(automationRoot, "Overlay.PinnedContent");
         AutomationProperties.SetName(automationRoot, "Pinned widget — " + name);
         scaleRoot.Children.Add(content);
@@ -193,8 +197,11 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
         if (disposed || mainWindow == 0 || !IsVisible) return;
         if (OverlayWindowFrame.IsWindowVisible(mainWindow) != 0)
         {
+            // Presentation layer is independent of input ownership. Move only the
+            // banner: lowering the main window could leave its backdrop above it.
+            if (layer == PeerWindowLayer.Notification) OverlayWindowFrame.PlaceAbove(Handle, mainWindow);
             // Adjustment owns the front layer while the shell retains input.
-            if (Interactive || placementActive) OverlayWindowFrame.PlaceBelow(mainWindow, Handle);
+            else if (Interactive || placementActive) OverlayWindowFrame.PlaceBelow(mainWindow, Handle);
             else OverlayWindowFrame.PlaceBelow(Handle, mainWindow);
         }
         else OverlayWindowFrame.KeepTopmost(Handle);

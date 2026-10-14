@@ -44,7 +44,7 @@ public sealed partial class MainWindow
         {
             desktopBackdrop.Apply(WinRT.Interop.WindowNative.GetWindowHandle(this), area, color,
                 page.Appearance.BackdropOpacity, AppWindow.IsVisible);
-            page.ReconcilePinnedWindowOrder();
+            page.ReconcilePeerWindowOrder();
         }
         catch (Exception error)
         {

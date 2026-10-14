@@ -54,7 +54,11 @@ internal sealed partial class OverlayShellPage
     private long pinIntent;
     internal event Action? ReturnFromPinnedRequested;
     private bool PinnedInputActive => pinned is { Window.Interactive: true, HasForeground: true };
-    internal void ReconcilePinnedWindowOrder() => pinned?.Window.ReconcileOrder();
+    internal void ReconcilePeerWindowOrder()
+    {
+        pinned?.Window.ReconcileOrder();
+        notificationBanner?.ReconcileOrder();
+    }
     private bool PinnedInteractionRequested => pinned?.Window.Interactive == true;
     private bool MainFocusEnabled => visible && interactive && foreground && !switching && activeWidget == requestedWidget &&
         !PinnedInteractionRequested && !PinnedAdjustmentActive && !LocalInstallActive && !SystemFilePickerOpen && !HostChoiceActive;

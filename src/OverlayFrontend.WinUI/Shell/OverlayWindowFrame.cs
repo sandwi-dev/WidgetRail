@@ -5,6 +5,16 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// <summary>Suppress Windows 11's DWM outline on transparent overlay windows.</summary>
 internal static partial class OverlayWindowFrame
 {
+    internal static void PlaceAbove(nint window, nint below)
+    {
+        var previous = GetWindow(below, 3); // GW_HWNDPREV
+        if (previous == window) return;
+        // Insert directly above the sibling, preserving every other window's
+        // relative order. HWND_TOP when there is no predecessor. Never activate.
+        if (SetWindowPos(window, previous, 0, 0, 0, 0, 0x213) == 0)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+    }
+
     internal static void PlaceBelow(nint window, nint above)
     {
         // NOACTIVATE | NOMOVE | NOSIZE | NOOWNERZORDER. Change stacking only,

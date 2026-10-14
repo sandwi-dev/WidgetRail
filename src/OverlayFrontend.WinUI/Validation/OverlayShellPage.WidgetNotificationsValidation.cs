@@ -19,6 +19,7 @@ internal sealed partial class OverlayShellPage
         check(!notificationBanner!.Interactive && notificationBannerState.EntryId is not null &&
             center.Inbox.Find(notificationBannerState.EntryId.Value)?.Content is { ShowWidgetIcon: false, BackgroundOpacityPercent: 80 },
             "Song notification is passive and retains rich content and background-opacity options");
+        VerifyNotificationWindowOrder(check);
         var expires = notificationBannerState.ExpiresAt;
         var originalId = notificationBannerState.EntryId;
         await CapturePopupDecisionAsync(notificationBanner.AutomationRoot, "widget-song");
@@ -69,4 +70,52 @@ internal sealed partial class OverlayShellPage
             await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
         }
     }
+
+    private void VerifyNotificationWindowOrder(Action<bool, string> check)
+    {
+        var banner = notificationBanner!;
+        var main = (nint)hostWindow;
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+        var foregroundBefore = NotificationForegroundWindow();
+        using var backdrop = new OverlayDesktopBackdrop();
+        using var peer = new PinnedWidgetWindow("layer fixture", main);
+        peer.Place(new(0, 0, 32, 32));
+        peer.SetContent(new Grid());
+        peer.Show();
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            // Force the reported bad order, then run the same reconciliation
+            // used after main-window activation, resizing and backdrop refresh.
+            OverlayWindowFrame.PlaceBelow(banner.Handle, main);
+            backdrop.Apply(main, new(0, 0, 64, 64), Microsoft.UI.Colors.Black, .6, true);
+            check(WindowBelow(banner.Handle, backdrop.Handle), "Layer fixture reproduces banner behind backdrop " + cycle);
+            peer.ReconcileOrder();
+            ReconcilePeerWindowOrder();
+            check(WindowBelow(backdrop.Handle, main) && WindowBelow(main, banner.Handle) && WindowBelow(peer.Handle, main),
+                "Banner stays above main and backdrop while passive pin remains below main " + cycle);
+            peer.SetPlacementActive(true);
+            ReconcilePeerWindowOrder();
+            check(WindowBelow(main, peer.Handle) && WindowBelow(main, banner.Handle) && WindowBelow(backdrop.Handle, main),
+                "Pin adjustment and banner ordering preserve the main-over-backdrop invariant " + cycle);
+            peer.SetPlacementActive(false);
+            // Represent an already-raised peer (e.g. popup or pointer). Repair
+            // the banner without raising it over that peer or lowering main.
+            OverlayWindowFrame.PlaceAbove(peer.Handle, main);
+            OverlayWindowFrame.PlaceBelow(banner.Handle, backdrop.Handle);
+            ReconcilePeerWindowOrder();
+            check(WindowBelow(banner.Handle, peer.Handle) && WindowBelow(main, banner.Handle) && WindowBelow(backdrop.Handle, main),
+                "Banner repair preserves already-raised sibling ordering " + cycle);
+            banner.Hide(); banner.Show();
+            check(WindowBelow(main, banner.Handle), "Banner reopens on its declared layer " + cycle);
+        }
+        var passive = WinUIEx.ExtendedWindowStyle.NoActivate | WinUIEx.ExtendedWindowStyle.Transparent;
+        check((banner.ExtendedStyle & passive) == passive && !banner.Interactive &&
+            NotificationForegroundWindow() == foregroundBefore &&
+            ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot), focused),
+            "Layer repair preserves click-through, no-activate styles, foreground and controller focus");
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+    private static partial nint NotificationForegroundWindow();
 }

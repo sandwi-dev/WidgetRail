@@ -95,7 +95,7 @@ internal sealed partial class OverlayShellPage
     }
     private PinnedWidgetWindow CreateNotificationBanner()
     {
-        var window = new PinnedWidgetWindow("notification", (nint)hostWindow);
+        var window = new PinnedWidgetWindow("notification", (nint)hostWindow, PeerWindowLayer.Notification);
         window.SetHostIdentity("WidgetRail notification", "Overlay.NotificationBanner");
         notificationCard = new(ResolveTrayIconAsync);
         notificationBannerContent = new Grid { Padding = new(16, 8, 16, 8) };

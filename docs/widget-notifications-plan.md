@@ -28,3 +28,12 @@ One placement policy avoids visible pins and, while open, widget, Guide, rail an
 - Rendered synthetic song banner background alpha was measured at 204/255 for the requested 80%; text/artwork opacity is independent.
 - Autonomous implementation and validation complete. Physical acceptance: enable Song-change banners during setup or Y → Settings; start/skip tracks with overlay open/closed; check real thumbnail/artist/duration, unchanged bell count, opacity adjustment, pause/resume staying quiet, rapid replacement/quiet interval, and disabling the feature.
 - Changes remain unmerged and unpushed.
+
+## Banner layer correction
+
+- Physical testing found that a visible-overlay banner inherited passive-pin ordering and could land behind the desktop backdrop. Corner placement was correct; native window order was not.
+- Shared peer windows now declare a presentation layer independently of interaction. Notifications sit immediately above the main overlay, remain click-through/nonactivating, and preserve the order of already-raised peers. Ordinary pin interaction and adjustment rules are unchanged. Backdrop/activation/appearance reconciliation now includes both pins and notifications.
+- The ordering helper moves only the banner, never lowers the main window (which could put its backdrop above it). Existing no-activate/no-owner-order flags are retained; no per-frame polling or new focus path is added.
+- Native regression coverage deliberately reproduces the bad stack and checks repair through three cycles, passive pins, placement adjustment, already-raised siblings, banner hide/show, foreground, controller focus and passive window styles.
+- Debug build: zero warnings/errors. Shell suite: 232 passed, zero failed/skipped. Native `native-04.json` passed 146 checks including all new ordering checks and existing pin/dialog/pop-out/media checks, then timed out awaiting the intentional renderer crash recovery state. A bounded unchanged retry is in progress; this run is not recorded as a complete pass.
+- Review: shared nonactivating insertion preserves other siblings' relative order, default pin behavior, existing backdrop reconciliation and native handle lifetime. No layout, focus-admission or WebView ownership changes.
