@@ -41,4 +41,9 @@ Previous memory-policy/opacity-label work was accepted and fast-forwarded to mai
 - Published candidate startup was checked both with extra controller tracing (PID 6444, 22 events written at health check) and without it (PID 34280, 21 events written). The latter is left running on SDK Gallery, responsive; `controller.log` is populated. The earlier empty log remains unexplained, but writer failures now report through the durable frontend log and chooser lifecycle/routing evidence is independent of that writer.
 - Normal platform settings SHA-256 remains `C17EE2EE30C4C8E96E23E1C3CF61DF362BE5C1DBAC42F7802DC1A41C9DAA19D3`; existing profile, sign-ins and installed widgets are preserved. Main's unrelated goal-document edit is untouched. All synthetic frontend and sharing-source processes were closed before the final launch.
 - Physical checklist: first Share, repeated Change Share, A on source/Share/Cancel/audio toggle, B cancellation, and Guide hide/reopen. If the first-entry circle still disappears, leave the chooser open: durable logs now distinguish admission, foreground, circle visibility, delivered-frame count/age, rejected input and cancellation.
-- Prior memory-policy work is merged to main at `c3f45769`. This chooser follow-up is local and unmerged/unpushed pending physical acceptance.
+- Prior memory-policy work is merged to main at `c3f45769`. This chooser follow-up is local and unmerged/unpushed.
+
+## Physical acceptance
+
+- 2026-10-14: user accepted the current candidate ("Current changes accepted"). Physical acceptance is complete; this does not establish the exact cause of the original first-entry circle disappearance.
+- Candidate remains running. Merge, push and release have not been requested for this follow-up.
