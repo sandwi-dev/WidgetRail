@@ -6,6 +6,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     internal BrowserOwner? BrowserOwner { get; set; }
+    internal BrowserSurface? ControllerBrowser => presentationInputEnabled && FocusedBrowser is { AcceptsInput: true, IsBrowsing: true } slot
+        ? slot.Surface?.ActiveSurface : null;
     private BrowserSlot? FocusedBrowser => bindings.Values.Select(binding => binding.Element).OfType<BrowserSlot>()
         .FirstOrDefault(slot => slot.AcceptsInput && slot.Surface?.HasDialog == true) ??
         (FocusedBinding() is { Element: BrowserSlot slot } binding && Navigable(binding) ? slot : null);

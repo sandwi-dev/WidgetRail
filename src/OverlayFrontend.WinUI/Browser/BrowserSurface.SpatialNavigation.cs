@@ -14,7 +14,7 @@ internal sealed partial class BrowserSurface
     internal int SpatialRequestsForValidation { get; private set; }
     internal (double X, double Y) SpatialPointerForValidation => (cursorX, cursorY);
 #endif
-    private void CancelSpatialNavigation() { ++spatialEpoch; spatialPending = null; }
+    private void CancelSpatialNavigation() { ++spatialEpoch; spatialPending = null; CancelSpatialHover(); }
 
     private void JumpPointer(FocusNavigationDirection direction)
     {
@@ -29,6 +29,7 @@ internal sealed partial class BrowserSurface
         };
         if (next is null) return;
         UseControllerInput();
+        BeginSpatialHover();
         // Bound held-input pressure. Repeats never create an accumulating queue.
         spatialPending = next;
         if (spatialPump) return;
@@ -57,7 +58,7 @@ internal sealed partial class BrowserSurface
                         var move = await navigation.MoveAsync(pending, cursorX, cursorY);
                         if (move is null || !Current()) continue;
                         cursorX = Math.Clamp(move.X, 0, 1); cursorY = Math.Clamp(move.Y, 0, 1);
-                        cursorDirty = true; DrawCursor(); PumpPointer();
+                        cursorDirty = true; DrawCursor(animateJump: true);
 #if ENABLE_WIDGET_VALIDATION
                         LastSpatialMoveForValidation = move;
 #endif
@@ -74,7 +75,7 @@ internal sealed partial class BrowserSurface
                     }
                 }
             }
-            finally { spatialPump = false; }
+            finally { spatialPump = false; FlushSpatialHover(); }
         });
     }
 }

@@ -108,6 +108,8 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                 await Until(() => browser.FixtureEditor is null); await Task.Delay(150);
                 Check(true, "A still opens live text entry after a geometric jump");
 
+                await RunRowScrollChecksAsync(Body, PointAt, Check);
+
                 await Body("<div id=scroller style='position:absolute;left:40px;top:40px;width:300px;height:180px;overflow:auto'><button id=top>Top</button><div style='height:240px'></div><button id=bottom>Bottom</button><div style='height:70px'></div></div><button id=outside class=fixed style='left:370px;top:150px'>Other pane</button>");
                 await PointAt("top");
                 // One bounded scroll may expose only blank space; repeated D-pad input continues it.
@@ -131,10 +133,10 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
 
                 await Body("<button id=header class=fixed style='left:40px;top:0px'>Header</button><div id=scroller style='position:absolute;left:40px;top:80px;width:300px;height:140px;overflow:auto'><button id=top>Top</button><div style='height:500px'></div><button id=bottom>Bottom</button></div><button id=floating class=fixed style='left:220px;top:150px;z-index:3'>Foreign overlay</button>");
                 await PointAt("top");
-                var beforeEmptyScroll = browser.SpatialPointerForValidation;
                 browser.MoveFocus(FocusNavigationDirection.Down); await Until(() => !browser.SpatialBusyForValidation);
                 Check(await browser.EvaluateFixtureAsync("scroller.scrollTop>0") == "true", "Down scrolls a region even when the next action is not exposed yet");
-                Check(browser.SpatialPointerForValidation == beforeEmptyScroll && browser.SpatialErrorForValidation is null,
+                var emptyScrollPoint = browser.SpatialPointerForValidation;
+                Check(await browser.EvaluateFixtureAsync(FormattableString.Invariant($"scroller.contains(document.elementFromPoint(visualViewport.offsetLeft+{emptyScrollPoint.X}*visualViewport.width,visualViewport.offsetTop+{emptyScrollPoint.Y}*visualViewport.height))")) == "true" && browser.SpatialErrorForValidation is null,
                     "Scroll scope excludes overlapping foreign controls and cannot jump backward into a fixed header");
 
                 await Body("<button id=header class=fixed style='left:40px;top:0px'>Header</button><div id=scroller style='position:absolute;left:40px;top:80px;width:300px;height:140px;overflow:auto'><button id=top>Top</button><div style='height:140px'></div><button id=bottom>Bottom</button><div style='height:200px'></div></div>");
@@ -223,6 +225,7 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                 browser.MoveFocus(FocusNavigationDirection.Right); await Task.Delay(50);
                 Check(browser.SpatialPointerForValidation == held, "D-pad does not teleport a held drag");
                 browser.HandleButton(ControllerButton.A, ControllerEventPhase.Released); await Task.Delay(80);
+                await WebAppPointerMotionValidation.RunAsync(browser, Body, PointAt, Check);
                 var repeated = browser.SpatialRequestsForValidation;
                 for (var i = 0; i < 20; i++) browser.MoveFocus(FocusNavigationDirection.Right);
                 await Until(() => !browser.SpatialBusyForValidation);

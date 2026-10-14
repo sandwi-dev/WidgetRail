@@ -26,9 +26,13 @@ internal sealed partial class OverlayShellPage
             browser.MovePointer(point.RootElement.GetProperty("x").GetDouble() - current.X, point.RootElement.GetProperty("y").GetDouble() - current.Y);
             await Task.Delay(50);
             var before = browser.SpatialRequestsForValidation;
-            Receive(new ControllerFrame { Connected = 1, DpadNavigation = new() { Direction = NavigationDirection.Right, Phase = NavigationPhase.Pressed } });
-            Receive(new ControllerFrame { Connected = 1 });
+            Receive(new ControllerFrame { Connected = 1, State = new() { Buttons = 8 }, DpadNavigation = new() { Direction = NavigationDirection.Right, Phase = NavigationPhase.Pressed } });
             await WebAppUntil(() => !browser.SpatialBusyForValidation);
+            Receive(new ControllerFrame { Connected = 1, State = new() { Buttons = 8 } });
+            check(await browser.EvaluateFixtureAsync("document.getElementById('spatial-b').matches(':hover')") == "false", "Held D-pad does not hover between repeat events: " + placement);
+            Receive(new ControllerFrame { Connected = 1 });
+            await WebAppUntilScript(browser, "document.getElementById('spatial-b').matches(':hover')");
+            check(true, "D-pad release delivers final hover: " + placement);
             check(browser.SpatialRequestsForValidation > before && browser.LastSpatialMoveForValidation is not null,
                 "Shell D-pad reaches geometric browser navigation: " + placement + " " + browser.SpatialErrorForValidation);
             var landed = browser.SpatialPointerForValidation;

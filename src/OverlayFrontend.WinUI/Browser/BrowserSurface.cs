@@ -306,12 +306,12 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         UseControllerInput();
         cursorX = Math.Clamp(cursorX + x, .01, .99); cursorY = Math.Clamp(cursorY + y, .01, .99);
         TrackPointerMovement();
-        cursorDirty = true; DrawCursor(); PumpPointer();
+        cursorDirty = true; DrawCursor(freeMovement: true); PumpPointer();
     }
-    private void DrawCursor()
+    private void DrawCursor(bool animateJump = false, bool freeMovement = false)
     {
         cursor.Visibility = input && browsing && controllerPointerVisible && !HasDialog ? Visibility.Visible : Visibility.Collapsed;
-        cursor.Margin = new(Math.Max(0, viewport.ActualWidth * cursorX - 8), Math.Max(0, viewport.ActualHeight * cursorY - 8), 0, 0);
+        DrawPointerVisual(animateJump, freeMovement);
     }
     private bool loading;
     private async Task InitializeAsync()
@@ -443,7 +443,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         {
             try
             {
-                while (input && core is not null && (cursorDirty || wheelX != 0 || wheelY != 0))
+                while (input && core is not null && (!spatialHoverDeferred && cursorDirty || wheelX != 0 || wheelY != 0))
                 {
                     var x = wheelX; var y = wheelY; wheelX = wheelY = 0; cursorDirty = false;
                     await SendPointerAsync(x != 0 || y != 0 ? "mouseWheel" : "mouseMoved", x, y);
@@ -457,10 +457,10 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         await pointer.WaitAsync(lifetime.Token);
         try
         {
-            if (!input || !controllerPointerVisible || HasDialog || core is null) return;
+            if (!input || !controllerPointerVisible || HasDialog || core is null || type == "mouseMoved" && spatialHoverDeferred) return;
             var current = core;
             using var metrics = JsonDocument.Parse(await current.CallDevToolsProtocolMethodAsync("Page.getLayoutMetrics", "{}"));
-            if (!input || !controllerPointerVisible || HasDialog || retired || !ReferenceEquals(current, core)) return;
+            if (!input || !controllerPointerVisible || HasDialog || retired || !ReferenceEquals(current, core) || type == "mouseMoved" && spatialHoverDeferred) return;
             var size = metrics.RootElement.GetProperty("cssVisualViewport");
             if (dragData is not null && nativePointerDown)
             {
@@ -491,7 +491,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
-        if (retired) return; SetPresentation(false, false); retired = true; lifetime.Cancel();
+        if (retired) return; SetPresentation(false, false); retired = true; ResetPointerVisual(); lifetime.Cancel();
         InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;
         nativeNotifications?.Dispose(); nativeNotifications = null;
         if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());

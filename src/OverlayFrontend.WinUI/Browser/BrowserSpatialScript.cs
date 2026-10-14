@@ -148,7 +148,7 @@ internal static class BrowserSpatialScript
     }
     """;
     internal const string Scroll = """
-    function(raw){
+    async function(raw){
       const d=JSON.parse(raw), horizontal=d.x!==0;
       const source=this.items.findLast(i=>i.source)?.element;
       for(let e=this.hit(this.p.x,this.p.y),n=0;e&&n<128;e=this.parent(e),n++){
@@ -158,18 +158,87 @@ internal static class BrowserSpatialScript
         const before=horizontal?e.scrollLeft:e.scrollTop,sign=horizontal?d.x:d.y;
         const rtl=horizontal&&s.direction==='rtl',min=rtl?-range:0,max=rtl?0:range;
         if(range<2||sign>0&&before>=max-1||sign<0&&before<=min+1)continue;
-        const amount=Math.max(40,(horizontal?e.clientWidth:e.clientHeight)*.65)*sign;
+        // Rows describe reading/scrolling units, never pointer actions. Keep
+        // this local and bounded: unknown or virtualized markup uses a small
+        // viewport step rather than a whole-document semantic search.
+        const bounds=e.getBoundingClientRect(),sx=root?1:bounds.width/e.offsetWidth,sy=root?1:bounds.height/e.offsetHeight,scale=horizontal?sx:sy;
+        if(!Number.isFinite(scale)||scale<=0)continue;
+        const client=root?this.view:{x:bounds.left+e.clientLeft*sx,y:bounds.top+e.clientTop*sy,w:e.clientWidth*sx,h:e.clientHeight*sy};
+        const visible=this.intersect(client,this.clip(e)??this.view),span=horizontal?visible.w:visible.h;
+        if(span<16)continue;
+        const margin=Math.min(12,span*.08),edge=horizontal?(sign>0?visible.x+visible.w:visible.x):(sign>0?visible.y+visible.h:visible.y);
+        const cap=Math.max(16,span*.65),fallback=Math.max(16,span*.35);
+        let distance=Infinity,visited=0,measured=0;
+        const rowSelector='li,article,tr,[role="listitem"],[role="article"],[role="row"]';
+        const seen=new WeakSet(),deadline=performance.now()+8;
+        const consider=row=>{
+          if(!row||seen.has(row)||measured>=128||!row.matches(rowSelector)||!this.inside(e,row))return;
+          seen.add(row);
+          // Nested article/list structures count as one outer row.
+          let nested=false;
+          for(let a=this.parent(row),depth=0;a&&a!==e&&depth++<64;a=this.parent(a))if(a.matches(rowSelector)){nested=true;break;}
+          if(nested)return;
+          measured++;
+          const r=row.getBoundingClientRect(),s=getComputedStyle(row);
+          if(r.width<1||r.height<1||s.visibility!=='visible'||s.display==='none')return;
+          const crosses=horizontal?r.bottom>visible.y&&r.top<visible.y+visible.h:r.right>visible.x&&r.left<visible.x+visible.w;
+          if(!crosses)return;
+          const end=horizontal?(sign>0?r.right:r.left):(sign>0?r.bottom:r.top);
+          const advance=(end-edge)*sign;
+          if(advance>1)distance=Math.min(distance,advance+margin);
+        };
+        // Start beside the visible edge, not at the first DOM row: long chats
+        // can retain thousands of earlier messages. Both siblings directions
+        // cover RTL and reversed flex ordering without website-specific rules.
+        const crosses=horizontal?[this.p.y,visible.y+visible.h/2]:[this.p.x,visible.x+visible.w/2];
+        for(const cross of crosses){
+          let row=null;
+          for(let at=this.hit(horizontal?edge-sign:cross,horizontal?cross:edge-sign),depth=0;at&&at!==e&&depth++<64;at=this.parent(at))if(at.matches(rowSelector))row=at;
+          if(!row||!this.inside(e,row))continue;
+          consider(row);
+          for(let previous=row.previousElementSibling,next=row.nextElementSibling,n=0;n<4;n++){
+            consider(previous);consider(next);previous=previous?.previousElementSibling;next=next?.nextElementSibling;
+          }
+        }
+        if(!Number.isFinite(distance)){
+          const walker=document.createTreeWalker(e,NodeFilter.SHOW_ELEMENT);
+          for(let row=walker.nextNode();row;row=walker.nextNode()){
+            if(++visited>2048||measured>=128||visited%64===0&&performance.now()>deadline)break;
+            consider(row);
+          }
+        }
+        const amount=Math.min(cap,Number.isFinite(distance)?distance:fallback)/scale*sign;
         e.scrollBy({left:horizontal?amount:0,top:horizontal?0:amount,behavior:'instant'});
         const delta=(horizontal?e.scrollLeft:e.scrollTop)-before;
         if(Math.abs(delta)<1)continue;
         this.scrollAnchor={container:e,source};
-        const r=source?.isConnected?source.getBoundingClientRect():null;
-        return {moved:true,x:r?r.left+r.width/2:this.p.x-(horizontal?delta:0),y:r?r.top+r.height/2:this.p.y-(horizontal?0:delta)};
+        // Let scroll handlers/virtualization render without an unconditional
+        // delay. A bounded timeout also covers throttled/hidden frame clocks.
+        await new Promise(resolve=>{
+          let first=0,second=0,done=false;
+          const finish=()=>{if(done)return;done=true;clearTimeout(timer);cancelAnimationFrame(first);cancelAnimationFrame(second);resolve();};
+          const timer=setTimeout(finish,90);
+          first=requestAnimationFrame(()=>{second=requestAnimationFrame(finish);});
+        });
+        if(!e.isConnected)return {moved:true};
+        this.refresh();
+        const fresh=this.intersect(visible,this.clip(e)??this.view),offset=delta*scale;
+        // Search only newly revealed space, not controls earlier in the list.
+        const x=horizontal?edge-offset:this.p.x,y=horizontal?this.p.y:edge-offset;
+        const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+        const restX=horizontal?(sign>0?fresh.x+fresh.w-margin:fresh.x+margin):clamp(this.p.x,fresh.x+margin,fresh.x+fresh.w-margin);
+        const restY=horizontal?clamp(this.p.y,fresh.y+margin,fresh.y+fresh.h-margin):(sign>0?fresh.y+fresh.h-margin:fresh.y+margin);
+        // A fixed foreign overlay must not become the text-only resting point.
+        let rest=null;
+        const samples=horizontal?[restY,fresh.y+fresh.h/2,fresh.y+margin,fresh.y+fresh.h-margin]:[restX,fresh.x+fresh.w/2,fresh.x+margin,fresh.x+fresh.w-margin];
+        for(const cross of samples){const px=horizontal?restX:cross,py=horizontal?cross:restY;if(this.inside(e,this.hit(px,py))){rest={x:px,y:py};break;}}
+        return {moved:true,x,y,rest};
       }
       return {moved:false};
     }
     """;
     internal const string RescanAfterScroll = "function(raw){return (" + Scan + ")(JSON.parse(raw),this.scrollAnchor);}";
+    internal const string ValidateRest = "function(raw){const p=JSON.parse(raw);return this.inScope(this.hit(p.x,p.y));}";
     internal const string ScrollScope = """
     function(raw){
       const d=JSON.parse(raw),horizontal=d.x!==0;

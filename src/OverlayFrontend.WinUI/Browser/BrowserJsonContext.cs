@@ -13,7 +13,7 @@ internal sealed record BrowserIsolatedWorld(string frameId, string worldName = "
 internal sealed record BrowserHitPoint(double x, double y);
 internal sealed record BrowserSpatialFramePoint(int index, double x, double y);
 internal sealed record BrowserArgument(string value);
-internal sealed record BrowserFieldCall(string objectId, string functionDeclaration, BrowserArgument[]? arguments = null, bool returnByValue = true, string? objectGroup = null);
+internal sealed record BrowserFieldCall(string objectId, string functionDeclaration, BrowserArgument[]? arguments = null, bool returnByValue = true, string? objectGroup = null, bool awaitPromise = false);
 internal sealed record BrowserObjectGroup(string objectGroup);
 internal sealed record BrowserObject(string objectId);
 internal sealed record BrowserInsertText(string text);

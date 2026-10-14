@@ -59,7 +59,11 @@ prompts keep the draft/confirm behavior described above.
 
 In a webapp, **D-pad** jumps the circle between nearby webpage controls. **Left
 stick** remains free pointer movement, **A** clicks, and **right stick** scrolls.
-D-pad can scroll a list to reveal its next control. It never clicks automatically
+D-pad scrolls by list rows, including text-only chat messages. Long rows advance
+in smaller steps. With no clickable target, the circle stays near the advancing
+edge of the list. Holding D-pad defers new hover until release; the circle glides
+between targets. Left-stick movement is immediate with a faint fading trail.
+System reduced motion disables both visual effects. D-pad never clicks automatically
 and does not move the pointer while A is held for dragging. Use the free pointer
 for canvas controls or elements a page does not expose as interactive.
 LS opens Website controls; its actions have direct labels. Website permissions can

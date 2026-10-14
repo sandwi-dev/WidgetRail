@@ -15,6 +15,7 @@ internal sealed partial class BrowserSurface
         CancelSpatialNavigation();
         TracePointer($"press: held={pointerPressed} input={input} browsing={browsing} dialog={HasDialog}");
         if (pointerPressed || !input || !browsing || HasDialog) return;
+        FinishPointerVisual();
         pointerPressed = true;
         pointerMoved = false;
         pointerStartX = cursorX; pointerStartY = cursorY;
@@ -71,6 +72,12 @@ internal sealed partial class BrowserSurface
             }
             if (down)
             {
+                // Hover was deferred while D-pad visited intermediate targets.
+                // A settles the visible circle and synchronizes the page before
+                // dispatching its native press, including release-before-result.
+                await current.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(
+                    new BrowserPointerEvent("mouseMoved", x, y), BrowserJsonContext.Default.BrowserPointerEvent));
+                if (!input || HasDialog || epoch != pointerEpoch || retired) return;
                 dragData = null; dragEntered = false;
                 await current.CallDevToolsProtocolMethodAsync("Input.setInterceptDrags", "{\"enabled\":true}");
                 if (!input || HasDialog || epoch != pointerEpoch || retired)

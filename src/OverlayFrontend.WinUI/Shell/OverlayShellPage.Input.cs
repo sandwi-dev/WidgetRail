@@ -11,6 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private readonly RightStickScroll rightStick = new();
+    private Browser.BrowserSurface? dpadBrowser;
     private static readonly (ushort Mask, ControllerButton Button)[] Buttons =
     [
         (0x1000, ControllerButton.A), (0x2000, ControllerButton.B),
@@ -27,6 +28,7 @@ internal sealed partial class OverlayShellPage
         try { ReceiveCore(frame, out delivered); }
         finally
         {
+            if (!delivered) SampleBrowserDpad(null, frame);
             var current = ActiveControllerKeyboard;
             if (keyboard is not null)
             {
@@ -80,6 +82,9 @@ internal sealed partial class OverlayShellPage
         { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var radialNavigation = ReceiveRadialNavigation(frame);
         var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
+        var activeBrowser = radialNavigation ? null : expandedBrowser?.Surface?.ActiveSurface ??
+            (PinnedInputActive && pinned?.Popup is { } activePopup ? activePopup.Child.ActiveSurface : pointerPresenter?.ControllerBrowser);
+        SampleBrowserDpad(activeBrowser, frame);
         var browserPointer = !radialNavigation && (IsMediaFullscreen
             ? fullscreenLayer.MovePointer(frame.State.LeftThumbX, frame.State.LeftThumbY)
             : PinnedInputActive && pinned?.Popup is { } popup
@@ -142,6 +147,20 @@ internal sealed partial class OverlayShellPage
         if (frame.RightTriggerReleased != 0) _ = RouteButtonAsync(ControllerButton.RightTrigger, ControllerEventPhase.Released);
         PumpHeldAction(frame);
         delivered = true;
+    }
+
+    private void SampleBrowserDpad(Browser.BrowserSurface? browser, ControllerFrame frame)
+    {
+        if (browser is { IsBrowsing: false } or { HasDialog: true } or { IsToolbarFocused: true }) browser = null;
+        if (!ReferenceEquals(dpadBrowser, browser))
+        {
+            dpadBrowser?.CancelDpadHold();
+            dpadBrowser = browser;
+        }
+        // Native navigation events have Pressed/Repeated but no Released phase.
+        // State bits remain set between repeats, including diagonal transitions.
+        // The event fallback supports synthetic controller-frame validation.
+        browser?.SampleDpadHold((frame.State.Buttons & 0x000f) != 0 || frame.DpadNavigation.Phase != NavigationPhase.None);
     }
 
     private void FocusDirectionalTray()

@@ -81,10 +81,23 @@ pointer position, including when only part of a control is clickable.
 
 List membership uses DOM ownership, not just overlapping screen rectangles.
 After scrolling, the host retains the scrolled region and original source, then
-scans that region's subtree. If a gap contains no target, the list scrolls while
-the pointer stays put; it does not jump into an unrelated header. Scrolling can
+scans that region's subtree. Scroll distance follows meaningful list items,
+articles and table rows, including text-only rows. Oversized rows advance in
+bounded portions; unknown markup uses a smaller viewport-relative step. When
+newly revealed content has no action, the circle rests near the advancing edge
+inside the scroller; it does not jump into an unrelated header. Scrolling can
 reposition a newly revealed target above the pointer's old screen position while
 still advancing through the content in the requested direction.
+
+Holding D-pad defers webpage hover until release, while the circle glides between
+destinations. The previous page hover is retained so an already-open menu remains
+navigable; intermediate targets do not receive mouse-move events. A immediately
+settles the circle and synchronizes the native pointer before clicking. Left-stick
+takeover restores immediate movement and hover, with a short, faint speed-sensitive
+trail. Animation never sends intermediate page input. System reduced motion
+disables glide and trail; high contrast suppresses the trail. Timing/appearance
+constants are centralized in `Input/PointerMotionOptions.cs`; no widget option is
+required. Native chooser windows retain their existing pointer presentation.
 
 The host uses bounded, on-demand geometry scans in isolated worlds, and traverses
 only frames owned by that WebView. It returns positions rather than page text or

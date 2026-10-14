@@ -68,24 +68,34 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
             {
                 var frame = frames[i];
                 if (!frame.Clip.Contains(point) || !await AncestorsCurrent(frame, point)) continue;
-                var value = await Function(frame, BrowserSpatialScript.Scroll, deltaJson);
+                var value = await Function(frame, BrowserSpatialScript.Scroll, deltaJson, awaitPromise: true);
                 if (!value.TryGetProperty("moved", out var moved) || !moved.GetBoolean()) continue;
-                point = Global(frame, new(value.GetProperty("x").GetDouble(), value.GetProperty("y").GetDouble()));
+                if (!value.TryGetProperty("x", out var scrollX)) return null;
+                point = Global(frame, new(scrollX.GetDouble(), value.GetProperty("y").GetDouble()));
+                SpatialPoint? restingPoint = value.TryGetProperty("rest", out var rest) && rest.ValueKind == JsonValueKind.Object
+                    ? Global(frame, new(rest.GetProperty("x").GetDouble(), rest.GetProperty("y").GetDouble())) : null;
                 scrolled = true;
-                await Task.Delay(45, cancellationToken); // allow scroll events/virtualized lists to lay out
                 DemandCurrent();
                 // Snapshot references remain bounded until disposal. Rebuild the
                 // geometry after scrolling, never reuse pre-scroll hit points.
                 frames.Clear(); candidates.Clear();
                 await Scan(null, context, -1, -1, 0, 0, 1, 1, null, 0, point, frame);
-                // The content anchor moves with the scroll, so a newly exposed
-                // control can land above the old on-screen pointer. It must
-                // still belong to the exact region we scrolled, never a header
-                // or sibling pane. Do not derive a new source by hit-testing
-                // an anchor which may now be offscreen.
+                // The old advancing edge moves with the content. Only newly
+                // revealed controls can win after scrolling; text-only rows
+                // keep a visible resting point near the advancing edge.
                 origin = new(point.X, point.Y, .01, .01);
                 if (scrolledScope >= 0)
-                    destination = await ResolveBest(candidates.Where(item => WithinScrolledFrame(item.Frame)).ToArray(), origin, direction);
+                {
+                    destination = await ResolveBest(candidates.Where(item => WithinScrolledFrame(item.Frame)).ToArray(), origin, direction, point);
+                    if (destination is null && restingPoint is { } fallback && viewport.Contains(fallback) &&
+                        frames[scrolledScope].Clip.Contains(fallback) && await AncestorsCurrent(frames[scrolledScope], fallback))
+                    {
+                        var local = Local(frames[scrolledScope], fallback);
+                        var valid = await Function(frames[scrolledScope], BrowserSpatialScript.ValidateRest,
+                            JsonSerializer.Serialize(new BrowserHitPoint(local.X, local.Y), BrowserJsonContext.Default.BrowserHitPoint));
+                        if (valid.ValueKind == JsonValueKind.True) destination = fallback;
+                    }
+                }
                 break;
             }
         }
@@ -218,10 +228,10 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
             JsonSerializer.Serialize(new BrowserIsolatedWorld(frameId, "WidgetRail.SpatialNavigation"), BrowserJsonContext.Default.BrowserIsolatedWorld)));
         return world.RootElement.GetProperty("executionContextId").GetInt32();
     }
-    private async Task<JsonElement> Function(Frame frame, string script, string? argument = null)
+    private async Task<JsonElement> Function(Frame frame, string script, string? argument = null, bool awaitPromise = false)
     {
         using var result = JsonDocument.Parse(await Call(frame.Session, "Runtime.callFunctionOn", JsonSerializer.Serialize(
-            new BrowserFieldCall(frame.Object, script, argument is null ? null : [new(argument)], objectGroup: objectGroup), BrowserJsonContext.Default.BrowserFieldCall)));
+            new BrowserFieldCall(frame.Object, script, argument is null ? null : [new(argument)], objectGroup: objectGroup, awaitPromise: awaitPromise), BrowserJsonContext.Default.BrowserFieldCall)));
         return result.RootElement.GetProperty("result").TryGetProperty("value", out var value) ? value.Clone() : default;
     }
     private async Task<string> Call(string? session, string method, string parameters)
