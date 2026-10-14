@@ -40,4 +40,6 @@ The final broader webapp regression (`webapp-regression-final.json`) passed 92 c
 
 The Release frontend published successfully and was overlaid onto a fresh copy of the accepted complete candidate payload. All 136 top-level deployed DLLs match the new frontend publication. The candidate is running with Twitch selected at `artifacts/browser-passive-pin/candidate-01/WidgetRail-Developer-0.1.0-preview.31-win-x64` (PID 34164 at launch). The normal profile, sign-ins and opening shortcut were preserved. An initial 12-second UI wait expired while the existing installed-package catalog validated; afterward the Twitch tray item invoked successfully and the process remained responsive.
 
-Physical checklist: repeatedly pin the full Twitch widget without pressing View; hide/reopen the overlay; enter/exit pin interaction; unpin and repeat. The content should appear passively every time and the live page should persist. No merge, push, release, installer or profile reset was performed. Account-dependent physical acceptance remains the user's.
+Physical checklist: repeatedly pin the full Twitch widget without pressing View; hide/reopen the overlay; enter/exit pin interaction; unpin and repeat. The content should appear passively every time and the live page should persist.
+
+2026-10-14: the user accepted the candidate and authorized merging to main. This supersedes the earlier pending physical-acceptance status. Push, release, installer creation and profile changes are outside this merge request.
