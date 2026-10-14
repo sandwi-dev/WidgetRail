@@ -209,8 +209,9 @@ internal sealed partial class OverlayShellPage
             if (browserOwner?.PermissionTargets(descriptor.Id).Length > 0)
             {
                 Add("Website permissions", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor));
-                Add("Notification preferences", "Browser.NotificationPreferences", () => ShowNotificationPreferencesAsync(descriptor));
+
             }
+            if (notificationCenter is not null) Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor));
             if (browserOwner is { } notificationOwner)
                 Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
             if (browserOwner?.HasRunningSession(descriptor.Id) == true)

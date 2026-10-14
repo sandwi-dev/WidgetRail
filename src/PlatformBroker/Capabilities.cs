@@ -107,6 +107,7 @@ public static class PlatformCapabilities
     public const string ProviderDocumentCreate = "document.create";
     public const string ProviderDocumentDiscard = "document.discard";
     public const string CaptureLibraryReadV1 = "media.capture-library.read.v1";
+    public const string WidgetNotificationsV1 = "widget.notifications.v1";
     public const string WidgetPermissionsV1 = "widget.permissions.v1";
     public const string WidgetMarketplaceV1 = "widgets.marketplace.v1";
     public const string CaptureLibrarySaveV1 = "media.capture-library.save.v1";
@@ -320,6 +321,9 @@ public static class PlatformCapabilities
                 ReadOperations: Set(PrivateStateRead),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
                 AllowsBackground: true),
+            [WidgetNotificationsV1] = new(WidgetNotificationsV1, 1, BrokerCapabilityKind.Control,
+                Set("notifications.publish"), Set(), AllowsDashboardGesture: false,
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
             [WidgetPermissionsV1] = new(WidgetPermissionsV1, 1, BrokerCapabilityKind.Control,
                 Set("permissions.check", "permissions.request", "permissions.status", "permissions.cancel"), Set(),
                 ReadOperations: Set("permissions.check", "permissions.status"),

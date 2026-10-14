@@ -28,6 +28,7 @@ messages, choose pipe identities, or call native APIs as a workaround for denial
 | System usage, game FPS, and explicit FPS enablement | [Performance monitoring](performance-monitor.md) |
 | Exact-port localhost JSON and write-only secrets | [Companion services](community-companion-services.md) |
 | Host-granted saved widget state | [Private state](private-widget-state.md) |
+| Host-rendered pending notifications and temporary banners | [Widget notifications](widget-notifications.md) |
 | Silent permission checks and explicit host-owned consent dialogs | [Widget permissions](widget-permissions.md) |
 
 ## Lifecycle and actions

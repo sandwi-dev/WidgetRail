@@ -61,6 +61,7 @@ if (args is ["--export-layout", var directory])
 
 var tests = new List<(string, Func<Task>)>
 {
+    ("Song banners opt in during setup and publish only track changes", MusicNotificationTests.Run),
     ("Playback recovery refreshes, skips, stops and rejects stale events", PlaybackRecoveryTests.Run),
     ("Volume preference survives restart and rejects provider defaults", VolumePreferenceTests.Run),
     ("Compact pin declares artwork and admits the same transport shortcuts as the main player", PinnedPlayer),

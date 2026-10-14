@@ -396,6 +396,10 @@ These checks are distinct from physical-controller acceptance.
 Notifications use WidgetRail's own presentation after website permission is
 granted. The host handles WebView2 notification events; Windows notification UI is
 not used. Per-widget tray preferences select Banner + list, List only, or Off.
+Ordinary widgets use the same coordinator and presentation through the
+[widget notification service](widget-notifications.md), with explicit retention,
+interaction, artwork and overlay-visibility options. Web notifications retain the
+default policy below.
 Quiet passive banners last four seconds without taking focus or making a sound.
 While the overlay is visible, the bell beside the clock updates its pending-count badge instead. The badge counts all pending entries, including ones already shown. A burst can
 update the current banner without extending its deadline; an eight-second quiet

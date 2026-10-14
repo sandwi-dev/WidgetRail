@@ -4,16 +4,11 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 internal sealed partial class BrowserOwner
 {
-    internal NotificationInbox Notifications { get; } = new();
-    internal WebNotificationPreferences NotificationPreferences { get; private set; } = null!;
-    internal event Action<NotificationEntry, bool>? NotificationBannerRequested;
-    private bool notificationPreferencesReady;
-
-    private async Task LoadNotificationPreferencesAsync()
-    {
-        await NotificationPreferences.LoadAsync(lifetime.Token);
-        notificationPreferencesReady = true;
-    }
+    internal NotificationCenter NotificationCenter { get; }
+    internal NotificationInbox Notifications => NotificationCenter.Inbox;
+    internal NotificationPreferences NotificationPreferences => NotificationCenter.Preferences;
+    internal event Action<NotificationEntry, bool>? NotificationBannerRequested
+    { add => NotificationCenter.BannerRequested += value; remove => NotificationCenter.BannerRequested -= value; }
     private void ReceiveNotification(BrowserSurface source, NativeWebNotification notification)
     {
         if (retired) { notification.Release(); return; }
@@ -29,12 +24,12 @@ internal sealed partial class BrowserOwner
                 notification.CloseRequested -= Closed;
                 notification.Release();
             });
-        var mode = notificationPreferencesReady ? NotificationPreferences.Get(source.NotificationWidgetId) : WebNotificationPresentation.ListOnly;
+        var mode = NotificationCenter.Mode(source.NotificationWidgetId);
         var renotify = notification.Renotify;
         var entry = Notifications.Add(source.NotificationWidgetId, source.ProfileName, origin, notification.Tag,
             notification.Title, notification.Body, source, callbacks, mode);
         id = entry?.Id;
-        if (entry is not null && mode == WebNotificationPresentation.BannerAndList)
-            parking.DispatcherQueue.TryEnqueue(() => { if (!retired && Notifications.Find(entry.Id) is not null) NotificationBannerRequested?.Invoke(entry, !entry.ReplacesPrevious || renotify); });
+        if (entry is not null && mode == NotificationPresentation.BannerAndList)
+            parking.DispatcherQueue.TryEnqueue(() => { if (!retired && Notifications.Find(entry.Id) is not null) NotificationCenter.RequestBanner(entry, !entry.ReplacesPrevious || renotify); });
     }
 }

@@ -74,11 +74,12 @@ public sealed partial class StandaloneMusicWidget : Widget
             {
                 try
                 {
+                    await LoadNotificationSettingsAsync(context.CancellationToken);
                     await _service.InitializeAsync(context.CancellationToken);
                     lock (_gate)
                     {
                         _initialized = true; _status = "";
-                        if (!_service.State.Connected) _panel = "setup";
+                        if (!_service.State.Connected || !notificationSettings.SetupSeen) _panel = "setup";
                     }
                     LoadPage();
                 }
@@ -110,6 +111,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 ReplaceCollection(_service.State.Queue);
             UpdateBrowseContent();
         }
+        ObserveTrackNotification();
         if (IsActive) Invalidate();
     }
 
@@ -234,7 +236,10 @@ public sealed partial class StandaloneMusicWidget : Widget
     {
         if (!IsActive || action.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated)) return ValueTask.CompletedTask;
         var id = action.ActionId;
-        if (action.Phase == ControllerEventPhase.Repeated && id is not ("player.seek" or "player.volume")) return ValueTask.CompletedTask;
+        if (action.Phase == ControllerEventPhase.Repeated && id is not ("player.seek" or "player.volume" or "notifications.opacity")) return ValueTask.CompletedTask;
+        if (id.StartsWith("notifications.", StringComparison.Ordinal)) { NotificationSettingAction(action); return ValueTask.CompletedTask; }
+        var saveSetup = _panel == "setup" && (id == "panel.back" || id.StartsWith("tab.", StringComparison.Ordinal) && id != "tab.setup");
+        if (saveSetup) lock (_gate) notificationSettings = notificationSettings with { SetupSeen = true };
         if (id == "tab.setup")
         {
             lock (_gate) { _panelReturnFocus = action.FocusedElementId; _panel = "setup"; EnterContent(); }
@@ -321,6 +326,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 }, WidgetOperationLifetime.Widget);
             }
         }
+        if (saveSetup) SaveNotificationSettings();
         return ValueTask.CompletedTask;
     }
 

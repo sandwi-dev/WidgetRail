@@ -13,7 +13,7 @@ public sealed class NotificationInboxTests
         internal NotificationCallbacks Callbacks => new(() => Current, () => Shown++, () => Clicked++, () => Closed++, () => Detached++);
     }
     private static NotificationEntry Add(NotificationInbox inbox, Source source, string tag = "", string widget = "webapp", string profile = "default", string origin = "https://fixture.invalid") =>
-        inbox.Add(widget, profile, origin, tag, "Title", "Body", source, source.Callbacks, WebNotificationPresentation.BannerAndList)!;
+        inbox.Add(widget, profile, origin, tag, "Title", "Body", source, source.Callbacks, NotificationPresentation.BannerAndList)!;
 
     [TestMethod]
     public void BannerExpiryAndBurstUpdatesKeepPendingItemsAndDoNotExtendInterruption()
@@ -67,7 +67,7 @@ public sealed class NotificationInboxTests
     public void OffDoesNotClaimToDisplayOrRetainNativeCallbacks()
     {
         using var inbox = new NotificationInbox(); var source = new Source();
-        Assert.IsNull(inbox.Add("app", "default", "https://fixture.invalid", "", "Title", "Body", source, source.Callbacks, WebNotificationPresentation.Off));
+        Assert.IsNull(inbox.Add("app", "default", "https://fixture.invalid", "", "Title", "Body", source, source.Callbacks, NotificationPresentation.Off));
         Assert.AreEqual(0, source.Shown + source.Closed); Assert.AreEqual(1, source.Detached); Assert.HasCount(0, inbox.Entries);
     }
     [TestMethod]

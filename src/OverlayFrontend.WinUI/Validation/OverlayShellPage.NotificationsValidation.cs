@@ -11,7 +11,7 @@ internal sealed partial class OverlayShellPage
     private async Task VerifyNotificationsAsync(BrowserSurface page, Action<bool, string> check)
     {
         var inbox = browserOwner!.Notifications;
-        await browserOwner.NotificationPreferences.SetAsync("webapp-a", WebNotificationPresentation.ListOnly, lifetime.Token);
+        await browserOwner.NotificationPreferences.SetAsync("webapp-a", NotificationPresentation.ListOnly, lifetime.Token);
         await page.EvaluateFixtureAsync("window.notificationEvents=[];window.n=new Notification('Synthetic notification',{body:'Local fixture only',tag:'thread'});n.onshow=()=>notificationEvents.push('shown');n.onclick=()=>notificationEvents.push('clicked');n.onclose=()=>notificationEvents.push('closed');");
         await WebAppUntil(() => inbox.Entries.Count == 1);
         var entry = inbox.Entries[0];
@@ -43,13 +43,14 @@ internal sealed partial class OverlayShellPage
         check(!await inbox.ActivateAsync(inbox.Entries[0].Id, _ => throw new InvalidOperationException("Must not activate another document")),
             "Navigation releases native callbacks and leaves a dismissible stale entry instead of targeting the new page");
         inbox.Clear();
-        await browserOwner.NotificationPreferences.SetAsync("webapp-a", WebNotificationPresentation.Off, lifetime.Token);
+        await browserOwner.NotificationPreferences.SetAsync("webapp-a", NotificationPresentation.Off, lifetime.Token);
         await page.EvaluateFixtureAsync("window.notificationShown=false;window.n=new Notification('Off');n.onshow=()=>notificationShown=true;");
         await Task.Delay(100);
         check(inbox.Entries.Count == 0 && await page.EvaluateFixtureAsync("notificationShown===false") == "true", "Off mode neither retains a native notification nor displays OS UI");
-        await browserOwner.NotificationPreferences.SetAsync("webapp-a", WebNotificationPresentation.ListOnly, lifetime.Token);
+        await browserOwner.NotificationPreferences.SetAsync("webapp-a", NotificationPresentation.ListOnly, lifetime.Token);
         await VerifyNotificationControlsAsync(page, check);
         await VerifyStaleNotificationPanelAsync(check);
+        if (Environment.GetCommandLineArgs().Contains("--widget-notifications")) await VerifyWidgetNotificationsAsync(check);
         GC.Collect();
         await Task.Run(GC.WaitForPendingFinalizers);
         check(true, "Retired native notification projections survive forced collection without finalizer-thread browser calls");
@@ -93,7 +94,7 @@ internal sealed partial class OverlayShellPage
         await WebAppUntilScript(page, "notificationEvents.includes('closed') && notificationEvents.includes('clicked')");
         check(inbox.Entries.Count == 0 && page.IsBrowsing && activeWidget == "webapp-a", "A opens a notification appended to the live list and focuses its exact browser document");
 
-        await browserOwner.NotificationPreferences.SetAsync("webapp-a", WebNotificationPresentation.BannerAndList, lifetime.Token);
+        await browserOwner.NotificationPreferences.SetAsync("webapp-a", NotificationPresentation.BannerAndList, lifetime.Token);
         await page.EvaluateFixtureAsync("window.n=new Notification('Visible overlay notification');");
         await WebAppUntil(() => inbox.Entries.Count == 1);
         check(notificationBanner?.IsVisible != true, "A visible overlay receives a quiet pending indicator without a banner");
@@ -117,7 +118,7 @@ internal sealed partial class OverlayShellPage
         inbox.Clear();
         SetVisible(true); await SelectAsync("webapp-a", enterWidget: true);
         await WebAppUntil(() => foreground && page.IsBrowsing);
-        await browserOwner.NotificationPreferences.SetAsync("webapp-a", WebNotificationPresentation.ListOnly, lifetime.Token);
+        await browserOwner.NotificationPreferences.SetAsync("webapp-a", NotificationPresentation.ListOnly, lifetime.Token);
 
         async Task FocusEntry()
         {
@@ -137,7 +138,7 @@ internal sealed partial class OverlayShellPage
         var inbox = browserOwner!.Notifications;
         var callbacks = new NotificationCallbacks(() => false, () => throw new InvalidOperationException("Stale shown"),
             () => throw new InvalidOperationException("Stale click"), () => { }, () => { });
-        var missing = inbox.Add("removed-widget", "default", "https://fixture.invalid", "", "Old notification", "Its widget was removed", new object(), callbacks, WebNotificationPresentation.ListOnly)!;
+        var missing = inbox.Add("removed-widget", "default", "https://fixture.invalid", "", "Old notification", "Its widget was removed", new object(), callbacks, NotificationPresentation.ListOnly)!;
         var pending = OpenNotificationListForValidation();
         await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
         var dialog = hostChoiceDialog!;
@@ -154,13 +155,13 @@ internal sealed partial class OverlayShellPage
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released); await pending;
 
-        var stale = inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "Session ended", "Open the webapp normally", new object(), callbacks, WebNotificationPresentation.ListOnly)!;
+        var stale = inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "Session ended", "Open the webapp normally", new object(), callbacks, NotificationPresentation.ListOnly)!;
         pending = OpenNotificationListForValidation();
         await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
         dialog = hostChoiceDialog!; list = FindControl<ListView>(dialog, "Host.Choice.Options")!;
         list.SelectedIndex = 0; ((Control)list.Items[0]).Focus(FocusState.Keyboard);
         var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
-        var arriving = inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "New arrival", "Keep selection stable", new object(), callbacks, WebNotificationPresentation.ListOnly)!;
+        var arriving = inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "New arrival", "Keep selection stable", new object(), callbacks, NotificationPresentation.ListOnly)!;
         check(ReferenceEquals(focused, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot)) && list.SelectedIndex == 0,
             "New arrivals preserve the user's selected notification and native focus");
         await WebAppUntil(() => list.Items.Count == 2 && ((Control)list.Items[1]).IsLoaded && ((Control)list.Items[1]).ActualHeight > 0);
@@ -180,7 +181,7 @@ internal sealed partial class OverlayShellPage
         check(notificationBadge.Visibility == Visibility.Collapsed && notificationBell.Visibility == Visibility.Visible,
             "Empty notifications hide the badge while retaining the bell");
         await CapturePopupDecisionAsync(hostChoiceDialog!, "notifications-empty");
-        inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "After empty", "Clear all footer", new object(), callbacks, WebNotificationPresentation.ListOnly);
+        inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "After empty", "Clear all footer", new object(), callbacks, NotificationPresentation.ListOnly);
         var footerDialog = hostChoiceDialog!;
         check(FindControl<Button>(footerDialog, "Host.Choice.Secondary")!.Focus(FocusState.Keyboard), "Clear all is a focusable secondary footer action");
         Receive(new ControllerFrame { Connected = 1 });

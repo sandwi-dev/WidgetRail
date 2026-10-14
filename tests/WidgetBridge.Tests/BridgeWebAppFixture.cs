@@ -2,6 +2,7 @@ using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.PlatformBroker;
 
 internal static class BridgeWebAppFixture
 {
@@ -19,7 +20,8 @@ internal static class BridgeWebAppFixture
             PinningSupported = id != "webapp-idle", FullWidgetPinningSupported = id != "webapp-idle",
             ResidencyPolicy = new() { Mode = WidgetResidencyPolicies.UnloadAfterIdle, IdleSeconds = 5 },
         }).ToArray());
-        await using var server = new WidgetBridgeServer(pipe, catalog, appearance: appearance);
+        await using var server = new WidgetBridgeServer(pipe, catalog, appearance: appearance,
+            consentStore: new ConsentStore(Path.Combine(settingsRoot, "fixture-consent")), platformBackend: new SimulatedPlatformBrokerBackend());
         await server.RunAsync(TimeSpan.FromSeconds(30), default);
     }
 }
@@ -39,10 +41,33 @@ internal sealed class WebAppFrameworkFixture : Widget
         return new(UI.Grid("app.root", [GridTrack.Star(), GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
             [primary.InGrid(columnSpan: second.Value ? 1 : 2),
                 .. (second.Value ? new[] { other.InGrid(column: 1) } : []),
-                UI.Button("Toggle second session", "second", "second").InGrid(row: 1, columnSpan: 2)]), "app.page",
+                UI.Row("app.commands", UI.Button("Toggle second session", "second", "second"),
+                    UI.Button("Synthetic song banner", "notify", "notify"),
+                    UI.Button("Synthetic pending notification", "notify-pending", "notify-pending"),
+                    UI.Button("Update synthetic metadata", "notify-update", "notify-update"),
+                    UI.Button("Withdraw notification", "notify-withdraw", "notify-withdraw")).InGrid(row: 1, columnSpan: 2)]), "app.page",
             Surface: new() { Mode = WidgetSurfaceMode.Standard, WidthMode = WidgetSurfaceAxisMode.Preferred,
                 HeightMode = WidgetSurfaceAxisMode.Preferred, PreferredWidth = 1100, PreferredHeight = 760, MinimumWidth = 480, MinimumHeight = 360 });
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
-    { if (action.ActionId == "second") second.Update(value => !value); return ValueTask.CompletedTask; }
+    {
+        if (action.ActionId == "second") second.Update(value => !value);
+        if (action.ActionId.StartsWith("notify", StringComparison.Ordinal))
+            Operations.RunLatest("fixture.notification", async context =>
+            {
+                await Task.Delay(400, context.CancellationToken);
+                var content = new WidgetNotification("fixture-song", "Synthetic track")
+                {
+                    Body = "Fixture artist", Metadata = action.ActionId == "notify-update" ? "3:46" : "3:45", ShowWidgetIcon = false,
+                    ArtworkUrl = "https://fixture.invalid/thumbnail.png",
+                    Retention = action.ActionId == "notify-pending" ? WidgetNotificationRetention.Pending : WidgetNotificationRetention.BannerOnly,
+                    Interaction = action.ActionId == "notify-pending" ? WidgetNotificationInteraction.OpenWidget : WidgetNotificationInteraction.Informational,
+                    Visibility = WidgetNotificationVisibility.Always, BackgroundOpacityPercent = 80,
+                };
+                if (action.ActionId == "notify-withdraw") await HostServices.Notifications.DismissAsync(content.Key, context.CancellationToken);
+                else if (action.ActionId == "notify-update") await HostServices.Notifications.UpdateAsync(content, context.CancellationToken);
+                else await HostServices.Notifications.ShowAsync(content, context.CancellationToken);
+            }, WidgetOperationLifetime.Widget);
+        return ValueTask.CompletedTask;
+    }
 }

@@ -1,14 +1,14 @@
 using System.Text.Json;
 
-namespace WidgetRail.OverlayFrontend.WinUI.Browser;
+namespace WidgetRail.OverlayFrontend.WinUI.Notifications;
 
-internal sealed class WebNotificationPreferences(string path)
+internal sealed class NotificationPreferences(string path)
 {
-    private Dictionary<string, WebNotificationPresentation> values = new(StringComparer.Ordinal);
+    private Dictionary<string, NotificationPresentation> values = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim writes = new(1, 1);
     internal bool LoadFailed { get; private set; }
-    internal WebNotificationPresentation Get(string widget) => values.GetValueOrDefault(widget,
-        LoadFailed ? WebNotificationPresentation.ListOnly : WebNotificationPresentation.BannerAndList);
+    internal NotificationPresentation Get(string widget) => values.GetValueOrDefault(widget,
+        LoadFailed ? NotificationPresentation.ListOnly : NotificationPresentation.BannerAndList);
     internal async Task LoadAsync(CancellationToken token)
     {
         try
@@ -18,10 +18,10 @@ internal sealed class WebNotificationPreferences(string path)
             using var stream = File.OpenRead(path);
             using var data = await JsonDocument.ParseAsync(stream, cancellationToken: token);
             if (data.RootElement.GetProperty("version").GetInt32() != 1) throw new InvalidDataException();
-            var loaded = new Dictionary<string, WebNotificationPresentation>(StringComparer.Ordinal);
+            var loaded = new Dictionary<string, NotificationPresentation>(StringComparer.Ordinal);
             foreach (var property in data.RootElement.GetProperty("widgets").EnumerateObject())
             {
-                if (loaded.Count >= 256 || !ValidId(property.Name) || !Enum.TryParse<WebNotificationPresentation>(property.Value.GetString(), out var mode) || !Enum.IsDefined(mode))
+                if (loaded.Count >= 256 || !ValidId(property.Name) || !Enum.TryParse<NotificationPresentation>(property.Value.GetString(), out var mode) || !Enum.IsDefined(mode))
                     throw new InvalidDataException();
                 loaded[property.Name] = mode;
             }
@@ -30,14 +30,14 @@ internal sealed class WebNotificationPreferences(string path)
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
         { LoadFailed = true; }
     }
-    internal async Task SetAsync(string widget, WebNotificationPresentation mode, CancellationToken token)
+    internal async Task SetAsync(string widget, NotificationPresentation mode, CancellationToken token)
     {
         if (!ValidId(widget) || !Enum.IsDefined(mode)) throw new ArgumentException("Invalid notification preference.");
         await writes.WaitAsync(token);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var next = new Dictionary<string, WebNotificationPresentation>(values, StringComparer.Ordinal) { [widget] = mode };
+            var next = new Dictionary<string, NotificationPresentation>(values, StringComparer.Ordinal) { [widget] = mode };
             if (next.Count > 256) throw new InvalidOperationException("Notification preference capacity reached.");
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))

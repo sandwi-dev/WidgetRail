@@ -1,6 +1,7 @@
-namespace WidgetRail.OverlayFrontend.WinUI.Browser;
+using WidgetRail.WidgetProtocol;
+namespace WidgetRail.OverlayFrontend.WinUI.Notifications;
 
-internal enum WebNotificationPresentation { BannerAndList, ListOnly, Off }
+internal enum NotificationPresentation { BannerAndList, ListOnly, Off }
 
 internal sealed record NotificationCallbacks(Func<bool> IsCurrent, Action Shown, Action Clicked, Action Closed, Action Detach);
 
@@ -8,13 +9,20 @@ internal sealed class NotificationEntry(long id, string widget, string profile, 
     object owner, NotificationCallbacks callbacks)
 {
     internal long Id { get; } = id;
+    internal WidgetNotification? Content { get; set; }
+    internal long ContentRevision { get; private set; }
+    internal bool Pending => Content?.Retention != WidgetNotificationRetention.BannerOnly;
+    internal bool Interactive => Content?.Interaction != WidgetNotificationInteraction.Informational;
+    internal bool ShowWithOverlay => Content?.Visibility == WidgetNotificationVisibility.Always;
     internal DateTimeOffset ReceivedAt { get; } = DateTimeOffset.Now;
     internal string Widget { get; } = widget;
     internal string Profile { get; } = profile;
     internal string Origin { get; } = origin;
     internal string Tag { get; } = tag;
-    internal string Title { get; } = title;
-    internal string Body { get; } = body;
+    internal string Title { get; private set; } = title;
+    internal string Body { get; private set; } = body;
+    internal void UpdateContent(WidgetNotification content)
+    { Content = content; Title = content.Title; Body = content.Body; ContentRevision++; }
     internal object? Owner { get; set; } = owner;
     internal NotificationCallbacks? Callbacks { get; set; } = callbacks;
     internal bool WasShown { get; set; }
@@ -28,33 +36,50 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
 {
     private readonly int capacityLimit = capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
     private readonly List<NotificationEntry> entries = [];
+    private readonly List<NotificationEntry> transient = [];
     private long sequence;
     internal IReadOnlyList<NotificationEntry> Entries => entries;
     internal int OverflowCount { get; private set; }
     internal event Action? Changed;
 
     internal NotificationEntry? Add(string widget, string profile, string origin, string tag, string title, string body,
-        object owner, NotificationCallbacks callbacks, WebNotificationPresentation mode)
+        object owner, NotificationCallbacks callbacks, NotificationPresentation mode, WidgetNotification? content = null)
     {
-        if (mode == WebNotificationPresentation.Off) { callbacks.Detach(); return null; }
+        if (mode == NotificationPresentation.Off) { callbacks.Detach(); return null; }
         tag = tag.Length == 0 ? "" : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(tag)));
         var replaced = false;
         if (tag.Length != 0)
         {
-            var previous = entries.FirstOrDefault(entry => entry.Widget == widget && entry.Profile == profile && entry.Origin == origin && entry.Tag == tag);
+            var previous = entries.Concat(transient).FirstOrDefault(entry => entry.Widget == widget && entry.Profile == profile && entry.Origin == origin && entry.Tag == tag);
             if (previous is not null) { replaced = true; Remove(previous, notify: true); }
         }
-        if (entries.Count >= capacityLimit)
+        var target = content?.Retention == WidgetNotificationRetention.BannerOnly ? transient : entries;
+        if (target.Count >= (ReferenceEquals(target, transient) ? 32 : capacityLimit))
         {
             // Preserve existing pending items; reject new handles and expose a
             // visible overflow count rather than silently evicting older items.
-            OverflowCount = Math.Min(int.MaxValue - 1, OverflowCount) + 1;
+            if (ReferenceEquals(target, entries)) OverflowCount = Math.Min(int.MaxValue - 1, OverflowCount) + 1;
             callbacks.Detach(); Changed?.Invoke(); return null;
         }
-        var item = new NotificationEntry(++sequence, widget, profile, origin, Bound(tag, 256), Bound(title, 256), Bound(body, 2048), owner, callbacks) { ReplacesPrevious = replaced };
-        entries.Add(item); Changed?.Invoke(); return item;
+        var item = new NotificationEntry(++sequence, widget, profile, origin, Bound(tag, 256), Bound(title, 256), Bound(body, 2048), owner, callbacks) { ReplacesPrevious = replaced, Content = content };
+        target.Add(item); if (item.Pending) Changed?.Invoke(); return item;
     }
-    internal NotificationEntry? Find(long id) => entries.FirstOrDefault(entry => entry.Id == id);
+    internal NotificationEntry? Find(long id) => entries.Concat(transient).FirstOrDefault(entry => entry.Id == id);
+    internal void WithdrawWidgetKey(string widget, string key)
+    {
+        var tag = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
+        foreach (var item in entries.Concat(transient).Where(e => e.Widget == widget && e.Profile == "widget" && e.Tag == tag).ToArray()) Withdraw(item.Id);
+    }
+    internal NotificationEntry? UpdateWidget(string widget, WidgetNotification content)
+    {
+        var tag = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content.Key)));
+        var entry = entries.Concat(transient).FirstOrDefault(e => e.Widget == widget && e.Profile == "widget" && e.Tag == tag && e.Available);
+        if (entry is null || entry.Content?.Retention != content.Retention) return null;
+        entry.UpdateContent(content);
+        if (entry.Pending) Changed?.Invoke();
+        return entry;
+    }
+    internal void ReleaseBanner(long id) { if (Find(id) is { Pending: false } entry) Remove(entry, notify: false); }
     internal bool MarkShown(long id)
     {
         var item = Find(id);
@@ -66,7 +91,7 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     internal async Task<bool> ActivateAsync(long id, Func<NotificationEntry, Task<bool>> activate)
     {
         var item = Find(id);
-        if (item is null || item.Activating || !item.Available || !MarkShown(id)) return false;
+        if (item is null || !item.Interactive || item.Activating || !item.Available || !MarkShown(id)) return false;
         item.Activating = true;
         try
         {
@@ -87,7 +112,7 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
         Func<NotificationEntry, Task<bool>> openWidget)
     {
         var item = Find(id);
-        if (item is null || item.Activating) return false;
+        if (item is null || !item.Interactive || item.Activating) return false;
         if (await ActivateAsync(id, activate)) return true;
         if (!ReferenceEquals(Find(id), item) || item.Activating) return false;
         item.Activating = true;
@@ -110,7 +135,7 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     internal void InvalidateOwner(object owner)
     {
         var changed = false;
-        foreach (var entry in entries.Where(entry => ReferenceEquals(entry.Owner, owner))) { Invalidate(entry); changed = true; }
+        foreach (var entry in entries.Concat(transient).Where(entry => ReferenceEquals(entry.Owner, owner))) { Invalidate(entry); changed = true; }
         if (changed) Changed?.Invoke();
     }
     private static void Invalidate(NotificationEntry entry)
@@ -121,13 +146,13 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     }
     private void Remove(NotificationEntry entry, bool notify)
     {
-        if (!entries.Remove(entry)) return;
+        if (!entries.Remove(entry) && !transient.Remove(entry)) return;
         try { if (notify && entry.WasShown && entry.Available) entry.Callbacks!.Closed(); }
         catch (Exception error) when (error is not OutOfMemoryException) { }
         finally { Invalidate(entry); }
     }
     private static string Bound(string value, int maximum) => value.Length <= maximum ? value : value[..(char.IsHighSurrogate(value[maximum - 1]) ? maximum - 1 : maximum)];
-    public void Dispose() { Clear(); Changed = null; }
+    public void Dispose() { Clear(); foreach (var item in transient.ToArray()) Remove(item, notify: false); Changed = null; }
 }
 
 internal sealed class NotificationBannerState
@@ -148,7 +173,7 @@ internal sealed class NotificationBannerState
         }
         if (!allowNew || now < nextAllowed) return false;
         EntryId = entry.Id; Widget = entry.Widget;
-        ExpiresAt = now + (long)VisibleDuration.TotalMilliseconds;
+        ExpiresAt = now + (entry.Content?.DurationMilliseconds ?? (long)VisibleDuration.TotalMilliseconds);
         nextAllowed = ExpiresAt + (long)QuietInterval.TotalMilliseconds;
         return true;
     }

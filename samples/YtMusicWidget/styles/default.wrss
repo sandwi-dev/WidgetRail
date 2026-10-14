@@ -11,6 +11,7 @@
 .music-scroll { width: 100%; flex-grow: 1; min-height: 0px; min-width: 0px; gap: 8px; }
 .music-panel-scroll { width: 100%; flex-grow: 1; min-height: 0px; min-width: 0px; gap: 8px; }
 .music-setup-card { width: 100%; min-width: 0px; gap: 10px; padding: 16px; background: var(--surface-raised); corner-radius: 16px; }
+.music-setup-notifications { width: 100%; min-width: 0px; gap: 6px; padding: 8px 0; }
 .music-hero-icon { width: 28px; height: 28px; color: var(--accent); }
 .music-empty-icon { width: 36px; height: 36px; color: var(--text-muted); margin: 18px 0 0; }
 .music-controls { width: 100%; gap: 10px; align: center; min-width: 0px; }

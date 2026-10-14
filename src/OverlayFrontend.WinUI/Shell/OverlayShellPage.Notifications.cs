@@ -9,9 +9,11 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
+    private NotificationCenter? notificationCenter;
     private void InitializeNotifications()
     {
         InitializeNotificationBell();
+        owner!.Session.NotificationReceived += ReceiveWidgetNotification;
         browserOwner!.Notifications.Changed += RefreshWebappStatus;
         browserOwner.NotificationBannerRequested += QueueNotificationBanner;
     }
@@ -19,20 +21,20 @@ internal sealed partial class OverlayShellPage
     {
         if (browserOwner is not { } browsers) return;
         var current = browsers.NotificationPreferences.Get(widget.Id);
-        var choice = await ShowHostChoiceAsync("Notifications", $"{widget.Name}\nCurrent: {NotificationModeLabel(current)}\nWebsite permission is managed separately.",
+        var choice = await ShowHostChoiceAsync("Notifications", $"{widget.Name}\nCurrent: {NotificationModeLabel(current)}\nWebsite permission, when applicable, is managed separately.",
             (HostDialogChoice[])[new("banner", "Banner + list"), new("list", "List only"), new("off", "Off")], lifetime.Token);
         if (choice is null || retired) return;
-        var mode = choice switch { "banner" => WebNotificationPresentation.BannerAndList, "list" => WebNotificationPresentation.ListOnly, _ => WebNotificationPresentation.Off };
+        var mode = choice switch { "banner" => NotificationPresentation.BannerAndList, "list" => NotificationPresentation.ListOnly, _ => NotificationPresentation.Off };
         try
         {
             await browsers.NotificationPreferences.SetAsync(widget.Id, mode, lifetime.Token);
-            if (notificationBannerState.Widget == widget.Id && mode != WebNotificationPresentation.BannerAndList) HideNotificationBanner();
+            if (notificationBannerState.Widget == widget.Id && mode != NotificationPresentation.BannerAndList) HideNotificationBanner();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         { await ShowHostChoiceAsync("Could not save notification preferences", "Your previous preference is still active. Try again.", [], lifetime.Token); }
     }
-    private static string NotificationModeLabel(WebNotificationPresentation mode) => mode switch
-    { WebNotificationPresentation.BannerAndList => "Banner + list", WebNotificationPresentation.ListOnly => "List only", _ => "Off" };
+    private static string NotificationModeLabel(NotificationPresentation mode) => mode switch
+    { NotificationPresentation.BannerAndList => "Banner + list", NotificationPresentation.ListOnly => "List only", _ => "Off" };
 
     private Task ShowNotificationsAsync() => ShowNotificationsAsync(null);
 
@@ -54,13 +56,20 @@ internal sealed partial class OverlayShellPage
                 return card;
             });
             dialog.SecondaryButtonText = "Clear all";
+            dialog.ChoiceIsActionable = id => long.TryParse(id, out var number) && inbox.Find(number)?.Interactive == true;
+            dialog.SelectionContextChanged += PublishControllerGuide;
+            dialog.Closed += (_, _) => dialog.SelectionContextChanged -= PublishControllerGuide;
             dialog.SecondaryButtonClick += (_, args) => { args.Cancel = true; inbox.Clear(); HideNotificationBanner(); };
             dialog.DismissChoiceRequested += id => { if (long.TryParse(id, out var number)) inbox.Dismiss(number); };
             dialog.ChoiceShown += id => { if (long.TryParse(id, out var number)) inbox.MarkShown(number); };
             dialog.KeepOpenOnChoice = id =>
             {
                 if (!long.TryParse(id, out var number)) return true;
-                if (inbox.Find(number) is { } entry && catalogItems.Any(widget => widget.Id == entry.Widget)) return false;
+                if (inbox.Find(number) is { } entry)
+                {
+                    if (!entry.Interactive) return true;
+                    if (catalogItems.Any(widget => widget.Id == entry.Widget)) return false;
+                }
                 inbox.Dismiss(number);
                 dialog.ShowBriefStatus("This notification is no longer available.");
                 return true;
@@ -108,6 +117,6 @@ internal sealed partial class OverlayShellPage
     private HostDialogChoice NotificationChoice(NotificationEntry entry)
     {
         var name = catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget)?.Name ?? entry.Widget;
-        return new(entry.Id.ToString(CultureInfo.InvariantCulture), $"{name}{(entry.Available ? "" : " · Session ended")}\n{entry.Title}\n{entry.Body}");
+        return new(entry.Id.ToString(CultureInfo.InvariantCulture), $"{name}{(entry.Available ? "" : " · Session ended")}\n{entry.Title}\n{entry.Body}\n{entry.Content?.Metadata}", entry.ContentRevision);
     }
 }

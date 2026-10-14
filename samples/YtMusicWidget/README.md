@@ -32,6 +32,20 @@ Public search and supported public playback can also work without signing in.
 Your personal library requires an account. This is an unofficial YouTube Music
 integration; available content, account restrictions and service changes can affect playback.
 
+## Song-change banners
+
+Setup introduces **Song-change banners**, switched off by default. Enable it there
+or later through **Y → Settings**. A new track shows its thumbnail, title, artist
+and total duration in a quiet, non-interactive banner, including while the overlay
+is open. It disappears after four seconds and never adds to the notification list
+or bell count. Rapid changes update the current banner without extending it;
+pause, resume, seeking and playback ticks do not create new banners.
+
+When enabled, **Banner background opacity** adjusts the background while keeping
+text and artwork readable. The setting is saved for this widget. The host's tray
+Notification preferences and quiet/placement rules still apply, so a muted widget
+or a screen with no free corner will not display a banner.
+
 The package includes its own Python and JavaScript helper runtimes. You do not need
 to install Python, YTMDesktop, or a Google developer app. Use a current WidgetRail
 installation, which supplies the Windows Desktop runtime and checks WebView2 availability.

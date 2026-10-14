@@ -87,6 +87,7 @@ internal static class BridgeMessageTypes
     public const string ControllerInputResult = "controller-input-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidation = "widget-invalidated";
+    public const string WidgetNotification = "widget-notification";
     public const string HostEffect = "widget-host-effect";
     public const string Failure = "widget-failed";
     public const string Error = "error";

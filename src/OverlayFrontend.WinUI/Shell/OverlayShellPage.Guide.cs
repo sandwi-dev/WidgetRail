@@ -22,7 +22,7 @@ internal sealed partial class OverlayShellPage
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
             shellContext = "host-choice";
             if (hostChoiceDialog?.SupportsDismissChoice == true)
-                shell = (ControllerGuideHint[])[new(ControllerPrompt.A, "Open", ControllerButton.A),
+                shell = (ControllerGuideHint[])[.. (hostChoiceDialog.FocusedChoiceIsActionable ? new ControllerGuideHint[] { new(ControllerPrompt.A, "Open", ControllerButton.A) } : []),
                     new(ControllerPrompt.X, "Dismiss", ControllerButton.X), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
         }
         else if (!interactive && notificationBell.FocusState != FocusState.Unfocused)

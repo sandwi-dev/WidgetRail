@@ -9,7 +9,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal sealed record HostDialogChoice(string Id, string Label);
+internal sealed record HostDialogChoice(string Id, string Label, long ContentRevision = 0);
 
 /// <summary>A small host-owned decision surface with the same release/neutral boundary as install dialogs.</summary>
 internal sealed partial class HostChoiceDialog : ContentDialog
@@ -21,6 +21,9 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     private bool opened, reportingQueued;
     private Func<HostDialogChoice, UIElement>? choiceContent;
     internal Func<string, bool>? KeepOpenOnChoice { get; set; }
+    internal Func<string, bool>? ChoiceIsActionable { get; set; }
+    internal bool FocusedChoiceIsActionable => XamlRoot is null || !ListFocused() || choices.SelectedItem is not ListViewItem { Tag: string id } || ChoiceIsActionable?.Invoke(id) != false;
+    internal event Action? SelectionContextChanged;
     internal void SetChoiceContent(Func<HostDialogChoice, UIElement> create)
     {
         choiceContent = create;
@@ -106,6 +109,9 @@ internal sealed partial class HostChoiceDialog : ContentDialog
             }
         }
         choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: string id }) Choose(this.entries.FindIndex(entry => entry.Id == id)); };
+        choices.SelectionChanged += (_, _) => SelectionContextChanged?.Invoke();
+        choices.GotFocus += (_, _) => SelectionContextChanged?.Invoke();
+        choices.LostFocus += (_, _) => SelectionContextChanged?.Invoke();
         Content = content;
         Opened += (_, _) =>
         {

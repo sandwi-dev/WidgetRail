@@ -469,6 +469,7 @@ field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.CapabilityPre
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.GetJsonOperation = "loopback.http.get-json"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.PostJsonOperation = "loopback.http.post-json"
 field const string WidgetRail.WidgetSdk.WidgetMarketplaceCapabilities.Service = "widgets.marketplace.v1"
+field const string WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Service = "widget.notifications.v1"
 field const string WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Service = "widget.permissions.v1"
 field const string WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.CapabilityId = "storage.private-secrets.v1"
 field const string WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.PreviewPermission = "system.apps.windows.preview.v1"
@@ -1411,6 +1412,9 @@ method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.Deconstruct(out WidgetRai
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetNotificationService.DismissAsync(string key, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
+method WidgetRail.WidgetSdk.WidgetNotificationService.ShowAsync(WidgetRail.WidgetProtocol.WidgetNotification notification, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
+method WidgetRail.WidgetSdk.WidgetNotificationService.UpdateAsync(WidgetRail.WidgetProtocol.WidgetNotification notification, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
 method WidgetRail.WidgetSdk.WidgetOperationHandle.Deconstruct(out WidgetRail.WidgetSdk.WidgetOperationAdmission Admission, out System.Threading.Tasks.Task<WidgetRail.WidgetSdk.WidgetOperationResult> Completion) -> void
 method WidgetRail.WidgetSdk.WidgetOperationHandle.Equals(object obj) -> bool
 method WidgetRail.WidgetSdk.WidgetOperationHandle.GetHashCode() -> int
@@ -2719,6 +2723,7 @@ property WidgetRail.WidgetSdk.WidgetNetworkStatus WidgetRail.WidgetSdk.WidgetNet
 property WidgetRail.WidgetSdk.WidgetNetworkTransportKind WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.Transport { get; set; }
 property WidgetRail.WidgetSdk.WidgetNetworkTransportKind WidgetRail.WidgetSdk.WidgetNetworkStatus.Transport { get; set; }
 property WidgetRail.WidgetSdk.WidgetNetworkWirelessAvailability WidgetRail.WidgetSdk.WidgetNetworkStatus.WirelessAvailability { get; set; }
+property WidgetRail.WidgetSdk.WidgetNotificationService WidgetRail.WidgetSdk.WidgetHostServices.Notifications { get; }
 property WidgetRail.WidgetSdk.WidgetOperationAdmission WidgetRail.WidgetSdk.WidgetOperationHandle.Admission { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Lifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs.Lifetime { get; }
@@ -3000,6 +3005,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Start { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetNotificationCommand,WidgetRail.WidgetProtocol.WidgetNotificationReceipt> WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Publish { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionStatuses> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Check { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionTicket,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Status { get; }
@@ -3542,6 +3548,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged : S
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkService
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkStatus : System.IEquatable<WidgetRail.WidgetSdk.WidgetNetworkStatus>
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkStatusChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetNetworkStatusChanged>
+type sealed class WidgetRail.WidgetSdk.WidgetNotificationService
 type sealed class WidgetRail.WidgetSdk.WidgetOperationBusyChangedEventArgs : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetOperationContext
 type sealed class WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs : System.EventArgs
@@ -3619,6 +3626,7 @@ type static class WidgetRail.WidgetSdk.WidgetLoopbackCapabilities
 type static class WidgetRail.WidgetSdk.WidgetMarketplaceCapabilities
 type static class WidgetRail.WidgetSdk.WidgetMediaCapabilities
 type static class WidgetRail.WidgetSdk.WidgetNetworkCapabilities
+type static class WidgetRail.WidgetSdk.WidgetNotificationCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPerformanceCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPermissionCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPowerCapabilities

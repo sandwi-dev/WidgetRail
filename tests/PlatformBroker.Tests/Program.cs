@@ -5,6 +5,7 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Widget notifications are intrinsic bounded and available in background", NotificationBrokerTests.Authority),
     ("Marketplace management is intrinsic narrow and cannot smuggle mutations through reads", MarketplaceBrokerTests.Authority),
     ("Permission requests bind declarations and persist only explicit host decisions", PermissionRequestTests.ConsentAsync),
     ("Permission prompts expire and cancel on interaction loss and worker retirement", PermissionRequestTests.LifetimeAsync),
@@ -146,7 +147,7 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(13, rootFields.Count(field =>
+    Assert.Equal(14, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
@@ -154,6 +155,7 @@ static Task CapabilityDomainAuthorityIsSingular()
         // Ordinary service domains do not own consent. PermissionCapabilityDomain
         // is the explicit consent-management exception: tested separately for
         // requester scoping and host-only completion, never operation authorization.
+        typeof(NotificationCapabilityDomain),
         typeof(DisplayProfilesCapabilityDomain),
         typeof(PowerCapabilityDomain),
         typeof(PerformanceCapabilityDomain),
@@ -455,7 +457,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(49, PlatformCapabilities.All.Count);
+    Assert.Equal(50, PlatformCapabilities.All.Count);
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceReadV1, out var performanceRead));
     Assert.Equal(BrokerCapabilityKind.Read, performanceRead.KindForOperation(PlatformCapabilities.PerformanceGet));
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceFpsControlV1, out var performanceControl));
@@ -507,9 +509,12 @@ static Task CapabilityVocabularyIsClosed()
         .Where(capability => capability.Id != PlatformCapabilities.AppLibraryLaunchV1 &&
             capability.Id != PlatformCapabilities.TaskWindowsSwitchV1 &&
             capability.Id != PlatformCapabilities.DisplaysControlV1 &&
+            capability.Id != PlatformCapabilities.CaptureLibraryManageV1 &&
             capability.Id != PlatformCapabilities.ProviderDocumentsV1)
         .All(capability => capability.InFlightContinuationOperations is null ||
             capability.InFlightContinuationOperations.Count == 0));
+    Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.CaptureLibraryManageV1)
+        .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder"]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.AppLibraryLaunch, PlatformCapabilities.AppLibraryLaunchObserved]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.TaskWindowsSwitchV1)

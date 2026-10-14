@@ -1335,6 +1335,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 configured.Id, configured.WorkerFingerprint, effect),
             diagnosticSink: diagnostic =>
                 _capabilityDiagnosticSink?.Invoke(configured.Id, diagnostic),
+            notifications: (command, token) => PublishWidgetNotificationAsync(configured, command, token),
             marketplace: IsTrustedMarketplace(configured) && _marketplace is not null ? HandleMarketplaceWidgetAsync : null);
     }
 

@@ -266,6 +266,7 @@ public sealed class WidgetHostServices
         PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
         PrivateState = new WidgetPrivateStateService(capabilityClient);
         Permissions = new WidgetPermissionService(capabilityClient);
+        Notifications = new WidgetNotificationService(capabilityClient);
         Marketplace = new WidgetMarketplaceService(capabilityClient);
     }
 
@@ -290,6 +291,7 @@ public sealed class WidgetHostServices
     /// </summary>
     public WidgetPrivateStateService PrivateState { get; }
     public WidgetPermissionService Permissions { get; }
+    public WidgetNotificationService Notifications { get; }
     public WidgetMarketplaceService Marketplace { get; }
 
     internal static WidgetHostServices Unavailable { get; } =

@@ -45,11 +45,12 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal int PlacementMoveCount { get; private set; }
     internal bool OwnsNativeUiProcess(uint process) => !retired && entries.Values.Any(entry => entry.Surface.OwnsNativeUiProcess(process));
 
-    internal BrowserOwner(Session session, Grid parking, string settingsRoot)
+    internal BrowserOwner(Session session, Grid parking, string settingsRoot, NotificationCenter? notifications = null)
     {
         this.session = session; this.parking = parking; profileRoot = Path.Combine(settingsRoot, "WebBrowser");
-        NotificationPreferences = new(Path.Combine(settingsRoot, "webapp-notifications.json"));
-        notificationPreferencesLoading = LoadNotificationPreferencesAsync();
+        ownsNotifications = notifications is null;
+        NotificationCenter = notifications ?? new(settingsRoot);
+        notificationPreferencesLoading = NotificationCenter.Ready;
         session.PresentationChanged += Changed; session.CatalogChanged += CatalogChanged;
     }
     internal void Bind(WidgetPresentationFrame frame, string elementId, BrowserSlot slot,
@@ -346,6 +347,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     }
     private Task? disposal;
     private readonly Task notificationPreferencesLoading;
+    private readonly bool ownsNotifications;
     internal void BeginShutdown()
     {
         if (retired) return; retired = true; lifetime.Cancel();
@@ -356,7 +358,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     {
         BeginShutdown();
         try { await notificationPreferencesLoading; } catch (OperationCanceledException) { }
-        Notifications.Dispose(); NotificationBannerRequested = null;
+        if (ownsNotifications) NotificationCenter.Dispose();
         foreach (var slot in slots.Keys) { slot.PlacementChanged = null; slot.SetSurface(null); } slots.Clear();
         if (reconciliation is not null) await reconciliation;
         if (popupReconciliation is { } popupTransfer)

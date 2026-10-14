@@ -18,13 +18,16 @@ internal sealed partial class OverlayShellPage
     private Grid? notificationBannerContent;
     private bool bannerFading;
     private long bannerFadeEnds;
+    private int bannerWidth, bannerHeight;
     private void QueueNotificationBanner(NotificationEntry entry, bool allowNew)
     {
-        // While navigating the overlay, use its quiet pending indicator. In game
-        // this is a nonactivating click-through peer, using the same HWND rules
-        // as pins rather than another native layering implementation.
-        if (retired || visible || hostWindow == 0 || browserOwner is null || !entry.Available ||
-            !notificationBannerState.Offer(entry, Environment.TickCount64, allowNew)) return;
+        // Source visibility policy and visible obstacles vary; both modes use
+        // the same nonactivating click-through peer and shared placement policy.
+        var previous = notificationBannerState.EntryId;
+        if (retired || visible && !entry.ShowWithOverlay || hostWindow == 0 || notificationCenter is null || !entry.Available ||
+            !notificationBannerState.Offer(entry, Environment.TickCount64, allowNew))
+        { notificationCenter?.Inbox.ReleaseBanner(entry.Id); return; }
+        if (previous is { } old && old != entry.Id) notificationCenter.Inbox.ReleaseBanner(old);
         try
         {
             var entering = notificationBanner?.IsVisible != true;
@@ -32,7 +35,7 @@ internal sealed partial class OverlayShellPage
             bannerFading = false;
             var palette = ShellChromePalette.Resolve(ShellPalette, Appearance);
             notificationBanner.InterfaceScale = Appearance.InterfaceScale;
-            notificationBanner.SurfaceBackground.Background = new SolidColorBrush(palette.Surface);
+            notificationBanner.SurfaceBackground.Background = new SolidColorBrush(palette.HighContrast ? palette.Surface : palette.Surface with { A = (byte)(255 * (entry.Content?.BackgroundOpacityPercent ?? 100) / 100) });
             notificationBanner.SurfaceBackground.BorderBrush = new SolidColorBrush(palette.HighContrast ? palette.Focus : ShellChromePalette.Blend(palette.Surface, palette.Text, .16));
             notificationBanner.SurfaceBackground.BorderThickness = new(1);
             notificationBanner.SurfaceBackground.CornerRadius = new(12);
@@ -45,19 +48,11 @@ internal sealed partial class OverlayShellPage
             var width = Math.Min((int)Math.Round(420 * scale), Math.Max(1, bounds.Width - 32));
             notificationBannerContent!.Measure(new(width / scale, double.PositiveInfinity));
             var height = Math.Min((int)Math.Ceiling(Math.Clamp(notificationBannerContent.DesiredSize.Height, 92, 240 * Appearance.TextScale) * scale), Math.Max(1, bounds.Height - 32));
-            var placements = new PinnedBounds[]
-            {
-                new(bounds.X + bounds.Width - width - 16, bounds.Y + 16, width, height),
-                new(bounds.X + 16, bounds.Y + 16, width, height),
-                new(bounds.X + bounds.Width - width - 16, bounds.Y + bounds.Height - height - 16, width, height),
-                new(bounds.X + 16, bounds.Y + bounds.Height - height - 16, width, height),
-            };
-            var placement = placements.FirstOrDefault(candidate => pinned is not { Window.IsVisible: true } pin || !Overlaps(candidate, pin.Window.Bounds));
-            if (placement.Width == 0) { HideNotificationBanner(); return; }
-            notificationBanner.Place(placement);
+            bannerWidth = width; bannerHeight = height;
+            if (!PlaceNotificationBanner()) { HideNotificationBanner(); return; }
             notificationBanner.Show();
             AnimateNotificationBanner(entering, false);
-            browserOwner.Notifications.MarkShown(entry.Id);
+            notificationCenter.Inbox.MarkShown(entry.Id);
             notificationBannerTimer!.Start();
         }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -67,8 +62,37 @@ internal sealed partial class OverlayShellPage
             Diagnostics.FrontendFailureLog.Current.Write("notification-banner", null, $"Presentation failed: {error.GetType().Name}");
         }
     }
-    private static bool Overlaps(PinnedBounds left, PinnedBounds right) => left.X < right.X + right.Width && left.X + left.Width > right.X &&
-        left.Y < right.Y + right.Height && left.Y + left.Height > right.Y;
+    private bool PlaceNotificationBanner()
+    {
+        if (notificationBanner is null) return false;
+        var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow((nint)hostWindow);
+        if (OverlayDisplayArea.Resolve(id, id)?.WorkArea is not { } area) return false;
+        var obstacles = new List<PinnedBounds>();
+        if (pinned is { Window.IsVisible: true } pin) obstacles.Add(pin.Window.Bounds);
+        if (visible || retainingExitPresentation)
+        {
+            if (SystemFilePickerOpen || nativeBrowserPickerActive || LocalInstallActive) return false;
+            var origin = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id).Position;
+            var dpi = XamlRoot?.RasterizationScale ?? 1;
+            void Avoid(FrameworkElement element)
+            {
+                if (!element.IsLoaded || element.Visibility != Visibility.Visible || element.ActualWidth <= 0 || element.ActualHeight <= 0) return;
+                var rect = element.TransformToVisual(null).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
+                obstacles.Add(new(origin.X + (int)Math.Floor(rect.X * dpi), origin.Y + (int)Math.Floor(rect.Y * dpi),
+                    (int)Math.Ceiling(rect.Width * dpi), (int)Math.Ceiling(rect.Height * dpi)));
+            }
+            Avoid(WidgetSurface); Avoid(RailRegion); Avoid(TrayHelp);
+            if (radialView is not null) Avoid(radialView);
+            foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
+                if (popup.Child is FrameworkElement child) Avoid(child);
+            if (IsMediaFullscreen) return false;
+        }
+        var placement = NotificationPlacement.Choose(new(area.X, area.Y, area.Width, area.Height), bannerWidth, bannerHeight,
+            obstacles, notificationBanner.IsVisible ? notificationBanner.Bounds : null);
+        if (placement is not { } bounds) return false;
+        if (notificationBanner.Bounds != bounds) notificationBanner.Place(bounds);
+        return true;
+    }
     private PinnedWidgetWindow CreateNotificationBanner()
     {
         var window = new PinnedWidgetWindow("notification", (nint)hostWindow);
@@ -82,7 +106,7 @@ internal sealed partial class OverlayShellPage
         notificationBannerTimer.Tick += (_, _) =>
         {
             var now = Environment.TickCount64;
-            if (retired || visible || notificationBannerState.EntryId is not { } id || browserOwner?.Notifications.Find(id) is not { Available: true })
+            if (retired || notificationBannerState.EntryId is not { } id || notificationCenter?.Inbox.Find(id) is not { Available: true } entry || visible && !entry.ShowWithOverlay || !PlaceNotificationBanner())
             { HideNotificationBanner(); return; }
             if (now >= notificationBannerState.ExpiresAt)
             {
@@ -95,6 +119,7 @@ internal sealed partial class OverlayShellPage
     }
     private void HideNotificationBanner()
     {
+        if (notificationBannerState.EntryId is { } id) notificationCenter?.Inbox.ReleaseBanner(id);
         notificationBannerState.Hide(); notificationBannerTimer?.Stop(); notificationBanner?.Hide();
         bannerFading = false; notificationCard?.Clear();
         if (notificationBanner is not null) { var visual = ElementCompositionPreview.GetElementVisual(notificationBanner.SurfaceBackground); visual.StopAnimation("Opacity"); visual.Opacity = 1; }

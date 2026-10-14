@@ -31,7 +31,8 @@ internal sealed partial class OverlayShellPage
     private void InitializeMediaOwner()
     {
         if (owner is null || mediaOwner is not null || retired) return;
-        browserOwner = new(owner.Session, MediaParking, options.SettingsRoot)
+        notificationCenter = new(options.SettingsRoot);
+        browserOwner = new(owner.Session, MediaParking, options.SettingsRoot, notificationCenter)
         { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync, ChooseFiles = ShowBrowserFilePickerAsync,
             PrepareScreenPicker = PrepareBrowserScreenPickerAsync,
             PopupPresentationInvalidated = InvalidatePopupPin,

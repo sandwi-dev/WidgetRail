@@ -7,8 +7,9 @@
   <ItemGroup>
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserSpatialGeometry.cs" Link="BrowserSpatialGeometry.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserPopupPreferences.cs" Link="BrowserPopupPreferences.cs" />
-    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\NotificationInbox.cs" Link="NotificationInbox.cs" />
-    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\WebNotificationPreferences.cs" Link="WebNotificationPreferences.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Notifications\NotificationPlacement.cs" Link="NotificationPlacement.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Notifications\NotificationInbox.cs" Link="NotificationInbox.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Notifications\NotificationPreferences.cs" Link="NotificationPreferences.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ControllerPointerMotion.cs" Link="ControllerPointerMotion.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\NativeDialogLifetime.cs" Link="NativeDialogLifetime.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserProfileIdentity.cs" Link="BrowserProfileIdentity.cs" />

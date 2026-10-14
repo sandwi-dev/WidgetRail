@@ -1302,6 +1302,26 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         return null;
     }
 
+    internal BridgeClientPublication<(BridgeWidgetDescriptor Descriptor, BridgeWorkerRun WorkerRun)>? TryAdmitWidgetNotification(
+        string widgetId,
+        string expectedWorkerFingerprint)
+    {
+        lock (_gate)
+        {
+            if (_clients.TryGetValue(widgetId, out var registration) &&
+                !registration.IsRetiring &&
+                string.Equals(
+                    registration.Configured.WorkerFingerprint,
+                    expectedWorkerFingerprint,
+                    StringComparison.Ordinal) &&
+                registration.Client.IsRunning &&
+                registration.HostLifecycle is WidgetLifecycleState.Background or WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive)
+                return AdmitPublicationLocked(
+                    registration, (registration.Configured.PublicDescriptor(), new BridgeWorkerRun(registration.Generation, registration.Client.Starts)));
+        }
+        return null;
+    }
+
     internal async Task<BridgeClientPublication<BridgeResolvedArtwork>> ResolveArtworkAsync(
         string widgetId,
         string artworkHandle,
