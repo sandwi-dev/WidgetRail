@@ -40,3 +40,9 @@ One placement policy avoids visible pins and, while open, widget, Guide, rail an
 - The unchanged retry `native-05.json` passed all 149 checks, including renderer recovery and shutdown. No layering regressions were observed. The initial timeout remains recorded above rather than discarded.
 - Correction commit `3f23b090`; complete `candidate-02/0.1.0-preview.31` payloads verified (11 Production / 15 Developer widgets). Developer candidate relaunched on SDK Gallery, PID 29976, using the normal profile and existing YouTube Music 0.3.36 package. Platform settings hash remains `7D939734F705FE10F1685A6EC800809309D3D8A5667A73F8A7D8F556F3CC516B`. No merge/push/installers/release performed.
 - Physical check: with song banners enabled, skip a track while the overlay is open; verify the banner is above the backdrop, then open/hide the overlay during a banner and exercise pin interaction/move/resize/opacity.
+
+## Acceptance
+
+- User accepted the current notification changes, including the banner layering correction, and authorized merging to main on 2026-10-14.
+- Implementation and validation are complete. Integration uses a fast-forward from main, preserving the tested source without conflict resolution. Earlier unmerged/physical-test status above records candidate history and is superseded by this acceptance.
+- Push, release, installers and worktree removal are outside this integration request.
