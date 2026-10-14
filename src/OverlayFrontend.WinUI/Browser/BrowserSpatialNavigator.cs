@@ -122,7 +122,11 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
 
     private async Task<SpatialPoint?> ResolveBest(IReadOnlyList<SpatialCandidate> choices, SpatialRect origin, SpatialDirection direction, SpatialPoint? pointer = null)
     {
-        var remaining = choices.ToList();
+        // A budget-limited snapshot cannot justify leaving the current row or
+        // column: an unvisited nearby control may be the intended neighbor.
+        var remaining = choices.Where(item => !truncated || (direction is SpatialDirection.Left or SpatialDirection.Right
+            ? item.Rect.Bottom >= origin.Y && item.Rect.Y <= origin.Bottom
+            : item.Rect.Right >= origin.X && item.Rect.X <= origin.Right)).ToList();
         // Removed controls or parent-frame overlays must not trap every repeat
         // on the same stale candidate. Try another bounded set of alternatives.
         for (var attempt = 0; attempt < 16; attempt++)
@@ -142,7 +146,7 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
 
     private async Task<SpatialRect> Origin(SpatialPoint point)
     {
-        foreach (var source in candidates.Where(candidate => candidate.Source).Reverse())
+        foreach (var source in candidates.Where(candidate => candidate.Origin).Reverse())
             if (await AncestorsCurrent(frames[source.Frame], point)) return source.Rect;
         return new(point.X, point.Y, .01, .01);
     }
@@ -190,7 +194,7 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
             var global = new SpatialRect(x + rect.X * sx, y + rect.Y * sy, rect.Width * sx, rect.Height * sy).Intersect(frame.Clip);
             var at = element.GetProperty("point");
             var hit = Global(frame, new(at.GetProperty("x").GetDouble(), at.GetProperty("y").GetDouble()));
-            if (global.Valid && frame.Clip.Contains(hit)) candidates.Add(new(index, element.GetProperty("index").GetInt32(), global, hit, element.GetProperty("source").GetBoolean()));
+            if (global.Valid && frame.Clip.Contains(hit)) candidates.Add(new(index, element.GetProperty("index").GetInt32(), global, hit, element.GetProperty("source").GetBoolean(), element.GetProperty("origin").GetBoolean()));
         }
         foreach (var child in description.GetProperty("frames").EnumerateArray())
         {

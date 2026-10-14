@@ -106,6 +106,11 @@ required. Native chooser windows retain their existing pointer presentation.
 The host uses bounded, on-demand geometry scans in isolated worlds, and traverses
 only frames owned by that WebView. It returns positions rather than page text or
 field values, and releases temporary DOM references/sessions after each request.
+The current control and nearby DOM branches are inspected before the broader
+scan, so an earlier large subtree cannot starve a later toolbar. If the broader
+scan is truncated, only locally discovered targets in the current row/column are
+eligible; incomplete coverage does not authorize a diagonal jump into another
+region. The source control is identified explicitly, independent of scan order.
 No scans run during neutral controller polling. Cross-origin and separate-process
 frames are supported; rotated/skewed/mirrored/perspective frame transforms and
 depths beyond eight are skipped. Large documents, closed-shadow internals without

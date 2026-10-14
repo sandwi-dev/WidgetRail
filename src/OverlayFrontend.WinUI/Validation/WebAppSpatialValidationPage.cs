@@ -52,6 +52,14 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                 await PointAt("decoration");
                 await Jump(FocusNavigationDirection.Up, "leftTarget");
                 Check(true, "Decorative pointer-cursor descendants do not change the source geometry of a semantic button");
+                await Body("<button id=far class=fixed style='left:40px;top:40px'>Far above</button><div style='position:absolute;top:700px;height:10px;overflow:hidden'>" + string.Concat(Enumerable.Repeat("<div>Offscreen structure</div>", 13000)) + "</div><div style='position:absolute;left:200px;top:200px;display:flex;gap:20px'><button id=near>Neighbor</button><button id=source>Source</button></div>");
+                await PointAt("source"); await Jump(FocusNavigationDirection.Left, "near");
+                Check(true, "A late-DOM toolbar keeps its nearby left neighbor despite an earlier oversized page subtree");
+                await browser.EvaluateFixtureAsync("document.getElementById('near').hidden=true");
+                await PointAt("source");
+                var incompleteOrigin = browser.SpatialPointerForValidation;
+                browser.MoveFocus(FocusNavigationDirection.Left); await Until(() => !browser.SpatialBusyForValidation);
+                Check(browser.SpatialPointerForValidation == incompleteOrigin, "An incomplete scan does not turn Left into an unrelated diagonal jump");
                 await Body("<button id=a class=fixed style='left:40px;top:40px'>A</button><button id=b class=fixed style='left:200px;top:40px'>B</button><button id=d class=fixed style='left:200px;top:150px'>D</button>");
                 await PointAt("a");
                 await Jump(FocusNavigationDirection.Right, "b");

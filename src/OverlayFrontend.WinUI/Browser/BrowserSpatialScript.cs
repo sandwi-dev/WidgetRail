@@ -80,12 +80,17 @@ internal static class BrowserSpatialScript
       // scroll, preserve the actual source instead of hit-testing its old spot
       // against unrelated fixed headers or recycled rows.
       for(let e=anchor?anchor.source:hit(p.x,p.y),n=0;e&&n<128;e=parent(e),n++)sourcePath.add(e);
-      let visited=0,truncated=false;
-      function walk(root){
+      const sourceNode=[...sourcePath].find(eligible),seen=new WeakSet();
+      let visited=0,truncated=false,localVisited=0,localExpired=false;
+      function walk(root,local=false,limit=12000){
         const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT);
-        let e=root instanceof Element?root:walker.nextNode();
+        let e=root instanceof Element?root:walker.nextNode(),count=0;
         while(e){
-          if(++visited>12000||items.length>=512||visited%128===0&&performance.now()-start>20){truncated=true;return;}
+          if(++count>limit)return;
+          if(local){if(localExpired||++localVisited>512||localVisited%32===0&&performance.now()-start>6){localExpired=true;return;}}
+          else if(++visited>12000||items.length>=512||visited%128===0&&performance.now()-start>20){truncated=true;return;}
+          if(seen.has(e)){if(e.shadowRoot)walk(e.shadowRoot,local,limit-count);e=walker.nextNode();continue;}
+          seen.add(e);
           const s=style(e), c=clip(e);
           if(c){
             if(e.localName==='iframe'&&frames.length<16&&inScope(e)){
@@ -102,7 +107,7 @@ internal static class BrowserSpatialScript
                 const sx=r.width/e.offsetWidth,sy=r.height/e.offsetHeight;
                 // Confirm the frame itself isn't hidden by another surface.
                 const sample=point(e,visible);
-                if(sample)frames.push({element:e,x:r.left+e.clientLeft*sx,y:r.top+e.clientTop*sy,sx,sy,w:e.clientWidth,h:e.clientHeight,clip:visible});
+                if(sample)frames.push({element:e,x:r.left+e.clientLeft*sx,y:r.top+e.clientTop*sy,sx,sy,w:e.clientWidth,h:e.clientHeight,clip:visible,local});
               }
             }else if(eligible(e)&&inScope(e)){
               for(const box of e.getClientRects()){
@@ -110,25 +115,39 @@ internal static class BrowserSpatialScript
                 for(const r of [intersect(rect(box),c),intersect(rect(box),view)]){
                   if(r.w<2||r.h<2)continue;
                   const at=point(e,r);
-                  if(at){items.push({element:e,rect:r,point:at,source:sourcePath.has(e)});found=true;break;}
+                  if(at){items.push({element:e,rect:r,point:at,source:sourcePath.has(e),origin:e===sourceNode,local});found=true;break;}
                 }
                 if(found)break;
               }
             }
-            if(e.shadowRoot)walk(e.shadowRoot);
+            if(e.shadowRoot)walk(e.shadowRoot,local,limit-count);
           }
           e=walker.nextNode();
         }
       }
-      if(!anchor||anchor.container.isConnected)walk(anchor?.container??document.documentElement);
+      if(!anchor||anchor.container.isConnected){
+        // Discover the current control and adjacent branches before a large
+        // earlier subtree can consume the global budget. This is bounded work
+        // over real DOM neighbors, independent of page-specific selectors.
+        let branch=sourceNode??hit(p.x,p.y);
+        if(branch&&inScope(branch))walk(branch,true,64);
+        for(let depth=0;branch&&depth<4&&!localExpired;depth++,branch=parent(branch)){
+          if(!inScope(branch))break;
+          for(let previous=branch.previousElementSibling,next=branch.nextElementSibling,n=0;n<8&&!localExpired;n++){
+            if(previous){walk(previous,true,64);previous=previous.previousElementSibling;}
+            if(next){walk(next,true,64);next=next.nextElementSibling;}
+          }
+        }
+        walk(anchor?.container??document.documentElement);
+      }
       return {items,frames,view,visited,truncated,elapsed:performance.now()-start,point,clip,hit,parent,style,intersect,rect,p,eligible,inScope,inside,
         refresh(){styles=new WeakMap();clips=new WeakMap();actions=new WeakMap();}};
     })
     """;
     internal const string Describe = """
     function(){return {view:this.view,visited:this.visited,truncated:this.truncated,elapsed:this.elapsed,
-      items:this.items.map((i,index)=>({index,rect:i.rect,point:i.point,source:i.source})),
-      frames:this.frames.map((f,index)=>({index,x:f.x,y:f.y,sx:f.sx,sy:f.sy,w:f.w,h:f.h,clip:f.clip}))};}
+      items:this.items.map((i,index)=>({index,rect:i.rect,point:i.point,source:i.source,origin:i.origin,local:i.local})).filter(i=>!this.truncated||i.local),
+      frames:this.frames.map((f,index)=>({index,x:f.x,y:f.y,sx:f.sx,sy:f.sy,w:f.w,h:f.h,clip:f.clip,local:f.local})).filter(f=>!this.truncated||f.local)};}
     """;
     internal const string FrameElement = "function(raw){return this.frames[Number(raw)]?.element??null;}";
     internal const string Resolve = """
@@ -161,7 +180,7 @@ internal static class BrowserSpatialScript
     internal const string Scroll = """
     async function(raw){
       const d=JSON.parse(raw), horizontal=d.x!==0;
-      const source=this.items.findLast(i=>i.source)?.element;
+      const source=this.items.find(i=>i.origin)?.element;
       for(let e=this.hit(this.p.x,this.p.y),n=0;e&&n<128;e=this.parent(e),n++){
         const root=e===document.scrollingElement,s=getComputedStyle(e),overflow=horizontal?s.overflowX:s.overflowY;
         if(!root&&!/auto|scroll|overlay/.test(overflow)||root&&/hidden|clip/.test(overflow))continue;

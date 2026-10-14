@@ -12,7 +12,7 @@ internal readonly record struct SpatialRect(double X, double Y, double Width, do
     internal SpatialRect Intersect(SpatialRect other) => new(Math.Max(X, other.X), Math.Max(Y, other.Y),
         Math.Max(0, Math.Min(Right, other.Right) - Math.Max(X, other.X)), Math.Max(0, Math.Min(Bottom, other.Bottom) - Math.Max(Y, other.Y)));
 }
-internal sealed record SpatialCandidate(int Frame, int Index, SpatialRect Rect, SpatialPoint Point, bool Source);
+internal sealed record SpatialCandidate(int Frame, int Index, SpatialRect Rect, SpatialPoint Point, bool Source, bool Origin = false);
 
 internal static class BrowserSpatialGeometry
 {
