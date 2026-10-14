@@ -19,7 +19,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 /// </summary>
 internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
 {
-    private static Task<CoreWebView2Environment>? sharedEnvironment;
+    private readonly Web.HostedWebViewEnvironment runtime;
+    private Web.HostedWebViewMemoryPolicy? memoryPolicy;
+    private bool passivePin;
     private readonly MediaStartupTrace startupTrace;
     // Bridge observations have host lifetime, independent of the page's event sequence.
     private static long nextPlaybackObservation;
@@ -66,8 +68,9 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     public event Action? StateChanged;
     internal event Action<Exception>? ObservationFailed;
 
-    public EmbeddedMediaSurface(PresentationSession session, WidgetPresentationEmbeddedMediaDocument document, MediaStartupTrace? startupTrace = null)
+    public EmbeddedMediaSurface(PresentationSession session, WidgetPresentationEmbeddedMediaDocument document, Web.HostedWebViewEnvironment runtime, MediaStartupTrace? startupTrace = null)
     {
+        this.runtime = runtime;
         this.startupTrace = startupTrace ?? new(document.Authority.WidgetId);
         this.session = session;
         this.document = document;
@@ -88,6 +91,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         if (retired) return;
         visible = isVisible;
         inputEnabled = isVisible && acceptsInput;
+        UpdateMemoryPolicy();
         browser.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
         // SDK viewports expose pixels; authored native controls retain pointer/focus
         // ownership. Host-only trusted activation uses the fixed browser input path.
@@ -95,6 +99,14 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         if (!AcceptsPlaybackActivation) CancelActivation();
         Refresh();
     }
+
+    internal void SetPassivePin(bool passive)
+    {
+        passivePin = passive;
+        UpdateMemoryPolicy();
+    }
+
+    private void UpdateMemoryPolicy() => memoryPolicy?.Update(visible && (!passivePin || inputEnabled));
 
     public void Refresh()
     {
@@ -238,9 +250,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         startupTrace.Mark("initialization-start");
         try
         {
-            sharedEnvironment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "EmbeddedMedia"), null).AsTask();
-            environment = await sharedEnvironment.WaitAsync(lifetime.Token);
+            environment = await runtime.GetAsync().WaitAsync(lifetime.Token);
             startupTrace.Mark("environment-ready");
             if (!Current()) return;
             var options = environment.CreateCoreWebView2ControllerOptions();
@@ -252,6 +262,9 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
             startupTrace.Mark("controller-ready");
             if (!Current()) return;
             core = browser.CoreWebView2;
+            memoryPolicy = new(core, browser.DispatcherQueue, error =>
+                Diagnostic?.Invoke("media-memory-target-unavailable:" + error.GetType().Name));
+            UpdateMemoryPolicy();
             var settings = core.Settings;
             settings.AreDevToolsEnabled = false;
             settings.AreDefaultContextMenusEnabled = false;
@@ -284,7 +297,6 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         }
         catch (Exception error) when (!IsFatal(error))
         {
-            if (sharedEnvironment is { IsFaulted: true } or { IsCanceled: true }) sharedEnvironment = null;
             if (!retired) Fault("media-initialization-failed");
         }
     }
@@ -569,6 +581,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     {
         if (retired) return;
         retired = true;
+        memoryPolicy?.Dispose();
         InputAuthority = null;
         inputEnabled = visible = false;
         lifetime.Cancel();

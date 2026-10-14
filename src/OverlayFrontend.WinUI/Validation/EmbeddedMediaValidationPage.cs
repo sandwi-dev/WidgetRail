@@ -45,6 +45,8 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
     private readonly Dictionary<string, long> publishedSequences = [];
     private bool retired;
     private readonly bool crossRootProbe;
+    private readonly Web.HostedWebViewEnvironment runtime = new(Path.Combine(
+        Path.GetTempPath(), "WidgetRail-validation", "shared-webview-" + Guid.NewGuid().ToString("N")));
     private static BridgeWidgetDescriptor Descriptor => new() { Id = "media-validation", Name = "Embedded media", InstanceId = "media-validation.instance",
         RuntimeGeneration = new('a', 32), PresentationGeneration = new('b', 32), PackageContentDigest = new('c', 64), Icon = WidgetGlyph.Music };
 
@@ -86,7 +88,7 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
             var document = await session.ResolveEmbeddedMediaAsync(frame.Authority);
             CheckPolicy(document);
             CheckTransport();
-            surface = new(session, document);
+            surface = new(session, document, runtime);
             surface.Diagnostic += code => diagnostics.Add(code);
             viewport.Children.Add(surface.Element);
             surface.UpdatePresentation(true, true);
@@ -103,6 +105,11 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
             Check(events.Last().State == EmbeddedMediaPlaybackState.Ready, "typed Load round-trips through strict adapter transport and session admission");
             await Command(EmbeddedMediaPlaybackCommandKind.Play, 2);
             Check(events.Last().State == EmbeddedMediaPlaybackState.Playing && events.Last().ErrorCode is null, "host input dispatch creates a trusted activation and starts native audio");
+            if (Environment.GetCommandLineArgs().Contains("--validate-shared-webview"))
+            {
+                await CheckSharedRuntimeAsync(document);
+                return;
+            }
             if (crossRootProbe)
             {
                 await RunCrossRootProbeAsync();

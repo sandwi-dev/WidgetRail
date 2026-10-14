@@ -42,7 +42,7 @@ internal sealed partial class OverlayShellPage
             ExpansionInvalidated = () => { if (expandedBrowser is not null) fullscreenLayer.Close(restoreFocus: false); } };
         browserOwner.ActivityChanged += RefreshWebappStatus;
         InitializeNotifications();
-        mediaOwner = new(owner.Session, MediaParking)
+        mediaOwner = new(owner.Session, MediaParking, browserOwner.Runtime)
         {
             CreateStage = fullscreenLayer.CreateMediaStage,
             Diagnostic = (widget, code) =>

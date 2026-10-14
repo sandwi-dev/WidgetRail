@@ -39,7 +39,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         viewport.Children.Clear();
         parkingLayer = new();
         ((StackPanel)Content).Children.Add(parkingLayer);
-        mediaOwner = new(session!, parkingLayer)
+        mediaOwner = new(session!, parkingLayer, runtime)
         {
             Diagnostic = (_, code) =>
             {
@@ -196,7 +196,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         var liveDocument = await session!.ResolveEmbeddedMediaAsync(session.GetState(Descriptor.Id)!.LastGood!.Authority);
         for (var pass = 0; pass < 8; ++pass)
         {
-            var retiringBrowser = new EmbeddedMediaSurface(session, liveDocument);
+            var retiringBrowser = new EmbeddedMediaSurface(session, liveDocument, runtime);
             viewport.Children.Add(retiringBrowser.Element);
             retiringBrowser.UpdatePresentation(true, false);
             // Yield a native layout/Loaded opportunity, then retire while its

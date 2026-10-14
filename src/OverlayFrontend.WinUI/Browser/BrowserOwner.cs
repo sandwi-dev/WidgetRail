@@ -29,7 +29,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private readonly Dictionary<(string Widget, string Document), Entry> entries = [];
     private readonly HashSet<(string Widget, string Document)> retiringEntries = [];
     private readonly HashSet<Task> retirements = [];
-    private Task<CoreWebView2Environment>? environment;
+    internal Web.HostedWebViewEnvironment Runtime { get; }
     private Task? reconciliation;
     private bool dirty, retired;
     private readonly CancellationTokenSource lifetime = new();
@@ -48,6 +48,11 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal BrowserOwner(Session session, Grid parking, string settingsRoot, NotificationCenter? notifications = null)
     {
         this.session = session; this.parking = parking; profileRoot = Path.Combine(settingsRoot, "WebBrowser");
+        CoreWebView2EnvironmentOptions? environmentOptions = null;
+#if ENABLE_WIDGET_VALIDATION
+        if (FixtureBrowserArguments is { } arguments) environmentOptions = new() { AdditionalBrowserArguments = arguments };
+#endif
+        Runtime = new(profileRoot, environmentOptions);
         ownsNotifications = notifications is null;
         NotificationCenter = notifications ?? new(settingsRoot);
         notificationPreferencesLoading = NotificationCenter.Ready;
@@ -111,16 +116,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     }
     private void Changed(object? sender, WidgetPresentationChangedEventArgs args) => parking.DispatcherQueue.TryEnqueue(Refresh);
     private void CatalogChanged(object? sender, EventArgs args) => parking.DispatcherQueue.TryEnqueue(Refresh);
-    private async Task<CoreWebView2Environment> EnvironmentAsync()
-    {
-        CoreWebView2EnvironmentOptions? options = null;
-#if ENABLE_WIDGET_VALIDATION
-        if (FixtureBrowserArguments is { } arguments) options = new() { AdditionalBrowserArguments = arguments };
-#endif
-        environment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, profileRoot, options).AsTask();
-        try { return await environment; }
-        catch { environment = null; throw; }
-    }
+    private Task<CoreWebView2Environment> EnvironmentAsync() => Runtime.GetAsync();
 #if ENABLE_WIDGET_VALIDATION
     internal static string? FixtureBrowserArguments { get; set; }
 #endif

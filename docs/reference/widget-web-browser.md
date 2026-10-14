@@ -299,6 +299,12 @@ They are account labels, never paths. Profiles are namespaced by widget identity
 and storage type. No widget receives cookies, tokens, native browser objects or
 website permission authority. Provider documents keep their restricted defaults.
 
+Browsers, webapps, provider documents and sealed embedded-media players share
+one host-owned WebView2 environment under the existing `WebBrowser` data folder.
+Sharing browser/GPU infrastructure does not share profiles: embedded media keeps
+separate private per-widget profiles. A browser-process crash can affect all
+surfaces in that environment; each retains its existing explicit recovery path.
+
 KeepAlive requests bounded host/worker retention even when the widget is hidden
 or parked. It does not grant background input or unrestricted widget execution.
 Stop session unloads the page, ending connections and calls while keeping saved
@@ -308,12 +314,12 @@ pin/recovery behavior remain acceptance checks.
 
 Hidden browser pages and visible, non-interactive browser pins request WebView2's
 `MemoryUsageTargetLevel.Low` after 15 seconds in that state. This shared policy
-also covers hosted pop-outs and provider documents. Entering a pin restores Normal
+also covers hosted pop-outs, provider documents and sealed embedded media. Entering a pin restores Normal
 synchronously when input is enabled; returning a page to the main/expanded
 presentation also restores Normal. Closing the overlay leaves a passive pin
 eligible for Low. Quick switches cancel the delayed reduction, and repeated
 placement updates do not restart its deadline. The delay is defined in
-`BrowserSurface.HiddenMemoryDelay`.
+`HostedWebViewMemoryPolicy.IdleDelay`.
 
 Low is a best-effort working-set reduction, not suspension or a memory limit.
 Scripts, connections, notifications, calls and screen sharing remain allowed;

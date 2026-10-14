@@ -12,7 +12,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         ownerChecks = true;
         parkingLayer = new();
         ((StackPanel)Content).Children.Add(parkingLayer);
-        mediaOwner = new(session!, parkingLayer) { Diagnostic = (_, code) => diagnostics.Add(code) };
+        mediaOwner = new(session!, parkingLayer, runtime) { Diagnostic = (_, code) => diagnostics.Add(code) };
         mediaOwner.SetHostState(Descriptor.Id, false, false);
         ownerPresenter = new() { Session = session, MediaOwner = mediaOwner };
         viewport.Children.Add(ownerPresenter);

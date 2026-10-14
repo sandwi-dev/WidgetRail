@@ -20,6 +20,19 @@ Hide/switch parks ordinary media, while a pin remains visible. Scope/capability 
 document retirement revokes its presentation receipt. Explicit restart creates a
 fresh document; ordinary playback publications preserve it.
 
+The shell supplies the same `HostedWebViewEnvironment` to both browser and media
+owners. Browser data stays under its existing settings-root `WebBrowser` folder;
+media controllers retain separate `media-` per-widget InPrivate profiles and all
+sealed-resource, navigation and permission restrictions. Profiles isolate data,
+but a shared browser-process failure can affect both owners. GPU/utility recovery
+remains automatic; terminal page failures use the existing explicit restart flow.
+
+`HostedWebViewMemoryPolicy` requests Low after 15 seconds hidden or passively
+pinned, without suspension or playback interruption. Main/fullscreen presentation
+and pin interaction restore Normal synchronously. Temporary main-view modal
+coverage does not count as a passive pin. Timers stop on retirement and short
+placement transfers; unsupported memory hints cannot fault media playback.
+
 `EmbeddedMediaSurface.MoveTo` owns native handoff. Cross-XamlRoot transfer awaits
 WebView2's real Unloaded event before attachment, permitting the native control to
 disconnect its old composition target. Pending placement is coalesced to the latest

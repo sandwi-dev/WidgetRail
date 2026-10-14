@@ -65,8 +65,11 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     private Grid MainHost(string id, Viewport ordinary) => entries.GetValueOrDefault(id)?.Stage is { } stage && stage.CanPresent(ordinary.Element.SurfaceHost)
         ? stage.SurfaceHost : ordinary.Element.SurfaceHost;
 
-    internal EmbeddedMediaOwner(PresentationSession session, Grid parking)
+    private readonly Web.HostedWebViewEnvironment runtime;
+
+    internal EmbeddedMediaOwner(PresentationSession session, Grid parking, Web.HostedWebViewEnvironment runtime)
     {
+        this.runtime = runtime;
         this.session = session;
         this.parking = parking;
         dispatcher = parking.DispatcherQueue;
@@ -228,7 +231,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             entry.Document = document;
             entry.Stage = CreateStage?.Invoke(session.GetEmbeddedMediaState(document)!.Declaration.AspectRatio);
             SetFailure(entry.WidgetId, null);
-            entry.Surface = new(session, document, startupTrace);
+            entry.Surface = new(session, document, runtime, startupTrace);
             entry.Surface.InputAuthority = () => CanAcceptInput(entry.WidgetId);
             entry.Surface.PlaybackActivationAuthority = () => CanActivateDashboardPlayback(entry.WidgetId);
             ++BrowserCreationCount;
@@ -269,6 +272,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             else stage.SetSlot(isCompact || !local ? null : target?.Element.SurfaceHost);
             if (!isCompact && local) destination = stage.SurfaceHost;
         }
+        surface.SetPassivePin(isCompact && !compactInput);
         _ = surface.MoveTo(destination, isCompact || isFullscreen || target is not null,
             CanAcceptInput(entry.WidgetId));
         if (isCompact) CompactChanged?.Invoke();
