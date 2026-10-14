@@ -2,7 +2,11 @@
 
 ## Scope and authority
 
-User requested autonomous implementation after the agreed design: D-pad jumps geometrically between webpage controls, left stick remains free pointer, right stick scrolls, A uses existing native click/editing. Work on `codex/browser-geometric-navigation` in the existing platform-feature-roadmap worktree, based on release `326aaf98`. Preserve main's unrelated documentation edit, the installed profile/sign-ins/Guide shortcut, and unrelated work. May close/restart for synthetic validation and launch a complete candidate. Do not access credentials, send messages/join calls, capture personal windows or run blocked Discord probes. No merge, push, release or installers requested for this feature.
+User requested autonomous implementation after the agreed design: D-pad jumps geometrically between webpage controls, left stick remains free pointer, right stick scrolls, A uses existing native click/editing. Work on `codex/browser-geometric-navigation` in the existing platform-feature-roadmap worktree, based on release `326aaf98`. Preserve main's unrelated documentation edit, the installed profile/sign-ins/Guide shortcut, and unrelated work. May close/restart for synthetic validation and launch a complete candidate. Do not access credentials, send messages/join calls, capture personal windows or run blocked Discord probes. On 2026-10-14 the user accepted the current changes and authorized merging to local main. Push, release and installers remain outside this request.
+
+## Accepted delivery
+
+The user physically accepted candidate 08 (`a6178e46`) and authorized local main integration. The branch's implementation matches that validated candidate; subsequent changes are documentation only. Final behavior includes neighborhood-first geometric discovery, all discovered targets eligible for ordinary directional ranking, stable source-control identity, row-aware scrolling, deferred hover during held D-pad and D-pad glide. The rejected analog trail and restrictive truncation filters are removed. Final live validation passed 116 checks; earlier shared-shell and managed regression runs passed 137 and 222 checks respectively, as detailed below. Main is an ancestor, so integration uses a fast-forward and preserves the unrelated `docs/implementation-agent-goal.md` edit. The chronology below records experiments and superseded decisions, not additional pending work.
 
 ## Design
 
