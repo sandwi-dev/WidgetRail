@@ -1,13 +1,14 @@
 # Display Profiles
 
 Save a Windows display setup once, then restore it from the overlay.
-The widget is included in both editions.
+Install **Display Profiles** from Marketplace. It is a community widget and is not included in either installer.
 
 ## Save and use a profile
 
 Arrange your displays in Windows Settings first. Open **Display Profiles** and
 choose **Save current setup**, or press **Y**. Select the name field to open
 WidgetRail's keyboard. Committing the name saves the profile.
+If access is missing, the selected action opens WidgetRail's permission dialog and continues only after approval. Read access can be requested with Retry. Save, rename, replace, delete and apply request display control; timed Keep/Revert controls never insert another permission prompt.
 
 Each profile shows its monitors, resolution, refresh rate and whether it matches
 your current setup. Press **A** on a profile to apply it. Choose **Keep changes**

@@ -23,7 +23,7 @@ public enum RecentAppsViewState
 /// sanitized names and opaque host IDs. This stopgap view is intentionally
 /// read-only until the catalog-backed Games & Apps launcher replaces it.
 /// </summary>
-public sealed class RecentAppsWidget : Widget
+public sealed partial class RecentAppsWidget : Widget
 {
     private static readonly WidgetSurfaceHints CompactSurface = new()
     {
@@ -167,7 +167,11 @@ public sealed class RecentAppsWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    public override ValueTask OnActionAsync(
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private ValueTask OnAuthorizedActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
@@ -198,7 +202,7 @@ public sealed class RecentAppsWidget : Widget
             RecentAppsViewState.Empty =>
                 ("No recent apps yet", "Switch to an application, then reopen the overlay."),
             RecentAppsViewState.PermissionDenied =>
-                ("Recent activity access is off", "Allow Recent Apps in Settings > Permissions."),
+                ("Recent activity access is off", "Select Allow access to approve recent activity access here."),
             RecentAppsViewState.LifecycleDenied =>
                 ("Recent activity paused", "Return to this widget to refresh recent applications."),
             RecentAppsViewState.ChannelClosed =>
@@ -207,7 +211,7 @@ public sealed class RecentAppsWidget : Widget
                 ("Activity service unavailable", "The Windows foreground observer is unavailable."),
             _ => ("Recent activity unavailable", "Try again. No process details were exposed."),
         };
-        var retry = UI.Button("Try again", "retry", "recent.retry")
+        var retry = UI.Button(state == RecentAppsViewState.PermissionDenied ? "Allow access" : "Try again", "retry", "recent.retry")
             .Icon(WidgetGlyph.Refresh, "Reload recent applications")
             .Disabled(!IsActive)
             .Classes("recent-retry");

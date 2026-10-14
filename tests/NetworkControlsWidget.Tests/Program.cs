@@ -1767,6 +1767,8 @@ file sealed class FakeNetworkHost
         Volatile.Read(ref _canceledBluetoothUnpairCalls);
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetNetworkCapabilities.GetStatus, GetStatusAsync)
         .WithHandler(WidgetNetworkCapabilities.GetConnectionDetails, GetConnectionDetailsAsync)
         .WithHandler(WidgetNetworkCapabilities.GetSavedProfiles, ReadSavedAsync)

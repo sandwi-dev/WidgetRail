@@ -384,7 +384,7 @@ internal static class GamesAppsPresentation
             GamesAppsViewState.Empty =>
                 ("No launchable apps found", "No executable Start Menu registrations were available."),
             GamesAppsViewState.PermissionDenied =>
-                ("App library access is off", "Allow Games & Apps in Settings > Permissions."),
+                ("App library access is off", "Select Retry to approve app library access here."),
             GamesAppsViewState.LifecycleDenied =>
                 ("App library is paused", "Return to this widget to load installed apps."),
             GamesAppsViewState.ServiceUnavailable =>

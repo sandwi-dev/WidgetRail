@@ -38,7 +38,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         { ChangeSetting(action.ActionId); return ValueTask.CompletedTask; }
         switch (action.ActionId)
         {
-            case "capture-library.allow": Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureCapabilities.Permission, WidgetCaptureLibraryCapabilities.SavePermission], token); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
+            case "capture-library.allow": Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission], token); await RefreshAsync(state.Page?.Offset ?? 0, token); }); break;
             case "capture-library.settings":
                 model.Update(s => s with { Settings = true, Navigation = WidgetNavigationOperation.Forward });
                 Work(LoadSettingsAsync); break;
@@ -97,7 +97,7 @@ public sealed partial class CaptureLibraryWidget : Widget
             try
             {
                 await LoadPreferencesAsync(context.CancellationToken);
-                await RequirePermissionsAsync([WidgetCaptureCapabilities.Permission], context.CancellationToken);
+                await RequirePermissionsAsync([WidgetCaptureCapabilities.Permission, WidgetCaptureLibraryCapabilities.SavePermission], context.CancellationToken);
                 if (kind == WindowCaptureKind.Video)
                 {
                     var capabilities = await HostServices.Capture.GetRecordingCapabilitiesAsync(model.Value.Preferences?.Video, context.CancellationToken);

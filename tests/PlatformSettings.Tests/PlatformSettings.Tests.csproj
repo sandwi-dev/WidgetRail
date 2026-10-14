@@ -18,7 +18,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\src\FirstPartyWidgets\AudioMixerWidget\styles\default.wrss" Link="ThemeFixtures\AudioMixer.wrss" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\src\FirstPartyWidgets\DisplayProfilesWidget\styles\default.wrss" Link="ThemeFixtures\DisplayProfiles.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\DisplayProfilesWidget\styles\default.wrss" Link="ThemeFixtures\DisplayProfiles.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\EmbeddedMediaWidget\styles\default.wrss" Link="ThemeFixtures\EmbeddedMedia.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\styles\default.wrss" Link="ThemeFixtures\GamesApps.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\styles\default.wrss" Link="ThemeFixtures\NetworkControls.wrss" CopyToOutputDirectory="PreserveNewest" />

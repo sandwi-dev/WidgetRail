@@ -22,7 +22,7 @@ public enum MediaSessionsViewState
 /// Compact controller-first Windows now-playing surface. It consumes only
 /// sanitized GSMTC DTOs and interpolates progress locally between native events.
 /// </summary>
-public sealed class MediaSessionsWidget : Widget
+public sealed partial class MediaSessionsWidget : Widget
 {
     private enum FailureStage
     {
@@ -248,7 +248,7 @@ public sealed class MediaSessionsWidget : Widget
                 UI.Row("media.controls", previous, toggle, next).Classes("media-controls"),
         };
         if (reconnectId is not null)
-            content.Add(UI.Button("Try again", "media.retry", reconnectId)
+            content.Add(UI.Button(state == MediaSessionsViewState.PermissionDenied ? "Allow access" : "Try again", "media.retry", reconnectId)
                 .Icon(WidgetGlyph.Refresh, "Reconnect live media updates")
                 .FocusUp("media.play-toggle")
                 .Classes("media-retry"));
@@ -321,7 +321,11 @@ public sealed class MediaSessionsWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    public override async ValueTask OnActionAsync(
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private async ValueTask OnAuthorizedActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
@@ -721,7 +725,7 @@ public sealed class MediaSessionsWidget : Widget
             MediaSessionsViewState.Empty =>
                 ("Nothing is playing", "Start media in an app that supports Windows media controls."),
             MediaSessionsViewState.PermissionDenied =>
-                ("Media access is off", "Allow Now Playing in Settings > Permissions."),
+                ("Media access is off", "Select Allow access to approve media access here."),
             MediaSessionsViewState.LifecycleDenied =>
                 ("Media access paused", "Return to this widget to resume live media updates."),
             MediaSessionsViewState.ServiceUnavailable =>
@@ -730,7 +734,7 @@ public sealed class MediaSessionsWidget : Widget
                 ("Media service disconnected", "Retry the trusted Windows media service."),
             _ => ("Media unavailable", "Try again; no app identity or process details were exposed."),
         };
-        var retry = UI.Button(reloadInFlight ? "Loading…" : "Try again", "media.retry", "media.retry")
+        var retry = UI.Button(reloadInFlight ? "Loading…" : state == MediaSessionsViewState.PermissionDenied ? "Allow access" : "Try again", "media.retry", "media.retry")
             .Icon(WidgetGlyph.Refresh, "Reload media sessions")
             .Disabled(!IsActive || reloadInFlight)
             .Busy(reloadInFlight)

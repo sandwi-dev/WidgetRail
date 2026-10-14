@@ -228,6 +228,7 @@ public sealed partial class GameHelpWidget : Widget
             var phase = "conversation-preparation";
             try
             {
+                if (state.Grounding) await RequirePermissionAsync("presentation.documents.v1", context.CancellationToken);
                 var history=new List<GameHelpTurn>();var length=0;
                 foreach(var message in state.Messages.Reverse())
                 {

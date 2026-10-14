@@ -2,7 +2,7 @@
 
 Open **Marketplace** from the widget tray, or use **Settings → Widgets → Browse marketplace**.
 It is included in both app editions. The initial curated catalog
-contains Playnite Library, Spotify, YouTube Video, and YouTube Music. Built-in
+contains Discord, Game Help, Display Profiles, Playnite Library, Spotify, YouTube Video, and YouTube Music. Discord, Game Help and Display Profiles are marketplace-only and are not bundled in either installer. Built-in
 widgets are distributed with the app; the marketplace does not replace them.
 
 ## Browse, review, install
@@ -75,6 +75,7 @@ digest. Failure to save optional CLI source metadata does not undo installation.
 - Publish immutable `<package-id>-<version>.wrwidget` assets with GitHub asset
   digests or a supported checksum manifest. ID, publisher and version inside the
   archive must match the curated listing and advertised asset.
+- Discord, Game Help and Display Profiles each provide `samples/<Widget>Widget/Build-CommunityPackage.ps1`, backed by `scripts/Build-MarketplacePackage.ps1`. Build their archives and SHA-256 sidecars, then attach them to the release when publishing. Adding a listing alone does not make an unpublished package downloadable. These builders do not install, enable, grant access or publish.
 - `PackageDistribution` owns shared remote download, release and source-record
   code. CLI command parsing and exit-code mapping remain in the CLI.
 - `BridgeWidgetMarketplace` owns jobs and archive handles. Its only mutations

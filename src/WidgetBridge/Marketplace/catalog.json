@@ -1,5 +1,20 @@
 [
   {
+    "id": "widgetrail.samples.discord", "publisher": "widgetrail.samples", "name": "Discord",
+    "description": "Use Discord's web app with controller input and pinnable pop-outs. Requires Discord sign-in; website microphone and camera access are controlled separately.",
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.samples.game-help", "publisher": "widgetrail.samples", "name": "Game Help",
+    "description": "Ask for game hints with screenshots and clips. Requires your own Gemini API key. Capture and saved-media access are requested when needed.",
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.samples.display-profiles", "publisher": "widgetrail.samples", "name": "Display Profiles",
+    "description": "Save and restore monitor layouts, resolutions and refresh rates. Display changes use a timed confirmation with automatic rollback.",
+    "screenshots": []
+  },
+  {
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
     "description": "Browse and launch your Playnite games. Requires the separate Playnite Bridge extension and a running Playnite instance.",
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/home.png"]

@@ -1,9 +1,9 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
-namespace WidgetRail.FirstPartyWidgets.DisplayProfiles;
+namespace WidgetRail.Samples.DisplayProfiles;
 
-public sealed class DisplayProfilesWidget : Widget
+public sealed partial class DisplayProfilesWidget : Widget
 {
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refresh = new(1, 1);
@@ -144,7 +144,11 @@ public sealed class DisplayProfilesWidget : Widget
         lock (_gate) if (input.FocusedElementId is { } id) _focus = id;
         return base.OnControllerInputAsync(input, cancellationToken);
     }
-    public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private async ValueTask OnAuthorizedActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         string? id, editor, confirmation;
         long generation;

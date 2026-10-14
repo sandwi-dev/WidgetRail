@@ -153,6 +153,8 @@ file sealed class Fake
     internal TaskCompletionSource ReadEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskSwitcherWidget Create() => WidgetTestHost.Attach(new TaskSwitcherWidget(),
         new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
             .WithHandler(WidgetTaskSwitcherCapabilities.List, async (request, token) =>
             {
                 Interlocked.Increment(ref Reads);

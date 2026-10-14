@@ -5,7 +5,7 @@ using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WindowsDisplayProvider;
-using WidgetRail.FirstPartyWidgets.DisplayProfiles;
+using WidgetRail.Samples.DisplayProfiles;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetStyling;
 
@@ -469,6 +469,8 @@ static async Task Widget()
         [new(profileId, "TV gaming", "Single display", [monitor], false, false, "Connect TV.")], null, null);
     var saves = 0;
     var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) => ValueTask.FromResult(state))
         .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>())
         .WithHandler(WidgetDisplayProfilesCapabilities.Save, (request, _) => { ++saves; Check(request.Name == "Desk"); return ValueTask.FromResult(state); })
@@ -519,6 +521,8 @@ static async Task WidgetWakeOperation()
     var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var gets = 0; var applies = 0;
     var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetDisplayProfilesCapabilities.Get, async (_, token) =>
             Interlocked.Increment(ref gets) == 1 ? state : await release.Task.WaitAsync(token))
         .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>())
@@ -562,6 +566,8 @@ static async Task WidgetRestoreNotifications()
     var state = new WidgetDisplayProfilesState("Single display", [], [], pending, null);
     var failReads = false; var failures = 0;
     var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) =>
         {
             if (failReads) { Interlocked.Increment(ref failures); throw new WidgetCapabilityException("display_mode_unavailable", "Display waking"); }
@@ -592,6 +598,8 @@ static async Task WidgetExpiredConfirmation()
         var state = new WidgetDisplayProfilesState("Single display", [], [], pending, null);
         var gets = 0; var reverts = 0;
         var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
             .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) =>
             {
                 if (Interlocked.Increment(ref gets) == 1) return ValueTask.FromResult(state);
@@ -626,7 +634,7 @@ static Task NativeRead()
 }
 static Task Assets()
 {
-    var root = Path.Combine(Environment.CurrentDirectory, "src/FirstPartyWidgets/DisplayProfilesWidget");
+    var root = Path.Combine(Environment.CurrentDirectory, "samples/DisplayProfilesWidget");
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(root, "manifest.json")));
     Check(WidgetManifestValidator.Validate(manifest).Count == 0);
     Check(manifest.Permissions.SequenceEqual([PlatformCapabilities.DisplaysReadV1]));

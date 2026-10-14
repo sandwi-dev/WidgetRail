@@ -194,7 +194,11 @@ public sealed partial class GamesAppsWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    public override async ValueTask OnActionAsync(
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private async ValueTask OnAuthorizedActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {

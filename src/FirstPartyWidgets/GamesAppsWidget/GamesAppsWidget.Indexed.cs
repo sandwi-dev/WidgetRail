@@ -111,6 +111,18 @@ public sealed partial class GamesAppsWidget
     {
         var origin = new AppActionOrigin(query.Page, query.Generation, query.RunningRevision, item.SavedId, item.AppId);
         lock (_gate) if (!IsAppActionCurrentLocked(origin)) return;
+        var permissions = ActionPermissions(action);
+        if (action.ActionId == "games.remove")
+            lock (_gate) permissions = _persistedLibraryState.RunningRegistrationSavedIds.Contains(item.SavedId, StringComparer.Ordinal)
+                ? ["system.apps.running.register.v1"] : [];
+        await WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, permissions,
+            token => HandleAuthorizedAppActionAsync(query, item, action, origin, token), PermissionFeedback, cancellationToken);
+    }
+
+    private async ValueTask HandleAuthorizedAppActionAsync(AppQuery query, WidgetAppLibraryItem item,
+        WidgetActionEvent action, AppActionOrigin origin, CancellationToken cancellationToken)
+    {
+        lock (_gate) if (!IsAppActionCurrentLocked(origin)) return;
         switch (query.Page, action.ActionId)
         {
             case (GamesAppsPage.Library, "games.launch") when query.State!.ResolvedSavedIds.Contains(item.SavedId):

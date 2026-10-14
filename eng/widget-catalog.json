@@ -27,9 +27,12 @@
   ],
   "bundledWidgets": [
     {
-      "id": "marketplace", "packageId": "widgetrail.firstparty.marketplace",
-      "instanceId": "marketplace.default", "packageRoot": "runtime/Marketplace",
-      "icon": "settings", "quickActions": []
+      "id": "marketplace",
+      "packageId": "widgetrail.firstparty.marketplace",
+      "instanceId": "marketplace.default",
+      "packageRoot": "runtime/Marketplace",
+      "icon": "settings",
+      "quickActions": []
     },
     {
       "id": "capture-library",
@@ -45,14 +48,6 @@
       "instanceId": "performance-monitor.default",
       "packageRoot": "runtime/PerformanceMonitor",
       "icon": "settings",
-      "quickActions": []
-    },
-    {
-      "id": "display-profiles",
-      "packageId": "widgetrail.firstparty.display-profiles",
-      "instanceId": "display-profiles.default",
-      "packageRoot": "runtime/DisplayProfiles",
-      "icon": "fullscreen",
       "quickActions": []
     },
     {

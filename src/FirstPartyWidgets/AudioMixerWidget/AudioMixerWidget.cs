@@ -33,7 +33,7 @@ public enum AudioOptionalSectionState
 /// typed host audio service: it never opens Core Audio objects or transport
 /// handles itself.
 /// </summary>
-public sealed class AudioMixerWidget : Widget
+public sealed partial class AudioMixerWidget : Widget
 {
     public const double VolumeStep = 0.05;
     internal const string DecreaseOutputVolumeActionId = "output.volume.decrease";
@@ -210,7 +210,11 @@ public sealed class AudioMixerWidget : Widget
         await StopActiveRunAsync().ConfigureAwait(false);
     }
 
-    public override async ValueTask OnActionAsync(
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private async ValueTask OnAuthorizedActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {

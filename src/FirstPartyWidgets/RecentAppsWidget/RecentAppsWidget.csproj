@@ -12,4 +12,5 @@
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../../Shared/WidgetPermissionAction.cs" Link="WidgetPermissionAction.cs" /></ItemGroup>
 </Project>

@@ -33,7 +33,7 @@ public enum NetworkControlsTab
 /// host services; this worker receives only sanitized display data and opaque,
 /// scan-generation-bound network IDs.
 /// </summary>
-public sealed class NetworkControlsWidget : Widget
+public sealed partial class NetworkControlsWidget : Widget
 {
     private const string ProviderObservationOperation = "network.providers";
     private const string ConnectionDetailsRefreshOperation = "network.details.refresh";
@@ -243,7 +243,11 @@ public sealed class NetworkControlsWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    public override async ValueTask OnActionAsync(
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken, () => RestartAfterPermission(action));
+
+    private async ValueTask OnAuthorizedActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {

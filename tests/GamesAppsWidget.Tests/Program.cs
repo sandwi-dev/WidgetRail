@@ -3539,7 +3539,7 @@ static async Task FailureStates()
     foreach (var (exception, expectedStatus) in new (Exception, string)[]
     {
         (new WidgetCapabilityException("permission_denied", "denied"),
-            "Allow Games & Apps in Settings"),
+            "Select Retry to approve app library access here."),
         (new WidgetCapabilityException("lifecycle_denied", "paused"),
             "App library is paused"),
         (new WidgetCapabilityException("platform_unavailable", "private path"),
@@ -4458,6 +4458,8 @@ file sealed class FakeAppLibraryHost
     public WidgetTestPrivateState PrivateState { get; init; } = new();
 
     public WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetAppLibraryCapabilities.GetPage, GetPage)
         .WithHandler(WidgetAppLibraryCapabilities.ResolveSaved, ResolveSaved)
         .WithHandler(WidgetAppLibraryCapabilities.Launch, Launch)

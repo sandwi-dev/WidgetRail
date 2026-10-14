@@ -675,7 +675,7 @@ internal static class NetworkControlsPresentation
                 "The host network provider is loading one current snapshot.",
                 "Loading…", false),
             NetworkControlsViewState.PermissionDenied => ("Network permission required",
-                "Grant nearby Wi-Fi read access in Settings → Permissions, then try again.",
+                "Select Retry to approve nearby Wi-Fi access here.",
                 "Try again", true),
             NetworkControlsViewState.LifecycleDenied => ("Network status paused",
                 "Return this widget to the foreground before requesting network status.",

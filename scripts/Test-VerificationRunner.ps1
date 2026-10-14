@@ -82,6 +82,8 @@ $expectedDefaultStepIds = @(
     'task-switcher-widget-tests',
     'display-profiles-build',
     'display-profiles-tests',
+    'permission-actions-build',
+    'permission-actions-tests',
     'power-widget-build',
     'power-widget-tests',
     'settings-widget-tests',

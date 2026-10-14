@@ -3,7 +3,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.FirstPartyWidgets.Power;
 
-public sealed class PowerWidget : Widget
+public sealed partial class PowerWidget : Widget
 {
     private readonly object _gate = new();
     private readonly WidgetTimedMutation _toastExpiry;
@@ -62,7 +62,11 @@ public sealed class PowerWidget : Widget
         }
     }
 
-    public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private async ValueTask OnAuthorizedActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         string? command = null;
         long generation;

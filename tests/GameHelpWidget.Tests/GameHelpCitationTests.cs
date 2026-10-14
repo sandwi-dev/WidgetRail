@@ -86,7 +86,7 @@ public sealed class GameHelpCitationTests
             Annotation(Range(json, "Enter the vent"), 1)]) with
         { Attribution = new ProviderDocumentReference(new string('a', 32), ProviderDocumentReference.RestrictedHtml) };
         var service = new ReplyService(answer);
-        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder().Build());
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder().WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).Build());
         try
         {
             await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);

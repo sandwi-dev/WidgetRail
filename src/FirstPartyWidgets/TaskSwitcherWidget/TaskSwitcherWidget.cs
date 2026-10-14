@@ -3,7 +3,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.FirstPartyWidgets.TaskSwitcher;
 
-public sealed class TaskSwitcherWidget : Widget
+public sealed partial class TaskSwitcherWidget : Widget
 {
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
@@ -104,7 +104,11 @@ public sealed class TaskSwitcherWidget : Widget
         }
     }
 
-    public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private async ValueTask OnAuthorizedActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         long generation;
         WidgetTaskWindow? window;

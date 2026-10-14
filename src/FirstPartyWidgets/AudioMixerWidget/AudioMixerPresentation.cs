@@ -418,7 +418,7 @@ internal static class AudioMixerPresentation
             AudioMixerViewState.Initial => ("Ready when you are", "Open the widget to load application audio sessions.", "Load audio sessions", false),
             AudioMixerViewState.Loading => ("Finding application audio", "The host audio provider is loading one current snapshot.", "Loading…", false),
             AudioMixerViewState.Empty => ("No application audio yet", "Start playback in an application. New sessions appear here automatically.", "Check again", false),
-            AudioMixerViewState.PermissionDenied => ("Audio access is off", "Grant read access in Settings → Permissions, then try again.", "Try again", true),
+            AudioMixerViewState.PermissionDenied => ("Audio access is off", "Select Allow access to approve audio access here.", "Allow access", true),
             AudioMixerViewState.LifecycleDenied => ("Audio paused by lifecycle", "Return this widget to the foreground before requesting audio sessions.", "Try again", true),
             AudioMixerViewState.ChannelClosed => ("Audio service disconnected", "The protected host channel closed. Reopen or retry the widget.", "Reconnect", true),
             AudioMixerViewState.ServiceUnavailable => ("Audio service unavailable", "This worker was not given the host audio service.", "Try again", true),
@@ -450,9 +450,9 @@ internal static class AudioMixerPresentation
             ? "No default microphone is currently available."
             : "No default audio device names are currently available.",
         AudioOptionalSectionState.PermissionDenied =>
-            $"Access to {subject} is off. Grant it in Settings, then retry this section.",
+            $"Access to {subject} is off. Retry this section to request access.",
         AudioOptionalSectionState.Revoked =>
-            $"Access to {subject} was revoked. Review Permissions, then retry this section.",
+            $"Access to {subject} was revoked. Retry this section to request access.",
         _ => $"{subject[..1].ToUpperInvariant()}{subject[1..]} are temporarily unavailable. Retry this section.",
     };
 

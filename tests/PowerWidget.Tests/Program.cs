@@ -194,6 +194,8 @@ file sealed class Fake
         return Pending is null ? ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)) : new(Pending.Task);
     }
     public PowerWidget Create() => WidgetTestHost.Attach(new PowerWidget(), new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetPowerCapabilities.Get, (_, _) => ReadError ?
             throw new WidgetCapabilityException("permission_denied", "denied") : ValueTask.FromResult(Availability))
         .WithHandler(WidgetPowerCapabilities.ShutDown, (_, _) => Send("shutdown"))

@@ -962,6 +962,8 @@ file sealed class FakeMediaHost
     internal int CanceledSubscriptions => Volatile.Read(ref _canceledSubscriptions);
 
     internal WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetMediaCapabilities.GetSessions, GetAsync)
         .WithHandler(WidgetMediaCapabilities.Control, ControlAsync)
         .WithEventStream(WidgetMediaCapabilities.Changed, Subscribe)

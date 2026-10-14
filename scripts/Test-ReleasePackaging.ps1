@@ -83,8 +83,8 @@ $production = Join-Path $first 'WidgetRail-0.1.0-preview.1-win-x64'
 $dev = Join-Path $first 'WidgetRail-Developer-0.1.0-preview.1-win-x64'
 $prodCatalog = Get-Content (Join-Path $production 'widget-catalog.json') -Raw | ConvertFrom-Json
 $devCatalog = Get-Content (Join-Path $dev 'widget-catalog.json') -Raw | ConvertFrom-Json
-Check (@($prodCatalog.bundledWidgets).Count -eq 12) 'Production catalog differs.'
-Check (@($devCatalog.bundledWidgets).Count -eq 16) 'Developer catalog differs.'
+Check (@($prodCatalog.bundledWidgets).Count -eq 10) 'Production catalog differs.'
+Check (@($devCatalog.bundledWidgets).Count -eq 14) 'Developer catalog differs.'
 foreach ($edition in @($production, $dev)) {
     foreach ($file in @('PerformanceCollector.exe', 'PresentMon.exe', 'PresentMon-LICENSE.txt')) {
         Check (Test-Path -LiteralPath (Join-Path $edition "runtime/Performance/$file")) 'FPS helper or license missing from an edition.'
@@ -92,10 +92,15 @@ foreach ($edition in @($production, $dev)) {
 }
 Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'performance-monitor').Count -eq 1 -and
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'performance-monitor').Count -eq 1) 'Performance Monitor is missing from an edition.'
-Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1 -and
-       @($devCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1) 'Display Profiles is missing from an edition.'
+foreach ($community in @(@('discord','Discord'), @('game-help','GameHelp'), @('display-profiles','DisplayProfiles'))) {
+    foreach ($edition in @($production, $dev)) {
+        $editionCatalog = Get-Content (Join-Path $edition 'widget-catalog.json') -Raw | ConvertFrom-Json
+        Check (@($editionCatalog.bundledWidgets | Where-Object id -EQ $community[0]).Count -eq 0) 'Marketplace-only widget is bundled.'
+        Check (!(Test-Path (Join-Path $edition "runtime/$($community[1])"))) 'Marketplace-only payload is in installer output.'
+    }
+}
 Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'capture-library').Count -eq 1 -and @($devCatalog.bundledWidgets | Where-Object id -EQ 'capture-library').Count -eq 1) 'Capture Library is missing from an edition.'
-foreach ($id in @('browser', 'game-help', 'marketplace')) {
+foreach ($id in @('browser', 'marketplace')) {
     $prodWidget = @($prodCatalog.bundledWidgets | Where-Object id -CEQ $id)
     $devWidget = @($devCatalog.bundledWidgets | Where-Object id -CEQ $id)
     Check ($prodWidget.Count -eq 1 -and $devWidget.Count -eq 1) "$id must occur exactly once in both editions."

@@ -1915,6 +1915,8 @@ file sealed class FakeCapabilityClient
     }
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetAudioCapabilities.GetSpatial, (request, token) =>
         {
             if (SpatialReadFailure is not null) throw SpatialReadFailure;

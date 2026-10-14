@@ -139,7 +139,9 @@ static async Task Contracts()
     await using var service = new BridgeWidgetMarketplace(new Catalog(root), _ => Task.CompletedTask);
     var snapshot = await service.HandleAsync(new("status"), default);
     MarketplaceContract.ValidateSnapshot(snapshot);
-    Check(snapshot.Items.Count == 4 && snapshot.Items.Any(i => i.Screenshots.Count == 2), "Curated inventory or screenshots missing");
+    Check(snapshot.Items.Count == 7 && snapshot.Items.Any(i => i.Screenshots.Count == 2), "Curated inventory or screenshots missing");
+    foreach (var package in new[] { "widgetrail.samples.discord", "widgetrail.samples.game-help", "widgetrail.samples.display-profiles" })
+        Check(snapshot.Items.Any(item => item.Id == package), "Marketplace-only listing missing: " + package);
     foreach (var command in new[] { new MarketplaceCommand("install"), new("status", ApproveFullTrust: true), new("download", PackageId: "../../bad") })
         await Reject(() => service.HandleAsync(command, default).AsTask());
 }

@@ -4,7 +4,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.FirstPartyWidgets.PerformanceMonitor;
 
-public sealed class PerformanceMonitorWidget : Widget
+public sealed partial class PerformanceMonitorWidget : Widget
 {
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refresh = new(1, 1);
@@ -84,14 +84,18 @@ public sealed class PerformanceMonitorWidget : Widget
                 if (code == "performance_target_unavailable") _selection = null;
                 _snapshot = null;
                 _error = code is "permission_denied" or "consent_required" or "capability_not_granted"
-                    ? "Allow performance monitoring in Settings → Widgets → Performance Monitor → Permissions."
+                    ? "Select Refresh to approve performance monitoring here."
                     : "Performance readings are unavailable. Check permissions or try again.";
             }
         }
         finally { _refresh.Release(); Invalidate(); }
     }
 
-    public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
+    public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
+        WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+
+    private async ValueTask OnAuthorizedActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         long generation;
         bool fpsEnabled;
@@ -129,7 +133,7 @@ public sealed class PerformanceMonitorWidget : Widget
         {
             lock (_gate) if (generation == _generation)
                 _error = error.ErrorCode == "permission_denied"
-                    ? "Allow FPS control in Settings → Widgets → Performance Monitor → Permissions, then try again."
+                    ? "Select Enable FPS again to request access."
                     : "The FPS request could not complete. Check its status and try again.";
         }
         finally

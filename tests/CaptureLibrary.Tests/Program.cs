@@ -567,7 +567,7 @@ static async Task PermissionContinuation()
     var id = new string('a',32); var media = new CaptureAttachment(new string('b',32),"image/png",64,48,128,0,long.MaxValue);
     var client = new WidgetTestHostServicesBuilder().WithPrivateState(new())
         .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([],0,0,0))
-        .WithHandler(WidgetPermissionCapabilities.Request, (request, _) => { requests++; Check(request.CapabilityIds.SequenceEqual([WidgetCaptureCapabilities.Permission]));
+        .WithHandler(WidgetPermissionCapabilities.Request, (request, _) => { requests++; Check(request.CapabilityIds.SequenceEqual([WidgetCaptureCapabilities.Permission, WidgetCaptureLibraryCapabilities.SavePermission]));
             return ValueTask.FromResult(new WidgetPermissionRequestState(outcome, outcome == WidgetPermissionOutcome.Pending ? id : null)); })
         .WithHandler(WidgetPermissionCapabilities.Status, (_, _) => { polls++; return ValueTask.FromResult(new WidgetPermissionRequestState(outcome,id)); })
         .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))

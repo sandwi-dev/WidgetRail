@@ -229,6 +229,8 @@ file sealed class FakeActivityHost
     internal int CanceledSubscriptions => Volatile.Read(ref _canceledSubscriptions);
 
     internal WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
         .WithHandler(WidgetRecentActivityCapabilities.GetRecent, GetAsync)
         .WithEventStream(WidgetRecentActivityCapabilities.Changed, Subscribe)
         .Build();

@@ -101,7 +101,7 @@ public sealed class GameHelpTests
         var store = new GameHelpPreferencesStore(Path.Combine(directory, "settings.json"));
         try
         {
-            var first = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(new FakeService(), store), new WidgetTestHostServicesBuilder().Build());
+            var first = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(new FakeService(), store), new WidgetTestHostServicesBuilder().WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).Build());
             try
             {
                 await WidgetTestHost.InitializeAsync(first);
@@ -113,7 +113,7 @@ public sealed class GameHelpTests
             finally { await WidgetTestHost.DestroyAsync(first); }
             Assert.AreEqual(new GameHelpPreferences(true, "Full solution"), store.Load());
             var service = new FakeService();
-            var second = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service, new GameHelpPreferencesStore(Path.Combine(directory, "settings.json"))), new WidgetTestHostServicesBuilder().Build());
+            var second = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service, new GameHelpPreferencesStore(Path.Combine(directory, "settings.json"))), new WidgetTestHostServicesBuilder().WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).Build());
             try
             {
                 await WidgetTestHost.InitializeAsync(second);
@@ -485,7 +485,7 @@ public sealed class GameHelpTests
     }
 
     private static WidgetRail.Samples.GameHelp.GameHelpWidget Attach(FakeService service,IReadOnlyList<WidgetTaskWindow> windows)=>
-        WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service),new WidgetTestHostServicesBuilder().WithResponse(WidgetTaskSwitcherCapabilities.List,windows).Build());
+        WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service),new WidgetTestHostServicesBuilder().WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).WithResponse(WidgetTaskSwitcherCapabilities.List,windows).Build());
     private static ViewSnapshot Snapshot(Widget widget)=>widget.RenderSnapshot("fixture.game-help",1);
     private static IEnumerable<ViewNode> Walk(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Walk));
     private static async Task Until(Func<bool> predicate){var end=Environment.TickCount64+5000;while(!predicate()){if(Environment.TickCount64>=end)throw new TimeoutException();await Task.Delay(20);}}

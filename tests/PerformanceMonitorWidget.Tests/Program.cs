@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Production manifest admits the implemented compact pin", ManifestPin),
     ("Monitor and compact pin are valid controller surfaces with unavailable distinct from zero", Presentation),
     ("FPS enablement is explicit and button focus survives its busy state", Enablement),
+    ("Missing FPS access asks on action, and only approval starts the collector", PermissionContinuation),
     ("An older periodic read cannot undo a newly admitted FPS action", StaleRead),
     ("Correction uses opaque target IDs and automatic selection can be restored", Selection),
     ("Hidden monitor stops polling and stale lifecycle results are cancelled", Lifecycle),
@@ -206,14 +207,38 @@ static async Task BrokerAuthority()
     finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
 }
 
+static async Task PermissionContinuation()
+{
+    var fake = new Fake { Granted = false }; var widget = fake.Create(); await Activate(widget);
+    try
+    {
+        Check(fake.PermissionRequests == 0, "Activation requested permission");
+        await widget.OnActionAsync(new("performance.fps", "performance.fps"));
+        await Until(() => fake.PermissionRequests == 1);
+        Check(fake.Enables == 0, "Denied action started the collector");
+        await Until(() => Walk(Snapshot(widget).Root).Any(node => node.Text?.Contains("Access was not allowed") == true));
+        fake.PermissionOutcome = WidgetPermissionOutcome.Granted;
+        await widget.OnActionAsync(new("performance.fps", "performance.fps"));
+        await Until(() => fake.Enables == 1);
+        Check(fake.PermissionRequests == 2, "Approved action did not resume exactly once");
+    }
+    finally { await Hide(widget); }
+}
+
 file sealed class Fake
 {
     public int Reads, Enables;
+    public bool Granted = true;
+    public int PermissionRequests;
+    public WidgetPermissionOutcome PermissionOutcome = WidgetPermissionOutcome.Denied;
     public string? Requested;
     public TaskCompletionSource? EnableGate, ReadGate;
     public WidgetPerformanceSnapshot Sample = new(DateTimeOffset.UtcNow, 10, 0, 2L << 30, 8L << 30, 0, null,
         "not-enabled", "target-a", [new("target-a", "Game", "Game window"), new("target-b", "Editor", "Document")]);
     public WidgetHostServices Client() => new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, Granted ? WidgetPermissionState.Granted : WidgetPermissionState.NotDecided)).ToArray())))
+        .WithHandler(WidgetPermissionCapabilities.Request, (_, _) => { PermissionRequests++; return ValueTask.FromResult(new WidgetPermissionRequestState(PermissionOutcome)); })
         .WithHandler(WidgetPerformanceCapabilities.Get, async (request, token) =>
         {
             Requested = request.TargetId; Interlocked.Increment(ref Reads);

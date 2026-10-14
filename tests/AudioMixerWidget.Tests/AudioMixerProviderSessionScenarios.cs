@@ -1,3 +1,4 @@
+using WidgetRail.WidgetProtocol;
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using System.Threading.Channels;
@@ -481,6 +482,8 @@ internal static class AudioMixerProviderSessionScenarios
         internal int ActiveSubscriptions => Volatile.Read(ref _activeSubscriptions);
 
         internal WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
             .WithHandler(WidgetAudioCapabilities.GetSessions,
                 (_, token) => GetSessionsAsync(token))
             .WithHandler(WidgetAudioCapabilities.GetOutput,

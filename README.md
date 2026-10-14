@@ -89,13 +89,12 @@ Both installer editions include the following widgets:
 | **Task Switcher** | View live window previews, switch applications, and request that a window close. |
 | **Now Playing** | View and control media sessions reported by Windows. |
 | **Network Controls** | Toggle Wi-Fi and Bluetooth radios and view connection details. Connect or disconnect Wi-Fi, manage saved networks and automatic connection, and scan, pair, or remove Bluetooth devices. |
-| **Display Profiles** | Save the current monitor setup and restore it later. Confirm with Keep changes or let the previous setup restore automatically. |
 | **Power** | Sleep, restart, or shut down Windows. |
 | **[Capture Library](docs/reference/capture-library.md)** | Save full-resolution screenshots and short silent clips, preview/export them and reuse saved context in Game Help. |
 | **Performance Monitor** | Pin FPS and system CPU/GPU/RAM/VRAM readings. FPS requires explicit Windows approval for a separate collector. |
 | **[Browser](docs/reference/widget-web-browser.md)** | Browse with a controller pointer, drag, zoom and text entry; open URLs or Google searches, use bookmarks/history and pin the page. |
-| **[Game Help](docs/reference/widget-capture-and-game-help.md)** | Ask Gemini about a game, attach a screenshot or five-second silent clip, expand detailed solutions and open suggested links. Requires the user's Gemini API key. |
 | **Settings** | Configure layout, appearance, accessibility, controllers, widgets, permissions, and diagnostics. |
+| **[Marketplace](docs/reference/widget-marketplace.md)** | Browse community widgets and review installations and updates. |
 
 Use **Settings → Widgets → Browse marketplace** to discover curated add-ons,
 review downloads and permissions, and install updates while retaining previous
@@ -107,11 +106,14 @@ connected hardware, and installed providers.
 
 ## Additional widgets
 
-These add-ons are available as separate `.wrwidget` downloads. They are not
+Use **Marketplace** to browse these add-ons, or install their separate `.wrwidget` downloads. They are not
 included in either installer.
 
 | Add-on | Features | Setup requirements |
 |---|---|---|
+| [Discord](samples/DiscordWidget/README.md) | Controller-friendly webapp with persistent sessions and pinnable live pop-outs. | Discord account; website permissions for microphone/camera when used. |
+| [Game Help](samples/GameHelpWidget/README.md) | Ask for hints with screenshots/clips, expand solutions and open suggested links. | Your Gemini API key; capture/document access requested when used. |
+| [Display Profiles](samples/DisplayProfilesWidget/README.md) | Save and restore display configurations with timed rollback protection. | Read/control access requested by the widget when needed. |
 | [Spotify](samples/SpotifyWidget/README.md) | Search tracks, albums, artists, and playlists; browse playlists and the queue; add individual tracks to the queue; choose a playback device or use **Play here**; pin playback controls. | Spotify account, a developer app, and Premium for streaming and playback control. |
 | [YouTube Video](samples/YouTubeWidget/README.md) | Search public videos, play a link, seek, adjust volume and playback speed, loop, and use pinned or fullscreen playback. | A Google API key for search. Playing a public link does not require a search key. |
 | [YouTube Music](samples/YtMusicWidget/README.md) | Browse Home and your library, search music, play locally, start song radio, queue songs, playlists or albums with **Play next**, and pin playback controls. | Full-trust approval; Chrome or Edge for account sign-in. No companion app required. Unofficial integration; Windows x64. |
