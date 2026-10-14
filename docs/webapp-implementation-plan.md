@@ -21,7 +21,7 @@ Baseline: `e819cf80` on main. Work branch: `codex/webapp-framework` in the exist
 
 ## Work and evidence ledger
 
-Autonomous implementation and validation are complete. Candidate **07** is built and running on SDK Gallery with the preserved physical profile/Guide shortcut. Shell run 79 passes **101** native checks through shutdown; **213** managed tests, **18** live-keyboard checks, **105** buffered-keyboard checks, and both same-origin/cross-origin frame reload checks pass. Both candidate catalogs/inventories pass (14 Production / 18 Developer widgets). Physical/account-dependent acceptance remains with the user. Exact artifacts and the checklist are at the end of this plan.
+Autonomous implementation and validation are complete, including the popup-placement follow-up. Candidate **08** is built and running on SDK Gallery with the preserved physical profile/Guide shortcut. Latest shell run 83 passes **107** native checks through shutdown; **215** managed tests pass. Earlier live-keyboard (18), buffered-keyboard (105), frame reload and three-round sharing checks remain recorded below. Both candidate catalogs/inventories pass (14 Production / 18 Developer widgets). Physical/account-dependent acceptance remains with the user. Exact artifacts and checklists are below.
 
 | Workstream | Status | Required evidence |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ Autonomous implementation and validation are complete. Candidate **07** is built
 | Screen sharing and notifications | Implemented and synthetic native paths verified | Run 79 passes notification lifecycle/list/banner/main/pin activation and three native chooser rounds (share/cancel/share), audio toggle only in cancelled round, decoded frames and preserved streams. Actual Discord notification emission remains physical. |
 | CLI webapp scaffold and Discord | Authoring foundation verified | Existing `wrail new widget --template webapp --url` extended; all six templates generate/build/test/preview/validate/package deterministically. Discord generated through CLI and builds in candidate 07. Generic pin paths verified; account-dependent acceptance remains physical. |
 | Documentation and gallery | Updated and reviewed | Webapp gallery with profiles/background controls passes 13 checks. CLI/template/SDK/reference docs updated; six templates build/test/preview/validate/package deterministically. Candidate 07 launches successfully on SDK Gallery. |
-| Complete candidate | Candidate 07 built, verified and launched | Production 14 / Developer 18 widget catalog and inventory checks pass. Source `1adeeaff`; PID and launch evidence in `candidate-webapps-07-handoff.json`. Physical profile and Guide preserved. |
+| Complete candidate | Candidate 08 built, verified and launched | Production 14 / Developer 18 widget catalog and inventory checks pass. Source `a1e50a1d`; PID and launch evidence in `candidate-webapps-08-handoff.json`. Physical profile and Guide preserved. |
 
 ## Current remaining work (supersedes historical next-step entries)
 
@@ -391,3 +391,10 @@ Implemented: reusable controller-focusable host-dialog checkbox with direct nati
 - Visually reviewed `result-83.popup-choice.png` and `result-83.popup-replace.png`: direct action buttons, checkbox, cancellation and focus outlines are visible. The initial list-style draft was replaced with direct native confirmation buttons. The render fixture waits for the native entrance animation; it captures only the synthetic host dialog.
 - Runs 80/81 were fixture failures: requesting a popup before its full-widget pin had actually received the native surface, and attempting JavaScript navigation while `window.open` was deferred. The fixture now waits for actual placement and uses native navigation to exercise cancellation. Build 154 flagged two WinRT AOT collection expressions; explicit array types fixed them. No production focus delay or DOM workaround was introduced.
 - Manual review covered modal/input ownership, deferral completion and reservation release, cancellation, exact existing-pin guards after asynchronous admission, origin-only scope keys, bounded storage, failure handling and saved-profile preservation. Candidate 08 build/launch is next. No merge/push/release/installers are authorized.
+
+### Candidate 08 follow-up delivery
+
+- Source `a1e50a1d2af52ddfaf8e81e1b7f9400b4b6ef3f0`; complete local folders built with `scripts/Build-Release.ps1 -OutputRoot artifacts/webapps/candidate-webapps-08`. Both catalogs, package inventories and icon admission pass (14 Production / 18 Developer). Build log: `artifacts/webapps/candidate-webapps-08-build.log`; payload/binlogs under `artifacts/release-build/9b528822a7ff47a890213cf5858cdf96/`.
+- Developer folder: `artifacts/webapps/candidate-webapps-08/0.1.0-preview.30/WidgetRail-Developer-0.1.0-preview.30-win-x64`. Launched on SDK Gallery with the same `physical-candidate-profile`; PID **50828** is responding and the visible Gallery header is verified through UI Automation. Platform-settings hash is unchanged and the shortcut remains **Guide**. Browser/profile storage was preserved without opening Discord or inspecting credentials. Handoff evidence: `candidate-webapps-08-handoff.json`.
+- Physical follow-up: use Discord Pop Out, try both placement buttons and Cancel, test Remember and reset through Website controls → Pop-out placement, verify existing-pin replacement still asks, and use LS/B to reveal/hide controls in either placement. Pop-out placement is a user preference; actual Discord content/call acceptance remains the user's test.
+- Only local source/documentation commits were made. No merge, push, release, installers or worktree removal.
