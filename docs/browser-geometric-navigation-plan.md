@@ -24,7 +24,7 @@ User requested autonomous implementation after the agreed design: D-pad jumps ge
 ## Progress
 
 - Inspected input routing: browser `MoveFocus` currently nudges the pointer; shell already distinguishes D-pad from left-stick pointer input. Existing live editing provides owned-frame CDP world/session access and pointer-coordinate conventions.
-- Implementation and automated validation complete; complete candidate publication and physical handoff remain.
+- Implementation, automated validation, review and complete candidate delivery finished. Physical acceptance remains with the user.
 
 ### First implementation and evidence
 
@@ -57,3 +57,9 @@ Physical checklist for the candidate:
 5. Confirm the Guide shortcut, Website controls and existing sign-ins remain available.
 
 Build the complete local Developer candidate from the committed branch, using the normal `%LOCALAPPDATA%\WidgetRail` profile and initially opening SDK Gallery. Do not reinstall community widgets, change sign-ins, merge, push, release or create installers. Candidate location and launch evidence belong in `artifacts/browser-spatial`; physical acceptance remains the user's.
+
+### Candidate delivered — 2026-10-14
+
+Built complete Production/Developer payload folders from implementation commit `b9554ebd`; this was a local candidate build, not a release or installer. Catalog, integrity and icon validation passed for 11 production and 15 developer widgets. Developer candidate is running from `artifacts/browser-spatial/candidate-01/0.1.0-preview.31/WidgetRail-Developer-0.1.0-preview.31-win-x64/OverlayFrontend.WinUI.exe`, initially on SDK Gallery (launch PID 28176).
+
+UI Automation confirms the responsive SDK Gallery, tray and Guide close hint. `profile-after.json` confirms the platform settings hash is unchanged and `openShortcut` remains `guide`. Existing profile/browser storage was reused without reading credentials or cookie databases. No installation, registration, startup modification or community-widget reinstallation was performed. Main's unrelated `docs/implementation-agent-goal.md` modification remains preserved. Launch metadata and UI evidence are in `candidate-launch.json` and `candidate-uia.txt` under `artifacts/browser-spatial`.
