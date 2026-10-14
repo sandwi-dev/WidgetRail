@@ -41,3 +41,4 @@ Replace Guide-adjacent status text with a focusable bell and pending-count badge
 
 - Replaced the mistaken TV/monitor glyph with Segoe Fluent Icons Ringer (`EA8F`). Centered badge text in both axes using tight text bounds, so font ascent/descent whitespace cannot offset the digit.
 - `frontend-09.binlog` builds with zero warnings/errors. `shell-06.json` passes 79 focused native webapp/notification checks. Reviewed actual WinUI rasters for `1`, `8`, and `99+`: bell glyph and centered numbers are visible.
+- Complete candidate `artifacts/notifications/candidate-02/0.1.0-preview.31` built from `6e6a3855`; both package catalogs verified. Developer candidate relaunched on SDK Gallery with the normal profile (PID 35744); UI Automation finds the bell and the process is responsive.
