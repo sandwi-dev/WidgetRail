@@ -115,6 +115,22 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => Slots(pinned?.Presenter).Any(slot => slot.Surface == first));
                 ReconcilePinnedWindowOrder();
                 Check(WindowBelow(pinned!.Window.Handle, (nint)hostWindow), "Passive browser pin is behind the main overlay");
+                await BeginPinnedAdjustmentAsync();
+                Check(PinnedAdjustmentActive && !pinned.Window.Interactive && !first.CanRequestSiteDecision && WindowBelow((nint)hostWindow, pinned.Window.Handle),
+                    "Move/resize raises the shared pin above the overlay while host adjustment retains input");
+                StepPinnedPlacement(PinnedPlacementDirection.Right, resize: false);
+                StepPinnedPlacement(PinnedPlacementDirection.Down, resize: true);
+                ReconcilePinnedWindowOrder();
+                Check(WindowBelow((nint)hostWindow, pinned.Window.Handle), "Moving, resizing and shell order reconciliation keep the adjusting pin above the overlay");
+                CancelPinnedAdjustment();
+                Check(!PinnedAdjustmentActive && WindowBelow(pinned.Window.Handle, (nint)hostWindow), "Cancelling move/resize restores passive pin ordering");
+                await BeginPinnedAdjustmentAsync(opacityOnly: true);
+                StepPinnedOpacity(pinned.Window.OpacityPercent < 100 ? PinnedPlacementDirection.Right : PinnedPlacementDirection.Left);
+                ReconcilePinnedWindowOrder();
+                Check(PinnedAdjustmentActive && !pinned.Window.Interactive && WindowBelow((nint)hostWindow, pinned.Window.Handle),
+                    "Opacity adjustment raises the shared pin without enabling widget interaction");
+                await FinishPinnedAdjustmentAsync(save: true);
+                Check(!PinnedAdjustmentActive && WindowBelow(pinned.Window.Handle, (nint)hostWindow), "Saving opacity restores passive pin ordering");
                 await EnterPinnedAsync();
                 await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(WindowBelow((nint)hostWindow, pinned.Window.Handle), "Interacting browser pin is above the main overlay without replacing its session");

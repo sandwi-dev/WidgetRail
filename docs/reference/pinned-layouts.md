@@ -3,6 +3,11 @@
 A pinned layout is a widget-authored view that can remain visible outside the
 main overlay. The host owns the window, placement controls, and rendering.
 
+While the main overlay is visible, passive pins stay behind it. Interacting with
+a pin or adjusting its position, size or opacity raises it above the main layer.
+Adjustment input belongs to the host; it does not activate the pinned widget's
+controls. Saving or cancelling restores the normal passive ordering.
+
 ## Declare support
 
 The manifest's `pinningSupported` enables supported authored/compact layouts.

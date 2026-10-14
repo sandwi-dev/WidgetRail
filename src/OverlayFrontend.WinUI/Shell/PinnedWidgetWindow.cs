@@ -165,8 +165,8 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     internal void Hide()
     {
         if (disposed) return;
-        SetInteraction(false);
         placementActive = false;
+        SetInteraction(false);
         hasForeground = false;
         window.Hide();
     }
@@ -193,7 +193,8 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
         if (disposed || mainWindow == 0 || !IsVisible) return;
         if (OverlayWindowFrame.IsWindowVisible(mainWindow) != 0)
         {
-            if (Interactive) OverlayWindowFrame.PlaceBelow(mainWindow, Handle);
+            // Adjustment owns the front layer while the shell retains input.
+            if (Interactive || placementActive) OverlayWindowFrame.PlaceBelow(mainWindow, Handle);
             else OverlayWindowFrame.PlaceBelow(Handle, mainWindow);
         }
         else OverlayWindowFrame.KeepTopmost(Handle);
@@ -226,6 +227,7 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     {
         DemandAlive();
         placementActive = active;
+        ReconcileOrder();
         UpdateFocusVisibility();
     }
     private void UpdateFocusGeometry()
@@ -249,6 +251,7 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     {
         if (disposed) return;
         DemandAlive();
+        placementActive = false;
         SetInteraction(false); window.Hide();
         disposed = true;
         theme.Changed -= OnThemeChanged;
