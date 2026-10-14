@@ -5,28 +5,33 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
+internal sealed record BrowserPopupRequest(BrowserPopupPlacement Placement, Func<BrowserSurface, Task<bool>>? Pin = null);
+
 internal sealed partial class BrowserSurface
 {
     private readonly bool isPopup;
     private BrowserSurface? popup;
     private bool popupDetached;
-    private BrowserSurface? AttachedPopup => popupDetached ? null : popup;
+    private BrowserSurface? AttachedPopup => popupDetached || openingPopup ? null : popup;
     private Grid? popupLayer;
     private Task? popupClosing;
     private Task? popupOpening;
     private CancellationTokenSource? popupCancellation;
     private bool openingPopup;
+    private bool popupPlacementReady;
     internal Func<BrowserSurface, bool>? ReservePopup { get; set; }
     internal Action<BrowserSurface>? ReleasePopup { get; set; }
     internal Action? CloseRequested { get; set; }
     internal Action<BrowserSurface>? PopupClosed { get; set; }
     internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
     internal Func<BrowserSurface, bool>? PopupIsPinned { get; set; }
-    internal Func<BrowserSurface, Grid, CancellationToken, Task<CoreWebView2>>? PreparePopup { get; set; }
+    internal Func<BrowserSurface, Grid, bool, CancellationToken, Task<CoreWebView2>>? PreparePopup { get; set; }
+    internal Func<BrowserSurface, string?, CancellationToken, Task<BrowserPopupRequest?>>? ChoosePopupPlacement { get; set; }
+    internal Func<BrowserSurface, string, CancellationToken, Task>? ManagePopupPlacement { get; set; }
     internal bool HasPopup => popup is not null || openingPopup;
     internal bool HasAttachedPopup => AttachedPopup is not null;
     internal BrowserSurface ActiveSurface => AttachedPopup?.ActiveSurface ?? this;
-    internal BrowserSurface? PinnablePopup => !retired && !openingPopup && popupClosing is not { IsCompleted: false } && popup is { IsReady: true } child ? child : null;
+    internal BrowserSurface? PinnablePopup => !retired && (!openingPopup || popupPlacementReady) && popupClosing is not { IsCompleted: false } && popup is { IsReady: true } child ? child : null;
     internal bool IsDetachedPopup(BrowserSurface child) => popupDetached && ReferenceEquals(popup, child);
     internal bool Owns(BrowserSurface source) => ReferenceEquals(this, source) || popup?.Owns(source) == true;
     internal IEnumerable<FrameworkElement> NativeCompositionRoots
@@ -87,17 +92,31 @@ internal sealed partial class BrowserSurface
         var deferral = args.GetDeferral();
         popupCancellation?.Dispose();
         popupCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        var expectedPage = pageEpoch;
+        // Placement belongs to the visible website's controls, including popups
+        // requested by its embedded frames. It grants no website permission.
+        var origin = BrowserSiteIdentity.Origin(core?.Source ?? "", requireHttps: false);
         popupOpening = ObserveAsync(OpenPopupAsync);
         async Task OpenPopupAsync()
         {
             var failed = false;
             try
             {
+                BrowserPopupRequest? request = new(BrowserPopupPlacement.InWidget);
+                if (ChoosePopupPlacement is { } choose)
+                {
+                    // Only the undecided prompt follows page/hide cancellation.
+                    // A confirmed placement may itself move/hide its parent.
+                    using var promptCancellation = CancellationTokenSource.CreateLinkedTokenSource(popupCancellation.Token,
+                        (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token);
+                    request = await choose(this, origin, promptCancellation.Token);
+                }
+                if (request is null || retired || expectedPage != pageEpoch || popupCancellation.IsCancellationRequested) return;
                 var name = document.AccessibleName[..Math.Min(document.AccessibleName.Length, 250)] + " popup";
                 var child = new BrowserSurface(widgetId, new("popup." + Guid.NewGuid().ToString("N"), 1, url, name)
                 {
                     InteractionMode = BrowserInteractionMode.InteractOnFocus,
-                    Options = document.Options with { Chrome = BrowserChrome.Toolbar, ExternalLinks = BrowserExternalLinkMode.InWidget, Background = BrowserBackgroundMode.Automatic },
+                    Options = document.Options with { Chrome = BrowserChrome.OnDemand, ExternalLinks = BrowserExternalLinkMode.InWidget, Background = BrowserBackgroundMode.Automatic },
                 }, environment, library: library, popup: true)
                 {
                     OpenExternal = OpenExternal, Choose = Choose, ChooseFiles = ChooseFiles, ChangeProfile = ChangeProfile, PrepareScreenPicker = PrepareScreenPicker,
@@ -111,21 +130,22 @@ internal sealed partial class BrowserSurface
                     Recover = async _ => { await ClosePopupAsync(); ShowStatus("The popup closed. Retry the action on the page to open it again."); },
                 };
                 popup = child;
-                popupLayer = new Grid();
+                popupLayer = new Grid { Visibility = Visibility.Collapsed };
                 SetRowSpan(popupLayer, RowDefinitions.Count); Children.Add(popupLayer);
                 CoreWebView2 childCore;
-                if (PreparePopup is { } prepare) childCore = await prepare(child, popupLayer, popupCancellation.Token);
+                if (PreparePopup is { } prepare) childCore = await prepare(child, popupLayer, request.Placement == BrowserPopupPlacement.Pinned, popupCancellation.Token);
                 else
                 {
                     popupLayer.Children.Add(child);
                     childCore = await child.PrepareCoreAsync(popupCancellation.Token);
                 }
-                if (retired || !ReferenceEquals(popup, child)) return;
+                if (retired || expectedPage != pageEpoch || !ReferenceEquals(popup, child) || popupCancellation.IsCancellationRequested)
+                    throw new OperationCanceledException();
                 args.NewWindow = childCore;
                 child.appliedNavigation = child.document.NavigationId;
-                SetPresentation(visible, presentationInputRequested);
-                child.Enter();
-                ActivityChanged?.Invoke();
+                popupPlacementReady = true;
+                if (request.Placement == BrowserPopupPlacement.Pinned && (request.Pin is null || !await request.Pin(child)))
+                    throw new OperationCanceledException();
             }
             catch (Exception error) when (error is not OutOfMemoryException)
             {
@@ -134,12 +154,20 @@ internal sealed partial class BrowserSurface
             }
             finally
             {
-                openingPopup = false;
+                openingPopup = false; popupPlacementReady = false;
                 try { deferral.Complete(); }
                 catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException)
                 { failed = true; if (!retired) Diagnostics.FrontendFailureLog.Current.Write("browser-popup-complete", error); }
+                if (popup is null) ReleasePopup?.Invoke(this);
             }
             if (failed) await ClosePopupAsync();
+            else if (popup is { } presented)
+            {
+                if (!popupDetached && popupLayer is { } layer) layer.Visibility = Visibility.Visible;
+                SetPresentation(visible, presentationInputRequested);
+                if (!popupDetached) presented.Enter();
+                ActivityChanged?.Invoke();
+            }
         }
     }
 

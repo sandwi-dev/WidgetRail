@@ -23,13 +23,13 @@ internal sealed partial class BrowserOwner
     private Task? popupReconciliation;
     internal Action<BrowserPopupPresentation>? PopupPresentationInvalidated { get; set; }
 
-    private async Task<CoreWebView2> PreparePopupAsync(BrowserSurface child, Grid destination, CancellationToken token)
+    private async Task<CoreWebView2> PreparePopupAsync(BrowserSurface child, Grid destination, bool deferPlacement, CancellationToken token)
     {
         if (retired || !entries.Values.Any(entry => entry.Surface.Owns(child))) throw new OperationCanceledException();
         parking.Children.Add(child);
         var core = await child.PrepareCoreAsync(token);
         token.ThrowIfCancellationRequested();
-        await MoveAsync(child, destination, () => !token.IsCancellationRequested && child.IsReady);
+        if (!deferPlacement) await MoveAsync(child, destination, () => !token.IsCancellationRequested && child.IsReady);
         token.ThrowIfCancellationRequested();
         return core;
     }

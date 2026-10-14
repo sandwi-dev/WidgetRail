@@ -19,6 +19,16 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     private readonly List<HostDialogChoice> entries;
     private readonly HashSet<string> reportedChoices = [];
     private bool opened, reportingQueued;
+    private CheckBox? rememberChoice;
+    internal bool RememberChoice => rememberChoice?.IsChecked == true;
+    internal void AddRememberChoice(string label)
+    {
+        if (rememberChoice is not null || Content is not StackPanel panel) return;
+        rememberChoice = new CheckBox { Content = label, IsChecked = false };
+        AutomationProperties.SetAutomationId(rememberChoice, "Host.Choice.Remember");
+        AutomationProperties.SetName(rememberChoice, label);
+        panel.Children.Add(rememberChoice);
+    }
     internal event Action<string>? DismissChoiceRequested;
     internal event Action<string>? ChoiceShown;
     internal bool SupportsDismissChoice => DismissChoiceRequested is not null;
@@ -47,7 +57,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
                     HorizontalScrollMode = ScrollMode.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                     VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 AutomationProperties.SetAutomationId(messageViewport, "Host.Choice.Message");
-                AutomationProperties.SetName(messageViewport, "Requested access. Scroll to read all permissions.");
+                AutomationProperties.SetName(messageViewport, "Dialog details. Scroll to read more.");
                 content.Children.Add(messageViewport);
             }
             else content.Children.Add(text);
@@ -224,6 +234,8 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         else if (button == ControllerButton.A)
         {
             if (ListFocused()) Choose(choices.SelectedIndex);
+            else if (rememberChoice is not null && IsWithinFocused(rememberChoice))
+                rememberChoice.IsChecked = !RememberChoice;
             else if (FocusManager.GetFocusedElement(XamlRoot) is Button focused)
             {
                 ControllerArmed = false;

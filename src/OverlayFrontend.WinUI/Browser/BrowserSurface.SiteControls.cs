@@ -25,19 +25,24 @@ internal sealed partial class BrowserSurface
         bool hostInvoked)
     {
         if (!(hostInvoked ? CanCompleteSiteDecision : CanRequestSiteDecision) || HasDialog || siteControlsPending || choose is null || core is not { } current) return;
-        var origin = BrowserSiteIdentity.Origin(sessionStopped ? document.Url : current.Source);
-        if (origin is null) { ShowStatus("Open an HTTPS website to manage its permissions."); return; }
+        var origin = BrowserSiteIdentity.Origin(sessionStopped ? document.Url : current.Source, requireHttps: false);
+        if (origin is null) { ShowStatus("Open a website to manage its settings."); return; }
+        var secure = origin.StartsWith("https://", StringComparison.Ordinal);
+        if (permissionsOnly && !secure) { ShowStatus("Open an HTTPS website to manage its permissions."); return; }
         siteControlsPending = true;
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
         try
         {
-            HostDialogChoice[] options = [new("permissions", "Website permissions"), new("clear", "Clear website data for this profile"),
+            HostDialogChoice[] options = [.. (secure ? (HostDialogChoice[])[new("permissions", "Website permissions")] : Array.Empty<HostDialogChoice>()), new("clear", "Clear website data for this profile"),
+                .. (ManagePopupPlacement is null || RequestPopupPin is null || document.Options.Popups != WidgetProtocol.BrowserPopupMode.Hosted
+                    ? Array.Empty<HostDialogChoice>() : [new("popups", "Pop-out placement")]),
                 .. (downloads.Count == 0 ? Array.Empty<HostDialogChoice>() : [new("downloads", $"Downloads ({downloads.Count})")]),
                 .. (ChangeRunning is null ? Array.Empty<HostDialogChoice>() : [new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)")])];
             var selection = permissionsOnly ? "permissions" : await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", options, token);
             token.ThrowIfCancellationRequested();
             if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
             if (selection == "downloads") { await ManageDownloadsAsync(token); return; }
+            if (selection == "popups" && ManagePopupPlacement is { } manage) { await manage(this, origin, token); return; }
             BrowserProfileChange? change = null;
             if (selection == "session" && ChangeRunning is { } run)
             {

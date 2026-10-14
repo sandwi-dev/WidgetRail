@@ -38,6 +38,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
     internal Func<BrowserSurface, CancellationToken, Task<bool>>? PrepareScreenPicker { get; set; }
     internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
+    internal Func<BrowserSurface, string?, CancellationToken, Task<BrowserPopupRequest?>>? ChoosePopupPlacement { get; set; }
+    internal Func<BrowserSurface, string, CancellationToken, Task>? ManagePopupPlacement { get; set; }
     internal int ResidentCount => entries.Count;
     internal int CreatedCount { get; private set; }
     internal int PlacementMoveCount { get; private set; }
@@ -192,6 +194,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             ReleasePopup = surface => popupOwners.Remove(surface),
                             PopupClosed = PopupClosed,
                             PreparePopup = PreparePopupAsync,
+                            ChoosePopupPlacement = ChoosePopupPlacement,
+                            ManagePopupPlacement = ManagePopupPlacement,
                             RequestPopupPin = session.GetState(group.Key.Widget)?.LastGood?.Descriptor.FullWidgetPinningSupported == true && RequestPopupPin is not null
                                 ? source => RequestPopupPin?.Invoke(source) ?? Task.CompletedTask : null,
                             PopupIsPinned = source => popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Child, source),

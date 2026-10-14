@@ -61,7 +61,14 @@ In a webapp, the left stick moves the pointer, A clicks, and the right stick scr
 LS opens Website controls; its actions have direct labels. Website permissions can
 also be changed from the widget's tray menu, including restoring a blocked microphone.
 
-A hosted pop-out can offer **Pin pop-out** in its controls and the tray. This keeps
+Opening a hosted pop-out in a pinnable widget asks **Open pinned**, **Open in
+widget**, or **Cancel**. The optional Remember checkbox saves the choice for that
+website in the current widget/account. Reset it through **Website controls →
+Pop-out placement → Ask each time**. If a pin already exists, **Replace pin**
+requires an explicit choice even with a remembered pin preference.
+
+Pop-outs have no permanent toolbar, in either placement; press **LS** to reveal
+their controls. An existing pop-out also offers **Pin pop-out** there and in the tray. This keeps
 the existing live page pinned while its parent remains usable. View switches to the
 pin; B returns to the overlay. **Return pop-out to widget** moves it back. Stopping
 the parent session also closes its pop-out.

@@ -233,8 +233,8 @@ not an origin allowlist; redirects can cross origins for authentication.
 
 - ReplacePage navigates the current page; it cannot preserve an opener relationship.
 - Hosted creates a bounded child in the same widget/account profile, preserving
-  `window.opener`, `postMessage` and `window.close`. Its toolbar always identifies
-  the origin and provides Close. B returns from child toolbar to child page, then
+  `window.opener`, `postMessage` and `window.close`. LS reveals its on-demand
+  toolbar, which identifies the origin and provides Close. B returns from child toolbar to child page, then
   closes the child and returns to the existing parent.
 - SystemBrowser opens HTTP(S) popup URLs through the existing Windows handoff.
   Windows does not share the hosted profile or opener; auth flows requiring them
@@ -244,11 +244,25 @@ Each root can host one popup; the host permits at most two globally. Nested and
 non-user-initiated popups are rejected. Hosted about:blank startup is supported
 for authentication flows that navigate the new window afterwards. Non-web schemes
 remain unsupported. Closing, stopping, clearing a profile or retiring the root
-drains child initialization and native resources. Narrow toolbars keep address
+drains child initialization and native resources. When revealed, narrow toolbars keep address
 and Close visible with a controller-scrollable command row.
 
-For widgets that support full-widget pinning, a hosted child provides **Pin
-pop-out** in its toolbar and as a tray pin choice. Replacing a pin uses the same
+For widgets that support full-widget pinning, a new hosted popup first asks
+**Open pinned / Open in widget / Cancel**. The host defers the native request
+until the choice is made and places the existing child directly at its destination.
+It does not flash the child in the parent before pinning. Both placements use
+on-demand controls. The optional Remember checkbox stores the choice per widget,
+account profile and requesting top-level website origin (including popups from
+its embedded frames). This makes the choice manageable from that website's own
+controls. It applies to hosted popup windows
+generally, including authentication windows; the host does not infer their purpose.
+Unknown requesting origins do not offer Remember. **Website controls → Pop-out
+placement** offers Ask each time / Open in widget / Open pinned. Cancel never saves
+a choice. Preferences survive restarts; a remembered pin preference still asks
+before replacing an existing pin, with a direct **Replace pin** action.
+
+An already open hosted child also provides **Pin pop-out** in its LS toolbar and
+as a tray pin choice. Replacing a pin uses the same
 single-pin placement/opacity controls. The existing child moves into that pin;
 its URL is not opened a second time and its opener/profile stay intact. The
 parent remains usable. B leaves pinned interaction; it does not close the child.

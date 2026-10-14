@@ -25,10 +25,10 @@ internal sealed partial class OverlayShellPage
         await PinBrowserPopupAsync(source.WidgetId, expected, source);
     }
 
-    private async Task PinBrowserPopupAsync(string widgetId, PinnedSurface? expected = null, BrowserSurface? expectedChild = null)
+    private async Task PinBrowserPopupAsync(string widgetId, PinnedSurface? expected = null, BrowserSurface? expectedChild = null, bool enforceExpected = false)
     {
         if (retired || owner is null || browserOwner is not { } browsers ||
-            expected is not null && !ReferenceEquals(pinned, expected)) return;
+            (enforceExpected || expected is not null) && !ReferenceEquals(pinned, expected)) return;
         var child = expectedChild ?? browsers.PinnablePopup(widgetId);
         if (child is null || ReferenceEquals(pinned?.Popup?.Child, child) || !browsers.CanPinPopup(widgetId, child)) return;
         var intent = ++pinIntent;
@@ -40,7 +40,7 @@ internal sealed partial class OverlayShellPage
             {
                 if (retired || intent != pinIntent || !browsers.CanPinPopup(widgetId, child) ||
                     owner.Session.GetState(widgetId)?.LastGood is not { Descriptor.FullWidgetPinningSupported: true } frame ||
-                    expected is not null && !ReferenceEquals(pinned, expected)) return;
+                    (enforceExpected || expected is not null) && !ReferenceEquals(pinned, expected)) return;
                 // Detach a child before moving/destroying its parent's pinned
                 // XamlRoot. A different popup lease must first return home so
                 // the owner retains its single borrowed-child contract.

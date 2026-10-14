@@ -33,6 +33,10 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-popup-placement")) await VerifyPopupPlacementChoicesAsync(first, Check);
+                // Other popup lifetime tests deliberately choose the established
+                // in-widget route; placement admission is covered separately.
+                await PopupPreferences.SetAsync(first.WidgetId, first.ProfileName, "https://shell.fixture.invalid", BrowserPopupPlacement.InWidget, lifetime.Token);
                 Check(!first.IsToolbarVisible, "Public webapp declaration opens without permanent browser chrome");
                 var height = first.CompositionRoot.ActualHeight;
                 await Press(ControllerButton.LeftStick);
