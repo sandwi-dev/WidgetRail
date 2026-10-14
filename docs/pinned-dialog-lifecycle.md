@@ -54,5 +54,6 @@ The normal profile and sign-ins are preserved. Evidence is under
 
 Physical checks: open Page actions in a full-widget or pop-out pin, scroll to the
 last action, use B to remain in the pin, use View to leave and reenter, hide/reopen
-with the dialog open, and repeat with the controller keyboard. Physical acceptance
-remains pending.
+with the dialog open, and repeat with the controller keyboard. The user accepted
+these changes on 2026-10-14 and authorized merging to main, together with the
+shared dialog presentation improvements.

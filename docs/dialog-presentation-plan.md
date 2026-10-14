@@ -72,5 +72,6 @@ Physical checklist: compare Page actions in the main widget and a pop-out pin;
 switch the overlay between left/right positions and open choices/bookmarks or
 buffered keyboard entry; confirm the live browser-field keyboard stays in place;
 leave a playing pin passive for at least 15 seconds, hide/reopen, then reenter.
-Physical acceptance remains pending. No merge, push, published release, installer
-creation or profile reset was performed.
+The user accepted these changes on 2026-10-14 and authorized merging to main.
+No push, published release, installer creation or profile reset is part of this
+integration.
