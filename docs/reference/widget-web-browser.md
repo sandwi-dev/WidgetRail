@@ -108,9 +108,10 @@ only frames owned by that WebView. It returns positions rather than page text or
 field values, and releases temporary DOM references/sessions after each request.
 The current control and nearby DOM branches are inspected before the broader
 scan, so an earlier large subtree cannot starve a later toolbar. If the broader
-scan is truncated, locally discovered targets remain eligible under the normal
-direction/distance/alignment ranking, including diagonal destinations. There is
-no mandatory row or column overlap. The source control is identified explicitly,
+scan is truncated, every discovered target remains eligible under the normal
+direction/distance/alignment ranking, including diagonal destinations. Local
+discovery is a priority, not an eligibility boundary. There is no mandatory row
+or column overlap. The source control is identified explicitly,
 independent of scan order.
 No scans run during neutral controller polling. Cross-origin and separate-process
 frames are supported; rotated/skewed/mirrored/perspective frame transforms and

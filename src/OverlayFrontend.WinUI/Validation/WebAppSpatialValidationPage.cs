@@ -64,6 +64,9 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                 await browser.EvaluateFixtureAsync("document.getElementById('near').hidden=true");
                 await PointAt("source"); await Jump(FocusNavigationDirection.Left, "far");
                 Check(true, "Navigation can leave the toolbar when its closer neighbor is unavailable");
+                await Body("<section style='position:absolute;left:120px;top:40px'><div><div><div><div><div><button id=status>Status action</button></div></div></div></div></div></section><button id=below class=fixed style='left:120px;top:140px'>Control below</button><div style='position:absolute;top:700px;height:10px;overflow:hidden'>" + string.Concat(Enumerable.Repeat("<div>Offscreen structure</div>", 13000)) + "</div>");
+                await PointAt("status"); await Jump(FocusNavigationDirection.Down, "below");
+                Check(browser.LastSpatialMoveForValidation is { Truncated: true }, "A valid globally discovered control remains reachable from a deeply nested source on a truncated page");
                 await Body("<button id=a class=fixed style='left:40px;top:40px'>A</button><button id=b class=fixed style='left:200px;top:40px'>B</button><button id=d class=fixed style='left:200px;top:150px'>D</button>");
                 await PointAt("a");
                 await Jump(FocusNavigationDirection.Right, "b");

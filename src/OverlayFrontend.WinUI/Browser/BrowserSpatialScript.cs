@@ -107,7 +107,7 @@ internal static class BrowserSpatialScript
                 const sx=r.width/e.offsetWidth,sy=r.height/e.offsetHeight;
                 // Confirm the frame itself isn't hidden by another surface.
                 const sample=point(e,visible);
-                if(sample)frames.push({element:e,x:r.left+e.clientLeft*sx,y:r.top+e.clientTop*sy,sx,sy,w:e.clientWidth,h:e.clientHeight,clip:visible,local});
+                if(sample)frames.push({element:e,x:r.left+e.clientLeft*sx,y:r.top+e.clientTop*sy,sx,sy,w:e.clientWidth,h:e.clientHeight,clip:visible});
               }
             }else if(eligible(e)&&inScope(e)){
               for(const box of e.getClientRects()){
@@ -115,7 +115,7 @@ internal static class BrowserSpatialScript
                 for(const r of [intersect(rect(box),c),intersect(rect(box),view)]){
                   if(r.w<2||r.h<2)continue;
                   const at=point(e,r);
-                  if(at){items.push({element:e,rect:r,point:at,source:sourcePath.has(e),origin:e===sourceNode,local});found=true;break;}
+                  if(at){items.push({element:e,rect:r,point:at,source:sourcePath.has(e),origin:e===sourceNode});found=true;break;}
                 }
                 if(found)break;
               }
@@ -146,8 +146,8 @@ internal static class BrowserSpatialScript
     """;
     internal const string Describe = """
     function(){return {view:this.view,visited:this.visited,truncated:this.truncated,elapsed:this.elapsed,
-      items:this.items.map((i,index)=>({index,rect:i.rect,point:i.point,source:i.source,origin:i.origin,local:i.local})).filter(i=>!this.truncated||i.local),
-      frames:this.frames.map((f,index)=>({index,x:f.x,y:f.y,sx:f.sx,sy:f.sy,w:f.w,h:f.h,clip:f.clip,local:f.local})).filter(f=>!this.truncated||f.local)};}
+      items:this.items.map((i,index)=>({index,rect:i.rect,point:i.point,source:i.source,origin:i.origin})),
+      frames:this.frames.map((f,index)=>({index,x:f.x,y:f.y,sx:f.sx,sy:f.sy,w:f.w,h:f.h,clip:f.clip}))};}
     """;
     internal const string FrameElement = "function(raw){return this.frames[Number(raw)]?.element??null;}";
     internal const string Resolve = """
