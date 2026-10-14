@@ -122,11 +122,7 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
 
     private async Task<SpatialPoint?> ResolveBest(IReadOnlyList<SpatialCandidate> choices, SpatialRect origin, SpatialDirection direction, SpatialPoint? pointer = null)
     {
-        // A budget-limited snapshot cannot justify leaving the current row or
-        // column: an unvisited nearby control may be the intended neighbor.
-        var remaining = choices.Where(item => !truncated || (direction is SpatialDirection.Left or SpatialDirection.Right
-            ? item.Rect.Bottom >= origin.Y && item.Rect.Y <= origin.Bottom
-            : item.Rect.Right >= origin.X && item.Rect.X <= origin.Right)).ToList();
+        var remaining = choices.ToList();
         // Removed controls or parent-frame overlays must not trap every repeat
         // on the same stale candidate. Try another bounded set of alternatives.
         for (var attempt = 0; attempt < 16; attempt++)
