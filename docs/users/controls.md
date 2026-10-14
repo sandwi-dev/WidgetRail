@@ -62,8 +62,8 @@ stick** remains free pointer movement, **A** clicks, and **right stick** scrolls
 D-pad scrolls by list rows, including text-only chat messages. Long rows advance
 in smaller steps. With no clickable target, the circle stays near the advancing
 edge of the list. Holding D-pad defers new hover until release; the circle glides
-between targets. Left-stick movement is immediate with a faint fading trail.
-System reduced motion disables both visual effects. D-pad never clicks automatically
+between targets. Left-stick movement is immediate, without a trail.
+System reduced motion disables the glide. D-pad never clicks automatically
 and does not move the pointer while A is held for dragging. Use the free pointer
 for canvas controls or elements a page does not expose as interactive.
 LS opens Website controls; its actions have direct labels. Website permissions can

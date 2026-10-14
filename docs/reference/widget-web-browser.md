@@ -93,9 +93,9 @@ Holding D-pad defers webpage hover until release, while the circle glides betwee
 destinations. The previous page hover is retained so an already-open menu remains
 navigable; intermediate targets do not receive mouse-move events. A immediately
 settles the circle and synchronizes the native pointer before clicking. Left-stick
-takeover restores immediate movement and hover, with a short, faint speed-sensitive
-trail. Animation never sends intermediate page input. System reduced motion
-disables glide and trail; high contrast suppresses the trail. Timing/appearance
+takeover restores immediate movement and hover, without a trail or interpolation.
+Animation never sends intermediate page input. System reduced motion
+disables glide. Timing
 constants are centralized in `Input/PointerMotionOptions.cs`; no widget option is
 required. Native chooser windows retain their existing pointer presentation.
 

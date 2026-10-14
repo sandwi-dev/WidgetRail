@@ -53,23 +53,16 @@ internal static class WebAppPointerMotionValidation
         browser.SampleDpadHold(false);
         check(!browser.FixturePointerGliding, "Free-stick takeover cancels glide and resumes native hover immediately");
 
-        if (motion)
-        {
-            browser.MovePointer(.01, .01); await Task.Delay(20); browser.MovePointer(.01, .01);
-            check(browser.FixturePointerTrailCount is > 0 and <= 7, "Analog movement uses a bounded subtle trail pool");
-            await Task.Delay(140);
-            check(browser.FixturePointerTrailCount == 0, "Analog trail expires without further input");
-        }
         browser.FixturePointerReducedMotion = true;
         await pointAt("a"); browser.MoveFocus(FocusNavigationDirection.Right);
         await Until(() => !browser.SpatialBusyForValidation);
-        check(!browser.FixturePointerGliding && browser.FixturePointerTrailCount == 0, "Reduced motion keeps immediate input without glide or trail");
+        check(!browser.FixturePointerGliding, "Reduced motion keeps immediate input without glide");
         browser.FixturePointerReducedMotion = false;
 
         await pointAt("a"); browser.SampleDpadHold(true); browser.MoveFocus(FocusNavigationDirection.Right);
         await Until(() => !browser.SpatialBusyForValidation);
         browser.SetPresentation(false, false); browser.SampleDpadHold(false);
-        check(!browser.FixturePointerGliding && browser.FixturePointerTrailCount == 0, "Presentation loss clears pending motion and particles");
+        check(!browser.FixturePointerGliding, "Presentation loss clears pending motion");
         browser.SetPresentation(true, true); browser.Enter();
 
         async Task Script(string expression)
