@@ -415,3 +415,11 @@ User reported that move/resize and opacity adjustment left the pin behind the ma
 ## Acceptance and local integration
 
 The user accepted all changes after candidate 09 and authorized merging the complete webapp branch into main. The accepted code is unchanged; the existing 112 native and 215 managed checks, candidate integrity checks and review evidence apply. Integration preserves main's unrelated docs/implementation-agent-goal.md edit and leaves the running candidate/profile intact. No push, release, installer creation or worktree removal is part of this integration.
+
+## Experiment: excluding host windows from the screen-sharing chooser
+
+User authorized trying Windows capture exclusion after observing the overlay, backdrop and controller pointer in Chromium's chooser. Applied WDA_EXCLUDEFROMCAPTURE through SetWindowDisplayAffinity to the main HWND, shared peer windows (pins/banners/countdown), backdrop and native controller-circle HWND. Frontend/native builds succeeded; GetWindowDisplayAffinity confirmed 0x11 on all four visible host windows.
+
+With WebView2 155.0.4283.45, the actual chooser still enumerated the main overlay, backdrop and pin on three successive openings. The circle was initially absent but appeared in the first chooser after its asynchronous list refresh; its absence on later immediate checks does not establish reliable exclusion. This setting is therefore insufficient for hiding host windows from this chooser. No claim is made about captured pixels: only a separate synthetic source was shared, never personal windows or the desktop.
+
+Evidence: artifacts/webapps/shell-01/result-85.json (57 checks passed through renderer recovery), result-85.json.round-{1,2,3}.capture-exclusion.json, controller driver logs and evidence; attempted patch/helper/driver preserved under artifacts/webapps/capture-exclusion-experiment. The production-code and driver changes were reverted because they did not solve the requested chooser filtering. The isolated fixture was closed and the user's previously running installed build was relaunched with its original default profile and --hidden argument. No profile content or credentials were inspected, and no candidate/release/installers were created.
