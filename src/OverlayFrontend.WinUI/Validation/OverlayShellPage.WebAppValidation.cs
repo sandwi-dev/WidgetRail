@@ -35,6 +35,13 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-passive-pin"))
+                {
+                    step = "passive pin visibility";
+                    await VerifyPassiveBrowserPinAsync(first, path, Check);
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
                 await VerifySpatialRoutingAsync(first, "main", Check);
                 if (Environment.GetCommandLineArgs().Contains("--webapp-popup-placement")) await VerifyPopupPlacementChoicesAsync(first, Check);
                 // Other popup lifetime tests deliberately choose the established
