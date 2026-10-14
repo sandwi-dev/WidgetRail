@@ -49,3 +49,7 @@ To reproduce with a Debug frontend: launch `--validate-webapp-background=<absolu
 - Developer candidate launched on SDK Gallery, PID 32520. Platform settings hash before/after delivery: `C17EE2EE30C4C8E96E23E1C3CF61DF362BE5C1DBAC42F7802DC1A41C9DAA19D3`. Main's unrelated `docs/implementation-agent-goal.md` edit remains untouched.
 - Physical checklist: hide Discord for at least 20 seconds during your own call/share, reopen and check continuity/responsiveness; try quick switches, a visible pin and a pinned pop-out; check YouTube Music Settings shows the banner-opacity label and percentage. Synthetic validation is complete; account-dependent acceptance remains with the user.
 - No merge, push, release or worktree removal.
+
+## Acceptance
+
+User accepted the memory-policy and opacity-label changes on 2026-10-14 and authorized merging them to main before the separate native chooser investigation. The preceding unmerged status records candidate delivery. Native chooser controller/lifetime issues are tracked as the next task, not attributed to Low memory mode by these measurements.
