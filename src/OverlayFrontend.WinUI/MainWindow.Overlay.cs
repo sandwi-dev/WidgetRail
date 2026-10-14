@@ -20,11 +20,14 @@ public sealed partial class MainWindow
     private nint placementWindow;
     private ulong? placementDisplay;
     private XamlRoot? observedXamlRoot;
+    private bool chooserHidePending;
+    private long chooserHideVersion;
 
     private void ToggleOverlay()
     {
+        if (chooserHidePending) { ShowOverlay(); return; }
         if (overlayRequestedVisible && AppWindow.IsVisible &&
-            (input?.IsForeground ?? (RootFrame.Content as OverlayShellPage)?.HasForeground) == true) { HideOverlay(); return; }
+            ((input?.IsForeground ?? (RootFrame.Content as OverlayShellPage)?.HasForeground) == true || nativeBrowserDialog?.HasForeground == true)) { HideOverlay(); return; }
         ShowOverlay();
     }
 
@@ -33,6 +36,7 @@ public sealed partial class MainWindow
         if (cleanupStarted) return;
         CancelTaskHandoff();
         if (input?.PrepareShow() == false) return;
+        chooserHidePending = false; ++chooserHideVersion;
         var entering = !overlayRequestedVisible;
         overlayRequestedVisible = true;
         if (entering)
@@ -49,6 +53,7 @@ public sealed partial class MainWindow
             page.SetVisible(true);
         }
         AppWindow.Show();
+        nativeBrowserDialog?.SetHostVisibility(true);
         Activate();
         input?.AcquireForeground();
         StartInput();
@@ -58,6 +63,8 @@ public sealed partial class MainWindow
     private void HideOverlay()
     {
         if (cleanupStarted || !overlayRequestedVisible) return;
+        if (DeferHideForChooser(immediate: false)) return;
+        nativeBrowserDialog?.SetHostVisibility(false);
         if (overlayOpenPending && overlayMotion?.Playback is not { IsCompleted: false })
         { HideOverlayImmediately(); return; }
         overlayRequestedVisible = false;
@@ -69,6 +76,23 @@ public sealed partial class MainWindow
         (RootFrame.Content as Shell.OverlayShellPage)?.SetVisible(false, retainExitPresentation: true);
         input?.SetVisible(false);
         _ = PlayOverlayVisibilityAsync(version, opening: false);
+    }
+
+    private bool DeferHideForChooser(bool immediate)
+    {
+        if (cleanupStarted || nativeBrowserDialog is not { Active: true } chooser) return false;
+        if (chooserHidePending) return true;
+        chooserHidePending = true;
+        var version = ++chooserHideVersion;
+        _ = CompleteAsync();
+        return true;
+        async Task CompleteAsync()
+        {
+            await chooser.CloseBeforeHideAsync();
+            if (cleanupStarted || !chooserHidePending || version != chooserHideVersion) return;
+            chooserHidePending = false;
+            if (immediate) HideOverlayImmediately(); else HideOverlay();
+        }
     }
 
     private void DismissForExternalForeground(nint observed)

@@ -14,12 +14,15 @@ internal sealed class PlatformInputDiagnostics : IDisposable
         AllowSynchronousContinuations = false,
     });
     private long dropped;
+    private long written;
     private int closed;
+    private readonly Action<Exception>? reportFailure;
 
-    public PlatformInputDiagnostics(string path, int maximumBytes = 512 * 1024)
+    public PlatformInputDiagnostics(string path, int maximumBytes = 512 * 1024, Action<Exception>? reportFailure = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumBytes, 64 * 1024);
+        this.reportFailure = reportFailure;
         Completion = Task.Run(() => DrainAsync(path, maximumBytes));
     }
 
@@ -27,6 +30,7 @@ internal sealed class PlatformInputDiagnostics : IDisposable
         "WidgetRail", "WinUI", "diagnostics", "controller.log");
     public Task Completion { get; }
     public Exception? Failure { get; private set; }
+    internal long WrittenCount => Interlocked.Read(ref written);
 
     public void Write(string message)
     {
@@ -57,6 +61,7 @@ internal sealed class PlatformInputDiagnostics : IDisposable
                 }
                 await output.WriteAsync(bytes);
                 await output.FlushAsync();
+                Interlocked.Increment(ref written);
             }
         }
         catch (Exception error)
@@ -65,6 +70,7 @@ internal sealed class PlatformInputDiagnostics : IDisposable
             Interlocked.Exchange(ref closed, 1);
             messages.Writer.TryComplete();
             System.Diagnostics.Debug.WriteLine($"Controller diagnostics unavailable: {error.Message}");
+            try { reportFailure?.Invoke(error); } catch { /* Never replace the logging failure. */ }
         }
         finally
         {

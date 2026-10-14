@@ -64,10 +64,12 @@ public sealed class PlatformInputDiagnosticsTests
         try
         {
             Directory.CreateDirectory(directory);
-            using var log = new PlatformInputDiagnostics(directory);
+            Exception? reported = null;
+            using var log = new PlatformInputDiagnostics(directory, reportFailure: error => reported = error);
             log.Write("first");
             await log.Completion.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.IsNotNull(log.Failure);
+            Assert.AreSame(log.Failure, reported);
             log.Write("after failure");
             log.Dispose();
         }

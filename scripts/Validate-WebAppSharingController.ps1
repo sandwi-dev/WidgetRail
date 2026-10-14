@@ -1,9 +1,11 @@
 # Drives only the explicitly launched local sharing fixture. Native control
 # geometry is read through UIA; actions use analog controller frames, never UIA Invoke or direct cursor writes.
-param([Parameter(Mandatory)][string]$Result, [switch]$Cancel, [switch]$CancelWithB, [ValidateRange(1, 3)][int]$Round = 1)
+param([Parameter(Mandatory)][string]$Result, [switch]$Cancel, [switch]$CancelWithB, [switch]$ForegroundReturn, [switch]$HideReopen, [ValidateRange(1, 3)][int]$Round = 1,
+    [ValidateRange(10, 180)][int]$StartupTimeoutSeconds = 40)
 $ErrorActionPreference = 'Stop'
 if ($CancelWithB -and !$Cancel) { throw '-CancelWithB requires -Cancel.' }
-$deadline = [DateTime]::UtcNow.AddSeconds(40)
+if ($HideReopen -and !$Cancel) { throw '-HideReopen requires -Cancel.' }
+$deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
 while (!(Test-Path -LiteralPath ($Result + '.sharing-ready')) -or [int](Get-Content -LiteralPath ($Result + '.sharing-ready') -Raw | ConvertFrom-Json).round -lt $Round) {
     if (Test-Path -LiteralPath $Result) { throw (Get-Content -LiteralPath $Result -Raw) }
     if ([DateTime]::UtcNow -gt $deadline) { throw 'Sharing fixture did not become ready.' }
@@ -60,7 +62,9 @@ function Send-Controller([string]$Command) {
     $until = [DateTime]::UtcNow.AddSeconds(3)
     do {
         Start-Sleep -Milliseconds 100
-        $ack = if (Test-Path -LiteralPath ($Result + '.picker-ack')) { Get-Content -LiteralPath ($Result + '.picker-ack') -Raw | ConvertFrom-Json } else { $null }
+        # The fixture may be replacing its acknowledgement during this read.
+        # Keep waiting for the exact sequence; never retry the input gesture.
+        $ack = try { if (Test-Path -LiteralPath ($Result + '.picker-ack')) { Get-Content -LiteralPath ($Result + '.picker-ack') -Raw | ConvertFrom-Json } else { $null } } catch { $null }
     } while (($null -eq $ack -or $ack.sequence -ne $script:sequence -or $ack.round -ne $Round) -and [DateTime]::UtcNow -lt $until)
     if ($null -eq $ack -or $ack.sequence -ne $script:sequence -or $ack.round -ne $Round) { throw 'Native controller command was not acknowledged.' }
     $script:virtualCursor = [pscustomobject]@{ X=$ack.x; Y=$ack.y }
@@ -96,6 +100,16 @@ function Press-WithKeyboardActivity {
 }
 for ($i=0; $i -lt 12; $i++) { if ((Send-Controller neutral) -and $evidence[$evidence.Count-1].circle) { break }; Start-Sleep -Milliseconds 100 }
 if (!$evidence[$evidence.Count-1].nativeForeground) { throw 'Native dialog did not receive focus.' }
+if ($ForegroundReturn) {
+    $null = Send-Controller foreground-return
+    for ($i=0; $i -lt 20; $i++) { if ((Send-Controller neutral) -and $evidence[$evidence.Count-1].circle) { break }; Start-Sleep -Milliseconds 100 }
+    if (!$evidence[$evidence.Count-1].nativeForeground -or !$evidence[$evidence.Count-1].circle) { throw 'Chooser control did not recover after foreground return.' }
+}
+if ($HideReopen) {
+    $null = Send-Controller hide-reopen
+    Write-Output 'Hide/reopen cancellation was requested; fixture verifies confirmed closure before restoring placement.'
+    return
+}
 $circleWindow = @(winapp ui list-windows -a $fixturePid --json | ConvertFrom-Json | Where-Object { $_.className -eq 'WidgetRail.ControllerPointer.v1' })
 if ($circleWindow.Count -ne 1 -or $circleWindow[0].isForeground) { throw 'Expected one nonactivating controller-circle window.' }
 winapp ui screenshot -w $circleWindow[0].hwnd -o ($Result + ".round-$Round.circle.png") --json | Out-Null

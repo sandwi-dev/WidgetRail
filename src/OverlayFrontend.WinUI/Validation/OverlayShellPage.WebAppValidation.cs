@@ -19,6 +19,8 @@ internal sealed partial class OverlayShellPage
     internal Func<string>? NativePickerStatusForValidation { get; set; }
     internal Func<(int X, int Y, bool Visible)>? NativePickerPositionForValidation { get; set; }
     internal Func<nint>? NativePickerWindowForValidation { get; set; }
+    internal Action<bool>? NativePickerBlockCloseForValidation { get; set; }
+    internal Action<bool>? NativePickerVisibilityForValidation { get; set; }
     internal void EnableWebAppValidation(string path, string? sharingSource = null)
     {
         BrowserOwner.FixtureBrowserArguments = "--use-fake-device-for-media-stream";
@@ -170,7 +172,19 @@ internal sealed partial class OverlayShellPage
                     await VerifyShellScreenSharingAsync(first, path, sharingSource, Choose, Check);
                 }
                 await UnpinAsync(save: true);
-                await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface == first) && foreground && first.IsBrowsing);
+                if (sharingSource is not null && !interactive)
+                {
+                    var trayFocus = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+                    Check(foreground && trayFocus is not null && AutomationProperties.GetAutomationId(trayFocus) == "Overlay.Widget.webapp-a",
+                        "After chooser reopen, unpin preserves the selected main tray item without granting widget input");
+                    await Press(ControllerButton.A);
+                }
+                try { await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface == first) && foreground && first.IsBrowsing); }
+                catch (TimeoutException unpinTimeout)
+                {
+                    var focus = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+                    throw new InvalidOperationException($"Post-sharing unpin: samePage={Slots(surface).Any(slot => slot.Surface == first)} visible={visible} interactive={interactive} foreground={foreground} browsing={first.IsBrowsing} picker={nativeBrowserPickerActive} focus={focus?.GetType().Name}/{(focus is null ? "none" : AutomationProperties.GetAutomationId(focus))}", unpinTimeout);
+                }
 
                 step = "file picker cancellation";
                 await first.EvaluateGestureFixtureAsync("document.getElementById('upload').click()");

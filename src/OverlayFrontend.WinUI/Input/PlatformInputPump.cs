@@ -17,7 +17,8 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     private readonly ControllerHandoffRelease handoffRelease = new();
     internal Task<bool> WaitForHandoffReleaseAsync() => handoffRelease.Begin();
     internal void CancelHandoffRelease() => handoffRelease.Cancel();
-    private readonly PlatformInputDiagnostics diagnostics = new(PlatformInputDiagnostics.DefaultPath);
+    private readonly PlatformInputDiagnostics diagnostics = new(PlatformInputDiagnostics.DefaultPath,
+        reportFailure: error => Diagnostics.FrontendFailureLog.Current.Write("controller-diagnostics", error));
     private OverlayPlatformSession? session;
     private volatile bool closed;
     private bool visible;
@@ -25,6 +26,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     private bool shortcutConsumed;
     private int navigationTraceRemaining = Environment.GetCommandLineArgs().Contains("--trace-controller-input") ? 256 : 0;
     internal void TraceInput(string message) => diagnostics.Write(message);
+    private long diagnosticsCheckAt = Environment.TickCount64 + 2000;
     public event Action<ControllerFrame>? FrameReceived;
     public event Action? ToggleRequested;
     internal event Action<nint>? ExternalForegroundObserved;
@@ -139,6 +141,12 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
 
     private void Read()
     {
+        if (Environment.TickCount64 >= diagnosticsCheckAt)
+        {
+            diagnosticsCheckAt = long.MaxValue;
+            Diagnostics.FrontendFailureLog.Current.Write("controller-diagnostics-health", diagnostics.Failure,
+                $"written={diagnostics.WrittenCount} completed={diagnostics.Completion.IsCompleted}");
+        }
         if (session is null || !visible || controllerRecoveryBlocked) return;
         var candidate = GetForegroundWindow();
         if (IsCurrentExternalForeground(candidate) && ExternalForegroundObserved is not null && DeferExternalForegroundDismissal?.Invoke() != true)

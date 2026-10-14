@@ -28,6 +28,10 @@ internal sealed partial class OverlayShellPage
             ushort heldButtons = 0;
             for (var round = 1; round <= rounds; round++)
             {
+            // Each preceding round explicitly collapses back to the pin. Re-enter
+            // user expansion before asserting its preservation on the next round.
+            if (alreadyExpanded && round > 1)
+                check(await ExpandBrowserAsync(browser, lifetime.Token), "User-expanded browser is restored before the next sharing request");
             // Exercise audio chooser controls only on the cancelled round. Never
             // start a system/microphone audio stream in this synthetic fixture.
             await browser.EvaluateFixtureAsync(round == 2 ? "window.testAudio=true" : "window.testAudio=false");
@@ -71,7 +75,27 @@ internal sealed partial class OverlayShellPage
                         deadline = Environment.TickCount64 + 60_000;
                         cancelRequested = fields[1] is "cancel" or "cancel-click";
                         var nativeReady = NativePickerReadyForValidation?.Invoke() == true;
-                        if (fields[1] is "move" or "scroll" && fields.Length == 5 && short.TryParse(fields[2], out var x) &&
+                        if (fields[1] == "foreground-return")
+                        {
+                            WinUIEx.HwndExtensions.SetForegroundWindow(target.MainWindowHandle);
+                            await Task.Delay(2200);
+                            check(nativeBrowserPickerActive && expandedBrowser?.Surface == browser,
+                                "Temporary foreign foreground pauses chooser input without cancelling its session or placement");
+                            pinned!.Window.Activate();
+                        }
+                        else if (fields[1] == "hide-reopen")
+                        {
+                            cancelRequested = true;
+                            NativePickerBlockCloseForValidation?.Invoke(true);
+                            NativePickerVisibilityForValidation?.Invoke(false);
+                            await Task.Delay(600);
+                            NativePickerVisibilityForValidation?.Invoke(true);
+                            await Task.Delay(600);
+                            check(nativeBrowserPickerActive && expandedBrowser?.Surface == browser,
+                                "Hide/reopen retains the chooser session and expanded placement until native closure is confirmed");
+                            NativePickerBlockCloseForValidation?.Invoke(false);
+                        }
+                        else if (fields[1] is "move" or "scroll" && fields.Length == 5 && short.TryParse(fields[2], out var x) &&
                             short.TryParse(fields[3], out var y) && int.TryParse(fields[4], out var frames) && frames is >= 1 and <= 60)
                         {
                             for (var frame = 0; frame < frames; frame++)

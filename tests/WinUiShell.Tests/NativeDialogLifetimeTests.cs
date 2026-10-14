@@ -45,4 +45,25 @@ public sealed class NativeDialogLifetimeTests
         state.Observe(false, 300); Assert.AreEqual(NativeDialogPhase.Acquiring, state.Phase);
         state.Observe(false, 400); Assert.AreEqual(NativeDialogPhase.Completing, state.Phase);
     }
+    [TestMethod]
+    public void RepeatedCancelDoesNotEraseConfirmedAbsenceOrFinishAStillOpenDialog()
+    {
+        var state = new NativeDialogLifetime(); state.Begin(0); state.Observe(true, 100);
+        state.RequestCancellation(); state.Observe(true, 200);
+        Assert.AreEqual(NativeDialogPhase.Open, state.Phase);
+        Assert.IsTrue(state.CancellationRequested);
+        state.Observe(false, 300); state.RequestCancellation(); state.Observe(false, 400);
+        Assert.AreEqual(NativeDialogPhase.Completing, state.Phase);
+    }
+    [TestMethod]
+    public void HostVisibilityTransitionDiscardsPreHideAbsenceButPreservesCancellation()
+    {
+        var state = new NativeDialogLifetime(); state.Begin(0); state.Observe(true, 100);
+        state.RequestCancellation(); state.Observe(false, 200); state.Recheck(300);
+        state.Observe(false, 400);
+        Assert.AreEqual(NativeDialogPhase.Open, state.Phase);
+        Assert.IsTrue(state.CancellationRequested);
+        state.Observe(true, 500);
+        Assert.AreEqual(NativeDialogPhase.Open, state.Phase);
+    }
 }

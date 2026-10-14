@@ -380,8 +380,13 @@ chooser using native accessibility structure. An active share creates a separate
 indicator window, so the number of browser windows is not treated as dialog identity.
 Webpage accessibility subtrees and window titles are not inspected. Unknown or failed
 detection keeps the modal input/placement boundary active; it does not mean closed.
-Two successful absent observations confirm dismissal. Diagnostic state transitions
-include window counts and result codes without website content.
+After admission, observations and cancellation bind to the native HWND and the
+chooser's accessibility runtime identity. Process-scoped native window events
+request rechecks; a bounded accessibility fallback covers Chromium's reused HWNDs
+and absent events. Two successful absent observations while the host is visible
+confirm dismissal. Hidden-host accessibility absence is not closure evidence.
+Diagnostic state transitions include identity, foreground, pointer visibility,
+frame-delivery counts and cancellation reasons without website content.
 
 The circle uses the browser's diameter and theme colors in a tiny nonactivating,
 click-through native visual above the chooser. Controller mouse messages target only
@@ -396,7 +401,17 @@ on disconnect, lost focus or teardown without leaving a global mouse button held
 The native dialog retains mouse hit testing even while webpage controller input
 is suspended. A bounded completion handoff lets Chromium finish activating the
 selected source before WidgetRail restores placement/focus. Leaving a still-open
-chooser for another application relinquishes the dialog instead of stealing focus.
+chooser for another application pauses its controller input while retaining the
+dialog session; foreground loss does not mean the dialog closed.
+
+An overlay hide request first cancels the chooser while its native host remains
+visible. Successful native Close/Escape requests are not treated as proof of
+closure. The expanded placement and modal input boundary remain until absence is
+confirmed. Reopening cancels a pending overlay hide and reconciles the outstanding
+chooser before enabling webpage input. Native host visibility transitions pause
+observation and invalidate stale results. Browser foreground eligibility is
+explicitly granted while WidgetRail owns foreground; no unrelated app is forcibly
+activated to obtain it.
 
 Selected-window video delivery and track stopping have been verified with an
 opaque synthetic window using simulated analog/button controller frames through
@@ -406,6 +421,10 @@ mouse/controller handoff, unchanged physical cursor position and automatic retur
 It also interleaves Windows keyboard/gamepad-key events with held A, clicks native
 Share/Cancel using A, and toggles audio on/off on a cancelled request (no audio
 stream is started). B cancellation is available in the driver through `-CancelWithB`.
+`-ForegroundReturn` exercises temporary focus loss; `-HideReopen -Cancel` holds
+native cancellation long enough to verify that reopening cannot prematurely
+collapse the webapp or return input to it. Controller-log failures are reported
+in the durable frontend error log, with a one-time startup writer-health record.
 These checks are distinct from physical-controller acceptance.
 
 Notifications use WidgetRail's own presentation after website permission is

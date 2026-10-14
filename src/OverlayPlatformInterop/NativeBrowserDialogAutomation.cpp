@@ -10,13 +10,13 @@
 namespace {
 using Microsoft::WRL::ComPtr;
 HRESULT ContainsChooser(IUIAutomationTreeWalker* walker, IUIAutomationElement* node,
-    int depth, int& remaining, ULONGLONG deadline, bool& found) noexcept {
+    int depth, int& remaining, ULONGLONG deadline, ComPtr<IUIAutomationElement>& found) noexcept {
     if (!node || found) return S_OK;
     if (depth > 10 || --remaining < 0 || GetTickCount64() > deadline) return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
     CONTROLTYPEID type{}; auto hr = node->get_CurrentControlType(&type);
     if (FAILED(hr) || type == UIA_DocumentControlTypeId) return hr;
     BSTR name{}; hr = node->get_CurrentClassName(&name);
-    found = SUCCEEDED(hr) && name && std::wcscmp(name, L"DesktopMediaPickerDialogView") == 0;
+    if (SUCCEEDED(hr) && name && std::wcscmp(name, L"DesktopMediaPickerDialogView") == 0) found = node;
     SysFreeString(name);
     if (FAILED(hr) || found) return hr;
     ComPtr<IUIAutomationElement> child; hr = walker->GetFirstChildElement(node, &child);
@@ -27,8 +27,26 @@ HRESULT ContainsChooser(IUIAutomationTreeWalker* walker, IUIAutomationElement* n
     }
     return hr;
 }
+HRESULT RuntimeIdentity(IUIAutomationElement* element, std::uint64_t& identity) noexcept {
+    SAFEARRAY* values{};
+    auto hr = element->GetRuntimeId(&values);
+    if (FAILED(hr) || !values) return FAILED(hr) ? hr : E_FAIL;
+    LONG lower{}, upper{};
+    hr = SafeArrayGetLBound(values, 1, &lower);
+    if (SUCCEEDED(hr)) hr = SafeArrayGetUBound(values, 1, &upper);
+    std::uint64_t hash = 14695981039346656037ull;
+    if (SUCCEEDED(hr) && (SafeArrayGetDim(values) != 1 || upper < lower || upper - lower >= 64)) hr = E_UNEXPECTED;
+    for (LONG index = lower; SUCCEEDED(hr) && index <= upper; ++index) {
+        LONG value{}; hr = SafeArrayGetElement(values, &index, &value);
+        hash ^= static_cast<std::uint32_t>(value); hash *= 1099511628211ull;
+    }
+    SafeArrayDestroy(values);
+    if (SUCCEEDED(hr)) identity = hash ? hash : 1;
+    return hr;
+}
 HRESULT FindNativeDialog(IUIAutomationTreeWalker* walker, IUIAutomationElement* node,
-    int depth, int& remaining, ULONGLONG deadline, ComPtr<IUIAutomationElement>& found, bool chooserOnly) noexcept {
+    int depth, int& remaining, ULONGLONG deadline, ComPtr<IUIAutomationElement>& found, bool chooserOnly,
+    std::uint64_t& identity, bool identityRequired) noexcept {
     if (!node) return S_OK;
     if (depth > 10 || --remaining < 0 || GetTickCount64() > deadline) return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
     CONTROLTYPEID type{};
@@ -45,13 +63,17 @@ HRESULT FindNativeDialog(IUIAutomationTreeWalker* walker, IUIAutomationElement* 
             BOOL hidden{};
             result = node->get_CurrentIsOffscreen(&hidden);
             if (FAILED(result)) return result;
-            bool chooser = !chooserOnly;
+            ComPtr<IUIAutomationElement> chooser;
             if (!hidden && chooserOnly) {
                 result = ContainsChooser(walker, node, 0, remaining, deadline, chooser);
                 if (FAILED(result)) return result;
             }
-            if (!hidden && chooser) {
+            if (!hidden && (!chooserOnly || chooser)) {
                 if (found) return E_PENDING; // Multiple native dialogs are ambiguous.
+                if (identityRequired) {
+                    result = RuntimeIdentity(chooserOnly ? chooser.Get() : node, identity);
+                    if (FAILED(result)) return result;
+                }
                 found = node;
             }
             return S_OK;
@@ -60,7 +82,7 @@ HRESULT FindNativeDialog(IUIAutomationTreeWalker* walker, IUIAutomationElement* 
     ComPtr<IUIAutomationElement> child;
     result = walker->GetFirstChildElement(node, &child);
     while (SUCCEEDED(result) && child) {
-        result = FindNativeDialog(walker, child.Get(), depth + 1, remaining, deadline, found, chooserOnly);
+        result = FindNativeDialog(walker, child.Get(), depth + 1, remaining, deadline, found, chooserOnly, identity, identityRequired);
         if (FAILED(result)) return result;
         ComPtr<IUIAutomationElement> next;
         result = walker->GetNextSiblingElement(child.Get(), &next);
@@ -74,7 +96,8 @@ HRESULT FindNativeDialog(IUIAutomationTreeWalker* walker, IUIAutomationElement* 
 // A Chromium dialog is an accessible native Window/RootView. The enclosing
 // browser HWND can remain alive after that dialog has disappeared.
 static std::int32_t QueryDialog(std::uintptr_t window,
-    std::uint32_t expectedProcess, std::uint32_t close, std::uint32_t* present, RECT* bounds, bool chooserOnly) noexcept {
+    std::uint32_t expectedProcess, std::uint32_t close, std::uint32_t* present, RECT* bounds, bool chooserOnly,
+    std::uint64_t expectedIdentity = 0, std::uint64_t* identity = nullptr) noexcept {
     if (!present || !bounds || !window || !expectedProcess || close > 1) return E_INVALIDARG;
     *present = 0;
     *bounds = {};
@@ -102,8 +125,11 @@ static std::int32_t QueryDialog(std::uintptr_t window,
                 result = automation->get_ControlViewWalker(&walker);
                 ComPtr<IUIAutomationElement> dialog;
                 int remaining = 128;
-                if (SUCCEEDED(result)) result = FindNativeDialog(walker.Get(), root.Get(), 0, remaining, GetTickCount64() + 1000, dialog, chooserOnly);
+                std::uint64_t foundIdentity{};
+                if (SUCCEEDED(result)) result = FindNativeDialog(walker.Get(), root.Get(), 0, remaining, GetTickCount64() + 1000, dialog, chooserOnly, foundIdentity, identity || expectedIdentity);
+                if (expectedIdentity && foundIdentity != expectedIdentity) dialog.Reset();
                 if (SUCCEEDED(result) && dialog) {
+                    if (identity) *identity = foundIdentity;
                     result = dialog->get_CurrentBoundingRectangle(bounds);
                     if (SUCCEEDED(result) && bounds->right > bounds->left && bounds->bottom > bounds->top) *present = 1;
                     if (close) {
@@ -117,6 +143,34 @@ static std::int32_t QueryDialog(std::uintptr_t window,
     }
     CoUninitialize();
     return result;
+}
+
+// Additive session-aware observation: a reusable browser HWND is not dialog identity.
+// Once admitted, inspect/close only that exact accessibility object. A new chooser
+// on the same HWND must not inherit the old session's input or cancellation.
+extern "C" WRAIL_OVERLAY_PLATFORM_API std::int32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformFindSharingDialog(std::uint32_t process, std::uint32_t close,
+    std::uintptr_t* window, RECT* bounds, std::uint32_t* inspected) noexcept;
+
+extern "C" WRAIL_OVERLAY_PLATFORM_API std::int32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformObserveSharingDialog(std::uint32_t process, std::uintptr_t knownWindow,
+    std::uint64_t expectedIdentity, std::uint32_t close, std::uintptr_t* window,
+    RECT* bounds, std::uint32_t* inspected, std::uint64_t* identity) noexcept {
+    if (!process || !window || !bounds || !inspected || !identity || close > 1) return E_INVALIDARG;
+    *window = 0; *bounds = {}; *inspected = 0; *identity = 0;
+    if (knownWindow && expectedIdentity) {
+        std::uint32_t present{}; *inspected = 1;
+        const auto hr = QueryDialog(knownWindow, process, close, &present, bounds, true, expectedIdentity, identity);
+        if (SUCCEEDED(hr) && present) *window = knownWindow;
+        return hr;
+    }
+    // Admission is still scoped to the process authorized by ScreenCaptureStarting.
+    const auto hr = WidgetRailOverlayPlatformFindSharingDialog(process, 0, window, bounds, inspected);
+    if (FAILED(hr) || !*window) return hr;
+    std::uint32_t present{};
+    const auto verified = QueryDialog(*window, process, close, &present, bounds, true, 0, identity);
+    if (FAILED(verified) || !present) *window = 0;
+    return verified;
 }
 
 extern "C" WRAIL_OVERLAY_PLATFORM_API std::int32_t WRAIL_OVERLAY_PLATFORM_CALL

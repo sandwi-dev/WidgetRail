@@ -7,11 +7,14 @@ internal sealed class NativeDialogLifetime
 {
     internal NativeDialogPhase Phase { get; private set; }
     internal bool HasOpened { get; private set; }
+    internal bool CancellationRequested => cancellationRequested;
     private bool cancellationRequested;
     private int absent;
     private long lastConfirmed;
     internal void Begin(long now) { Phase = NativeDialogPhase.Acquiring; HasOpened = cancellationRequested = false; absent = 0; lastConfirmed = now; }
-    internal void RequestCancellation() { cancellationRequested = true; absent = 0; }
+    internal void RequestCancellation() { if (!cancellationRequested) { cancellationRequested = true; absent = 0; } }
+    internal void Recheck(long now)
+    { absent = 0; lastConfirmed = now; Phase = HasOpened ? NativeDialogPhase.Open : NativeDialogPhase.Acquiring; }
     internal void Observe(bool? present, long now)
     {
         if (Phase is NativeDialogPhase.Inactive or NativeDialogPhase.Completing) return;

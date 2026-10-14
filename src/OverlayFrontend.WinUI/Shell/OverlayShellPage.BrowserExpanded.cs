@@ -139,9 +139,11 @@ internal sealed partial class OverlayShellPage
     private void RefreshExpandedBrowser()
     {
         if (expandedBrowser is not { } slot) return;
-        if (!visible || retired) { if (!fullscreenLayer.IsClosing) fullscreenLayer.Close(restoreFocus: false); return; }
-        slot.AcceptsInput = foreground && !fullscreenLayer.IsTransitioning && !HostChoiceActive && !SystemFilePickerOpen && !LocalInstallActive && !nativeBrowserPickerActive;
-        slot.Surface?.SetPresentation(true, slot.AcceptsInput);
+        if (retired || !visible && !nativeBrowserPickerActive) { if (!fullscreenLayer.IsClosing) fullscreenLayer.Close(restoreFocus: false); return; }
+        // A pending native chooser owns this placement even while the overlay is
+        // hidden. Its session releases the lease only after confirmed closure.
+        slot.AcceptsInput = visible && foreground && !fullscreenLayer.IsTransitioning && !HostChoiceActive && !SystemFilePickerOpen && !LocalInstallActive && !nativeBrowserPickerActive;
+        slot.Surface?.SetPresentation(visible, slot.AcceptsInput);
         slot.RefreshFocusPresentation();
     }
 

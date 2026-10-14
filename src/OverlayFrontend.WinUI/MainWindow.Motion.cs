@@ -96,6 +96,8 @@ public sealed partial class MainWindow
 
     private void HideOverlayImmediately()
     {
+        if (DeferHideForChooser(immediate: true)) return;
+        nativeBrowserDialog?.SetHostVisibility(false);
         CancelTaskHandoff();
         overlayRequestedVisible = false;
         overlayOpenPending = false;
