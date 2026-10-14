@@ -36,3 +36,8 @@ Replace Guide-adjacent status text with a focusable bell and pending-count badge
 - Normal platform settings SHA-256 remains `7D939734F705FE10F1685A6EC800809309D3D8A5667A73F8A7D8F556F3CC516B`. Main's unrelated `docs/implementation-agent-goal.md` edit was preserved.
 - Autonomous implementation and validation complete. Physical checks: navigate to the bell; open/dismiss/close entries; inspect a quiet in-game banner and its retained pending entry; open a Session ended entry without a warning. Account-dependent notification emission is the user's test.
 - No merge, push, installers or release until separately requested.
+
+### Bell visual correction
+
+- Replaced the mistaken TV/monitor glyph with Segoe Fluent Icons Ringer (`EA8F`). Centered badge text in both axes using tight text bounds, so font ascent/descent whitespace cannot offset the digit.
+- `frontend-09.binlog` builds with zero warnings/errors. `shell-06.json` passes 79 focused native webapp/notification checks. Reviewed actual WinUI rasters for `1`, `8`, and `99+`: bell glyph and centered numbers are visible.

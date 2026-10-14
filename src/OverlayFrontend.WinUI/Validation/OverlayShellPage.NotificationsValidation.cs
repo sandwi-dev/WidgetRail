@@ -64,6 +64,12 @@ internal sealed partial class OverlayShellPage
         await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
         await WebAppUntil(() => inbox.Entries[0].WasShown);
         check(notificationBadge.Visibility == Visibility.Visible && notificationCount.Text == "1", "Bell counts pending entries rather than unread entries");
+        foreach (var count in new[] { "1", "8", "99+" })
+        {
+            notificationCount.Text = count;
+            await CapturePopupDecisionAsync(notificationBell, "notification-badge-" + count.Replace("+", "plus"));
+        }
+        RefreshNotificationBell();
         await CapturePopupDecisionAsync(hostChoiceDialog!, "notifications");
         var panelBounds = hostChoiceDialog!.PendingPanelBounds;
         var bellBounds = notificationBell.TransformToVisual(null).TransformBounds(new(0, 0, notificationBell.ActualWidth, notificationBell.ActualHeight));

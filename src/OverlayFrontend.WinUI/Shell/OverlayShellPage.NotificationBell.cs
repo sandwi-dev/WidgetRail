@@ -11,14 +11,16 @@ internal sealed partial class OverlayShellPage
 {
     private readonly Button notificationBell = new() { Width = 48, Height = 48, Padding = new(4),
         CornerRadius = new(12), VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock notificationCount = new() { FontSize = 11, FontWeight = new() { Weight = 600 } };
+    private readonly TextBlock notificationCount = new() { FontSize = 11, FontWeight = new() { Weight = 600 },
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        TextAlignment = TextAlignment.Center, TextLineBounds = TextLineBounds.Tight };
     private readonly Border notificationBadge = new() { MinWidth = 18, Height = 18, Padding = new(4, 0, 4, 0),
         CornerRadius = new(9), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
 
     private void InitializeNotificationBell()
     {
         var content = new Grid { Width = 36, Height = 36 };
-        content.Children.Add(new FontIcon { Glyph = "\uE7F4", FontFamily = new("Segoe Fluent Icons"), FontSize = 22 });
+        content.Children.Add(new FontIcon { Glyph = "\uEA8F", FontFamily = new("Segoe Fluent Icons"), FontSize = 22 }); // Ringer (bell)
         notificationBadge.Child = notificationCount;
         content.Children.Add(notificationBadge); notificationBell.Content = content;
         AutomationProperties.SetAutomationId(notificationBell, "Overlay.Notifications");
