@@ -4,12 +4,14 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal static class BrowserSpatialScript
 {
     internal const string Scan = """
-    (p => {
+    ((p, anchor = null) => {
       const items=[], frames=[], start=performance.now();
       const vv=visualViewport, view={x:vv?.offsetLeft??0,y:vv?.offsetTop??0,w:vv?.width??innerWidth,h:vv?.height??innerHeight};
       let styles=new WeakMap(), clips=new WeakMap();
       const style=e=>{let s=styles.get(e);if(!s){s=getComputedStyle(e);styles.set(e,s);}return s;};
       const parent=e=>e.assignedSlot??e.parentElement??e.getRootNode()?.host??null;
+      const inside=(root,e)=>{for(let n=0;e&&n<128;e=parent(e),n++)if(e===root)return true;return false;};
+      const inScope=e=>!anchor||anchor.container.isConnected&&inside(anchor.container,e);
       const rect=r=>({x:r.left,y:r.top,w:r.width,h:r.height});
       const intersect=(a,b)=>({x:Math.max(a.x,b.x),y:Math.max(a.y,b.y),w:Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x)),h:Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y))});
       const roles=new Set(['button','link','checkbox','radio','switch','tab','menuitem','menuitemcheckbox','menuitemradio','option','treeitem','slider','spinbutton','textbox','combobox']);
@@ -23,7 +25,7 @@ internal static class BrowserSpatialScript
         }
         return ['button','select','textarea','summary'].includes(tag)||tag==='input'&&e.type!=='hidden'||
           (tag==='a'||tag==='area')&&e.hasAttribute('href')||roles.has(e.getAttribute('role'))||
-          e.hasAttribute('tabindex')&&e.tabIndex>=0||e.isContentEditable&&!parent(e)?.isContentEditable||e.hasAttribute('onclick');
+          e.isContentEditable&&!parent(e)?.isContentEditable||e.hasAttribute('onclick');
       }
       function eligible(e){
         if(e.matches(':disabled')||e.getAttribute('aria-disabled')==='true'||e.inert)return false;
@@ -63,7 +65,10 @@ internal static class BrowserSpatialScript
         return null;
       }
       const sourcePath=new Set();
-      for(let e=hit(p.x,p.y),n=0;e&&n<128;e=parent(e),n++)sourcePath.add(e);
+      // Keyboard-focusable regions are not necessarily pointer actions. After a
+      // scroll, preserve the actual source instead of hit-testing its old spot
+      // against unrelated fixed headers or recycled rows.
+      for(let e=anchor?anchor.source:hit(p.x,p.y),n=0;e&&n<128;e=parent(e),n++)sourcePath.add(e);
       let visited=0,truncated=false;
       function walk(root){
         const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT);
@@ -72,7 +77,7 @@ internal static class BrowserSpatialScript
           if(++visited>12000||items.length>=512||visited%128===0&&performance.now()-start>20){truncated=true;return;}
           const s=style(e), c=clip(e);
           if(c){
-            if(e.localName==='iframe'&&frames.length<16){
+            if(e.localName==='iframe'&&frames.length<16&&inScope(e)){
               let valid=true;
               for(let a=e,n=0;a&&n<128;a=parent(a),n++){
                 const transform=style(a).transform;
@@ -88,7 +93,7 @@ internal static class BrowserSpatialScript
                 const sample=point(e,visible);
                 if(sample)frames.push({element:e,x:r.left+e.clientLeft*sx,y:r.top+e.clientTop*sy,sx,sy,w:e.clientWidth,h:e.clientHeight,clip:visible});
               }
-            }else if(eligible(e)){
+            }else if(eligible(e)&&inScope(e)){
               for(const box of e.getClientRects()){
                 let found=false;
                 for(const r of [intersect(rect(box),c),intersect(rect(box),view)]){
@@ -104,8 +109,8 @@ internal static class BrowserSpatialScript
           e=walker.nextNode();
         }
       }
-      walk(document.documentElement);
-      return {items,frames,view,visited,truncated,elapsed:performance.now()-start,point,clip,hit,parent,style,intersect,rect,p,eligible,
+      if(!anchor||anchor.container.isConnected)walk(anchor?.container??document.documentElement);
+      return {items,frames,view,visited,truncated,elapsed:performance.now()-start,point,clip,hit,parent,style,intersect,rect,p,eligible,inScope,inside,
         refresh(){styles=new WeakMap();clips=new WeakMap();}};
     })
     """;
@@ -121,7 +126,7 @@ internal static class BrowserSpatialScript
       if(!e?.isConnected)return null;
       // Build a fresh hit-tested snapshot: stale geometry cannot authorize a move.
       this.refresh();
-      if(!this.eligible(e))return null;
+      if(!this.inScope(e)||!this.eligible(e))return null;
       const c=this.clip(e);if(!c)return null;
       for(const box of e.getClientRects()){
         for(const clipped of [this.intersect(this.rect(box),c),this.intersect(this.rect(box),this.view)]){
@@ -145,7 +150,7 @@ internal static class BrowserSpatialScript
     internal const string Scroll = """
     function(raw){
       const d=JSON.parse(raw), horizontal=d.x!==0;
-      const source=this.items.find(i=>i.source)?.element;
+      const source=this.items.findLast(i=>i.source)?.element;
       for(let e=this.hit(this.p.x,this.p.y),n=0;e&&n<128;e=this.parent(e),n++){
         const root=e===document.scrollingElement,s=getComputedStyle(e),overflow=horizontal?s.overflowX:s.overflowY;
         if(!root&&!/auto|scroll|overlay/.test(overflow)||root&&/hidden|clip/.test(overflow))continue;
@@ -157,12 +162,14 @@ internal static class BrowserSpatialScript
         e.scrollBy({left:horizontal?amount:0,top:horizontal?0:amount,behavior:'instant'});
         const delta=(horizontal?e.scrollLeft:e.scrollTop)-before;
         if(Math.abs(delta)<1)continue;
+        this.scrollAnchor={container:e,source};
         const r=source?.isConnected?source.getBoundingClientRect():null;
         return {moved:true,x:r?r.left+r.width/2:this.p.x-(horizontal?delta:0),y:r?r.top+r.height/2:this.p.y-(horizontal?0:delta)};
       }
       return {moved:false};
     }
     """;
+    internal const string RescanAfterScroll = "function(raw){return (" + Scan + ")(JSON.parse(raw),this.scrollAnchor);}";
     internal const string ScrollScope = """
     function(raw){
       const d=JSON.parse(raw),horizontal=d.x!==0;
@@ -173,7 +180,8 @@ internal static class BrowserSpatialScript
         if(range<2)continue;
         const before=horizontal?e.scrollLeft:e.scrollTop,sign=horizontal?d.x:d.y,rtl=horizontal&&s.direction==='rtl';
         const canScroll=sign>0?before<(rtl?0:range)-1:before>(rtl?-range:0)+1;
-        return {rect:root?this.view:this.intersect(this.rect(e.getBoundingClientRect()),this.view),canScroll};
+        return {items:this.items.flatMap((item,index)=>this.inside(e,item.element)?[index]:[]),
+          frames:this.frames.flatMap((frame,index)=>this.inside(e,frame.element)?[index]:[]),canScroll};
       }
       return null;
     }

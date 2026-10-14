@@ -69,10 +69,22 @@ pane. There is no wrap to the opposite edge of the page.
 
 The shared implementation applies to browsers, webapps, provider documents,
 hosted pop-outs, pins and expanded views. No new SDK declaration is needed. Native
-HTML controls, links, meaningful ARIA roles, focusable controls, hidden-input label
+HTML controls, links, meaningful interactive ARIA roles, hidden-input label
 proxies and open shadow roots provide the most reliable targets. Hidden, disabled,
 inert and occluded controls are excluded; nested clickable ancestors do not steal
 navigation from their child controls. Held A keeps drag behavior and suppresses jumps.
+Keyboard focusability (`tabindex`) alone does not make a pointer target: scroll
+regions, lists, resize separators and hover-only rows are skipped unless they
+also expose an action. Explicit click attributes and pointer-cursor affordances
+remain fallbacks for custom controls. Ordinary jumps must advance from the actual
+pointer position, including when only part of a control is clickable.
+
+List membership uses DOM ownership, not just overlapping screen rectangles.
+After scrolling, the host retains the scrolled region and original source, then
+scans that region's subtree. If a gap contains no target, the list scrolls while
+the pointer stays put; it does not jump into an unrelated header. Scrolling can
+reposition a newly revealed target above the pointer's old screen position while
+still advancing through the content in the requested direction.
 
 The host uses bounded, on-demand geometry scans in isolated worlds, and traverses
 only frames owned by that WebView. It returns positions rather than page text or

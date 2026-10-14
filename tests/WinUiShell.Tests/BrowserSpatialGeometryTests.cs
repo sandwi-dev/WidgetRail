@@ -39,6 +39,15 @@ public sealed class BrowserSpatialGeometryTests
         Assert.AreEqual(1, BrowserSpatialGeometry.Choose([source, At(1, 95, 15, false, 70, 40), At(2, 8, 34, false, 800, 26)], source.Rect, SpatialDirection.Right)?.Index);
     }
     [TestMethod]
+    public void LandingMustAdvanceFromThePointerNotJustTheSourceCenter()
+    {
+        var source = At(0, 40, 40, true, 300, 40);
+        Assert.AreEqual(2, BrowserSpatialGeometry.Choose([source, At(1, 250, 100), At(2, 450, 100)],
+            source.Rect, SpatialDirection.Right, new(320, 60))?.Index);
+        Assert.IsFalse(BrowserSpatialGeometry.Advances(new(10, 10), new(10, 20), SpatialDirection.Right));
+        Assert.IsTrue(BrowserSpatialGeometry.Advances(new(10, 10), new(0, 20), SpatialDirection.Left));
+    }
+    [TestMethod]
     public void FreePointerAndScrolledOriginCanBeOutsideControls()
     {
         Assert.AreEqual(1, BrowserSpatialGeometry.Choose([At(1, 100, 10), At(2, 100, 80)], new(120, -10, .01, .01), SpatialDirection.Down)?.Index);

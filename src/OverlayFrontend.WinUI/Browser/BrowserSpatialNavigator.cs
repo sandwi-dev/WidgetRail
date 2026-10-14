@@ -21,6 +21,7 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
     private readonly long started = Stopwatch.GetTimestamp();
     private SpatialRect viewport;
     private bool truncated;
+    private int scrolledScope = -1;
     private void DemandCurrent()
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -50,13 +51,14 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
             if (!frame.Clip.Contains(point) || !await AncestorsCurrent(frame, point)) continue;
             var scope = await Function(frame, BrowserSpatialScript.ScrollScope, deltaJson);
             if (scope.ValueKind != JsonValueKind.Object) continue;
-            var local = Rect(scope.GetProperty("rect"));
-            var bounds = new SpatialRect(frame.X + local.X * frame.Sx, frame.Y + local.Y * frame.Sy, local.Width * frame.Sx, local.Height * frame.Sy);
-            destination = await ResolveBest(candidates.Where(item => bounds.Contains(item.Point)).ToArray(), origin, direction);
+            var scopeIndex = frames.IndexOf(frame);
+            var scopeItems = scope.GetProperty("items").EnumerateArray().Select(item => item.GetInt32()).ToHashSet();
+            var scopeFrames = scope.GetProperty("frames").EnumerateArray().Select(item => item.GetInt32()).ToHashSet();
+            destination = await ResolveBest(candidates.Where(item => WithinScope(item, scopeIndex, scopeItems, scopeFrames)).ToArray(), origin, direction, point);
             preferScroll = scope.GetProperty("canScroll").GetBoolean();
             break;
         }
-        if (destination is null && !preferScroll) destination = await ResolveBest(candidates, origin, direction);
+        if (destination is null && !preferScroll) destination = await ResolveBest(candidates, origin, direction, point);
         var scrolled = false;
         if (destination is null)
         {
@@ -75,9 +77,15 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
                 // Snapshot references remain bounded until disposal. Rebuild the
                 // geometry after scrolling, never reuse pre-scroll hit points.
                 frames.Clear(); candidates.Clear();
-                await Scan(null, context, -1, -1, 0, 0, 1, 1, null, 0, point);
-                origin = await Origin(point);
-                destination = await ResolveBest(candidates, origin, direction);
+                await Scan(null, context, -1, -1, 0, 0, 1, 1, null, 0, point, frame);
+                // The content anchor moves with the scroll, so a newly exposed
+                // control can land above the old on-screen pointer. It must
+                // still belong to the exact region we scrolled, never a header
+                // or sibling pane. Do not derive a new source by hit-testing
+                // an anchor which may now be offscreen.
+                origin = new(point.X, point.Y, .01, .01);
+                if (scrolledScope >= 0)
+                    destination = await ResolveBest(candidates.Where(item => WithinScrolledFrame(item.Frame)).ToArray(), origin, direction);
                 break;
             }
         }
@@ -87,20 +95,36 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
             candidates.Count, frames.Count, sessions.Count, scrolled, truncated, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
 
-    private async Task<SpatialPoint?> ResolveBest(IReadOnlyList<SpatialCandidate> choices, SpatialRect origin, SpatialDirection direction)
+    private bool WithinScrolledFrame(int index)
+    {
+        for (; index >= 0; index = frames[index].Parent)
+            if (index == scrolledScope) return true;
+        return false;
+    }
+
+    private bool WithinScope(SpatialCandidate candidate, int scope, HashSet<int> items, HashSet<int> children)
+    {
+        if (candidate.Frame == scope) return items.Contains(candidate.Index);
+        for (var index = candidate.Frame; frames[index].Parent >= 0; index = frames[index].Parent)
+            if (frames[index].Parent == scope) return children.Contains(frames[index].ParentIndex);
+        return false;
+    }
+
+    private async Task<SpatialPoint?> ResolveBest(IReadOnlyList<SpatialCandidate> choices, SpatialRect origin, SpatialDirection direction, SpatialPoint? pointer = null)
     {
         var remaining = choices.ToList();
         // Removed controls or parent-frame overlays must not trap every repeat
         // on the same stale candidate. Try another bounded set of alternatives.
         for (var attempt = 0; attempt < 16; attempt++)
         {
-            var selected = BrowserSpatialGeometry.Choose(remaining, origin, direction);
+            var selected = BrowserSpatialGeometry.Choose(remaining, origin, direction, pointer);
             if (selected is null) break;
             remaining.Remove(selected);
             var target = frames[selected.Frame];
             var resolved = await Function(target, BrowserSpatialScript.Resolve, selected.Index.ToString(CultureInfo.InvariantCulture));
             if (resolved.ValueKind != JsonValueKind.Object) continue;
             var destination = Global(target, new(resolved.GetProperty("x").GetDouble(), resolved.GetProperty("y").GetDouble()));
+            if (pointer is { } from && !BrowserSpatialGeometry.Advances(from, destination, direction)) continue;
             if (viewport.Contains(destination) && target.Clip.Contains(destination) && await AncestorsCurrent(target, destination)) return destination;
         }
         return null;
@@ -127,20 +151,27 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
     }
 
     private async Task Scan(string? session, int context, int parent, int parentIndex, double x, double y,
-        double sx, double sy, SpatialRect? clipping, int depth, SpatialPoint origin)
+        double sx, double sy, SpatialRect? clipping, int depth, SpatialPoint origin, Frame? scrollAnchor = null)
     {
         DemandCurrent();
         if (frames.Count >= 16 || depth >= 8 || candidates.Count >= 768) { truncated = true; return; }
         var point = new BrowserHitPoint((origin.X - x) / sx, (origin.Y - y) / sy);
-        var expression = BrowserSpatialScript.Scan + "(" + JsonSerializer.Serialize(point, BrowserJsonContext.Default.BrowserHitPoint) + ")";
-        using var remote = JsonDocument.Parse(await Call(session, "Runtime.evaluate",
-            JsonSerializer.Serialize(new BrowserEvaluation(expression, context, objectGroup), BrowserJsonContext.Default.BrowserEvaluation)));
+        var pointJson = JsonSerializer.Serialize(point, BrowserJsonContext.Default.BrowserHitPoint);
+        var anchored = scrollAnchor is not null && scrollAnchor.Session == session && scrollAnchor.Context == context;
+        // Reuse the owned DOM reference, not a selector or a rectangle-only
+        // boundary. This also survives virtualized list content replacement.
+        using var remote = JsonDocument.Parse(anchored
+            ? await Call(session, "Runtime.callFunctionOn", JsonSerializer.Serialize(new BrowserFieldCall(scrollAnchor!.Object,
+                BrowserSpatialScript.RescanAfterScroll, [new(pointJson)], false, objectGroup), BrowserJsonContext.Default.BrowserFieldCall))
+            : await Call(session, "Runtime.evaluate", JsonSerializer.Serialize(new BrowserEvaluation(
+                BrowserSpatialScript.Scan + "(" + pointJson + ")", context, objectGroup), BrowserJsonContext.Default.BrowserEvaluation)));
         var objectId = remote.RootElement.GetProperty("result").GetProperty("objectId").GetString()!;
         var frame = new Frame(parent, parentIndex, session, context, objectId, x, y, sx, sy, clipping ?? default, depth);
         var description = await Function(frame, BrowserSpatialScript.Describe);
         if (parent < 0) viewport = Rect(description.GetProperty("view"));
         frame = frame with { Clip = clipping?.Intersect(viewport) ?? viewport };
         var index = frames.Count; frames.Add(frame);
+        if (anchored) scrolledScope = index;
         truncated |= description.GetProperty("truncated").GetBoolean();
         foreach (var element in description.GetProperty("items").EnumerateArray())
         {
@@ -175,7 +206,7 @@ internal sealed class BrowserSpatialNavigator(CoreWebView2 core, Func<bool> curr
                 var clip = Rect(child.GetProperty("clip"));
                 var childClip = new SpatialRect(x + clip.X * sx, y + clip.Y * sy, clip.Width * sx, clip.Height * sy).Intersect(frame.Clip);
                 await Scan(childSession, childContext, index, childIndex, x + child.GetProperty("x").GetDouble() * sx,
-                    y + child.GetProperty("y").GetDouble() * sy, sx * child.GetProperty("sx").GetDouble(), sy * child.GetProperty("sy").GetDouble(), childClip, depth + 1, origin);
+                    y + child.GetProperty("y").GetDouble() * sy, sx * child.GetProperty("sx").GetDouble(), sy * child.GetProperty("sy").GetDouble(), childClip, depth + 1, origin, scrollAnchor);
             }
             catch (Exception error) when (error is not OperationCanceledException and not OutOfMemoryException && current())
             { /* Removed/inaccessible frames retain free-pointer behavior. */ }

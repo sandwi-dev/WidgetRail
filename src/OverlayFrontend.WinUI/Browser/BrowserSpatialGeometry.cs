@@ -16,9 +16,16 @@ internal sealed record SpatialCandidate(int Frame, int Index, SpatialRect Rect, 
 
 internal static class BrowserSpatialGeometry
 {
+    internal static bool Advances(SpatialPoint from, SpatialPoint to, SpatialDirection direction) => direction switch
+    {
+        SpatialDirection.Left => to.X < from.X - .5,
+        SpatialDirection.Right => to.X > from.X + .5,
+        SpatialDirection.Up => to.Y < from.Y - .5,
+        _ => to.Y > from.Y + .5,
+    };
     // Prefer nearby controls in the same row/column without letting a distant
     // perfectly aligned control beat a nearby, slightly staggered one.
-    internal static SpatialCandidate? Choose(IReadOnlyList<SpatialCandidate> candidates, SpatialRect origin, SpatialDirection direction)
+    internal static SpatialCandidate? Choose(IReadOnlyList<SpatialCandidate> candidates, SpatialRect origin, SpatialDirection direction, SpatialPoint? pointer = null)
     {
         SpatialCandidate? best = null;
         var score = double.PositiveInfinity;
@@ -27,6 +34,7 @@ internal static class BrowserSpatialGeometry
         foreach (var candidate in candidates)
         {
             if (candidate.Source || !candidate.Rect.Valid || !double.IsFinite(candidate.Point.X) || !double.IsFinite(candidate.Point.Y)) continue;
+            if (pointer is { } from && !Advances(from, candidate.Point, direction)) continue;
             var target = candidate.Rect;
             var advance = horizontal ? target.Center.X - origin.Center.X : target.Center.Y - origin.Center.Y;
             if ((positive ? advance : -advance) <= .5) continue;

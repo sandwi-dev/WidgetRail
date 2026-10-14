@@ -30,6 +30,8 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
         Task<CoreWebView2Environment>? environment = null;
         BrowserSurface.FixturePage = url => new Uri(url).AbsolutePath == "/frame"
             ? "<!doctype html><style>body{margin:0}button{position:absolute;width:100px;height:40px;left:20px}#inner{top:20px}#inner2{top:90px}</style><button id=inner>Inner</button><button id=inner2>Inner 2</button><script>document.addEventListener('click',e=>parent.postMessage({clicked:e.target.id,trusted:e.isTrusted},'*'));</script>"
+            : new Uri(url).AbsolutePath == "/scroll-frame"
+            ? "<!doctype html><style>body{margin:0}button{width:100px;height:40px}</style><button style='position:absolute;top:0'>Header</button><div id=scroller style='position:absolute;top:50px;width:280px;height:120px;overflow:auto'><button id=inner>Top</button><div style='height:100px'></div><button id=inner2>Bottom</button><div style='height:100px'></div></div><script>document.addEventListener('click',e=>parent.postMessage({clicked:e.target.id,trusted:e.isTrusted},'*'));</script>"
             : Html;
         browser = new("fixture.spatial", new("spatial", 1, "https://spatial.fixture.invalid/", "Spatial fixture")
         { InteractionMode = BrowserInteractionMode.InteractOnFocus, Options = WebBrowserOptions.WebApp },
@@ -115,6 +117,31 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                 Check(await browser.EvaluateFixtureAsync("window.scrollY") == "0", "Nested navigation does not scroll the outer document");
                 Check(true, "Scrollable list navigation stays inside the list before moving to another pane");
 
+                await Body("<style>.row:hover{background:#456}</style><button id=a class=fixed style='left:20px;top:40px'>A</button><div role=separator tabindex=0 style='position:absolute;left:140px;top:0;width:4px;height:250px;cursor:ew-resize'></div><div tabindex=0 style='position:absolute;left:150px;top:0;width:100px;height:240px'></div><ol role=list tabindex=0 style='position:absolute;margin:0;padding:0;left:260px;top:0;width:150px;height:240px'><li role=article tabindex=0 class=row style='height:200px'>Hover-only row</li></ol><button id=b class=fixed style='left:450px;top:40px'>B</button>");
+                await PointAt("a"); await Jump(FocusNavigationDirection.Right, "b");
+                await Jump(FocusNavigationDirection.Left, "a");
+                Check(true, "Focusable panels, lists, resize separators and hover-only rows are not pointer targets");
+
+                await Body("<button id=a style='position:absolute;left:40px;top:40px;width:300px;height:40px'>Wide source</button><button id=wrong class=fixed style='left:250px;top:100px'>Behind pointer</button><div id=b tabindex=0 style='position:absolute;left:450px;top:100px;width:100px;height:40px;cursor:pointer'>Custom action</div>");
+                await PointAt("a");
+                await browser.EvaluateFixtureAsync("window.anchorX=(320-visualViewport.offsetLeft)/visualViewport.width");
+                browser.MovePointer(double.Parse(await browser.EvaluateFixtureAsync("anchorX"), System.Globalization.CultureInfo.InvariantCulture) - browser.SpatialPointerForValidation.X, 0);
+                await Jump(FocusNavigationDirection.Right, "b");
+                Check(true, "Actual landing follows the requested direction; custom pointer actions remain available");
+
+                await Body("<button id=header class=fixed style='left:40px;top:0px'>Header</button><div id=scroller style='position:absolute;left:40px;top:80px;width:300px;height:140px;overflow:auto'><button id=top>Top</button><div style='height:500px'></div><button id=bottom>Bottom</button></div><button id=floating class=fixed style='left:220px;top:150px;z-index:3'>Foreign overlay</button>");
+                await PointAt("top");
+                var beforeEmptyScroll = browser.SpatialPointerForValidation;
+                browser.MoveFocus(FocusNavigationDirection.Down); await Until(() => !browser.SpatialBusyForValidation);
+                Check(await browser.EvaluateFixtureAsync("scroller.scrollTop>0") == "true", "Down scrolls a region even when the next action is not exposed yet");
+                Check(browser.SpatialPointerForValidation == beforeEmptyScroll && browser.SpatialErrorForValidation is null,
+                    "Scroll scope excludes overlapping foreign controls and cannot jump backward into a fixed header");
+
+                await Body("<button id=header class=fixed style='left:40px;top:0px'>Header</button><div id=scroller style='position:absolute;left:40px;top:80px;width:300px;height:140px;overflow:auto'><button id=top>Top</button><div style='height:140px'></div><button id=bottom>Bottom</button><div style='height:200px'></div></div>");
+                await browser.EvaluateFixtureAsync("scroller.addEventListener('scroll',()=>{document.getElementById('top')?.remove();},{once:true})");
+                await PointAt("top"); await Jump(FocusNavigationDirection.Down, "bottom");
+                Check(true, "Scroll retains DOM region ownership when virtualized content removes the starting control");
+
                 await Body("<div id=rtl style='position:absolute;left:40px;top:40px;width:250px;overflow:auto;white-space:nowrap;direction:rtl'>" + string.Concat(Enumerable.Range(0, 6).Select(i => "<button id=r" + i + " style='width:100px'>RTL " + i + "</button>")) + "</div>");
                 await PointAt("r0"); await Jump(FocusNavigationDirection.Left, "r1");
                 await Jump(FocusNavigationDirection.Left, "r2"); await Jump(FocusNavigationDirection.Left, "r3");
@@ -138,6 +165,15 @@ internal sealed partial class WebAppSpatialValidationPage : Page, IAsyncDisposab
                     browser.HandleButton(ControllerButton.A, ControllerEventPhase.Released); await Task.Delay(100);
                     Check(await browser.EvaluateFixtureAsync("frameClick?.clicked==='inner2'") == "true", "Navigation continues within the frame: " + origin);
                 }
+
+                await Body("<button id=a class=fixed style='left:20px;top:100px'>A</button><iframe id=frame src='https://cross-origin.invalid/scroll-frame' style='position:absolute;left:220px;top:40px;width:300px;height:180px;border:2px solid white'></iframe>");
+                await Task.Delay(350); await PointAt("a");
+                browser.MoveFocus(FocusNavigationDirection.Right); await Until(() => !browser.SpatialBusyForValidation);
+                browser.MoveFocus(FocusNavigationDirection.Down); await Until(() => !browser.SpatialBusyForValidation);
+                Check(browser.LastSpatialMoveForValidation is { Scrolled: true, Sessions: >= 1 }, "Cross-process iframe scroll retains its owned region across rescan");
+                browser.HandleButton(ControllerButton.A, ControllerEventPhase.Pressed); await Task.Delay(50);
+                browser.HandleButton(ControllerButton.A, ControllerEventPhase.Released); await Task.Delay(100);
+                Check(await browser.EvaluateFixtureAsync("frameClick?.clicked==='inner2'&&frameClick?.trusted===true") == "true", "Post-scroll native activation reaches the next control inside the cross-process frame");
 
                 await Body("<button id=a class=fixed style='left:20px;top:60px'>A</button><iframe id=frame src='https://cross-origin.invalid/frame' style='position:absolute;left:220px;top:40px;width:300px;height:180px;border:2px solid white;transform:scale(.8);transform-origin:top left'></iframe>");
                 await Task.Delay(300); await PointAt("a");
