@@ -18,3 +18,13 @@ One placement policy avoids visible pins and, while open, widget, Guide, rail an
 - Review completed: authenticated producer identity and generation checks; background lifecycle admission; per-worker bounds; transient cleanup/replacement; stable pending identity; preference precedence; native focus/layering; bounded metadata layout; DPI-aware artwork decode; disposal and settings debounce. No blocking findings remain. SDK API baseline and author/user documentation updated.
 - Community package `artifacts/widget-notifications/ytmusic-0.3.36/widgetrail.samples.ytmusic-0.3.36.wrwidget` built and validated. No external account probes. Pending: complete candidate build, package installation and launch for physical acceptance.
 - Preserve normal profile, sign-ins, shortcut and main's unrelated documentation edit. Synthetic test data only; no credentials, real messages/calls or personal captures. No merge/push/release/installers requested.
+
+## Candidate delivery
+
+- Implementation commit: `bdc70bde` on `codex/widget-notifications`.
+- Complete candidate: `artifacts/widget-notifications/candidate-01/0.1.0-preview.31`; Production/Developer catalogs, package integrity and icon admission passed (11 / 15 bundled widgets). No installers or release created.
+- YouTube Music 0.3.36 installed, selected and re-enabled through the CLI's normal disabled-update-review flow. Version 0.3.35 remains installed for rollback. No account data was read or changed by this work.
+- Developer candidate launched on SDK Gallery (PID 30168). Native UI Automation confirms the bell and clock/connectivity area, and the process is responsive. Normal platform settings SHA-256 remains `7D939734F705FE10F1685A6EC800809309D3D8A5667A73F8A7D8F556F3CC516B`; main's unrelated goal-document edit remains untouched.
+- Rendered synthetic song banner background alpha was measured at 204/255 for the requested 80%; text/artwork opacity is independent.
+- Autonomous implementation and validation complete. Physical acceptance: enable Song-change banners during setup or Y → Settings; start/skip tracks with overlay open/closed; check real thumbnail/artist/duration, unchanged bell count, opacity adjustment, pause/resume staying quiet, rapid replacement/quiet interval, and disabling the feature.
+- Changes remain unmerged and unpushed.
