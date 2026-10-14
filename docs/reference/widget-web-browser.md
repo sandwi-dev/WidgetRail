@@ -53,10 +53,36 @@ The required `interactionMode` SDK argument selects both entry and Back behavior
 browsing when the element receives admitted input focus and lets B follow normal
 widget/tray routing. There is no separate Back flag. LS toggles between the page and native toolbar. Left stick moves the pointer, right stick scrolls,
 A presses the mouse button, holding it while moving the stick drags, and releasing
-it releases the mouse button. D-pad also moves the pointer. Toolbar left/right navigation selects commands, and LS or Down returns to the page. LB/RB navigate history, X reloads/stops, Y edits the current address,
+it releases the mouse button. D-pad jumps geometrically between webpage controls. Toolbar left/right navigation selects commands, and LS or Down returns to the page. LB/RB navigate history, X reloads/stops, Y edits the current address,
 LT/RT zoom out/in (including held repeat), A opens editable fields, and
 Menu opens page actions at the pointer; Open externally remains in the toolbar. The press used to enter Interact never clicks the page.
 Opening a dialog or losing input cancels a held pointer outside the page.
+
+### Directional jumps
+
+While interacting with page content, D-pad moves the controller circle to a nearby
+control in that direction, considering alignment and distance. A still performs
+the ordinary native click; jumping never activates a button or opens the keyboard.
+Left-stick movement immediately resumes free pointing. Right stick retains scrolling.
+At a scrollable list's edge, D-pad scrolls within the list before moving into another
+pane. There is no wrap to the opposite edge of the page.
+
+The shared implementation applies to browsers, webapps, provider documents,
+hosted pop-outs, pins and expanded views. No new SDK declaration is needed. Native
+HTML controls, links, meaningful ARIA roles, focusable controls, hidden-input label
+proxies and open shadow roots provide the most reliable targets. Hidden, disabled,
+inert and occluded controls are excluded; nested clickable ancestors do not steal
+navigation from their child controls. Held A keeps drag behavior and suppresses jumps.
+
+The host uses bounded, on-demand geometry scans in isolated worlds, and traverses
+only frames owned by that WebView. It returns positions rather than page text or
+field values, and releases temporary DOM references/sessions after each request.
+No scans run during neutral controller polling. Cross-origin and separate-process
+frames are supported; rotated/skewed/mirrored/perspective frame transforms and
+depths beyond eight are skipped. Large documents, closed-shadow internals without
+host semantics, canvas controls and unmarked click handlers may require free
+pointing. Native browser/Windows chooser dialogs retain their existing controls;
+they do not use webpage geometry navigation.
 HTML drag-and-drop uses Chromium's drag interception and delivery only for the
 controller-owned gesture. Drag data is bounded, stays inside its browser, and
 cannot contain files. Ordinary physical mouse handling is retained outside that

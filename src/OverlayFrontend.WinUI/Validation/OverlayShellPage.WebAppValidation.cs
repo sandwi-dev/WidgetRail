@@ -33,6 +33,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                await VerifySpatialRoutingAsync(first, "main", Check);
                 if (Environment.GetCommandLineArgs().Contains("--webapp-popup-placement")) await VerifyPopupPlacementChoicesAsync(first, Check);
                 // Other popup lifetime tests deliberately choose the established
                 // in-widget route; placement admission is covered separately.
@@ -50,6 +51,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => expandedBrowser?.Surface == first && first.IsBrowsing);
                 await WebAppUntil(() => first.CompositionRoot.ActualHeight > height);
                 Check(first.NavigationCount == navigation, "Expansion enlarges the native viewport without navigating or creating another session");
+                await VerifySpatialRoutingAsync(first, "expanded", Check);
                 await Press(ControllerButton.LeftStick); await Press(ControllerButton.B);
                 Check(expandedBrowser?.Surface == first && !first.IsToolbarVisible, "Expanded LS and B preserve the normal toolbar interaction");
                 await first.EvaluateGestureFixtureAsync("setTimeout(()=>alert('Expanded local fixture'),0)");
@@ -134,6 +136,7 @@ internal sealed partial class OverlayShellPage
                 await EnterPinnedAsync();
                 await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(WindowBelow((nint)hostWindow, pinned.Window.Handle), "Interacting browser pin is above the main overlay without replacing its session");
+                await VerifySpatialRoutingAsync(first, "pin", Check);
                 await first.NativeProfile!.SetPermissionStateAsync(CoreWebView2PermissionKind.Notifications, "https://shell.fixture.invalid", CoreWebView2PermissionState.Default);
                 await first.EvaluateGestureFixtureAsync("window.permissionResult='pending';Notification.requestPermission().then(p=>window.permissionResult=p)");
                 await WebAppUntil(() => hostChoiceDialog?.IsLoaded == true);
@@ -150,6 +153,7 @@ internal sealed partial class OverlayShellPage
                 await first.EvaluateGestureFixtureAsync("window.open('https://shell.fixture.invalid/popup')");
                 await WebAppUntil(() => first.HasPopup && first.ActiveSurface.CurrentTitle == "Shell /popup");
                 Check(ReferenceEquals(first.ActiveSurface.XamlRoot, pinned.Window.AutomationRoot.XamlRoot), "Hosted popup stays in the pinned webapp window");
+                await VerifySpatialRoutingAsync(first.ActiveSurface, "hosted popup", Check);
                 await Press(ControllerButton.B); await WebAppUntil(() => !first.HasPopup);
                 await WebAppUntil(() => PinnedInputActive && first.IsBrowsing);
                 Check(PinnedInputActive && first.IsBrowsing, "Closing a pinned popup preserves its parent and pin interaction");

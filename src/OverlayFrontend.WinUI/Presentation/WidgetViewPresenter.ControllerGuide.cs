@@ -113,14 +113,14 @@ internal sealed partial class WidgetViewPresenter
                     new(ControllerPrompt.LeftStickPress, "Page", ControllerButton.LeftStick),
                     .. (browser.Surface?.ToolbarBackReturnsToPage == true ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Page", ControllerButton.B)] : [])]
                 : browser.IsBrowsing && browser.Surface?.IsProviderContent == true
-                ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
+                ? (ControllerGuideHint[])[new(ControllerPrompt.DPad, "Jump to control"), new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
                     new(ControllerPrompt.A, "Open search", ControllerButton.A), new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger),
                     new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger), new(ControllerPrompt.B, "Back", ControllerButton.B)]
                 : browser.IsBrowsing && browser.Surface?.SessionStopped == true
                 ? (ControllerGuideHint[])[new(ControllerPrompt.X, "Restart webapp", ControllerButton.X),
                     new(ControllerPrompt.LeftStickPress, "Website controls", ControllerButton.LeftStick), new(ControllerPrompt.B, "Back", ControllerButton.B)]
                 : browser.IsBrowsing
-                ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
+                ? (ControllerGuideHint[])[new(ControllerPrompt.DPad, "Jump to control"), new(ControllerPrompt.LeftStickMove, "Pointer"), new(ControllerPrompt.RightStickMove, "Scroll"),
                     new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.LeftBumper, "Previous", ControllerButton.LeftBumper),
                     new(ControllerPrompt.RightBumper, "Forward", ControllerButton.RightBumper), new(ControllerPrompt.X, browser.Surface?.IsNavigationInProgress == true ? "Stop" : "Reload", ControllerButton.X),
                     new(ControllerPrompt.Y, "Address", ControllerButton.Y),

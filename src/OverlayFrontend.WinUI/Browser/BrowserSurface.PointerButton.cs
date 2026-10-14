@@ -12,6 +12,7 @@ internal sealed partial class BrowserSurface
     private bool pointerMoved;
     private void PressPointer()
     {
+        CancelSpatialNavigation();
         TracePointer($"press: held={pointerPressed} input={input} browsing={browsing} dialog={HasDialog}");
         if (pointerPressed || !input || !browsing || HasDialog) return;
         pointerPressed = true;
@@ -32,6 +33,7 @@ internal sealed partial class BrowserSurface
     }
     private void CancelPointer()
     {
+        CancelSpatialNavigation();
         TracePointer($"cancel: epoch={pointerEpoch} down={nativePointerDown}");
         ++pointerEpoch; pointerPressed = false;
         if (!nativePointerDown) return;

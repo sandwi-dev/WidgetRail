@@ -14,6 +14,7 @@ internal static partial class Program
         if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-webapp") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-editing") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-spatial") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-files") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-site") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-sharing") is not null) { fixture = true; return; }

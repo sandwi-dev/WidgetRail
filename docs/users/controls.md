@@ -57,7 +57,11 @@ prompts keep the draft/confirm behavior described above.
 
 ## Webapps and notifications
 
-In a webapp, the left stick moves the pointer, A clicks, and the right stick scrolls.
+In a webapp, **D-pad** jumps the circle between nearby webpage controls. **Left
+stick** remains free pointer movement, **A** clicks, and **right stick** scrolls.
+D-pad can scroll a list to reveal its next control. It never clicks automatically
+and does not move the pointer while A is held for dragging. Use the free pointer
+for canvas controls or elements a page does not expose as interactive.
 LS opens Website controls; its actions have direct labels. Website permissions can
 also be changed from the widget's tray menu, including restoring a blocked microphone.
 

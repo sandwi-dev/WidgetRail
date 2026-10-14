@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserSpatialGeometry.cs" Link="BrowserSpatialGeometry.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserPopupPreferences.cs" Link="BrowserPopupPreferences.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\NotificationInbox.cs" Link="NotificationInbox.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\WebNotificationPreferences.cs" Link="WebNotificationPreferences.cs" />

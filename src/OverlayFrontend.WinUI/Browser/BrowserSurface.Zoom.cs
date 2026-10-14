@@ -10,6 +10,7 @@ internal sealed partial class BrowserSurface
     private bool zoomPending, zoomPumping;
     private void ChangeZoom(double delta)
     {
+        CancelSpatialNavigation();
         if (!input || core is null || faulted || HasDialog) return;
         requestedZoom = Math.Clamp(Math.Round(requestedZoom + delta, 1), 1, 2.5);
         zoomAnchorX = cursorX; zoomAnchorY = cursorY;

@@ -34,6 +34,7 @@ internal sealed partial class BrowserSurface
     private void UseDesktopPointer()
     {
         if (!input) return;
+        CancelSpatialNavigation();
         if (controllerPointerVisible || pointerPressed) CancelPointer();
         controllerPointerVisible = false;
         cursorDirty = false;

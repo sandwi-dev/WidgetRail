@@ -109,7 +109,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         Loaded += (_, _) => { AttachTheme(); if (visible && initializing is null) initializing = InitializeAsync(); };
         Unloaded += (_, _) => { chromeTheme?.Dispose(); chromeTheme = null; };
         viewport.SizeChanged += (_, args) =>
-        { DrawCursor(); if (Math.Abs(args.NewSize.Width - args.PreviousSize.Width) > 1) Run(RefreshProviderHeightAsync); };
+        { CancelSpatialNavigation(); DrawCursor(); if (Math.Abs(args.NewSize.Width - args.PreviousSize.Width) > 1) Run(RefreshProviderHeightAsync); };
         // Focus alone does not identify the input source. A controller's CDP
         // mouse-down can focus WebView too; cancelling here loses its mouse-up.
         // Real pointer events below own the mouse/controller handoff.
@@ -284,8 +284,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (editDialog is { } dialog) { dialog.MoveFocus(direction); return true; }
         if (HasDialog) return true;
         if (toolbarFocused) { MoveToolbar(direction); return true; }
-        MovePointer(direction == FocusNavigationDirection.Left ? -.04 : direction == FocusNavigationDirection.Right ? .04 : 0,
-                direction == FocusNavigationDirection.Up ? -.04 : direction == FocusNavigationDirection.Down ? .04 : 0);
+        JumpPointer(direction);
         return true;
     }
     internal bool Scroll(double x, double y)
@@ -294,6 +293,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (!input || !interacting || core is null) return false;
         if (HasDialog || toolbarFocused) return true;
         if (x == 0 && y == 0) return true;
+        CancelSpatialNavigation();
         UseControllerInput();
         wheelX = Math.Clamp(wheelX + x, -1600, 1600); wheelY = Math.Clamp(wheelY + y, -1600, 1600);
         PumpPointer(); return true;
@@ -302,6 +302,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     {
         if (AttachedPopup is { } child) { child.MovePointer(x, y); return; }
         if (!input || !browsing || HasDialog || x == 0 && y == 0) return;
+        CancelSpatialNavigation();
         UseControllerInput();
         cursorX = Math.Clamp(cursorX + x, .01, .99); cursorY = Math.Clamp(cursorY + y, .01, .99);
         TrackPointerMovement();

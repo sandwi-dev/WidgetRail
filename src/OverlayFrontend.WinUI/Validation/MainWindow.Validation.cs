@@ -92,6 +92,11 @@ public sealed partial class MainWindow
             RootFrame.Content = new Validation.WebAppValidationPage(webappResult,
                 Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."),
                 arguments.Contains("--verify-webapp-profile"), arguments.Contains("--webapp-permissions"));
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-spatial") is { } spatialResult)
+        {
+            RootFrame.Content = new Validation.WebAppSpatialValidationPage(spatialResult,
+                Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? Path.Combine(Path.GetTempPath(), "WidgetRailSpatial", Guid.NewGuid().ToString("N")));
+        }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-editing") is { } editingResult)
         {
             AppWindow.Resize(new(1700, 1400));
