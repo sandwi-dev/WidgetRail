@@ -28,4 +28,11 @@ Replace Guide-adjacent status text with a focusable bell and pending-count badge
 - Review covered callback lifetime and duplicate activation, focus admission/restoration, clear-all input, hidden-banner text cleanup, icon loading ownership, bounded list allocation, template/resize placement, theme/high-contrast palette use, reduced motion, automation labels and unsubscribing panel listeners. No remaining blocking findings. Real-account notification emission remains physical testing.
 - Existing profile settings hash is unchanged after synthetic validation. No credentials, personal windows, real messages or calls were used.
 
-Remaining: complete candidate build and launch with existing profile. No merge, push, installers or release until separately requested.
+## Candidate delivery
+
+- Implementation source: `a6a8c014` on `codex/notification-experience`.
+- Complete payloads: `artifacts/notifications/candidate-01/0.1.0-preview.31`; catalog, package-integrity and icon-admission verification passed for 11 Production / 15 Developer widgets. No installers or release created.
+- Developer candidate launched on SDK Gallery with the existing normal profile (PID 33016). UI Automation confirms the focusable bell and full clock/connectivity area, opens the empty panel, verifies its caught-up state, and closes it successfully. App remains responsive.
+- Normal platform settings SHA-256 remains `7D939734F705FE10F1685A6EC800809309D3D8A5667A73F8A7D8F556F3CC516B`. Main's unrelated `docs/implementation-agent-goal.md` edit was preserved.
+- Autonomous implementation and validation complete. Physical checks: navigate to the bell; open/dismiss/close entries; inspect a quiet in-game banner and its retained pending entry; open a Session ended entry without a warning. Account-dependent notification emission is the user's test.
+- No merge, push, installers or release until separately requested.
