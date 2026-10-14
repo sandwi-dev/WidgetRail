@@ -44,6 +44,9 @@ internal sealed partial class OverlayShellPage
             { MoveTrayWidget(args.Key == Windows.System.VirtualKey.Left ? -1 : 1); args.Handled = true; }
             else if (reordering && args.Key is Windows.System.VirtualKey.Escape or Windows.System.VirtualKey.Enter)
             { FinishTrayReorder(); args.Handled = true; }
+            else if (!reordering && trayMenu is null && args.Key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right &&
+                NavigateNotificationBell(args.Key == Windows.System.VirtualKey.Left ? FocusNavigationDirection.Left : FocusNavigationDirection.Right))
+            { args.Handled = true; }
             else if (!reordering && trayMenu is null && args.Key == Windows.System.VirtualKey.Up && FocusedTrayWidget() is { } widget)
             { args.Handled = true; _ = SelectAsync(widget.Id); }
             else if (args.Key == Windows.System.VirtualKey.Escape && trayMenu is null)
@@ -325,6 +328,7 @@ internal sealed partial class OverlayShellPage
             return true;
         }
         if (RadialOpen) { StepRadialSelection(direction); return true; }
+        if (!reordering && NavigateNotificationBell(direction)) return true;
         if (!reordering)
         {
             if (direction == FocusNavigationDirection.Up && FocusedTrayWidget() is { } widget)
@@ -347,6 +351,12 @@ internal sealed partial class OverlayShellPage
             if (button is ControllerButton.B or ControllerButton.Menu) CloseTrayMenu(true);
             else if (button == ControllerButton.A && TrayOwnerCurrent(menu.Owner, menu.Selection) &&
                 menu.Items[menu.FocusIndex].Command is IAsyncRelayCommand command) await command.ExecuteAsync(null);
+            return;
+        }
+        if (notificationBell.FocusState != FocusState.Unfocused)
+        {
+            if (button == ControllerButton.A) await ShowNotificationsAsync();
+            else if (button == ControllerButton.B) HideRequested?.Invoke();
             return;
         }
         if (button == ControllerButton.Y && TrayGestureIdentity is { } identity)

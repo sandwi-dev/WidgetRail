@@ -83,9 +83,15 @@ the parent session also closes its pop-out.
 
 After granting a website notification permission, select **Notification preferences**
 in its widget tray menu to choose Banner + list, List only, or Off. Quiet banners
-disappear after four seconds; pending notifications stay in the tray's
-**Notifications** list. There, A opens the originating page, X dismisses the focused
-entry, and B closes the list without clearing it. Windows notification UI is not used.
+fade away after four seconds. The bell beside the clock shows the number of pending
+notifications and opens their panel; the tray-menu **Notifications** command also
+remains available. From the last tray/radial widget, D-pad right moves to the bell;
+D-pad left returns. For a left-aligned rail, use left at its first widget instead.
+A opens the originating page, X dismisses the focused entry, and B closes the panel
+without clearing it. Clear all is a secondary action. New arrivals keep your selection.
+A **Session ended** entry opens its widget normally; if the widget was removed, the
+entry disappears with a brief inline message. No extra warning needs dismissing.
+Windows notification UI is not used.
 Pending entries last for the current WidgetRail session; the preference survives restarts.
 
 ## Choose a widget switcher

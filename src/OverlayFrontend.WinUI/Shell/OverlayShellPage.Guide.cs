@@ -25,6 +25,12 @@ internal sealed partial class OverlayShellPage
                 shell = (ControllerGuideHint[])[new(ControllerPrompt.A, "Open", ControllerButton.A),
                     new(ControllerPrompt.X, "Dismiss", ControllerButton.X), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
         }
+        else if (!interactive && notificationBell.FocusState != FocusState.Unfocused)
+        {
+            shell = (ControllerGuideHint[])[new(ControllerPrompt.A, "Notifications", ControllerButton.A),
+                new(ControllerPrompt.B, "Hide overlay", ControllerButton.B, Required: true)];
+            shellContext = "notification-bell";
+        }
         else if (SystemFilePickerOpen)
         { shell = Array.Empty<ControllerGuideHint>(); shellContext = "system-file-picker"; }
         else if (nativeBrowserPickerActive)

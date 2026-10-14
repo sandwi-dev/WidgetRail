@@ -19,6 +19,22 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     private readonly List<HostDialogChoice> entries;
     private readonly HashSet<string> reportedChoices = [];
     private bool opened, reportingQueued;
+    private Func<HostDialogChoice, UIElement>? choiceContent;
+    internal Func<string, bool>? KeepOpenOnChoice { get; set; }
+    internal void SetChoiceContent(Func<HostDialogChoice, UIElement> create)
+    {
+        choiceContent = create;
+        for (var index = 0; index < entries.Count; index++)
+            if (choices.Items[index] is ListViewItem item) item.Content = create(entries[index]);
+    }
+    internal void FocusFirstChoice()
+    {
+        if (choices.Items.Count == 0) return;
+        choices.SelectedIndex = Math.Max(0, choices.SelectedIndex);
+        (choices.SelectedItem as Control)?.Focus(FocusState.Keyboard);
+    }
+    internal void SetListHeight(double height) => choices.MaxHeight = Math.Max(48, height);
+
     private CheckBox? rememberChoice;
     internal bool RememberChoice => rememberChoice?.IsChecked == true;
     internal void AddRememberChoice(string label)
@@ -79,7 +95,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
                 choices.Items.Add(item);
             }
             choices.SelectedIndex = 0;
-            choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: string id }) Choose(this.entries.FindIndex(entry => entry.Id == id)); };
+
             if (entries.Count > 1) content.Children.Add(choices);
             // List entries are already direct actions (pointer, Enter and A).
             // A second generic "Open" button obscures destructive action intent.
@@ -89,6 +105,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
                 PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(0); };
             }
         }
+        choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: string id }) Choose(this.entries.FindIndex(entry => entry.Id == id)); };
         Content = content;
         Opened += (_, _) =>
         {
@@ -111,9 +128,10 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     }
     private ListViewItem CreateChoice(HostDialogChoice entry)
     {
-        var item = new ListViewItem { Content = new TextBlock { Text = entry.Label, TextWrapping = TextWrapping.Wrap, MaxLines = 5 },
+        var item = new ListViewItem { Content = choiceContent?.Invoke(entry) ?? new TextBlock { Text = entry.Label, TextWrapping = TextWrapping.Wrap, MaxLines = 5 },
             Tag = entry.Id, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetAutomationId(item, "Host.Choice.Item." + entry.Id);
+        AutomationProperties.SetName(item, entry.Label);
         item.EffectiveViewportChanged += (_, _) => QueueVisibleChoices();
         return item;
     }
@@ -144,7 +162,12 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         var selected = choices.SelectedIndex;
         reportedChoices.Remove(id);
         entries.RemoveAt(index); choices.Items.RemoveAt(index);
-        if (entries.Count == 0) { choices.SelectedIndex = -1; return; }
+        if (entries.Count == 0)
+        {
+            choices.SelectedIndex = -1;
+            if (focused) (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
+            return;
+        }
         choices.SelectedIndex = Math.Clamp(selected - (index < selected ? 1 : 0), 0, entries.Count - 1);
         if (focused && index == selected) (choices.SelectedItem as Control)?.Focus(FocusState.Keyboard);
     }
@@ -164,13 +187,17 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     {
         var index = entries.FindIndex(value => value.Id == entry.Id);
         if (index < 0) return;
+        if (entries[index] == entry) return;
         entries[index] = entry;
+        if (choices.Items[index] is ListViewItem accessible) AutomationProperties.SetName(accessible, entry.Label);
+        if (choiceContent is not null && choices.Items[index] is ListViewItem item) { item.Content = choiceContent(entry); return; }
         if (choices.Items[index] is ListViewItem { Content: TextBlock text }) text.Text = entry.Label;
     }
 
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
+        if (panelAnchor is not null) PositionPendingPanel();
         // Theme application can replace the button after Opened. Keep the ID
         // on the current template instance rather than the discarded control.
         if (GetTemplateChild("PrimaryButton") is Control primary)
@@ -184,6 +211,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     private void Choose(int index)
     {
         if (index < 0 || index >= entries.Count) return;
+        if (KeepOpenOnChoice?.Invoke(entries[index].Id) == true) return;
         SelectedId = entries[index].Id;
         ControllerArmed = false;
         Hide();
@@ -238,7 +266,6 @@ internal sealed partial class HostChoiceDialog : ContentDialog
                 rememberChoice.IsChecked = !RememberChoice;
             else if (FocusManager.GetFocusedElement(XamlRoot) is Button focused)
             {
-                ControllerArmed = false;
                 (FrameworkElementAutomationPeer.CreatePeerForElement(focused)?.GetPattern(PatternInterface.Invoke) as IInvokeProvider)?.Invoke();
             }
         }

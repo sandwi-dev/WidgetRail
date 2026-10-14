@@ -8,6 +8,7 @@ internal sealed class NotificationEntry(long id, string widget, string profile, 
     object owner, NotificationCallbacks callbacks)
 {
     internal long Id { get; } = id;
+    internal DateTimeOffset ReceivedAt { get; } = DateTimeOffset.Now;
     internal string Widget { get; } = widget;
     internal string Profile { get; } = profile;
     internal string Origin { get; } = origin;
@@ -79,6 +80,25 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
         }
         catch (Exception error) when (error is not OutOfMemoryException) { return false; }
         finally { item.Activating = false; Changed?.Invoke(); }
+    }
+    // A stale document cannot receive a click. Open its widget normally instead,
+    // without dispatching callbacks to a replacement document.
+    internal async Task<bool> OpenAsync(long id, Func<NotificationEntry, Task<bool>> activate,
+        Func<NotificationEntry, Task<bool>> openWidget)
+    {
+        var item = Find(id);
+        if (item is null || item.Activating) return false;
+        if (await ActivateAsync(id, activate)) return true;
+        if (!ReferenceEquals(Find(id), item) || item.Activating) return false;
+        item.Activating = true;
+        try
+        {
+            if (!await openWidget(item)) return false;
+            if (ReferenceEquals(Find(id), item)) { Remove(item, notify: false); Changed?.Invoke(); }
+            return true;
+        }
+        catch (Exception error) when (error is not OutOfMemoryException) { return false; }
+        finally { item.Activating = false; }
     }
     internal void Dismiss(long id) { if (Find(id) is { } item) { Remove(item, notify: true); Changed?.Invoke(); } }
     internal void Withdraw(long id) { if (Find(id) is { } item) { Remove(item, notify: false); Changed?.Invoke(); } }

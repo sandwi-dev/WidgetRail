@@ -397,15 +397,20 @@ Notifications use WidgetRail's own presentation after website permission is
 granted. The host handles WebView2 notification events; Windows notification UI is
 not used. Per-widget tray preferences select Banner + list, List only, or Off.
 Quiet passive banners last four seconds without taking focus or making a sound.
-While the overlay is visible, its pending indicator updates instead. A burst can
+While the overlay is visible, the bell beside the clock updates its pending-count badge instead. The badge counts all pending entries, including ones already shown. A burst can
 update the current banner without extending its deadline; an eight-second quiet
 interval follows. Website replacement tags are scoped to widget/profile/origin.
 
-The tray notification list offers A to open the exact originating page (including
-its existing pin), X to dismiss a focused entry, B to close the list and Clear all.
+The bell opens a compact panel above it. The tray-menu Notifications command remains
+available. Cards show the widget icon, source/domain, receipt time, title and body.
+The panel offers A to open the exact originating page (including its existing pin),
+X to dismiss a focused entry, B to close and restore focus, and secondary Clear all.
+New arrivals do not move the selected entry.
 Expiry hides only the banner. Pending entries remain until opened, dismissed or
-withdrawn by the website. A stale page leaves a dismissible entry, never a click
-sent to a replacement session. The bounded inbox keeps up to 256 entries and
+withdrawn by the website. A stale page is labeled Session ended. Opening it enters the owning widget normally
+and removes the entry after a successful open, without invoking stale page callbacks.
+If the widget is unavailable, the entry is removed and the panel shows a brief inline
+message; no warning dialog or additional confirmation is required. The bounded inbox keeps up to 256 entries and
 reports overflow rather than silently expiring old items. Preferences survive
 restarts; actionable pending notifications are session-only.
 

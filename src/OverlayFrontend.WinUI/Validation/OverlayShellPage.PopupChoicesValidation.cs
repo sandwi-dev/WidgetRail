@@ -124,7 +124,7 @@ internal sealed partial class OverlayShellPage
         }
     }
 
-    private static async Task CapturePopupDecisionAsync(HostChoiceDialog dialog, string name)
+    private static async Task CapturePopupDecisionAsync(FrameworkElement dialog, string name)
     {
         // Visual review only: let the native dialog's entrance animation settle.
         await Task.Delay(300);

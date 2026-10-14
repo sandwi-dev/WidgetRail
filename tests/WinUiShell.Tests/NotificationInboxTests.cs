@@ -70,4 +70,42 @@ public sealed class NotificationInboxTests
         Assert.IsNull(inbox.Add("app", "default", "https://fixture.invalid", "", "Title", "Body", source, source.Callbacks, WebNotificationPresentation.Off));
         Assert.AreEqual(0, source.Shown + source.Closed); Assert.AreEqual(1, source.Detached); Assert.HasCount(0, inbox.Entries);
     }
+    [TestMethod]
+    public async Task StaleOpenUsesWidgetFallbackWithoutCallingDeadDocument()
+    {
+        using var inbox = new NotificationInbox(); var source = new Source(); var item = Add(inbox, source);
+        inbox.InvalidateOwner(source);
+        var fallback = 0;
+        Assert.IsTrue(await inbox.OpenAsync(item.Id, _ => throw new InvalidOperationException("Dead callback"),
+            entry => { Assert.AreEqual("webapp", entry.Widget); fallback++; return Task.FromResult(true); }));
+        Assert.AreEqual(1, fallback); Assert.IsNull(inbox.Find(item.Id));
+        Assert.AreEqual(0, source.Clicked + source.Closed);
+    }
+    [TestMethod]
+    public async Task LiveOpenDeliversClickWithoutOpeningWidgetTwice()
+    {
+        using var inbox = new NotificationInbox(); var source = new Source(); var item = Add(inbox, source);
+        Assert.IsTrue(await inbox.OpenAsync(item.Id, _ => Task.FromResult(true),
+            _ => throw new InvalidOperationException("Unexpected fallback")));
+        Assert.AreEqual(1, source.Clicked); Assert.IsNull(inbox.Find(item.Id));
+    }
+    [TestMethod]
+    public async Task RepeatedOpenDuringFallbackDoesNotDuplicateNavigation()
+    {
+        using var inbox = new NotificationInbox(); var source = new Source(); var item = Add(inbox, source);
+        inbox.InvalidateOwner(source);
+        var completion = new TaskCompletionSource<bool>(); var calls = 0;
+        var first = inbox.OpenAsync(item.Id, _ => Task.FromResult(false), _ => { calls++; return completion.Task; });
+        Assert.IsFalse(await inbox.OpenAsync(item.Id, _ => Task.FromResult(false), _ => { calls++; return Task.FromResult(true); }));
+        completion.SetResult(true); Assert.IsTrue(await first); Assert.AreEqual(1, calls);
+    }
+    [TestMethod]
+    public async Task ReplacedEntryIsNotOpenedByFailedOldActivation()
+    {
+        using var inbox = new NotificationInbox(); var source = new Source(); var item = Add(inbox, source, "same");
+        Assert.IsFalse(await inbox.OpenAsync(item.Id, _ => { Add(inbox, new(), "same"); return Task.FromResult(false); },
+            _ => throw new InvalidOperationException("Replaced entry must not navigate")));
+        Assert.HasCount(1, inbox.Entries); Assert.AreNotEqual(item.Id, inbox.Entries[0].Id);
+    }
+
 }

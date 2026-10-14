@@ -97,10 +97,14 @@ internal sealed partial class OverlayShellPage
     private void StepRadialSelection(FocusNavigationDirection direction)
     {
         if (!RadialOpen) return;
+        if (notificationBell.FocusState != FocusState.Unfocused)
+        { if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Up) radialView?.FocusSelected(); return; }
         if (trayMenu is not null) { NavigateTray(direction); return; }
         var delta = direction is FocusNavigationDirection.Up or FocusNavigationDirection.Left ? -1 : 1;
         if (reordering) { MoveTrayWidget(delta); return; }
         var selected = catalogItems.ToList().FindIndex(item => item.Id == radialSelection);
+        if (!reordering && selected == catalogItems.Count - 1 && delta > 0 && RailStatusHost.Visibility == Visibility.Visible)
+        { notificationBell.Focus(FocusState.Keyboard); return; }
         var index = RadialChooserPolicy.StepSelection(catalogItems.Count, radialPage, selected, delta);
         if (index < 0) return;
         var item = catalogItems[index]; PreviewRadial(item); radialView?.ButtonFor(item.Id)?.Focus(FocusState.Keyboard);
@@ -110,7 +114,7 @@ internal sealed partial class OverlayShellPage
         var owns = RadialOpen && trayMenu is null;
         radialInput.UpdateOwner(owns, frame.State.RightThumbX, frame.State.RightThumbY);
         if (!owns) return false;
-        if (!reordering && radialInput.SelectSector(frame.State.LeftThumbX, frame.State.LeftThumbY) is { } sector &&
+        if (!reordering && notificationBell.FocusState == FocusState.Unfocused && radialInput.SelectSector(frame.State.LeftThumbX, frame.State.LeftThumbY) is { } sector &&
             radialPage * 8 + sector < catalogItems.Count)
         {
             var item = catalogItems[radialPage * 8 + sector];

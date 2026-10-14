@@ -1,4 +1,7 @@
 using System.Globalization;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Browser;
 using WidgetRail.WidgetBridge;
 
@@ -8,6 +11,7 @@ internal sealed partial class OverlayShellPage
 {
     private void InitializeNotifications()
     {
+        InitializeNotificationBell();
         browserOwner!.Notifications.Changed += RefreshWebappStatus;
         browserOwner.NotificationBannerRequested += QueueNotificationBanner;
     }
@@ -30,40 +34,59 @@ internal sealed partial class OverlayShellPage
     private static string NotificationModeLabel(WebNotificationPresentation mode) => mode switch
     { WebNotificationPresentation.BannerAndList => "Banner + list", WebNotificationPresentation.ListOnly => "List only", _ => "Off" };
 
-    private async Task ShowNotificationsAsync()
+    private Task ShowNotificationsAsync() => ShowNotificationsAsync(null);
+
+    private async Task ShowNotificationsAsync(string? status)
     {
-        if (browserOwner is not { } browsers) return;
+        if (browserOwner is not { } browsers || HostChoiceActive) return;
         var inbox = browsers.Notifications;
         var snapshot = inbox.Entries.ToArray();
         var ids = snapshot.Select(entry => entry.Id).ToHashSet();
-        var choices = snapshot.Select(NotificationChoice).Append(new("clear-all", "Clear all")).ToArray();
-        var selected = await ShowHostChoiceAsync("Notifications", inbox.OverflowCount == 0
-            ? "A opens · X dismisses · B keeps notifications for later."
-            : $"{inbox.OverflowCount} additional notifications could not be kept. Open the webapp for its full history.",
-            choices, lifetime.Token, configure: dialog =>
+        var choices = snapshot.Select(NotificationChoice).ToArray();
+        var selected = await ShowHostChoiceAsync("Notifications", "", choices, lifetime.Token, configure: dialog =>
+        {
+            dialog.ConfigurePendingPanel(notificationBell, Appearance.InterfaceScale);
+            dialog.SetChoiceContent(choice =>
             {
-                dialog.UseActionList();
-                dialog.DismissChoiceRequested += id => { if (long.TryParse(id, out var number)) inbox.Dismiss(number); };
-                dialog.ChoiceShown += id => { if (long.TryParse(id, out var number)) inbox.MarkShown(number); };
-                void Update()
-                {
-                    foreach (var id in ids.ToArray())
-                        if (inbox.Find(id) is null) { dialog.RemoveChoice(id.ToString(CultureInfo.InvariantCulture)); ids.Remove(id); }
-                    foreach (var entry in inbox.Entries)
-                    {
-                        if (ids.Add(entry.Id)) dialog.AppendChoice(NotificationChoice(entry), "clear-all");
-                        else dialog.UpdateChoice(NotificationChoice(entry));
-                    }
-                    dialog.Title = $"Notifications ({inbox.Entries.Count})";
-                    if (notificationBannerState.EntryId is { } banner && inbox.Find(banner) is null) HideNotificationBanner();
-                }
-                inbox.Changed += Update;
-                dialog.Closed += (_, _) => inbox.Changed -= Update;
-                Update();
+                if (!long.TryParse(choice.Id, out var number) || inbox.Find(number) is not { } entry) return new TextBlock { Text = choice.Label };
+                var card = new NotificationCard(ResolveTrayIconAsync);
+                card.Update(entry, catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget), Appearance.TextScale * Appearance.InterfaceScale);
+                return card;
             });
-        if (selected == "clear-all") { inbox.Clear(); HideNotificationBanner(); return; }
+            dialog.SecondaryButtonText = "Clear all";
+            dialog.SecondaryButtonClick += (_, args) => { args.Cancel = true; inbox.Clear(); HideNotificationBanner(); };
+            dialog.DismissChoiceRequested += id => { if (long.TryParse(id, out var number)) inbox.Dismiss(number); };
+            dialog.ChoiceShown += id => { if (long.TryParse(id, out var number)) inbox.MarkShown(number); };
+            dialog.KeepOpenOnChoice = id =>
+            {
+                if (!long.TryParse(id, out var number)) return true;
+                if (inbox.Find(number) is { } entry && catalogItems.Any(widget => widget.Id == entry.Widget)) return false;
+                inbox.Dismiss(number);
+                dialog.ShowBriefStatus("This notification is no longer available.");
+                return true;
+            };
+            void Update()
+            {
+                foreach (var id in ids.ToArray())
+                    if (inbox.Find(id) is null) { dialog.RemoveChoice(id.ToString(CultureInfo.InvariantCulture)); ids.Remove(id); }
+                foreach (var entry in inbox.Entries)
+                {
+                    if (ids.Add(entry.Id)) dialog.AppendChoice(NotificationChoice(entry));
+                    else dialog.UpdateChoice(NotificationChoice(entry));
+                }
+                dialog.Title = inbox.Entries.Count == 0 ? "Notifications" : $"Notifications · {inbox.Entries.Count}";
+                dialog.IsSecondaryButtonEnabled = inbox.Entries.Count > 0 || inbox.OverflowCount > 0;
+                dialog.SetPendingStatus(inbox.Entries.Count == 0, inbox.OverflowCount == 0 ? null :
+                    $"{inbox.OverflowCount} additional notifications. Open the webapp for its full history.");
+                if (notificationBannerState.EntryId is { } banner && inbox.Find(banner) is null) HideNotificationBanner();
+            }
+            inbox.Changed += Update;
+            dialog.Closed += (_, _) => inbox.Changed -= Update;
+            Update();
+            if (status is not null) dialog.ShowBriefStatus(status);
+        });
         if (!long.TryParse(selected, out var id) || retired) return;
-        var opened = await inbox.ActivateAsync(id, async entry =>
+        var opened = await inbox.OpenAsync(id, async entry =>
         {
             if (!entry.Available || entry.Owner is not BrowserSurface source || retired) return false;
             if (pinned is { } pin && pin.WidgetId == entry.Widget && pin.IsCurrent && ReferenceEquals(source.XamlRoot, pin.Window.AutomationRoot.XamlRoot))
@@ -73,13 +96,18 @@ internal sealed partial class OverlayShellPage
             }
             await SelectAsync(entry.Widget, enterWidget: true);
             return !retired && foreground && await browsers.FocusNotificationSourceAsync(source);
+        }, async entry =>
+        {
+            if (retired || !visible || !catalogItems.Any(widget => widget.Id == entry.Widget)) { inbox.Dismiss(entry.Id); return false; }
+            await SelectAsync(entry.Widget, enterWidget: true);
+            return !retired && activeWidget == entry.Widget && !RecoveryVisible;
         });
-        if (!opened && !retired && visible)
-            await ShowHostChoiceAsync("Notification unavailable", "Its page may have closed or changed. The notification is still in the list; dismiss it or open the widget from the tray.", [], lifetime.Token);
+        if (!opened && !retired && visible && !HostChoiceActive)
+            await ShowNotificationsAsync(inbox.Find(id) is null ? "This notification is no longer available." : "Couldn't open the widget. You can try again later.");
     }
     private HostDialogChoice NotificationChoice(NotificationEntry entry)
     {
         var name = catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget)?.Name ?? entry.Widget;
-        return new(entry.Id.ToString(CultureInfo.InvariantCulture), $"{name}{(entry.Available ? "" : " · session ended")}\n{entry.Title}\n{entry.Body}");
+        return new(entry.Id.ToString(CultureInfo.InvariantCulture), $"{name}{(entry.Available ? "" : " · Session ended")}\n{entry.Title}\n{entry.Body}");
     }
 }

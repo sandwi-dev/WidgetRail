@@ -229,7 +229,11 @@ internal sealed partial class OverlayShellPage
                 if (expandedBrowser is not null) fullscreenLayer.FocusContent();
                 else if (pinnedOwner is not null) pinnedOwner.Enter();
                 else if (MainFocusEnabled) original?.Enter(restoreNativeFocus: true);
-                else if (!interactive) FocusTray();
+                else if (!interactive)
+                {
+                    if (ReferenceEquals(originalFocus, notificationBell)) notificationBell.Focus(FocusState.Keyboard);
+                    else FocusTray();
+                }
             }
         }
 
