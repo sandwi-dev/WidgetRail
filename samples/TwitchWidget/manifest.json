@@ -1,0 +1,22 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.samples.twitch",
+  "publisher": "widgetrail.samples",
+  "name": "Twitch",
+  "version": "0.1.0",
+  "pinningSupported": true,
+  "fullWidgetPinningSupported": true,
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/Twitch.dll",
+    "type": "widgetrail.samples.Twitch.Twitch"
+  },
+  "presentation": { "icon": "play", "packageIcon": { "assetId": "twitch.mark", "colorMode": "originalColor" } },
+  "iconAssets": { "twitch.mark": { "path": "assets/icons/twitch.svg" } },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 300 },
+  "resourceRequest": { "updateHz": 4 },
+  "architectures": ["x64", "arm64"]
+}

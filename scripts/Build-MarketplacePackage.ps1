@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Discord','GameHelp','DisplayProfiles')][string]$Widget,
+    [Parameter(Mandatory)][ValidateSet('Discord','GameHelp','DisplayProfiles','Twitch')][string]$Widget,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Release',
     [string]$OutputDirectory
 )

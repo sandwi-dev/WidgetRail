@@ -1,5 +1,10 @@
 [
   {
+    "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
+    "description": "Watch Twitch streams with controller navigation and pinnable webapp windows. Sign-in is needed for chat and account features; playback and pop-outs depend on Twitch's WebView2 compatibility.",
+    "screenshots": []
+  },
+  {
     "id": "widgetrail.samples.discord", "publisher": "widgetrail.samples", "name": "Discord",
     "description": "Use Discord's web app with controller input and pinnable pop-outs. Requires Discord sign-in; website microphone and camera access are controlled separately.",
     "screenshots": []

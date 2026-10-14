@@ -92,7 +92,7 @@ foreach ($edition in @($production, $dev)) {
 }
 Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'performance-monitor').Count -eq 1 -and
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'performance-monitor').Count -eq 1) 'Performance Monitor is missing from an edition.'
-foreach ($community in @(@('discord','Discord'), @('game-help','GameHelp'), @('display-profiles','DisplayProfiles'))) {
+foreach ($community in @(@('discord','Discord'), @('game-help','GameHelp'), @('display-profiles','DisplayProfiles'), @('twitch','Twitch'))) {
     foreach ($edition in @($production, $dev)) {
         $editionCatalog = Get-Content (Join-Path $edition 'widget-catalog.json') -Raw | ConvertFrom-Json
         Check (@($editionCatalog.bundledWidgets | Where-Object id -EQ $community[0]).Count -eq 0) 'Marketplace-only widget is bundled.'

@@ -112,6 +112,7 @@ included in either installer.
 | Add-on | Features | Setup requirements |
 |---|---|---|
 | [Discord](samples/DiscordWidget/README.md) | Controller-friendly webapp with persistent sessions and pinnable live pop-outs. | Discord account; website permissions for microphone/camera when used. |
+| [Twitch](samples/TwitchWidget/README.md) | Streaming webapp with controller navigation, persistent sessions and pinnable windows. | Sign-in for chat/account features; site compatibility varies. |
 | [Game Help](samples/GameHelpWidget/README.md) | Ask for hints with screenshots/clips, expand solutions and open suggested links. | Your Gemini API key; capture/document access requested when used. |
 | [Display Profiles](samples/DisplayProfilesWidget/README.md) | Save and restore display configurations with timed rollback protection. | Read/control access requested by the widget when needed. |
 | [Spotify](samples/SpotifyWidget/README.md) | Search tracks, albums, artists, and playlists; browse playlists and the queue; add individual tracks to the queue; choose a playback device or use **Play here**; pin playback controls. | Spotify account, a developer app, and Premium for streaming and playback control. |
