@@ -4580,7 +4580,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "focusAnimation", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
+        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "focusAnimation", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "pageAnimation", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -4601,7 +4601,8 @@ static async Task PlatformAppearanceIsLazy()
     var shellStyles = response.Payload.GetProperty("shellStyles");
     Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected",
         "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph",
-        "status", "tray-clock", "tray-date", "tray-status-icon" }.Order(StringComparer.Ordinal),
+        "status", "tray-clock", "tray-date", "tray-status-icon", "dialog", "dialog-title", "dialog-description", "dialog-footer",
+        "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused" }.Order(StringComparer.Ordinal),
         shellStyles.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.True(shellStyles.GetProperty("tray-item:focused")
         .TryGetProperty("outline-color", out _), "Focused tray style was not resolved.");

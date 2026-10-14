@@ -194,7 +194,7 @@ internal sealed partial class OverlayShellPage
                     presenter.ApplyAppearance(AppearanceForDisplay(displayId), systemUi.AnimationsEnabled);
                     var surface = new PinnedSurface(selection, presenter, window, limits, placement.Monitor)
                     { Appearance = projection.Snapshot.Surface?.Appearance ?? WidgetSurfaceAppearance.Theme, DisplayId = displayId };
-                    surface.PopupTheme.Attach(presenter);
+                    surface.PopupTheme.Attach(window.AutomationRoot);
                     window.ThemeChanged += () => ApplyPinnedAppearance(surface);
                     window.PlacementEnvironmentChanged += () => QueuePinnedPlacementEnvironment(surface);
                     presenter.EnsureInteractionAsync = (authority, token) => EnsurePinnedInteractionAsync(surface, authority, token);

@@ -8,6 +8,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class HostChoiceDialog
 {
     private FrameworkElement? panelAnchor;
+    internal bool HasCustomPlacement => panelAnchor is not null;
     private readonly TextBlock panelStatus = new() { TextWrapping = TextWrapping.Wrap, Opacity = .8 };
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? statusTimer;
     private double panelScale = 1;

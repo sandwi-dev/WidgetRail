@@ -35,6 +35,12 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-dialog-presentation"))
+                {
+                    step = "dialog presentation";
+                    await VerifyDialogPresentationAsync(Check);
+                    await WebAppUntil(() => first.IsBrowsing);
+                }
                 if (Environment.GetCommandLineArgs().Contains("--webapp-passive-pin"))
                 {
                     step = "passive pin visibility";

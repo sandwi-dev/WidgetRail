@@ -23,7 +23,8 @@ internal static class ShellPaletteEndToEndScenario
             {
                 var palette = await session.ReadShellStylesAsync(deadline.Token);
                 var expected = new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected", "tray-item:focused",
-                    "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status", "tray-clock", "tray-date", "tray-status-icon" };
+                    "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status", "tray-clock", "tray-date", "tray-status-icon",
+                    "dialog", "dialog-title", "dialog-description", "dialog-footer", "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused" };
                 if (!palette.Keys.OrderBy(value => value).SequenceEqual(expected.OrderBy(value => value)))
                     throw new InvalidOperationException("The complete real platform palette was not admitted.");
                 if (palette["controller-glyph"].Base["font-size"].Number != 24 || palette["tray-clock"].Base["font-size"].Number != 22 ||

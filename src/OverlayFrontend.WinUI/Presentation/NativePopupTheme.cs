@@ -32,8 +32,15 @@ internal sealed partial class NativePopupTheme
     internal void Attach(FrameworkElement root) { Owners.Remove(root); Owners.Add(root, this); }
     internal static IDisposable? Menu(MenuFlyout menu, FrameworkElement origin)
     { var owner = Find(origin); return owner?.TrackMenu(menu); }
-    internal static IDisposable? Dialog(ContentDialog dialog, FrameworkElement origin)
-    { var owner = Find(origin); return owner?.Track(() => owner.Apply(dialog)); }
+    internal static IDisposable Dialog(ContentDialog dialog, FrameworkElement origin)
+    {
+        var owner = Find(origin);
+        var placement = new NativeDialogPresentation(dialog, origin, () => owner?.ApplyDialogParts(dialog));
+        try { return new DialogLease(owner?.Track(() => { owner.Apply(dialog); owner.ApplyDialogParts(dialog); }), placement); }
+        catch { placement.Dispose(); throw; }
+    }
+    private sealed class DialogLease(IDisposable? theme, IDisposable placement) : IDisposable
+    { public void Dispose() { placement.Dispose(); theme?.Dispose(); } }
     private static NativePopupTheme? Find(FrameworkElement origin)
     {
         for (DependencyObject? current = origin; current is not null; current = PresentationLayers.LogicalParent(current))
@@ -82,6 +89,7 @@ internal sealed partial class NativePopupTheme
         ushort weight = authoredWeight?.Number is { } number ? (ushort)Math.Clamp(number, 100, 900) :
             authoredWeight?.Text == "bold" ? (ushort)700 : (ushort)400;
         fontWeight = new() { Weight = WidgetAccessibilityPolicy.From(settings).FontWeight(weight) ?? weight };
+        UpdateDialogPalette(resolved);
         foreach (var lease in leases.ToArray()) lease.Apply();
     }
 
@@ -152,36 +160,28 @@ internal sealed partial class NativePopupTheme
     {
         var zoom = appearance.InterfaceScale;
         var size = fontSize * zoom;
-        dialog.Background = surface; dialog.Foreground = ink; dialog.BorderBrush = border; dialog.FontSize = size;
+        dialog.FontSize = size;
         dialog.BorderThickness = new Thickness(zoom);
         dialog.CornerRadius = new CornerRadius(cornerRadius * zoom);
         dialog.FontWeight = fontWeight;
         if (font is not null) dialog.FontFamily = font;
         else dialog.ClearValue(Control.FontFamilyProperty);
-        dialog.Resources["ContentDialogBackground"] = surface;
-        dialog.Resources["ContentDialogForeground"] = ink;
-        dialog.Resources["ContentDialogContentForegroundBrush"] = ink;
-        dialog.Resources["ContentDialogBorderBrush"] = border;
-        dialog.Resources["ContentDialogTopOverlay"] = surface;
-        dialog.Resources["ControlContentThemeFontSize"] = size;
+        SetDialogResource(dialog, "ControlContentThemeFontSize", size);
         if (dialog is WidgetTextEntryDialog textEntry) textEntry.ApplyPopupMetrics(zoom, size, fontWeight, font);
-        dialog.Resources["FocusVisualPrimaryBrush"] = focus;
-        dialog.Resources["TextControlSelectionHighlightColor"] = selected;
-        dialog.Resources["TextControlHeaderForeground"] = ink;
+        SetDialogResource(dialog, "TextControlSelectionHighlightColor", dialogSelected);
+        SetDialogResource(dialog, "TextControlHeaderForeground", dialogText);
         foreach (var state in new[] { "", "PointerOver", "Pressed", "Disabled" })
         {
-            dialog.Resources["ButtonBackground" + state] = state is "PointerOver" or "Pressed" ? selected : key;
-            dialog.Resources["ButtonForeground" + state] = state == "Disabled" ? muted : state is "PointerOver" or "Pressed" ? selectedInk : ink;
-            dialog.Resources["ButtonBorderBrush" + state] = border;
-            dialog.Resources["TextControlButtonForeground" + state] = state == "Disabled" ? muted : ink;
-            dialog.Resources["TextControlButtonBackground" + state] = state is "PointerOver" or "Pressed" ? selected : clear;
+            SetDialogResource(dialog, "TextControlButtonForeground" + state, state == "Disabled" ? dialogDescription : dialogText);
+            SetDialogResource(dialog, "TextControlButtonBackground" + state, state is "PointerOver" or "Pressed" ? dialogSelected : clear);
         }
         foreach (var state in new[] { "", "PointerOver", "Focused", "Disabled" })
         {
-            dialog.Resources["TextControlBackground" + state] = key;
-            dialog.Resources["TextControlForeground" + state] = state == "Disabled" ? muted : ink;
-            dialog.Resources["TextControlPlaceholderForeground" + state] = muted;
-            dialog.Resources["TextControlBorderBrush" + state] = state == "Focused" ? focus : border;
+            SetDialogResource(dialog, "TextControlBackground" + state, dialogButton);
+            SetDialogResource(dialog, "TextControlForeground" + state, state == "Disabled" ? dialogDescription : dialogText);
+            SetDialogResource(dialog, "TextControlPlaceholderForeground" + state, dialogDescription);
+            SetDialogResource(dialog, "TextControlBorderBrush" + state, state == "Focused" ? dialogFocus : dialogBorder);
         }
+        ApplyDialogResources(dialog);
     }
 }

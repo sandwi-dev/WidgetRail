@@ -8,7 +8,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Host-owned keyboard with buffered widget commits or incremental browser edits.</summary>
-internal sealed partial class WidgetTextEntryDialog : ContentDialog
+internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
 {
     private const string Letters = "1234567890qwertyuiopasdfghjkl-zxcvbnm,./";
     private const string Symbols = "!@#$%^&*()-_=+[]{}\\|;:'\",.<>/?`~?:+=_ ";

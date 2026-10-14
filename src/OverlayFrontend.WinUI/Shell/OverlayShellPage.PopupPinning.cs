@@ -75,7 +75,7 @@ internal sealed partial class OverlayShellPage
                         LogicalPlacement = PinnedPlacementPolicy.Capture(placement.Bounds, placement.Monitor, limits, PopupPinLayout, window.OpacityPercent),
                     };
                     var current = created;
-                    current.PopupTheme.Attach(slot);
+                    current.PopupTheme.Attach(window.AutomationRoot);
                     slot.InteractionChanged = PublishControllerGuide;
                     window.CloseRequested += () => _ = UnpinAsync(save: true, current);
                     window.ThemeChanged += () => ApplyPinnedAppearance(current);

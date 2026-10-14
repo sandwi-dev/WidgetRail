@@ -58,6 +58,8 @@ internal sealed partial class OverlayShellPage
         await Reenter();
         check(browser.NavigationCount == navigations && ReferenceEquals(pinned, pin),
             $"{kind}: leaving the keyboard cancels its prompt and preserves the same pinned page");
+        if (Environment.GetCommandLineArgs().Contains("--webapp-passive-pin-memory"))
+            await VerifyPassivePinMemoryAsync(browser, kind, check);
 
         async Task OpenActions()
         {

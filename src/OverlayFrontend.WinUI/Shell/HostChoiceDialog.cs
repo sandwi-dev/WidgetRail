@@ -12,12 +12,18 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed record HostDialogChoice(string Id, string Label, long ContentRevision = 0);
 
 /// <summary>A small host-owned decision surface with the same release/neutral boundary as install dialogs.</summary>
-internal sealed partial class HostChoiceDialog : ContentDialog
+internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
 {
     private readonly ListView choices = new() { MaxHeight = 320, SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly Grid content = new() { RowSpacing = 8, MaxWidth = 480 };
     private readonly StackPanel details = new() { Spacing = 8 };
+    internal void ApplyDescriptionBrush(Brush brush)
+    {
+        foreach (var item in details.Children)
+            if (item is TextBlock text) text.Foreground = brush;
+            else if (item is ScrollViewer { Content: TextBlock message }) message.Foreground = brush;
+    }
     private readonly List<HostDialogChoice> entries;
     private readonly HashSet<string> reportedChoices = [];
     private bool opened, reportingQueued;
@@ -242,17 +248,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
     {
         if (messageViewport is not null && IsWithinFocused(messageViewport) && (direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down) &&
             ScrollMessage(direction == FocusNavigationDirection.Up ? -64 : 64)) return;
-        if (ListFocused() && direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down)
-        {
-            var next = choices.SelectedIndex + (direction == FocusNavigationDirection.Up ? -1 : 1);
-            if (next >= 0 && next < entries.Count)
-            {
-                choices.SelectedIndex = next;
-                choices.ScrollIntoView(choices.Items[next]);
-                (choices.Items[next] as ListViewItem)?.Focus(FocusState.Keyboard);
-                return;
-            }
-        }
+        if (Presentation.DialogChoiceNavigation.Move(choices, direction)) return;
         FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = this });
     }
 
@@ -292,7 +288,7 @@ internal sealed partial class HostChoiceDialog : ContentDialog
         }
     }
 
-    private bool ListFocused() => IsWithinFocused(choices);
+    private bool ListFocused() => Presentation.DialogChoiceNavigation.ContainsFocus(choices);
     private bool IsWithinFocused(DependencyObject target)
     {
         for (var node = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))

@@ -10,6 +10,8 @@ internal sealed partial class BrowserSurface
     private DispatcherQueueTimer? memoryTimer;
     private CoreWebView2MemoryUsageTargetLevel memoryTarget = CoreWebView2MemoryUsageTargetLevel.Normal;
     private bool memoryTargetUnavailable;
+    private bool passivePinnedPresentation;
+    private bool RequiresNormalMemory => visible && AttachedPopup is null && !passivePinnedPresentation;
 #if ENABLE_WIDGET_VALIDATION
     internal bool ManualMemoryTargetForValidation { get; set; }
 #endif
@@ -21,7 +23,7 @@ internal sealed partial class BrowserSurface
 #if ENABLE_WIDGET_VALIDATION
         if (ManualMemoryTargetForValidation) { memoryTimer?.Stop(); return; }
 #endif
-        if (visible && AttachedPopup is null)
+        if (RequiresNormalMemory)
         {
             memoryTimer?.Stop();
             SetMemoryTarget(CoreWebView2MemoryUsageTargetLevel.Normal);
@@ -41,7 +43,7 @@ internal sealed partial class BrowserSurface
     private void OnMemoryTimer(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (!retired && !faulted && (!visible || AttachedPopup is not null))
+        if (!retired && !faulted && !RequiresNormalMemory)
             SetMemoryTarget(CoreWebView2MemoryUsageTargetLevel.Low);
     }
 

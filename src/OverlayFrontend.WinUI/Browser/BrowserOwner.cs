@@ -240,7 +240,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     if (ReferenceEquals(entries.GetValueOrDefault(group.Key), entry) && current is not null && current.Slot.CanDisplay && session.IsWebBrowserSessionCurrent(current.Authority, current.Document.Id))
                     {
                         chosen.Slot.SetSurface(entry.Surface);
-                        entry.Surface.SetPresentation(true, chosen.Slot.AcceptsInput);
+                        entry.Surface.SetPresentation(true, chosen.Slot.AcceptsInput,
+                            passivePin: chosen.Slot.Pinned && !chosen.Slot.Expanded && !chosen.Slot.AcceptsInput);
                     }
                     else { entry.Surface.SetPresentation(false, false); dirty = true; }
                     foreach (var other in group.Where(binding => !ReferenceEquals(binding.Slot, chosen.Slot)))

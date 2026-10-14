@@ -276,6 +276,15 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             ("tray-clock", "status", EmptyStates()),
             ("tray-date", "status", EmptyStates()),
             ("tray-status-icon", "status", EmptyStates()),
+            ("dialog", "dialog", EmptyStates()),
+            ("dialog-title", "dialog-title", EmptyStates()),
+            ("dialog-description", "dialog-description", EmptyStates()),
+            ("dialog-footer", "dialog-footer", EmptyStates()),
+            ("dialog-choice", "dialog-choice", EmptyStates()),
+            ("dialog-choice:selected", "dialog-choice", States(WrssPseudoState.Selected)),
+            ("dialog-choice:focused", "dialog-choice", States(WrssPseudoState.Focused)),
+            ("dialog-button", "dialog-button", EmptyStates()),
+            ("dialog-button:focused", "dialog-button", States(WrssPseudoState.Focused)),
         };
         var result = new SortedDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>(StringComparer.Ordinal);
         var total = 0;

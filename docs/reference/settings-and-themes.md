@@ -80,6 +80,36 @@ requires it; long labels use an ellipsis. The visible left border aligns with th
 opener when it fits, otherwise the right border aligns, with viewport clamping as
 a final fallback. Shadow space is excluded from the visual edge alignment.
 
+## Framework dialog colors and placement
+
+Global themes can style native framework dialogs independently of the tray.
+Existing themes retain derived defaults; these roles are optional. They apply to
+host choices, bookmarks/history, installation dialogs and controller keyboards.
+They do not restyle Windows file pickers or WebView-native screen-share choosers.
+
+| WRSS role | Supported dialog color properties |
+| --- | --- |
+| `dialog` | `background`, `color`, `border-color` |
+| `dialog-title` | `color` for the native dialog title |
+| `dialog-description` | `color` for choice-dialog descriptive text |
+| `dialog-footer` | `background` (defaults to the dialog surface) |
+| `dialog-choice` | `background`, `color` |
+| `dialog-choice:selected` | `background`, `color` for selection/hover/press |
+| `dialog-choice:focused` | `outline-color` for dialog focus cues |
+| `dialog-button` | `background`, `color` for action buttons |
+| `dialog-button:focused` | `background`, `color` for focused/active action buttons |
+
+Use semantic role selectors, such as `dialog { background: #20182d; color: #f5efff; }`.
+These are host theme roles, not new widget node kinds or SDK parameters. Typography
+continues to follow the shared body font, text scale and interface scale. High
+contrast overrides authored colors. Native modal behavior, controller routing,
+and specialized keyboard/install flows remain separate from visual styling.
+
+Dialogs anchor over their requesting widget rather than the fullscreen host's
+center. They can extend beyond a small main widget but are clamped to the native
+window. Live browser editing stays in place; the notification inbox stays anchored
+to its bell, and widget-authored modals keep their existing local viewport.
+
 ## Theme packages and updates
 
 A theme is a data-only `.wrtheme` package. It has its own manifest and immutable

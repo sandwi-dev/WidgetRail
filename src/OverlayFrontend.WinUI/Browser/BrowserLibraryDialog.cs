@@ -9,7 +9,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
-internal sealed partial class BrowserLibraryDialog : ContentDialog
+internal sealed partial class BrowserLibraryDialog : Presentation.FrameworkDialog
 {
     private readonly ListView list = new() { MaxHeight = 320, SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = true };
     private readonly IReadOnlyList<BrowserLibraryEntry> entries;
@@ -70,20 +70,10 @@ internal sealed partial class BrowserLibraryDialog : ContentDialog
         if (list.SelectedIndex < 0 || list.SelectedIndex >= entries.Count) return;
         SelectedUrl = entries[list.SelectedIndex].Url; Hide();
     }
-    private bool ListFocused()
-    {
-        for (var node = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (ReferenceEquals(node, list)) return true;
-        return false;
-    }
+    private bool ListFocused() => Presentation.DialogChoiceNavigation.ContainsFocus(list);
     internal void MoveFocus(FocusNavigationDirection direction)
     {
-        if (!confirming && ListFocused() && direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down)
-        {
-            var next = list.SelectedIndex + (direction == FocusNavigationDirection.Up ? -1 : 1);
-            if (next >= 0 && next < entries.Count)
-            { list.SelectedIndex = next; list.ScrollIntoView(list.Items[next]); (list.Items[next] as Control)?.Focus(FocusState.Keyboard); return; }
-        }
+        if (!confirming && Presentation.DialogChoiceNavigation.Move(list, direction)) return;
         FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = this });
     }
     internal void Handle(ControllerButton button, ControllerEventPhase phase)

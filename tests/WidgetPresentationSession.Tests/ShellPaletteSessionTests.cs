@@ -16,6 +16,7 @@ public sealed class ShellPaletteSessionTests
             foreach (var json in new[]
             {
                 "{\"shellStyles\":{\"panel\":{\"background\":{\"kind\":\"color\",\"text\":\"rgba(20,30,40,0.5)\",\"number\":null,\"unit\":null}}}}",
+                "{\"shellStyles\":{\"dialog\":{\"background\":{\"kind\":\"color\",\"text\":\"#123456\"}},\"dialog-title\":{},\"dialog-description\":{},\"dialog-footer\":{},\"dialog-choice\":{},\"dialog-choice:selected\":{},\"dialog-choice:focused\":{},\"dialog-button\":{},\"dialog-button:focused\":{}}}",
                 "{\"shellStyles\":{\"arbitrary\":{}}}",
                 "{\"shellStyles\":{\"panel\":{},\"panel\":{}}}",
                 "{}",
@@ -35,6 +36,9 @@ public sealed class ShellPaletteSessionTests
         {
             var styles = await session.ReadShellStylesAsync();
             Assert.AreEqual("rgba(20,30,40,0.5)", styles["panel"].Base["background"].Text);
+            var dialogs = await session.ReadShellStylesAsync();
+            Assert.AreEqual(9, dialogs.Count);
+            Assert.AreEqual("#123456", dialogs["dialog"].Base["background"].Text);
             await Assert.ThrowsAsync<BridgeProtocolException>(() => session.ReadShellStylesAsync());
             await Assert.ThrowsAsync<BridgeProtocolException>(() => session.ReadShellStylesAsync());
             await Assert.ThrowsAsync<BridgeProtocolException>(() => session.ReadShellStylesAsync());

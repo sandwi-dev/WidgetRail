@@ -9,7 +9,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal sealed partial class LocalWidgetInstallDialog : ContentDialog
+internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkDialog
 {
     private readonly TextBlock message = new() { TextWrapping = TextWrapping.Wrap, MaxWidth = 560 };
     private readonly ProgressRing progress = new() { IsActive = true, Width = 28, Height = 28, HorizontalAlignment = HorizontalAlignment.Left };

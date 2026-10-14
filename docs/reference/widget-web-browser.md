@@ -174,6 +174,14 @@ framework. Choice lists fit their available window height and scroll to the
 controller-selected item, with the action footer kept visible. Page actions
 shows the website origin without repeating the widget name.
 
+Host choices, bookmarks/history, address entry and website prompt keyboards use
+shared dialog theming and placement. They center over the requesting widget or
+pin and stay inside the native window, including left/right overlay placement.
+A keyboard can be wider than a small main widget rather than shrinking its keys.
+The live browser-field keyboard keeps its in-place layout below the page.
+Windows-owned file pickers and WebView-native screen sharing retain their own
+presentation paths.
+
 Dialogs and the controller keyboard remain available inside an interactive pin.
 View dismisses the pin's host choice dialog and leaves pin interaction; B dismisses
 the dialog while staying in the pin. Losing pin interaction or hiding the overlay
@@ -298,11 +306,13 @@ login data. The tray reports running/disconnected sessions and offers Stop.
 Native fake-device media persistence is verified; real Discord calls and full-shell
 pin/recovery behavior remain acceptance checks.
 
-Hidden browser pages request WebView2's `MemoryUsageTargetLevel.Low` after 15
-seconds continuously hidden. This shared policy also covers hosted pop-outs and
-provider documents; a visible pin remains at Normal. Normal is restored before
-showing the page. Quick switches cancel the delayed reduction, and repeated
-hidden layout updates do not restart its deadline. The delay is defined in
+Hidden browser pages and visible, non-interactive browser pins request WebView2's
+`MemoryUsageTargetLevel.Low` after 15 seconds in that state. This shared policy
+also covers hosted pop-outs and provider documents. Entering a pin restores Normal
+synchronously when input is enabled; returning a page to the main/expanded
+presentation also restores Normal. Closing the overlay leaves a passive pin
+eligible for Low. Quick switches cancel the delayed reduction, and repeated
+placement updates do not restart its deadline. The delay is defined in
 `BrowserSurface.HiddenMemoryDelay`.
 
 Low is a best-effort working-set reduction, not suspension or a memory limit.

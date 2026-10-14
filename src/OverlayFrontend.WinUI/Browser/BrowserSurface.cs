@@ -143,13 +143,17 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         RefreshInteractionFocus();
     }
 
-    internal void SetPresentation(bool isVisible, bool acceptsInput)
+    internal void SetPresentation(bool isVisible, bool acceptsInput, bool? passivePin = null)
     {
         if (retired) return;
         var wasInteracting = interacting;
+        if (passivePin is { } passive) passivePinnedPresentation = passive;
+        // Presenter input admission can precede the owner's queued placement
+        // pass. Interaction must restore Normal on that synchronous path too.
+        if (acceptsInput) passivePinnedPresentation = false;
         presentationInputRequested = acceptsInput;
         visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && AttachedPopup is null;
-        AttachedPopup?.SetPresentation(isVisible, acceptsInput);
+        AttachedPopup?.SetPresentation(isVisible, acceptsInput, passivePinnedPresentation);
         if (!visible) CancelSiteDecisions();
         if (!input) { editorOwnedButtons.Clear(); chromeOwnedA = false; }
         web.IsTabStop = input;
@@ -161,7 +165,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         {
             if (!faulted)
             {
-                UpdateMemoryPolicy(); // Restore Normal before exposing the native page.
+                UpdateMemoryPolicy(); // Interactive presentation restores Normal before input.
                 web.Visibility = visible && AttachedPopup is null ? Visibility.Visible : Visibility.Collapsed;
                 web.IsHitTestVisible = input || visible && nativeDialogPointerAccess;
                 if (visible && IsLoaded && initializing is null) initializing = InitializeAsync();

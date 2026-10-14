@@ -108,7 +108,8 @@ internal sealed partial class BrowserOwner
     {
         if (retired || popupPresentation is not { IsCurrent: true } lease) return;
         var slot = expandedPopupSlot ?? lease.Slot;
-        lease.Child.SetPresentation(slot.CanDisplay, slot.AcceptsInput);
+        lease.Child.SetPresentation(slot.CanDisplay, slot.AcceptsInput,
+            passivePin: slot.Pinned && !slot.Expanded && !slot.AcceptsInput);
     }
 
     private void PopupClosed(BrowserSurface child)
