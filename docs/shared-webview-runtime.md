@@ -59,11 +59,12 @@ cleanup, input-before-trim restoration and process-failure routing.
 
 The complete candidate is under
 `artifacts/shared-webview/candidate-01/WidgetRail-Developer-0.1.0-preview.31-win-x64`.
-It is marked as a candidate built from uncommitted source, not a release. The
-previous running candidate and normal user profile were left untouched.
+It is marked as a candidate built from uncommitted source, not a release. At the
+user's request it replaced the previous running candidate using the normal
+profile. All 136 deployed frontend DLLs matched the verified publication.
 
 Physical checklist: open a signed-in webapp and YouTube player; play and pin
 media, leave it passive for 15 seconds, hide/reopen the overlay, interact with the
 pin, then return it to the widget/fullscreen. Check playback, input and sign-in
-continuity. Physical acceptance is pending. No merge, push, release or installer
-creation is part of this change.
+continuity. The user accepted the changes on 2026-10-14 and authorized merging
+to main. No push, release or installer creation is part of this integration.
