@@ -1,7 +1,7 @@
 # SDK client packaging repair
 
-Status: implemented and validated locally on 2026-10-15 in
-`codex/sdk-client-packaging`. No merge, publication or installer creation.
+Status: implemented and validated in `codex/sdk-client-packaging`; accepted and
+fast-forwarded into main on 2026-10-15 as `223ab542`. No publication or installer creation.
 
 ## Reproduction
 

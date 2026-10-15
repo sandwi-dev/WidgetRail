@@ -521,3 +521,21 @@ banner continuity, quiet timing, stale activation and teardown. Evidence:
 `integration/native-notifications01/result.json`. Production behavior is unchanged
 from the accepted candidate. No new blocking review findings; the SDK export gap
 is explicitly deferred rather than represented as a passing gate.
+
+### Deferred-item follow-up — 2026-10-15
+
+- Spotify held-X investigation is closed. Both the overlay's GameInput trace and
+  an independent XInput probe saw alternating physical press/release reports.
+  The user reported that restarting the controller resolved the issue, consistent
+  with controller Turbo. Temporary tracing was removed; no input workaround was
+  added.
+- The SDK export defect is fixed and accepted. Main includes `223ab542`; see
+  [SDK client packaging](sdk-client-packaging-plan.md) for external-consumer,
+  dependency-closure and security regression evidence.
+- Remaining near-term planning item: widget-declared browser/webapp notification
+  defaults, with saved user preferences authoritative, including hosted windows
+  and CLI scaffolding.
+- Optional future work remains richer notification layouts/actions/inline replies,
+  persistence across restart, validated local artwork handles and extra residency
+  behavior. Capture-completion notifications remain out of scope without a useful
+  workflow beyond the existing automatic review page.
