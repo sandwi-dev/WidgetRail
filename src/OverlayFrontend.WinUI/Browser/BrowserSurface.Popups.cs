@@ -73,20 +73,43 @@ internal sealed partial class BrowserSurface
         return true;
     }
 
-    private void NewWindowRequested(CoreWebView2NewWindowRequestedEventArgs args) => (popupParent ?? this).AdmitNewWindow(this, args);
-
-    private void AdmitNewWindow(BrowserSurface source, CoreWebView2NewWindowRequestedEventArgs args,
-        Windows.Foundation.Deferral? queuedDeferral = null, ContextWindowAdmission? carriedAdmission = null)
+    // Native website windows retain their opener contract. A host link action
+    // has already captured and authorized its destination, and navigates normally.
+    private sealed class NewWindowRequest
     {
+        private readonly CoreWebView2NewWindowRequestedEventArgs? native;
+        private Windows.Foundation.Deferral? deferral;
+        internal NewWindowRequest(CoreWebView2NewWindowRequestedEventArgs args)
+        { native = args; args.Handled = true; Url = args.Uri; IsUserInitiated = args.IsUserInitiated; }
+        internal NewWindowRequest(string url, CancellationToken token)
+        { Url = url; IsUserInitiated = true; HostLink = true; Token = token; }
+        internal string Url { get; }
+        internal bool IsUserInitiated { get; }
+        internal bool HostLink { get; }
+        internal CancellationToken Token { get; }
+        internal void Defer() { if (native is not null) deferral ??= native.GetDeferral(); }
+        internal void Bind(BrowserSurface child, CoreWebView2 childCore)
+        {
+            if (native is null) return;
+            native.NewWindow = childCore;
+            child.appliedNavigation = child.document.NavigationId;
+        }
+        internal void Complete()
+        { var pending = deferral; deferral = null; pending?.Complete(); }
+    }
+
+    private void NewWindowRequested(CoreWebView2NewWindowRequestedEventArgs args) => (popupParent ?? this).AdmitNewWindow(this, new NewWindowRequest(args));
+
+    private void AdmitNewWindow(BrowserSurface source, NewWindowRequest window)
+    {
+        var transferred = false;
         try
         {
-            args.Handled = true;
-            var admission = carriedAdmission ?? source.TakeContextWindowAdmission(args.Uri);
-            if (retired || source.retired || (!args.IsUserInitiated && admission is null) || !source.visible || source.faulted || source.profileChanging ||
-                admission is null && (!source.input || source.HasDialog) ||
+            if (retired || source.retired || !window.IsUserInitiated || window.Token.IsCancellationRequested || !source.visible || source.faulted || source.profileChanging ||
+                !window.HostLink && (!source.input || source.HasDialog) ||
                 !ReferenceEquals(source, this) && !ReferenceEquals(source, popup))
             { TraceNewWindow("rejected-input-or-owner"); return; }
-            var url = args.Uri;
+            var url = window.Url;
             if (source.IsProviderContent)
             { if (WebBrowserDocument.IsWebUrl(url)) source.Run(() => source.OpenProviderLinkAsync(url)); return; }
             if (url != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(url))
@@ -103,9 +126,9 @@ internal sealed partial class BrowserSurface
             {
                 if (!newWindowQueued && (popupPlacementReady || !openingPopup) && (openingPopup ? popupOpening : popupClosing) is { } previousOperation)
                 {
-                    var held = queuedDeferral ?? args.GetDeferral();
-                    queuedDeferral = null;
-                    QueueNewWindow(source, args, held, admission, previousOperation);
+                    window.Defer();
+                    transferred = true;
+                    QueueNewWindow(source, window, previousOperation);
                 }
                 else TraceNewWindow("rejected-busy");
                 return;
@@ -116,8 +139,8 @@ internal sealed partial class BrowserSurface
             ShowStatus(null);
             if (!ReferenceEquals(source, this)) source.ShowStatus(null);
             openingPopup = true;
-            var deferral = queuedDeferral ?? args.GetDeferral();
-            queuedDeferral = null;
+            window.Defer();
+            transferred = true;
             popupCancellation?.Dispose();
             popupCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             var cancellation = popupCancellation;
@@ -133,14 +156,12 @@ internal sealed partial class BrowserSurface
                 var committed = false;
                 try
                 {
-                    // A native menu command can synchronously raise NewWindowRequested
-                    // inside its deferral completion, before browser input is restored.
-                    if (admission is not null) await admission.Ready.Task.WaitAsync(cancellation.Token);
                     using var promptCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token,
                         (source.siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(source.lifetime.Token)).Token);
-                    if (admission is not null) admission.Token.ThrowIfCancellationRequested();
+                    window.Token.ThrowIfCancellationRequested();
                     if (!source.CanCompleteSiteDecision || sourcePage != source.pageEpoch) return;
                     BrowserPopupRequest? request = new(BrowserPopupPlacement.InWidget);
+                    TraceNewWindow("placement-requested");
                     if (ChoosePopupPlacement is { } choose) request = await choose(source, previous, origin, promptCancellation.Token);
                     else if (previous is not null)
                     {
@@ -148,7 +169,7 @@ internal sealed partial class BrowserSurface
                             "This closes the existing additional page and ends its activity.", (Shell.HostDialogChoice[])[new("replace", "Replace page")], promptCancellation.Token) : null;
                         if (answer != "replace") return;
                     }
-                    if (request is null || !Current()) return;
+                    if (request is null || !Current()) { TraceNewWindow("placement-declined-or-stale"); return; }
                     var name = document.AccessibleName[..Math.Min(document.AccessibleName.Length, 240)] + " additional page";
                     child = new BrowserSurface(widgetId, new("popup." + Guid.NewGuid().ToString("N"), 1, url, name)
                     {
@@ -179,8 +200,7 @@ internal sealed partial class BrowserSurface
                     // No existing page is closed until its replacement controller is ready.
                     if (request.BeforeReplace is { } before && !await before()) return;
                     cancellation.Token.ThrowIfCancellationRequested();
-                    args.NewWindow = childCore;
-                    child.appliedNavigation = child.document.NavigationId;
+                    window.Bind(child, childCore);
                     previousLayer = popupLayer;
                     previous?.SetPresentation(false, false);
                     popup = child; popupLayer = layer; preparingPopup = null; committed = true; popupPlacementReady = true;
@@ -216,7 +236,15 @@ internal sealed partial class BrowserSurface
                     // Place first, release native navigation second. Otherwise a
                     // newly loaded page can request permission while still hidden.
                     if (committed && !retired) SetPresentation(visible, presentationInputRequested);
-                    try { deferral.Complete(); }
+                    try
+                    {
+                        if (committed && !retired && window.HostLink && child?.core is { } target)
+                        {
+                            child.appliedNavigation = child.document.NavigationId;
+                            target.Navigate(url);
+                        }
+                        window.Complete();
+                    }
                     catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException)
                     { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("browser-new-window-complete", error); }
                     if (committed && previous is not null)
@@ -247,11 +275,10 @@ internal sealed partial class BrowserSurface
                     !source.retired && ReferenceEquals(popup, previous) && !cancellation.IsCancellationRequested;
             }
         }
-        finally { queuedDeferral?.Complete(); }
+        finally { if (!transferred) window.Complete(); }
     }
 
-    private void QueueNewWindow(BrowserSurface source, CoreWebView2NewWindowRequestedEventArgs args,
-        Windows.Foundation.Deferral deferral, ContextWindowAdmission? admission, Task previousOperation)
+    private void QueueNewWindow(BrowserSurface source, NewWindowRequest window, Task previousOperation)
     {
         var page = source.pageEpoch;
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, source.lifetime.Token,
@@ -270,12 +297,12 @@ internal sealed partial class BrowserSurface
                 // The original request already passed user/input admission. The
                 // normal entry rechecks the current source and presentation.
                 transferred = true;
-                AdmitNewWindow(source, args, deferral, admission);
+                AdmitNewWindow(source, window);
             }
             catch (OperationCanceledException) { }
             finally
             {
-                try { if (!transferred) deferral.Complete(); }
+                try { if (!transferred) window.Complete(); }
                 finally
                 {
                     newWindowQueued = false;

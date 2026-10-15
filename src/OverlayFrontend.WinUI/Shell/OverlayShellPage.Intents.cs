@@ -192,7 +192,12 @@ internal sealed partial class OverlayShellPage
         var original = pinnedOwner is null ? surface : pinnedOwner.Presenter;
         bool Current() => pinnedOwner is null ? foreground && ReferenceEquals(surface, original) :
             ReferenceEquals(pinned, pinnedOwner) && pinnedOwner.IsCurrent && PinnedInputActive;
-        if (HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || retired || !visible || !Current()) return null;
+        if (HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || retired || !visible || !Current())
+        {
+            Diagnostics.FrontendFailureLog.Current.Write("host-choice-rejected", null,
+                $"choice={HostChoiceActive} install={LocalInstallActive} picker={SystemFilePickerOpen} retired={retired} visible={visible} owner={Current()}");
+            return null;
+        }
         var root = pinnedOwner?.Window.AutomationRoot.XamlRoot ?? XamlRoot;
         var originalFocus = FocusManager.GetFocusedElement(root) as Control;
         var originalState = original?.CapturePresentationState();

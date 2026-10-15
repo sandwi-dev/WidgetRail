@@ -53,6 +53,7 @@ internal sealed partial class NativePopupTheme
                 button.Background = active ? dialogButtonActive : dialogButton;
                 button.Foreground = !button.IsEnabled ? muted : active ? dialogButtonActiveText : dialogButtonText;
                 button.FocusVisualPrimaryBrush = dialogFocus;
+                button.UseSystemFocusVisuals = true;
             }
     }
 

@@ -22,14 +22,19 @@
 
 ## Ownership and handoff
 
-Native Page actions commands still use WebView2's `SelectedCommandId`. Equivalent
-new-tab/new-window entries map to one hosted new-window entry. A selected command
-gets a one-shot admission bound to its exact destination, source document epoch,
-page cancellation token and five-second delivery deadline. This is an expiry,
-not a delay. A matching native event joins context-menu deferral completion
-before requesting placement; it can survive temporary browser-input suppression
-during that handoff. Hiding, navigation and retirement invalidate admission.
-Unrelated/non-user-initiated requests do not gain input or permission authority.
+Page actions combines native new-tab/new-window link entries into **Open in
+widget or pin…**. For hosted pages this is a host action: it captures WebView2's
+link destination and source document epoch before showing the menu, completes
+the menu deferral, then dispatches directly into the shared placement pipeline.
+It does not depend on a second native new-window event or replay a menu command
+against a potentially changed page. Hiding, navigation, account changes and
+retirement invalidate the captured request. Other menu commands still use
+WebView2's `SelectedCommandId`.
+
+Website-created windows continue through native `NewWindowRequested`, including
+its opener and deferral semantics. Host-opened links navigate only after final
+placement and do not claim an opener relationship. Unrelated/non-user-initiated
+requests do not gain input or permission authority.
 One further admitted request may wait for a committed window operation or close
 to finish; it is revalidated against its source page and current presentation.
 This handles the interval where a new pin is already visible but its predecessor
@@ -81,7 +86,7 @@ Completed checks (2026-10-14):
   bounded scrolling, accessible labels and native focus controls remain in use.
 
 Evidence is under `artifacts/new-window-flow/`. Source review checked admission
-expiry/cancellation, queue bounds, deferral completion, stale child callbacks,
+cancellation, queue bounds, deferral completion, stale child callbacks,
 reservation ownership, pin guards, profile isolation and startup visibility.
 
 The complete candidate is assembled at
@@ -96,3 +101,34 @@ Physical acceptance remains pending: check Browser and Twitch new-window menus,
 both Website settings entry points, cancellation, replacing a page or another
 widget's pin, and returning to the parent widget. No merge, push, release or
 installer creation is part of this change.
+
+## Follow-up: direct links and initial focus (2026-10-14)
+
+The selected-link action now uses a direct host handoff and the explicit pin
+label. Shared choice dialogs retry initial focus after native template layout
+and keep visible system focus outlines on action buttons. A template refresh
+repairs missing focus without resetting an existing choice/checkbox selection;
+the notification inbox retains its explicit first-entry behavior.
+
+The new regression checks initial Cancel focus without focusing it in the test,
+then navigates left with a controller frame and activates Open in widget. Eight
+cycles retain the same pointer position; alternating cycles temporarily suppress
+browser input during menu completion. URL-free diagnostics distinguish menu
+selection, placement requests, stale admission, host dialog rejection and
+cancellation. Fresh evidence is under `artifacts/new-window-focus/`.
+
+Follow-up checks completed: Debug build and trimmed Release publication pass;
+`new-window-focus/native-final/result.json` passes 157 checks, including the
+captured destination surviving a changed DOM link and direct replacement from
+a child without a menu/disposal deadlock. `popup-regression.json` passes all 15
+native opener/profile/message/close checks. Managed shell and Browser tests pass
+234 + 2 checks. The synthetic `result.placement-initial-focus.png` shows Cancel's
+focus outline; no personal page was captured. Review covered request ownership,
+source cancellation, deferred navigation, native opener behavior, focus layout
+ordering, preserved user navigation, and notification-inbox focus isolation.
+
+The fresh complete candidate is
+`artifacts/new-window-focus/candidate-02/WidgetRail-Developer-0.1.0-preview.31-win-x64`.
+It reuses unchanged verified runtime/widget payloads with the newly published
+frontend. No installer, merge, push or release is part of this follow-up.
+Physical Twitch acceptance remains pending.

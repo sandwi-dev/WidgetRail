@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using WidgetRail.OverlayFrontend.WinUI.Browser;
 using WidgetRail.OverlayPlatformClient;
 using WidgetRail.WidgetProtocol;
@@ -13,7 +14,7 @@ internal sealed partial class OverlayShellPage
         const string origin = "https://shell.fixture.invalid";
         await PopupPreferences.SetAsync(parent.WidgetId, parent.ProfileName, origin, BrowserPopupPlacement.Ask, lifetime.Token);
         // A full-viewport link lets every cycle use the exact same controller
-        // pointer position, with genuine native Page actions command dispatch.
+        // pointer position, with native context-menu targets and host Page actions.
         await parent.EvaluateFixtureAsync("document.body.insertAdjacentHTML('beforeend', '<a id=windowLink href=https://shell.fixture.invalid/new-window style=\"position:fixed;inset:0;z-index:9999;background:#203040;color:white\">Synthetic new-window link</a>')");
         for (var cycle = 0; cycle < 8; cycle++)
         {
@@ -26,13 +27,28 @@ internal sealed partial class OverlayShellPage
             await WebAppUntil(() => FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options") is { IsLoaded: true, ActualWidth: > 0 });
             var list = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
             var item = list.Items.OfType<ListViewItem>().First(entry => entry.Content is TextBlock text &&
-                text.Text.StartsWith("Open link in new window", StringComparison.OrdinalIgnoreCase));
+                text.Text.StartsWith("Open in widget or pin", StringComparison.OrdinalIgnoreCase));
+            if (cycle == 7) await parent.EvaluateFixtureAsync("document.getElementById('windowLink').href='https://shell.fixture.invalid/changed-after-menu'");
             list.SelectedItem = item; item.Focus(FocusState.Keyboard);
             await Press(ControllerButton.A);
             await Dialog("Where should this page open?");
-            await Decide("widget");
+            await Task.Delay(150); // Observe settled native focus, without injecting it.
+            var cancel = FindControl<Button>(hostChoiceDialog!, "Host.Choice.Close")!;
+            var initial = FocusManager.GetFocusedElement(hostChoiceDialog!.XamlRoot) as Control;
+            if (!ReferenceEquals(initial, cancel) || cancel.FocusState != FocusState.Keyboard)
+            {
+                await CapturePopupDecisionAsync(hostChoiceDialog!, "placement-focus-failure");
+                throw new InvalidOperationException($"Initial focus cycle {cycle + 1}: type={initial?.GetType().Name} id={(initial is null ? "none" : Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(initial))} state={initial?.FocusState} cancelState={cancel.FocusState} systemVisuals={cancel.UseSystemFocusVisuals}");
+            }
+            check(ReferenceEquals(FocusManager.GetFocusedElement(hostChoiceDialog!.XamlRoot), cancel) && cancel.FocusState == FocusState.Keyboard && cancel.UseSystemFocusVisuals,
+                $"Placement initially focuses Cancel visibly, cycle {cycle + 1}");
+            if (cycle == 0) await CapturePopupDecisionAsync(hostChoiceDialog!, "placement-initial-focus");
+            Receive(new ControllerFrame { Connected = 1, DpadNavigation = new NavigationEvent { Direction = NavigationDirection.Left, Phase = NavigationPhase.Pressed } });
+            check(ReferenceEquals(FocusManager.GetFocusedElement(hostChoiceDialog!.XamlRoot), FindControl<Button>(hostChoiceDialog, "Host.Choice.Secondary")),
+                $"Placement supports immediate controller navigation from Cancel, cycle {cycle + 1}");
+            await Press(ControllerButton.A);
             var child = await Child();
-            check(child.CurrentUrl?.EndsWith("/new-window", StringComparison.Ordinal) == true, $"Native Page actions hands off to placement without pointer movement, cycle {cycle + 1}");
+            check(child.CurrentUrl?.EndsWith("/new-window", StringComparison.Ordinal) == true, $"Host link action hands off to placement without pointer movement, cycle {cycle + 1}");
             await parent.ClosePopupAsync();
         }
         parent.BeforeContextCommandForValidation = null;
@@ -40,6 +56,18 @@ internal sealed partial class OverlayShellPage
 
         var pending = Open(parent); await Dialog("Where should this page open?"); await Decide("widget"); await pending;
         var original = await Child();
+        await original.EvaluateFixtureAsync("document.body.insertAdjacentHTML('beforeend', '<a href=https://shell.fixture.invalid/new-window style=\"position:fixed;inset:0;z-index:9999\">Replace from child</a>')");
+        await WebAppUntil(() => original.IsBrowsing);
+        await Press(ControllerButton.Menu); await Dialog("Page actions");
+        var childOptions = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
+        var childAction = childOptions.Items.OfType<ListViewItem>().First(entry => entry.Content is TextBlock text && text.Text.StartsWith("Open in widget or pin", StringComparison.Ordinal));
+        childOptions.SelectedItem = childAction; childAction.Focus(FocusState.Keyboard);
+        await Press(ControllerButton.A); await Dialog("Replace existing page?"); await Decide("widget");
+        var directReplacement = await Child();
+        await WebAppUntil(() => !original.IsReady);
+        check(!ReferenceEquals(original, directReplacement) && await directReplacement.EvaluateFixtureAsync("window.opener===null") == "true",
+            "Host link replacement from a child retires its requester without joining its menu task or claiming a native opener");
+        original = directReplacement;
         await original.EvaluateFixtureAsync("window.replacementProof='unchanged'");
         pending = Open(original); await Dialog("Replace existing page?");
         await Press(ControllerButton.B); await pending;
