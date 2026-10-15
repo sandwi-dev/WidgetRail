@@ -130,6 +130,7 @@ public static class CliApplication
           wrail enable <widget-id> [--catalog <root>] [--accept-full-trust]
           wrail disable <widget-id> [--catalog <root>]
           wrail version list <widget-id> [--catalog <root>]
+          wrail update <widget-id> --file <package.wrwidget> [--sha256 <hash> --apply] [--catalog <root>] [--settings-root <profile>] [--accept-full-trust]
           wrail version select <widget-id> <version> [--catalog <root>]
           wrail version rollback <widget-id> [--to <version>] [--catalog <root>]
           wrail config set <widget-id> <key> <value> --publisher <publisher-id> [--settings-root <root>]

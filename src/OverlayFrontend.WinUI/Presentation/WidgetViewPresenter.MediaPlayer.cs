@@ -5,12 +5,15 @@ using WidgetRail.WidgetPresentationSession;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
+    internal Action<object, string, bool>? NativeAudioChanged { get; set; }
     internal bool PanMediaImage(short x, short y) => FocusedMediaPlayer?.PanImage(x, y) == true;
     private MediaPlayerView? FocusedMediaPlayer => bindings.Values.Select(binding => binding.Element).OfType<MediaPlayerView>().FirstOrDefault(media => media.IsExpanded) ??
         (FocusedBinding() is { Element: MediaPlayerView media } binding && Navigable(binding) ? media : null);
     private void UpdateMediaPlayer(MediaPlayerView media, ViewNode node, string scope)
     {
         media.InteractionChanged = NotifyControllerGuideChanged;
+        if (presentation is { } activityOwner)
+            media.AudioChanged = playing => NativeAudioChanged?.Invoke(media, activityOwner.Frame.Authority.WidgetId, playing);
         media.PresentationReady = activeTransition?.Settled.Task ?? Task.CompletedTask;
         media.SetActive(presentationActive && !disposed, presentationInputEnabled && scope == activeScope && node.IsDisabled != true && !HasTransientControl);
         if (presentationActive && !disposed && !presentationOnly && Session is { } session && presentation is { } binding && MediaPlayerDefinition.FromNode(node) is { } definition)

@@ -33,7 +33,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     private readonly Grid parking;
     private readonly Dictionary<string, Entry> entries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Viewport> viewports = new(StringComparer.Ordinal);
-    private readonly HashSet<Task> retirements = [];
+    private readonly Dictionary<Task, string> retirements = [];
     private readonly Dictionary<string, string> failures = new(StringComparer.Ordinal);
     private string? activeWidget;
     private bool visible;
@@ -50,6 +50,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     internal event Action? Changed;
     internal string? GetFailure(string widgetId) => failures.GetValueOrDefault(widgetId);
     internal int ResidentCount => entries.Count;
+    internal bool PlayingAudio(string widgetId) => !retired && entries.GetValueOrDefault(widgetId)?.Surface?.PlayingAudio == true;
     internal int BrowserCreationCount { get; private set; }
     internal Func<double, MediaPresentationStage>? CreateStage { get; set; }
 #if ENABLE_WIDGET_VALIDATION
@@ -278,6 +279,13 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         if (isCompact) CompactChanged?.Invoke();
     }
 
+    internal async Task RetireWidgetAsync(string widgetId)
+    {
+        DemandDispatcher();
+        if (entries.TryGetValue(widgetId, out var entry)) Retire(entry);
+        await Task.WhenAll(retirements.Where(pair => pair.Value == widgetId).Select(pair => pair.Key).ToArray());
+    }
+
     private void Retire(Entry entry)
     {
         if (!entries.Remove(entry.WidgetId)) return;
@@ -293,7 +301,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         }
         entry.Stage?.Dispose();
         var retirement = RetireAsync();
-        retirements.Add(retirement);
+        retirements.Add(retirement, entry.WidgetId);
         _ = ObserveAsync();
         async Task RetireAsync()
         {
@@ -338,7 +346,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         foreach (var viewport in viewports.Values) viewport.Element.PlacementChanged = null;
         viewports.Clear();
         foreach (var entry in entries.Values.ToArray()) Retire(entry);
-        await Task.WhenAll(retirements.ToArray());
+        await Task.WhenAll(retirements.Keys.ToArray());
         failures.Clear();
         parking.Children.Clear();
     }

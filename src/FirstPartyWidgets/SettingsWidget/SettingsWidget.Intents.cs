@@ -1,4 +1,6 @@
+using WidgetRail.PlatformDiagnostics;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.FirstPartyWidgets.Settings;
 
@@ -7,56 +9,141 @@ public sealed partial class SettingsWidget
     private static readonly CompiledWidgetIntentContract widgetSettingsIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.WidgetSettings);
     private static readonly CompiledWidgetIntentContract widgetPermissionsIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.WidgetPermissions);
     private static readonly CompiledWidgetIntentContract appUpdatesIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.AppUpdates);
+    private const string IntentNavigationKey = "settings.intent-navigation";
+    private sealed record IntentNavigation(WidgetIntentRequest Request, string? Error = null);
+    private IntentNavigation? intentNavigation;
+    internal Task IntentNavigationTask { get; private set; } = Task.CompletedTask;
 
-    // Intents only navigate. They never grant permissions, enable widgets, or
-    // accept a package review on behalf of the user.
-    public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
+    // Accept navigation data promptly; inspections belong to the destination's
+    // loading state, not to the caller's bounded intent acknowledgement.
+    public override ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var contract = request.ContractId == widgetSettingsIntent.Id ? widgetSettingsIntent :
             request.ContractId == widgetPermissionsIntent.Id ? widgetPermissionsIntent : request.ContractId == appUpdatesIntent.Id ? appUpdatesIntent : null;
         if (!IsActive || contract is null || !request.IsWellFormed() || request.Version != contract.Version ||
-            request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload)) return WidgetIntentResult.Rejected;
-        var packageId = contract == appUpdatesIntent ? null : request.Payload.GetProperty("packageId").GetString()!;
-        await _initializationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
-        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload)) return ValueTask.FromResult(WidgetIntentResult.Rejected);
+        var navigation = new IntentNavigation(request);
+        lock (_stateLock) { intentNavigation = navigation; _page = SettingsPage.IntentDestination; }
+        var operation = Operations.RunLatest(IntentNavigationKey, context => ResolveIntentDestinationAsync(navigation, context));
+        IntentNavigationTask = operation.Completion;
+        if (!operation.IsAccepted)
+        {
+            lock (_stateLock) { if (ReferenceEquals(intentNavigation, navigation)) { intentNavigation = null; _page = SettingsPage.Root; } }
+            return ValueTask.FromResult(WidgetIntentResult.Rejected);
+        }
+        PublishSettingsChanged();
+        return ValueTask.FromResult(WidgetIntentResult.Accepted);
+    }
+
+    private async ValueTask ResolveIntentDestinationAsync(IntentNavigation navigation, WidgetOperationContext context)
+    {
+        await Task.Yield();
+        var token = context.CancellationToken;
+        bool Current()
+        {
+            lock (_stateLock) return context.IsCurrent && ReferenceEquals(intentNavigation, navigation) && IsActive;
+        }
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!IsActive) return WidgetIntentResult.Rejected;
-            if (contract == appUpdatesIntent)
+            await _initializationTask.WaitAsync(token).ConfigureAwait(false);
+            var request = navigation.Request;
+            var updates = request.ContractId == appUpdatesIntent.Id;
+            var permissions = request.ContractId == widgetPermissionsIntent.Id;
+            var packageId = updates ? null : request.Payload.GetProperty("packageId").GetString()!;
+            await _operationGate.WaitAsync(token).ConfigureAwait(false);
+            try
             {
-                Navigate(SettingsPage.AppUpdates);
-                await ReadAppUpdatesAsync(new("status"), cancellationToken).ConfigureAwait(false);
-            }
-            else if (contract == widgetPermissionsIntent)
-            {
-                await ReloadPermissionsAsync(cancellationToken).ConfigureAwait(false);
-                lock (_stateLock)
+                if (!Current()) return;
+                if (updates)
                 {
-                    var index = _permissionState.Projection.Packages.ToList().FindIndex(package => package.Id == packageId);
-                    if (!SettingsPermissionPolicy.TrySelectPackage(_permissionState, index, out var transition)) return WidgetIntentResult.Rejected;
-                    _permissionState = transition.State; _page = transition.Page;
+                    lock (_stateLock) { if (!Current()) return; _page = SettingsPage.AppUpdates; }
                 }
-            }
-            else
-            {
-                await ReloadInstalledWidgetsAsync(cancellationToken).ConfigureAwait(false);
-                int installed, builtIn;
-                lock (_stateLock)
+                else if (permissions)
                 {
-                    if (!_installedState.CatalogValid) return WidgetIntentResult.Rejected;
-                    installed = _installedState.Catalog.Widgets.ToList().FindIndex(widget => widget.Id == packageId);
-                    builtIn = _installedState.BuiltIns.ToList().FindIndex(widget => widget.Id == packageId);
+                    await ReloadPermissionsAsync(token).ConfigureAwait(false);
+                    lock (_stateLock)
+                    {
+                        if (!Current()) return;
+                        var index = _permissionState.Projection.Packages.ToList().FindIndex(package => package.Id == packageId);
+                        if (!SettingsPermissionPolicy.TrySelectPackage(_permissionState, index, out var transition))
+                        { intentNavigation = navigation with { Error = "This widget is no longer installed or available." }; return; }
+                        _permissionState = transition.State; _page = transition.Page;
+                    }
                 }
-                if (builtIn >= 0) await SelectBuiltInWidgetAsync(builtIn, cancellationToken).ConfigureAwait(false);
-                else if (installed >= 0) await SelectInstalledWidgetAsync(installed, cancellationToken).ConfigureAwait(false);
-                else return WidgetIntentResult.Rejected;
+                else
+                {
+                    await ReloadInstalledWidgetsAsync(token).ConfigureAwait(false);
+                    lock (_stateLock)
+                    {
+                        if (!Current()) return;
+                        if (!_installedState.CatalogValid) throw new IOException("Installed catalog is unavailable.");
+                        var installed = _installedState.Catalog.Widgets.ToList().FindIndex(widget => widget.Id == packageId);
+                        var builtIn = _installedState.BuiltIns.ToList().FindIndex(widget => widget.Id == packageId);
+                        var selected = builtIn >= 0
+                            ? SettingsInstalledWidgetPolicy.TrySelectBuiltIn(_installedState, builtIn, out var transition)
+                            : SettingsInstalledWidgetPolicy.TrySelectInstalled(_installedState, installed, out transition);
+                        if (!selected) { intentNavigation = navigation with { Error = "This widget is no longer installed or available." }; return; }
+                        _installedState = transition.State; _page = transition.Page;
+                    }
+                }
+                SetOperation("Ready", false, false);
+                PublishSettingsChanged();
             }
-            SetOperation("Ready", false, false);
+            finally { _operationGate.Release(); }
+            // Do not hold the ordinary action gate during optional inspection.
+            if (!Current()) return;
+            if (updates) await ReadAppUpdatesAsync(new("status"), token).ConfigureAwait(false);
+            else if (!permissions)
+            {
+                await InspectSelectedWidgetLocalDataAsync(token).ConfigureAwait(false);
+                if (Current()) await InspectSelectedWidgetUninstallAsync(token).ConfigureAwait(false);
+            }
             EnsureSettingsStatusPolling();
-            Invalidate();
-            return WidgetIntentResult.Accepted;
         }
-        finally { _operationGate.Release(); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or PlatformDiagnosticsException)
+        {
+            lock (_stateLock)
+            {
+                if (!Current()) return;
+                if (_page == SettingsPage.IntentDestination)
+                    intentNavigation = navigation with { Error = "This page could not load. Try again or return to Settings." };
+                else { _error = true; StatusMessage = "Some page details could not load. Refresh to try again."; }
+            }
+        }
+        finally { if (IsActive) PublishSettingsChanged(); }
+    }
+
+    private void CancelIntentNavigation()
+    {
+        lock (_stateLock)
+        {
+            intentNavigation = null;
+            if (_page == SettingsPage.IntentDestination) _page = SettingsPage.Root;
+        }
+        Operations.Cancel(IntentNavigationKey);
+    }
+
+    private WidgetView RenderIntentDestination(SettingsPresentationState state)
+    {
+        IntentNavigation? pending;
+        lock (_stateLock) pending = intentNavigation;
+        var title = pending?.Request.ContractId == appUpdatesIntent.Id ? "App updates" :
+            pending?.Request.ContractId == widgetPermissionsIntent.Id ? "Widget permissions" : "Widget settings";
+        var items = new List<WidgetElement> { UI.Text(title, "intent.destination.title").Classes("page-heading") };
+        if (pending?.Error is { } error)
+        {
+            items.Add(UI.Text(error, "intent.destination.error").Classes("diagnostic-error"));
+            items.Add(UI.Button("Try again", "intent.retry", "intent.retry"));
+        }
+        else
+        {
+            items.Add(UI.LoadingIndicator("intent.destination.spinner", "Opening " + title));
+            items.Add(UI.Text("Opening " + title.ToLowerInvariant() + "…", "intent.destination.status").Classes("page-help"));
+        }
+        items.Add(UI.Button("Back", "back", "intent.destination.back"));
+        return SettingsPresentation.View(SettingsPresentation.Header(state), SettingsPresentation.PageScope("intent.destination", items.ToArray()),
+            "intent.destination.back", "intent.destination");
     }
 }

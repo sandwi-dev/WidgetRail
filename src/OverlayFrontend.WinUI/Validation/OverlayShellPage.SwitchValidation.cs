@@ -86,30 +86,29 @@ internal sealed partial class OverlayShellPage
                     Direction = WidgetRail.OverlayPlatformClient.NavigationDirection.Down,
                     Phase = WidgetRail.OverlayPlatformClient.NavigationPhase.Pressed,
                 };
-                foreach (var switcher in new[] { WidgetRail.PlatformSettings.WidgetSwitcherLayout.Rail, WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial })
                 {
-                    Appearance = Appearance with { WidgetSwitcher = switcher };
+
                     Receive(down);
                     await Until(() => !interactive && FocusedTrayWidget()?.Id == "games-apps");
-                    Check(!RadialOpen && Tray.IsEnabled, switcher + " Controller Down at root bottom enters rail");
+                    Check(!RadialOpen && Tray.IsEnabled, " Controller Down at root bottom enters rail");
                     await SelectAsync("games-apps", true);
                     await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.B, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed);
                     await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.B, WidgetRail.WidgetProtocol.ControllerEventPhase.Released);
                     await Until(() => !interactive && FocusedTrayWidget()?.Id == "games-apps");
-                    Check(RadialOpen == (switcher == WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial),
-                        switcher + " root Back honors the configured switcher independently of directional entry");
+                    Check(RadialOpen,
+                        " root Back opens radial independently of directional rail entry");
                     var beforeAction = File.ReadAllText(actionPath);
                     Check(trayGuide.DisplayedHints.Any(hint => hint.Button == WidgetRail.WidgetProtocol.ControllerButton.X),
-                        switcher + " guide includes current-view dashboard shortcut");
+                        " guide includes current-view dashboard shortcut");
                     await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.X, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed,
                         WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation);
                     await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.X, WidgetRail.WidgetProtocol.ControllerEventPhase.Released,
                         WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation);
                     await Until(() => File.ReadAllText(actionPath) != beforeAction);
-                    Check(!interactive, switcher + " dispatches dashboard input once without entering the widget");
+                    Check(!interactive, " dispatches dashboard input once without entering the widget");
                     await SelectAsync("games-apps", true);
                 }
-                Appearance = Appearance with { WidgetSwitcher = WidgetRail.PlatformSettings.WidgetSwitcherLayout.Rail };
+
                 await SelectAsync("audio-mixer", true);
                 File.WriteAllText(barrier + ".arm", "superseded-switch");
                 var supersededCleanup = SelectAsync("games-apps", true);

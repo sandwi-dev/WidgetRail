@@ -59,7 +59,7 @@ internal sealed partial class ProductionShellValidationPage : Page, IAsyncDispos
                 var guide = Find("Overlay.TrayHelp")!;
                 var currentRail = Bounds(tray); var currentGuide = Bounds(guide);
                 if (railBounds is { } before) Check(Same(before, currentRail) && Same(guideBounds!.Value, currentGuide),
-                    $"rail/guide remain stationary across {mode} at {zoom}/{position}");
+                    $"rail/guide remain stationary across {mode} at {zoom}/{position}; rail {before} -> {currentRail}; guide {guideBounds} -> {currentGuide}");
                 else { railBounds = currentRail; guideBounds = currentGuide; }
                 Check(currentGuide.Bottom <= currentRail.Top && currentGuide.Top >= 0, "guide sits above rail within work-area layout");
                 var widget = Find("Overlay.Widget")!;

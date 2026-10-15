@@ -9,124 +9,57 @@ namespace WidgetRail.FirstPartyWidgets.Settings;
 internal static class SettingsInstalledWidgetPresentation
 {
     public static WidgetView RenderInstalledWidgets(
-        StackElement header,
-        bool busy,
-        SettingsInstalledWidgetState state,
-        PlatformSettingsDocument? settings = null)
+        StackElement header, bool busy, SettingsInstalledWidgetState state,
+        SettingsInstalledListView list)
     {
-        settings ??= PlatformSettingsDocument.Default;
-        var snapshot = state.Catalog;
-        var builtIn = state.BuiltIns;
-        var valid = state.CatalogValid;
-        var diagnostic = state.Diagnostic;
-        var page = state.Page;
-        var selectedBuiltInId = state.SelectedBuiltInId;
-
-        if (!valid && snapshot.Widgets.Count == 0) return RenderInstalledCatalogRecoveryList(
-            header, busy, diagnostic, state);
-
-        var lastPage = SettingsInstalledWidgetPolicy.LastCatalogPage(snapshot);
-        page = Math.Clamp(page, 0, lastPage);
-        var start = page * SettingsWidget.InstalledWidgetsPerPage;
-        var visible = snapshot.Widgets.Skip(start).Take(SettingsWidget.InstalledWidgetsPerPage).ToArray();
+        if (!state.CatalogValid && state.Catalog.Widgets.Count == 0)
+            return RenderInstalledCatalogRecoveryList(header, busy, state.Diagnostic, state);
+        var tab = "installed.filter." + state.Filter.ToString().ToLowerInvariant();
+        var tabs = UI.SegmentedTabs("installed.filters", tab,
+            new SegmentedTab("installed.filter.all", "All", "installed.filter.all"),
+            new SegmentedTab("installed.filter.builtin", "Built-in", "installed.filter.builtin"),
+            new SegmentedTab("installed.filter.community", "Community", "installed.filter.community"));
+        tabs = tabs with { Children = tabs.Children.Select(child => child is ButtonElement button
+            ? button.FocusUp("installed.retry").FocusDown(list.Count == 0 ? "installed.install-local" : list.Id) : child).ToArray() };
         var children = new List<WidgetElement>
         {
-            UI.Text("Widgets", "installed.heading", "Widgets").Classes("page-heading"),
-            UI.Button("Browse marketplace", "open.marketplace", "installed.marketplace")
-                .OpenIntent(WidgetIntentContracts.Marketplace, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget)
-                .Busy(busy).Classes("setting-row"),
-            UI.Text(valid
-                    ? "Built-in widgets come with WidgetRail. Only install community widgets from sources you trust. WidgetRail has not verified who made them."
-                    : $"{diagnostic ?? "Installed widget catalog is unavailable."} Last-good installed versions remain available for review; retry after the catalog changes.",
-                "installed.help", "Installed widget help")
-                .Classes(valid ? "page-help" : "diagnostic-error"),
-            UI.Button(
-                    "Install local widget",
-                    "host.install-local-widget",
-                    "installed.install-local")
-                .Disabled(!valid).Busy(busy)
-                .Classes("setting-row", "primary-button"),
-            UI.Text(
-                    "Choose a .wrwidget file from your PC. New widgets stay off until you review their permissions and turn them on.",
-                    "installed.install-local.help",
-                    "Local widget installation safety")
-                .Classes("page-help"),
+            UI.Text("Widgets", "installed.heading").Classes("page-heading"),
+            UI.Row("installed.actions",
+                UI.Button("Marketplace", "open.marketplace", "installed.marketplace")
+                    .OpenIntent(WidgetIntentContracts.Marketplace, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget)
+                    .FocusUp("settings.back").FocusDown(tab),
+                UI.Button("Install local widget", "host.install-local-widget", "installed.install-local")
+                    .Disabled(!state.CatalogValid).Busy(busy).FocusUp("settings.back").FocusDown(tab),
+                UI.Button(state.CatalogValid ? "Refresh" : "Retry", "refresh", "installed.retry")
+                    .Busy(busy).FocusUp("settings.back").FocusDown(tab)).Classes("installed-list-actions"),
+            UI.Text("New widgets are enabled after installation and request permissions when a feature needs them.",
+                "installed.install-local.help").Classes("page-help"),
+            tabs,
         };
-        children.Add(UI.Button(valid ? "Refresh widgets" : "Retry", "refresh", "installed.retry")
-            .Busy(busy).Classes("setting-row", "secondary-button"));
-
-        if (builtIn.Count != 0)
+        if (!state.CatalogValid)
+            children.Add(UI.Text(state.Diagnostic ?? "Installed widget catalog is unavailable. Retry to refresh.", "installed.help").Classes("diagnostic-error"));
+        children.Add(list.Count == 0 ? UI.Text(state.Filter switch
         {
-            children.Add(UI.Text("BUILT IN", "installed.builtin.heading", "Built-in widgets")
-                .Classes("section-heading"));
-            for (var index = 0; index < builtIn.Count; index++)
-            {
-                var manifest = builtIn[index];
-                children.Add(InstalledEntry(manifest.Name, manifest.Version.ToString(),
-                    settings.BuiltInWidgets.IsEnabled(manifest.Id) ? "Enabled" : "Disabled",
-                    $"installed.builtin.select.{index}", $"installed.builtin.item.{index}", busy, !valid));
-            }
-        }
-
-        children.Add(UI.Text("COMMUNITY", "installed.community.heading", "Community widgets")
-            .Classes("section-heading"));
-        if (lastPage != 0)
-            children.Add(UI.Text($"Page {page + 1} of {lastPage + 1}",
-                "installed.page-label", "Community widget page").Classes("page-counter"));
-
-        for (var offset = 0; offset < visible.Length; offset++)
-        {
-            var index = start + offset;
-            var package = visible[offset];
-            var compatibility = WidgetHostCompatibility.Evaluate(package.ActiveVersion.Manifest);
-            var superseded = builtIn.Any(manifest => manifest.Id == package.Id);
-            var status = superseded ? "Unused copy · built-in version takes priority" : package.Enabled
-                ? compatibility.IsSupported ? "Enabled" : "Enabled · incompatible"
-                : compatibility.IsSupported ? "Disabled · review before enabling" : "Incompatible";
-            children.Add(InstalledEntry(package.Name, package.ActiveVersion.Version.ToString(),
-                valid ? status : $"Last good · {status}", $"installed.select.{index}", $"installed.item.{index}", busy));
-        }
-
-        if (visible.Length == 0)
-            children.Add(UI.Text(valid ? "No community widgets are installed." : "No package actions are available.",
-                "installed.empty", "Installed widget list status").Classes("diagnostic-line"));
-        if (page > 0)
-            children.Add(UI.Button("Previous page", "installed.previous-page", "installed.previous-page")
-                .Classes("secondary-button"));
-        if (page < lastPage)
-            children.Add(UI.Button("Next page", "installed.next-page", "installed.next-page")
-                .Classes("secondary-button"));
-        children.Add(UI.Button("Back", "back", "installed.back").Classes("secondary-button"));
-        SettingsPresentation.LinkVertical(children);
-
-        var scope = UI.VerticalScroll("installed.widgets", children.ToArray())
-            .InputScope("installed.widgets")
-            .Shortcut(ControllerButton.B, "back")
-            .Classes("settings-page");
-        var selectedBuiltInIndex = builtIn
-            .Select((manifest, index) => (manifest, index))
-            .Where(item => item.manifest.Id == selectedBuiltInId)
-            .Select(item => item.index)
-            .FirstOrDefault(-1);
-        var initialFocus = selectedBuiltInIndex >= 0
-            ? $"installed.builtin.item.{selectedBuiltInIndex}"
-            : builtIn.Count != 0
-                ? "installed.builtin.item.0"
-                : visible.Length == 0 ? "installed.install-local" : $"installed.item.{start}";
-        return SettingsPresentation.View(header, scope, initialFocus, "installed.widgets");
+            SettingsWidgetFilter.BuiltIn => "No built-in widgets are available.",
+            SettingsWidgetFilter.Community => "No community widgets are installed.",
+            _ => "No widgets are installed.",
+        }, "installed.empty").Classes("page-help") : list.Content);
+        var scope = UI.Stack("installed.widgets", children.ToArray()).InputScope("installed.widgets")
+            .Shortcut(ControllerButton.B, "back").Classes("settings-page", "installed-list-page");
+        return SettingsPresentation.View(header, scope, list.ReturnFocus is null ? tab : list.Id, "installed.widgets") with
+        { FocusGroupEntryRequest = list.ReturnFocus };
     }
 
-    private static ActionSurfaceElement InstalledEntry(string name, string version, string status,
-        string action, string id, bool busy, bool disabled = false) =>
-        UI.ActionSurface(action, id, $"{name}. Version {version}. {status}. Open details.", ActionSurfaceOrientation.Horizontal,
+    internal static ActionSurfaceElement InstalledEntry(SettingsInstalledRow row, string id) =>
+        UI.ActionSurface("installed.open", id, $"{row.Name}. Version {row.Version}. {row.Status}. Open details.", ActionSurfaceOrientation.Horizontal,
+            UI.Icon(row.Icon, id + ".icon", row.Name).Classes("installed-entry-icon"),
             UI.Stack(id + ".copy",
-                UI.Text(name, id + ".name").Classes("installed-entry-name"),
-                UI.Text(status, id + ".status").Classes("installed-entry-status"))
+                UI.Text(row.Name, id + ".name").Classes("installed-entry-name"),
+                UI.Text(row.Status, id + ".status").Classes("installed-entry-status"))
                 .Classes("installed-entry-copy"),
-            UI.Text(version, id + ".version").Classes("installed-entry-version"),
+            UI.Text(row.Version, id + ".version").Classes("installed-entry-version"),
             UI.Text("›", id + ".chevron").Classes("installed-entry-chevron"))
-            .Busy(busy).Disabled(disabled).Classes("installed-entry");
-
+            .Busy(row.Busy).Disabled(row.Disabled).Classes("installed-entry");
     public static WidgetView RenderInstalledCatalogRecoveryList(
         StackElement header,
         bool busy,
@@ -134,12 +67,12 @@ internal static class SettingsInstalledWidgetPresentation
         SettingsInstalledWidgetState state)
     {
         var health = state.Health;
-        var page = state.Page;
+        var page = state.RecoveryPage;
         var removable = health.Candidates.Where(item => item.CanRemove).ToArray();
-        var lastPage = Math.Max(0, (removable.Length - 1) / SettingsWidget.InstalledWidgetsPerPage);
+        var lastPage = Math.Max(0, (removable.Length - 1) / SettingsWidget.InstalledRecoveryItemsPerPage);
         page = Math.Clamp(page, 0, lastPage);
-        var start = page * SettingsWidget.InstalledWidgetsPerPage;
-        var visible = removable.Skip(start).Take(SettingsWidget.InstalledWidgetsPerPage).ToArray();
+        var start = page * SettingsWidget.InstalledRecoveryItemsPerPage;
+        var visible = removable.Skip(start).Take(SettingsWidget.InstalledRecoveryItemsPerPage).ToArray();
         var children = new List<WidgetElement>
         {
             UI.Text("Catalog recovery", "installed.repair.heading", "Installed widget catalog recovery")
@@ -171,10 +104,10 @@ internal static class SettingsInstalledWidgetPresentation
                 "installed.repair.empty", "No safe catalog repair candidates")
                 .Classes("diagnostic-line"));
         if (page > 0)
-            children.Add(UI.Button("Previous page", "installed.previous-page", "installed.repair.previous-page")
+            children.Add(UI.Button("Previous page", "installed.repair.previous-page", "installed.repair.previous-page")
                 .Classes("secondary-button"));
         if (page < lastPage)
-            children.Add(UI.Button("Next page", "installed.next-page", "installed.repair.next-page")
+            children.Add(UI.Button("Next page", "installed.repair.next-page", "installed.repair.next-page")
                 .Classes("secondary-button"));
         children.Add(UI.Button("Back", "back", "installed.repair.back")
             .Classes("secondary-button"));

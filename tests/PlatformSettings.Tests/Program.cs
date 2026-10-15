@@ -14,6 +14,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
     ("Default paths use only the WidgetRail local state root", DefaultPathsUseWidgetRail),
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
+    ("Retired rail-only preference preserves all other settings", RetiredSwitcherPreference),
+    ("Widget stop state is atomic and isolated from rollback settings", WidgetStopState),
     ("Schema-one settings retire obsolete selections and preserve unrelated state", LegacySchemaOneRetiresObsoleteSettings),
     ("Schema-two source preferences retire read-only until a normal write", SchemaTwoRetiresSourcePreferences),
     ("Malformed duplicate unknown and oversized settings fail closed", StrictSettingsFailClosed),
@@ -115,7 +117,6 @@ static async Task DefaultsAreSafe()
         Assert.Equal(1d, settings.Appearance.WidgetAnimationSpeed);
         Assert.Equal(true, settings.Appearance.AnimateWidgetModals);
         Assert.Equal(WidgetModalAnimation.Zoom, settings.Appearance.ModalAnimation);
-        Assert.Equal(WidgetSwitcherLayout.Radial, settings.Appearance.WidgetSwitcher);
         Assert.Equal(OverlayPosition.Center, settings.Appearance.OverlayPosition);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
 
@@ -132,10 +133,51 @@ static async Task DefaultsAreSafe()
         Assert.Equal(true, (await store.LoadAsync()).Appearance.AnimateWidgetModals);
         Assert.Equal(WidgetModalAnimation.Zoom, (await store.LoadAsync()).Appearance.ModalAnimation);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.BoldText);
-        Assert.Equal(WidgetSwitcherLayout.Rail, (await store.LoadAsync()).Appearance.WidgetSwitcher);
         Assert.Equal(OverlayPosition.Center, (await store.LoadAsync()).Appearance.OverlayPosition);
         await store.UpdateAsync(current => current with { Appearance = current.Appearance with { FocusAnimation = WidgetFocusAnimation.Fade } });
         Assert.Equal(WidgetFocusAnimation.Fade, (await store.LoadAsync()).Appearance.FocusAnimation);
+    }
+}
+
+static async Task WidgetStopState()
+{
+    using var temp = new TemporaryDirectory();
+    var paths = new PlatformSettingsPaths(temp.Path);
+    var settings = new PlatformSettingsStore(paths);
+    await settings.UpdateAsync(current => current with { Controllers = current.Controllers with { OpenShortcut = ControllerOpenShortcut.Guide } });
+    var before = await File.ReadAllTextAsync(paths.SettingsFile);
+    var first = new WidgetStopStateStore(paths); var second = new WidgetStopStateStore(paths);
+    await Task.WhenAll(first.SetStoppedAsync("example.first", true), second.SetStoppedAsync("example.second", true));
+    Assert.Equal(2, (await first.LoadAsync()).Count);
+    await first.SetStoppedAsync("example.first", false);
+    Assert.Equal("example.second", (await second.LoadAsync()).Single());
+    using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() => first.SetStoppedAsync("example.cancelled", true, cancellation.Token));
+    Assert.Equal(1, (await first.LoadAsync()).Count);
+    Assert.Equal(before, await File.ReadAllTextAsync(paths.SettingsFile));
+    Assert.Equal(ControllerOpenShortcut.Guide, (await new PlatformSettingsStore(paths).LoadAsync()).Controllers.OpenShortcut);
+    Assert.True(!Directory.EnumerateFiles(temp.Path, ".stopped-widgets.*.tmp").Any(), "Stop state temporary file leaked.");
+    await File.WriteAllTextAsync(Path.Combine(temp.Path, "stopped-widgets.json"), "{\"schemaVersion\":1,\"packageIds\":[\"example.one\",\"example.one\"]}");
+    await Assert.ThrowsAsync<PlatformSettingsException>(() => first.LoadAsync());
+    Assert.Equal(before, await File.ReadAllTextAsync(paths.SettingsFile));
+}
+
+static async Task RetiredSwitcherPreference()
+{
+    using var temp = new TemporaryDirectory();
+    var store = new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path));
+    var original = await store.UpdateAsync(current => current with { Appearance = current.Appearance with { OverlayPosition = OverlayPosition.BottomRight } });
+    var canonical = await File.ReadAllTextAsync(store.Paths.SettingsFile);
+    foreach (var mode in new[] { "rail", "radial" })
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(canonical)!;
+        json["appearance"]!["widgetSwitcher"] = mode;
+        var legacy = json.ToJsonString();
+        await File.WriteAllTextAsync(store.Paths.SettingsFile, legacy);
+        Assert.DocumentEqual(original, await store.LoadAsync());
+        Assert.Equal(legacy, await File.ReadAllTextAsync(store.Paths.SettingsFile));
+        await store.UpdateAsync(current => current);
+        Assert.True(!(await File.ReadAllTextAsync(store.Paths.SettingsFile)).Contains("widgetSwitcher"), "Obsolete field survived a normal save.");
     }
 }
 
@@ -163,7 +205,6 @@ static async Task SettingsRoundTrip()
             WidgetAnimationSpeed = 1.5,
             AnimateWidgetModals = false,
             ModalAnimation = WidgetModalAnimation.Lift,
-            WidgetSwitcher = WidgetSwitcherLayout.Radial,
             OverlayPosition = OverlayPosition.BottomRight,
         },
     });
@@ -179,19 +220,12 @@ static async Task SettingsRoundTrip()
     Assert.Equal(1.5d, reloaded.Appearance.WidgetAnimationSpeed);
     Assert.Equal(false, reloaded.Appearance.AnimateWidgetModals);
     Assert.Equal(WidgetModalAnimation.Lift, reloaded.Appearance.ModalAnimation);
-    Assert.Equal(WidgetSwitcherLayout.Radial, reloaded.Appearance.WidgetSwitcher);
     Assert.Equal(OverlayPosition.BottomRight, reloaded.Appearance.OverlayPosition);
     foreach (var position in new[] { OverlayPosition.BottomLeft, OverlayPosition.Center })
     {
         await store.UpdateAsync(current => current with { Appearance = current.Appearance with { OverlayPosition = position } });
         Assert.Equal(position, (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance.OverlayPosition);
     }
-    await store.UpdateAsync(current => current with
-    {
-        Appearance = current.Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Rail },
-    });
-    Assert.Equal(WidgetSwitcherLayout.Rail,
-        (await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync()).Appearance.WidgetSwitcher);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
     Assert.Contains("\"schemaVersion\": 3", source);
     Assert.Contains("\"motion\": \"reduced\"", source);

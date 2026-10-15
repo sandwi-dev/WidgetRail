@@ -9,11 +9,11 @@ internal sealed partial class WidgetViewPresenter
 {
     private readonly Dictionary<Binding, WidgetPackageIconView> buttonIcons = [];
     private readonly HashSet<string> iconDiagnostics = new(StringComparer.Ordinal);
-    internal Func<string, CancellationToken, Task<WidgetPresentationPackageIcon>>? ResolvePackageIconAsync { get; set; }
+    internal Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? ResolvePackageIconAsync { get; set; }
     internal Action<string>? PackageIconDiagnostic { get; set; }
     private string PackageGeneration => frame is null ? string.Empty :
         $"{frame.Authority.WidgetId}:{frame.Authority.RuntimeGeneration}:{frame.Authority.PresentationGeneration}:{frame.Authority.SessionGeneration}:{frame.Descriptor.PackageContentDigest}";
-    private Func<string, CancellationToken, Task<WidgetPresentationPackageIcon>>? IconResolver()
+    private Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? IconResolver()
     {
         if (ResolvePackageIconAsync is { } resolver) return resolver;
         if (Session is not { } session || frame is not { } current) return null;

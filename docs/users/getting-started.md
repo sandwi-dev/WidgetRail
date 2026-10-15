@@ -60,14 +60,14 @@ current focus. [Learn the controls](controls.md).
 1. Open **Settings → Widgets** and select a widget you want to use. Built-in widgets
    have their declared permissions enabled by default. You can review or revoke
    them in **Permissions & configuration**; updates preserve your decisions.
-   Downloaded widgets still require their normal permission review.
+   Downloaded widgets request access when a feature needs it.
    Enable the widget if it is disabled.
 2. Choose **Disable widget** for widgets you do not need. They leave the tray
    and can be enabled again later. Settings stays enabled so you can always
    manage the application.
-3. Open **Settings → Overlay**. Adjust **Interface size** for your display, choose
-   **Position** and **Widget switcher**, and decide whether to start WidgetRail
-   when signing in. See [Customization](customization.md) for the full set of options.
+3. Open **Settings → Overlay** to choose **Position** and decide whether to start
+   WidgetRail when signing in. Adjust **Interface size** in **Appearance**.
+   B opens the radial chooser; directional navigation also lets you use the rail. See [Customization](customization.md) for the full set of options.
 
 Spotify, YouTube, and Playnite are separate add-ons. Follow each widget's README
 for installation and service setup; installing WidgetRail alone does not configure them.
@@ -77,8 +77,10 @@ for installation and service setup; installing WidgetRail alone does not configu
 Updates are explicit. Open **Settings → About & troubleshooting → App updates & recovery** to review releases and prepare an update with recovery, then quit WidgetRail before continuing in the Windows installer. See [App updates and recovery](../reference/app-updates.md). You can also download and run a newer installer manually.
 Your widgets and settings are kept. Built-in widgets update with the application.
 
-For an add-on, open its details in **Settings → Widgets → Update from file**.
-Choose the newer `.wrwidget` package, then review and enable the update. See
+Use **Marketplace → Updates** for individual updates or **Update all**. For a
+local add-on, open its details in **Settings → Widgets → Update from file**.
+Choose the newer `.wrwidget` package and approve full access if requested. Updates
+preserve enabled state, permissions and saved data. See
 [Managing widgets](customization.md#manage-widgets).
 
 ## Uninstall

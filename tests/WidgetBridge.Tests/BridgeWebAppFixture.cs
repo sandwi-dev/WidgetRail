@@ -27,7 +27,7 @@ internal static class BridgeWebAppFixture
             WorkerFingerprint = new string('f', 64), CatalogFingerprint = new string('f', 64),
             Intents = new() { Requests = [WidgetIntentContracts.AppUpdates], Handles = [new(WidgetIntentContracts.AppUpdates)] },
         }).ToArray());
-        await using var server = new WidgetBridgeServer(pipe, catalog, BridgeProtocol.DefaultMaximumMessageBytes, appearance,
+        await using var server = new WidgetBridgeServer(pipe, catalog.WithStoppedWidgets(await new WidgetStopStateStore(paths).LoadAsync()), BridgeProtocol.DefaultMaximumMessageBytes, appearance,
             new ConsentStore(Path.Combine(settingsRoot, "fixture-consent")), new SimulatedPlatformBrokerBackend(), null, null, null, settingsStore: store,
             appUpdates: new(new("0.1.0-preview.31", "production", "", false), Path.Combine(settingsRoot, "updates"),
                 new ShellUpdateApi(), profileRoot: settingsRoot));

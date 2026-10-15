@@ -11,9 +11,11 @@ internal static class PackageUpdateCommand
     {
         var parsed = new CommandArguments(args,
             theme ? ["--repo", "--tag", "--asset", "--sha256", "--version", "--settings-root"]
-                : ["--repo", "--tag", "--asset", "--sha256", "--catalog"],
+                : ["--repo", "--tag", "--asset", "--sha256", "--catalog", "--file", "--settings-root"],
             theme ? ["--apply"] : ["--apply", "--accept-full-trust"]);
         if (parsed.Positionals.Count != 1) throw new CliUsageException("Supply one installed package ID. Run wrail help for update options.");
+        if (!theme && parsed.Option("--file") is not null)
+            return await LocalWidgetUpdateCommand.RunAsync(parsed, output, token);
         var id = parsed.Positionals[0];
         var apply = parsed.HasFlag("--apply");
         var expected = PackageIntegrity.ParseExpectedSha256(parsed.Option("--sha256"));
@@ -107,6 +109,7 @@ internal static class PackageUpdateCommand
         if (oldTrust != newTrust) throw new CliOperationException("Updates cannot change the widget's execution model. Review it as a separate installation.");
         if (!WidgetHostCompatibility.Evaluate(nextManifest).IsSupported)
             throw new CliOperationException("This package is not compatible with this WidgetRail host API.");
+        await output.WriteLineAsync("Widget settings will be kept. Permissions and credentials are not transferred to the new package.");
         if (!apply) return await ReviewAsync(parsed, source, hash, output, theme, root, version, newTrust == WidgetExecutionTrust.FullTrustCurrentUser);
         if (widget.Enabled) throw new CliOperationException($"Disable {id} before applying this update. The current version has not been changed.");
         var trust = WidgetPackageTrustApproval.None;
@@ -117,15 +120,16 @@ internal static class PackageUpdateCommand
             trust = WidgetPackageTrustApproval.FullTrustCurrentUser;
         }
         var targetHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id)));
+        using var settings = new CliWidgetSettingsTransfer(CliWidgetSettingsTransfer.ResolveRoot(parsed, root));
         var installedWidget = await catalog.UpdateFromFileAsync(downloaded.PackageStream, targetHash, trust,
             async (_, admissionToken) =>
             {
                 var current = (await catalog.DiscoverAsync(admissionToken)).Widgets.SingleOrDefault(item => item.Id == id);
                 if (current is null || current.Enabled || current.ActiveVersion.ContentDigest != digest || current.ActiveVersion.Version.ToString() != version)
                     throw new CliOperationException("The selected widget changed while the update was being prepared. Disable it and review the update again.");
-            }, token);
+            }, token, settings.PrepareAsync);
         await PackageSources.SaveAsync(root, "widget", new(id, installedWidget.Version.ToString(), publisher, source.ToString(), hash, installedWidget.ContentDigest), output, token);
-        await output.WriteLineAsync($"Selected {id} {installedWidget.Version} (disabled). Review permissions before enabling. Previous versions remain available through wrail version rollback.");
+        await output.WriteLineAsync($"Selected {id} {installedWidget.Version} (disabled). Widget settings were kept. Permissions are requested when needed. Previous versions remain available through wrail version rollback.");
         return 0;
     }
 
@@ -153,7 +157,8 @@ internal static class PackageUpdateCommand
         // PowerShell single-quote escaping preserves literal Windows paths.
         await output.WriteLineAsync($"Apply the reviewed bytes:\nwrail {(theme ? "theme update" : "update")} {parsed.Positionals[0]} --repo {source.Repository} --tag {source.Tag} --asset {source.Asset} --sha256 {hash} --apply " +
             (theme ? $"--version {version} --settings-root " : "--catalog ") + "'" + root.Replace("'", "''", StringComparison.Ordinal) + "'" +
-            (fullTrust ? " --accept-full-trust" : ""));
+            (fullTrust ? " --accept-full-trust" : "") +
+            (!theme && parsed.Option("--settings-root") is { } settings ? " --settings-root '" + settings.Replace("'", "''", StringComparison.Ordinal) + "'" : ""));
         return 0;
     }
 }

@@ -93,7 +93,8 @@ public sealed partial class CaptureLibraryWidget : Widget
         model.Update(s => s with { Busy = true, Capturing = true, ConfirmDelete = false, Message = null });
         Operations.RunLatest("capture-library.work", async context =>
         {
-            WindowCaptureTicket? ticket = null; var completed = false;
+            WindowCaptureTicket? ticket = null; var completed = false; var recordingReported = false; var recordingAttempted = false;
+            var activitySource = "recording." + Guid.NewGuid().ToString("N");
             try
             {
                 await LoadPreferencesAsync(context.CancellationToken);
@@ -114,6 +115,12 @@ public sealed partial class CaptureLibraryWidget : Widget
                 {
                     await Task.Delay(300, context.CancellationToken);
                     var status = await HostServices.Capture.GetStatusAsync(ticket, context.CancellationToken);
+                    if (kind == WindowCaptureKind.Video && status.Phase == WindowCapturePhase.Recording && !recordingReported)
+                    {
+                        recordingAttempted = true;
+                        try { recordingReported = (await HostServices.Activity.SetAsync(activitySource, new(Recording: true), context.CancellationToken)).Accepted; }
+                        catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException) { }
+                    }
                     if (status.Phase == WindowCapturePhase.Ready)
                     {
                         completed = true;
@@ -130,6 +137,11 @@ public sealed partial class CaptureLibraryWidget : Widget
             finally
             {
                 if (!completed && ticket is not null) try { using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2)); await HostServices.Capture.CancelAsync(ticket, cleanup.Token); } catch (Exception) { }
+                if (recordingAttempted)
+                {
+                    try { using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2)); await HostServices.Activity.ClearAsync(activitySource, cleanup.Token); }
+                    catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or OperationCanceledException) { }
+                }
                 if (context.IsCurrent) model.Update(s => s with { Busy = false, Capturing = false });
             }
         }, WidgetOperationLifetime.Widget);

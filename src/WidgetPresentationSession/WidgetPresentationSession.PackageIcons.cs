@@ -56,7 +56,7 @@ public sealed partial class WidgetPresentationSession
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
         }
-        if (deadline is not null) _ = CompletePackageIconDemandAsync(target, asset, key, demand, deadline);
+        if (deadline is not null) _ = CompletePackageIconDemandAsync(target, key, demand, deadline, token => LoadPackageIconAsync(target, asset, key, token));
         var bytes = await demand.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         using (_gate.Enter())
@@ -66,12 +66,12 @@ public sealed partial class WidgetPresentationSession
         }
     }
 
-    private async Task CompletePackageIconDemandAsync(WidgetPresentationTarget target, BridgePackageIconAssetDescriptor asset,
-        PackageIconKey key, TaskCompletionSource<byte[]> demand, CancellationTokenSource deadline)
+    private async Task CompletePackageIconDemandAsync(WidgetPresentationTarget target,
+        PackageIconKey key, TaskCompletionSource<byte[]> demand, CancellationTokenSource deadline, Func<CancellationToken, Task<byte[]>> load)
     {
         byte[]? bytes = null;
         Exception? failure = null;
-        try { bytes = await LoadPackageIconAsync(target, asset, key, deadline.Token).ConfigureAwait(false); }
+        try { bytes = await load(deadline.Token).ConfigureAwait(false); }
         catch (Exception exception) { failure = exception; }
         finally
         {
@@ -126,16 +126,19 @@ public sealed partial class WidgetPresentationSession
             {
                 _ = ValidateTarget(target);
                 // Aggregate session retention is bounded independently of widget count.
-                if (!_packageIcons.ContainsKey(key))
-                {
-                    while (_packageIcons.Count >= 128 || _packageIconBytes + bytes.Length > 2 * 1024 * 1024)
-                    { var first = _packageIcons.First(); _packageIconBytes -= first.Value.Length; _packageIcons.Remove(first.Key); }
-                    _packageIcons.Add(key, bytes); _packageIconBytes += bytes.Length;
-                }
+                CachePackageIconLocked(key, bytes);
             }
             return bytes;
         }
         finally { if (admitted) _packageIconSlots.Release(); }
+    }
+
+    private void CachePackageIconLocked(PackageIconKey key, byte[] bytes)
+    {
+        if (_packageIcons.ContainsKey(key)) return;
+        while (_packageIcons.Count >= 128 || _packageIconBytes + bytes.Length > 2 * 1024 * 1024)
+        { var first = _packageIcons.First(); _packageIconBytes -= first.Value.Length; _packageIcons.Remove(first.Key); }
+        _packageIcons.Add(key, bytes); _packageIconBytes += bytes.Length;
     }
 
     private static void ValidatePackageIconMetadata(BridgeWidgetDescriptor descriptor, BridgePackageIconAssetDescriptor asset)

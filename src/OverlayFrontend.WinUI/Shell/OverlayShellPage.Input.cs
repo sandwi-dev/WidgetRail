@@ -223,7 +223,7 @@ internal sealed partial class OverlayShellPage
             }
             if (RecoveryVisible)
             {
-                if (phase == ControllerEventPhase.Pressed && button == ControllerButton.A && Retry.Visibility == Visibility.Visible)
+                if (phase == ControllerEventPhase.Pressed && (button == ControllerButton.A || showingStoppedWidget && button == ControllerButton.X) && Retry.Visibility == Visibility.Visible)
                 { shellOwnedReleases.Add(button); await RetryPresentationAsync(); }
                 else if (phase == ControllerEventPhase.Pressed && button == ControllerButton.B)
                 { shellOwnedReleases.Add(button); PrepareRadialBackEntry(); SetInteractive(false); FocusTray(); }

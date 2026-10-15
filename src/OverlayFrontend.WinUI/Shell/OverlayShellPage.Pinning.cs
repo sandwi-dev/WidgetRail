@@ -83,6 +83,7 @@ internal sealed partial class OverlayShellPage
     private List<PinChoice> GetPinChoices(BridgeWidgetDescriptor descriptor)
     {
         var choices = new List<PinChoice>();
+        if (descriptor.IsStopped) return choices;
         if (owner?.Session.GetState(descriptor.Id)?.LastGood is not { } frame) return choices;
         if (descriptor.FullWidgetPinningSupported && browserOwner is { } browsers)
         {
@@ -187,7 +188,7 @@ internal sealed partial class OverlayShellPage
                     if (retired || intent != pinIntent || !selection.IsCurrent)
                         throw new WidgetPresentationSessionException("pinned_input_stale", "Pinned placement owner retired.");
                     var (placement, limits, displayId) = prepared;
-                    presenter = new() { Session = owner.Session, BrowserOwner = browserOwner };
+                    presenter = new() { NativeAudioChanged = ReportNativeAudio, Session = owner.Session, BrowserOwner = browserOwner };
                     presenter.SetAutomaticFocusEnabled(false);
                     presenter.SetPresentationInputEnabled(false);
                     await presenter.SetPresentationActiveAsync(false);
@@ -518,7 +519,7 @@ internal sealed partial class OverlayShellPage
     {
         if (pinned is not { } current) return;
         var descriptor = catalog.Widgets.FirstOrDefault(item => item.Id == current.WidgetId);
-        if (!current.IsCurrent || descriptor is null && catalog.IsComplete ||
+        if (!current.IsCurrent || descriptor?.IsStopped == true || descriptor is null && catalog.IsComplete ||
             descriptor is not null && current.Presenter?.CurrentBinding is { } binding && !SameSurfaceOwner(descriptor, binding.Frame.Descriptor))
         { current.Window.Hide(); _ = UnpinAsync(save: false, current); }
     }

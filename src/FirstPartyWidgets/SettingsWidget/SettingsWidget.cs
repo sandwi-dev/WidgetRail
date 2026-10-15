@@ -43,11 +43,12 @@ public enum SettingsPage
     Marketplace,
     MarketplaceDetails,
     AppUpdates,
+    IntentDestination,
 }
 
 public sealed partial class SettingsWidget : Widget
 {
-    public const int InstalledWidgetsPerPage = 5;
+    public const int InstalledRecoveryItemsPerPage = 5;
     public const int InstalledVersionsPerPage = 5;
     private const int MaximumBundledDirectories = 64;
     private const int MaximumManifestBytes = 1024 * 1024;
@@ -110,7 +111,7 @@ public sealed partial class SettingsWidget : Widget
                     if (_toastGeneration != generation) return;
                     _toastVisible = false;
                 }
-                Invalidate();
+                PublishSettingsChanged();
             });
         }
     }
@@ -147,6 +148,7 @@ public sealed partial class SettingsWidget : Widget
         var builtIn = _catalog.BuiltInDefault;
         _themes = new ThemeCatalogSnapshot(
             [new ThemeCatalogEntry(builtIn.Descriptor, builtIn.IsValid, builtIn.Diagnostics)]);
+        InitializeInstalledList();
     }
 
     public SettingsPage CurrentPage
@@ -171,6 +173,7 @@ public sealed partial class SettingsWidget : Widget
         SettingsAppUpdateState appUpdates;
         PlatformDiagnosticsSnapshot diagnostics;
         SettingsInstalledWidgetState installedState;
+        SettingsInstalledListView? installedListView;
         SettingsPermissionState permissionState;
         SettingsThemeSelection? selectedTheme;
         string? themePickerFocusId;
@@ -195,6 +198,7 @@ public sealed partial class SettingsWidget : Widget
             appUpdates = _appUpdateState;
             diagnostics = _diagnostics;
             installedState = _installedState;
+            installedListView = page == SettingsPage.InstalledWidgets ? CaptureInstalledList() : null;
             permissionState = _permissionState;
             selectedAuthorityRecoveryId = _selectedAuthorityRecovery?.RecoveryId;
             selectedTheme = _selectedTheme;
@@ -216,6 +220,7 @@ public sealed partial class SettingsWidget : Widget
             selectedTheme,
             themePickerFocusId, startupStatus, display, loading, _hostFeatures,
             diagnosticDetails, supportExportFile, marketplace, appUpdates);
+        if (page == SettingsPage.IntentDestination) return RenderIntentDestination(presentation);
         if (SettingsPresentation.TryRender(presentation, out var view))
             return SettingsPresentation.AnimatePage(view, page, loading, navigation);
         var header = SettingsPresentation.Header(presentation);
@@ -223,7 +228,7 @@ public sealed partial class SettingsWidget : Widget
         {
             SettingsPage.InstalledWidgets =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
-                    header, busy, installedState, settings),
+                    header, busy, installedState, installedListView!),
             SettingsPage.InstalledWidgetDetails or SettingsPage.InstalledWidgetTechnical =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetDetails(
                     header, busy, installedState, permissionState, settings, page == SettingsPage.InstalledWidgetTechnical),
@@ -278,15 +283,16 @@ public sealed partial class SettingsWidget : Widget
             finally
             {
                 lock (_stateLock) { _initializing = false; _busy = false; }
-                Invalidate();
+                PublishSettingsChanged();
             }
         }, CancellationToken.None);
-        Invalidate();
+        PublishSettingsChanged();
         return ValueTask.CompletedTask;
     }
 
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
+        CancelIntentNavigation();
         await _initializationTask.ConfigureAwait(false);
         await _settingsStatusTask.ConfigureAwait(false);
         lock (_stateLock) _toastVisible = false;
@@ -325,7 +331,7 @@ public sealed partial class SettingsWidget : Widget
                         changed = _diagnostics.Controllers != status;
                         _diagnostics = _diagnostics with { Controllers = status };
                     }
-                    if (changed) Invalidate();
+                    if (changed) PublishSettingsChanged();
                 }
                 finally { _operationGate.Release(); }
             }
@@ -340,7 +346,7 @@ public sealed partial class SettingsWidget : Widget
         catch (PlatformDiagnosticsException) { display = OverlayDisplayContext.Unavailable; }
         bool changed;
         lock (_stateLock) { changed = _display != display; _display = display; }
-        if (changed) Invalidate();
+        if (changed) PublishSettingsChanged();
     }
 
     internal async Task ReadPackageNotificationAsync(CancellationToken cancellationToken)
@@ -375,6 +381,22 @@ public sealed partial class SettingsWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (action.ActionId is "installed.filter.all" or "installed.filter.builtin" or "installed.filter.community")
+        {
+            ChangeInstalledFilter(action.ActionId switch
+            { "installed.filter.builtin" => SettingsWidgetFilter.BuiltIn, "installed.filter.community" => SettingsWidgetFilter.Community, _ => SettingsWidgetFilter.All });
+            return;
+        }
+        if (action.ActionId == "intent.retry")
+        {
+            WidgetIntentRequest? retry;
+            lock (_stateLock) retry = _page == SettingsPage.IntentDestination ? intentNavigation?.Request : null;
+            if (retry is not null) await OnIntentAsync(retry, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (action.ActionId == "back" && CurrentPage == SettingsPage.IntentDestination)
+        { CancelIntentNavigation(); PublishSettingsChanged(); return; }
+        if (action.ActionId == "back" || action.ActionId.StartsWith("open.", StringComparison.Ordinal)) CancelIntentNavigation();
         if (action.ActionId is "application.quit" or "application.restart")
         {
             // Hosts with direct application controls intercept these commands.
@@ -391,7 +413,7 @@ public sealed partial class SettingsWidget : Widget
         }
         // Home navigation needs no provider data and must not queue behind the
         // initialization operation gate. Settings writes remain unavailable.
-        if (initializing) { Invalidate(); return; }
+        if (initializing) { PublishSettingsChanged(); return; }
         // ReloadAsync owns the same operation gate used by normal actions. Keep
         // refresh outside that critical section so controller refresh cannot
         // deadlock while still serializing against every other mutation.
@@ -474,7 +496,7 @@ public sealed partial class SettingsWidget : Widget
                 case "diagnostics.details.toggle":
                     if (CurrentPage != SettingsPage.Diagnostics) return;
                     lock (_stateLock) _diagnosticDetails = !_diagnosticDetails;
-                    Invalidate();
+                    PublishSettingsChanged();
                     break;
                 case "diagnostics.export":
                     if (CurrentPage != SettingsPage.Diagnostics) return;
@@ -493,8 +515,8 @@ public sealed partial class SettingsWidget : Widget
                 case "open.permission-diagnostics": OpenPermissionDiagnostics(); break;
                 case "authority.recovery.retry": await RetrySelectedAuthorityRecoveryAsync(
                     cancellationToken).ConfigureAwait(false); break;
-                case "installed.previous-page": ChangeInstalledWidgetPage(-1); break;
-                case "installed.next-page": ChangeInstalledWidgetPage(1); break;
+                case "installed.repair.previous-page": ChangeInstalledRecoveryPage(-1); break;
+                case "installed.repair.next-page": ChangeInstalledRecoveryPage(1); break;
                 case "installed.versions.open": OpenInstalledWidgetVersions(); break;
                 case "installed.versions.previous-page": ChangeInstalledVersionPage(-1); break;
                 case "installed.versions.next-page": ChangeInstalledVersionPage(1); break;
@@ -529,12 +551,6 @@ public sealed partial class SettingsWidget : Widget
                 default:
                     if (TryThemeIndex(action.ActionId, out var index))
                         OpenThemeVersion(index);
-                    else if (TryIndexedAction(action.ActionId, "installed.select.", out index))
-                        await SelectInstalledWidgetAsync(index, cancellationToken)
-                            .ConfigureAwait(false);
-                    else if (TryIndexedAction(action.ActionId, "installed.builtin.select.", out index))
-                        await SelectBuiltInWidgetAsync(index, cancellationToken)
-                            .ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.version.select.", out index))
                         await SelectInstalledVersionAsync(index, cancellationToken).ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.version.remove.", out index))
@@ -570,6 +586,8 @@ public sealed partial class SettingsWidget : Widget
             try
             {
                 settings = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+                var stops = await new WidgetStopStateStore(_store.Paths).LoadAsync(cancellationToken).ConfigureAwait(false);
+                lock (_stateLock) stoppedWidgetIds = stops;
             }
             catch (PlatformSettingsException exception)
             {
@@ -634,7 +652,7 @@ public sealed partial class SettingsWidget : Widget
                 _error = warning is not null;
                 StatusMessage = warning ?? successStatus;
             }
-            Invalidate();
+            PublishSettingsChanged();
         }
         finally
         {
@@ -657,7 +675,7 @@ public sealed partial class SettingsWidget : Widget
             _page = SettingsPage.ThemeVersion;
             StatusMessage = $"Reviewing {entry.Descriptor.Name} {entry.Descriptor.Version}";
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void OpenThemeRemoval()
@@ -669,7 +687,7 @@ public sealed partial class SettingsWidget : Widget
             _page = SettingsPage.ThemeRemoval;
             StatusMessage = $"Confirm removal of {entry.Descriptor.Name} {entry.Descriptor.Version}";
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task SelectSelectedThemeAsync(CancellationToken cancellationToken)
@@ -699,7 +717,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Theme selection failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task RemoveSelectedThemeAsync(CancellationToken cancellationToken)
@@ -744,7 +762,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Theme removal failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private ThemeCatalogEntry? FindSelectedThemeLocked() => _selectedTheme is null
@@ -787,7 +805,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Reset failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task SetExclusiveControlAsync(CancellationToken cancellationToken, bool restore = false)
@@ -823,7 +841,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation("Controller settings are unavailable. Check again.", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task PersistPreferenceAsync(
@@ -869,7 +887,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task ToggleControllerShortcutAsync(CancellationToken cancellationToken, ControllerOpenShortcut? selection = null)
@@ -901,7 +919,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task ToggleF1ShortcutAsync(CancellationToken cancellationToken)
@@ -927,7 +945,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task ToggleHeldDpadScrollAsync(CancellationToken cancellationToken)
@@ -953,7 +971,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void SelectAuthorityRecovery(int displayIndex)
@@ -966,7 +984,7 @@ public sealed partial class SettingsWidget : Widget
             _selectedAuthorityRecovery = selection;
             _page = SettingsPage.AuthorityRecovery;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task RetrySelectedAuthorityRecoveryAsync(CancellationToken cancellationToken)
@@ -985,7 +1003,7 @@ public sealed partial class SettingsWidget : Widget
         {
             lock (_stateLock)
                 ApplyAuthorityTransitionLocked(SettingsAuthorityRecoveryPolicy.Changed());
-            Invalidate();
+            PublishSettingsChanged();
             return;
         }
 
@@ -1005,7 +1023,7 @@ public sealed partial class SettingsWidget : Widget
             lock (_stateLock)
                 ApplyAuthorityTransitionLocked(
                     SettingsAuthorityRecoveryPolicy.Cancelled(request));
-            Invalidate();
+            PublishSettingsChanged();
             throw;
         }
         catch (PlatformDiagnosticsException exception)
@@ -1027,7 +1045,7 @@ public sealed partial class SettingsWidget : Widget
                     SettingsAuthorityRecoveryPolicy.Failure(
                         _diagnostics, request, exception.Code));
             }
-            Invalidate();
+            PublishSettingsChanged();
             return;
         }
 
@@ -1043,7 +1061,7 @@ public sealed partial class SettingsWidget : Widget
                 ApplyAuthorityTransitionLocked(
                     SettingsAuthorityRecoveryPolicy.RefreshFailure(
                         result, request, exception.Code));
-            Invalidate();
+            PublishSettingsChanged();
             return;
         }
         lock (_stateLock)
@@ -1052,7 +1070,7 @@ public sealed partial class SettingsWidget : Widget
             ApplyAuthorityTransitionLocked(
                 SettingsAuthorityRecoveryPolicy.Result(result, diagnostics, request));
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void ApplyAuthorityTransitionLocked(SettingsAuthorityRecoveryTransition transition)
@@ -1076,7 +1094,7 @@ public sealed partial class SettingsWidget : Widget
                 _permissionState = _permissionState with { DiagnosticsReturnFocus = false };
         }
         EnsureSettingsStatusPolling();
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void SetOperation(string status, bool busy, bool error)
@@ -1087,7 +1105,7 @@ public sealed partial class SettingsWidget : Widget
             _busy = busy;
             _error = error;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private SettingsPage PackageCapabilitiesReturnPage()
@@ -1353,7 +1371,7 @@ public sealed partial class SettingsWidget : Widget
                 StatusMessage = $"Permission change failed ({exception.Code})";
             }
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void SelectPermissionPackage(int index)
@@ -1366,7 +1384,7 @@ public sealed partial class SettingsWidget : Widget
             _permissionState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void OpenSelectedInstalledPermissions()
@@ -1392,7 +1410,7 @@ public sealed partial class SettingsWidget : Widget
                 _page = transition.Page;
             }
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void OpenPermissionDiagnostics()
@@ -1406,7 +1424,7 @@ public sealed partial class SettingsWidget : Widget
             _permissionState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void SelectCapability(int index)
@@ -1420,7 +1438,7 @@ public sealed partial class SettingsWidget : Widget
             _permissionState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task<string?> ReloadInstalledWidgetsAsync(CancellationToken cancellationToken,
@@ -1502,7 +1520,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task RemoveSelectedRepairCandidateAsync(CancellationToken cancellationToken)
@@ -1552,18 +1570,18 @@ public sealed partial class SettingsWidget : Widget
             SetOperation("Catalog repair failed (access_denied)", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
-    private void ChangeInstalledWidgetPage(int delta)
+    private void ChangeInstalledRecoveryPage(int delta)
     {
         lock (_stateLock)
         {
             if (_page != SettingsPage.InstalledWidgets) return;
-            _installedState = SettingsInstalledWidgetPolicy.ChangeCatalogPage(
+            _installedState = SettingsInstalledWidgetPolicy.ChangeRecoveryPage(
                 _installedState, delta);
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task SelectInstalledWidgetAsync(int index, CancellationToken cancellationToken)
@@ -1575,7 +1593,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
         await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
         await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -1589,7 +1607,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
         await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -1625,7 +1643,7 @@ public sealed partial class SettingsWidget : Widget
             widgetId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
                        _installedState.SelectedBuiltIn?.Id;
         }
-        if (unusedCopyEnabled) { Invalidate(); return; }
+        if (unusedCopyEnabled) { PublishSettingsChanged(); return; }
         if (widgetId is null) return;
         PlatformWidgetLocalDataInspection inspection;
         try
@@ -1650,7 +1668,7 @@ public sealed partial class SettingsWidget : Widget
                 builtIn != (_installedState.SelectedBuiltIn is not null)) return;
             _installedState = _installedState with { LocalData = inspection };
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task InspectSelectedWidgetUninstallAsync(CancellationToken cancellationToken)
@@ -1669,7 +1687,7 @@ public sealed partial class SettingsWidget : Widget
                         inspection.WidgetId, StringComparison.Ordinal)) return;
                 _installedState = _installedState with { PackageUninstall = inspection };
             }
-            Invalidate();
+            PublishSettingsChanged();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1692,7 +1710,7 @@ public sealed partial class SettingsWidget : Widget
             }
         }
         if (!opened) SetOperation("This widget could not be checked for removal. Refresh its details and try again.", false, true);
-        else Invalidate();
+        else PublishSettingsChanged();
     }
 
     private void CancelInstalledWidgetUninstall()
@@ -1704,7 +1722,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task UninstallSelectedWidgetAsync(CancellationToken cancellationToken)
@@ -1779,7 +1797,7 @@ public sealed partial class SettingsWidget : Widget
                 _busy = false;
                 if (_page == SettingsPage.InstalledWidgetUninstall) _page = SettingsPage.InstalledWidgetDetails;
             }
-            Invalidate();
+            PublishSettingsChanged();
         }
     }
 
@@ -1794,7 +1812,7 @@ public sealed partial class SettingsWidget : Widget
                 !string.Equals(data.WidgetId, widgetId, StringComparison.Ordinal)) return;
             _page = SettingsPage.InstalledWidgetLocalData;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task ClearSelectedWidgetLocalDataAsync(CancellationToken cancellationToken)
@@ -1829,7 +1847,7 @@ public sealed partial class SettingsWidget : Widget
                     _error = true;
                     StatusMessage = "Local data changed; review and confirm again";
                 }
-                Invalidate();
+                PublishSettingsChanged();
                 return;
             }
             SetOperation("Clearing local data and restarting widget…", busy: true, error: false);
@@ -1871,7 +1889,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation($"Local data clear failed ({exception.Code})", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
         await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -1883,7 +1901,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = _installedState with { UpdateFromVersion = package.ActiveVersion.Version };
             _page = SettingsPage.InstalledWidgetUpdate;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task ReviewWidgetUpdateAsync(CancellationToken cancellationToken)
@@ -1926,7 +1944,7 @@ public sealed partial class SettingsWidget : Widget
             };
             _page = SettingsPage.InstalledWidgetVersionRemoval;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void CancelVersionRemoval()
@@ -1937,7 +1955,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = _installedState with { VersionRemoval = null };
             _page = SettingsPage.InstalledWidgetVersions;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task RemoveSelectedVersionAsync(CancellationToken cancellationToken)
@@ -1981,7 +1999,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = transition.State;
             _page = transition.Page;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private void ChangeInstalledVersionPage(int delta)
@@ -1993,7 +2011,7 @@ public sealed partial class SettingsWidget : Widget
             _installedState = SettingsInstalledWidgetPolicy.ChangeVersionPage(
                 _installedState, delta);
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task SelectInstalledVersionAsync(int index, CancellationToken cancellationToken)
@@ -2059,7 +2077,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation("Version change failed (access_denied)", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
     }
 
     private async Task ToggleSelectedBuiltInWidgetAsync(CancellationToken cancellationToken)
@@ -2151,7 +2169,7 @@ public sealed partial class SettingsWidget : Widget
             SetOperation("Widget change failed (access_denied)", busy: false, error: true);
             return;
         }
-        Invalidate();
+        PublishSettingsChanged();
         await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
         await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }

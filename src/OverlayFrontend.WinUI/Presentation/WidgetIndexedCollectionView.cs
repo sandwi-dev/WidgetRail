@@ -117,6 +117,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
                 view.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
                 view.Footer = null;
                 view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged;
+                view.SizeChanged -= NativeViewportSizeChanged;
             }
             view = layout.Kind == CollectionLayoutKind.AdaptiveGrid ? new GridView() : new ListView();
             view.UseSystemFocusVisuals = false;
@@ -136,6 +137,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
                 ? "WidgetIndexedGridPanel" : axis == ScrollAxis.Horizontal ? "WidgetIndexedHorizontalPanel" : "WidgetIndexedVerticalPanel"];
             view.ItemClick += Clicked;
             view.ContainerContentChanging += ContainerChanged;
+            view.SizeChanged += NativeViewportSizeChanged;
             view.Loaded += (_, _) => UpdateGridWidth();
             Content = view;
         }
@@ -374,7 +376,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         CancelNavigation();
         RetireViewRows();
         DetachItems();
-        if (view is not null) { view.Footer = null; view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; }
+        if (view is not null) { view.Footer = null; view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.SizeChanged -= NativeViewportSizeChanged; }
         DetachContainers(); Content = null;
         if (source is not null) RetireSource(source);
         await Task.WhenAll(retiring.ToArray());

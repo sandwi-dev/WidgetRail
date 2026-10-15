@@ -24,13 +24,11 @@ internal enum SettingsPreferenceKind
     ModalAnimation,
     AnimationSpeedDecrease,
     AnimationSpeedIncrease,
-    WidgetSwitcher,
     OverlayPosition,
     Theme,
     MotionChoice,
     ContrastChoice,
     PositionChoice,
-    SwitcherChoice,
 }
 
 internal readonly record struct SettingsPreferenceMutation(
@@ -45,8 +43,7 @@ internal readonly record struct SettingsPreferenceMutation(
     WidgetModalAnimation? ModalAnimation = null,
     MotionPreference? Motion = null,
     ContrastPreference? Contrast = null,
-    OverlayPosition? Position = null,
-    WidgetSwitcherLayout? Switcher = null)
+    OverlayPosition? Position = null)
 {
     public bool IsScale => Kind is SettingsPreferenceKind.TextDecrease or SettingsPreferenceKind.TextIncrease
         or SettingsPreferenceKind.InterfaceDecrease or SettingsPreferenceKind.InterfaceIncrease;
@@ -176,11 +173,6 @@ internal readonly record struct SettingsPreferenceMutation(
             WidgetAnimationSpeed = Step(appearance.WidgetAnimationSpeed, 0.25,
                 AppearanceSettings.MinimumWidgetAnimationSpeed, AppearanceSettings.MaximumWidgetAnimationSpeed),
         },
-        SettingsPreferenceKind.WidgetSwitcher => appearance with
-        {
-            WidgetSwitcher = appearance.WidgetSwitcher == WidgetSwitcherLayout.Rail
-                ? WidgetSwitcherLayout.Radial : WidgetSwitcherLayout.Rail,
-        },
         SettingsPreferenceKind.Theme when ThemeId is not null && ThemeVersion is not null =>
             appearance with { ThemeId = ThemeId, ThemeVersion = ThemeVersion },
         SettingsPreferenceKind.OverlayPosition => appearance with
@@ -195,7 +187,6 @@ internal readonly record struct SettingsPreferenceMutation(
         SettingsPreferenceKind.MotionChoice when Motion is { } motion => appearance with { Motion = motion },
         SettingsPreferenceKind.ContrastChoice when Contrast is { } contrast => appearance with { Contrast = contrast },
         SettingsPreferenceKind.PositionChoice when Position is { } position => appearance with { OverlayPosition = position },
-        SettingsPreferenceKind.SwitcherChoice when Switcher is { } switcher => appearance with { WidgetSwitcher = switcher },
         _ => appearance,
     };
 
@@ -236,8 +227,6 @@ internal static class SettingsPreferencePolicy
             "position.choose.center" => new(SettingsPreferenceKind.PositionChoice, "Position saved", Position: OverlayPosition.Center),
             "position.choose.left" => new(SettingsPreferenceKind.PositionChoice, "Position saved", Position: OverlayPosition.BottomLeft),
             "position.choose.right" => new(SettingsPreferenceKind.PositionChoice, "Position saved", Position: OverlayPosition.BottomRight),
-            "switcher.choose.radial" => new(SettingsPreferenceKind.SwitcherChoice, "Switcher saved", Switcher: WidgetSwitcherLayout.Radial),
-            "switcher.choose.rail" => new(SettingsPreferenceKind.SwitcherChoice, "Switcher saved", Switcher: WidgetSwitcherLayout.Rail),
             "text.decrease" => new(SettingsPreferenceKind.TextDecrease, "Text size saved"),
             "text.increase" => new(SettingsPreferenceKind.TextIncrease, "Text size saved"),
             "interface.decrease" => new(
@@ -261,7 +250,6 @@ internal static class SettingsPreferencePolicy
             "transparency.reduced" => new(
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
-            "widget-switcher.toggle" => new(SettingsPreferenceKind.WidgetSwitcher, "Widget switcher layout saved"),
             "focus-animation.settle" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
                 FocusAnimation: WidgetFocusAnimation.Settle),
             "focus-animation.fade" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",

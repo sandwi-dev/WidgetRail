@@ -103,3 +103,9 @@ when a notification is stale. `BannerOnly` and `Informational` notifications
 cannot carry `OpenIntent`. Omitting the property retains Open widget behavior.
 Older hosts reject the new field rather than silently executing different
 navigation; authors should target a host release supporting notification intents.
+
+## Widget icon badges
+
+Pending entries also contribute to the owning widget's rail and radial badge.
+Banner-only entries do not. See [widget activity and icon badges](widget-activity.md)
+for display priority, automatic audio detection and ordinary-widget reporting.

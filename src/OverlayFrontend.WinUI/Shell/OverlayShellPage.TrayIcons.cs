@@ -11,7 +11,14 @@ internal sealed partial class OverlayShellPage
     {
         var host = (ContentControl)sender;
         if (host.Content is not WidgetCatalogItemContent)
-            host.Content = new WidgetCatalogItemContent(ResolveTrayIconAsync) { ShowLabel = false };
+        {
+            var tile = new WidgetCatalogItemContent(ResolveTrayIconAsync) { ShowLabel = false };
+            tile.Loaded += (_, _) => { statusTiles.Add(tile); QueueWidgetStatusRefresh(); };
+            tile.Unloaded += (_, _) => statusTiles.Remove(tile);
+            tile.DataContextChanged += (_, _) => QueueWidgetStatusRefresh();
+            host.Content = tile;
+        }
+        QueueWidgetStatusRefresh();
         ((WidgetCatalogItemContent)host.Content).IconSize = RailIconSize;
         ((WidgetCatalogItemContent)host.Content).TileSize = railGeometry.TileSize > 0 ? railGeometry.TileSize : 64;
         ((WidgetCatalogItemContent)host.Content).SetItem(host.DataContext as BridgeWidgetDescriptor);

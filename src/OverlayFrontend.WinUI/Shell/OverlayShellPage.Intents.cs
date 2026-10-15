@@ -107,7 +107,9 @@ internal sealed partial class OverlayShellPage
                     }
                     else
                     {
-                        await SelectAsync(selected, preserveIntent: true);
+                        await SelectAsync(selected, preserveIntent: true,
+                            beforeReveal: async (frame, token) => completion = await session.CommitIntentAsync(prepared, frame, token),
+                            selectionCancellation: cancellation.Token);
                         cancellation.Token.ThrowIfCancellationRequested();
                         if (retired || !visible || !foreground || activeWidget != selected || surface?.CurrentBinding is not { } destination)
                             return false;

@@ -24,14 +24,7 @@ internal sealed partial class OverlayShellPage
     {
         if (retired) return;
         RefreshNotificationBell();
-    }
-
-    private async Task StopBrowserWidgetAsync(WidgetRail.WidgetBridge.BridgeWidgetDescriptor widget)
-    {
-        if (browserOwner?.HasRunningSession(widget.Id) != true) return;
-        if (await ShowHostChoiceAsync("Stop webapp session?", $"{widget.Name}\n\nThis ends its calls and connections. Saved login data is kept.",
-            (HostDialogChoice[])[new("stop", "Stop session")], lifetime.Token) == "stop")
-            await browserOwner.StopWidgetSessionsAsync(widget.Id);
+        QueueWidgetStatusRefresh();
     }
 
     private Task<string?> ShowBrowserChoiceAsync(Browser.BrowserSurface browser, string title, string message,

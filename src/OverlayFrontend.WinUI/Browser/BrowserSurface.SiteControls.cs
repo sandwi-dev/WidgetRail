@@ -44,9 +44,8 @@ internal sealed partial class BrowserSurface
                 choices.AddRange(new[] { ("ask", "Ask each time", BrowserPopupPlacement.Ask), ("widget", "Open in widget", BrowserPopupPlacement.InWidget), ("pin", "Open pinned", BrowserPopupPlacement.Pinned) }
                     .Select((p, i) => new HostDialogChoice("windows." + p.Item1, p.Item2 + (placement == p.Item3 ? " (selected)" : ""), Group: i == 0 ? "New windows" : null)));
             }
-            choices.Add(new("clear", "Clear website data for this profile", Group: "Data and session"));
+            choices.Add(new("clear", "Clear website data for this profile", Group: "Data"));
             if (downloads.Count != 0) choices.Add(new("downloads", $"Downloads ({downloads.Count})"));
-            if (ChangeRunning is not null) choices.Add(new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)"));
             var selection = await choose(this, "Website settings", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", choices, token, focusFirstChoice: true);
             token.ThrowIfCancellationRequested();
             if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
@@ -58,13 +57,6 @@ internal sealed partial class BrowserSurface
                 return;
             }
             BrowserProfileChange? change = null;
-            if (selection == "session" && ChangeRunning is { } run)
-            {
-                if (sessionStopped) await run(this, true);
-                else if (await choose(this, "Stop webapp session?", "This ends calls and connections. Saved login data is kept.",
-                    (HostDialogChoice[])[new("stop", "Stop session")], token) == "stop") await run(this, false);
-                return;
-            }
             if (selection?.StartsWith("permission.", StringComparison.Ordinal) == true && int.TryParse(selection[11..], out var index) && index >= 0 && index < WebsitePermissions.Length)
             {
                 var permission = WebsitePermissions[index];

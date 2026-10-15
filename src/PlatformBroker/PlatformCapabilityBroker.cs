@@ -133,6 +133,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly PermissionCapabilityDomain _permissionDomain;
     private readonly MarketplaceCapabilityDomain _marketplaceDomain;
     private readonly NotificationCapabilityDomain _notificationDomain;
+    private readonly ActivityCapabilityDomain _activityDomain;
     private readonly object _gate = new();
     private readonly List<BrokerEventSubscription> _subscriptions = [];
     private readonly HashSet<RequestLease> _requestLeases = [];
@@ -166,7 +167,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         IAppLibrarySavedIdIssuer appLibrarySavedIdIssuer,
         AppLibraryArtworkRegistry.AppLibraryArtworkSession? appLibraryArtwork = null,
         Func<MarketplaceCommand,CancellationToken,ValueTask<MarketplaceSnapshot>>? marketplace = null,
-        Func<WidgetNotificationCommand, CancellationToken, ValueTask<WidgetNotificationReceipt>>? notifications = null)
+        Func<WidgetNotificationCommand, CancellationToken, ValueTask<WidgetNotificationReceipt>>? notifications = null,
+        Func<WidgetActivity, CancellationToken, ValueTask<WidgetActivityReceipt>>? activity = null)
     {
         _identity = authenticatedIdentity ?? throw new ArgumentNullException(nameof(authenticatedIdentity));
         _identity.Validate();
@@ -199,6 +201,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _permissionDomain = new(_identity, _declaredCapabilities, _consentStore, RefreshConsentAsync);
         _marketplaceDomain = new(marketplace);
         _notificationDomain = new(notifications);
+        _activityDomain = new(activity);
         _backend.EventPublished += OnBackendEvent;
     }
 
@@ -355,6 +358,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         var requestToken = lease.Token;
         return BrokerCapabilityDomains.Resolve(request.CapabilityId) switch
         {
+            BrokerCapabilityDomain.Activity => await _activityDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Notifications => await _notificationDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Permissions => await _permissionDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Marketplace => await _marketplaceDomain.ExecuteAsync(request.Operation,request.Payload,requestToken).ConfigureAwait(false),

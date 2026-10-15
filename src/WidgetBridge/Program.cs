@@ -59,7 +59,9 @@ internal static class Program
                 Path.Combine(settingsPaths.RootDirectory, "consent"));
             await PrepareBundledPermissionsAsync(trustedCatalog.Catalog, consentStore, shutdown.Token)
                 .ConfigureAwait(false);
-            var catalog = trustedCatalog.Catalog.WithWidgetSettings(initialSettings.BuiltInWidgets);
+            var stopState = new WidgetStopStateStore(settingsPaths);
+            var catalog = trustedCatalog.Catalog.WithWidgetSettings(initialSettings.BuiltInWidgets)
+                .WithStoppedWidgets(await stopState.LoadAsync(shutdown.Token).ConfigureAwait(false));
             mediaDiagnostics.RecordBridgeStartupPhase(
                 "trusted-catalog-ready",
                 (long)Stopwatch.GetElapsedTime(trustedCatalogStarted).TotalMilliseconds);
@@ -74,7 +76,7 @@ internal static class Program
                     await PrepareBundledPermissionsAsync(loaded.Catalog, consentStore, cancellationToken)
                         .ConfigureAwait(false);
                     var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-                    return loaded with { Catalog = loaded.Catalog.WithWidgetSettings(settings.BuiltInWidgets) };
+                    return loaded with { Catalog = loaded.Catalog.WithWidgetSettings(settings.BuiltInWidgets).WithStoppedWidgets(await stopState.LoadAsync(cancellationToken).ConfigureAwait(false)) };
                 },
                 catalogLoadObserved: mediaDiagnostics.RecordInstalledCatalogLoad,
                 initialWidgetRejections: trustedCatalog.WidgetRejections,

@@ -390,6 +390,8 @@ public static partial class WidgetManifestValidator
         Action<string, string, string> add)
     {
         if (icon is null) return;
+        if (icon.Catalog is not null)
+            add(path, "catalog_icon_not_allowed", "Manifest icons must belong to their own package.");
         if (!IsPackageIconAssetId(icon.AssetId))
             add($"{path}.assetId", "invalid_icon_asset_id",
                 "Package icon asset ID is invalid.");
@@ -410,7 +412,7 @@ public static partial class WidgetManifestValidator
         !value.Contains('\\') &&
         !value.Split('/').Any(segment => segment is ".." or "." or "");
 
-    private static bool IsPackageIdentity(string? value) =>
+    public static bool IsPackageIdentity(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&
         value.Length <= ProtocolConstants.MaximumCapabilityIdLength &&
         !ContainsUnsafeText(value) &&

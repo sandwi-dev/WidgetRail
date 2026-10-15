@@ -12,11 +12,11 @@ internal sealed partial class OverlayShellPage
         {
             var checks = new List<string>();
             var sequences = new List<object>();
-            var original = Appearance.WidgetSwitcher;
+
             try
             {
                 if (startup is not null) await startup;
-                Appearance = Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
+
                 await SelectAsync("games-apps", true);
                 await Until(() => MainFocusEnabled && ownsForeground() && !trayGuide.HasPendingHints);
                 await Task.Delay(180);
@@ -28,7 +28,7 @@ internal sealed partial class OverlayShellPage
                 Write(true, null);
             }
             catch (Exception error) { Write(false, error.ToString()); }
-            finally { Appearance = Appearance with { WidgetSwitcher = original }; }
+
 
             async Task Handoff(bool radial, int cycle)
             {

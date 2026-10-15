@@ -60,18 +60,20 @@ public sealed class WidgetPackageInstaller
     internal async Task<InstalledWidgetVersion> InstallAsync(
         Stream packageStream,
         Func<WidgetPackageInspection, CancellationToken, Task> prePublish,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<InstalledWidgetVersion, CancellationToken, Task>? beforePublication = null)
     {
         ArgumentNullException.ThrowIfNull(packageStream);
         ArgumentNullException.ThrowIfNull(prePublish);
         using var archive = OpenArchive(packageStream);
-        return await InstallArchiveAsync(archive, prePublish, cancellationToken);
+        return await InstallArchiveAsync(archive, prePublish, cancellationToken, beforePublication);
     }
 
     private async Task<InstalledWidgetVersion> InstallArchiveAsync(
         ZipArchive archive,
         Func<WidgetPackageInspection, CancellationToken, Task>? prePublish,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<InstalledWidgetVersion, CancellationToken, Task>? beforePublication = null)
     {
         Directory.CreateDirectory(_root);
         Directory.CreateDirectory(_packagesRoot);
@@ -119,13 +121,18 @@ public sealed class WidgetPackageInstaller
                     "version_already_installed",
                     $"{stagedInspection.Id} {stagedInspection.Manifest.Version} is already installed; installed versions are immutable.");
 
-            Directory.Move(stage, destination);
-            return new InstalledWidgetVersion(
+            var installed = new InstalledWidgetVersion(
                 stagedInspection.Id,
                 stagedInspection.Version,
                 destination,
                 stagedManifest,
                 contentDigest);
+            if (beforePublication is not null)
+                await beforePublication(installed, cancellationToken).ConfigureAwait(false);
+            // Once final preparation has committed, finish publication. A late
+            // cancellation must not strand a successfully prepared settings copy.
+            Directory.Move(stage, destination);
+            return installed;
         }
         finally
         {

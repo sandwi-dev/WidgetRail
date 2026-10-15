@@ -50,12 +50,12 @@ public sealed class LocalWidgetInstallTests
             var install = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallRequest>(request.Payload);
             Assert.AreEqual(update ? new string('d',64) : null, install.Origin.UpdateTargetHash);
             Assert.AreEqual("widgetrail.firstparty.settings", install.Origin.PackageId);
-            await Event(channel, install.OperationId, "installed-disabled");
+            await Event(channel, install.OperationId, "installed");
             await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
         }, async (session, frame) =>
         {
             var result = await session.InstallLocalWidgetAsync(frame, action, PackagePath, (_, _) => throw new AssertFailedException("Unexpected review"));
-            Assert.AreEqual("installed-disabled", result.Status);
+            Assert.AreEqual("installed", result.Status);
         }, action);
     }
 
@@ -73,14 +73,14 @@ public sealed class LocalWidgetInstallTests
             Assert.AreEqual(BridgeMessageTypes.ApproveLocalWidgetPackageInstall, request.Type);
             Assert.AreEqual(approved, request.Payload.GetProperty("approved").GetBoolean());
             await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { approved = true });
-            await Event(channel, id, approved ? "installed-disabled" : "cancelled");
+            await Event(channel, id, approved ? "installed" : "cancelled");
         }, async (session, frame) =>
         {
             var reviews = 0;
             var result = await session.InstallLocalWidgetAsync(frame, Action, PackagePath, (package, _) =>
             { reviews++; Assert.AreEqual("fixture.widget", package.WidgetId); return Task.FromResult(approved); });
             Assert.AreEqual(1, reviews);
-            Assert.AreEqual(approved ? "installed-disabled" : "cancelled", result.Status);
+            Assert.AreEqual(approved ? "installed" : "cancelled", result.Status);
         });
     }
 

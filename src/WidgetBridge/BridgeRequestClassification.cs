@@ -29,6 +29,8 @@ internal enum BridgeRequestKind
     ResolveEmbeddedMedia,
     EmbeddedMediaPlaybackEvent,
     RestartWidget,
+    StopWidget,
+    StartWidget,
     SetWidgetLifecycle,
     BrowserRetention,
     Action,
@@ -78,7 +80,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
-            BridgeRequestKind.RestartWidget or
+            BridgeRequestKind.RestartWidget or BridgeRequestKind.StopWidget or BridgeRequestKind.StartWidget or
             BridgeRequestKind.SetWidgetLifecycle or BridgeRequestKind.BrowserRetention or
             BridgeRequestKind.PrepareIntent or BridgeRequestKind.CommitIntent or BridgeRequestKind.CancelIntent or BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
@@ -100,7 +102,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
-            BridgeRequestKind.RestartWidget or
+            BridgeRequestKind.RestartWidget or BridgeRequestKind.StopWidget or BridgeRequestKind.StartWidget or
             BridgeRequestKind.SetWidgetLifecycle or BridgeRequestKind.BrowserRetention or
             BridgeRequestKind.PrepareIntent or BridgeRequestKind.CommitIntent or BridgeRequestKind.CancelIntent or BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
@@ -181,6 +183,8 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.ResolvePackageIcon => PackageIcon(request.Payload),
                 BridgeMessageTypes.ResolveEmbeddedMedia => EmbeddedMedia(request.Payload),
                 BridgeMessageTypes.EmbeddedMediaPlaybackEvent => EmbeddedMediaEvent(request.Payload),
+                BridgeMessageTypes.StopWidget => Widget(BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId, BridgeRequestKind.StopWidget),
+                BridgeMessageTypes.StartWidget => Widget(BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId, BridgeRequestKind.StartWidget),
                 BridgeMessageTypes.RestartWidget => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.RestartWidget),
@@ -357,9 +361,9 @@ internal static class BridgeRequestClassifier
         if (!BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration) ||
             !BridgeRequestKey.IsBoundedIdentifier(request.PresentationGeneration) ||
             !WidgetManifestValidator.IsPackageIconAssetId(request.AssetId) ||
-            !IsSha256(request.PackageContentDigest) ||
-            !IsSha256(request.SourceSha256) ||
-            !IsSha256(request.NormalizedSha256))
+            (request.Catalog is null
+                ? !IsSha256(request.PackageContentDigest) || !IsSha256(request.SourceSha256) || !IsSha256(request.NormalizedSha256)
+                : !WidgetCatalogIconValidation.IsValid(request.Catalog)))
             throw new BridgeProtocolException(
                 "Package icon request authority is invalid.");
         return key;

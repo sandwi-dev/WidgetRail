@@ -188,8 +188,7 @@ internal sealed partial class OverlayShellPage
                 var target = Element(id) as Control ?? throw new InvalidOperationException("Missing focus target " + id);
                 await Until(() => target.Focus(FocusState.Keyboard));
                 await Task.Delay(100);
-                var cancelSwitcher = Appearance.WidgetSwitcher;
-                Appearance = Appearance with { WidgetSwitcher = WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial };
+
                 var unchangedInstance = surface!.CurrentBinding!.Frame.Authority.WidgetInstanceId;
                 var unchangedPresenter = surface;
                 PrepareRadialBackEntry(); SetInteractive(false); FocusTray();
@@ -202,7 +201,7 @@ internal sealed partial class OverlayShellPage
                 Check(activeWidget == widgetId && ReferenceEquals(surface, unchangedPresenter) &&
                     surface!.CurrentBinding!.Frame.Authority.WidgetInstanceId == unchangedInstance,
                     label + " radial cancel restores the same control without recreating the widget");
-                Appearance = Appearance with { WidgetSwitcher = cancelSwitcher };
+
                 for (var cycle = 0; cycle < 2; ++cycle)
                 {
                     var trayTransfers = 0;
@@ -235,13 +234,14 @@ internal sealed partial class OverlayShellPage
                 // Physical switching previews a visible (noninteractive) widget
                 // before A enters it. Direct SelectAsync(id, true) skips this.
                 var other = widgetId == "media-sessions" ? "widgetrail.samples.sdk-gallery" : "media-sessions";
-                var originalSwitcher = Appearance.WidgetSwitcher;
-                foreach (var switcher in new[] { WidgetRail.PlatformSettings.WidgetSwitcherLayout.Rail, WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial })
+
+                foreach (var switcher in new[] { "rail", "radial" })
                 {
-                    Appearance = Appearance with { WidgetSwitcher = switcher };
+                    radialRequested = false;
                     foreach (var destination in new[] { other, widgetId })
                     {
-                        PrepareRadialBackEntry(); SetInteractive(false); FocusTray();
+                        if (switcher == "radial") PrepareRadialBackEntry(); else radialRequested = false;
+                        SetInteractive(false); FocusTray();
                         await SelectAsync(destination, false);
                         await Until(() => !switching && !interactive && FocusedTrayWidget()?.Id == destination);
                         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
@@ -252,7 +252,7 @@ internal sealed partial class OverlayShellPage
                     catch (TimeoutException error) { throw new InvalidOperationException(label + " " + switcher + " preview-then-enter: " + surface?.FocusDiagnostics(), error); }
                     Check(true, label + " restores after " + switcher + " preview then controller A entry");
                 }
-                Appearance = Appearance with { WidgetSwitcher = originalSwitcher };
+
             }
             string FocusId() => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused
                 ? AutomationProperties.GetAutomationId(focused) : string.Empty;

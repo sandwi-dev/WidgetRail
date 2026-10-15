@@ -19,12 +19,14 @@ internal enum BrokerCapabilityDomain
     Permissions,
     Marketplace,
     Notifications,
+    Activity,
 }
 
 internal static class BrokerCapabilityDomains
 {
     internal static BrokerCapabilityDomain Resolve(string capabilityId)
     {
+        if (capabilityId == PlatformCapabilities.WidgetActivityV1) return BrokerCapabilityDomain.Activity;
         if (capabilityId == PlatformCapabilities.WidgetNotificationsV1) return BrokerCapabilityDomain.Notifications;
         if (capabilityId == PlatformCapabilities.WidgetPermissionsV1) return BrokerCapabilityDomain.Permissions;
         if (capabilityId == PlatformCapabilities.WidgetMarketplaceV1) return BrokerCapabilityDomain.Marketplace;

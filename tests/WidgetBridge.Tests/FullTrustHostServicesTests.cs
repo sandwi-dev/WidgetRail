@@ -14,6 +14,7 @@ internal static class FullTrustHostServicesTests
         var backend = new SimulatedPlatformBrokerBackend { TaskWindows = [new("fixture", "Owned fixture", "Synthetic", false)] };
         string[] capabilities = [PlatformCapabilities.TaskWindowsReadV1, PlatformCapabilities.ProviderDocumentsV1];
         var notification = new TaskCompletionSource<WidgetNotificationCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var activity = new TaskCompletionSource<WidgetActivity>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var client = new WidgetProcessClient(new WidgetProcessOptions
         {
             ExecutablePath = Environment.ProcessPath!, WidgetInstanceId = identity.InstanceId,
@@ -21,7 +22,8 @@ internal static class FullTrustHostServicesTests
             ConnectTimeout = TimeSpan.FromSeconds(5), RequestTimeout = TimeSpan.FromSeconds(5),
             CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(identity.PackageId, identity.PublisherId,
                 identity.InstanceId, capabilities, consent, backend, context,
-                notifications: (command, _) => { notification.TrySetResult(command); return ValueTask.FromResult(new WidgetNotificationReceipt(true)); })
+                notifications: (command, _) => { notification.TrySetResult(command); return ValueTask.FromResult(new WidgetNotificationReceipt(true)); },
+                activity: (value, _) => { if (value.Recording && !value.LocalAudio) activity.TrySetResult(value); return ValueTask.FromResult(new WidgetActivityReceipt(true)); })
         });
         try
         {
@@ -32,6 +34,7 @@ internal static class FullTrustHostServicesTests
             await client.SendActionAsync(new("notify", "notify"));
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
             var delivered = await notification.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            _ = await activity.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (delivered.Notification?.Title != "Background fixture") throw new InvalidOperationException("Full-trust notification did not cross its authenticated broker.");
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
             await Probe("probe", "allowed");
@@ -76,6 +79,9 @@ internal static class FullTrustHostServicesTests
                     await Task.Delay(500, context.CancellationToken);
                     await HostServices.Notifications.ShowAsync(new("background", "Background fixture")
                     { Retention = WidgetNotificationRetention.BannerOnly }, context.CancellationToken);
+                    await HostServices.Activity.SetAsync("player", new(LocalAudio: true), context.CancellationToken);
+                    await HostServices.Activity.SetAsync("recorder", new(Recording: true), context.CancellationToken);
+                    await HostServices.Activity.ClearAsync("player", context.CancellationToken);
                 }, WidgetOperationLifetime.Widget);
                 return;
             }

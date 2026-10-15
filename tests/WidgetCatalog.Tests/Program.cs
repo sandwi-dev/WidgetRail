@@ -1,3 +1,4 @@
+using WidgetRail.PlatformBroker;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -9,6 +10,8 @@ var allTests = new (string Name, Func<Task> Run)[]
 {
     ("Package SVG icons normalize a bounded static subset and reject active content",
         PackageSvgIconCatalogTests.Run),
+    ("Reviewed updates keep only settings across exact package authorities", ReviewedSettingsContinuity),
+    ("Settings transfer preserves existing values and clear markers and fails closed", SettingsTransferSafety),
     ("Install and discovery are deterministic across IDs and versions", InstallAndDiscover),
     ("Enable and order state persists atomically", StatePersists),
     ("Version pins are disabled-only and schema-one state migrates", VersionPinningAndMigration),
@@ -72,6 +75,81 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task ReviewedSettingsContinuity()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    const string id = "dev.test.settings";
+    var old = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0"));
+    await catalog.SetEnabledAsync(id, true);
+    var stateRoot = Path.Combine(temp.Path, "state");
+    var store = new PrivateStateStore(stateRoot);
+    var oldIdentity = new BrokerWidgetIdentity(id, InstalledWidgetAuthority.PublisherId(old), "old");
+    var json = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"Enabled\":true,\"SetupSeen\":true}"));
+    await store.WriteAsync(oldIdentity, new(json, 0), default);
+    var package = CreatePackage(temp.Path, id, "dev.test", "2.0.0");
+    var target = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id)));
+    await using (var rejected = File.OpenRead(package))
+        await Assert.ThrowsAsync<InvalidOperationException>(() => catalog.UpdateFromFileAsync(rejected, target,
+            WidgetPackageTrustApproval.None, (_, _) => throw new InvalidOperationException("not approved"),
+            default, new WidgetSettingsTransfer(stateRoot).CopyAsync));
+    Assert.Equal(1, Directory.GetFiles(stateRoot, "*.json").Length);
+    await using (var failedSettings = File.OpenRead(package))
+        await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.UpdateFromFileAsync(failedSettings, target,
+            WidgetPackageTrustApproval.None, (_, _) => Task.CompletedTask, default,
+            (_, _, _) => throw new WidgetPackageException("settings_transfer_failed", "fixture")));
+    Assert.Equal(1, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Failed settings preparation disabled the widget.");
+    await using var input = File.OpenRead(package);
+    var next = await catalog.UpdateFromFileAsync(input, target, WidgetPackageTrustApproval.None,
+        (_, _) => Task.CompletedTask, default, new WidgetSettingsTransfer(stateRoot).CopyAsync);
+    var nextIdentity = new BrokerWidgetIdentity(id, InstalledWidgetAuthority.PublisherId(next), "new");
+    Assert.True(nextIdentity.PublisherId != oldIdentity.PublisherId, "Update reused security authority.");
+    Assert.Equal(json, (await store.ReadAsync(nextIdentity, default)).CanonicalJsonBase64);
+    Assert.Equal(json, (await store.ReadAsync(oldIdentity, default)).CanonicalJsonBase64);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Update disabled the widget.");
+    // Raw install has no preference-transfer grant, even for the same manifest publisher/ID.
+    await catalog.SetEnabledAsync(id, false);
+    var raw = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "3.0.0"));
+    Assert.True(!(await store.ReadAsync(new(id, InstalledWidgetAuthority.PublisherId(raw), "raw"), default)).Exists,
+        "Unreviewed install inherited settings.");
+}
+
+static async Task SettingsTransferSafety()
+{
+    using var temp = new TemporaryDirectory();
+    var store = new PrivateStateStore(temp.Path);
+    var source = new BrokerWidgetIdentity("dev.test.widget", "unsigned." + new string('a', 64), "one");
+    var dest = source with { PublisherId = "unsigned." + new string('b', 64) };
+    var value = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"enabled\":true}"));
+    await store.WriteAsync(source, new(value, 0), default);
+    await store.ClearAsync(dest, new(0), default);
+    await store.CopyIfAbsentAsync(source, dest, default);
+    var cleared = await store.ReadAsync(dest, default);
+    Assert.True(!cleared.Exists && cleared.Revision == 1, "Transfer resurrected cleared state.");
+    var existing = source with { PublisherId = "unsigned." + new string('c', 64) };
+    var otherValue = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"enabled\":false}"));
+    await store.WriteAsync(existing, new(otherValue, 0), default);
+    await store.CopyIfAbsentAsync(source, existing, default);
+    Assert.Equal(otherValue, (await store.ReadAsync(existing, default)).CanonicalJsonBase64);
+    var otherWidget = dest with { PackageId = "dev.test.other" };
+    await Assert.ThrowsAsync<BrokerException>(() => store.CopyIfAbsentAsync(source, otherWidget, default));
+    var fresh = source with { PublisherId = "unsigned." + new string('d', 64) };
+    using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() => store.CopyIfAbsentAsync(source, fresh, cancelled.Token));
+    Assert.True(!(await store.ReadAsync(fresh, default)).Exists, "Cancelled transfer wrote state.");
+    // Clearing the source is propagated without resurrecting its older preferences.
+    await store.ClearAsync(source, new(1), default);
+    await store.CopyIfAbsentAsync(source, fresh, default);
+    Assert.True(!(await store.ReadAsync(fresh, default)).Exists, "Source clear marker was ignored.");
+    var corrupt = source with { PublisherId = "unsigned." + new string('e', 64) };
+    var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(corrupt.PublisherId + "\0" + corrupt.PackageId))).ToLowerInvariant();
+    var corruptPath = Path.Combine(temp.Path, key + ".json");
+    await File.WriteAllTextAsync(corruptPath, "bad data");
+    await Assert.ThrowsAsync<BrokerException>(() => store.CopyIfAbsentAsync(source, corrupt, default));
+    Assert.Equal("bad data", await File.ReadAllTextAsync(corruptPath));
+}
 
 static async Task InstallAndDiscover()
 {

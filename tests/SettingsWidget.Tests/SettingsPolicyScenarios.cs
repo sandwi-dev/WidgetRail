@@ -49,13 +49,8 @@ internal static class SettingsPolicyScenarios
                 "open.app-library-sources", SettingsPage.Root, SettingsPage.Permissions, out _),
             "Navigation admitted the retired Game Sources page.");
 
-        Require(SettingsPreferencePolicy.TryCreate("widget-switcher.toggle", out var switcher),
-            "Widget switcher preference was not admitted.");
-        var rail = switcher.Apply(PlatformSettingsDocument.Default);
-        Equal(WidgetSwitcherLayout.Rail, rail.Appearance.WidgetSwitcher,
-            "Switcher preference did not select rail from the combined default.");
-        Equal(WidgetSwitcherLayout.Radial, switcher.Apply(rail).Appearance.WidgetSwitcher,
-            "Switcher preference did not return to the combined mode.");
+        foreach (var retired in new[] { "widget-switcher.toggle", "switcher.choose.rail", "switcher.choose.radial" })
+            Require(!SettingsPreferencePolicy.TryCreate(retired, out _), "Retired switcher actions must not mutate preferences.");
         Require(SettingsPreferencePolicy.TryCreate("text.increase", out var increase),
             "Text preference was not admitted.");
         Require(SettingsPreferencePolicy.TryCreate("overlay-position.cycle", out var position),
@@ -65,8 +60,6 @@ internal static class SettingsPolicyScenarios
         {
             positioned = position.Apply(positioned);
             Equal(expected, positioned.Appearance.OverlayPosition, "Overlay position did not cycle correctly.");
-            Equal(PlatformSettingsDocument.Default.Appearance.WidgetSwitcher, positioned.Appearance.WidgetSwitcher,
-                "Position changed the independent switcher preference.");
         }
         var maximum = PlatformSettingsDocument.Default with
         {
@@ -334,10 +327,11 @@ internal static class SettingsPolicyScenarios
                 [new WidgetCatalogRepairCandidate(
                     "dev.test.widget", new Version(1, 0, 0), false, false)]),
             SettingsPage.InstalledWidgets).State;
+        var emptyList = new SettingsInstalledListView(UI.Stack("installed.fixture.empty"), "installed.fixture.empty", 0, null);
         var first = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
-            header, busy: true, failed);
+            header, busy: true, failed, emptyList);
         var second = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
-            header, busy: true, failed);
+            header, busy: true, failed, emptyList);
         Equal(SnapshotJson(first), SnapshotJson(second),
             "Installed snapshot presentation changed for the same immutable input.");
         var installed = first.CreateSnapshot("settings-policy", 1);
@@ -346,9 +340,9 @@ internal static class SettingsPolicyScenarios
             "Busy installed recovery remained actionable.");
 
         var readyFirst = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
-            header, busy: true, SettingsInstalledWidgetState.Empty);
+            header, busy: true, SettingsInstalledWidgetState.Empty, emptyList);
         var readySecond = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
-            header, busy: true, SettingsInstalledWidgetState.Empty);
+            header, busy: true, SettingsInstalledWidgetState.Empty, emptyList);
         Equal(SnapshotJson(readyFirst), SnapshotJson(readySecond),
             "Local-install presentation changed for the same immutable input.");
         var ready = readyFirst.CreateSnapshot("settings-policy", 1);

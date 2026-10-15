@@ -14,10 +14,10 @@ internal sealed partial class OverlayShellPage
 {
     private async Task VerifyTieredMenusAsync(Action<bool, string> check)
     {
-        var original = Appearance.WidgetSwitcher;
+
         try
         {
-            Appearance = Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
+
             await SelectAsync("webapp-a", enterWidget: false);
             radialRequested = false; RefreshRadialChooser(); FocusTray();
             await WebAppUntil(() => !interactive && FocusedTrayWidget()?.Id == "webapp-a");
@@ -37,8 +37,8 @@ internal sealed partial class OverlayShellPage
             var group = menu.Flyout.Items.OfType<MenuFlyoutSubItem>().Single(item => item.Text == "Widget");
             check(menu.Flyout.Items.OfType<MenuFlyoutSubItem>().Any(item => item.Text == "Preferences") &&
                 AutomationProperties.GetAutomationId(menu.Flyout.Items[^2]) == "Overlay.TrayCommand.Browser.Notifications" &&
-                AutomationProperties.GetAutomationId(menu.Flyout.Items[^1]) == "Overlay.TrayCommand.Browser.Stop",
-                "Tray groups preferences and keeps Notifications then Stop webapp session last");
+                AutomationProperties.GetAutomationId(menu.Flyout.Items[^1]) == "Overlay.TrayCommand.Widget.Stop",
+                "Tray groups preferences and keeps Notifications then Stop widget last");
             group.Focus(FocusState.Keyboard);
             Move(FocusNavigationDirection.Right);
             await WebAppUntil(() => group.Items.Any(item => item.FocusState == FocusState.Keyboard));
@@ -70,7 +70,7 @@ internal sealed partial class OverlayShellPage
         finally
         {
             CloseTrayMenu(false); FinishTrayReorder();
-            Appearance = Appearance with { WidgetSwitcher = original };
+
             radialRequested = false; RefreshRadialChooser();
             await SelectAsync("webapp-a", enterWidget: true);
             // Restore this fixture's browser starting point. Reorder deliberately

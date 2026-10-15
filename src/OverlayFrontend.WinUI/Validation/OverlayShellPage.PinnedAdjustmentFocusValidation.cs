@@ -14,10 +14,10 @@ internal sealed partial class OverlayShellPage
     // changes focus; it never invokes a Settings or provider action.
     private async Task ValidatePinnedAdjustmentFocusAsync(PinnedSurface current, Action<bool, string> check)
     {
-        var originalSwitcher = Appearance.WidgetSwitcher;
+
         try
         {
-            Appearance = Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
+
             await SelectAsync(current.WidgetId, enterWidget: false);
             PrepareRadialBackEntry(); RefreshRadialChooser(); FocusTray();
             await Until(() => RadialOpen && radialView?.Visibility == Visibility.Visible && !switching);
@@ -68,7 +68,7 @@ internal sealed partial class OverlayShellPage
         finally
         {
             CancelPinnedAdjustment();
-            Appearance = Appearance with { WidgetSwitcher = originalSwitcher };
+
             radialRequested = false;
             await SelectAsync(current.WidgetId, enterWidget: false);
             FocusTray();

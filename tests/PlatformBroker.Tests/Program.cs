@@ -6,6 +6,7 @@ using WidgetRail.PlatformBroker;
 var allTests = new (string Name, Func<Task> Run)[]
 {
     ("Widget notifications are intrinsic bounded and available in background", NotificationBrokerTests.Authority),
+    ("Widget activity is intrinsic scoped and clears", ActivityBrokerTests.Authority),
     ("Marketplace management is intrinsic narrow and cannot smuggle mutations through reads", MarketplaceBrokerTests.Authority),
     ("Permission requests bind declarations and persist only explicit host decisions", PermissionRequestTests.ConsentAsync),
     ("Permission prompts expire and cancel on interaction loss and worker retirement", PermissionRequestTests.LifetimeAsync),
@@ -95,7 +96,9 @@ var allTests = new (string Name, Func<Task> Run)[]
 
 var runningRegistrationOnly =
     args.Contains("--running-registration-only", StringComparer.Ordinal);
-var tests = args.Contains("--documents-only", StringComparer.Ordinal)
+var tests = args.Contains("--activity-only", StringComparer.Ordinal)
+    ? allTests.Where(test => test.Name.StartsWith("Widget activity", StringComparison.Ordinal) || test.Name.StartsWith("Widget notifications", StringComparison.Ordinal) || test.Run == CapabilityDomainAuthorityIsSingular || test.Run == CapabilityVocabularyIsClosed).ToArray()
+    : args.Contains("--documents-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name.StartsWith("Restricted documents", StringComparison.Ordinal) || test.Name.StartsWith("Provider attribution", StringComparison.Ordinal)).ToArray()
     : args.Contains("--capture-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name.StartsWith("Window capture", StringComparison.Ordinal)).ToArray()
@@ -147,7 +150,7 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(14, rootFields.Count(field =>
+    Assert.Equal(15, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
@@ -156,6 +159,7 @@ static Task CapabilityDomainAuthorityIsSingular()
         // is the explicit consent-management exception: tested separately for
         // requester scoping and host-only completion, never operation authorization.
         typeof(NotificationCapabilityDomain),
+        typeof(ActivityCapabilityDomain),
         typeof(DisplayProfilesCapabilityDomain),
         typeof(PowerCapabilityDomain),
         typeof(PerformanceCapabilityDomain),
@@ -457,7 +461,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(50, PlatformCapabilities.All.Count);
+    Assert.Equal(51, PlatformCapabilities.All.Count);
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceReadV1, out var performanceRead));
     Assert.Equal(BrokerCapabilityKind.Read, performanceRead.KindForOperation(PlatformCapabilities.PerformanceGet));
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceFpsControlV1, out var performanceControl));

@@ -29,7 +29,8 @@ internal sealed class BrokerWidgetProcessCompanion :
         Action<BrokerHostEffect>? hostEffectSink = null,
         Action<BrokerCapabilityDiagnostic>? diagnosticSink = null,
         Func<MarketplaceCommand,CancellationToken,ValueTask<MarketplaceSnapshot>>? marketplace = null,
-        Func<WidgetNotificationCommand, CancellationToken, ValueTask<WidgetNotificationReceipt>>? notifications = null)
+        Func<WidgetNotificationCommand, CancellationToken, ValueTask<WidgetNotificationReceipt>>? notifications = null,
+        Func<WidgetActivity, CancellationToken, ValueTask<WidgetActivityReceipt>>? activity = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         var identity = new BrokerWidgetIdentity(packageId, publisherId, instanceId);
@@ -49,13 +50,13 @@ internal sealed class BrokerWidgetProcessCompanion :
             backend,
             artworkRegistry ?? new AppLibraryArtworkRegistry(),
             isolatedClientAppContainerSid: context.AppContainerSid,
-            hostGrantedCapabilities: marketplace is null ? [PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1] :
-                [PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetMarketplaceV1],
+            hostGrantedCapabilities: marketplace is null ? [PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1] :
+                [PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetMarketplaceV1],
             hostEffectSink: null,
             diagnosticSink: diagnosticSink,
             contextualHostEffectSink: _hostEffects.Register,
             actionExecutionAdmission: _hostEffects.Admit,
-            marketplace: marketplace, notifications: notifications);
+            marketplace: marketplace, notifications: notifications, activity: activity);
         WorkerArguments =
         [
             "--broker-pipe", pipeName,

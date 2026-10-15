@@ -98,6 +98,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _appearance = appearance;
         _controllers = new BridgeControllerControl(settingsStore);
         _settingsRoot = settingsStore?.Paths.RootDirectory;
+        runtimeStopStore = settingsStore is null ? null : new WidgetStopStateStore(settingsStore.Paths);
         _appUpdates = appUpdates ?? BridgeAppUpdates.Create(_settingsRoot);
         _consentStore = consentStore;
         _platformBackend = platformBackend;
@@ -113,7 +114,14 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             PublishClientInvalidation,
             PublishClientActionFailure,
             PublishClientFailure,
-            lifetimeDiagnostic: lifetimeDiagnosticSink);
+            lifetimeDiagnostic: diagnostic =>
+            {
+                // Observational only: status cleanup never blocks worker retirement.
+                if (diagnostic.Process.StartOrdinal > 0 && diagnostic.Process.Kind is (WidgetProcessLifetimeEventKind.ProcessExited or WidgetProcessLifetimeEventKind.CooperativeUnloadCompleted))
+                    _ = SendEventAsync(BridgeMessageTypes.WidgetActivityRetired,
+                        new BridgeWidgetActivityRetired(diagnostic.WidgetId, new(diagnostic.RegistryGeneration, diagnostic.Process.StartOrdinal)));
+                lifetimeDiagnosticSink?.Invoke(diagnostic);
+            });
         _authorityRecovery = new BridgeAuthorityRecoveryProjection(
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(
@@ -130,7 +138,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             packageCatalog,
             _catalogMonitor);
         _marketplace = packageCatalog is null || _catalogMonitor is null ? null :
-            new BridgeWidgetMarketplace(packageCatalog, async token => { await _catalogMonitor.ReloadNowAsync(token).ConfigureAwait(false); });
+            new BridgeWidgetMarketplace(packageCatalog, async token => { await _catalogMonitor.ReloadNowAsync(token).ConfigureAwait(false); },
+                stateRoot: Path.Combine(_settingsRoot ?? Path.GetDirectoryName(packageCatalog.Root)!, "widget-state"), registry: _registry);
         _localPackageImport = _catalogMonitor is null
             ? null
             : new BridgeLocalWidgetPackageImportService(
@@ -139,7 +148,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 _catalogMonitor,
                 result => SendEventAsync(
                     BridgeMessageTypes.LocalWidgetPackageInstallCompleted,
-                    result));
+                    result),
+                stateRoot: Path.Combine(_settingsRoot ?? Path.GetDirectoryName(packageCatalog!.Root)!, "widget-state"));
         _diagnostics = new BridgeDiagnosticsProjection(
             new WidgetBridgeDiagnosticsSource(
                 _registry,
@@ -637,6 +647,11 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.ResolvePackageIcon:
         {
             var iconRequest = BridgeJson.FromElement<BridgePackageIconRequest>(request.Payload);
+            if (iconRequest.Catalog is not null)
+            {
+                await ResolveCatalogIconAsync(iconRequest, request.RequestId, cancellationToken).ConfigureAwait(false);
+                break;
+            }
             if (!BridgeRequestKey.IsBoundedIdentifier(iconRequest.WidgetId) ||
                 !BridgeRequestKey.IsBoundedIdentifier(iconRequest.RuntimeGeneration) ||
                 !BridgeRequestKey.IsBoundedIdentifier(iconRequest.PresentationGeneration) ||
@@ -708,6 +723,14 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(
                 BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.StopWidget:
+        case BridgeMessageTypes.StartWidget:
+        {
+            var change = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
+            await SetWidgetStoppedAsync(change.WidgetId, request.Type == BridgeMessageTypes.StopWidget, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { widgetId = change.WidgetId }, cancellationToken).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.RestartWidget:
@@ -975,7 +998,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             BridgeStalePinnedInputAuthorityException or
             BridgeStaleIndexedInputAuthorityException or BridgeStaleMediaAuthorityException or
             BridgeStaleArtworkAuthorityException or
-            BridgeStalePackageIconAuthorityException or
+            BridgeStalePackageIconAuthorityException or BridgeWidgetStoppedException or
             BridgeStalePresentationBaseException or JsonException)
         {
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
@@ -1048,6 +1071,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 BridgeStaleMediaAuthorityException media => media.Code,
                 BridgeStaleArtworkAuthorityException => "stale_artwork_authority",
                 BridgeStalePackageIconAuthorityException => "stale_package_icon_authority",
+                BridgeWidgetStoppedException => "widget_stopped",
                 _ => "request_failed",
             },
             SafeMessage(exception));
@@ -1363,6 +1387,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             diagnosticSink: diagnostic =>
                 _capabilityDiagnosticSink?.Invoke(configured.Id, diagnostic),
             notifications: (command, token) => PublishWidgetNotificationAsync(configured, command, token),
+            activity: (value, token) => PublishWidgetActivityAsync(configured, value, token),
             marketplace: IsTrustedMarketplace(configured) && _marketplace is not null ? HandleMarketplaceWidgetAsync : null);
     }
 

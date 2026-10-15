@@ -85,6 +85,7 @@ internal sealed partial class BridgeClientRegistry
                     if (registration.Client.Starts != workerStart)
                         throw new BridgeProtocolException("Indexed range worker instance changed.");
                     IndexedCollectionContract.ValidateRange(parent, request.Range, range);
+                    DemandPackageIconAuthority(registration.Configured, range.Items.Select(item => item.Root));
                     var result = lease.Map(_ => new BridgeIndexedRangeResponse(request.WidgetId, request.InstanceId,
                         request.RuntimeGeneration, request.PresentationGeneration, range));
                     lease = null;

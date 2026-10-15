@@ -66,6 +66,9 @@ internal static partial class SettingsPresentation
             if (selected.InstalledVersion is not null && (!upToDate || ready))
                 items.Add(UI.Button("Manage versions and permissions in Widgets", "marketplace.manage", "marketplace.manage").Classes("setting-row"));
         }
+        if (operation is { Kind: "download-updates" or "install-updates", State: "running" or "review" })
+            items.Add(UI.Button("Manage updates in Marketplace", "open.marketplace", "marketplace.batch.open")
+                .OpenIntent(WidgetIntentContracts.Marketplace, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget));
         if ((state.Error ?? operation?.Message) is { } message)
         {
             var ownerName = state.Snapshot.Items.FirstOrDefault(i => i.Id == operation?.PackageId)?.Name;

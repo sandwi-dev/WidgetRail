@@ -81,7 +81,7 @@ internal sealed partial class BridgeClientRegistry
             if (_intentTickets.Count + _activeIntentDeliveries.Count >= 16 && _intentTickets.Values.All(item => IntentFresh(item.CreatedAt, IntentNow())))
                 return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets
-                .Where(widget => !ticket.HostUpdate || widget.Id == "settings").SelectMany(widget =>
+                .Where(widget => !widget.IsStopped && (!ticket.HostUpdate || widget.Id == "settings")).SelectMany(widget =>
                 (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version)
                 .Select(handler => (new IntentHandlerCandidate(widget.Id, _catalogRevision + 1, CompiledWidgetIntentContract.Create(handler),
                     true, handler.SupportsPassiveDelivery), widget.CatalogFingerprint, handler.HasDynamicAvailability))).ToList();

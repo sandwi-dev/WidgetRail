@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.discord",
   "publisher": "widgetrail.samples",
   "name": "Discord",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "pinningSupported": true,
   "fullWidgetPinningSupported": true,
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
@@ -12,7 +12,8 @@
     "assembly": "payload/Discord.dll",
     "type": "widgetrail.samples.Discord.Discord"
   },
-  "presentation": { "icon": "connection" },
+  "presentation": { "icon": "connection", "packageIcon": { "assetId": "discord.mark", "colorMode": "originalColor" } },
+  "iconAssets": { "discord.mark": { "path": "assets/icons/discord.svg" } },
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 300 },

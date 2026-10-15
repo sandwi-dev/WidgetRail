@@ -22,7 +22,7 @@ release notes for features available in each downloadable preview.
 
 1. **Install WidgetRail.** Download an installer from [GitHub Releases](https://github.com/sandwi-dev/WidgetRail/releases). Choose **Production** for everyday use or **Developer** for additional SDK examples. Both editions include the CLI and widget templates.
 2. **Open the overlay.** Launch WidgetRail from the Start menu, then press **View + Menu** together (the default shortcut). Press again to hide it. Optional **F1** keyboard opening can be enabled in **Settings → Controllers → F1 keyboard shortcut**; it is off by default. Use the D-pad or left stick to navigate and A to select, or use the mouse.
-3. **Allow widget permissions.** Open **Settings → Widgets** and select a widget you want to use. If it requests access, open **Permissions & configuration** and allow the permissions it needs, such as audio controls for Audio Mixer. Enable the widget if it is disabled.
+3. **Use a widget and allow access when needed.** Widgets request permission when a feature needs it. You can review or revoke access in **Settings → Widgets → Permissions & configuration**, and enable any widget you previously disabled.
 4. **Disable widgets you do not need.** From a widget's details, choose **Disable widget** to remove it from the tray. You can enable it again later; Settings itself remains available.
 5. **Adjust the overlay.** Open **Settings → Overlay** and check **Interface size**, **Position**, and **Widget switcher**. Adjust the size to fit your display, and choose the layout you prefer. Startup at sign-in is offered by the installer.
 
@@ -96,9 +96,9 @@ Both installer editions include the following widgets:
 | **Settings** | Configure layout, appearance, accessibility, controllers, widgets, permissions, and diagnostics. |
 | **[Marketplace](docs/reference/widget-marketplace.md)** | Browse community widgets and review installations and updates. |
 
-Use **Settings → Widgets → Browse marketplace** to discover curated add-ons,
-review downloads and permissions, and install updates while retaining previous
-versions. See [Widget marketplace](docs/reference/widget-marketplace.md).
+Use **Marketplace**, also available from **Settings → Widgets**, to discover
+add-ons and manage their updates from one page. **Update all** verifies packages
+before one explicit review. See [Widget marketplace](docs/reference/widget-marketplace.md).
 
 The tray displays local time, internet connectivity over Wi-Fi or Ethernet,
 and Bluetooth radio status. Available controls depend on Windows permissions,
@@ -155,6 +155,9 @@ bold text, and widget-switch animations. Startup is off by default.
 Use **Settings → Widgets → Install local widget** for a downloaded `.wrwidget`
 package. Full-access widgets require explicit approval because
 they run with your Windows account's permissions.
+New widgets installed here or through Marketplace are enabled and request
+permissions when a feature needs them. The Widgets list has **All**, **Built-in**,
+and **Community** filters and returns to your selected row after viewing details.
 
 The same section supports uninstalling add-ons and removing unused older
 versions. See [Installation and updates](#installation-and-updates) for update procedures.
@@ -184,7 +187,7 @@ and requirements, then repeat its install command with `--accept-full-trust`.
 
 The CLI verifies the download against the published checksum. If no checksum
 is available, supply the publisher's expected hash with `--sha256`.
-Installation leaves the widget disabled. Open **Settings → Widgets** to review
+CLI installation leaves the widget disabled. Open **Settings → Widgets** to review
 any requested permissions and enable it, then complete the account or companion
 setup described in its README. No widget code runs during installation.
 
@@ -240,8 +243,9 @@ Built-in widgets update with the application; your settings and installed add-on
 are retained. Production and Developer use the same application version and
 saved data, rather than separate stable and unstable channels.
 
-Update an add-on through **Settings → Widgets → Update from file** in its details.
-Select the newer `.wrwidget`, review its permissions, and enable the update.
+Update marketplace add-ons from **Marketplace → Updates**. For a local package,
+use **Settings → Widgets → Update from file** in its details. Updates preserve
+enabled state, permissions, and saved data; full-access updates require approval.
 
 [Installation and updates](docs/users/getting-started.md) · [Build from source](docs/maintainers/building.md)
 

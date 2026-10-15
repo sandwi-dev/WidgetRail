@@ -50,6 +50,12 @@ internal sealed partial class OverlayShellPage
         }
         else if (pinnedAdjustment is not null || savingPinnedAdjustment)
         { shell = ControllerGuideModel.WithHost(PinnedPlacementHints()); shellContext = "pin-placement"; }
+        else if (trayMenu is null && interactive && showingStoppedWidget)
+        {
+            shell = ControllerGuideModel.WithHost((ControllerGuideHint[])[new(ControllerPrompt.X, "Reload", ControllerButton.X),
+                new(ControllerPrompt.B, "Open radial", ControllerButton.B, Required: true)]);
+            shellContext = "widget-stopped";
+        }
         else if (trayMenu is not null || interactive && RecoveryVisible)
         {
             shell = ControllerGuideModel.WithHost(ControllerGuideModel.ResolveShellHints(interactive, RecoveryVisible,
@@ -85,7 +91,7 @@ internal sealed partial class OverlayShellPage
 
         var host = interactive ? ControllerGuideModel.WithHost([]) : RadialOpen
             ? ControllerGuideModel.WithHost(RadialGuideHints()) : ControllerGuideModel.TrayHints(false);
-        if (!interactive && !RadialOpen && Appearance.WidgetSwitcher == WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial)
+        if (!interactive && !RadialOpen)
             host = host.Select(hint => hint.Button == ControllerButton.B ? hint with { Label = "Open radial" } : hint).ToArray();
         var committed = !retired && visible && !switching && activeWidget == requestedWidget && surface is not null &&
             activeWidget is { } id && retainedSurfaces.TryGetValue(id, out var retained) &&

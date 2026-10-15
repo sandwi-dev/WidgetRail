@@ -57,6 +57,8 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     public bool IsReady => !retired && transport.Ready;
     internal bool IsCommandPending => transport.Busy || pendingSubmissions != 0;
     internal EmbeddedMediaPlaybackEvent? Playback => lastPlayback;
+    private Web.HostedWebViewAudio? audio;
+    internal bool PlayingAudio => !retired && audio?.Playing == true;
     public string? FailureCode { get; private set; }
     internal Func<bool>? InputAuthority { get; set; }
     private bool AcceptsInput => !retired && visible && inputEnabled && (InputAuthority?.Invoke() ?? true);
@@ -262,6 +264,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
             startupTrace.Mark("controller-ready");
             if (!Current()) return;
             core = browser.CoreWebView2;
+            audio = new(core, () => StateChanged?.Invoke());
             memoryPolicy = new(core, browser.DispatcherQueue, error =>
                 Diagnostic?.Invoke("media-memory-target-unavailable:" + error.GetType().Name));
             UpdateMemoryPolicy();
@@ -582,6 +585,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         if (retired) return;
         retired = true;
         memoryPolicy?.Dispose();
+        audio?.Dispose(); audio = null;
         InputAuthority = null;
         inputEnabled = visible = false;
         lifetime.Cancel();

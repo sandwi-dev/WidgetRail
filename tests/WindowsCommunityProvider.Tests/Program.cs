@@ -39,6 +39,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Private state write burst and cancellation are bounded", PrivateStateRateAndCancellation),
 };
 
+if (args is ["--private-state-only"])
+    tests = tests.Where(test => test.Name.StartsWith("Private state", StringComparison.Ordinal)).ToArray();
+
 var failures = 0;
 foreach (var (name, run) in tests)
 {

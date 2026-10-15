@@ -93,6 +93,17 @@ internal static class PackageSvgIconTests
         };
         Require(WidgetManifestValidator.Validate(manifest).Count == 0,
             "A declared package icon inventory and presentation reference must validate.");
+        var source = new WidgetCatalogIconSource("dev.test.other", "1.0.0", false, new('a', 64));
+        Require(WidgetCatalogIconValidation.IsValid(source with { PackageId = "1vendor.2app_name-" }), "Catalog package identity must use package rules rather than asset-ID rules.");
+        var catalogIcon = WidgetIcon.CatalogSvg(source, "brand.mark", WidgetPackageIconColorMode.ThemeTint, WidgetGlyph.Connection);
+        var catalogSnapshot = new WidgetView(UI.Icon(catalogIcon, "catalog.icon", "Other widget")).CreateSnapshot("catalog.instance", 1);
+        Require(catalogSnapshot.ProtocolVersion == ProtocolConstants.CatalogIconVersion, "Catalog icons must negotiate their protocol version.");
+        Require(catalogSnapshot.Root.PackageIcon?.Catalog == source, "Catalog icon identity was lost during materialization.");
+        Require(WidgetManifestValidator.Validate(manifest with { Presentation = manifest.Presentation with
+            { PackageIcon = catalogSnapshot.Root.PackageIcon } }).Any(error => error.Code == "catalog_icon_not_allowed"),
+            "Manifests cannot borrow management catalog authority.");
+        RequireThrows<ArgumentException>(() => WidgetIcon.CatalogSvg(source with { PackageId = "../other" },
+            "brand.mark", WidgetPackageIconColorMode.ThemeTint, WidgetGlyph.Connection));
         var missing = manifest with
         {
             Presentation = manifest.Presentation with

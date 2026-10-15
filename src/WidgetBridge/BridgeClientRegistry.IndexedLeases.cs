@@ -125,6 +125,7 @@ internal sealed partial class BridgeClientRegistry
                     configured = registration.Configured;
                 }
                 IndexedCollectionContract.ValidateRange(parent, request.Range, acquired.Lease.Range);
+                DemandPackageIconAuthority(configured, acquired.Lease.Range.Items.Select(item => item.Root));
                 // Resolve only bounded range roots. Compilation never holds the global
                 // registry lock; the final identity check rejects concurrent catalog changes.
                 var styleSnapshot = resolveStyles is null

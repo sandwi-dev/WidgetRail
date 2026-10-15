@@ -176,7 +176,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         {
             faulted = true; DisposeMemoryPolicy(); input = false; interacting = browsing = false;
             ++pointerEpoch; pointerPressed = nativePointerDown = false; pointerCore = null; dragData = null;
-            core = null;
+            audio?.Dispose(); audio = null; core = null;
             try { web.Close(); }
             catch (Exception closeError) when (closeError is System.Runtime.InteropServices.COMException or ObjectDisposedException) { }
             CancelEdit(); DrawCursor(); UpdateChrome();
@@ -335,6 +335,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             ControllerInitializationMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(controllerStarted).TotalMilliseconds;
             if (retired) return;
             core = web.CoreWebView2;
+            audio?.Dispose(); audio = new(core, () => ActivityChanged?.Invoke());
             browserProcessId = core.BrowserProcessId;
             InitializeDrag();
             var settings = core.Settings;
@@ -516,6 +517,6 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         CheckProviderAuthority = null;
         try { web.Close(); }
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException) { }
-        core = null; IsInteractionFocused = null; ExitInteraction = null; FocusInteraction = null; InteractionChanged = null; lifetime.Dispose();
+        audio?.Dispose(); audio = null; core = null; IsInteractionFocused = null; ExitInteraction = null; FocusInteraction = null; InteractionChanged = null; lifetime.Dispose();
     }
 }

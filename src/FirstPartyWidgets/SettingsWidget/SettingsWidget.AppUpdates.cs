@@ -50,7 +50,7 @@ public sealed partial class SettingsWidget
                     await ReadAppUpdatesAsync(new("install", review), token).ConfigureAwait(false);
                 break;
         }
-        Invalidate(); return true;
+        PublishSettingsChanged(); return true;
     }
     private async Task ReadAppUpdatesAsync(AppUpdateCommand command, CancellationToken token)
     {
@@ -64,12 +64,12 @@ public sealed partial class SettingsWidget
                 _appUpdateState = _appUpdateState with { Snapshot = snapshot, Error = null,
                     Confirm = _appUpdateState.Confirm && snapshot.State == "ready" };
             }
-            if (changed) Invalidate();
+            if (changed) PublishSettingsChanged();
         }
         catch (PlatformDiagnosticsException)
         {
             lock (_stateLock) _appUpdateState = _appUpdateState with { Confirm = false, Error = "The update request could not complete. Check status before retrying." };
-            Invalidate();
+            PublishSettingsChanged();
         }
     }
 }

@@ -114,7 +114,7 @@ public sealed partial class WidgetPresentationSession
         using (_gate.Enter())
         {
             if (result.OperationId != localInstallId) return; // Late completion of a cancelled operation.
-            if (result.Status is not ("approval-required" or "installed-disabled" or "cancelled" or "failed") ||
+            if (result.Status is not ("approval-required" or "installed" or "cancelled" or "failed") ||
                 localInstallEvents?.Writer.TryWrite(result) != true)
                 throw new BridgeProtocolException("Invalid local package installation event.");
         }

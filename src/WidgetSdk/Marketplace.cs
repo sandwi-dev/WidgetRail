@@ -7,7 +7,7 @@ public static class WidgetMarketplaceCapabilities
 {
     public const string Service = "widgets.marketplace.v1";
     public static WidgetCapabilityOperation<MarketplaceCommand, MarketplaceSnapshot> Command(string action) => action is
-        "status" or "refresh" or "inventory" or "download" or "install" or "cancel" ? new(Service, "marketplace." + action) : throw new ArgumentException("Unknown marketplace action.", nameof(action));
+        "status" or "refresh" or "inventory" or "download" or "install" or "cancel" or "download-updates" or "install-updates" ? new(Service, "marketplace." + action) : throw new ArgumentException("Unknown marketplace action.", nameof(action));
 }
 public sealed class WidgetMarketplaceService
 {

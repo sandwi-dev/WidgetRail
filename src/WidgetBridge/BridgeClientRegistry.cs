@@ -646,8 +646,12 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(configured);
         ArgumentNullException.ThrowIfNull(snapshot);
-        Visit(snapshot.Root);
-        foreach (var layout in snapshot.PinnedLayouts ?? []) Visit(layout.Root);
+        DemandPackageIconAuthority(configured, new[] { snapshot.Root }.Concat((snapshot.PinnedLayouts ?? []).Select(layout => layout.Root)));
+    }
+
+    internal static void DemandPackageIconAuthority(ConfiguredWidget configured, IEnumerable<ViewNode?> roots)
+    {
+        foreach (var root in roots) Visit(root);
 
         void Visit(ViewNode? node)
         {
@@ -662,6 +666,12 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
 
         void Demand(WidgetPackageIcon? icon)
         {
+            if (icon?.Catalog is not null)
+            {
+                if (!WidgetBridgeServer.IsTrustedSettings(configured) && !WidgetBridgeServer.IsTrustedMarketplace(configured))
+                    throw new BridgeProtocolException("Catalog icons require trusted management authority.");
+                return;
+            }
             if (icon is not null &&
                 !configured.DeclaredPackageIconAssetIds.Contains(icon.AssetId))
                 throw new BridgeProtocolException(
@@ -827,6 +837,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             if (!IsCurrentLocked(registration))
                 throw new BridgeProtocolException(
                     $"Widget '{registration.Configured.Id}' changed during establishment.");
+            DemandPackageIconAuthority(registration.Configured, presentation.Snapshot);
             var publication = AdmitPublicationLocked(
                 registration,
                 new BridgeClientPresentation(
@@ -1020,7 +1031,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         string widgetId,
         CancellationToken cancellationToken)
     {
-        AdmitRestart();
+        AdmitRestart(widgetId);
         try
         {
             var replacement = await ReplaceCoreAsync(
@@ -1032,7 +1043,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         }
         finally
         {
-            ReleaseRestart();
+            ReleaseRestart(widgetId);
         }
     }
 
@@ -1042,7 +1053,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(operation);
-        AdmitRestart();
+        AdmitRestart(widgetId);
         try
         {
             return await ReplaceCoreAsync(
@@ -1053,7 +1064,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         }
         finally
         {
-            ReleaseRestart();
+            ReleaseRestart(widgetId);
         }
     }
 
@@ -1302,7 +1313,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         return null;
     }
 
-    internal BridgeClientPublication<(BridgeWidgetDescriptor Descriptor, BridgeWorkerRun WorkerRun)>? TryAdmitWidgetNotification(
+    internal BridgeClientPublication<(BridgeWidgetDescriptor Descriptor, BridgeWorkerRun WorkerRun)>? TryAdmitWidgetBackgroundPublication(
         string widgetId,
         string expectedWorkerFingerprint)
     {
@@ -1720,23 +1731,29 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             lock (_gate)
             {
                 DemandNotDisposed();
-                var configured = _catalog.GetConfigured(widgetId);
-                if (_clients.TryGetValue(widgetId, out var existing))
-                {
-                    if (!existing.IsRetiring && string.Equals(
-                            existing.Configured.WorkerFingerprint,
-                            configured.WorkerFingerprint,
-                            StringComparison.Ordinal))
-                        return existing;
-                    if (ReserveRetirementLocked(existing, restartReserved: false))
-                        start = existing;
-                    retirement = existing.RetirementCompletion;
-                }
+                if (packageUpdates.TryGetValue(widgetId, out var updating))
+                    retirement = updating.Task;
                 else
                 {
-                    var registration = CreateRegistration(configured);
-                    _clients.Add(widgetId, registration);
-                    return registration;
+                    var configured = _catalog.GetConfigured(widgetId);
+                    if (configured.IsStopped) throw new BridgeWidgetStoppedException();
+                    if (_clients.TryGetValue(widgetId, out var existing))
+                    {
+                        if (!existing.IsRetiring && string.Equals(
+                                existing.Configured.WorkerFingerprint,
+                                configured.WorkerFingerprint,
+                                StringComparison.Ordinal))
+                            return existing;
+                        if (ReserveRetirementLocked(existing, restartReserved: false))
+                            start = existing;
+                        retirement = existing.RetirementCompletion;
+                    }
+                    else
+                    {
+                        var registration = CreateRegistration(configured);
+                        _clients.Add(widgetId, registration);
+                        return registration;
+                    }
                 }
             }
 
@@ -1817,6 +1834,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
 
     private ClientRegistration CreateRegistration(ConfiguredWidget configured)
     {
+        if (configured.IsStopped) throw new BridgeWidgetStoppedException();
         var reservationOwner = new object();
         var client = _clientFactory(
             configured,
@@ -1948,24 +1966,32 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         if (_terminalFailureCount < int.MaxValue) _terminalFailureCount++;
     }
 
-    private void AdmitRestart()
+    private void AdmitRestart(string widgetId)
     {
         lock (_gate)
         {
             DemandNotDisposed();
+            if (packageUpdates.ContainsKey(widgetId))
+                throw new BridgeProtocolException("This widget is updating. Try again shortly.");
+            if (_catalog.GetConfigured(widgetId).IsStopped) throw new BridgeWidgetStoppedException();
+            var active = widgetRestarts.GetValueOrDefault(widgetId);
+            widgetRestarts[widgetId] = (active.Count + 1, active.Done ?? new(TaskCreationOptions.RunContinuationsAsynchronously));
             if (_activeRestarts++ == 0)
                 _restartsDrained = new TaskCompletionSource(
                     TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 
-    private void ReleaseRestart()
+    private void ReleaseRestart(string widgetId)
     {
         lock (_gate)
         {
             if (_activeRestarts <= 0)
                 throw new InvalidOperationException("Restart admission was released twice.");
             if (--_activeRestarts == 0) _restartsDrained!.TrySetResult();
+            var active = widgetRestarts[widgetId];
+            if (active.Count == 1) { widgetRestarts.Remove(widgetId); active.Done.TrySetResult(); }
+            else widgetRestarts[widgetId] = (active.Count - 1, active.Done);
         }
     }
 

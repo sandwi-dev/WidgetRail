@@ -79,7 +79,7 @@ public sealed partial class SettingsWidget
         }
         else if (action.ActionId == "marketplace.cancel" && state.Snapshot.Operation is { } cancel)
             await ReadMarketplaceAsync(new("cancel", OperationId: cancel.Id), token).ConfigureAwait(false);
-        Invalidate();
+        PublishSettingsChanged();
         return true;
     }
 
@@ -97,13 +97,13 @@ public sealed partial class SettingsWidget
                 _marketplaceState = _marketplaceState with { Snapshot = snapshot, Error = null,
                     ReviewOpen = _marketplaceState.ReviewOpen && snapshot.Operation?.State == "review" };
             }
-            if (changed) Invalidate();
+            if (changed) PublishSettingsChanged();
         }
         catch (PlatformDiagnosticsException)
         {
             lock (_stateLock) _marketplaceState = _marketplaceState with
             { Error = "The marketplace request could not complete. Check its status before retrying.", ReviewOpen = false };
-            Invalidate();
+            PublishSettingsChanged();
         }
     }
 }

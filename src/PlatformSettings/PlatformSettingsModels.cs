@@ -35,8 +35,6 @@ public enum WidgetSurfaceAppearanceOverride
     Solid,
 }
 
-[JsonConverter(typeof(JsonStringEnumConverter<WidgetSwitcherLayout>))]
-public enum WidgetSwitcherLayout { Rail, Radial }
 
 [JsonConverter(typeof(JsonStringEnumConverter<OverlayPosition>))]
 public enum OverlayPosition { Center, BottomLeft, BottomRight }
@@ -114,9 +112,6 @@ public sealed record AppearanceSettings
     public WidgetModalAnimation ModalAnimation { get; init; } = WidgetModalAnimation.Zoom;
     /// <summary>Shared speed multiplier for widget sections, navigation and dialogs.</summary>
     public double WidgetAnimationSpeed { get; init; } = 1;
-    // Missing values in existing settings retain Rail; fresh installations
-    // receive the explicit combined-mode value in Default below.
-    public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
 
     /// <summary>Screen anchor for the widget and its guide and tray.</summary>
     public OverlayPosition OverlayPosition { get; init; } = OverlayPosition.Center;
@@ -146,7 +141,6 @@ public sealed record AppearanceSettings
         BoldText = true,
         Transparency = TransparencyPreference.Full,
         AnimateWidgetSwitching = true,
-        WidgetSwitcher = WidgetSwitcherLayout.Radial,
         WidgetSurfaceAppearance = WidgetSurfaceAppearanceOverride.Widget,
     };
 }
@@ -297,8 +291,6 @@ public static class PlatformSettingsValidator
             AppearanceSettings.MaximumBackdropOpacity, "$.appearance.backdropOpacity");
         if (!Enum.IsDefined(appearance.Motion))
             Add("$.appearance.motion", "invalid_enum", "Motion preference is invalid.");
-        if (!Enum.IsDefined(appearance.WidgetSwitcher))
-            Add("$.appearance.widgetSwitcher", "invalid_enum", "Widget switcher layout is invalid.");
         if (!Enum.IsDefined(appearance.ModalAnimation))
             Add("$.appearance.modalAnimation", "invalid_enum", "Dialog animation is invalid.");
         if (!Enum.IsDefined(appearance.FocusAnimation))

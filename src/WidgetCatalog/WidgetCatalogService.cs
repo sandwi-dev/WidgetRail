@@ -101,7 +101,9 @@ public sealed class WidgetCatalog
             cancellationToken);
     }
 
-    internal async Task<InstalledWidgetVersion> InstallAsync(
+    // Trusted interactive installation. Low-level/CLI staging still uses the
+    // public InstallAsync contract; only a genuinely new reviewed ID is enabled.
+    internal async Task<InstalledWidgetVersion> InstallReviewedAsync(
         Stream packageStream,
         Func<WidgetPackageInspection, CancellationToken, Task> trustedPrePublish,
         CancellationToken cancellationToken = default,
@@ -113,28 +115,60 @@ public sealed class WidgetCatalog
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
             .ConfigureAwait(false);
-        return await CreateInstaller().InstallAsync(
+        var enableNew = false;
+        var installed = await CreateInstaller().InstallAsync(
             packageStream,
             async (inspection, token) =>
             {
+                var state = await _stateStore.LoadAsync(token).ConfigureAwait(false);
+                enableNew = !state.Widgets.Any(entry => entry.Id == inspection.Id) &&
+                    !DiscoverInstalledVersions(token).Any(version => version.Id == inspection.Id);
+                if (enableNew && !WidgetHostCompatibility.Evaluate(inspection.Manifest).IsSupported)
+                    throw new WidgetPackageException("package_incompatible", "This widget is not compatible with this WidgetRail version.");
                 await PreparePackageInstallUnderLockAsync(
                         inspection, trustApproval, token)
                     .ConfigureAwait(false);
                 await trustedPrePublish(inspection, token).ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
+        if (enableNew)
+        {
+            // Publication has committed. Do not let late cancellation turn a
+            // successful install into a misleading cancellation result.
+            try
+            {
+                await _stateStore.MutateAsync(state => state with
+                {
+                    Version = 2,
+                    Widgets = state.Widgets.Append(new CatalogStateEntry
+                    {
+                        Id = installed.Id, Enabled = true, ActiveVersion = installed.Version.ToString(),
+                        Order = state.Widgets.Count == 0 ? 0 : state.Widgets.Max(entry => entry.Order) + 1,
+                    }).ToArray(),
+                }, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or WidgetPackageException)
+            {
+                throw new WidgetPackageException("install_activation_failed", "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.", error);
+            }
+        }
+        return installed;
     }
 
     // Called by trusted Settings/CLI update flows after explicit review.
     // Stage/validate first, pin the old version while publishing, then select
-    // the new version disabled. Failed validation never stops the old widget.
+    // the new version without changing enabled state. Failed validation never
+    // stops the old widget. All other saved state remains untouched.
     internal async Task<InstalledWidgetVersion> UpdateFromFileAsync(
         Stream packageStream, string expectedTargetHash, WidgetPackageTrustApproval trustApproval,
         Func<WidgetPackageInspection, CancellationToken, Task> trustedPrePublish,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        Func<InstalledWidgetVersion, InstalledWidgetVersion, CancellationToken, Task> keepSettings)
     {
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(keepSettings);
+        InstalledWidgetVersion? previous = null;
         var installed = await CreateInstaller().InstallAsync(packageStream, async (incoming, token) =>
         {
             var expectedWidgetId = incoming.Id;
@@ -157,6 +191,7 @@ public sealed class WidgetCatalog
                 throw new WidgetPackageException("update_incompatible", "The update is not compatible with this WidgetRail version.");
             EnforceProspectiveInstallLimits(all, current.Versions.ToArray(), incoming);
             await trustedPrePublish(incoming, token).ConfigureAwait(false);
+            previous = current.ActiveVersion;
             await _stateStore.MutateAsync(state =>
             {
                 var entries = state.Widgets.ToList();
@@ -166,7 +201,10 @@ public sealed class WidgetCatalog
                     ActiveVersion = current.ActiveVersion.Version.ToString(), Order = entries.Count == 0 ? 0 : entries.Max(item => item.Order) + 1 });
                 return state with { Version = 2, Widgets = entries.OrderBy(item => item.Order).ToArray() };
             }, token).ConfigureAwait(false);
-        }, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken, async (sealedVersion, token) =>
+        {
+            await keepSettings(previous!, sealedVersion, token).ConfigureAwait(false);
+        }).ConfigureAwait(false);
         // Publication is durable. Finish with a non-cancellable state commit;
         // if storage fails, the old explicit pin still prevents activation.
         try
@@ -174,7 +212,7 @@ public sealed class WidgetCatalog
             await _stateStore.MutateAsync(state => state with
             {
                 Widgets = state.Widgets.Select(item => item.Id == installed.Id
-                    ? item with { Enabled = false, ActiveVersion = installed.Version.ToString() } : item).ToArray(),
+                    ? item with { ActiveVersion = installed.Version.ToString() } : item).ToArray(),
             }, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or WidgetPackageException)

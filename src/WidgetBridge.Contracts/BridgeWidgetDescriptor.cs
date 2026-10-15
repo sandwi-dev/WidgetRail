@@ -27,6 +27,7 @@ public sealed record BridgeWidgetDescriptor
     public required string RuntimeGeneration { get; init; }
     public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }
+    public bool IsStopped { get; init; }
     public WidgetPackageIcon? PackageIcon { get; init; }
     public required string PackageContentDigest { get; init; }
     public IReadOnlyList<BridgePackageIconAssetDescriptor> IconAssets { get; init; } = [];

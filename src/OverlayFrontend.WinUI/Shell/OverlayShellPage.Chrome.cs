@@ -44,6 +44,7 @@ internal sealed partial class OverlayShellPage
         RefreshSystemStatusAppearance();
         openingIndicator?.ApplyAppearance(ShellPalette, Appearance, systemUi.AnimationsEnabled);
         RefreshStartupPresentation();
+        QueueWidgetStatusRefresh();
         RefreshRadialChooser();
     }
 

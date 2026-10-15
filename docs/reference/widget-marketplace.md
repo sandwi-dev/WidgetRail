@@ -8,9 +8,10 @@ widgets are distributed with the app; the marketplace does not replace them.
 ## Browse, review, install
 
 The catalog describes setup requirements and shows available and installed
-versions. Its first opening checks public WidgetRail releases; subsequent checks
-are explicit through **Check for updates**. Reopening refreshes local version
-selection without another network check. Preview releases are labelled. The
+versions. **Browse**, **Installed** and **Updates** separate discovery from
+management. Opening Marketplace checks releases without hiding existing content
+or blocking navigation, while preserving an active download or review. Manual
+**Check for updates** remains available. Preview releases are labelled. The
 current feed inspects the latest 20 non-draft releases and chooses the highest
 matching package version for each curated item.
 
@@ -19,7 +20,7 @@ the screenshot buttons change the preview. YouTube Music has no screenshots in
 the initial catalog. Screenshot URLs are pinned to a repository commit so they
 do not change underneath a published app.
 
-**Y** checks for updates; **X** switches between all listings and available updates.
+**Y** checks for updates; **X** opens Updates. The three tabs remain available while a job runs.
 **B** returns from details to the previously selected card. From the catalog, B
 keeps its ordinary tray behavior. Navigation remains available while a download
 runs, and its progress/cancel action remains visible even when viewing another listing.
@@ -31,9 +32,14 @@ optional permissions, new permissions relative to the installed version, and the
 execution model. Full-access widgets explicitly warn that they run with the
 user's Windows-account access. The controller-native dialog starts on **Cancel**.
 
-Installing requires this exact review. The new version remains **disabled**.
-Use **Manage in Settings** to open that exact widget's details, review permissions and enable it. Updates retain
-older versions and widget data. Existing **Versions** controls select a previous
+Installing requires this exact review. Fresh interactive installs start **enabled**
+and request permissions when a feature needs them. **Manage in Settings** opens
+the exact widget details directly through a destination loading state. Updates
+preserve enabled/disabled and stopped state. The review explains that ordinary
+widget settings will be kept. Approval copies only the bounded private-settings
+document into the exact replacement package namespace; permissions and credentials
+are not transferred. Existing destination settings and cleared state are respected.
+Older versions remain available. Existing **Versions** controls select a previous
 version while the widget is disabled. Up-to-date listings and versions already
 saved after a rollback open management rather than downloading the same version
 again.
@@ -47,9 +53,10 @@ Downloads and installs run as Bridge-owned jobs; short management requests only
 start, inspect, approve or cancel them. Navigation stays available during a
 download. The primary action remains focusable while busy. Returning to a listing
 shows its existing job. Explicit cancellation stops pending network work; a
-publication that has already committed remains installed and disabled.
+publication that has already committed remains installed with its resulting enable state.
 
-One job and one retained review archive are admitted at a time. Reviews expire
+One job is admitted at a time. An individual job retains one review archive; a
+batch retains only its bounded verified selection. Reviews expire
 after ten minutes and expire on the next status/action check. Finish or discard
 the current review before starting another download or release check. A review token cannot approve another
 package or be replayed after installation. The verified stream stays write-locked
@@ -78,9 +85,10 @@ digest. Failure to save optional CLI source metadata does not undo installation.
 - Discord, Twitch, Game Help and Display Profiles each provide `samples/<Widget>Widget/Build-CommunityPackage.ps1`, backed by `scripts/Build-MarketplacePackage.ps1`. Build their archives and SHA-256 sidecars, then attach them to the release when publishing. Adding a listing alone does not make an unpublished package downloadable. These builders do not install, enable, grant access or publish.
 - `PackageDistribution` owns shared remote download, release and source-record
   code. CLI command parsing and exit-code mapping remain in the CLI.
-- `BridgeWidgetMarketplace` owns jobs and archive handles. Its only mutations
-  call the existing catalog install/update transactions. It does not enable
-  widgets or grant permissions.
+- `BridgeWidgetMarketplace` owns jobs and archive handles. Mutations use the
+  existing verified catalog transactions. Reviewed fresh installs start enabled;
+  updates preserve existing enable and stop choices. Permissions are never granted
+  by installation. Low-level CLI installation remains disabled staging.
 - Marketplace commands and validation are shared protocol contracts; Settings'
   private diagnostics channel and the dedicated marketplace call the same Bridge
   service. The review UI is shared too. There is no second installation pipeline.
@@ -104,3 +112,20 @@ controller view contracts. A live public-release probe reviews and discards a
 real archive without installation. Physical screenshot loading, long reviews,
 downloads under poor connectivity and installation/rollback remain separate
 acceptance checks.
+
+## Centralized updates
+
+The Updates tab offers individual updates and **Update all** without visiting each
+widget's details. The host sequentially downloads and verifies the exact selected
+versions, then presents one review with per-package compatibility, permission and
+full-access information. Cancel is initially focused. Approval applies only to
+those retained bytes and the installed baselines recorded in the review.
+
+A batch admits up to 16 packages, 256 MiB of archives and 128 KiB of review metadata.
+Larger reviews remain available as individual updates rather than truncating
+permission details. Cancellation keeps completed installations and cancels queued
+work. Per-item results explain failures; Retry remaining updates excludes already
+completed items. Reviews expire and reject changed installed baselines.
+
+Installed covers curated marketplace packages. Other locally imported packages
+remain in Settings → Widgets. Additional repository support is deferred.

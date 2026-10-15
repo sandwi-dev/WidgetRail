@@ -19,6 +19,79 @@ public sealed class SessionHostEventTests
     };
 
     [TestMethod]
+    public async Task IdleRetirementClearsOnlyItsRunAndCannotReviveFromLatePublication()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var descriptor = Descriptor();
+        object Activity(long sequence, int run) => new
+        {
+            widgetId = descriptor.Id, instanceId = descriptor.InstanceId, runtimeGeneration = descriptor.RuntimeGeneration,
+            sequence, initiatedAtMilliseconds = 250L, activity = new WidgetActivity(LocalAudio: true), workerRun = new BridgeWorkerRun(1, run),
+        };
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await CatalogAsync(channel, descriptor, 1); var barrier = await ReadAsync(channel);
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(1, 1));
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivityRetired, new { widgetId = descriptor.Id, workerRun = new BridgeWorkerRun(1, 1) });
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(2, 1));
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(3, 2));
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivityRetired, new { widgetId = descriptor.Id, workerRun = new BridgeWorkerRun(1, 1) });
+            await CatalogReplyAsync(channel, barrier.RequestId, descriptor, 1); await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var received = new ConcurrentQueue<WidgetPresentationActivity>(); session.ActivityReceived += (_, args) => received.Enqueue(args.Activity);
+            await session.ListWidgetsAsync(); await session.ListWidgetsAsync();
+            CollectionAssert.AreEqual(new[] { true, false, true }, received.Select(item => item.Activity.LocalAudio).ToArray());
+            Assert.IsTrue(session.IsHostEffectAuthorityCurrent(received.Last().Authority));
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+
+    [TestMethod]
+    public async Task ActivityRejectsReplayForeignRuntimeAndLateReportsAfterRestart()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var descriptor = Descriptor();
+        object Activity(long sequence, long time, string? runtime = null) => new
+        {
+            widgetId = descriptor.Id, instanceId = descriptor.InstanceId, runtimeGeneration = runtime ?? descriptor.RuntimeGeneration,
+            sequence, initiatedAtMilliseconds = time, activity = new WidgetActivity(LocalAudio: true), workerRun = new BridgeWorkerRun(1, sequence < 4 ? 1 : 2),
+        };
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await CatalogAsync(channel, descriptor, 1);
+            var barrier = await ReadAsync(channel);
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(1, 250));
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(1, 250));
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(2, 250, new string('c', 32)));
+            await CatalogReplyAsync(channel, barrier.RequestId, descriptor, 1);
+            var restart = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.RestartWidget, restart.Type);
+            await ReplyAsync(channel, restart.RequestId, BridgeMessageTypes.Acknowledged, new { widgetId = descriptor.Id, state = WidgetLifecycleState.Visible });
+            var after = await ReadAsync(channel);
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(3, 250));
+            await Task.Delay(20);
+            await EventAsync(channel, BridgeMessageTypes.WidgetActivity, Activity(4, Environment.TickCount64));
+            await CatalogReplyAsync(channel, after.RequestId, descriptor, 1);
+            await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var received = new ConcurrentQueue<WidgetPresentationActivity>();
+            session.ActivityReceived += (_, args) => received.Enqueue(args.Activity);
+            await session.ListWidgetsAsync(); await session.ListWidgetsAsync();
+            Assert.AreEqual(1, received.Count);
+            var previous = received.Single(); Assert.IsTrue(session.IsHostEffectAuthorityCurrent(previous.Authority));
+            await session.RestartAsync(session.GetTarget(descriptor.Id));
+            Assert.IsFalse(session.IsHostEffectAuthorityCurrent(previous.Authority));
+            await session.ListWidgetsAsync(); Assert.AreEqual(2, received.Count);
+            Assert.AreEqual(2L, received.Last().Authority.SessionGeneration);
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+
+    [TestMethod]
     public async Task HostEffectsPreserveProducerPayloadAndRejectStaleRuntimeAndReplay()
     {
         await using var server = new ScriptedBridgeServer();

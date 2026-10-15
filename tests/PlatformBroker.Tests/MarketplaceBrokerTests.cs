@@ -24,11 +24,15 @@ internal static class MarketplaceBrokerTests
             manager.SetLifecycle(BrokerLifecycleState.Visible);
             await manager.ExecuteAsync(new(1,2,identity,PlatformCapabilities.WidgetMarketplaceV1,"marketplace.status",BrokerJson.ToElement(new MarketplaceCommand("status"))));
             await Reject(manager,"marketplace.download",new("download",PackageId:"example.widget"),"lifecycle_denied");
+            await Reject(manager,"marketplace.download-updates",new("download-updates",PackageIds:["example.widget"]),"lifecycle_denied");
+            await Reject(manager,"marketplace.install-updates",new("install-updates",OperationId:new string('a',32),ReviewToken:new string('b',64)),"lifecycle_denied");
             // A read operation cannot smuggle an install command past control admission.
             await Reject(manager,"marketplace.status",new("install",OperationId:new string('a',32),ReviewToken:new string('b',64)),"invalid_payload");
+            await Reject(manager,"marketplace.status",new("install-updates",OperationId:new string('a',32),ReviewToken:new string('b',64)),"invalid_payload");
             manager.SetLifecycle(BrokerLifecycleState.Interactive);
             await manager.ExecuteAsync(new(1,3,identity,PlatformCapabilities.WidgetMarketplaceV1,"marketplace.download",BrokerJson.ToElement(new MarketplaceCommand("download",PackageId:"example.widget"))));
-            if(calls!=2) throw new Exception("Denied command reached management service");
+            await manager.ExecuteAsync(new(1,4,identity,PlatformCapabilities.WidgetMarketplaceV1,"marketplace.download-updates",BrokerJson.ToElement(new MarketplaceCommand("download-updates",PackageIds:["example.widget"]))));
+            if(calls!=3) throw new Exception("Denied command reached management service or an authorized batch was rejected");
             manager.SetLifecycle(BrokerLifecycleState.Background);
             await Reject(manager,"marketplace.status",new("status"),"lifecycle_denied");
         }

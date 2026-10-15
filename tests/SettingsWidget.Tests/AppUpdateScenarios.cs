@@ -26,7 +26,9 @@ internal static class AppUpdateScenarios
             await Action("app-update.auto"); Check(!service.Auto);
             var intent = WidgetIntentRequest.Create(WidgetIntentContracts.AppUpdates, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget);
             await Action("back");
-            Check(await widget.OnIntentAsync(intent) == WidgetIntentResult.Accepted && Snapshot().ActiveInputScopeId == "app-update.page");
+            Check(await widget.OnIntentAsync(intent) == WidgetIntentResult.Accepted);
+            await widget.IntentNavigationTask;
+            Check(Snapshot().ActiveInputScopeId == "app-update.page");
             await Action("app-update.notes"); Check(Node("app-update.notes.text").Text == "Notes");
             await Action("app-update.download"); Check(Node("app-update.primary").IsBusy == true && Node("app-update.primary").IsDisabled != true);
             service.Ready(); await Action("open.app-updates");

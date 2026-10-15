@@ -202,6 +202,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             foreach (var removed in _descriptors.Keys.Where(id => !byId.ContainsKey(id)).ToArray())
             {
                 notificationSequences.Remove(removed);
+                activitySequences.Remove(removed); activityRuns.Remove(removed); retiredActivityRuns.Remove(removed);
                 _hostEffectAdmissionBoundaries[removed] = Environment.TickCount64;
                 _sessionGenerations[removed] =
                     _sessionGenerations.GetValueOrDefault(removed) + 1;
@@ -578,6 +579,12 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             break;
         case BridgeMessageTypes.CatalogChanged:
             HandleRevisionChanged(envelope.Payload, catalog: true);
+            break;
+        case BridgeMessageTypes.WidgetActivityRetired:
+            HandleWidgetActivityRetired(envelope.Payload);
+            break;
+        case BridgeMessageTypes.WidgetActivity:
+            HandleWidgetActivity(envelope.Payload);
             break;
         case BridgeMessageTypes.WidgetNotification:
             HandleWidgetNotification(envelope.Payload);

@@ -18,6 +18,8 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
     private readonly Func<CancellationToken, Task> _beforePublish;
     private readonly Func<BridgeLocalWidgetPackageInstallCompleted, Task> _completed;
     private readonly Func<string, Stream> _openPackage;
+    private readonly string _stateRoot;
+    private readonly BridgeClientRegistry? _registry;
     private ActiveInstall? _active;
     private (string Runtime, PlatformWidgetPackageNotification Value, DateTimeOffset Expires)? _notification;
     private bool _disposed;
@@ -27,14 +29,14 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         WidgetCatalog.WidgetCatalog catalog,
         BridgeCatalogMonitor monitor,
         Func<BridgeLocalWidgetPackageInstallCompleted, Task> completed,
-        Func<string, Stream>? openPackage = null)
+        Func<string, Stream>? openPackage = null, string? stateRoot = null)
         : this(
             catalog,
             origin => registry.AdmitLocalWidgetPackageImport(origin),
             cancellationToken => monitor.ReloadNowAsync(cancellationToken),
             completed,
             openPackage,
-            beforePublish: null)
+            beforePublish: null, stateRoot: stateRoot, registry: registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(monitor);
@@ -46,8 +48,10 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         Func<CancellationToken, Task> reload,
         Func<BridgeLocalWidgetPackageInstallCompleted, Task> completed,
         Func<string, Stream>? openPackage,
-        Func<CancellationToken, Task>? beforePublish)
+        Func<CancellationToken, Task>? beforePublish, string? stateRoot = null, BridgeClientRegistry? registry = null)
     {
+        _stateRoot = stateRoot ?? Path.Combine(catalog.Root, "widget-state");
+        _registry = registry;
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _admit = admit ?? throw new ArgumentNullException(nameof(admit));
         _reload = reload ?? throw new ArgumentNullException(nameof(reload));
@@ -140,40 +144,57 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
             await using var package = _openPackage(active.Request.PackagePath);
             var inspection = await _catalog.CreateInstaller().ValidateAsync(package, active.Cancellation.Token).ConfigureAwait(false);
             var trustApproval = WidgetPackageTrustApproval.None;
-            if (WidgetManifestTrust.Resolve(inspection.Manifest) == WidgetExecutionTrust.FullTrustCurrentUser)
+            var updating = !string.IsNullOrEmpty(active.Request.Origin.UpdateTargetHash);
+            var reviewedSource = updating
+                ? (await _catalog.DiscoverAsync(active.Cancellation.Token).ConfigureAwait(false)).Widgets
+                    .SingleOrDefault(item => item.Id == inspection.Id)?.ActiveVersion.ContentDigest
+                : null;
+            var fullTrust = WidgetManifestTrust.Resolve(inspection.Manifest) == WidgetExecutionTrust.FullTrustCurrentUser;
+            if (fullTrust || updating)
             {
                 using (_admit(active.Request.Origin)) { }
                 var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 lock (_gate) active.Approval = decision;
                 await _completed(new(active.Request.OperationId, "approval-required", inspection.Id,
-                    inspection.Version.ToString(), "This widget runs with full access to your Windows account.")).ConfigureAwait(false);
+                    inspection.Version.ToString(),
+                    (fullTrust ? "This widget can access your files, network, and other apps with your Windows account’s permissions. It is not sandboxed, and its publisher is not verified. Only continue if you trust where you downloaded it." : "This widget runs in WidgetRail’s sandbox.") +
+                    (updating ? "\n\nYour widget settings will be kept. Permissions are requested again when needed." : "\n\nNew widgets will be enabled. Permissions are requested when needed."))).ConfigureAwait(false);
                 bool approved;
                 try { approved = await decision.Task.WaitAsync(TimeSpan.FromMinutes(2), active.Cancellation.Token).ConfigureAwait(false); }
-                catch (TimeoutException) { throw new WidgetPackageException("approval_expired", "Full-access review expired. Choose the package again."); }
+                catch (TimeoutException) { throw new WidgetPackageException("approval_expired", "Widget review expired. Choose the package again."); }
                 finally { lock (_gate) active.Approval = null; }
                 if (!approved) { active.Cancellation.Cancel(); active.Cancellation.Token.ThrowIfCancellationRequested(); }
-                trustApproval = WidgetPackageTrustApproval.FullTrustCurrentUser;
+                if (fullTrust) trustApproval = WidgetPackageTrustApproval.FullTrustCurrentUser;
             }
             async Task AdmitUpdate(WidgetPackageInspection inspection, CancellationToken token)
             {
                 await _beforePublish(token).ConfigureAwait(false);
                 using var admission = _admit(active.Request.Origin);
             }
-            var updating = !string.IsNullOrEmpty(active.Request.Origin.UpdateTargetHash);
+            await using var settings = new BridgeWidgetSettingsTransfer(_stateRoot, _registry, _reload);
+            async Task KeepReviewedSettings(InstalledWidgetVersion previous, InstalledWidgetVersion replacement, CancellationToken token)
+            {
+                if (reviewedSource is null || previous.ContentDigest != reviewedSource)
+                    throw new WidgetPackageException("update_review_changed", "The installed widget changed. Review the update again.");
+                await settings.PrepareAsync(previous, replacement, token).ConfigureAwait(false);
+            }
             var installed = updating
-                ? await _catalog.UpdateFromFileAsync(package, active.Request.Origin.UpdateTargetHash!, trustApproval, AdmitUpdate, active.Cancellation.Token).ConfigureAwait(false)
-                : await _catalog.InstallAsync(package, AdmitUpdate, active.Cancellation.Token, trustApproval).ConfigureAwait(false);
+                ? await _catalog.UpdateFromFileAsync(package, active.Request.Origin.UpdateTargetHash!, trustApproval, AdmitUpdate, active.Cancellation.Token, KeepReviewedSettings).ConfigureAwait(false)
+                : await _catalog.InstallReviewedAsync(package, AdmitUpdate, active.Cancellation.Token, trustApproval).ConfigureAwait(false);
             // Publication is the operation's linearization point. Once the
             // catalog commit returns, a late overlay/session cancellation may
             // not relabel the durable install as cancelled.
-            await _reload(CancellationToken.None).ConfigureAwait(false);
+            var message = updating ? "Widget updated. Your widget settings and enabled state were kept. Permissions are requested when needed."
+                : "Widget installed. New widgets are enabled; permissions will be requested when needed. Existing widget preferences are preserved.";
+            try { await settings.ReloadAsync().ConfigureAwait(false); }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            { message = "The widget was installed, but the widget list could not refresh. Open Widgets in Settings and refresh."; }
             result = new(
                 active.Request.OperationId,
-                "installed-disabled",
+                "installed",
                 installed.Id,
                 installed.Version.ToString(),
-                updating ? "Update installed and selected. Choose Review update to check permissions and enable it."
-                    : "Widget installed. Open Widgets to review its permissions and enable it.");
+                message);
         }
         catch (OperationCanceledException) when (active.Cancellation.IsCancellationRequested)
         {
@@ -241,12 +262,16 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
             {
                 "invalid_archive" => "This file is not a valid widget package. Download the .wrwidget file again and retry.",
                 "source_unavailable" => "The selected file is no longer available or cannot be read. Choose it again.",
-                "approval_expired" => "Full-access review expired. Choose the package again. Nothing was installed.",
+                "approval_expired" => "Widget review expired. Choose the package again. Nothing was installed.",
                 "update_wrong_widget" => "Choose an update file for the selected widget. Nothing was changed.",
                 "update_not_newer" => "Choose a newer version that is not already installed.",
+                "update_review_changed" => "The installed widget changed. Review the update again. Nothing was installed.",
                 "update_publisher_changed" or "update_trust_changed" => "This update changes the publisher or execution permissions. It was not installed.",
                 "update_incompatible" => "This update needs a different WidgetRail version. Your current widget is unchanged.",
+                "settings_transfer_failed" or "settings_transfer_busy" => "Widget settings could not be kept. The current version is still selected. Try again, or check local-data diagnostics.",
                 "update_selection_failed" => "The new version was installed. Open Manage versions to finish selecting it.",
+                "install_activation_failed" => "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.",
+                "package_incompatible" => "This widget needs a different WidgetRail version. Nothing was installed.",
                 _ => $"Local widget package install failed ({safeCode}).",
             });
     }

@@ -35,6 +35,40 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-widget-stop"))
+                {
+                    step = "persistent widget stop";
+                    await SelectAsync("webapp-b");
+                    var neighbor = await CurrentBrowser();
+                    await neighbor.EvaluateFixtureAsync("window.neighborStopMarker='preserved'");
+                    await SelectAsync("webapp-a");
+                    await WebAppUntil(() => first.IsBrowsing);
+                    await first.EvaluateFixtureAsync("localStorage.setItem('widget-stop-fixture','preserved')");
+                    await PopupPreferences.SetAsync(first.WidgetId, first.ProfileName, "https://shell.fixture.invalid", BrowserPopupPlacement.InWidget, lifetime.Token);
+                    await first.EvaluateGestureFixtureAsync("window.child=window.open('https://shell.fixture.invalid/popup')");
+                    await WebAppUntil(() => first.PinnablePopup is { CurrentTitle: "Shell /popup", IsNavigationInProgress: false });
+                    await first.PinnablePopup!.EvaluateFixtureAsync("window.canvas=document.createElement('canvas');canvas.width=160;canvas.height=90;document.body.append(canvas);window.syntheticStream=canvas.captureStream(5)");
+                    await PinAsync("webapp-a", WidgetPinnedProjection.FullWidgetLayoutId);
+                    await WebAppUntil(() => pinned?.WidgetId == "webapp-a");
+                    var savedPlacement = pinnedPreferences.Placements["webapp-a"];
+                    var stopping = StopWidgetAsync(catalogItems.Single(item => item.Id == "webapp-a"));
+                    await Choose(0); await stopping;
+                    await WebAppUntil(() => pinned is null && browserOwner!.PermissionTargets("webapp-a").Length == 0);
+                    Check(owner!.Session.GetTarget("webapp-a").Descriptor.IsStopped && surface is null && showingStoppedWidget,
+                        "Stop retires the full widget pin, hosted pop-out and live synthetic media with its worker");
+                    Check(pinnedPreferences.Placements["webapp-a"] == savedPlacement, "Stop preserves remembered pin geometry");
+                    await SelectAsync("webapp-b");
+                    Check(ReferenceEquals(await CurrentBrowser(), neighbor) && await neighbor.EvaluateFixtureAsync("neighborStopMarker==='preserved'") == "true",
+                        "Stopping one webapp preserves its neighbor's live page and state");
+                    await SelectAsync("webapp-a");
+                    Check(surface is null && browserOwner!.PermissionTargets("webapp-a").Length == 0, "Selecting a stopped webapp creates no WebView");
+                    await Press(ControllerButton.X);
+                    var restarted = await CurrentBrowser();
+                    Check(!ReferenceEquals(first, restarted) && await restarted.EvaluateFixtureAsync("localStorage.getItem('widget-stop-fixture')==='preserved'") == "true",
+                        "Explicit Reload creates a fresh webapp while preserving its saved profile data");
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
                 if (Environment.GetCommandLineArgs().Contains("--webapp-dialog-presentation"))
                 {
                     step = "dialog presentation";
@@ -281,8 +315,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => !switching && surface?.CurrentBinding?.Frame.Descriptor.Id == "webapp-e");
                 Check(browserOwner!.ResidentCount == 4 && browserOwner.BackgroundSessionCount == 4 &&
                     await first.EvaluateFixtureAsync("fakeStream.getTracks().every(t=>t.readyState==='live')") == "true", "A fifth webapp cannot evict four retained sessions or their media");
-                var stopping = StopBrowserWidgetAsync(owner.Session.GetState("webapp-c")!.LastGood!.Descriptor);
-                await Choose(0); await stopping;
+                await browserOwner.StopWidgetSessionsAsync("webapp-c");
                 await CurrentBrowser();
                 Check(browserOwner.BackgroundSessionCount == 4, "Stopping a session makes capacity available to the waiting webapp");
 

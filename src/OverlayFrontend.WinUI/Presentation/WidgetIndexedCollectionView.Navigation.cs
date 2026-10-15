@@ -15,6 +15,41 @@ internal sealed partial class WidgetIndexedCollectionView
     private int? pendingIndex;
     private bool navigationQueued;
     private bool navigationNeedsScroll;
+    private bool viewportRevealQueued;
+
+    private void NativeViewportSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        var horizontal = axis == ScrollAxis.Horizontal;
+        var previous = horizontal ? args.PreviousSize.Width : args.PreviousSize.Height;
+        var next = horizontal ? args.NewSize.Width : args.NewSize.Height;
+        if (next >= previous - 0.5 || viewportRevealQueued || disposed || pendingIndex is not null || FocusedIndex() is not { } index) return;
+        var capturedView = view;
+        var capturedSource = source;
+        viewportRevealQueued = true;
+        // Status chrome and window resizing can shrink a native viewport while
+        // its focused row keeps the same identity and offset. Reconcile once
+        // after layout, without moving focus or starting another navigation.
+        if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            viewportRevealQueued = false;
+            if (disposed || !CanReceiveInput || pendingIndex is not null || !ReferenceEquals(view, capturedView) ||
+                !ReferenceEquals(source, capturedSource) || FocusedIndex() != index ||
+                view?.ContainerFromIndex(index) is not FrameworkElement item || FindNativeScroll(view) is not { } scroll) return;
+            var bounds = item.TransformToVisual(scroll).TransformBounds(new(0, 0, item.ActualWidth, item.ActualHeight));
+            var extent = horizontal ? scroll.ViewportWidth : scroll.ViewportHeight;
+            if (extent <= 0) return;
+            var start = horizontal ? bounds.X : bounds.Y;
+            var end = horizontal ? bounds.Right : bounds.Bottom;
+            var size = horizontal ? bounds.Width : bounds.Height;
+            var delta = size > extent || start < 0 ? start : end > extent ? end - extent : 0;
+            if (Math.Abs(delta) <= 0.5) return;
+            var offset = Math.Clamp((horizontal ? scroll.HorizontalOffset : scroll.VerticalOffset) + delta, 0,
+                horizontal ? scroll.ScrollableWidth : scroll.ScrollableHeight);
+            ObserveFocusedViewportReveal();
+            scroll.ChangeView(horizontal ? offset : null, horizontal ? null : offset, null, disableAnimation: true);
+        })) viewportRevealQueued = false;
+    }
+    partial void ObserveFocusedViewportReveal();
     private FocusNavigationDirection pendingDirection;
     private IndexedCollectionFocusTarget? pendingEntry;
     private bool entering;

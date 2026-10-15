@@ -239,7 +239,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             {
                 if (existing.position != index) catalogItems.Move(existing.position, index);
                 // Keep native tray containers and focus for unchanged descriptors.
-                if (catalogItems[index].Name != next.Name || catalogItems[index].InstanceId != next.InstanceId ||
+                if (catalogItems[index].IsStopped != next.IsStopped || catalogItems[index].Name != next.Name || catalogItems[index].InstanceId != next.InstanceId ||
                     !catalogItems[index].QuickActions.SequenceEqual(next.QuickActions) || catalogItems[index].RuntimeGeneration != next.RuntimeGeneration ||
                     catalogItems[index].PresentationGeneration != next.PresentationGeneration || catalogItems[index].InstanceId != next.InstanceId ||
                     catalogItems[index].PackageContentDigest != next.PackageContentDigest || catalogItems[index].Icon != next.Icon ||
@@ -249,6 +249,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         while (catalogItems.Count > ordered.Length) catalogItems.RemoveAt(catalogItems.Count - 1);
         Tray.SelectedItem = catalogItems.FirstOrDefault(widget => widget.Id == selected);
         ReconcilePinnedCatalog(catalog);
+        if (catalog.IsComplete) failedStatusWidgets.RemoveWhere(id => !byId.ContainsKey(id));
+        QueueWidgetStatusRefresh();
         if (trayMenu is { } menu && !TrayOwnerCurrent(menu.Owner, menu.Selection)) CloseTrayMenu(false);
         ReconcileMediaHostState();
         UpdateDiagnostics();
@@ -264,12 +266,16 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task TryBackgroundAsync(string id)
     {
-        try { await owner!.Session.SetLifecycleAsync(owner.Session.GetTarget(id), LifecycleFor(id), lifetime.Token); }
+        try
+        {
+            var target = owner!.Session.GetTarget(id);
+            if (!target.Descriptor.IsStopped) await owner.Session.SetLifecycleAsync(target, LifecycleFor(id), lifetime.Token);
+        }
         catch (WidgetPresentationSessionException error) when (error.Code is "unknown_widget" or "catalog_stale" or "presentation_stale") { }
     }
 
     private void Changed(object? sender, WidgetPresentationChangedEventArgs args) => DispatcherQueue.TryEnqueue(() =>
-    { ApplyPinnedState(args.State); ApplyState(args.State); });
+    { ApplyPinnedState(args.State); ApplyState(args.State); ObserveWidgetStatusState(args.State); });
 
     private void ApplyState(WidgetPresentationState state)
     {
@@ -292,7 +298,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             }
             return;
         }
-        if (state.WidgetId != activeWidget || state.PublicationRevision <= publication) return;
+        if (showingStoppedWidget || state.WidgetId != activeWidget || state.PublicationRevision <= publication) return;
         publication = state.PublicationRevision;
         if (state.Failure is { } failure) { ShowRecovery(failure.Message, true); return; }
         if (state.LastGood is not { } next || surface is null) return;
@@ -353,6 +359,18 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                         if (retained.Descriptor.Id != activeWidget &&
                             (current is not null && !SameSurfaceOwner(retained.Descriptor, current) || current is null && catalog.IsComplete))
                             await RetireWidgetSurfaceAsync(retained.Descriptor.Id);
+                    }
+                    if (showingStoppedWidget && activeWidget is { } stoppedId && !retainedSurfaces.ContainsKey(stoppedId))
+                    {
+                        var current = catalog.Widgets.FirstOrDefault(widget => widget.Id == stoppedId);
+                        if (current is not null && !current.IsStopped) replacement = (stoppedId, ++selectionVersion, interactive);
+                        else if (current is null && catalog.IsComplete)
+                        {
+                            activeWidget = requestedWidget = null;
+                            interactive = false;
+                            ShowRecovery("The selected widget is no longer enabled.", false);
+                            FocusTray();
+                        }
                     }
                     if (activeWidget is { } id && retainedSurfaces.TryGetValue(id, out var selected))
                     {
@@ -578,6 +596,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 if (retired || owner is null || activeWidget is null) return;
                 failureCurrent = CapturePresentationFailureGuard();
                 var target = owner.Session.GetTarget(activeWidget);
+                if (target.Descriptor.IsStopped) return;
                 if (!PresentationVisible) await SuspendWidgetSurfaceAsync();
                 var desired = DesiredLifecycle;
                 if (desired != WidgetLifecycleState.Background && retainedSurfaces.TryGetValue(activeWidget, out var retained))
@@ -706,6 +725,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task RetryPresentationAsync()
     {
+        if (showingStoppedWidget && requestedWidget is { } stoppedId)
+        {
+            if (retrying) return;
+            retrying = true; Retry.IsEnabled = false;
+            try { await ChangeWidgetStoppedAsync(stoppedId, stopped: false); }
+            finally { retrying = false; Retry.IsEnabled = true; }
+            return;
+        }
         if (!retrying && serviceEnabled && requestedWidget is null)
         {
             retrying = true;
@@ -829,6 +856,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         retired = true;
         DisposeNotificationBanner();
         if (owner is not null) owner.Session.NotificationReceived -= ReceiveWidgetNotification;
+        if (owner is not null) owner.Session.ActivityReceived -= ReceiveWidgetActivity;
+        reportedActivities.Clear(); nativeAudioSources.Clear(); statusTiles.Clear();
         if (owner is not null) owner.Session.AppUpdateChanged -= ReceiveAppUpdate;
         notificationCenter?.Dispose();
         PrepareNativeShutdown();

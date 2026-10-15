@@ -15,7 +15,8 @@ internal sealed partial class OverlayShellPage
     private (long Selection, Exception Error)? preparationFailure;
     private readonly PlatformInputDiagnostics? switchDiagnostics;
 
-    private async Task SelectAsync(string id, bool enterWidget = true, bool preserveIntent = false)
+    private async Task SelectAsync(string id, bool enterWidget = true, bool preserveIntent = false,
+        Func<WidgetPresentationFrame, CancellationToken, Task>? beforeReveal = null, CancellationToken selectionCancellation = default)
     {
         if (retired || owner is null) return;
         if (!preserveIntent) intentCancellation?.Cancel();
@@ -29,7 +30,7 @@ internal sealed partial class OverlayShellPage
         ClearTrayFocus();
         interactionAdmission.Invalidate();
         switchCancellation?.Cancel();
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, selectionCancellation);
         cancellation.CancelAfter(TimeSpan.FromSeconds(30));
         switchCancellation = cancellation;
         var token = cancellation.Token;
@@ -60,6 +61,15 @@ internal sealed partial class OverlayShellPage
                 // neither it nor the incoming tree may dispatch input during preparation.
                 if (previousId is not null) await TryBackgroundAsync(previousId);
                 token.ThrowIfCancellationRequested();
+                if (owner.Session.GetTarget(id).Descriptor is { IsStopped: true } stopped)
+                {
+                    await PresentStoppedWidgetAsync(stopped);
+                    switching = false;
+                    inputPublished = true;
+                    PublishInputOwnership();
+                    Mark("stopped");
+                    return;
+                }
                 var incoming = await PrepareWidgetSurfaceAsync(id, token);
                 preparingSurface = incoming;
                 try
@@ -71,6 +81,15 @@ internal sealed partial class OverlayShellPage
                     var preparedLifecycle = interactive && foreground && !PinnedInteractionRequested
                         ? WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive : LifecycleFor(id);
                     await EstablishWidgetPresentationAsync(incoming, preparedLifecycle, token);
+                    if (beforeReveal is not null)
+                    {
+                        // A navigation intent is accepted while the incoming
+                        // presenter is still hidden. Reveal its destination or
+                        // loading state, rather than flashing its default home.
+                        await beforeReveal(incoming.Frame!, token);
+                        token.ThrowIfCancellationRequested();
+                        await EstablishWidgetPresentationAsync(incoming, preparedLifecycle, token);
+                    }
                     SizePreparingSurface(incoming);
                     incoming.Presenter.Opacity = ReferenceEquals(surface, incoming.Presenter) ? 1 : 0;
                     incoming.Presenter.Visibility = Visibility.Visible;
@@ -149,11 +168,12 @@ internal sealed partial class OverlayShellPage
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
             Mark(retired || !visible ? "hidden-or-retired" : version != selectionVersion ? "superseded" :
-                preparationFailure is { } failed && failed.Selection == version ? "failed" : "timed-out");
+                preparationFailure is { } failed && failed.Selection == version ? "failed" :
+                selectionCancellation.IsCancellationRequested ? "cancelled" : "timed-out");
             if (!retired && visible && version == selectionVersion)
             {
                 if (preparationFailure is { } failure && failure.Selection == version) ReportFailure(failure.Error);
-                else ShowRecovery("The widget is taking too long to open. Try again.", true);
+                else if (!selectionCancellation.IsCancellationRequested) ShowRecovery("The widget is taking too long to open. Try again.", true);
             }
         }
         catch (Exception error)
@@ -204,6 +224,7 @@ internal sealed partial class OverlayShellPage
     private void CommitPreparedSurface(RetainedWidgetSurface incoming)
     {
         var next = incoming.Frame!;
+        ObserveCommittedNavigation(incoming.Descriptor.Id, next.Snapshot.ActiveInputScopeId);
         surface = incoming.Presenter;
         previewRenderer = incoming.Previews;
         activeWidget = incoming.Descriptor.Id;
@@ -215,6 +236,8 @@ internal sealed partial class OverlayShellPage
         ReconcilePreviewVisibility();
         ReconcileMediaHostState();
     }
+
+    partial void ObserveCommittedNavigation(string widgetId, string? scopeId);
 
     private void SizePreparingSurface(RetainedWidgetSurface incoming)
     {

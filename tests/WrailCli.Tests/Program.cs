@@ -110,6 +110,7 @@ if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Local reviewed updates keep widget settings without inheriting authority", LocalReviewedSettingsUpdate),
     ("Help describes the complete workflow", HelpWorks),
     ("Inspector startup requires exact host capability acknowledgement", InspectorHandshake),
     ("GitHub discovery and published checksums install exact assets", GitHubDiscoveryWorkflow),
@@ -389,6 +390,10 @@ static async Task GitHubWidgetUpdateWorkflow()
     });
     Assert.Equal(0, (await RunCliWithHandler(handler, "install", "github:sample/repo@v1/sample.wrwidget",
         "--sha256", Convert.ToHexString(SHA256.HashData(first)), "--catalog", root)).Code);
+    var oldPackage = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+    var stateStore = new PrivateStateStore(Path.Combine(temp.Path, "widget-state"));
+    var settingsJson = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"banners\":true}"));
+    await stateStore.WriteAsync(new(id, InstalledWidgetAuthority.PublisherId(oldPackage), "old"), new(settingsJson, 0), default);
     var beforeBadApply = requests;
     Assert.Equal(2, (await RunCliWithHandler(handler, "update", id, "--apply", "--catalog", root)).Code);
     Assert.Equal(beforeBadApply, requests);
@@ -418,9 +423,47 @@ static async Task GitHubWidgetUpdateWorkflow()
     Assert.Equal(0, (await RunCliWithHandler(handler, apply)).Code);
     var updated = (await catalog.DiscoverAsync()).Widgets.Single();
     Assert.Equal("2.0.0", updated.ActiveVersion.Version.ToString());
+    Assert.Equal(settingsJson, (await stateStore.ReadAsync(new(id, InstalledWidgetAuthority.PublisherId(updated.ActiveVersion), "new"), default)).CanonicalJsonBase64);
     Assert.True(!updated.Enabled && updated.Versions.Count == 2, "Update activated the widget or removed rollback bytes.");
     Assert.Equal(0, (await RunCli("version", "rollback", id, "--catalog", root)).Code);
     Assert.Equal("1.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
+}
+
+static async Task LocalReviewedSettingsUpdate()
+{
+    using var temp = new TemporaryDirectory();
+    const string id = "dev.test.local-settings";
+    var root = Path.Combine(temp.Path, "catalog");
+    var profile = Path.Combine(temp.Path, "profile");
+    var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(root);
+    var firstFile = await CreatePackedPackageAsync(temp.Path, id, "1.0.0");
+    var first = await catalog.InstallAsync(firstFile);
+    var state = new PrivateStateStore(Path.Combine(profile, "widget-state"));
+    var json = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"banners\":true}"));
+    await state.WriteAsync(new(id, InstalledWidgetAuthority.PublisherId(first), "old"), new(json, 0), default);
+    var file = await CreatePackedPackageAsync(temp.Path, id, "2.0.0");
+    var sha = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(file)));
+    var options = new[] { "update", id, "--file", file, "--catalog", root, "--settings-root", profile };
+    var review = await RunCli(options);
+    Assert.Equal(0, review.Code);
+    Assert.Contains("settings will be kept", review.Output);
+    Assert.Contains("--settings-root", review.Output);
+    Assert.Equal(1, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+    Assert.Equal(2, (await RunCli([..options, "--apply"])).Code);
+    string[] apply = [..options, "--sha256", sha, "--apply"];
+    // A still-running worker's launch lease must prevent a stale settings snapshot.
+    using (var running = File.OpenRead(Path.Combine(first.InstallPath, "manifest.json")))
+    {
+        var denied = await RunCli(apply);
+        Assert.Equal(1, denied.Code);
+        Assert.Contains("still in use", denied.Error);
+    }
+    Assert.Equal(1, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+    var result = await RunCli(apply);
+    Assert.Equal(0, result.Code);
+    var next = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+    Assert.True(InstalledWidgetAuthority.PublisherId(first) != InstalledWidgetAuthority.PublisherId(next), "CLI reused security authority.");
+    Assert.Equal(json, (await state.ReadAsync(new(id, InstalledWidgetAuthority.PublisherId(next), "new"), default)).CanonicalJsonBase64);
 }
 
 static async Task GitHubThemeUpdateWorkflow()
