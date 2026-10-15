@@ -16,6 +16,7 @@ internal sealed partial class BrowserSurface
     private readonly TaskCompletionSource hostedNavigation = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Channel<string> hostedMessages = Channel.CreateBounded<string>(WebSessionContract.MaximumQueuedMessages);
     internal bool IsHostedPackage => hostedDefinition?.Source.Kind == WebSessionSourceKind.Package;
+    internal bool IsHostedSession => hostedDefinition is not null;
     internal ChannelReader<string> HostedMessages => hostedMessages.Reader;
 
     internal void ConfigureHostedSession(WebSessionDefinition definition, IReadOnlyList<BridgeWebSessionResource> resources)
@@ -40,7 +41,7 @@ internal sealed partial class BrowserSurface
     internal void PostHostedMessage(string encoded)
     {
         if (!IsHostedPackage || !IsReady || !IsHostedDocument(core!.Source) || loading) throw new InvalidOperationException("Session page is unavailable.");
-        core.PostWebMessageAsJson(Encoding.UTF8.GetString(WebSessionContract.DecodeMessage(encoded)));
+        core.PostWebMessageAsJson(TraceHostedRequest(Encoding.UTF8.GetString(WebSessionContract.DecodeMessage(encoded))));
     }
 
     internal void AuthorizeHostedResource(string url)
@@ -138,6 +139,7 @@ internal sealed partial class BrowserSurface
             }
             else if (HostedNetworkAllowed(args.Request.Uri) || uri is not null && uri == localResource &&
                 args.ResourceContext == CoreWebView2WebResourceContext.Media && args.Request.Method is "GET" or "HEAD") return;
+            WebSessionTrace.Record(widgetId,"resource-denied",$"context={args.ResourceContext}");
             args.Response = env.CreateWebResourceResponse(null, 403, "Forbidden", "");
         };
         core.NavigationStarting += (_, args) =>
@@ -151,7 +153,9 @@ internal sealed partial class BrowserSurface
             if (retired || faulted || core is null || args.Source != core.Source || !IsHostedDocument(args.Source)) return;
             try
             {
-                var bytes = Encoding.UTF8.GetBytes(args.WebMessageAsJson);
+                var json = args.WebMessageAsJson;
+                if (TraceHostedReply(json)) return;
+                var bytes = Encoding.UTF8.GetBytes(json);
                 if (bytes.Length > WebSessionContract.MaximumMessageBytes ||
                     !hostedMessages.Writer.TryWrite(Convert.ToBase64String(bytes)))
                     FailHostedSession("Hosted page message queue exceeded its bound.");
@@ -159,6 +163,9 @@ internal sealed partial class BrowserSurface
             catch (Exception error) when (error is ArgumentException or System.Runtime.InteropServices.COMException)
             { FailHostedSession("Hosted page sent an invalid message."); }
         };
+        try { await ConfigureHostedTraceAsync(); }
+        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException or NotImplementedException)
+        { WebSessionTrace.Record(widgetId,"trace-unavailable",$"error={error.GetType().Name}"); }
         if (definition.Source.AllowAutoplay)
             await core.Profile.SetPermissionStateAsync(CoreWebView2PermissionKind.Autoplay, origin, CoreWebView2PermissionState.Allow);
     }
@@ -196,6 +203,7 @@ internal sealed partial class BrowserSurface
         args.State = hostedDefinition!.Source.AllowAutoplay && args.PermissionKind == CoreWebView2PermissionKind.Autoplay &&
             (Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) && uri.GetLeftPart(UriPartial.Authority) == new Uri(document.Url).GetLeftPart(UriPartial.Authority) || HostedNetworkAllowed(args.Uri))
                 ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
+        WebSessionTrace.Record(widgetId,"permission",$"kind={args.PermissionKind} state={args.State}");
         return true;
     }
 

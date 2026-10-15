@@ -6,3 +6,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("SpotifyApplication")]
 
 [assembly: InternalsVisibleTo("SpotifyPlaybackHost.Tests")]
+[assembly: InternalsVisibleTo("WidgetBridge.Tests")]

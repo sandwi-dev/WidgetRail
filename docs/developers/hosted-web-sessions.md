@@ -35,6 +35,16 @@ into profile sharing within the same widget, never with unrelated widgets. Backg
 residency is separate from the automatic Low memory hint after 15 seconds hidden or
 passively pinned. The host never calls suspension for this optimization.
 
+Sessions without a view use one lazy, shared offscreen native host inside the
+frontend process. Its loaded 1x1 browser backing remains available when the overlay
+closes: collapsing the WebView or hiding its native parent can defer new media
+loads indefinitely. It never takes input or appears in window switchers. A view
+borrows the existing controller; it does not create another playback engine.
+Low-memory policy follows WidgetRail presentation, independently of this native
+backing. Authors must not use DOM visibility as a signal that their widget has input
+focus. A background session can keep page timers/rendering active; dispose it when
+its work is finished. This does not change ordinary declarative browser parking.
+
 ## Messages
 
 Only sealed packaged pages receive the channel; remote HTTP(S) sessions can navigate
@@ -102,3 +112,13 @@ network denial and Low memory behavior. Use synthetic pages and streams; provide
 account-dependent behavior still requires physical acceptance. The old YouTube Music
 standalone playback executable probe is retired because playback now requires the
 host; its Python import-integrity test remains available.
+
+The `--measure-session-latency` variant measures complete SDK-to-page round trips
+under events, concurrent sessions and idle/Low transitions. Its music fixture uses
+the real packaged playback pages, a synthetic loopback stream or a synthetic
+Spotify SDK. `--session-hidden-probe` checks starting media with the native overlay
+window closed. These cover delivery and media behavior separately; counter-message
+throughput alone is not playback acceptance. The developer-only
+`--trace-web-sessions` option logs bounded command receipt/reply and media-state
+metadata, never tokens, payloads, media URLs or song titles. Older packages without
+SDK timestamps report widget-to-host time as unavailable.

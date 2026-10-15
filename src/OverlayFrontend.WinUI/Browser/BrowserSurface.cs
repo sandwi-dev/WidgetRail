@@ -168,7 +168,10 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             if (!faulted)
             {
                 UpdateMemoryPolicy(); // Interactive presentation restores Normal before input.
-                web.Visibility = visible && AttachedPopup is null ? Visibility.Visible : Visibility.Collapsed;
+                // Hosted sessions keep a native backing in the offscreen session
+                // host. Collapsing it would defer new media loads indefinitely.
+                // Input admission and Low-memory policy still follow presentation.
+                web.Visibility = (visible || IsHostedSession) && AttachedPopup is null ? Visibility.Visible : Visibility.Collapsed;
                 web.IsHitTestVisible = input || visible && nativeDialogPointerAccess;
                 if (visible && IsLoaded && initializing is null) initializing = InitializeAsync();
                 if (visible) NavigatePending();

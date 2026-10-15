@@ -24,6 +24,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     }
     private readonly Session session;
     private readonly Grid parking;
+    private WebSessionBackgroundHost? sessionBackgroundHost;
+    private Grid ParkingFor(BrowserSurface surface) => surface.IsHostedSession
+        ? (sessionBackgroundHost ??= new()).Root : parking;
     private readonly string profileRoot;
     private readonly Dictionary<string, BrowserLibraryStore> libraries = new(StringComparer.Ordinal);
     private readonly Dictionary<BrowserSlot, Binding> slots = [];
@@ -239,7 +242,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     if (entry.Slot is not { } slot || !slots.ContainsKey(slot) || !slot.CanDisplay)
                     {
                         entry.Surface.SetPresentation(false, false); entry.Slot?.SetSurface(null); entry.Slot = null;
-                        await MoveAsync(entry.Surface, parking);
+                        await MoveAsync(entry.Surface, ParkingFor(entry.Surface));
                     }
             }
         }
@@ -404,6 +407,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         finally { popupPlacement.Release(); }
         if (retirements.Count != 0) await Task.WhenAll(retirements.Keys.ToArray());
         if (hostedMessagePumps.Count != 0) await Task.WhenAll(hostedMessagePumps.Values.ToArray());
+        sessionBackgroundHost?.Dispose();
         lifetime.Dispose();
     }
 }

@@ -24,9 +24,12 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" />
     <ProjectReference Include="..\..\samples\BrowserWidget\BrowserWidget.csproj" />
+    <ProjectReference Include="..\..\samples\SpotifyWidget\Backend\SpotifyApplicationBackend.csproj" />
     <ProjectReference Include="..\..\samples\GameHelpWidget\GameHelpWidget.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../src/WidgetSdk/WebSessionRuntime.js" Link="WebSessionRuntime.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../samples/YtMusicWidget/web/player.html" Link="YouTubeSessionFixture.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../samples/SpotifyWidget/web/player.html" Link="SpotifySessionFixture.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

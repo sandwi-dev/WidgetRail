@@ -77,7 +77,7 @@ public sealed class WidgetWebSession : IAsyncDisposable
         var posted = false;
         try
         {
-            await PostMessageAsync(new { widgetRail = 1, kind = "request", id, method, payload }, timeout.Token).ConfigureAwait(false);
+            await PostMessageAsync(new { widgetRail = 1, kind = "request", id, method, payload, sentAtTicks = System.Diagnostics.Stopwatch.GetTimestamp(), clockFrequency = System.Diagnostics.Stopwatch.Frequency }, timeout.Token).ConfigureAwait(false);
             posted = true;
             var value = await completion.Task.WaitAsync(timeout.Token).ConfigureAwait(false);
             return value.Deserialize<TResponse>(Json)!;

@@ -21,6 +21,23 @@ internal sealed partial class OverlayShellPage
                 Check(browserOwner!.ResidentCount == 1, "Authenticated worker opens a packaged session without a view");
                 await Action("increment"); await Status("count:1");
                 Check(true, "Typed request/reply crosses worker, broker, bridge and real WebView");
+                if (Environment.GetCommandLineArgs().Contains("--measure-session-latency"))
+                {
+                    await Action("measure");
+                    if (Environment.GetCommandLineArgs().Contains("--session-hidden-probe"))
+                    {
+                        await Status("music-ready");
+                        NativePickerVisibilityForValidation!(false);
+                        await Task.Delay(32000);
+                        NativePickerVisibilityForValidation(true);
+                    }
+                    var until = Environment.TickCount64 + 120_000;
+                    while (FindControl<TextBlock>(surface!, "Widget.status")?.Text.StartsWith("metrics", StringComparison.Ordinal) != true)
+                    { if(Environment.TickCount64>until)throw new TimeoutException("Measurement did not finish.");await Task.Delay(25); }
+                    var result = FindControl<TextBlock>(surface!, "Widget.status")!.Text;
+                    await File.WriteAllTextAsync(path, result);
+                    return;
+                }
                 step = "attach";
                 await Action("view");
                 await WebAppUntil(() => FindSlot(surface)?.Surface is { IsReady: true });

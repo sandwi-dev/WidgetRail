@@ -73,7 +73,14 @@ internal sealed partial class BrowserOwner
                 var entry = new Entry(authority, surface)
                 { Hosted = request.Session, Retained = definition.Browser.Background == BrowserBackgroundMode.KeepAlive, LastUse = Environment.TickCount64 };
                 entries.Add(key, entry); CreatedCount++;
-                parking.Children.Add(surface); surface.PlacementHost = parking;
+                var background = ParkingFor(surface);
+                await sessionBackgroundHost!.Ready.WaitAsync(TimeSpan.FromSeconds(5),lifetime.Token);
+                if (!ReferenceEquals(entries.GetValueOrDefault(key), entry)) throw new InvalidOperationException("Hosted session retired while preparing its native host.");
+                // Reconciliation may have parked this registered entry while
+                // the new island was loading. Do not attach it a second time.
+                if (!background.Children.Contains(surface)) background.Children.Add(surface);
+                surface.PlacementHost = background;
+                background.UpdateLayout();
                 hostedMessagePumps[request.Session.Id] = ForwardHostedMessagesAsync(request.Session, surface);
                 await surface.StartHostedSessionAsync(lifetime.Token);
                 if (!ReferenceEquals(entries.GetValueOrDefault(key), entry)) throw new InvalidOperationException("Hosted session retired while starting.");
