@@ -1,5 +1,17 @@
 # Built-in theme design audit and expansion
 
+## Acceptance — 2026-10-15
+
+The user accepted the theme and widget WRSS changes and authorized merging them
+into main after testing the candidate from `f774122b`. The verified candidate is
+`artifacts/theme-main-candidate/candidate02`; Spotify and YouTube Video received
+style-only local package updates. Earlier validation and pending-acceptance
+statements below describe the audit's history. The newly reported YouTube Music
+settings/library focus jump is tracked separately in the
+[next widget and notification plan](../widget-notification-adoption-plan.md);
+its cause is not yet established and it is not claimed fixed by this theme work.
+
+
 Date: 2026-10-15. Baseline: `main` at `235283ddee5d4a2ac73e1a0e19ac57c7d888c02e`.
 The change adds five built-in themes and improves the five existing themes.
 Existing identities and selections remain valid. Mono Ink is now first and the

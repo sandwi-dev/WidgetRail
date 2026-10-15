@@ -1,5 +1,17 @@
 # Widget styling audit
 
+## Acceptance — 2026-10-15
+
+The user accepted the theme and widget WRSS changes and authorized merging them
+into main after testing the candidate from `f774122b`. The verified candidate is
+`artifacts/theme-main-candidate/candidate02`; Spotify and YouTube Video received
+style-only local package updates. Earlier validation and pending-acceptance
+statements below describe the audit's history. The newly reported YouTube Music
+settings/library focus jump is tracked separately in the
+[next widget and notification plan](../widget-notification-adoption-plan.md);
+its cause is not yet established and it is not claimed fixed by this theme work.
+
+
 Date: 2026-10-15. Started from `969f8efd` on `codex/theme-design-audit` after the
 theme-design branch incorporated `main`. This extends the earlier
 [palette audit](theme-design-audit.md) to the styles shipped by widgets.
