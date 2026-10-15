@@ -19,6 +19,7 @@ internal sealed class NativeMenuNavigator : IDisposable
     internal NativeMenuNavigator(MenuFlyout menu, Func<bool> isCurrent)
     {
         this.menu = menu; this.isCurrent = isCurrent;
+        Simplify(menu.Items);
         Add(menu.Items, null);
         void Add(IEnumerable<MenuFlyoutItemBase> items, MenuFlyoutSubItem? parent)
         {
@@ -30,6 +31,23 @@ internal sealed class NativeMenuNavigator : IDisposable
                 item.Loaded += Loaded;
                 if (item is MenuFlyoutSubItem sub) Add(sub.Items, sub);
             }
+        }
+    }
+    // Resolve structure before theme tracking and native presentation. Keep the
+    // original action object so identity, command, shortcuts and help survive.
+    private static void Simplify(IList<MenuFlyoutItemBase> items)
+    {
+        for (var index = items.Count - 1; index >= 0; index--)
+        {
+            if (items[index] is not MenuFlyoutSubItem { Visibility: Visibility.Visible } group) continue;
+            Simplify(group.Items);
+            var choices = group.Items.Where(item => item is not MenuFlyoutSeparator && item.Visibility == Visibility.Visible).ToArray();
+            if (choices.Length == 0) { items.RemoveAt(index); continue; }
+            if (choices.Length != 1) continue;
+            var action = choices[0];
+            group.Items.Remove(action);
+            if (!group.IsEnabled) action.IsEnabled = false;
+            items[index] = action;
         }
     }
     private void GotFocus(object sender, RoutedEventArgs args) => remembered = (MenuFlyoutItemBase)sender;

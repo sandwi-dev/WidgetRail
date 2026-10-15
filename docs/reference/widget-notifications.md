@@ -65,7 +65,9 @@ popup surfaces. If no corner fits, the banner is suppressed. Fullscreen and syst
 pickers do not receive overlaid notifications. Banners never take controller focus
 or use Windows notification UI.
 
-Every widget's tray menu groups notification preferences under **Preferences**: Banner + list, List only,
+The tray menu offers **Notification preferences** directly when it is the only
+preference, or under **Preferences** alongside Website settings. Choices are
+Banner + list, List only,
 or Off. Banner-only requests are suppressed by List only and Off; the host never
 converts temporary status into pending entries. Widget-specific opt-in settings
 can further disable a feature's notifications but cannot override a host mute.

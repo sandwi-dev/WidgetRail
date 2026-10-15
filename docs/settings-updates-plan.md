@@ -15,6 +15,9 @@ fixtures and isolated profiles; no credentials, personal captures or live calls.
   opacity and interaction under Manage pin; Website settings and notification
   preferences under Preferences; reorder/restart under Widget. Keep the shared
   Notifications list second last and Stop webapp session last when applicable.
+  Before presentation, shared menu construction removes empty submenus and
+  promotes a sole visible option into its parent's position. Disabled visible
+  choices still count; action identity, hints and disabled state are preserved.
   No unused public SDK menu contract.
 - B from rail opens radial in radial + rail mode; nested UI consumes B first.
   Retain rail-only behavior and radial return behavior.
