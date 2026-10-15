@@ -88,7 +88,7 @@ internal sealed partial class OverlayShellPage
         {
             var popups = browsers.PinnablePopups(descriptor.Id).Where(child => !ReferenceEquals(pinned?.Popup?.Child, child)).ToArray();
             for (var index = 0; index < popups.Length; index++)
-                choices.Add(new(popups.Length == 1 ? "Pin pop-out" : "Pin pop-out: " + popups[index].PermissionTargetLabel,
+                choices.Add(new(popups.Length == 1 ? "Pin additional page" : "Pin additional page: " + popups[index].PermissionTargetLabel,
                     "Pin.Popup." + index, PopupPinLayout, Popup: true, PopupSource: popups[index]));
         }
         if (descriptor.PinningSupported && mediaOwner?.CanPin(descriptor.Id, pinned?.Media) == true &&
@@ -109,7 +109,7 @@ internal sealed partial class OverlayShellPage
         {
             if (choices.Any(choice => current.WidgetId != descriptor.Id || choice.LayoutId != current.LayoutId || choice.Popup))
                 add("Replace pin", "Pin.Replace", () => ReplacePinAsync(descriptor, current));
-            add(current.Popup is null ? "Unpin widget" : "Return pop-out to widget", "Pin.Remove", () => UnpinAsync(save: true));
+            add(current.Popup is null ? "Unpin widget" : "Return page to widget", "Pin.Remove", () => UnpinAsync(save: true));
             add("Move / resize pinned widget", "Pin.Adjust", BeginPinnedAdjustmentAsync);
             add($"Change pinned opacity: {current.Window.OpacityPercent}%", "Pin.Opacity", () => BeginPinnedAdjustmentAsync(opacityOnly: true));
             add("Interact with pinned widget", "Pin.Interact", EnterPinnedAsync);

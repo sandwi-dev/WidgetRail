@@ -9,7 +9,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal sealed record HostDialogChoice(string Id, string Label, long ContentRevision = 0);
+internal sealed record HostDialogChoice(string Id, string Label, long ContentRevision = 0, string? Group = null);
 
 /// <summary>A small host-owned decision surface with the same release/neutral boundary as install dialogs.</summary>
 internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
@@ -155,10 +155,14 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     }
     private ListViewItem CreateChoice(HostDialogChoice entry)
     {
-        var item = new ListViewItem { Content = choiceContent?.Invoke(entry) ?? new TextBlock { Text = entry.Label, TextWrapping = TextWrapping.Wrap, MaxLines = 5 },
+        UIElement label = new TextBlock { Text = entry.Label, TextWrapping = TextWrapping.Wrap, MaxLines = 5 };
+        if (entry.Group is { } group)
+            label = new StackPanel { Spacing = 4, Children = {
+                new TextBlock { Text = group, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Opacity = .8 }, label } };
+        var item = new ListViewItem { Content = choiceContent?.Invoke(entry) ?? label,
             Tag = entry.Id, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetAutomationId(item, "Host.Choice.Item." + entry.Id);
-        AutomationProperties.SetName(item, entry.Label);
+        AutomationProperties.SetName(item, entry.Group is { } groupName ? groupName + ". " + entry.Label : entry.Label);
         item.EffectiveViewportChanged += (_, _) => QueueVisibleChoices();
         return item;
     }

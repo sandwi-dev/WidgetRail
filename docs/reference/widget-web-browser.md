@@ -161,9 +161,10 @@ opening uses the existing release-aware handoff, including returning from pinned
 interaction to the main foreground owner first.
 
 Supported website permissions use host prompts identifying the widget and exact
-HTTPS origin, with Allow once, Always allow and Block choices. Website controls
-manage permissions or clear all website data for the selected profile. A visible
-browser widget also exposes **Website permissions** in its tray menu. Microphone,
+HTTPS origin, with Allow once, Always allow and Block choices. **Website settings**
+is available from both the gear and the visible browser widget's tray menu.
+One scrollable list groups **Permissions**, **New windows**, and profile/session
+actions. New-window placement can be changed directly in that list. Microphone,
 camera and the other supported permissions are always listed with explicit
 **Ask next time / Allow / Block** choices, including when no decision was saved.
 Changing a permission reloads pages in that profile and ends active calls; it
@@ -344,15 +345,22 @@ not an origin allowlist; redirects can cross origins for authentication.
   Windows does not share the hosted profile or opener; auth flows requiring them
   should use Hosted.
 
-Each root can host one popup; the host permits at most two globally. Nested and
-non-user-initiated popups are rejected. Hosted about:blank startup is supported
+The Browser widget explicitly uses Hosted, including after an incoming URL intent.
+SDK defaults remain unchanged. Each root can host one additional page; the host
+permits at most two resident child slots globally. A new request when a child is
+already open offers replacement instead of requiring a manual close. Requests
+from the child use that same flow rather than creating a nested stack. Replacement
+temporarily prepares one controller before retiring the old one, preserving the
+old document on cancellation or preparation failure. Non-user-initiated requests
+are rejected unless they match a specific admitted native Page actions command.
+Hosted about:blank startup is supported
 for authentication flows that navigate the new window afterwards. Non-web schemes
 remain unsupported. Closing, stopping, clearing a profile or retiring the root
 drains child initialization and native resources. When revealed, narrow toolbars keep address
 and Close visible with a controller-scrollable command row.
 
-For widgets that support full-widget pinning, a new hosted popup first asks
-**Open pinned / Open in widget / Cancel**. The host defers the native request
+For widgets that support full-widget pinning, **Where should this page open?**
+offers **Open pinned / Open in widget / Cancel**. The host defers the native request
 until the choice is made and places the existing child directly at its destination.
 It does not flash the child in the parent before pinning. Both placements use
 on-demand controls. The optional Remember checkbox stores the choice per widget,
@@ -360,18 +368,24 @@ account profile and requesting top-level website origin (including popups from
 its embedded frames). This makes the choice manageable from that website's own
 controls. It applies to hosted popup windows
 generally, including authentication windows; the host does not infer their purpose.
-Unknown requesting origins do not offer Remember. **Website controls → Pop-out
-placement** offers Ask each time / Open in widget / Open pinned. Cancel never saves
+Unknown requesting origins do not offer Remember. **Website settings → New windows**
+lists Ask each time / Open in widget / Open pinned directly. Cancel never saves
 a choice. Preferences survive restarts; a remembered pin preference still asks
 before replacing an existing pin, with a direct **Replace pin** action.
 
-An already open hosted child also provides **Pin pop-out** in its LS toolbar and
+Replacing an existing additional page always requires confirmation and retains
+its current placement unless the user chooses the alternative. If pinning also
+replaces another widget's pin, one confirmation explains both replacements.
+Pin bounds use the destination widget's saved position/size; geometry is shared
+between that widget's full-widget and additional-page pins.
+
+An already open hosted child also provides **Pin additional page** in its LS toolbar and
 as a tray pin choice. Replacing a pin uses the same
 single-pin placement/opacity controls. The existing child moves into that pin;
 its URL is not opened a second time and its opener/profile stay intact. The
 parent remains usable. B leaves pinned interaction; it does not close the child.
-**Return pop-out to widget** removes the pin and restores the live child to its
-parent. **Close pop-out**, parent-session Stop, profile changes and widget
+**Return page to widget** removes the pin and restores the live child to its
+parent. **Close additional page**, parent-session Stop, profile changes and widget
 retirement end the child. An ordinary parent navigation retains the normal
 browser opener/window semantics until its session is replaced or stopped.
 
@@ -510,7 +524,7 @@ Directory uploads and File System Access API workflows are not advertised.
 Downloads require a confirmation and a Windows Save destination for each file.
 Windows overwrite confirmation and WebView2's file security checks remain in
 place. Files are never opened automatically. Up to two downloads per surface can
-run; Website controls lists running downloads with cancellation. Stopping the
+run; Website settings lists running downloads with cancellation. Stopping the
 session, clearing its profile or retiring it cancels remaining downloads. A
 website requesting repeated downloads receives a separate permission prompt;
 allowing it does not bypass per-file save confirmation.

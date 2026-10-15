@@ -68,6 +68,8 @@ internal sealed partial class WebAppPopupValidationPage : Page, IAsyncDisposable
                 await browser.DrainPopupAsync();
                 Check(!browser.HasPopup && reserved == 0, "Profile-change drain closes children and releases budget");
                 await Open();
+                browser.HandleButton(ControllerButton.LeftStick, ControllerEventPhase.Pressed);
+                browser.HandleButton(ControllerButton.LeftStick, ControllerEventPhase.Released);
                 browser.Width = 320;
                 await Until(() => browser.ActiveSurface.ActualWidth is > 300 and <= 320);
                 browser.UpdateLayout();

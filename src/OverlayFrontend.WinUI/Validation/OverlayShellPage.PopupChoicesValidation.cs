@@ -53,7 +53,7 @@ internal sealed partial class OverlayShellPage
         await Press(ControllerButton.LeftStick);
         FindControl<Button>(parent, "Browser.SiteControls")!.Focus(FocusState.Keyboard);
         await Press(ControllerButton.A);
-        await Decide("popups"); await Decide("ask");
+        await Decide("windows.ask");
         await WebAppUntil(() => !HostChoiceActive && PopupPreferences.Get(parent.WidgetId, parent.ProfileName, origin) == BrowserPopupPlacement.Ask);
         if (parent.IsToolbarFocused) await Press(ControllerButton.LeftStick);
         check(true, "Website controls resets remembered placement to Ask each time");
@@ -81,7 +81,7 @@ internal sealed partial class OverlayShellPage
         var previousPin = pinned;
         pending = Open();
         await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        check(ReferenceEquals(pinned, previousPin) && hostChoiceDialog!.Title.ToString() == "Where should this pop-out open?",
+        check(ReferenceEquals(pinned, previousPin) && hostChoiceDialog!.Title.ToString() == "Where should this page open?",
             "Remembered pin placement still asks before replacing an existing pin");
         await CapturePopupDecisionAsync(hostChoiceDialog!, "popup-replace");
         await Press(ControllerButton.B); await pending;

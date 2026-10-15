@@ -15,34 +15,48 @@ internal sealed partial class BrowserSurface
     private bool siteControlsPending;
     private bool profileChanging, presentationInputRequested;
 
-    private Task ShowSiteControlsAsync() => ShowSiteControlsCoreAsync(false, Choose, false);
+    private Task ShowSiteControlsAsync() => ShowSiteControlsCoreAsync(Choose, false);
 
-    internal Task ShowPermissionsFromHostAsync(Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>> choose) =>
-        ShowSiteControlsCoreAsync(true, choose, true);
+    internal Task ShowSettingsFromHostAsync(Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>> choose) =>
+        ShowSiteControlsCoreAsync(choose, true);
 
-    private async Task ShowSiteControlsCoreAsync(bool permissionsOnly,
-        Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>>? choose,
-        bool hostInvoked)
+    private async Task ShowSiteControlsCoreAsync(
+        Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>>? choose, bool hostInvoked)
     {
         if (!(hostInvoked ? CanCompleteSiteDecision : CanRequestSiteDecision) || HasDialog || siteControlsPending || choose is null || core is not { } current) return;
         var origin = BrowserSiteIdentity.Origin(sessionStopped ? document.Url : current.Source, requireHttps: false);
         if (origin is null) { ShowStatus("Open a website to manage its settings."); return; }
-        var secure = origin.StartsWith("https://", StringComparison.Ordinal);
-        if (permissionsOnly && !secure) { ShowStatus("Open an HTTPS website to manage its permissions."); return; }
         siteControlsPending = true;
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
         try
         {
-            HostDialogChoice[] options = [.. (secure ? (HostDialogChoice[])[new("permissions", "Website permissions")] : Array.Empty<HostDialogChoice>()), new("clear", "Clear website data for this profile"),
-                .. (ManagePopupPlacement is null || RequestPopupPin is null || document.Options.Popups != WidgetProtocol.BrowserPopupMode.Hosted
-                    ? Array.Empty<HostDialogChoice>() : [new("popups", "Pop-out placement")]),
-                .. (downloads.Count == 0 ? Array.Empty<HostDialogChoice>() : [new("downloads", $"Downloads ({downloads.Count})")]),
-                .. (ChangeRunning is null ? Array.Empty<HostDialogChoice>() : [new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)")])];
-            var selection = permissionsOnly ? "permissions" : await choose(this, "Website controls", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", options, token);
+            var choices = new List<HostDialogChoice>();
+            if (origin.StartsWith("https://", StringComparison.Ordinal))
+            {
+                var saved = (await current.Profile.GetNonDefaultPermissionSettingsAsync()).Where(p =>
+                    BrowserSiteIdentity.Origin(p.PermissionOrigin) == origin).ToDictionary(p => p.PermissionKind, p => p.PermissionState);
+                choices.AddRange(WebsitePermissions.Select((p, i) => new HostDialogChoice("permission." + i,
+                    $"{p.Label} · {PermissionSettingLabel(saved.GetValueOrDefault(p.Kind, CoreWebView2PermissionState.Default))}", Group: i == 0 ? "Permissions" : null)));
+            }
+            if (ReadPopupPlacement is { } read && WritePopupPlacement is not null && RequestPopupPin is not null && document.Options.Popups == WidgetProtocol.BrowserPopupMode.Hosted)
+            {
+                var placement = await read(this, origin, token);
+                choices.AddRange(new[] { ("ask", "Ask each time", BrowserPopupPlacement.Ask), ("widget", "Open in widget", BrowserPopupPlacement.InWidget), ("pin", "Open pinned", BrowserPopupPlacement.Pinned) }
+                    .Select((p, i) => new HostDialogChoice("windows." + p.Item1, p.Item2 + (placement == p.Item3 ? " (selected)" : ""), Group: i == 0 ? "New windows" : null)));
+            }
+            choices.Add(new("clear", "Clear website data for this profile", Group: "Data and session"));
+            if (downloads.Count != 0) choices.Add(new("downloads", $"Downloads ({downloads.Count})"));
+            if (ChangeRunning is not null) choices.Add(new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)"));
+            var selection = await choose(this, "Website settings", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", choices, token);
             token.ThrowIfCancellationRequested();
             if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
             if (selection == "downloads") { await ManageDownloadsAsync(token); return; }
-            if (selection == "popups" && ManagePopupPlacement is { } manage) { await manage(this, origin, token); return; }
+            if (selection is "windows.ask" or "windows.widget" or "windows.pin")
+            {
+                if (WritePopupPlacement is { } write) await write(this, origin, selection switch
+                { "windows.pin" => BrowserPopupPlacement.Pinned, "windows.widget" => BrowserPopupPlacement.InWidget, _ => BrowserPopupPlacement.Ask }, token);
+                return;
+            }
             BrowserProfileChange? change = null;
             if (selection == "session" && ChangeRunning is { } run)
             {
@@ -51,23 +65,14 @@ internal sealed partial class BrowserSurface
                     (HostDialogChoice[])[new("stop", "Stop session")], token) == "stop") await run(this, false);
                 return;
             }
-            if (selection == "permissions")
+            if (selection?.StartsWith("permission.", StringComparison.Ordinal) == true && int.TryParse(selection[11..], out var index) && index >= 0 && index < WebsitePermissions.Length)
             {
-                var saved = (await current.Profile.GetNonDefaultPermissionSettingsAsync()).Where(p =>
-                    BrowserSiteIdentity.Origin(p.PermissionOrigin) == origin).ToDictionary(p => p.PermissionKind, p => p.PermissionState);
-                var permissions = WebsitePermissions;
-                var choices = permissions.Select((p, i) => new HostDialogChoice(i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    $"{p.Label} · {PermissionSettingLabel(saved.GetValueOrDefault(p.Kind, CoreWebView2PermissionState.Default))}")).ToArray();
-                selection = await choose(this, "Website permissions", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}\n\nChoose a permission to change its saved setting.", choices, token);
-                if (int.TryParse(selection, out var index) && index >= 0 && index < permissions.Length)
-                {
-                    var permission = permissions[index];
-                    selection = await choose(this, permission.Label, $"{origin}\n\nChanging this setting reloads every page in this profile and ends active calls. Choosing Ask also clears a temporary decision.",
-                        (HostDialogChoice[])[new("ask", "Ask next time"), new("allow", "Allow"), new("block", "Block")], token);
-                    if (selection is "ask" or "allow" or "block")
-                        change = new(false, origin, permission.Kind, selection == "allow" ? CoreWebView2PermissionState.Allow :
-                            selection == "block" ? CoreWebView2PermissionState.Deny : CoreWebView2PermissionState.Default);
-                }
+                var permission = WebsitePermissions[index];
+                selection = await choose(this, permission.Label, $"{origin}\n\nChanging this setting reloads every page in this profile and ends active calls. Choosing Ask also clears a temporary decision.",
+                    (HostDialogChoice[])[new("ask", "Ask next time"), new("allow", "Allow"), new("block", "Block")], token);
+                if (selection is "ask" or "allow" or "block")
+                    change = new(false, origin, permission.Kind, selection == "allow" ? CoreWebView2PermissionState.Allow :
+                        selection == "block" ? CoreWebView2PermissionState.Deny : CoreWebView2PermissionState.Default);
             }
             else if (selection == "clear")
             {
@@ -79,8 +84,6 @@ internal sealed partial class BrowserSurface
             token.ThrowIfCancellationRequested();
             if (change is not null && CanCompleteSiteDecision && ReferenceEquals(core, current) && ChangeProfile is { } apply)
             {
-                // Navigation intentionally cancels page-scoped prompts. The
-                // confirmed profile operation instead belongs to owner lifetime.
                 var changed = await apply(this, change, lifetime.Token);
                 if (!retired) ShowStatus(changed ? "Website settings updated." : "Website settings could not be changed. Try again.");
             }

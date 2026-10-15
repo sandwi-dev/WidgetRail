@@ -19,7 +19,7 @@ internal sealed partial class OverlayShellPage
         { await UnpinAsync(save: true, expected); return; }
         if (catalogItems.FirstOrDefault(widget => widget.Id == source.WidgetId)?.FullWidgetPinningSupported != true) return;
         if (expected is not null && await ShowBrowserChoiceAsync(source, "Replace pin?",
-            "The current pinned surface will return to its widget. This live pop-out will become the pin.",
+            "The current pinned surface will return to its widget. This additional page will become the pin.",
             (HostDialogChoice[])[new("replace", "Replace pin")], lifetime.Token) != "replace") return;
         if (retired || !visible || !ReferenceEquals(pinned, expected)) return;
         await PinBrowserPopupAsync(source.WidgetId, expected, source);
@@ -46,10 +46,10 @@ internal sealed partial class OverlayShellPage
                 // the owner retains its single borrowed-child contract.
                 if (pinned?.Popup is not null) await RemovePinnedCoreAsync();
                 var saved = pinnedPreferences.Placements.GetValueOrDefault(widgetId);
-                var window = new PinnedWidgetWindow(frame.Descriptor.Name + " pop-out", (nint)hostWindow);
+                var window = new PinnedWidgetWindow(frame.Descriptor.Name + " additional page", (nint)hostWindow);
                 var slot = new BrowserSlot { Active = true, AcceptsInput = false, IsTabStop = true };
                 AutomationProperties.SetAutomationId(slot, "Browser.PinnedPopup");
-                AutomationProperties.SetName(slot, frame.Descriptor.Name + " pop-out");
+                AutomationProperties.SetName(slot, frame.Descriptor.Name + " additional page");
                 BrowserPopupPresentation? lease = null;
                 PinnedSurface? created = null;
                 try

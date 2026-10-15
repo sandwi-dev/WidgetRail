@@ -42,11 +42,11 @@ internal sealed partial class BrowserSurface
         bookmarks = Add("Bookmarks", "Browser.Bookmarks", Symbol.Library, 6, () => Run(() => ShowLibraryAsync(true)));
         history = Add("History", "Browser.History", Symbol.Clock, 7, () => Run(() => ShowLibraryAsync(false)));
         external = Add("Open externally", "Browser.External", Symbol.Link, 8, () => Run(OpenExternallyAsync));
-        Add("Website permissions and data", "Browser.SiteControls", Symbol.Setting, 9, () => Run(ShowSiteControlsAsync));
+        Add("Website settings", "Browser.SiteControls", Symbol.Setting, 9, () => Run(ShowSiteControlsAsync));
         if (isPopup)
         {
-            pinPopupButton = Add("Pin pop-out", "Browser.PinPopup", Symbol.Pin, 10, () => { if (RequestPopupPin is { } request) Run(() => request(this)); });
-            closePopupButton = Add("Close pop-out", "Browser.ClosePopup", Symbol.Cancel, 11, () => CloseRequested?.Invoke());
+            pinPopupButton = Add("Pin additional page", "Browser.PinPopup", Symbol.Pin, 10, () => { if (RequestPopupPin is { } request) Run(() => request(this)); });
+            closePopupButton = Add("Close additional page", "Browser.ClosePopup", Symbol.Cancel, 11, () => CloseRequested?.Invoke());
         }
         header.SizeChanged += (_, args) => ArrangeChrome(args.NewSize.Width);
         if (IsProviderContent)
@@ -113,7 +113,7 @@ internal sealed partial class BrowserSurface
         {
             pin.Visibility = RequestPopupPin is null ? Visibility.Collapsed : Visibility.Visible;
             var pinned = PopupIsPinned?.Invoke(this) == true;
-            var label = pinned ? "Return pop-out to widget" : "Pin pop-out";
+            var label = pinned ? "Return page to widget" : "Pin additional page";
             AutomationProperties.SetName(pin, label); ToolTipService.SetToolTip(pin, label);
         }
         var onDemand = document.Options.Chrome == WidgetProtocol.BrowserChrome.OnDemand;

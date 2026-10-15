@@ -18,7 +18,7 @@ public sealed class BrowserWidgetTests
             await WidgetTestHost.InitializeAsync(widget);
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
             Assert.AreEqual(WebBrowserDocument.StartPage, Browser(widget.RenderSnapshot("browser.test", 1))!.Url);
-            Assert.AreEqual(73, widget.RenderSnapshot("browser.test", 1).ProtocolVersion);
+            Assert.AreEqual(ProtocolConstants.CurrentVersion, widget.RenderSnapshot("browser.test", 1).ProtocolVersion);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(widget.RenderSnapshot("browser.test", 1)).Count);
             var request = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
                 JsonSerializer.SerializeToElement(new { url = "https://example.com/guide" }));
@@ -26,12 +26,15 @@ public sealed class BrowserWidgetTests
             var first = Browser(widget.RenderSnapshot("browser.test", 2))!;
             Assert.AreEqual("https://example.com/guide", first.Url);
             Assert.AreEqual(BrowserInteractionMode.InteractOnFocus, first.InteractionMode);
+            Assert.AreEqual(BrowserPopupMode.Hosted, first.Options.Popups);
+            Assert.AreEqual(BrowserStorage.Private, first.Options.Storage);
             Assert.IsFalse(Walk(widget.RenderSnapshot("browser.test", 2).Root).Any(node => node.Kind == ViewNodeKind.TextEntry));
             Assert.AreEqual(first, Browser(widget.RenderSnapshot("browser.test", 3)));
             Assert.AreEqual(WidgetIntentResult.Accepted, await widget.OnIntentAsync(request));
             var second = Browser(widget.RenderSnapshot("browser.test", 4))!;
             Assert.AreEqual(first.NavigationId + 1, second.NavigationId);
             Assert.AreEqual(first.Id, second.Id);
+            Assert.AreEqual(BrowserPopupMode.Hosted, second.Options.Popups);
             Assert.AreEqual(WidgetIntentResult.Rejected, await widget.OnIntentAsync(request with
                 { Payload = JsonSerializer.SerializeToElement(new { url = "file:///C:/unsafe" }) }));
             Assert.AreEqual(second, Browser(widget.RenderSnapshot("browser.test", 5)));

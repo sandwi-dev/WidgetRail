@@ -9,7 +9,11 @@ public sealed class BrowserWidget : Widget
     private sealed record State(WebBrowserDocument Document);
     private readonly WidgetModel<State> model;
     private static readonly CompiledWidgetIntentContract contract = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web);
-    public BrowserWidget() => model = CreateModel(new State(new("browser.primary", 1, WebBrowserDocument.StartPage, "Web browser")));
+    public BrowserWidget() => model = CreateModel(new State(NewDocument(1, WebBrowserDocument.StartPage)));
+
+    private static WebBrowserDocument NewDocument(long revision, string url) =>
+        new("browser.primary", revision, url, "Web browser")
+        { Options = new() { Popups = BrowserPopupMode.Hosted } };
 
     public override WidgetView Render()
     {
@@ -44,7 +48,7 @@ public sealed class BrowserWidget : Widget
         {
             var sequence = state.Document.NavigationId;
             if (sequence == WebBrowserDocument.MaximumNavigationId) return state;
-            return new(new("browser.primary", sequence + 1, url!, "Web browser"));
+            return new(NewDocument(sequence + 1, url!));
         }).Changed;
     }
 }

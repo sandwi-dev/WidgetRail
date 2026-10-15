@@ -52,6 +52,11 @@ internal sealed partial class OverlayShellPage
                     await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
                     return;
                 }
+                if (Environment.GetCommandLineArgs().Contains("--webapp-new-window-flow"))
+                {
+                    step = "new-window flow";
+                    await VerifyNewWindowFlowAsync(first, Check);
+                }
                 await VerifySpatialRoutingAsync(first, "main", Check);
                 if (Environment.GetCommandLineArgs().Contains("--webapp-popup-placement")) await VerifyPopupPlacementChoicesAsync(first, Check);
                 // Other popup lifetime tests deliberately choose the established
@@ -90,7 +95,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntilScript(second, "localStorage.getItem('shared-test')==='present' && document.cookie.includes('shared-test=present')");
                 Check(first.ProfileName == second.ProfileName, "Two declared documents use the same widget/account profile");
                 await Toolbar(first, "Browser.SiteControls");
-                await Choose(1);
+                await Choose(10);
                 await Choose(0);
                 await WebAppUntilScript(first, "location.origin==='https://shell.fixture.invalid' && localStorage.getItem('shared-test')===null");
                 await WebAppUntilScript(second, "location.origin==='https://shell.fixture.invalid' && !document.cookie.includes('shared-test=present')");
@@ -110,7 +115,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => first.IsBrowsing && !HostChoiceActive);
                 Check(first.IsBrowsing && !HostChoiceActive, "Native permission confirmation restores main browser interaction");
                 if (Environment.GetCommandLineArgs().Contains("--webapp-notifications")) await VerifyNotificationsAsync(first, Check);
-                await Toolbar(first, "Browser.SiteControls"); await Choose(0); await Choose(2); await Choose(2);
+                await Toolbar(first, "Browser.SiteControls"); await Choose(2); await Choose(2);
                 await WebAppUntilPermission(first, CoreWebView2PermissionKind.Notifications, CoreWebView2PermissionState.Deny);
                 await WebAppUntil(() => !HostChoiceActive && !first.IsNavigationInProgress && first.CurrentTitle == "Shell /primary");
                 Check(await first.EvaluateFixtureAsync("Notification.permission==='denied'") == "true", "Website controls revoke a remembered native permission");

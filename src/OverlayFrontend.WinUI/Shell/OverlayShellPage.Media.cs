@@ -38,7 +38,7 @@ internal sealed partial class OverlayShellPage
             PopupPresentationInvalidated = InvalidatePopupPin,
             RequestPopupPin = RequestBrowserPopupPinAsync,
             ChoosePopupPlacement = ChooseBrowserPopupPlacementAsync,
-            ManagePopupPlacement = ManageBrowserPopupPlacementAsync,
+            ReadPopupPlacement = ReadBrowserPopupPlacementAsync, WritePopupPlacement = SavePopupPreferenceAsync,
             ExpansionInvalidated = () => { if (expandedBrowser is not null) fullscreenLayer.Close(restoreFocus: false); } };
         browserOwner.ActivityChanged += RefreshWebappStatus;
         InitializeNotifications();

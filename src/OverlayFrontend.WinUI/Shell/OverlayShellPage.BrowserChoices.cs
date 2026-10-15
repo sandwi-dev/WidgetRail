@@ -13,11 +13,11 @@ internal sealed partial class OverlayShellPage
         {
             var choices = pages.Select((page, i) => new HostDialogChoice(i.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 page.PermissionTargetLabel)).ToArray();
-            var selected = await ShowHostChoiceAsync("Website permissions", "Choose a website and profile.", choices, lifetime.Token);
+            var selected = await ShowHostChoiceAsync("Website settings", "Choose a website and profile.", choices, lifetime.Token);
             if (!int.TryParse(selected, out index) || index < 0 || index >= pages.Length) return;
         }
         if (!browsers.PermissionTargets(widget.Id).Contains(pages[index])) return;
-        await pages[index].ShowPermissionsFromHostAsync((_, title, message, choices, token) =>
+        await pages[index].ShowSettingsFromHostAsync((_, title, message, choices, token) =>
             ShowHostChoiceAsync(title, message, choices, token));
     }
     private void RefreshWebappStatus()

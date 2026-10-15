@@ -7,60 +7,72 @@ internal sealed partial class OverlayShellPage
     private BrowserPopupPreferences? popupPreferences;
     private BrowserPopupPreferences PopupPreferences => popupPreferences ??= new(Path.Combine(options.SettingsRoot, "webapp-popup-placement.json"));
 
-    private async Task<BrowserPopupRequest?> ChooseBrowserPopupPlacementAsync(BrowserSurface source, string? origin, CancellationToken token)
+    private async Task<BrowserPopupRequest?> ChooseBrowserPopupPlacementAsync(BrowserSurface source, BrowserSurface? replacing, string? origin, CancellationToken token)
     {
         if (retired || !visible || !source.CanCompleteSiteDecision) return null;
-        if (source.RequestPopupPin is null) return new(BrowserPopupPlacement.InWidget);
-        var store = PopupPreferences;
-        await store.LoadAsync(lifetime.Token).WaitAsync(token);
         var expected = pinned;
-        var placement = origin is null ? BrowserPopupPlacement.Ask : store.Get(source.WidgetId, source.ProfileName, origin);
-        var remember = false;
-        if (placement == BrowserPopupPlacement.Ask || placement == BrowserPopupPlacement.Pinned && expected is not null)
+        var replacingPin = replacing is not null && ReferenceEquals(expected?.Popup?.Child, replacing);
+        var canPin = source.RequestPopupPin is not null;
+        var placement = replacing is not null ? (replacingPin ? BrowserPopupPlacement.Pinned : BrowserPopupPlacement.InWidget) :
+            origin is null ? BrowserPopupPlacement.Ask : await ReadBrowserPopupPlacementAsync(source, origin, token);
+        if (!canPin) placement = BrowserPopupPlacement.InWidget;
+        if (replacing is not null || placement == BrowserPopupPlacement.Ask || placement == BrowserPopupPlacement.Pinned && expected is not null)
         {
             var widget = catalogItems.FirstOrDefault(item => item.Id == source.WidgetId)?.Name ?? source.WidgetId;
-            var existing = expected is null ? null : catalogItems.FirstOrDefault(item => item.Id == expected.WidgetId)?.Name ?? expected.WidgetId;
+            var pinnedName = expected is null ? null : catalogItems.FirstOrDefault(item => item.Id == expected.WidgetId)?.Name ?? expected.WidgetId;
+            var message = $"{widget}\n{origin ?? "This website"}";
+            if (replacing is not null)
+            {
+                var title = string.IsNullOrWhiteSpace(replacing.CurrentTitle) ? "the existing additional page" : replacing.CurrentTitle;
+                message += $"\n\nReplace {title[..Math.Min(title.Length, 160)]}? This closes that page and ends its activity.";
+            }
+            if (pinnedName is not null && !replacingPin && canPin)
+                message += $"\n\nChoosing pinned also replaces the current pin: {pinnedName}.";
             HostChoiceDialog? dialog = null;
-            var selection = await ShowBrowserChoiceCoreAsync(source, "Where should this pop-out open?",
-                $"{widget}\n{origin ?? "This website"}" +
-                (existing is null ? "" : $"\n\nOpening pinned will replace the current pin: {existing}."),
-                (HostDialogChoice[])[new("pin", existing is null ? "Open pinned" : "Replace pin"), new("widget", "Open in widget")], token,
-                configure: choice =>
+            HostDialogChoice pinChoice = new("pin", replacingPin ? "Replace pinned page" : expected is null ? (replacing is null ? "Open pinned" : "Replace and pin") : "Replace pin");
+            HostDialogChoice widgetChoice = new("widget", replacing is null ? "Open in widget" : replacingPin ? "Replace in widget" : "Replace page");
+            HostDialogChoice[] choices = !canPin ? [widgetChoice] : replacing is not null && !replacingPin ? [widgetChoice, pinChoice] : [pinChoice, widgetChoice];
+            var selection = await ShowBrowserChoiceCoreAsync(source, replacing is null ? "Where should this page open?" : "Replace existing page?", message,
+                choices, token, configure: choice =>
                 {
                     dialog = choice;
-                    if (origin is not null) choice.AddRememberChoice("Remember for this website in this account");
-                }, directDecisionButtons: true);
+                    if (replacing is null && origin is not null && canPin) choice.AddRememberChoice("Remember for this website in this account");
+                }, directDecisionButtons: choices.Length == 2);
             if (selection is not ("pin" or "widget")) return null;
             placement = selection == "pin" ? BrowserPopupPlacement.Pinned : BrowserPopupPlacement.InWidget;
-            remember = dialog?.RememberChoice == true;
+            token.ThrowIfCancellationRequested();
+            if (dialog?.RememberChoice == true && origin is not null) await SavePopupPreferenceAsync(source, origin, placement, token);
         }
         token.ThrowIfCancellationRequested();
-        if (retired || !visible || !source.CanCompleteSiteDecision || placement == BrowserPopupPlacement.Pinned && !ReferenceEquals(pinned, expected)) return null;
-        if (remember && origin is not null) await SavePopupPreferenceAsync(source, origin, placement, token);
-        token.ThrowIfCancellationRequested();
-        if (placement == BrowserPopupPlacement.InWidget) return new(placement);
-        return new(placement, async child =>
+        if (retired || !visible || !source.CanCompleteSiteDecision || !ReferenceEquals(pinned, expected)) return null;
+        return new(placement, Pin: async child =>
         {
             if (retired || !ReferenceEquals(pinned, expected)) return false;
             await PinBrowserPopupAsync(source.WidgetId, expected, child, enforceExpected: true);
             return pinned?.Popup is { IsCurrent: true } popup && ReferenceEquals(popup.Child, child);
+        }, BeforeReplace: async () =>
+        {
+            if (retired || !visible || !ReferenceEquals(pinned, expected)) return false;
+            // Return the old borrowed controller before it closes, avoiding a
+            // queued stale-pin teardown racing the replacement's pin transaction.
+            if (replacingPin && expected is { } previous)
+            {
+                await SavePinnedAsync(previous);
+                await UnpinAsync(save: true, previous);
+                if (pinned is not null) return false;
+                expected = null;
+                if (placement == BrowserPopupPlacement.InWidget && activeWidget != source.WidgetId)
+                    await SelectAsync(source.WidgetId, enterWidget: true);
+            }
+            return !retired && visible;
         });
     }
 
-    private async Task ManageBrowserPopupPlacementAsync(BrowserSurface source, string origin, CancellationToken token)
+    private async Task<BrowserPopupPlacement> ReadBrowserPopupPlacementAsync(BrowserSurface source, string origin, CancellationToken token)
     {
-        var store = PopupPreferences;
-        await store.LoadAsync(lifetime.Token).WaitAsync(token);
-        var current = store.Get(source.WidgetId, source.ProfileName, origin);
-        var selection = await ShowBrowserChoiceAsync(source, "Pop-out placement",
-            $"{origin}\nCurrent: {PopupPlacementLabel(current)}\n\nApplies to new hosted pop-outs from this website in this widget and account, including sign-in windows. Existing pop-outs stay where they are.",
-            (HostDialogChoice[])[new("ask", "Ask each time"), new("widget", "Open in widget"), new("pin", "Open pinned")], token);
-        if (selection is not ("ask" or "widget" or "pin")) return;
-        await SavePopupPreferenceAsync(source, origin, selection switch
-        { "pin" => BrowserPopupPlacement.Pinned, "widget" => BrowserPopupPlacement.InWidget, _ => BrowserPopupPlacement.Ask }, token);
+        await PopupPreferences.LoadAsync(lifetime.Token).WaitAsync(token);
+        return PopupPreferences.Get(source.WidgetId, source.ProfileName, origin);
     }
-    private static string PopupPlacementLabel(BrowserPopupPlacement placement) => placement switch
-    { BrowserPopupPlacement.InWidget => "Open in widget", BrowserPopupPlacement.Pinned => "Open pinned", _ => "Ask each time" };
 
     private async Task SavePopupPreferenceAsync(BrowserSurface source, string origin, BrowserPopupPlacement placement, CancellationToken token)
     {
@@ -68,7 +80,7 @@ internal sealed partial class OverlayShellPage
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             await ShowBrowserChoiceAsync(source, "Could not remember this choice",
-                "The saved preference has not changed. You can still open this pop-out and try saving the preference again later.", [], token);
+                "The saved preference has not changed. You can still open this page and try saving the preference again later.", [], token);
         }
     }
 }

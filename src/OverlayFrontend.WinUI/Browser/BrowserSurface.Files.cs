@@ -117,7 +117,7 @@ internal sealed partial class BrowserSurface
         args.Handled = true;
         if (!CanRequestSiteDecision || HasDialog || Choose is null || ChooseFiles is null) { args.Cancel = true; return; }
         if (downloads.Count >= 2)
-        { args.Cancel = true; ShowStatus("Finish or cancel a running download in Website controls before starting another."); return; }
+        { args.Cancel = true; ShowStatus("Finish or cancel a running download in Website settings before starting another."); return; }
         var origin = BrowserSiteIdentity.Origin(owner.Source, requireHttps: false);
         if (origin is null) { args.Cancel = true; return; }
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;

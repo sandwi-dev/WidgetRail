@@ -42,6 +42,7 @@ internal sealed partial class BrowserSurface
 
     private void CancelSiteDecisions()
     {
+        contextWindowAdmission = null;
         var previous = siteDecisions;
         siteDecisions = null;
         previous?.Cancel(); previous?.Dispose();

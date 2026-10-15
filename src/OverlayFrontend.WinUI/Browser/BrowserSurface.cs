@@ -431,7 +431,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (retired || faulted || core is null || !Uri.TryCreate(core.Source, UriKind.Absolute, out var uri)) return;
         var title = core.DocumentTitle ?? "";
         welcome.Visibility = core.Source == WebBrowserDocument.StartPage ? Visibility.Visible : Visibility.Collapsed;
-        address.Text = isPopup ? (BrowserSiteIdentity.Origin(core.Source) ?? (core.Source == WebBrowserDocument.StartPage ? "New popup" : "Untrusted origin")) : core.Source == WebBrowserDocument.StartPage ? "Search Google or enter a URL" : uri.IdnHost + (title.Length == 0 ? "" : " · " + title[..Math.Min(180, title.Length)]);
+        address.Text = isPopup ? (BrowserSiteIdentity.Origin(core.Source) ?? (core.Source == WebBrowserDocument.StartPage ? "New window" : "Untrusted origin")) : core.Source == WebBrowserDocument.StartPage ? "Search Google or enter a URL" : uri.IdnHost + (title.Length == 0 ? "" : " · " + title[..Math.Min(180, title.Length)]);
         AutomationProperties.SetName(address, address.Text);
         UpdateBookmark();
     }

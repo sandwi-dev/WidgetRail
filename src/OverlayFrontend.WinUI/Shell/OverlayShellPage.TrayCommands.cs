@@ -208,7 +208,7 @@ internal sealed partial class OverlayShellPage
                 id == "Pin.Interact" ? ControllerButton.View : null));
             if (browserOwner?.PermissionTargets(descriptor.Id).Length > 0)
             {
-                Add("Website permissions", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor));
+                Add("Website settings", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor));
 
             }
             if (notificationCenter is not null) Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor));

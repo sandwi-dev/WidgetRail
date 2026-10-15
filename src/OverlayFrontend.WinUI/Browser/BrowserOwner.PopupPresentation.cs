@@ -26,7 +26,7 @@ internal sealed partial class BrowserOwner
     private async Task<CoreWebView2> PreparePopupAsync(BrowserSurface child, Grid destination, bool deferPlacement, CancellationToken token)
     {
         if (retired || !entries.Values.Any(entry => entry.Surface.Owns(child))) throw new OperationCanceledException();
-        parking.Children.Add(child);
+        if (child.Parent is null) parking.Children.Add(child);
         var core = await child.PrepareCoreAsync(token);
         token.ThrowIfCancellationRequested();
         if (!deferPlacement) await MoveAsync(child, destination, () => !token.IsCancellationRequested && child.IsReady);
