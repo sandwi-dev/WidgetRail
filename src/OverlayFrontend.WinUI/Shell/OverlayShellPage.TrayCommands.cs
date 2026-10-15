@@ -204,21 +204,20 @@ internal sealed partial class OverlayShellPage
             openedMenu = menu;
             Input.GamepadKeyBoundary.ObserveFlyout(menu.Flyout, anchor);
             trayMenu = menu;
-            AddPinnedCommands(descriptor, (label, id, action) => Add(label, id, action,
-                id == "Pin.Interact" ? ControllerButton.View : null));
-            if (browserOwner?.PermissionTargets(descriptor.Id).Length > 0)
+            MenuFlyoutSubItem? pinGroup = null;
+            AddPinnedCommands(descriptor, (label, id, action) =>
             {
-                Add("Website settings", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor));
-
-            }
-            var notificationGroup = Group("Notifications", "Notifications");
-            if (notificationCenter is not null) Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor), group: notificationGroup);
-            if (browserOwner is { } notificationOwner)
-                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync, group: notificationGroup);
-            if (notificationGroup.Items.Count == 0) menu.Flyout.Items.Remove(notificationGroup);
+                var group = id is "Pin.Adjust" or "Pin.Opacity" or "Pin.Interact"
+                    ? pinGroup ??= Group("Manage pin", "Pin") : null;
+                Add(label, id, action, id == "Pin.Interact" ? ControllerButton.View : null, group: group);
+            });
+            var preferencesGroup = Group("Preferences", "Preferences");
+            if (browserOwner?.PermissionTargets(descriptor.Id).Length > 0)
+                Add("Website settings", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor), group: preferencesGroup);
+            if (notificationCenter is not null)
+                Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor), group: preferencesGroup);
+            if (preferencesGroup.Items.Count == 0) menu.Flyout.Items.Remove(preferencesGroup);
             var widgetGroup = Group("Widget", "Widget");
-            if (browserOwner?.HasRunningSession(descriptor.Id) == true)
-                Add("Stop webapp session", "Browser.Stop", () => StopBrowserWidgetAsync(descriptor), group: widgetGroup);
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y, group: widgetGroup);
             Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true, group: widgetGroup);
             var quickActionStart = menu.Flyout.Items.Count;
@@ -234,6 +233,13 @@ internal sealed partial class OverlayShellPage
                         ? button : null);
             if (menu.Flyout.Items.Count > quickActionStart)
                 menu.Flyout.Items.Insert(quickActionStart, new MenuFlyoutSeparator());
+            if (browserOwner is { } notificationOwner)
+            {
+                menu.Flyout.Items.Add(new MenuFlyoutSeparator());
+                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
+            }
+            if (browserOwner?.HasRunningSession(descriptor.Id) == true)
+                Add("Stop webapp session", "Browser.Stop", () => StopBrowserWidgetAsync(descriptor));
             menu.Navigation = new(menu.Flyout, () => ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection));
             menu.Flyout.Opened += (_, _) => OnTrayMenuOpened(menu);
             menu.Flyout.Closed += (_, _) =>

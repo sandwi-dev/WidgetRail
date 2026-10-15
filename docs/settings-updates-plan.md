@@ -11,8 +11,11 @@ fixtures and isolated profiles; no credentials, personal captures or live calls.
 - Shared host menu infrastructure with one submenu level, native WinUI menus,
   controller/keyboard/mouse support, focus restoration, safe dismissal, theme,
   scrolling and screen-edge placement. Tray only supplies commands and grouping.
-  Keep direct pin commands and Website settings. Group notification commands
-  and widget management. No unused public SDK menu contract.
+  Keep pin creation/replacement and unpin/return direct. Group move/resize,
+  opacity and interaction under Manage pin; Website settings and notification
+  preferences under Preferences; reorder/restart under Widget. Keep the shared
+  Notifications list second last and Stop webapp session last when applicable.
+  No unused public SDK menu contract.
 - B from rail opens radial in radial + rail mode; nested UI consumes B first.
   Retain rail-only behavior and radial return behavior.
 - Settings Restart/Quit bypass ordinary loading and acknowledge immediately;

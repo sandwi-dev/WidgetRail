@@ -35,7 +35,10 @@ internal sealed partial class OverlayShellPage
             await WebAppUntil(() => trayMenu is { } current && current.Flyout.Items.OfType<MenuFlyoutSubItem>().Any(item => item.IsLoaded));
             var menu = trayMenu!;
             var group = menu.Flyout.Items.OfType<MenuFlyoutSubItem>().Single(item => item.Text == "Widget");
-            check(menu.Flyout.Items.OfType<MenuFlyoutSubItem>().Any(item => item.Text == "Notifications"), "Tray groups notification and widget commands");
+            check(menu.Flyout.Items.OfType<MenuFlyoutSubItem>().Any(item => item.Text == "Preferences") &&
+                AutomationProperties.GetAutomationId(menu.Flyout.Items[^2]) == "Overlay.TrayCommand.Browser.Notifications" &&
+                AutomationProperties.GetAutomationId(menu.Flyout.Items[^1]) == "Overlay.TrayCommand.Browser.Stop",
+                "Tray groups preferences and keeps Notifications then Stop webapp session last");
             group.Focus(FocusState.Keyboard);
             Move(FocusNavigationDirection.Right);
             await WebAppUntil(() => group.Items.Any(item => item.FocusState == FocusState.Keyboard));
