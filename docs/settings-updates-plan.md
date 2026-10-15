@@ -6,6 +6,13 @@ Do not merge, push, release, create distribution installers or remove worktrees.
 Preserve profiles, sign-ins, Guide shortcut and unrelated edits. Use synthetic
 fixtures and isolated profiles; no credentials, personal captures or live calls.
 
+Acceptance update (2026-10-14): the user accepted the current changes and
+authorized merging to main and publishing a new release. This supersedes the
+original no-merge/no-release checkpoint restriction above. Preview.32 includes
+the accepted tray organization and single-option submenu behavior. The user
+could not reproduce the synthetic child Page actions timeout in Twitch; it
+remains a test-observed unresolved issue, not a confirmed Twitch defect.
+
 ## Accepted scope and decisions
 
 - Shared host menu infrastructure with one submenu level, native WinUI menus,
