@@ -15,6 +15,17 @@ This is a local pre-release contract. It does not publish a NuGet package,
 promise post-1.0 semantic-version compatibility, sign the SDK, or change the
 runtime wire protocol.
 
+The offline export includes `WidgetSdk`, `WidgetProtocol`,
+`WidgetApplicationRuntime`, and `WidgetBrokerTransport`. The last assembly is
+the bootstrap's client transport dependency, not the host broker or a new widget
+API. Generated projects still use a single `WidgetRail.WidgetSdk` package
+reference. Existing projects with an older local package need a newly exported
+package and its exact version to receive packaging fixes; no widget source or
+permission changes are required. The release-unit checks verify dependency
+closure, and the isolated external consumer test exercises startup, permitted
+and denied host-service requests, consent revocation and restart without host
+assemblies in its output.
+
 The active [SDK stability, migration, and deprecation
 policy](widget-sdk-evolution.md) defines the reviewed release unit, public API
 diff classifications, pre-release version movement, external-distribution

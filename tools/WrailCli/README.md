@@ -115,8 +115,10 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   package adds a deterministic content suffix and the project references that
   exact package version; mismatched CLI/SDK/template release units fail before
   publication. The local SDK package contains `WidgetSdk.dll`,
-  `WidgetProtocol.dll`, and the narrow `WidgetApplicationRuntime.dll`
-  bootstrap. CLI, the host-side runtime, `PlatformBroker`, catalog, and
+  `WidgetProtocol.dll`, the narrow `WidgetApplicationRuntime.dll`
+  bootstrap, and its .NET-only `WidgetBrokerTransport.dll` dependency. All four
+  assemblies contribute to the content-addressed package version. CLI,
+  the host-side runtime, `PlatformBroker`, catalog, and
   Settings assemblies remain product implementation and are not bundled into
   the generated widget.
 - `validate` checks strict manifest JSON and every WRSS file in a widget

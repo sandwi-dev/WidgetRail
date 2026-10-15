@@ -36,11 +36,15 @@ internal static class LocalWidgetSdkPackage
         var applicationRuntime = ReadAssembly(
             typeof(WidgetApplicationBootstrap).Assembly.Location,
             "WidgetApplicationRuntime.dll");
+        var brokerTransport = ReadAssembly(
+            typeof(WidgetRail.PlatformBroker.BrokerPipeClient).Assembly.Location,
+            "WidgetBrokerTransport.dll");
         var adapterRuntime = ReadAdapterRuntime();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(sdk);
         hash.AppendData(protocol);
         hash.AppendData(applicationRuntime);
+        hash.AppendData(brokerTransport);
         hash.AppendData(adapterRuntime);
         hash.AppendData(Encoding.UTF8.GetBytes(AdapterRuntimeContentFilesContract));
         hash.AppendData(Encoding.UTF8.GetBytes(LicenseExpression));
@@ -58,6 +62,7 @@ internal static class LocalWidgetSdkPackage
             WriteBytes(archive, "lib/net8.0/WidgetProtocol.dll", protocol);
             WriteBytes(archive, "lib/net8.0/WidgetApplicationRuntime.dll",
                 applicationRuntime);
+            WriteBytes(archive, "lib/net8.0/WidgetBrokerTransport.dll", brokerTransport);
             WriteBytes(archive, AdapterRuntimePackagePath, adapterRuntime);
         }
         return new(

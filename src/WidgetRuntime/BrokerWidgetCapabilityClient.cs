@@ -92,7 +92,7 @@ internal sealed class BrokerWidgetCapabilityClient :
             throw CapabilityFailure("channel_closed");
         }
 
-        if (response.ProtocolVersion != BrokerJson.ProtocolVersion)
+        if (response.ProtocolVersion != BrokerWireJson.ProtocolVersion)
             throw CapabilityFailure("unsupported_protocol");
         if (!response.Succeeded)
             throw CapabilityFailure(response.ErrorCode ?? "broker_rejected");
@@ -105,9 +105,9 @@ internal sealed class BrokerWidgetCapabilityClient :
         WidgetCapabilityOperation<TRequest, TResponse> operation,
         TRequest request) =>
         request is LaunchWidgetAppLibraryItemRequest { CloseOverlayOnSuccess: true } &&
-        operation.CapabilityId == PlatformCapabilities.AppLibraryLaunchV1 &&
-        operation.OperationId is (PlatformCapabilities.AppLibraryLaunch or
-            PlatformCapabilities.AppLibraryLaunchObserved);
+        operation.CapabilityId == BrokerTransportOperations.AppLibraryLaunchV1 &&
+        operation.OperationId is (BrokerTransportOperations.AppLibraryLaunch or
+            BrokerTransportOperations.AppLibraryLaunchObserved);
 
     public async ValueTask<IWidgetCapabilitySubscription<TPayload>> OpenSubscriptionAsync<TPayload>(
         WidgetCapabilityEvent<TPayload> platformEvent,
@@ -199,7 +199,7 @@ internal sealed class BrokerWidgetCapabilityClient :
             while (true)
             {
                 var envelope = await ReadEventAsync(_subscription, cancellationToken).ConfigureAwait(false);
-                if (envelope.ProtocolVersion != BrokerJson.ProtocolVersion ||
+                if (envelope.ProtocolVersion != BrokerWireJson.ProtocolVersion ||
                     envelope.CapabilityId != _platformEvent.CapabilityId ||
                     envelope.EventType != _platformEvent.EventType || envelope.Sequence <= 0)
                     throw CapabilityFailure("malformed_event");
@@ -224,7 +224,7 @@ internal sealed class BrokerWidgetCapabilityClient :
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = false,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-            MaxDepth = BrokerJson.MaximumDepth,
+            MaxDepth = BrokerWireJson.MaximumDepth,
         };
         options.Converters.Add(new JsonStringEnumConverter(
             JsonNamingPolicy.CamelCase, allowIntegerValues: false));

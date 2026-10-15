@@ -18,7 +18,7 @@ public sealed record HostCaptureAttachment(CaptureAttachment Attachment, string 
 /// <summary>Single-process capability owner. Every operation remains scoped to the original broker object.</summary>
 internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, long maximumBytes = CaptureLimits.MaximumTotalBytes) : IDisposable
 {
-    internal const int CapabilityDiscoveryTimeoutSeconds = 15;
+    internal const int CapabilityDiscoveryTimeoutSeconds = BrokerTransportLimits.CaptureCapabilityDiscoveryTimeoutSeconds;
     internal static WindowCaptureRegistry Shared { get; } = new();
     private readonly object gate = new();
     private readonly TimeProvider clock = time ?? TimeProvider.System;

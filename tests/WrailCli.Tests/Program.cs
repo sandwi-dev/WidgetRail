@@ -1492,6 +1492,7 @@ static async Task ExternalVersionedSdkConsumer()
             new[]
             {
                 "lib/net8.0/WidgetApplicationRuntime.dll",
+                "lib/net8.0/WidgetBrokerTransport.dll",
                 "lib/net8.0/WidgetProtocol.dll",
                 "lib/net8.0/WidgetSdk.dll",
             },
@@ -1503,7 +1504,7 @@ static async Task ExternalVersionedSdkConsumer()
     await AssertArchiveHasNoPathsAsync(sdkPackage, Environment.CurrentDirectory);
 
     var build = await RunProcessAsync(
-        "dotnet", ["build", project, "-c", "Release", "--nologo"],
+        "dotnet", ["build", project, "-c", "Release", "--nologo", "-bl:" + Path.Combine(temp.Path, "external-basic.binlog")],
         TimeSpan.FromSeconds(90), widget,
         new Dictionary<string, string?> { ["NUGET_PACKAGES"] = nugetPackages });
     Assert.True(build.Code == 0, "external build: " + build.Output + build.Error);
@@ -1569,7 +1570,7 @@ static async Task ExternalVersionedSdkConsumer()
         externalApplicationProjectText);
     Assert.DoesNotContain("ProjectReference", externalApplicationProjectText);
     var externalApplicationBuild = await RunProcessAsync(
-        "dotnet", ["build", externalApplicationProject, "-c", "Release", "--nologo"],
+        "dotnet", ["build", externalApplicationProject, "-c", "Release", "--nologo", "-bl:" + Path.Combine(temp.Path, "external-fulltrust.binlog")],
         TimeSpan.FromSeconds(90), externalApplication,
         new Dictionary<string, string?> { ["NUGET_PACKAGES"] = nugetPackages });
     Assert.True(externalApplicationBuild.Code == 0,
@@ -1620,6 +1621,22 @@ static async Task ExternalVersionedSdkConsumer()
         if (Directory.Exists(externalState))
             Directory.Delete(externalState, recursive: true);
     }
+    await File.WriteAllTextAsync(Path.Combine(externalApplication, "Program.cs"), ExternalSdkCapabilityProbe.Source);
+    var capabilityBuild = await RunProcessAsync(
+        "dotnet", ["build", externalApplicationProject, "-c", "Release", "--nologo", "-bl:" + Path.Combine(temp.Path, "external-capabilities.binlog")],
+        TimeSpan.FromSeconds(90), externalApplication,
+        new Dictionary<string, string?> { ["NUGET_PACKAGES"] = nugetPackages });
+    Assert.True(capabilityBuild.Code == 0,
+        "external capabilities build: " + capabilityBuild.Output + capabilityBuild.Error);
+    try
+    {
+        await ExternalSdkCapabilityProbe.RunAsync(externalApplicationExecutable, Path.Combine(temp.Path, "capability-consent"));
+    }
+    catch (Exception exception)
+    {
+        throw new InvalidOperationException("External SDK capability probe failed: " + exception, exception);
+    }
+
     var validation = await RunProcessAsync(
         wrail, ["validate", widget], TimeSpan.FromSeconds(30), repository);
     Assert.True(validation.Code == 0,
@@ -1832,7 +1849,7 @@ static void CopyWrailDistribution(string source, string destination)
                  "wrail.exe", "wrail.dll", "wrail.deps.json", "wrail.runtimeconfig.json",
                  "PlatformBroker.dll", "PackageDistribution.dll",
                  "PlatformSettings.dll", "WidgetCatalog.dll", "WidgetProtocol.dll",
-                 "WidgetApplicationRuntime.dll", "WidgetRuntime.dll", "WidgetSdk.dll",
+                 "WidgetApplicationRuntime.dll", "WidgetBrokerTransport.dll", "WidgetRuntime.dll", "WidgetSdk.dll",
                  "WidgetStyling.dll",
              })
     {

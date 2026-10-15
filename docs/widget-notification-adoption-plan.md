@@ -1,6 +1,6 @@
 # Widget notification adoption and tray improvements
 
-Status: implementation and candidates accepted by the user on 2026-10-15; local integration into main authorized. The separate external SDK packaging defect remains deferred.
+Status: implementation and candidates accepted by the user on 2026-10-15; integrated into main. The subsequently authorized SDK packaging repair is tracked in [SDK client packaging](sdk-client-packaging-plan.md).
 Start from main after the accepted theme and widget-WRSS work is integrated.
 Preserve the normal profile, sign-ins, Guide shortcut, and unrelated changes.
 

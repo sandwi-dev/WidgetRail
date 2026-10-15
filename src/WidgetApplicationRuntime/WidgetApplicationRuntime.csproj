@@ -6,7 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
+    <ProjectReference Include="..\WidgetBrokerTransport\WidgetBrokerTransport.csproj" />
     <Compile Include="..\WidgetRuntime\BrokerWidgetCapabilityClient.cs" Link="Runtime\BrokerWidgetCapabilityClient.cs" />
     <Compile Include="..\WidgetRuntime\WorkerCapabilityConnection.cs" Link="Runtime\WorkerCapabilityConnection.cs" />
     <Compile Include="..\WidgetRuntime\WidgetIntentLane.cs" Link="Runtime\WidgetIntentLane.cs" />

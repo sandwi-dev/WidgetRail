@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\WidgetBrokerTransport\WidgetBrokerTransport.csproj" /></ItemGroup>
   <ItemGroup><ProjectReference Include="..\WidgetProtocol\WidgetProtocol.csproj" /></ItemGroup>
   <ItemGroup><PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" /></ItemGroup>
   <ItemGroup>
@@ -12,7 +13,5 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\AppLibraryArtworkHandle.cs" Link="Internal\AppLibraryArtworkHandle.cs" />
-    <Compile Include="..\Shared\CommunityPlatformContractLimits.cs"
-             Link="Internal\CommunityPlatformContractLimits.cs" />
   </ItemGroup>
 </Project>

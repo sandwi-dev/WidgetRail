@@ -1,5 +1,7 @@
 using System.IO.Compression;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
@@ -33,6 +35,7 @@ internal static class WidgetSdkReleaseUnitScenarios
 
         using var archive = new ZipArchive(
             new MemoryStream(first.Content, writable: false), ZipArchiveMode.Read);
+        VerifyDependencyClosure(archive);
         var nuspecEntry = archive.GetEntry(contract.PackageId + ".nuspec")
             ?? throw new InvalidOperationException("Local SDK package omitted its nuspec.");
         using var reader = new StreamReader(nuspecEntry.Open(), Encoding.UTF8);
@@ -57,6 +60,7 @@ internal static class WidgetSdkReleaseUnitScenarios
                      "lib/net8.0/WidgetSdk.dll",
                      "lib/net8.0/WidgetProtocol.dll",
                      "lib/net8.0/WidgetApplicationRuntime.dll",
+                     "lib/net8.0/WidgetBrokerTransport.dll",
                  })
             hash.AppendData(ReadEntry(archive, path));
         hash.AppendData(adapterRuntime);
@@ -76,6 +80,38 @@ internal static class WidgetSdkReleaseUnitScenarios
             Equal(contract.TemplateVersion.ToString(), metadata["ControllerWidgetTemplateVersion"]);
         }
         return Task.CompletedTask;
+    }
+
+    private static void VerifyDependencyClosure(ZipArchive archive)
+    {
+        var assemblies = archive.Entries.Where(entry =>
+            entry.FullName.StartsWith("lib/net8.0/", StringComparison.Ordinal) &&
+            entry.FullName.EndsWith(".dll", StringComparison.Ordinal)).ToArray();
+        var supplied = assemblies.Select(entry => Path.GetFileNameWithoutExtension(entry.Name))
+            .ToHashSet(StringComparer.Ordinal);
+        var framework = Directory.EnumerateFiles(
+                Path.GetDirectoryName(typeof(object).Assembly.Location)!, "*.dll")
+            .Select(Path.GetFileNameWithoutExtension).ToHashSet(StringComparer.Ordinal);
+        foreach (var assembly in assemblies)
+        {
+            using var stream = new MemoryStream(ReadEntry(archive, assembly.FullName));
+            using var pe = new PEReader(stream);
+            var metadata = pe.GetMetadataReader();
+            foreach (var handle in metadata.AssemblyReferences)
+            {
+                var name = metadata.GetString(metadata.GetAssemblyReference(handle).Name);
+                True(supplied.Contains(name) || framework.Contains(name),
+                    $"Exported {assembly.Name} requires missing non-framework dependency {name}.");
+            }
+        }
+        True(!supplied.Contains("PlatformBroker") && !supplied.Contains("WidgetRuntime"),
+            "The author SDK must not include host implementation assemblies.");
+        var transport = typeof(WidgetRail.PlatformBroker.BrokerPipeClient).Assembly;
+        True(transport.GetReferencedAssemblies().All(reference => framework.Contains(reference.Name!)),
+            "The client transport must depend only on the .NET runtime.");
+        foreach (var type in transport.GetExportedTypes())
+            True(Type.GetType(type.FullName + ", PlatformBroker", throwOnError: true) == type,
+                $"PlatformBroker no longer forwards the existing transport type {type.FullName}.");
     }
 
     private static byte[] ReadEntry(ZipArchive archive, string path)

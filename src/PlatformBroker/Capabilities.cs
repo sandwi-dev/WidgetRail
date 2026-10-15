@@ -58,16 +58,16 @@ public static class PlatformCapabilities
     public const string PerformanceGet = "performance.get";
     public const string PerformanceEnableFps = "performance.fps.enable";
     public const string PerformanceDisableFps = "performance.fps.disable";
-    public const string DisplaysReadV1 = "system.displays.read.v1";
-    public const string DisplaysControlV1 = "system.displays.control.v1";
-    public const string DisplayProfilesGet = "display-profiles.get";
+    public const string DisplaysReadV1 = BrokerTransportOperations.DisplaysReadV1;
+    public const string DisplaysControlV1 = BrokerTransportOperations.DisplaysControlV1;
+    public const string DisplayProfilesGet = BrokerTransportOperations.DisplayProfilesGet;
     public const string DisplayProfilesSave = "display-profiles.save";
     public const string DisplayProfilesRename = "display-profiles.rename";
     public const string DisplayProfilesReplace = "display-profiles.replace";
     public const string DisplayProfilesDelete = "display-profiles.delete";
-    public const string DisplayProfilesApply = "display-profiles.apply";
-    public const string DisplayProfilesKeep = "display-profiles.keep";
-    public const string DisplayProfilesRevert = "display-profiles.revert";
+    public const string DisplayProfilesApply = BrokerTransportOperations.DisplayProfilesApply;
+    public const string DisplayProfilesKeep = BrokerTransportOperations.DisplayProfilesKeep;
+    public const string DisplayProfilesRevert = BrokerTransportOperations.DisplayProfilesRevert;
     public const string DisplayProfilesChanged = "display-profiles.changed";
     public const string PowerReadV1 = "system.power.read.v1";
     public const string PowerControlV1 = "system.power.control.v1";
@@ -98,7 +98,7 @@ public static class PlatformCapabilities
     public const string NetworkWifiRadioControlV1 = "system.network.wifi.radio.control.v1";
     public const string NetworkBluetoothReadV1 = "system.network.bluetooth.read.v1";
     public const string NetworkBluetoothRadioControlV1 = "system.network.bluetooth.radio.control.v1";
-    public const string NetworkBluetoothPairV1 = "system.network.bluetooth.pair.v1";
+    public const string NetworkBluetoothPairV1 = BrokerTransportOperations.NetworkBluetoothPairV1;
     public const string NetworkBluetoothUnpairV1 = "system.network.bluetooth.unpair.v1";
     public const string NetworkBluetoothManageV1 = "system.network.bluetooth.manage.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
@@ -112,8 +112,8 @@ public static class PlatformCapabilities
     public const string WidgetPermissionsV1 = "widget.permissions.v1";
     public const string WidgetMarketplaceV1 = "widgets.marketplace.v1";
     public const string CaptureLibrarySaveV1 = "media.capture-library.save.v1";
-    public const string CaptureLibraryManageV1 = "media.capture-library.manage.v1";
-    public const string WindowCaptureV1 = "system.apps.windows.capture.v1";
+    public const string CaptureLibraryManageV1 = BrokerTransportOperations.CaptureLibraryManageV1;
+    public const string WindowCaptureV1 = BrokerTransportOperations.WindowCaptureV1;
     public const string WindowCaptureRequest = "capture.request";
     public const string WindowCaptureStatus = "capture.status";
     public const string WindowCaptureCancel = "capture.cancel";
@@ -128,13 +128,13 @@ public static class PlatformCapabilities
     public const string TaskWindowsClose = "apps.windows.close";
     public const string AppRunningReadV1 = "system.apps.running.read.v1";
     public const string AppRunningRegisterV1 = "system.apps.running.register.v1";
-    public const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
+    public const string AppLibraryLaunchV1 = BrokerTransportOperations.AppLibraryLaunchV1;
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
     public const string PrivateSecretsV1 = "storage.private-secrets.v1";
     public const string PrivateStateV1 = "storage.private-state.v1";
 
-    public const string LoopbackCapabilityPrefix = "network.loopback:";
+    public const string LoopbackCapabilityPrefix = BrokerTransportOperations.LoopbackCapabilityPrefix;
     public const int MinimumLoopbackPort = CommunityPlatformContractLimits.MinimumLoopbackPort;
     public const int MaximumLoopbackPort = CommunityPlatformContractLimits.MaximumLoopbackPort;
 
@@ -162,7 +162,7 @@ public static class PlatformCapabilities
     public const string NetworkAvailableWifiConnect = "network.wifi.connect";
     public const string NetworkWifiRadioGet = "network.wifi.radio.get";
     public const string NetworkWifiRadioSet = "network.wifi.radio.set";
-    public const string NetworkBluetoothScan = "network.bluetooth.scan";
+    public const string NetworkBluetoothScan = BrokerTransportOperations.NetworkBluetoothScan;
     public const string NetworkBluetoothGet = "network.bluetooth.get";
     public const string NetworkBluetoothRadioSet = "network.bluetooth.radio.set";
     public const string NetworkBluetoothDevicePair = "network.bluetooth.device.pair";
@@ -176,12 +176,12 @@ public static class PlatformCapabilities
     public const string AppRunningConfirm = "apps.running.confirm";
     public const string AppRunningRegister = "apps.running.register";
     public const string AppRunningForget = "apps.running.forget";
-    public const string AppLibraryLaunch = "apps.library.launch";
-    internal const string AppLibraryLaunchObserved = "apps.library.launch-observed";
+    public const string AppLibraryLaunch = BrokerTransportOperations.AppLibraryLaunch;
+    internal const string AppLibraryLaunchObserved = BrokerTransportOperations.AppLibraryLaunchObserved;
     public const string MediaSessionsGet = "media.sessions.get";
     public const string MediaSessionControl = "media.session.control";
-    public const string LoopbackHttpGetJson = "loopback.http.get-json";
-    public const string LoopbackHttpPostJson = "loopback.http.post-json";
+    public const string LoopbackHttpGetJson = BrokerTransportOperations.LoopbackHttpGetJson;
+    public const string LoopbackHttpPostJson = BrokerTransportOperations.LoopbackHttpPostJson;
     public const string PrivateSecretExists = "private-secret.exists";
     public const string PrivateSecretMetadata = "private-secret.metadata";
     public const string PrivateSecretSave = "private-secret.save";
@@ -365,23 +365,8 @@ public static class PlatformCapabilities
         TryGet(id, out var definition) &&
         definition.AccessPolicy == BrokerCapabilityAccessPolicy.HostGranted;
 
-    public static bool TryGetLoopbackPort(string? capabilityId, out int port)
-    {
-        port = 0;
-        if (capabilityId is null ||
-            !capabilityId.StartsWith(LoopbackCapabilityPrefix, StringComparison.Ordinal))
-            return false;
-        var text = capabilityId.AsSpan(LoopbackCapabilityPrefix.Length);
-        if (text.Length is < 1 or > 5 || text[0] == '0' ||
-            !int.TryParse(text, System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out port) ||
-            port is < MinimumLoopbackPort or > MaximumLoopbackPort)
-        {
-            port = 0;
-            return false;
-        }
-        return true;
-    }
+    public static bool TryGetLoopbackPort(string? capabilityId, out int port) =>
+        BrokerTransportOperations.TryGetLoopbackPort(capabilityId, out port);
 
     private static IReadOnlySet<string> Set(params string[] values) =>
         new HashSet<string>(values, StringComparer.Ordinal);
