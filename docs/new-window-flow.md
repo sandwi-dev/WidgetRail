@@ -174,3 +174,12 @@ notifications, and shutdown. Debug build, trimmed Release publication and 234
 managed shell tests pass. The synthetic Page actions screenshot now has one
 focused action and no Cancel outline. The complete candidate is staged under
 `artifacts/new-window-failure/candidate-03/WidgetRail-Developer-0.1.0-preview.31-win-x64`.
+
+## Physical acceptance (2026-10-14)
+
+The user accepted the current candidate and authorized integration into main.
+This covers the new-window placement/replacement flow, Website settings, direct
+host link action, and shared choice-dialog focus/selection corrections above.
+The planned tiered tray menus, rail Back navigation, automatic app updates,
+notification intents, recovery simplification, and Marketplace improvements are
+separate future work and are not included in this acceptance.
