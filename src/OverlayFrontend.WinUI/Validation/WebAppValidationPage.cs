@@ -61,7 +61,7 @@ internal sealed partial class WebAppValidationPage : Page, IAsyncDisposable
                 if (permissions)
                 {
                     var permissionCalls = 0;
-                    browser.Choose = (_, title, message, choices, token) =>
+                    browser.Choose = (_, title, message, choices, token, _) =>
                     {
                         Check(title == "Website permission" && message.Contains("https://webapp.fixture.invalid", StringComparison.Ordinal), "Consent identifies the requesting website");
                         permissionCalls++;
@@ -84,7 +84,7 @@ internal sealed partial class WebAppValidationPage : Page, IAsyncDisposable
                     browser.RestoreAfterProfileChange(previousUrl);
                     await WaitForScript("document.title==='Webapp fixture'");
                     var prompting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                    browser.Choose = async (_, _, _, _, token) =>
+                    browser.Choose = async (_, _, _, _, token, _) =>
                     {
                         prompting.TrySetResult();
                         await Task.Delay(Timeout.InfiniteTimeSpan, token);

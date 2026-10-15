@@ -103,6 +103,8 @@ internal sealed partial class OverlayShellPage
             await ObserveLayout("bottom");
             Receive(new ControllerFrame { Connected = 1, DpadNavigation = new() { Direction = NavigationDirection.Down, Phase = NavigationPhase.Pressed } });
             check(ReferenceEquals(FocusManager.GetFocusedElement(dialog.XamlRoot), cancel), $"{kind}: Down from the last choice reaches Cancel");
+            await WebAppUntil(() => list.SelectedIndex == -1);
+            check(true, $"{kind}: Cancel focus clears the list selection highlight");
             PressFrame(0x2000);
             check(await answer is null, $"{kind}: long-list dialog cancels without invoking an action");
             pin.Window.Place(bounds);

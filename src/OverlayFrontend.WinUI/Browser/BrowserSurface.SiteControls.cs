@@ -17,11 +17,11 @@ internal sealed partial class BrowserSurface
 
     private Task ShowSiteControlsAsync() => ShowSiteControlsCoreAsync(Choose, false);
 
-    internal Task ShowSettingsFromHostAsync(Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>> choose) =>
+    internal Task ShowSettingsFromHostAsync(BrowserChoiceHandler choose) =>
         ShowSiteControlsCoreAsync(choose, true);
 
     private async Task ShowSiteControlsCoreAsync(
-        Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>>? choose, bool hostInvoked)
+        BrowserChoiceHandler? choose, bool hostInvoked)
     {
         if (!(hostInvoked ? CanCompleteSiteDecision : CanRequestSiteDecision) || HasDialog || siteControlsPending || choose is null || core is not { } current) return;
         var origin = BrowserSiteIdentity.Origin(sessionStopped ? document.Url : current.Source, requireHttps: false);
@@ -47,7 +47,7 @@ internal sealed partial class BrowserSurface
             choices.Add(new("clear", "Clear website data for this profile", Group: "Data and session"));
             if (downloads.Count != 0) choices.Add(new("downloads", $"Downloads ({downloads.Count})"));
             if (ChangeRunning is not null) choices.Add(new("session", sessionStopped ? "Restart webapp session" : "Stop webapp session (ends calls)"));
-            var selection = await choose(this, "Website settings", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", choices, token);
+            var selection = await choose(this, "Website settings", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", choices, token, focusFirstChoice: true);
             token.ThrowIfCancellationRequested();
             if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
             if (selection == "downloads") { await ManageDownloadsAsync(token); return; }

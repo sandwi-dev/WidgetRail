@@ -38,7 +38,7 @@ internal sealed partial class BrowserSurface
                     HostDialogChoice[] choices = [.. items.Select((item, index) => new HostDialogChoice(index.ToString(System.Globalization.CultureInfo.InvariantCulture),
                         (IsNewWindowCommand(item) && document.Options.Popups == WidgetRail.WidgetProtocol.BrowserPopupMode.Hosted ? "Open in widget or pin…" : BoundWebsiteText(item.Label.Replace("&", ""), 120)) + (item.Kind == CoreWebView2ContextMenuItemKind.Submenu ? "…" : item.IsChecked ? " (selected)" : ""))),
                         .. (groups.Count > 1 ? (HostDialogChoice[])[new("back", "Back")] : [])];
-                    var answer = await Choose!(this, "Page actions", origin, choices, token);
+                    var answer = await Choose!(this, "Page actions", origin, choices, token, focusFirstChoice: true);
                     token.ThrowIfCancellationRequested();
                     if (answer == "back") { groups.Pop(); continue; }
                     if (!int.TryParse(answer, out var index) || index < 0 || index >= items.Length) break;

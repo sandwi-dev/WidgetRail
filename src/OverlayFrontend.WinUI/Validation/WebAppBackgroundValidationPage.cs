@@ -29,7 +29,7 @@ internal sealed partial class WebAppBackgroundValidationPage : Page, IAsyncDispo
             var checks = new List<string>(); string? error = null; var permissions = new List<string>();
             try
             {
-                browser.Choose = (_, _, message, _, _) =>
+                browser.Choose = (_, _, message, _, _, _) =>
                 {
                     if (!message.Contains("https://background.fixture.invalid", StringComparison.Ordinal)) throw new InvalidOperationException("Unexpected permission origin.");
                     permissions.Add(message.Contains("microphone", StringComparison.Ordinal) ? "microphone" : message.Contains("camera", StringComparison.Ordinal) ? "camera" : "other");

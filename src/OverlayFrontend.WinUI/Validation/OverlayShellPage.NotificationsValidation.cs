@@ -78,6 +78,8 @@ internal sealed partial class OverlayShellPage
             panelBounds.X <= bellBounds.X + bellBounds.Width && panelBounds.Right >= bellBounds.X,
             $"Pending panel is anchored above the bell and stays within the native root: panel={panelBounds}, bell={bellBounds}");
         FindControl<Button>(hostChoiceDialog!, "Host.Choice.Close")!.Focus(FocusState.Keyboard);
+        await WebAppUntil(() => FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!.SelectedIndex == -1);
+        check(true, "Notification footer focus clears the previous entry highlight");
         Receive(new ControllerFrame { Connected = 1 });
         await Press(ControllerButton.X);
         check(inbox.Entries.Count == 1, "X on the notification dialog Close control does not dismiss an unfocused entry");
@@ -125,7 +127,8 @@ internal sealed partial class OverlayShellPage
             await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
             var list = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
             await WebAppUntil(() => list.Items.Count > 0);
-            list.SelectedIndex = 0;
+            // The next A/X can arrive before the queued selection repaint.
+            list.SelectedIndex = -1;
             check(((Control)list.Items[0]).Focus(FocusState.Keyboard), "Pending notification receives native controller focus");
             Receive(new ControllerFrame { Connected = 1 });
         }

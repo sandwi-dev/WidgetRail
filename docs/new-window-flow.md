@@ -132,3 +132,45 @@ The fresh complete candidate is
 It reuses unchanged verified runtime/widget payloads with the newly published
 frontend. No installer, merge, push or release is part of this follow-up.
 Physical Twitch acceptance remains pending.
+
+## Correction: action selection is not dialog focus
+
+Physical testing of the previous candidate showed a highlighted first Page
+actions row while Cancel actually owned keyboard/controller focus. The native
+link action never ran: A closed the dialog through Cancel. The first regression
+suite had manually focused the menu row, concealing this distinction.
+
+Shared `HostChoiceDialog` action-list selection now follows actual focus and
+clears when focus moves to a footer control. This applies to Page actions,
+Website settings, notification panels and other host choice lists, without
+changing persistent selection in ordinary widget lists. Removing a notification
+while a footer is focused does not select an unrelated entry.
+
+Initial focus is a separate explicit host policy. Page actions and the top-level
+Website settings menu opt into first-option focus through `BrowserChoiceHandler`;
+permission and replacement confirmations retain Cancel. The notification panel
+retains its existing first-entry policy. No behavior is inferred from translated
+dialog titles or website identity.
+
+The corrected native tests open Page actions and press A without assigning focus
+to its row, then navigate the placement dialog from Cancel. Long-list pin tests
+assert that moving to Cancel clears selection. `Test-WinUiNewWindowFlow.ps1
+-IncludeNotifications` also checks notification footer selection and existing
+notification activation/dismissal behavior. Evidence is under
+`artifacts/new-window-failure/`; physical acceptance remains pending.
+
+During expanded validation, synchronously changing ListView selection from a
+native focus callback failed during pinned-dialog teardown. Selection painting
+is now coalesced onto the dispatcher after that focus transaction and disabled
+while closing. Activation resolves the actual focused row independently of the
+queued visual update. Removed or retiring containers cannot become selections.
+The initial-focus callback also stops once closing begins.
+
+Final validation: `new-window-failure/native-qualified/result.json` passes all
+204 checks with notifications enabled, including A/X before a queued selection
+repaint, eight menu-to-placement cycles without row focus injection, footer
+highlight clearing, full-widget and pop-out pin teardown, permissions, stale
+notifications, and shutdown. Debug build, trimmed Release publication and 234
+managed shell tests pass. The synthetic Page actions screenshot now has one
+focused action and no Cancel outline. The complete candidate is staged under
+`artifacts/new-window-failure/candidate-03/WidgetRail-Developer-0.1.0-preview.31-win-x64`.

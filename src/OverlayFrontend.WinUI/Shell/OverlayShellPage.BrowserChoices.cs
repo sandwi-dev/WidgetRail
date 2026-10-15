@@ -17,8 +17,8 @@ internal sealed partial class OverlayShellPage
             if (!int.TryParse(selected, out index) || index < 0 || index >= pages.Length) return;
         }
         if (!browsers.PermissionTargets(widget.Id).Contains(pages[index])) return;
-        await pages[index].ShowSettingsFromHostAsync((_, title, message, choices, token) =>
-            ShowHostChoiceAsync(title, message, choices, token));
+        await pages[index].ShowSettingsFromHostAsync((_, title, message, choices, token, focusFirstChoice) =>
+            ShowHostChoiceAsync(title, message, choices, token, configure: dialog => dialog.FocusFirstOptionOnOpen = focusFirstChoice));
     }
     private void RefreshWebappStatus()
     {
@@ -35,8 +35,8 @@ internal sealed partial class OverlayShellPage
     }
 
     private Task<string?> ShowBrowserChoiceAsync(Browser.BrowserSurface browser, string title, string message,
-        IReadOnlyList<HostDialogChoice> choices, CancellationToken token) =>
-        ShowBrowserChoiceCoreAsync(browser, title, message, choices, token, null);
+        IReadOnlyList<HostDialogChoice> choices, CancellationToken token, bool focusFirstChoice = false) =>
+        ShowBrowserChoiceCoreAsync(browser, title, message, choices, token, dialog => dialog.FocusFirstOptionOnOpen = focusFirstChoice);
 
     private Task<string?> ShowBrowserChoiceCoreAsync(Browser.BrowserSurface browser, string title, string message,
         IReadOnlyList<HostDialogChoice> choices, CancellationToken token, Action<HostChoiceDialog>? configure, bool directDecisionButtons = false)

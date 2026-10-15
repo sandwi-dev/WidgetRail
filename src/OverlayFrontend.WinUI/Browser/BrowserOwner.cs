@@ -34,7 +34,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private bool dirty, retired;
     private readonly CancellationTokenSource lifetime = new();
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternal { get; set; }
-    internal Func<BrowserSurface, string, string, IReadOnlyList<Shell.HostDialogChoice>, CancellationToken, Task<string?>>? Choose { get; set; }
+    internal BrowserChoiceHandler? Choose { get; set; }
     internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
     internal Func<BrowserSurface, CancellationToken, Task<bool>>? PrepareScreenPicker { get; set; }
     internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
@@ -183,7 +183,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                         var surface = new BrowserSurface(group.Key.Widget, chosen.Document, EnvironmentAsync, providerHtml, library)
                         {
                             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
-                            Choose = (source, title, message, choices, token) => Choose?.Invoke(source, title, message, choices, token) ?? Task.FromResult<string?>(null),
+                            Choose = (source, title, message, choices, token, focusFirstChoice) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice) ?? Task.FromResult<string?>(null),
                             ChangeProfile = ChangeProfileAsync,
                             ReceiveNotification = ReceiveNotification,
                             InvalidateNotifications = source => Notifications.InvalidateOwner(source),

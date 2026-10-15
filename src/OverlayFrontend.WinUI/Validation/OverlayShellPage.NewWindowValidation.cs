@@ -29,7 +29,10 @@ internal sealed partial class OverlayShellPage
             var item = list.Items.OfType<ListViewItem>().First(entry => entry.Content is TextBlock text &&
                 text.Text.StartsWith("Open in widget or pin", StringComparison.OrdinalIgnoreCase));
             if (cycle == 7) await parent.EvaluateFixtureAsync("document.getElementById('windowLink').href='https://shell.fixture.invalid/changed-after-menu'");
-            list.SelectedItem = item; item.Focus(FocusState.Keyboard);
+            await Task.Delay(150);
+            check(ReferenceEquals(FocusManager.GetFocusedElement(hostChoiceDialog!.XamlRoot), item) && item.FocusState == FocusState.Keyboard,
+                $"Page actions initially focuses the highlighted link command, cycle {cycle + 1}");
+            if (cycle == 0) await CapturePopupDecisionAsync(hostChoiceDialog!, "page-actions-initial-focus");
             await Press(ControllerButton.A);
             await Dialog("Where should this page open?");
             await Task.Delay(150); // Observe settled native focus, without injecting it.
@@ -61,7 +64,9 @@ internal sealed partial class OverlayShellPage
         await Press(ControllerButton.Menu); await Dialog("Page actions");
         var childOptions = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
         var childAction = childOptions.Items.OfType<ListViewItem>().First(entry => entry.Content is TextBlock text && text.Text.StartsWith("Open in widget or pin", StringComparison.Ordinal));
-        childOptions.SelectedItem = childAction; childAction.Focus(FocusState.Keyboard);
+        await Task.Delay(150);
+        check(ReferenceEquals(FocusManager.GetFocusedElement(hostChoiceDialog!.XamlRoot), childAction),
+            "Child Page actions initially focuses its command without test focus injection");
         await Press(ControllerButton.A); await Dialog("Replace existing page?"); await Decide("widget");
         var directReplacement = await Child();
         await WebAppUntil(() => !original.IsReady);

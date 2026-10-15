@@ -26,14 +26,21 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     }
     private readonly List<HostDialogChoice> entries;
     private readonly HashSet<string> reportedChoices = [];
-    private bool opened, reportingQueued;
+    private bool opened, closing, reportingQueued, choiceFocusQueued;
+    // Action menus opt in. Permission/replacement decisions keep safe Cancel.
+    private bool focusFirstOptionOnOpen;
+    internal bool FocusFirstOptionOnOpen
+    {
+        get => focusFirstOptionOnOpen;
+        set { focusFirstOptionOnOpen = value; DefaultButton = value ? ContentDialogButton.None : ContentDialogButton.Close; }
+    }
 #if ENABLE_WIDGET_VALIDATION
     internal bool IsOpenForValidation => opened;
 #endif
     private Func<HostDialogChoice, UIElement>? choiceContent;
     internal Func<string, bool>? KeepOpenOnChoice { get; set; }
     internal Func<string, bool>? ChoiceIsActionable { get; set; }
-    internal bool FocusedChoiceIsActionable => XamlRoot is null || !ListFocused() || choices.SelectedItem is not ListViewItem { Tag: string id } || ChoiceIsActionable?.Invoke(id) != false;
+    internal bool FocusedChoiceIsActionable => FocusedChoice() is not { Tag: string id } || ChoiceIsActionable?.Invoke(id) != false;
     internal event Action? SelectionContextChanged;
     internal void SetChoiceContent(Func<HostDialogChoice, UIElement> create)
     {
@@ -43,6 +50,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     }
     internal void FocusFirstChoice()
     {
+        initialFocusRequired = false;
         if (choices.Items.Count == 0) return;
         choices.SelectedIndex = Math.Max(0, choices.SelectedIndex);
         (choices.SelectedItem as Control)?.Focus(FocusState.Keyboard);
@@ -118,8 +126,6 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
                 AutomationProperties.SetAutomationId(item, "Host.Choice.Option." + index);
                 choices.Items.Add(item);
             }
-            choices.SelectedIndex = 0;
-
             if (entries.Count > 1) content.Children.Add(choices);
             // List entries are already direct actions (pointer, Enter and A).
             // A second generic "Open" button obscures destructive action intent.
@@ -131,20 +137,22 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         }
         choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: string id }) Choose(this.entries.FindIndex(entry => entry.Id == id)); };
         choices.SelectionChanged += (_, _) => SelectionContextChanged?.Invoke();
-        choices.GotFocus += (_, _) => SelectionContextChanged?.Invoke();
-        choices.LostFocus += (_, _) => SelectionContextChanged?.Invoke();
+        choices.GotFocus += (_, _) => QueueChoiceFocusSync();
+        choices.LostFocus += (_, _) => QueueChoiceFocusSync();
         Content = content;
         content.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => initialFocusRequired = false), true);
         content.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, _) => initialFocusRequired = false), true);
         Opened += (_, _) =>
         {
             opened = true;
+            closing = false;
             initialFocusRequired = true;
-            (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
+            InitialFocusTarget()?.Focus(FocusState.Keyboard);
             QueueInitialFocus();
             QueueVisibleChoices();
         };
         choices.LayoutUpdated += ChoicesLayoutUpdated;
+        Closing += (_, _) => closing = true;
         Closed += (_, _) => { opened = false; LayoutUpdated -= InitialFocusLayoutUpdated; choices.LayoutUpdated -= ChoicesLayoutUpdated; };
         Loaded += (_, _) =>
         {
@@ -170,6 +178,33 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         item.EffectiveViewportChanged += (_, _) => QueueVisibleChoices();
         return item;
     }
+    private void QueueChoiceFocusSync()
+    {
+        if (choiceFocusQueued || closing) return;
+        // Native focus changes during modal teardown cannot safely mutate a
+        // Selector. Reconcile once the focus transaction has completed.
+        choiceFocusQueued = DispatcherQueue.TryEnqueue(() =>
+        {
+            choiceFocusQueued = false;
+            if (!opened || closing) return;
+            choices.SelectedIndex = FocusedChoiceIndex();
+            SelectionContextChanged?.Invoke();
+        });
+    }
+    private int FocusedChoiceIndex()
+    {
+        ListViewItem? focused = null;
+        var node = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        while (node is not null && !ReferenceEquals(node, choices))
+        {
+            if (node is ListViewItem item) focused = item;
+            node = VisualTreeHelper.GetParent(node);
+        }
+        // Focus can still refer to a retiring container during removal or
+        // native modal teardown. Only select an item still in this collection.
+        return ReferenceEquals(node, choices) && focused is not null ? choices.Items.IndexOf(focused) : -1;
+    }
+    private ListViewItem? FocusedChoice() => FocusedChoiceIndex() is var index && index >= 0 ? choices.Items[index] as ListViewItem : null;
     private void ChoicesLayoutUpdated(object? sender, object args) => QueueVisibleChoices();
     private void QueueVisibleChoices()
     {
@@ -194,7 +229,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         var index = entries.FindIndex(entry => entry.Id == id);
         if (index < 0) return;
         var focused = ListFocused();
-        var selected = choices.SelectedIndex;
+        var selected = focused ? FocusedChoiceIndex() : -1;
         reportedChoices.Remove(id);
         entries.RemoveAt(index); choices.Items.RemoveAt(index);
         if (entries.Count == 0)
@@ -203,7 +238,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
             if (focused) (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
             return;
         }
-        choices.SelectedIndex = Math.Clamp(selected - (index < selected ? 1 : 0), 0, entries.Count - 1);
+        choices.SelectedIndex = focused ? Math.Clamp(selected - (index < selected ? 1 : 0), 0, entries.Count - 1) : -1;
         if (focused && index == selected) (choices.SelectedItem as Control)?.Focus(FocusState.Keyboard);
     }
     internal void UseActionList()
@@ -245,10 +280,12 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     }
 
     private bool initialFocusQueued, initialFocusRequired;
+    private Control? InitialFocusTarget() => FocusFirstOptionOnOpen && content.Children.Contains(choices) && choices.Items.Count > 0
+        ? choices.Items[0] as Control : GetTemplateChild("CloseButton") as Control;
     private void InitialFocusLayoutUpdated(object? sender, object args) => QueueInitialFocus();
     private void QueueInitialFocus()
     {
-        if (!opened || HasCustomPlacement || initialFocusQueued) return;
+        if (!opened || closing || HasCustomPlacement || initialFocusQueued) return;
         LayoutUpdated -= InitialFocusLayoutUpdated;
         LayoutUpdated += InitialFocusLayoutUpdated;
         // Opened can precede native template layout and its own focus pass.
@@ -256,13 +293,13 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         initialFocusQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             initialFocusQueued = false;
-            if (!opened || HasCustomPlacement) return;
-            if (GetTemplateChild("CloseButton") is not Control { IsLoaded: true, ActualWidth: > 0 } close) return;
+            if (!opened || closing || HasCustomPlacement) return;
+            if (InitialFocusTarget() is not Control { IsLoaded: true, ActualWidth: > 0 } target) return;
             var alreadyInside = IsWithinFocused(content) || new[] { "PrimaryButton", "SecondaryButton", "CloseButton" }
                 .Any(name => GetTemplateChild(name) is DependencyObject button && IsWithinFocused(button));
             // WinUI may select the first content tab stop (the Remember box)
             // after Opened. That native default is not a user selection.
-            if (!initialFocusRequired && alreadyInside && !IsWithinFocused(close) || close.Focus(FocusState.Keyboard))
+            if (!initialFocusRequired && alreadyInside && !IsWithinFocused(target) || target.Focus(FocusState.Keyboard))
             {
                 initialFocusRequired = false;
                 LayoutUpdated -= InitialFocusLayoutUpdated;
@@ -281,7 +318,9 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
 
     internal void MoveFocus(FocusNavigationDirection direction)
     {
+        if (closing) return;
         initialFocusRequired = false;
+        if (ListFocused()) choices.SelectedIndex = FocusedChoiceIndex();
         if (messageViewport is not null && IsWithinFocused(messageViewport) && (direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down) &&
             ScrollMessage(direction == FocusNavigationDirection.Up ? -64 : 64)) return;
         if (Presentation.DialogChoiceNavigation.Move(choices, direction)) return;
@@ -308,14 +347,14 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
 
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
     {
-        if (!ControllerArmed || phase != ControllerEventPhase.Pressed) return;
+        if (closing || !ControllerArmed || phase != ControllerEventPhase.Pressed) return;
         initialFocusRequired = false;
         if (button == ControllerButton.B) { ControllerArmed = false; Hide(); }
-        else if (button == ControllerButton.X && SupportsDismissChoice && ListFocused() && choices.SelectedItem is ListViewItem { Tag: string id })
+        else if (button == ControllerButton.X && SupportsDismissChoice && FocusedChoice() is { Tag: string id })
             DismissChoiceRequested?.Invoke(id);
         else if (button == ControllerButton.A)
         {
-            if (ListFocused()) Choose(choices.SelectedIndex);
+            if (ListFocused()) Choose(FocusedChoiceIndex());
             else if (rememberChoice is not null && IsWithinFocused(rememberChoice))
                 rememberChoice.IsChecked = !RememberChoice;
             else if (FocusManager.GetFocusedElement(XamlRoot) is Button focused)

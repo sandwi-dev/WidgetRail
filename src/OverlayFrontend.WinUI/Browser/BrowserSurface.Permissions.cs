@@ -3,9 +3,12 @@ using WidgetRail.OverlayFrontend.WinUI.Shell;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
+internal delegate Task<string?> BrowserChoiceHandler(BrowserSurface source, string title, string message,
+    IReadOnlyList<HostDialogChoice> choices, CancellationToken token, bool focusFirstChoice = false);
+
 internal sealed partial class BrowserSurface
 {
-    internal Func<BrowserSurface, string, string, IReadOnlyList<HostDialogChoice>, CancellationToken, Task<string?>>? Choose { get; set; }
+    internal BrowserChoiceHandler? Choose { get; set; }
     internal bool CanRequestSiteDecision => !retired && !faulted && visible && input && !IsProviderContent;
     // Native/modal UI temporarily owns input. A confirmed decision may complete
     // before the shell's foreground notification restores browser input.
