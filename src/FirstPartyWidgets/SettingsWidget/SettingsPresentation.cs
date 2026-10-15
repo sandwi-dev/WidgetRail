@@ -250,7 +250,7 @@ internal static partial class SettingsPresentation
                     new("settle", "Settle", "focus-animation.settle", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Settle),
                     new("none", "None", "focus-animation.none", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.None),
                 }, "overlay.focus-animation", "Focus animation")
-                    .FocusUp("overlay.widget-switcher").FocusDown("overlay.section-animation")
+                    .FocusUp("appearance.animate-widget-switching").FocusDown("overlay.section-animation")
                     .Busy(busy).AddClasses("setting-row"),
                 UI.Select("Section animation", new SelectOption[]
                 {
@@ -352,11 +352,6 @@ internal static partial class SettingsPresentation
                 new("right", "Bottom right", "position.choose.right", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomRight)
             ], "overlay.position").Busy(busy),
             UI.Text("Corner layouts keep the outside edge fixed as widgets resize.", "overlay.position.help").Classes("page-help"),
-            UI.Select("Widget switcher", [
-                new("radial", "Radial + rail", "switcher.choose.radial", IsSelected: appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial),
-                new("rail", "Rail", "switcher.choose.rail", IsSelected: appearance.WidgetSwitcher == WidgetSwitcherLayout.Rail)
-            ], "overlay.widget-switcher").Busy(busy),
-            UI.Text("B opens the switcher from a widget. A enters the selected widget.", "overlay.widget-switcher.help").Classes("page-help"),
             .. hostFeatures.StartupRegistration ? new WidgetElement[] {
                 UI.Text("Startup", "overlay.startup.heading").Classes("section-heading"),
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,

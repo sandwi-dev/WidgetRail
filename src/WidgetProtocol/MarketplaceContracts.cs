@@ -1,7 +1,8 @@
 namespace WidgetRail.WidgetProtocol;
 
 public sealed record MarketplaceCommand(string Action, string? PackageId = null,
-    string? OperationId = null, string? ReviewToken = null, bool ApproveFullTrust = false);
+    string? OperationId = null, string? ReviewToken = null, bool ApproveFullTrust = false,
+    IReadOnlyList<string>? PackageIds = null);
 
 public sealed record MarketplaceItem(string Id, string Name, string Description,
     IReadOnlyList<string> Screenshots, string? AvailableVersion = null, string? InstalledVersion = null,
@@ -15,8 +16,13 @@ public sealed record MarketplaceReview(string Token, string PackageId, string Na
 public sealed record MarketplaceOperation(string Id, string Kind, string State, string? PackageId,
     long DownloadedBytes = 0, long? TotalBytes = null, MarketplaceReview? Review = null, string? Message = null);
 
+public sealed record MarketplaceUpdateItem(string PackageId, string Name, string Version, string State,
+    MarketplaceReview? Review = null, string? Message = null);
+
+public sealed record MarketplaceUpdateBatch(IReadOnlyList<MarketplaceUpdateItem> Items, string? ReviewToken = null);
+
 public sealed record MarketplaceSnapshot(long Revision, IReadOnlyList<MarketplaceItem> Items,
-    MarketplaceOperation? Operation = null, DateTimeOffset? CheckedAtUtc = null)
+    MarketplaceOperation? Operation = null, DateTimeOffset? CheckedAtUtc = null, MarketplaceUpdateBatch? UpdateBatch = null)
 {
     public static MarketplaceSnapshot Unavailable { get; } = new(0, []);
 }

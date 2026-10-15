@@ -19,6 +19,15 @@ internal sealed partial class WidgetCatalogItemContent : ContentControl, IDispos
     private readonly Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolve;
     private readonly StackPanel panel = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
     private readonly Grid stage = new();
+    private readonly WidgetStatusBadges badges = new() { Width = 44, Height = 44, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+    internal BridgeWidgetDescriptor? Descriptor => item;
+    internal void SetStatus(WidgetStatus value, ShellChromePalette palette)
+    {
+        badges.Visibility = tileSize >= 32 ? Visibility.Visible : Visibility.Collapsed;
+        badges.Update(value, palette, tileSize < 50);
+    }
+    private double tileSize = 64;
+    private void SizeBadges() => badges.Width = badges.Height = Math.Max(1, Math.Min(iconSize + 20, tileSize - 10));
     private readonly Border selectedMark = new() { Height = 4, CornerRadius = new(2), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Visibility = Visibility.Collapsed };
     private SelectorItem? selectionOwner;
     private long selectionToken;
@@ -32,6 +41,7 @@ internal sealed partial class WidgetCatalogItemContent : ContentControl, IDispos
         set
         {
             var extent = Math.Max(1, value);
+            tileSize = extent; SizeBadges();
             Width = Height = extent;
             panel.HorizontalAlignment = HorizontalAlignment.Center;
             panel.VerticalAlignment = VerticalAlignment.Center;
@@ -45,6 +55,7 @@ internal sealed partial class WidgetCatalogItemContent : ContentControl, IDispos
         set
         {
             iconSize = double.IsFinite(value) ? Math.Clamp(value, 1, 128) : 24;
+            SizeBadges();
             if (icon is not null) { icon.Width = icon.Height = icon.FontSize = iconSize; }
         }
     }
@@ -58,7 +69,7 @@ internal sealed partial class WidgetCatalogItemContent : ContentControl, IDispos
         IsTabStop = false; IsHitTestVisible = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         AutomationProperties.SetAccessibilityView(this, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
-        panel.Children.Add(label); stage.Children.Add(panel); stage.Children.Add(selectedMark); Content = stage;
+        panel.Children.Add(label); stage.Children.Add(panel); stage.Children.Add(selectedMark); stage.Children.Add(badges); Content = stage;
         selectedMark.SetBinding(Border.BackgroundProperty, new Microsoft.UI.Xaml.Data.Binding
             { Source = this, Path = new PropertyPath(nameof(Foreground)), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
         DataContextChanged += (_, args) => SetItem(args.NewValue as BridgeWidgetDescriptor);
@@ -91,7 +102,7 @@ internal sealed partial class WidgetCatalogItemContent : ContentControl, IDispos
         var generation = $"{captured.Id}|{captured.InstanceId}|{captured.RuntimeGeneration}|{captured.PresentationGeneration}|{captured.PackageContentDigest}|{asset?.SourceSha256}|{asset?.NormalizedSha256}";
         icon.Update(new() { Id = "catalog.icon", Kind = ViewNodeKind.Icon, Glyph = captured.Icon,
             PackageIcon = captured.PackageIcon, AccessibilityLabel = captured.Name },
-            (assetId, token) => resolve(captured, assetId, token), generation, null);
+            (reference, token) => resolve(captured, reference.AssetId, token), generation, null);
     }
 
     private void ReleaseIcon()

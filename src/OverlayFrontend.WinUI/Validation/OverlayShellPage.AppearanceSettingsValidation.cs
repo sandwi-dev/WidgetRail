@@ -78,9 +78,6 @@ internal sealed partial class OverlayShellPage
                 await Invoke("category.overlay");
                 await Wait(() => Ready("overlay.position"));
                 Check(Find("overlay.startup") is null, "development Settings omit unavailable startup registration");
-                foreach (var option in new[] { ("rail", WidgetSwitcherLayout.Rail), ("radial", WidgetSwitcherLayout.Radial) })
-                    await Choose("overlay.widget-switcher", option.Item1, value => value.WidgetSwitcher == option.Item2,
-                        () => Appearance.WidgetSwitcher == option.Item2);
                 foreach (var option in new[] { ("left", OverlayPosition.BottomLeft), ("right", OverlayPosition.BottomRight), ("center", OverlayPosition.Center) })
                 {
                     await Choose("overlay.position", option.Item1, value => value.OverlayPosition == option.Item2, () => Appearance.OverlayPosition == option.Item2);

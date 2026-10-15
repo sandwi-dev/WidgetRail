@@ -77,6 +77,7 @@ internal sealed partial class OverlayShellPage
         }
         railGeometry = next;
         UpdateIcons(Tray);
+        QueueWidgetStatusRefresh();
         Tray.Width = next.ViewportWidth;
         TrayHelp.Width = next.GuideWidth;
         TrayPrevious.Visibility = TrayNext.Visibility = next.Overflow ? Visibility.Visible : Visibility.Collapsed;

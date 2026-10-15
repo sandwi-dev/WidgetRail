@@ -21,9 +21,9 @@ See [Package format](../reference/widget-packaging.md) for layout and validation
 
 ## Install locally
 
-Open **Settings → Widgets**, choose the package file, and review its permissions.
-Installation shows a toast; it does not automatically enable the widget.
-Once enabled, choose it from the tray.
+Open **Settings → Widgets → Install local widget** and choose the package file.
+Full-access packages require explicit approval. Fresh installations start enabled;
+choose the widget from the tray and grant access when a feature requests it.
 
 For scripted development, [CLI package operations](../reference/cli-packages.md)
 show installation, version selection, rollback, and removal in an isolated catalog.
@@ -45,10 +45,14 @@ without copying a hash manually. Use stable asset names or
 ## Ship an update
 
 Increase the widget manifest version before distributing changed bytes. Users
-choose **Update from file** in the widget details, then review and enable the
-new version. Keep a useful description of changes and any new permissions.
+choose **Update from file** in the widget details, or use **Marketplace → Updates**
+for curated packages. Updates preserve enabled/stopped state and carry ordinary widget settings after
+review. Security permissions and credentials are not transferred to changed
+unsigned package identities. Full-access updates require approval. Keep a useful description of changes and
+any new permissions, which should be requested when a feature needs them.
 CLI users can run `wrail update <widget-id>` to review a GitHub update, then
-run the exact apply command printed by the report. Checking never installs or
+run the exact apply command printed by the report. For a local package, use
+`wrail update <widget-id> --file <package.wrwidget>` instead of raw install. Checking never installs or
 activates a package. See [GitHub package updates](../reference/cli-packages.md#review-and-apply-an-update).
 
 The old version remains installed until removed. Do not overwrite published

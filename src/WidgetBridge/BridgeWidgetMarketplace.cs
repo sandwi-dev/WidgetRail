@@ -16,11 +16,13 @@ internal sealed record CuratedWidget(string Id, string Publisher, string Name, s
 /// Shared trusted-UI jobs. Downloads and mutations never execute in the short
 /// diagnostics request. Review tokens name exact write-locked package streams.
 /// </summary>
-internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
+internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
 {
     internal const string Repository = "sandwi-dev/WidgetRail";
     private readonly object _gate = new();
     private readonly CatalogService _catalog;
+    private readonly string _stateRoot;
+    private readonly BridgeClientRegistry? _registry;
     private readonly Func<CancellationToken, Task> _reload;
     private readonly IReadOnlyList<CuratedWidget> _definitions;
     private readonly HttpMessageHandler? _http;
@@ -34,8 +36,10 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
     private bool _disposed;
 
     internal BridgeWidgetMarketplace(CatalogService catalog, Func<CancellationToken, Task> reload,
-        IReadOnlyList<CuratedWidget>? definitions = null, HttpMessageHandler? http = null, TimeProvider? clock = null)
+        IReadOnlyList<CuratedWidget>? definitions = null, HttpMessageHandler? http = null, TimeProvider? clock = null, string? stateRoot = null, BridgeClientRegistry? registry = null)
     {
+        _stateRoot = stateRoot ?? Path.Combine(catalog.Root, "widget-state");
+        _registry = registry;
         _catalog = catalog; _reload = reload; _http = http; _clock = clock ?? TimeProvider.System;
         if (definitions is null)
         {
@@ -47,66 +51,92 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
         MarketplaceContract.ValidateSnapshot(_snapshot);
     }
 
-    internal async ValueTask<MarketplaceSnapshot> HandleAsync(MarketplaceCommand command, CancellationToken token)
+    internal ValueTask<MarketplaceSnapshot> HandleAsync(MarketplaceCommand command, CancellationToken token)
     {
         MarketplaceContract.ValidateCommand(command); token.ThrowIfCancellationRequested();
-        PendingPackage? release = null;
         MarketplaceSnapshot result;
-        try
+        lock (_gate)
         {
-            lock (_gate)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_pending is { } expired && expired.Expires <= _clock.GetUtcNow())
             {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                if (_pending is { } expired && expired.Expires <= _clock.GetUtcNow())
-                {
-                    release = expired; _pending = null;
-                    SetOperation(_snapshot.Operation! with { State = "failed", Review = null, Message = "The package review expired. Download it again to review current bytes." });
-                }
-                if (command.Action is "refresh" or "inventory" or "download")
-                {
-                    if (_snapshot.Operation?.State != "running" && _pending is null)
-                    {
-                        if (command.Action == "download" && !_assets.ContainsKey(command.PackageId!))
-                            throw new PlatformDiagnosticsException("marketplace_refresh_required");
-                        release ??= _pending; _pending = null;
-                        Start(command.Action, command.PackageId);
-                    }
-                }
-                else if (command.Action == "cancel" && _snapshot.Operation is { } active && active.Id == command.OperationId)
-                {
-                    if (active.State == "running") { _job?.Cancellation.Cancel(); SetOperation(active with { Message = "Cancelling…" }); }
-                    else if (active.State == "review")
-                    { release ??= _pending; _pending = null; SetOperation(active with { State = "cancelled", Review = null, Message = "Download discarded." }); }
-                }
-                else if (command.Action == "install")
-                {
-                    if (_snapshot.Operation is not { State: "review" } review || review.Id != command.OperationId ||
-                        _pending is not { } pending || pending.Review.Token != command.ReviewToken || !pending.Review.Compatible ||
-                        pending.Review.FullTrust && !command.ApproveFullTrust)
-                        throw new PlatformDiagnosticsException("marketplace_review_required");
-                    _pending = null;
-                    Start("install", pending.Definition.Id, pending);
-                }
-                result = _snapshot;
+                ReleaseLater([expired]); _pending = null;
+                SetOperation(_snapshot.Operation! with { State = "failed", Review = null, Message = "The package review expired. Download it again to review current bytes." });
             }
-            return result;
+            ExpireBatchReview();
+            if (command.Action is "refresh" or "inventory" or "download" or "download-updates")
+            {
+                if (_snapshot.Operation?.State != "running" && _pending is null && _pendingBatch is null)
+                {
+                    if (command.Action == "download" && !_assets.ContainsKey(command.PackageId!))
+                        throw new PlatformDiagnosticsException("marketplace_refresh_required");
+                    if (command.Action == "download-updates") ValidateUpdateSelection(command.PackageIds!);
+                    Start(command.Action, command.PackageId, ids: command.PackageIds);
+                }
+            }
+            else if (command.Action == "cancel" && _snapshot.Operation is { } active && active.Id == command.OperationId)
+            {
+                if (active.State == "running")
+                {
+                    // Cancellation can complete the async job inline. Publish
+                    // the request first so it cannot overwrite a terminal result.
+                    SetOperation(active with { Message = "Cancelling…" });
+                    _job?.Cancellation.Cancel();
+                }
+                else if (active.State == "review")
+                {
+                    if (_pending is { } pending) { ReleaseLater([pending]); _pending = null; }
+                    if (_pendingBatch is { } batch) { ReleaseLater(batch.Packages); _pendingBatch = null; CompleteUnfinishedBatch("cancelled", "Download discarded."); }
+                    SetOperation(active with { State = "cancelled", Review = null, Message = "Download discarded." });
+                }
+            }
+            else if (command.Action == "install")
+            {
+                if (_snapshot.Operation is not { State: "review" } review || review.Id != command.OperationId ||
+                    _pending is not { } pending || pending.Review.Token != command.ReviewToken || !pending.Review.Compatible ||
+                    pending.Review.FullTrust && !command.ApproveFullTrust)
+                    throw new PlatformDiagnosticsException("marketplace_review_required");
+                _pending = null;
+                Start("install", pending.Definition.Id, pending);
+            }
+            else if (command.Action == "install-updates")
+            {
+                if (_snapshot.Operation is not { Kind: "download-updates", State: "review" } review || review.Id != command.OperationId ||
+                    _pendingBatch is not { } batch || _snapshot.UpdateBatch?.ReviewToken != command.ReviewToken ||
+                    batch.Packages.Any(package => package.Review.FullTrust) && !command.ApproveFullTrust)
+                    throw new PlatformDiagnosticsException("marketplace_review_required");
+                _pendingBatch = null;
+                Start("install-updates", null, batch: batch);
+            }
+            result = _snapshot;
         }
-        finally { if (release is not null) await release.Download.DisposeAsync().ConfigureAwait(false); }
+        // Retiring review authority is immediate. File cleanup belongs to the
+        // job lifetime, never the short status/command acknowledgement.
+        return ValueTask.FromResult(result);
     }
 
-    private void Start(string kind, string? id, PendingPackage? package = null)
+    private void Start(string kind, string? id, PendingPackage? package = null, IReadOnlyList<string>? ids = null, PendingBatch? batch = null)
     {
+        ids = ids?.ToArray();
+        var previous = _job?.Task ?? Task.CompletedTask;
+        var cleanup = _cleanup;
         var job = new OwnedJob(Guid.NewGuid().ToString("N"), kind, id, CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
         _job = job;
+        PrepareBatch(kind, ids);
         SetOperation(new(job.Id, kind, "running", id, Message: kind switch
-        { "refresh" => "Checking available widgets…", "inventory" => "Refreshing installed versions…", "download" => "Downloading for review…", _ => "Installing the reviewed package…" }));
-        job.Task = Task.Run(() => RunAsync(job, package));
+        { "refresh" => "Checking available widgets…", "inventory" => "Refreshing installed versions…", "download" or "download-updates" => "Downloading for review…", _ => "Installing reviewed packages…" }));
+        // A new job cannot clean cache files still owned by the preceding job's
+        // disposal or by an expired/cancelled review.
+        job.Task = Task.Run(() => RunAsync(job, package, ids, batch, previous, cleanup));
     }
 
-    private async Task RunAsync(OwnedJob job, PendingPackage? package)
+    private async Task RunAsync(OwnedJob job, PendingPackage? package, IReadOnlyList<string>? ids, PendingBatch? batch, Task previous, Task cleanup)
     {
         try
         {
+            await previous.ConfigureAwait(false);
+            await cleanup.ConfigureAwait(false);
+            job.Cancellation.Token.ThrowIfCancellationRequested();
             if (job.Kind == "refresh") await RefreshAsync(job).ConfigureAwait(false);
             else if (job.Kind == "inventory")
             {
@@ -114,15 +144,23 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
                 Finish(job, "completed", "Installed versions refreshed.");
             }
             else if (job.Kind == "download") await DownloadAsync(job).ConfigureAwait(false);
-            else await InstallAsync(job, package!).ConfigureAwait(false);
+            else if (job.Kind == "download-updates") await DownloadBatchAsync(job, ids!).ConfigureAwait(false);
+            else if (job.Kind == "install-updates") await InstallBatchAsync(job, batch!).ConfigureAwait(false);
+            else
+            {
+                var message = await InstallPackageAsync(job, package!).ConfigureAwait(false);
+                lock (_gate) _notification = (new(message), _clock.GetUtcNow().AddSeconds(30));
+                Finish(job, "completed", message);
+            }
         }
         catch (OperationCanceledException) when (job.Cancellation.IsCancellationRequested)
-        { Finish(job, "cancelled", "Operation cancelled. Any version already saved remains available in Widgets."); }
+        { FinishFailedJob(job, "cancelled", "Operation cancelled. Any version already saved remains available in Widgets."); }
         catch (Exception error) when (error is not OutOfMemoryException)
-        { Finish(job, "failed", Friendly(error)); }
+        { FinishFailedJob(job, "failed", Friendly(error)); }
         finally
         {
             if (package is not null) await package.Download.DisposeAsync().ConfigureAwait(false);
+            if (batch is not null) foreach (var item in batch.Packages) await item.Download.DisposeAsync().ConfigureAwait(false);
             job.Cancellation.Dispose();
         }
     }
@@ -161,14 +199,31 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
 
     private async Task DownloadAsync(OwnedJob job)
     {
+        var package = await DownloadPackageAsync(job, job.PackageId!, cleanCache: true).ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (Current(job) && !job.Cancellation.IsCancellationRequested)
+            {
+                _pending = package;
+                SetOperation(_snapshot.Operation! with { State = "review", Review = package.Review,
+                    Message = "Download verified. Review the package before installing; nothing has been installed." });
+                return;
+            }
+        }
+        await package.Download.DisposeAsync().ConfigureAwait(false);
+        job.Cancellation.Token.ThrowIfCancellationRequested();
+    }
+
+    private async Task<PendingPackage> DownloadPackageAsync(OwnedJob job, string packageId, bool cleanCache)
+    {
         ReleaseAsset asset;
-        lock (_gate) asset = _assets[job.PackageId!];
-        var definition = _definitions.Single(d => d.Id == job.PackageId);
+        lock (_gate) asset = _assets[packageId];
+        var definition = _definitions.Single(d => d.Id == packageId);
         var source = new GitHubPackageSource(Repository, asset.Release.Tag, asset.Asset.Name);
         using var releases = new GitHubReleaseClient(_http);
         var hash = await releases.ResolveDigestAsync(source, asset.Release, job.Cancellation.Token).ConfigureAwait(false);
         var downloadRoot = Path.Combine(_catalog.Root, ".marketplace-downloads");
-        CleanDownloadCache(downloadRoot);
+        if (cleanCache) CleanDownloadCache(downloadRoot);
         RemotePackageDownloader.DownloadedPackage? downloaded = null;
         try
         {
@@ -201,20 +256,15 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
                 WidgetManifestTrust.Resolve(inspection.Manifest) == WidgetExecutionTrust.FullTrustCurrentUser,
                 compatible, explanation, required, optional, required.Concat(optional).Where(p => !known.Contains(p)).ToArray(),
                 Convert.ToHexString(downloaded.Sha256));
-            lock (_gate)
-            {
-                if (!Current(job)) return;
-                job.Cancellation.Token.ThrowIfCancellationRequested();
-                _pending = new(definition, downloaded, review, source, installed?.ActiveVersion.ContentDigest, _clock.GetUtcNow().AddMinutes(10));
-                downloaded = null;
-                SetOperation(_snapshot.Operation! with { State = "review", Review = review,
-                    Message = "Download verified. Review the package before installing; nothing has been installed." });
-            }
+            job.Cancellation.Token.ThrowIfCancellationRequested();
+            var pending = new PendingPackage(definition, downloaded, review, source, installed?.ActiveVersion.ContentDigest, _clock.GetUtcNow().AddMinutes(10));
+            downloaded = null;
+            return pending;
         }
         finally { if (downloaded is not null) await downloaded.DisposeAsync().ConfigureAwait(false); }
     }
 
-    private async Task InstallAsync(OwnedJob job, PendingPackage package)
+    private async Task<string> InstallPackageAsync(OwnedJob job, PendingPackage package)
     {
         var approval = package.Review.FullTrust ? WidgetPackageTrustApproval.FullTrustCurrentUser : WidgetPackageTrustApproval.None;
         async Task AdmitReviewedBaseline(WidgetPackageInspection _, CancellationToken token)
@@ -227,33 +277,35 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
                 current?.ActiveVersion.ContentDigest != package.InstalledDigest)
                 throw new WidgetPackageException("marketplace_review_changed", "The reviewed installation changed.");
         }
+        await using var settings = new BridgeWidgetSettingsTransfer(_stateRoot, _registry, _reload);
         InstalledWidgetVersion installed;
         if (package.Review.InstalledVersion is not null)
         {
             var idHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(package.Definition.Id)));
             installed = await _catalog.UpdateFromFileAsync(package.Download.PackageStream, idHash, approval,
-                AdmitReviewedBaseline, job.Cancellation.Token).ConfigureAwait(false);
+                AdmitReviewedBaseline, job.Cancellation.Token, settings.PrepareAsync).ConfigureAwait(false);
         }
-        else installed = await _catalog.InstallAsync(package.Download.PackageStream, AdmitReviewedBaseline, job.Cancellation.Token, approval).ConfigureAwait(false);
+        else installed = await _catalog.InstallReviewedAsync(package.Download.PackageStream, AdmitReviewedBaseline, job.Cancellation.Token, approval).ConfigureAwait(false);
         lock (_gate) _snapshot = _snapshot with { Revision = _snapshot.Revision + 1,
             Items = _snapshot.Items.Select(item => item.Id == installed.Id
                 ? item with { InstalledVersion = installed.Version.ToString() } : item).ToArray() };
         // A durable publication is never relabelled cancelled by a late request.
-        var message = "Installed and left disabled. Open Widgets to review permissions and enable it. Previous versions and saved data are retained.";
+        var message = package.Review.InstalledVersion is null
+            ? "Widget installed and enabled. Permissions will be requested when needed."
+            : "Widget updated. Your widget settings and enabled state were kept. Permissions are requested when needed.";
         using var sourceWarning = new StringWriter();
         await PackageSources.SaveAsync(_catalog.Root, "widget", new(installed.Id, installed.Version.ToString(), installed.Manifest.Publisher,
             package.Source.ToString(), package.Review.Sha256, installed.ContentDigest), sourceWarning, CancellationToken.None).ConfigureAwait(false);
         if (sourceWarning.GetStringBuilder().Length != 0)
-            message = "Installed disabled. Its CLI update-source metadata could not be saved; marketplace updates remain available. Review permissions in Widgets.";
+            message += " Its CLI update-source metadata could not be saved; marketplace updates remain available.";
         try
         {
-            await _reload(CancellationToken.None).ConfigureAwait(false);
+            await settings.ReloadAsync().ConfigureAwait(false);
             UpdateInstalled((await _catalog.DiscoverAsync(CancellationToken.None).ConfigureAwait(false)).Widgets);
         }
         catch (Exception error) when (error is not OutOfMemoryException)
-        { message = "The package was installed. Open Widgets and refresh to review permissions and enable it."; }
-        lock (_gate) _notification = (new(message), _clock.GetUtcNow().AddSeconds(30));
-        Finish(job, "completed", message);
+        { message = "The package was installed, but the widget list could not refresh. Open Widgets in Settings and refresh."; }
+        return message;
     }
 
     private void UpdateInstalled(IReadOnlyList<CatalogWidget> widgets)
@@ -285,6 +337,8 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
         DistributionUsageException => "This release has no usable checksum or package source. It cannot be installed from the marketplace.",
         DistributionOperationException => "The download or release check failed. Check your connection and try again.",
         WidgetPackageException { Code: "update_selection_failed" } => "The new version was saved. Open Widgets → Versions to finish reviewing it.",
+        WidgetPackageException { Code: "install_activation_failed" } => "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.",
+        WidgetPackageException { Code: "package_incompatible" } => "This widget is not compatible with this WidgetRail version.",
         WidgetPackageException { Code: "update_not_newer" } => "The installed version changed. Refresh the marketplace and review again.",
         WidgetPackageException { Code: "marketplace_review_changed" } => "The selected widget version changed after review. Refresh and download again to review its current permissions.",
         WidgetPackageException => "The package could not be installed or validated. Review its compatibility and your installed versions.",
@@ -313,11 +367,18 @@ internal sealed class BridgeWidgetMarketplace : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        OwnedJob? job; PendingPackage? pending;
-        lock (_gate) { if (_disposed) return; _disposed = true; job = _job; pending = _pending; _pending = null; }
+        OwnedJob? job; Task cleanup;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true; job = _job;
+            if (_pending is { } pending) { ReleaseLater([pending]); _pending = null; }
+            if (_pendingBatch is { } batch) { ReleaseLater(batch.Packages); _pendingBatch = null; }
+            cleanup = _cleanup;
+        }
         _lifetime.Cancel();
         if (job is not null) await job.Task.ConfigureAwait(false);
-        if (pending is not null) await pending.Download.DisposeAsync().ConfigureAwait(false);
+        await cleanup.ConfigureAwait(false);
         _lifetime.Dispose();
     }
     private sealed record ReleaseAsset(GitHubRelease Release, GitHubAsset Asset, Version Version);

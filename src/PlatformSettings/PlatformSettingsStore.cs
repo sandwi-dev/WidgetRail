@@ -232,6 +232,9 @@ public sealed class PlatformSettingsStore
             // Loading is read-only; the next normal write persists the migration.
             appearance["focusAnimation"] = "Fade";
         }
+        // Both legacy switcher values now use radial + rail. Read-only loading
+        // drops only this obsolete preference; the next normal save retires it.
+        if (root["appearance"] is JsonObject switcherAppearance) switcherAppearance.Remove("widgetSwitcher");
         // Source-generated init-only contracts assign type defaults for omitted
         // members. Preserve the documented legacy omission defaults, while
         // leaving explicit nulls and required/unknown members to strict validation.

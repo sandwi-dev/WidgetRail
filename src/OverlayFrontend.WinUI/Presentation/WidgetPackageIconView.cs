@@ -141,7 +141,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
         foreach (var (zoom, token) in zoomRoots) zoom.UnregisterPropertyChangedCallback(Shell.OverlayScaleRoot.InterfaceScaleProperty, token);
         zoomRoots.Clear();
     }
-    internal void Update(ViewNode node, Func<string, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolver,
+    internal void Update(ViewNode node, Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolver,
         string generation, Action<string>? diagnostic)
     {
         icon.Update(node.Glyph!.Value, node.PackageIcon, node.AccessibilityLabel, resolver, generation, diagnostic);
@@ -166,7 +166,7 @@ internal sealed class WidgetNativePackageIcon : IDisposable
     private IconElement? displayed;
     private Func<Task>? retry;
     private bool loading, retryable, succeeded;
-    private Func<string, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolve;
+    private Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolve;
     private string? accessibleName;
     private bool disposed;
     // Theme-tinted masks retain their square raster contract. Original-color SVGs
@@ -175,11 +175,11 @@ internal sealed class WidgetNativePackageIcon : IDisposable
     internal WidgetNativePackageIcon(Action<IconElement> publish, Func<XamlRoot?> rasterRoot)
     { this.publish = publish; this.rasterRoot = rasterRoot; }
     internal void Update(WidgetGlyph fallback, WidgetPackageIcon? asset, string? name,
-        Func<string, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolver, string generation, Action<string>? diagnostic)
+        Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolver, string generation, Action<string>? diagnostic)
     {
         // Labels and semantic fallback changes do not invalidate admitted SVG
         // bytes. Preserve the live native surface on those compatible updates.
-        var next = $"{generation}|{asset?.AssetId}|{asset?.ColorMode}|{(asset is null ? fallback.ToString() : string.Empty)}";
+        var next = $"{generation}|{asset?.AssetId}|{asset?.ColorMode}|{asset?.Catalog}|{(asset is null ? fallback.ToString() : string.Empty)}";
         if (disposed) return;
         var resolverBecameAvailable = resolve is null && resolver is not null;
         resolve = resolver;
@@ -241,7 +241,7 @@ internal sealed class WidgetNativePackageIcon : IDisposable
         {
             if (resolve is not { } currentResolver)
                 throw new WidgetPresentationSessionException("package_icon_resolver_unavailable", "Icon resolver is not ready.");
-            var payload = await currentResolver(asset.AssetId, token);
+            var payload = await currentResolver(asset, token);
             token.ThrowIfCancellationRequested();
             if (identity != next || disposed) return;
             if (asset.ColorMode == WidgetPackageIconColorMode.ThemeTint)

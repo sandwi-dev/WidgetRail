@@ -133,6 +133,27 @@ and current selection again, then selects the new version disabled. Changed
 execution models are rejected. Full-trust widgets still require explicit
 `--accept-full-trust`. Previous versions remain available for rollback.
 
+Reviewed widget updates also keep the bounded `HostServices.PrivateState`
+settings document. The review states this explicitly; the apply command approves
+the settings transfer along with that exact package. Permissions and credentials
+are not copied. Existing settings for the destination package, including cleared
+state, remain intact. If the old worker still holds its package files, close
+WidgetRail and retry; the CLI will not copy a potentially stale snapshot.
+Marketplace and Settings handle worker retirement automatically without disabling
+the widget.
+
+Local packages use the same reviewed update contract:
+
+```powershell
+& $wrail update dev.example.volume-control --file .\volume-control-2.0.0.wrwidget
+# Review the report, then run its printed --sha256 ... --apply command.
+```
+
+`--catalog` selects the installed catalog. Settings default to `widget-state`
+beside that catalog directory; supply `--settings-root <WidgetRail-profile>` when
+the profile lives elsewhere. The printed apply command retains this choice.
+Low-level `install` / `version select` operations do not transfer preferences.
+
 Theme updates add a version without changing the selected theme. By default,
 the check compares against the newest installed version of that theme; use
 `--version` to choose another installed version. Select the new version in

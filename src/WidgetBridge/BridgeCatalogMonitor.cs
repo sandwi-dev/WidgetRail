@@ -171,6 +171,29 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     }
 
     internal string InstalledCatalogRoot => _installedCatalogRoot;
+    // Publish a persisted runtime choice without rescanning packages. An older
+    // asynchronous reload must not overwrite the choice it did not observe.
+    private IReadOnlyList<string>? runtimeStoppedIds;
+    private BridgeCatalog ApplyRuntimeChoices(BridgeCatalog catalog) => runtimeStoppedIds is null ? catalog : catalog.WithStoppedWidgets(runtimeStoppedIds);
+
+    internal void PublishStoppedWidgets(IReadOnlyList<string> stoppedIds)
+    {
+        BridgeCatalogChanged? changed = null;
+        lock (_stateGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            checked { ++_reloadDemandGeneration; }
+            runtimeStoppedIds = stoppedIds.ToArray();
+            var next = _current.WithStoppedWidgets(runtimeStoppedIds);
+            if (!_current.IsEquivalentTo(next))
+            {
+                _current = next;
+                changed = new(++_revision, _current, []);
+            }
+        }
+        if (changed is not null) Changed?.Invoke(this, changed);
+        _reloadSignals.Writer.TryWrite(0);
+    }
     internal BridgeCatalog LoadTrustedForManagement() =>
         BridgeCatalog.LoadTrusted(_trustedCatalogPath, _installedCatalogRoot);
     internal async Task<bool> IsBuiltInDisabledForManagementAsync(string packageId, CancellationToken cancellationToken)
@@ -283,7 +306,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 }
                 else if (!loaded!.InstalledCatalogValid)
                 {
-                    var incomplete = loaded.Catalog.WithCompleteness(false);
+                    var incomplete = ApplyRuntimeChoices(loaded.Catalog).WithCompleteness(false);
                     var warnings = loaded.Warnings.Concat(
                     ["Widget catalog reload failed closed to the trusted catalog; all community widgets were retired."])
                         .Take(64)
@@ -305,7 +328,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 }
                 else
                 {
-                    var complete = loaded.Catalog.WithCompleteness(true);
+                    var complete = ApplyRuntimeChoices(loaded.Catalog).WithCompleteness(true);
                     _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
                     _retainedLastGood = false;
                     _widgetRejections = loaded.WidgetRejections.Take(256).ToArray();

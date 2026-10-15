@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformBroker;
 using WidgetRail.PackageDistribution;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetCatalog;
@@ -37,7 +38,15 @@ if (args is ["--probe-live-review"])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Download review leaves an enabled old version untouched; approval selects update disabled", UpdateReview),
+    ("Batch updates require aggregate exact review and preserve preferences", MarketplaceBatchTests.ApprovalAndResults),
+    ("Batch download failures retain successful work and retry only failed items", MarketplaceBatchTests.PartialFailureAndRetry),
+    ("Batch cancellation retires downloaded reviews and pending network work", MarketplaceBatchTests.CancelDownloadAndReview),
+    ("Batch cancellation after publication preserves the committed result", MarketplaceBatchTests.CancelAfterCommit),
+    ("Batch expiry and changed installed baselines cannot reuse approval", MarketplaceBatchTests.ExpiryAndChangedBaseline),
+    ("Batch inputs are bounded and shutdown disposes retained packages", MarketplaceBatchTests.BoundsAndDisposal),
+    ("Large batch reviews fit the broker transport without omitting permissions", MarketplaceBatchTests.ReviewTransportBound),
+    ("Download review and approved update preserve enabled state and previous versions", UpdateReview),
+    ("Updates preserve a disabled widget and feature permission decisions", DisabledUpdate),
     ("Full-access installation requires exact reviewed approval and rejects replay", FullTrust),
     ("A changed installed baseline invalidates its permission review", ChangedBaseline),
     ("Expired reviews release the archive and cannot install", Expiry),
@@ -59,6 +68,10 @@ static async Task UpdateReview()
     await using var fixture = new Fixture("2.0.0", permissions: ["system.audio.sessions.read.v1"]);
     using (var old = new MemoryStream(Fixture.Package("1.0.0"))) await fixture.Catalog.InstallAsync(old);
     await fixture.Catalog.SetEnabledAsync(Fixture.Id, true);
+    var sourceVersion = (await fixture.Catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+    var state = new PrivateStateStore(Path.Combine(fixture.Root, "widget-state"));
+    var preferences = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("{\"banners\":true}"));
+    await state.WriteAsync(new(Fixture.Id, InstalledWidgetAuthority.PublisherId(sourceVersion), "old"), new(preferences, 0), default);
     var review = await fixture.Review();
     var previous = (await fixture.Catalog.DiscoverAsync()).Widgets.Single();
     Check(previous.Enabled && previous.ActiveVersion.Version == new Version("1.0.0"), "Review changed the active widget");
@@ -66,11 +79,14 @@ static async Task UpdateReview()
     await fixture.Service.HandleAsync(new("install", OperationId: review.Operation.Id, ReviewToken: review.Operation.Review.Token), default);
     await Wait(fixture.Service, "completed");
     var updated = (await fixture.Catalog.DiscoverAsync()).Widgets.Single();
-    Check(!updated.Enabled && updated.ActiveVersion.Version == new Version("2.0.0") && updated.Versions.Count == 2,
-        "Update failed to select disabled and retain rollback");
+    Check((await state.ReadAsync(new(Fixture.Id, InstalledWidgetAuthority.PublisherId(updated.ActiveVersion), "new"), default)).CanonicalJsonBase64 == preferences,
+        "Marketplace did not carry reviewed settings into the new package authority");
+    Check(updated.Enabled && updated.ActiveVersion.Version == new Version("2.0.0") && updated.Versions.Count == 2,
+        "Update failed to preserve enabled state and retain rollback");
     Check(PackageSources.Find(fixture.Root, "widget", Fixture.Id, "2.0.0", updated.ActiveVersion.ContentDigest)?.Source
         == $"github:sandwi-dev/WidgetRail@v-test/{Fixture.Id}-2.0.0.wrwidget", "CLI source metadata was not preserved");
     Check(fixture.Reloads == 1 && fixture.Service.TakeNotification().Message.Length != 0, "Completed install did not refresh the host");
+    await fixture.Catalog.SetEnabledAsync(Fixture.Id, false);
     await fixture.Catalog.RollbackAsync(Fixture.Id, new Version("1.0.0"));
     Check((await fixture.Catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version == new Version("1.0.0"), "Existing rollback stopped working");
     await fixture.Service.HandleAsync(new("inventory"), default);
@@ -89,7 +105,25 @@ static async Task FullTrust()
     await fixture.Service.HandleAsync(command with { ApproveFullTrust = true }, default);
     await Wait(fixture.Service, "completed");
     await Reject(() => fixture.Service.HandleAsync(command with { ApproveFullTrust = true }, default).AsTask());
-    Check(!(await fixture.Catalog.DiscoverAsync()).Widgets.Single().Enabled, "Full-access install auto-enabled");
+    Check((await fixture.Catalog.DiscoverAsync()).Widgets.Single().Enabled, "Explicitly approved new full-access widget was not enabled");
+}
+static async Task DisabledUpdate()
+{
+    const string existingPermission = "system.audio.output.read.v1";
+    const string newPermission = "system.audio.sessions.read.v1";
+    await using var fixture = new Fixture("2.0.0", permissions: [existingPermission, newPermission]);
+    using (var old = new MemoryStream(Fixture.Package("1.0.0", permissions: [existingPermission]))) await fixture.Catalog.InstallAsync(old);
+    var consent = new ConsentStore(Path.Combine(fixture.Root, "consent"));
+    var identity = new BrokerWidgetIdentity(Fixture.Id, "dev.test", "test.instance");
+    var decisions = await consent.SetDecisionAsync(identity, existingPermission, ConsentDecision.Deny);
+    var review = await fixture.Review();
+    await fixture.Service.HandleAsync(new("install", OperationId: review.Operation!.Id, ReviewToken: review.Operation.Review!.Token), default);
+    await Wait(fixture.Service, "completed");
+    var updated = (await fixture.Catalog.DiscoverAsync()).Widgets.Single();
+    Check(!updated.Enabled && updated.ActiveVersion.Version == new Version("2.0.0"), "Update enabled a previously disabled widget");
+    var after = await consent.LoadAsync();
+    Check(after.Revision == decisions.Revision && after.Entries.SequenceEqual(decisions.Entries), "Update changed saved permission decisions");
+    Check(await consent.GetDecisionAsync(identity, newPermission) is null, "Update granted its new permission without a feature request");
 }
 static async Task ChangedBaseline()
 {
@@ -110,6 +144,7 @@ static async Task Expiry()
     var review = await fixture.Review();
     fixture.Clock.Now = fixture.Clock.Now.AddMinutes(11);
     await Reject(() => fixture.Service.HandleAsync(new("install", OperationId: review.Operation!.Id, ReviewToken: review.Operation.Review!.Token), default).AsTask());
+    await fixture.Service.DisposeAsync(); // Also await the asynchronously retired review's file cleanup.
     Check(!Directory.EnumerateFiles(fixture.Root, "*.wrwidget", SearchOption.AllDirectories).Any(), "Expired review retained its file");
     Check((await fixture.Catalog.DiscoverAsync()).Widgets.Count == 0, "Expired review installed");
 }
@@ -139,8 +174,8 @@ static async Task Contracts()
     await using var service = new BridgeWidgetMarketplace(new Catalog(root), _ => Task.CompletedTask);
     var snapshot = await service.HandleAsync(new("status"), default);
     MarketplaceContract.ValidateSnapshot(snapshot);
-    Check(snapshot.Items.Count == 7 && snapshot.Items.Any(i => i.Screenshots.Count == 2), "Curated inventory or screenshots missing");
-    foreach (var package in new[] { "widgetrail.samples.discord", "widgetrail.samples.game-help", "widgetrail.samples.display-profiles" })
+    Check(snapshot.Items.Count == 8 && snapshot.Items.Any(i => i.Screenshots.Count == 2), "Curated inventory or screenshots missing");
+    foreach (var package in new[] { "widgetrail.samples.twitch", "widgetrail.samples.discord", "widgetrail.samples.game-help", "widgetrail.samples.display-profiles" })
         Check(snapshot.Items.Any(item => item.Id == package), "Marketplace-only listing missing: " + package);
     foreach (var command in new[] { new MarketplaceCommand("install"), new("status", ApproveFullTrust: true), new("download", PackageId: "../../bad") })
         await Reject(() => service.HandleAsync(command, default).AsTask());

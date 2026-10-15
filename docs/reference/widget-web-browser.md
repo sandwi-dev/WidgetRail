@@ -385,7 +385,7 @@ single-pin placement/opacity controls. The existing child moves into that pin;
 its URL is not opened a second time and its opener/profile stay intact. The
 parent remains usable. B leaves pinned interaction; it does not close the child.
 **Return page to widget** removes the pin and restores the live child to its
-parent. **Close additional page**, parent-session Stop, profile changes and widget
+parent. **Close additional page**, Stop widget, profile changes and widget
 retirement end the child. An ordinary parent navigation retains the normal
 browser opener/window semantics until its session is replaced or stopped.
 
@@ -505,7 +505,7 @@ Alerts, confirmations and leave-page questions identify the requesting website
 and use the host chooser. Website text prompts use the controller keyboard, with
 the full bounded message in its scrollable body and an explicit Submit action.
 B cancels. Navigating away, hiding or retiring the page cancels outstanding
-dialogs. A confirmed Stop/clear-data action accepts beforeunload so a website
+dialogs. A confirmed Stop widget/clear-data action accepts beforeunload so a website
 cannot veto the user's decision to end its session.
 
 Menu sends a native right-click at the controller pointer. Website-owned context
@@ -535,3 +535,9 @@ does not depend on the timing of native-picker foreground restoration, but still
 requires the same live, visible document and uncancelled request. Picker
 cancellation closes only the application's owned common dialog and waits for its
 native completion before releasing the modal input scope.
+
+The tray's **Stop widget** ends every browser document and hosted additional page
+owned by the widget, together with its worker and other media. Profile storage
+and sign-ins are preserved; the widget stays stopped across application restarts.
+Website settings no longer exposes a competing session-stop command. Reload the
+stopped widget through the host when ready to start it again.

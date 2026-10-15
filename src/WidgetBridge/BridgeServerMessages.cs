@@ -26,6 +26,8 @@ internal sealed class BridgeStaleArtworkAuthorityException(string message)
     : Exception(message);
 internal sealed class BridgeStalePackageIconAuthorityException(string message)
     : Exception(message);
+internal sealed class BridgeWidgetStoppedException()
+    : Exception("This widget is stopped. Reload it to continue.");
 
 internal sealed class BridgeStalePresentationBaseException()
     : Exception("The retained presentation base is not current in the widget bridge.");

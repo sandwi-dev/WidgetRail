@@ -1,17 +1,17 @@
 [
   {
     "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
-    "description": "Watch Twitch streams with controller navigation and pinnable webapp windows. Sign-in is needed for chat and account features; playback and pop-outs depend on Twitch's WebView2 compatibility.",
+    "description": "Watch Twitch streams with controller navigation and pinnable webapp windows.",
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.discord", "publisher": "widgetrail.samples", "name": "Discord",
-    "description": "Use Discord's web app with controller input and pinnable pop-outs. Requires Discord sign-in; website microphone and camera access are controlled separately.",
+    "description": "Use Discord's web app with controller input and pinnable pop-outs.",
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.game-help", "publisher": "widgetrail.samples", "name": "Game Help",
-    "description": "Ask for game hints with screenshots and clips. Requires your own Gemini API key. Capture and saved-media access are requested when needed.",
+    "description": "Ask for game hints with screenshots and clips.",
     "screenshots": []
   },
   {
@@ -21,22 +21,22 @@
   },
   {
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
-    "description": "Browse and launch your Playnite games. Requires the separate Playnite Bridge extension and a running Playnite instance.",
+    "description": "Browse and launch your Playnite games.",
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/home.png"]
   },
   {
     "id": "widgetrail.samples.spotify", "publisher": "widgetrail.samples", "name": "Spotify",
-    "description": "Browse your Spotify library and control playback with your controller. Spotify sign-in and provider setup are required.",
+    "description": "Browse your Spotify library and control playback with your controller.",
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/search-player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/pinned-player.png"]
   },
   {
     "id": "widgetrail.samples.youtube-video", "publisher": "widgetrail.samples", "name": "YouTube Video",
-    "description": "Search and watch YouTube with a pinnable player. Searching requires a YouTube API key; video links can play without a search key.",
+    "description": "Search and watch YouTube with a pinnable player.",
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/pinned-video.png"]
   },
   {
     "id": "widgetrail.samples.ytmusic", "publisher": "widgetrail.samples", "name": "YouTube Music",
-    "description": "Browse music and keep playback controls pinned while playing. Sign-in may be required.",
+    "description": "Browse music and keep playback controls pinned while playing.",
     "screenshots": []
   }
 ]

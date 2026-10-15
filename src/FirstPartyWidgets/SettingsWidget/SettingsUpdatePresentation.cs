@@ -18,11 +18,11 @@ internal static class SettingsUpdatePresentation
                 UI.Text("Update from file", "installed.update.heading", "Update widget").Classes("page-heading"),
                 UI.Text(package is null ? "This widget is no longer available." : $"{package.Name} · current version {package.ActiveVersion.Version}",
                     "installed.update.name", "Selected widget").Classes("diagnostic-line"),
-                UI.Text("Choose a newer .wrwidget file for this widget. The update will be selected and turned off for review. Your data and previous version stay.",
+                UI.Text("Choose a newer .wrwidget file for this widget. Your widget settings and enabled state will be kept. Permissions are requested when needed, and the previous version remains available.",
                     "installed.update.help", "Update instructions").Classes("page-help"),
                 UI.Text(fullTrust
-                    ? "This widget runs with full access to your Windows account. Only choose an update you trust. Choosing a file approves installing that update; it will not run until you enable it."
-                    : "Only choose an update from a source you trust. Review its permissions before turning it back on.",
+                    ? "This widget runs with full access to your Windows account. Only choose an update you trust. You will confirm full access before installation."
+                    : "Only choose an update from a source you trust. New permissions are requested when a feature needs them.",
                     "installed.update.trust", "Update trust guidance").Classes(fullTrust ? "diagnostic-error" : "page-help"),
                 UI.Button("Choose update file", "host.install-local-widget", UpdateSourceId(package?.Id ?? "unavailable"))
                     .Disabled(package is null).Busy(busy).Classes("primary-button"),

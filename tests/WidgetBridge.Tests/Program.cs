@@ -22,6 +22,11 @@ if (args is ["--export-gallery-scroll", var galleryDirectory, var galleryStylePa
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
+if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "settings-navigation-fixture.marker")))
+{
+    await SettingsNavigationFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
+    return 0;
+}
 if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "webapp-fixture.marker")))
 {
     await BridgeWebAppFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
@@ -108,6 +113,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Intent bridge pinned and indexed sources cross both pipes with exact leases", BridgeIntentEndToEnd.SourceProjections),
     ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
     ("Intent bridge notification grants require declared exact current content and explicit activation", BridgeIntentScenarios.NotificationIntents),
+    ("Intent bridge actual Settings accepts cold and warm navigation before slow inspections", SettingsNavigationFixture.ThroughPipes),
     ("Intent bridge exposes only the matched handler mapping presentation policy", BridgeIntentScenarios.HandlerMappingPolicy),
     ("Intent bridge passive delivery requires live projection and per-mapping opt-in", BridgeIntentScenarios.PassiveDelivery),
     ("Intent bridge fallback tickets are bounded expiring and one-shot", BridgeIntentScenarios.FallbackTickets),
@@ -174,6 +180,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Package SVG icons resolve lazily with exact catalog authority and no worker",
         PackageSvgIconsResolveLazily),
+    ("Catalog management icons resolve disabled packages without workers", CatalogManagementIcons),
+    ("Catalog management icons reject untrusted establishment and deferred roots", BridgeClientRegistryScenarios.CatalogIconAuthorityCoversEstablishmentAndDeferredRoots),
+    ("Persistent widget stop retires workers and requires explicit start", PersistentWidgetStop),
+    ("Settings update cancellation releases worker admission", BridgeClientRegistryScenarios.CancelledSettingsUpdateReleasesAdmission),
+    ("Settings update retires the old worker and blocks reentry", BridgeClientRegistryScenarios.SettingsUpdateRetiresAndBlocksWorkers),
+    ("Persistent widget stop defeats an in-flight restart", BridgeClientRegistryScenarios.StopDuringRestartNeverPublishesFreshWorker),
+    ("Persistent widget stop survives pending catalog discovery", StopSurvivesCatalogDiscovery),
     ("Configured worker icons admit only their sealed package declarations", ConfiguredWorkerIcons),
     ("Marketplace management requires sealed bundled marketplace provenance", MarketplaceAuthority),
     ("Configured Settings icons resolve from the built host catalog", ConfiguredSettingsIcons),
@@ -252,9 +265,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Embedded media observations follow document lifetime across publications", BridgeClientRegistryScenarios.EmbeddedMediaObservationsFollowDocumentLifetime),
     ("Embedded media command terminals survive intermediate compatible publications", BridgeClientRegistryScenarios.EmbeddedMediaIntermediateCommandPublication),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
-    ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
+    ("Local package import enables new widgets and is revisioned and path free", LocalPackageImportIsEnabledRevisionedAndPathFree),
     ("Local package full-access review is explicit cancellable and source locked", LocalPackageFullTrustReview),
-    ("Local package update validates first selects disabled and retains rollback", LocalPackageUpdateFlow),
+    ("Local package update validates first preserves enabled state and retains rollback", LocalPackageUpdateFlow),
     ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
@@ -421,6 +434,10 @@ static Task MarketplaceAuthority()
 static async Task<int> RunWorkerAsync(string[] arguments)
 {
     var instance = RequiredValue(arguments, "--widget-instance");
+    if (instance == "settings-navigation.fixture")
+        return await WidgetWorkerBootstrap.RunAsync(arguments, () => SettingsNavigationFixture.CreateSettings(RequiredValue(arguments, "--settings-fixture-root")));
+    if (instance == "settings-source.fixture")
+        return await WidgetWorkerBootstrap.RunAsync(arguments, () => new SettingsNavigationSource());
     if (instance == "fulltrust-services.instance")
         return await WidgetApplicationBootstrap.RunAsync(arguments, () => new FullTrustHostServicesTests.ProbeWidget());
     if (instance == "game-help.instance")
@@ -1705,6 +1722,154 @@ static async Task EnumerationIsLazy()
         "Native descriptors must not expose worker paths.");
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 }
+static async Task StopSurvivesCatalogDiscovery()
+{
+    using var temp = new TemporaryDirectory("wrail-stop-catalog");
+    using var fixture = TemporaryCatalog.Create();
+    var catalog = BridgeCatalog.Load(fixture.Path);
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    await using var monitor = new BridgeCatalogMonitor(fixture.Path, temp.Path, Environment.ProcessPath!, catalog,
+        initialDiagnostics: null, installedCatalogPending: false, loadCatalog: async _ =>
+        { entered.TrySetResult(); await release.Task; return new BridgeCatalogLoadResult(catalog, []); });
+    var loading = monitor.ReloadGuaranteedForTesting();
+    await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    monitor.PublishStoppedWidgets(["dev.test.widget"]);
+    release.SetResult();
+    _ = await loading.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(monitor.Current.Widgets.Single().IsStopped, "Stale discovery erased the stop choice.");
+    await monitor.ReloadNowAsync();
+    Assert.True(monitor.Current.Widgets.Single().IsStopped, "Refresh erased the stop choice.");
+    monitor.PublishStoppedWidgets([]);
+    await monitor.ReloadNowAsync();
+    Assert.True(!monitor.Current.Widgets.Single().IsStopped, "Explicit start was overwritten by refresh.");
+}
+
+static async Task PersistentWidgetStop()
+{
+    using var temp = new TemporaryDirectory("wrail-stop-settings");
+    using var fixture = TemporaryCatalog.CreateMany(
+        new("test-widget", "dev.test.widget", "dev.test", "test.instance", ResidencyPolicy: new() { Mode = WidgetResidencyPolicies.KeepAlive }),
+        new("neighbor", "dev.test.neighbor", "dev.test", "neighbor.instance"));
+    var store = new PlatformSettingsStore(new(temp.Path));
+    var saved = await store.UpdateAsync(current => current with { Controllers = current.Controllers with { OpenShortcut = ControllerOpenShortcut.Guide },
+        Appearance = current.Appearance with { OverlayPosition = OverlayPosition.BottomLeft } });
+    var catalog = BridgeCatalog.Load(fixture.Path);
+    for (var launch = 0; launch < 2; launch++)
+    {
+        var state = await new WidgetStopStateStore(new(temp.Path)).LoadAsync();
+        var pipe = $"wrail-stop-{Guid.NewGuid():N}";
+        await using var server = new WidgetBridgeServer(pipe, catalog.WithStoppedWidgets(state), 256 * 1024,
+            appearance: null, consentStore: null, platformBackend: null, catalogMonitor: null, residencyBudget: null,
+            capabilityDiagnosticSink: null, settingsStore: store);
+        var serving = server.RunAsync(TimeSpan.FromSeconds(5));
+        await using (var session = await WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ConnectAsync(pipe))
+        {
+            var items = await session.ListWidgetsAsync();
+            if (launch == 0)
+            {
+                await session.EstablishPresentationAsync(session.GetTarget("test-widget"), WidgetLifecycleState.Interactive);
+                await session.EstablishPresentationAsync(session.GetTarget("neighbor"), WidgetLifecycleState.Visible);
+                Assert.Equal(2, server.RunningWorkerCount);
+                await session.StopWidgetAsync(session.GetTarget("test-widget"));
+                await session.ListWidgetsAsync();
+                Assert.Equal(1, server.RunningWorkerCount);
+                Assert.True(session.GetTarget("test-widget").Descriptor.IsStopped, "Stopped widget left the catalog or lost its marker.");
+                await session.StopWidgetAsync(session.GetTarget("test-widget"));
+                await session.ListWidgetsAsync();
+                Assert.Equal(1, server.RunningWorkerCount);
+            }
+            else
+            {
+                Assert.True(items.Widgets.Single(item => item.Id == "test-widget").IsStopped, "Stop was lost across host restart.");
+                Assert.Equal(0, server.RunningWorkerCount);
+            }
+            var stopped = session.GetTarget("test-widget");
+            var blocked = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.EstablishPresentationAsync(stopped, WidgetLifecycleState.Interactive));
+            Assert.Equal("widget_stopped", blocked.Code);
+            blocked = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.RestartAsync(session.GetTarget("test-widget")));
+            Assert.Equal("widget_stopped", blocked.Code);
+            if (launch == 1)
+            {
+                await session.StartWidgetAsync(session.GetTarget("test-widget"));
+                await session.ListWidgetsAsync();
+                Assert.True(!session.GetTarget("test-widget").Descriptor.IsStopped, "Explicit Start did not clear stop.");
+                Assert.Equal(0, server.RunningWorkerCount);
+                await session.EstablishPresentationAsync(session.GetTarget("test-widget"), WidgetLifecycleState.Interactive);
+                Assert.Equal(1, server.RunningWorkerCount);
+                Assert.Equal(0, (await new WidgetStopStateStore(new(temp.Path)).LoadAsync()).Count);
+            }
+            var current = await store.LoadAsync();
+            Assert.Equal(saved.Controllers.OpenShortcut, current.Controllers.OpenShortcut);
+            Assert.Equal(saved.Appearance.OverlayPosition, current.Appearance.OverlayPosition);
+        }
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+}
+
+static async Task CatalogManagementIcons()
+{
+    using var installed = new TemporaryDirectory("wrail-catalog-icons");
+    using var bundled = TemporaryBundledCatalog.Create(new TemporaryBundledWidgetDefinition(
+        "dev.test.catalog-icon", "Catalog icon", InvalidStyle: false, PackageIcon: true));
+    var bundledCatalog = BridgeCatalog.LoadTrustedObserved(bundled.Path, installed.Path).Catalog;
+    var configured = bundledCatalog.GetConfigured("dev.test.catalog-icon");
+    var source = new WidgetCatalogIconSource(configured.PackageId, "1.0.0", true, configured.PackageContentDigest);
+    var icon = new WidgetPackageIcon("test.mark", WidgetPackageIconColorMode.ThemeTint) { Catalog = source };
+    var snapshot = new ViewSnapshot { WidgetInstanceId = "management.instance", Sequence = 1, ActiveInputScopeId = "root",
+        ProtocolVersion = ProtocolConstants.CatalogIconVersion,
+        Root = new() { Id = "icon", Kind = ViewNodeKind.Icon, Glyph = WidgetGlyph.Connection, PackageIcon = icon } };
+    Assert.Throws<BridgeProtocolException>(() => BridgeClientRegistry.DemandPackageIconAuthority(configured, snapshot));
+    var management = configured with { Id = "settings", PackageId = "widgetrail.firstparty.settings", PublisherId = "widgetrail.firstparty",
+        RequiresAppContainer = false, DeclaredCapabilities = [] };
+    BridgeClientRegistry.DemandPackageIconAuthority(management, snapshot);
+    var active = new BridgeCatalog([management]); // Icon target is disabled: absent from active catalog.
+    await using var monitor = new BridgeCatalogMonitor(bundled.Path, installed.Path, Environment.ProcessPath!, active);
+    var resolver = new BridgeCatalogIcons(monitor);
+    var bytes = await resolver.ResolveAsync(active, 1, source, "test.mark", default);
+    Assert.True(bytes.NormalizedSvg.Length > 0, "Disabled built-in icon did not resolve.");
+    await Assert.ThrowsAsync<BridgeStalePackageIconAuthorityException>(() => resolver.ResolveAsync(active, 1, source with { Version = "2.0.0" }, "test.mark", default));
+    await Assert.ThrowsAsync<BridgeStalePackageIconAuthorityException>(() => resolver.ResolveAsync(active, 1, source with { ContentDigest = new('0', 64) }, "test.mark", default));
+    await Assert.ThrowsAsync<BridgeStalePackageIconAuthorityException>(() => resolver.ResolveAsync(active, 1, source, "missing", default));
+
+    // An installed copy of the same package must have distinct authority.
+    var archivePath = Path.Combine(installed.Path, "icon.wrwidget");
+    using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+        foreach (var file in Directory.EnumerateFiles(configured.PackageRoot!, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(configured.PackageRoot!, file).Replace('\\', '/');
+            if (relative == ".wrail-integrity.json") continue;
+            archive.CreateEntryFromFile(file, relative);
+        }
+    var catalogService = new WidgetRail.WidgetCatalog.WidgetCatalog(installed.Path);
+    var version = await catalogService.InstallAsync(archivePath);
+    Assert.True(!(await catalogService.DiscoverAsync()).Widgets.Single().Enabled, "Test copy must remain disabled.");
+    var community = source with { BuiltIn = false, ContentDigest = version.ContentDigest };
+    var communityBytes = await resolver.ResolveAsync(active, 2, community, "test.mark", default);
+    Assert.Equal(bytes.Metadata.NormalizedSha256, communityBytes.Metadata.NormalizedSha256);
+
+    var pipe = $"wrail-catalog-icon-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipe, active, 256 * 1024, catalogMonitor: monitor);
+    var serving = server.RunAsync(TimeSpan.FromSeconds(5));
+    var client = await BridgeTestClient.ConnectAsync(pipe, 256 * 1024);
+    try
+    {
+        var descriptor = active.GetConfigured("settings").PublicDescriptor();
+        var response = await client.RequestAsync(BridgeMessageTypes.ResolvePackageIcon, new BridgePackageIconRequest(
+            "settings", descriptor.RuntimeGeneration, descriptor.PresentationGeneration, "", "test.mark", "", "", community));
+        Assert.Equal(BridgeMessageTypes.PackageIcon, response.Type);
+        Assert.Equal(community, BridgeJson.FromElement<WidgetCatalogIconSource>(response.Payload.GetProperty("catalog")));
+        Assert.Equal(0, server.RunningWorkerCount);
+    }
+    finally
+    {
+        try { await client.RequestAsync(BridgeMessageTypes.Stop, new { }); } catch { }
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    await File.AppendAllTextAsync(Path.Combine(configured.PackageRoot!, "assets", "mark.svg"), "<!--tampered-->");
+    await Assert.ThrowsAsync<BridgeStalePackageIconAuthorityException>(() => resolver.ResolveAsync(active, 3, source, "test.mark", default));
+}
+
 static async Task PackageSvgIconsResolveLazily()
 {
     using var installed = new TemporaryDirectory("wrail-package-icon-installed");
@@ -3108,8 +3273,8 @@ static async Task PrivateStateAuthorityIsHostSynthesized()
         "dev.example.widget", "dev.example", "default", [],
         new ConsentStore(temporary.Path), new SimulatedPlatformBrokerBackend(), context);
     Assert.Equal(0, companion.DeclaredCapabilities.Count);
-    Assert.SequenceEqual([PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1],
-        companion.HostGrantedCapabilities);
+    Assert.SequenceEqual(new[] { PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1 }.Order(StringComparer.Ordinal),
+        companion.HostGrantedCapabilities.Order(StringComparer.Ordinal));
     Assert.True(companion.WorkerArguments.Contains("--broker-pipe", StringComparer.Ordinal),
         "The host-granted state service did not create an authenticated broker channel.");
 
@@ -4252,7 +4417,7 @@ static async Task CatalogReconciliationPreservesCompatibleWorkers()
         "Worker-affecting declaration change did not advance runtime generation.");
 }
 
-static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
+static async Task LocalPackageImportIsEnabledRevisionedAndPathFree()
 {
     using var root = new TemporaryDirectory("wrail-local-package-import");
     using var trusted = TemporaryCatalog.Create(
@@ -4287,7 +4452,7 @@ static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
         CancellationToken.None);
     var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-    Assert.Equal("installed-disabled", result.Status);
+    Assert.Equal("installed", result.Status);
     Assert.Equal(string.Empty, service.TakeNotification("different-runtime").Message);
     Assert.Equal(result.Message, service.TakeNotification(origin.RuntimeGeneration).Message);
     Assert.Equal(string.Empty, service.TakeNotification(origin.RuntimeGeneration).Message);
@@ -4298,7 +4463,7 @@ static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
         "Local package completion exposed a filesystem path.");
     var snapshot = await catalog.DiscoverAsync();
     var installed = snapshot.Widgets.Single(widget => widget.Id == "dev.example.local");
-    Assert.False(installed.Enabled, "Local import enabled a package without review.");
+    Assert.True(installed.Enabled, "A new local widget was not enabled after installation.");
     Assert.Equal("1.2.3", installed.ActiveVersion.Version.ToString());
     Assert.Equal(1L, monitor.Revision);
     Assert.Equal(1, revisions);
@@ -4339,10 +4504,10 @@ static async Task LocalPackageFullTrustReview()
             Assert.False(service.Approve(operation, true), "Review approval was replayed.");
         }
         var result = await terminal.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(mode == "approve" ? "installed-disabled" : mode == "stale" ? "failed" : "cancelled", result.Status);
+        Assert.Equal(mode == "approve" ? "installed" : mode == "stale" ? "failed" : "cancelled", result.Status);
         var installed = (await catalog.DiscoverAsync()).Widgets;
         Assert.Equal(mode == "approve" ? 1 : 0, installed.Count);
-        if (mode == "approve") Assert.False(installed[0].Enabled, "Full-access import enabled the widget.");
+        if (mode == "approve") Assert.True(installed[0].Enabled, "Explicitly approved new full-access widget was not enabled.");
     }
 }
 
@@ -4357,10 +4522,17 @@ static async Task LocalPackageUpdateFlow()
         "settings.default", new string('a', 64), new string('b', 64), Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))));
     async Task<BridgeLocalWidgetPackageInstallCompleted> Run(string path, Func<CancellationToken, Task>? beforePublish = null)
     {
+        var review = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(TaskCreationOptions.RunContinuationsAsynchronously);
         var done = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var service = new BridgeLocalWidgetPackageImportService(catalog, _ => NoopDisposable.Instance,
-            _ => Task.CompletedTask, result => { done.SetResult(result); return Task.CompletedTask; }, null, beforePublish);
-        service.Start(new(Guid.NewGuid().ToString(), path, origin), CancellationToken.None);
+            _ => Task.CompletedTask, result => { if (result.Status == "approval-required") review.TrySetResult(result); else done.TrySetResult(result); return Task.CompletedTask; }, null, beforePublish);
+        var operation = Guid.NewGuid().ToString();
+        service.Start(new(operation, path, origin), CancellationToken.None);
+        if (await Task.WhenAny(review.Task, done.Task).WaitAsync(TimeSpan.FromSeconds(10)) == review.Task)
+        {
+            Assert.True((await review.Task).Message.Contains("settings will be kept"), "Missing settings review.");
+            service.Approve(operation, true);
+        }
         return await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
     foreach (var wrong in new[] {
@@ -4376,12 +4548,18 @@ static async Task LocalPackageUpdateFlow()
     Assert.Equal("failed", (await Run(update, _ => throw new IOException("fixture failure"))).Status);
     Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Failed prepublication stopped the widget.");
     var result = await Run(update);
-    Assert.Equal("installed-disabled", result.Status);
+    Assert.Equal("installed", result.Status);
     var updated = (await catalog.DiscoverAsync()).Widgets.Single();
-    Assert.False(updated.Enabled, "Update enabled unreviewed code.");
+    Assert.True(updated.Enabled, "Update lost the existing enabled state.");
     Assert.Equal("2.0.0", updated.ActiveVersion.Version.ToString());
     Assert.Equal(2, updated.Versions.Count);
-    Assert.True(result.Message.Contains("Review update"), "Update did not give the next action.");
+    Assert.True(result.Message.Contains("settings and enabled state were kept"), "Update did not explain that preferences are preserved.");
+    await catalog.SetEnabledAsync(id, false);
+    var disabledUpdate = await Run(await CreateWidgetPackageAsync(root.Path, id, "3.0.0"));
+    Assert.Equal("installed", disabledUpdate.Status);
+    var disabled = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.False(disabled.Enabled, "Local update enabled a previously disabled widget.");
+    Assert.Equal("3.0.0", disabled.ActiveVersion.Version.ToString());
 }
 
 static async Task LocalPackageImportFailuresPreserveCatalog()
@@ -4430,14 +4608,14 @@ static async Task LocalPackageImportFailuresPreserveCatalog()
 
     var valid = await CreateWidgetPackageAsync(root.Path, "dev.example.stable", "1.0.0");
     var first = await RunAsync(valid);
-    Assert.Equal("installed-disabled", first.Status);
+    Assert.Equal("installed", first.Status);
     var beforeDuplicate = (await catalog.DiscoverAsync()).Widgets.Single()
         .ActiveVersion.ContentDigest;
     var duplicate = await RunAsync(valid);
     Assert.Equal("failed", duplicate.Status);
     var afterDuplicate = (await catalog.DiscoverAsync()).Widgets.Single();
     Assert.Equal(beforeDuplicate, afterDuplicate.ActiveVersion.ContentDigest);
-    Assert.False(afterDuplicate.Enabled, "Duplicate import changed enabled state.");
+    Assert.True(afterDuplicate.Enabled, "Duplicate import changed enabled state.");
 
     var stalePackage = await CreateWidgetPackageAsync(
         root.Path, "dev.example.stale", "1.0.0");
@@ -4471,7 +4649,7 @@ static async Task LocalPackageImportFailuresPreserveCatalog()
             lockedPackage, FileMode.Open, FileAccess.Write, FileShare.None);
     });
     lockRelease.TrySetResult();
-    Assert.Equal("installed-disabled", (await lockedTask).Status);
+    Assert.Equal("installed", (await lockedTask).Status);
 
     var cancelPackage = await CreateWidgetPackageAsync(
         root.Path, "dev.example.cancel", "1.0.0");
@@ -4582,7 +4760,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "focusAnimation", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "pageAnimation", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
+        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "focusAnimation", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "pageAnimation", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());

@@ -232,6 +232,10 @@
 .installed-entry-status { font-size: 13px; color: var(--text-muted); max-lines: 3; }
 .installed-entry-version { font-size: 13px; color: var(--text-muted); max-width: 140px; max-lines: 2; text-align: end; }
 .installed-entry-chevron { font-size: 20px; color: var(--text-muted); width: 16px; }
+.installed-list-page { min-height: 0; }
+.installed-list-actions { gap: 8px; }
+.installed-widget-list { flex-grow: 1; min-height: 0; gap: 8px; }
+.installed-entry-icon { width: 32px; height: 32px; }
 
 /* Management actions share a surface; only destructive commands use danger ink. */
 .widget-detail-action {

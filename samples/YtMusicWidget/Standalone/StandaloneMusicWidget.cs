@@ -112,6 +112,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             UpdateBrowseContent();
         }
         ObserveTrackNotification();
+        ObservePlaybackActivity();
         if (IsActive) Invalidate();
     }
 

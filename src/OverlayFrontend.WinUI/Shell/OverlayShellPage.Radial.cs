@@ -17,7 +17,7 @@ internal sealed partial class OverlayShellPage
     private bool radialRequested, radialShowing;
     private string? radialSelection;
     private int radialPage;
-    private bool RadialOpen => radialRequested && Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial &&
+    private bool RadialOpen => radialRequested &&
         visible && !retired && !interactive && !IsMediaFullscreen && !PinnedInputActive && catalogItems.Count != 0;
 
     private void InitializeRadialChooser()
@@ -30,6 +30,7 @@ internal sealed partial class OverlayShellPage
             if (RadialOpen && radialView.IsLoaded && radialSelection is { } selected)
                 args.TrySetNewFocusedElement(radialView.ContextAnchor(selected));
         };
+        radialView.StatusFor = StatusFor;
         radialView.Selected = PreviewRadial;
         radialView.Activated = item => { if (reordering) { FinishTrayReorder(); return; } radialSelection = item.Id; _ = SelectAsync(item.Id); };
         radialView.ContextRequestedFor = item => { radialSelection = item.Id; RefreshRadialChooser(); _ = ShowTrayMenuAsync(item); };
@@ -43,7 +44,7 @@ internal sealed partial class OverlayShellPage
     }
     private void PrepareRadialBackEntry()
     {
-        if (Appearance.WidgetSwitcher != WidgetSwitcherLayout.Radial || catalogItems.Count == 0) return;
+        if (catalogItems.Count == 0) return;
         radialRequested = true;
         radialSelection = activeWidget ?? requestedWidget ?? catalogItems[0].Id;
         radialPage = Math.Max(0, catalogItems.ToList().FindIndex(item => item.Id == radialSelection)) / 8;
@@ -57,7 +58,7 @@ internal sealed partial class OverlayShellPage
             if (!await ReturnFromRadialAsync()) HideRequested?.Invoke();
             return;
         }
-        if (Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial && catalogItems.Count > 0)
+        if (catalogItems.Count > 0)
         {
             ClearTrayFocus();
             PrepareRadialBackEntry();
@@ -70,7 +71,7 @@ internal sealed partial class OverlayShellPage
     {
         if (radialView is null) return;
         var showing = RadialOpen;
-        if (interactive || Appearance.WidgetSwitcher != WidgetSwitcherLayout.Radial) radialRequested = false;
+        if (interactive) radialRequested = false;
         if (showing)
         {
             if (!catalogItems.Any(item => item.Id == radialSelection)) radialSelection =

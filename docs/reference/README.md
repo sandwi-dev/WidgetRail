@@ -17,6 +17,7 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [WinUI authoring](winui-authoring.md) and [rich text with inline links](widget-rich-text.md)
 - [Browser and provider documents](widget-web-browser.md), [native media player](widget-media-player.md), and [capture](widget-capture-and-game-help.md)
 - [Widget intents, availability and delivery feedback](widget-intents.md)
+- [Widget notifications](widget-notifications.md) and [activity badges](widget-activity.md)
 - [WRSS properties and cascade](wrss.md)
 - [Controller input](controller-input.md) and [read fallback](controller-read-fallback.md)
 - [Widget lifecycle](widget-residency.md) and [display sizing](display-and-resolution.md)

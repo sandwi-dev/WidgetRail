@@ -30,20 +30,19 @@ internal sealed partial class OverlayShellPage
         Tray.SelectedIndex = 0;
         ShowPresentationStatus("Radial fixture");
         SetInteractive(true);
-        Appearance = original with { WidgetSwitcher = WidgetSwitcherLayout.Rail };
-        await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
-        Check(!RadialOpen, "rail setting preserves ordinary Back entry");
-        SetInteractive(true);
-        Appearance = original with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
         FocusDirectionalTray();
         UpdateLayout();
         Check(!interactive && !RadialOpen && Tray.IsEnabled && RailControls.IsHitTestVisible,
-            "directional root exit enters the rail with the radial setting enabled");
+            "directional root exit enters the rail");
+        await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
+        await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
+        Check(RadialOpen, "Back from the rail opens the radial chooser");
         SetInteractive(true);
         var contentSize = new Windows.Foundation.Size(WidgetHost.ActualWidth, WidgetHost.ActualHeight);
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
+        await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
         UpdateLayout();
-        Check(RadialOpen && radialView!.Visibility == Visibility.Visible, "unhandled widget Back opens configured radial chooser");
+        Check(RadialOpen && radialView!.Visibility == Visibility.Visible, "unhandled widget Back opens radial chooser");
         Check(contentSize.Width == WidgetHost.ActualWidth && contentSize.Height == WidgetHost.ActualHeight,
             "wheel overlays the retained widget without changing its viewport");
         var deadline = Environment.TickCount64 + 5000;
@@ -81,21 +80,22 @@ internal sealed partial class OverlayShellPage
         // focus restoration are covered by the actual-package SharedUx checks.
         SetInteractive(true);
         Check(interactive && !RadialOpen && activeWidget == beforeWidget, "entering widget presentation closes radial chrome without changing its identity");
-        Appearance = original with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
+
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
+        await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
         UpdateLayout();
         Check(RadialOpen && radialPage == 0, "fresh radial entry restores the current widget page");
-        Appearance = original with { WidgetSwitcher = WidgetSwitcherLayout.Radial, Contrast = ContrastPreference.High, Motion = MotionPreference.Reduced };
+        Appearance = original with { Contrast = ContrastPreference.High, Motion = MotionPreference.Reduced };
         RefreshShellChrome(); UpdateLayout();
         radialView!.Open(WidgetRail.OverlayFrontend.WinUI.Motion.WidgetMotionOptions.From(Appearance, true));
         Check(radialView.ButtonFor(catalogItems[0].Id)!.UseSystemFocusVisuals && !radialView.HasElevation,
             "high-contrast radial uses native focus and removes decorative shadow");
         Check(radialView.LastEntranceDuration == TimeSpan.Zero, "reduced motion disables radial entrance animation");
-        Appearance = original with { WidgetSwitcher = WidgetSwitcherLayout.Radial, TextScale = 1.5 };
+        Appearance = original with { TextScale = 1.5 };
         ShellPalette = Validation.ShellChromeValidationPage.Palette("builtin-redline");
         RefreshShellChrome(); UpdateLayout();
         Check(radialView.HasElevation && radialView.ActualWidth > 0, "theme/text-scale changes retain the same elevated chooser controls");
-        Appearance = original with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
+
         ShellPalette = Validation.ShellChromeValidationPage.Palette("builtin-neon-circuit");
         RefreshShellChrome(); UpdateLayout();
         radialView.Update(catalogItems.Take(8).ToArray(), catalogItems[0].Id, 0, ShellPalette, Appearance, true);

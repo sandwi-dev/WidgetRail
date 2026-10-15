@@ -30,7 +30,9 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
     private readonly FontIcon pageGlyph = new() { FontSize = 48, Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button previous = new() { Content = new FontIcon { Glyph = "\uE76B", FontFamily = new("Segoe Fluent Icons"), FontSize = 14 }, Width = 32, Height = 32, Padding = new(0), AllowFocusOnInteraction = false };
     private readonly Button next = new() { Content = new FontIcon { Glyph = "\uE76C", FontFamily = new("Segoe Fluent Icons"), FontSize = 14 }, Width = 32, Height = 32, Padding = new(0), AllowFocusOnInteraction = false };
-    private readonly (Button Button, WidgetPackageIconView Icon)[] items;
+    private readonly (Button Button, WidgetPackageIconView Icon, WidgetStatusBadges Badges)[] items;
+    internal Func<BridgeWidgetDescriptor, WidgetStatus>? StatusFor { get; set; }
+    private ShellChromePalette? badgePalette;
     private readonly Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolveIcon;
     private readonly ShellChromeStyles chrome = new();
     private readonly SolidColorBrush clear = new(Microsoft.UI.Colors.Transparent);
@@ -63,7 +65,10 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         {
             var icon = new WidgetPackageIconView { Width = 40, Height = 40, FontSize = 40,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            var button = new Button { Content = icon, Width = 66, Height = 66, MinWidth = 0, MinHeight = 0,
+            var badges = new WidgetStatusBadges();
+            var iconStage = new Grid { Width = 50, Height = 50 };
+            iconStage.Children.Add(icon); iconStage.Children.Add(badges);
+            var button = new Button { Content = iconStage, Width = 66, Height = 66, MinWidth = 0, MinHeight = 0,
                 Padding = new(8), Background = clear, BorderThickness = new(0), CornerRadius = new(28), HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center, XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Disabled };
             foreach (var state in new[] { "", "PointerOver", "Pressed", "Disabled" })
@@ -74,7 +79,7 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
             button.GotFocus += (_, _) => { if (!updating && Item(index) is { } item) Selected?.Invoke(item); };
             button.Click += (_, _) => { if (Item(index) is { } item) Activated?.Invoke(item); };
             button.ContextRequested += (_, args) => { if (Item(index) is { } item) { args.Handled = true; ContextRequestedFor?.Invoke(item); } };
-            return (button, icon);
+            return (button, icon, badges);
         }).ToArray();
         var hub = new StackPanel { Width = 148, Spacing = 12, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
         paging.ColumnDefinitions.Add(new() { Width = GridLength.Auto }); paging.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) }); paging.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
@@ -109,6 +114,7 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         catalog = value; selected = selection; page = Math.Clamp(browsedPage, 0, RadialChooserPolicy.PageCount(value.Count) - 1);
         chrome.Update(styles, appearance, animations);
         var palette = ShellChromePalette.Resolve(styles, appearance);
+        badgePalette = palette;
         if (face.Background is SolidColorBrush background) background.Color = palette.Surface;
         else face.Background = new SolidColorBrush(palette.Surface);
         face.Shadow = palette.HighContrast ? null : elevation;
@@ -132,7 +138,7 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
                     var generation = $"{item.Id}|{item.InstanceId}|{item.RuntimeGeneration}|{item.PresentationGeneration}|{item.PackageContentDigest}|{asset?.SourceSha256}|{asset?.NormalizedSha256}";
                     entry.Icon.Update(new() { Id = "radial.icon", Kind = ViewNodeKind.Icon, Glyph = item.Icon,
                         PackageIcon = item.PackageIcon, AccessibilityLabel = item.Name },
-                        (assetId, token) => resolveIcon(item, assetId, token), generation, null);
+                        (reference, token) => resolveIcon(item, reference.AssetId, token), generation, null);
                 }
 
                 AutomationProperties.SetAutomationId(entry.Button, "Overlay.Radial.Widget." + (item?.Id ?? index.ToString()));
@@ -156,6 +162,23 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
             UpdatePagingGlyph();
         }
         finally { updating = false; }
+        RefreshBadges();
+    }
+    internal void RefreshBadges()
+    {
+        if (disposed || badgePalette is not { } palette) return;
+        for (var index = 0; index < items.Length; index++)
+        {
+            var item = Item(index);
+            var status = item is null ? default : StatusFor?.Invoke(item) ?? new WidgetStatus(Stopped: item.IsStopped);
+            items[index].Badges.Update(status, palette, double.IsFinite(Width) && Width < 320);
+            var description = item is null ? "" : status.Describe(item.Name);
+            if (AutomationProperties.GetName(items[index].Button) != description)
+            {
+                AutomationProperties.SetName(items[index].Button, description);
+                NativePopupTheme.SetToolTip(items[index].Button, description);
+            }
+        }
     }
     private void UpdatePagingGlyph() => WidgetGlyphs.Apply(pageGlyph, new() { Id = "radial.paging", Kind = ViewNodeKind.ControllerGlyph,
         ControllerPrompt = catalog.Count > 8 ? ControllerPrompt.RightStickMove : ControllerPrompt.LeftStickMove,

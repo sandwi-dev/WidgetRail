@@ -49,6 +49,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Marketplace download review is controller-native and full access requires confirmation", MarketplaceScenarios.ControllerFlow),
     ("Diagnostics export stays focusable and retains its saved location", DiagnosticsExportScenarios.ExportRetainsFocusAndResult),
     ("Installed rows separate visible fields and preserve one action", StructuredInstalledRows),
+    ("Installed widget filters keep stable return keys and retire stale row input", InstalledListFilters),
+    ("Maximum installed inventory remains virtualized and bounded", InstalledListBounds),
     ("Settings pages have distinct ownership and valid focus paths", SettingsUsabilityScenarios.PagesHaveConsistentOwnershipAndFocus),
     ("Explicit preference choices are idempotent", SettingsUsabilityScenarios.ExplicitChoicesAreIdempotent),
     ("Shared setting rows retain control authority and accessible values", SettingsUsabilityScenarios.SettingRowKeepsControlSemantics),
@@ -67,6 +69,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Allow all grants only one widget's displayed declarations atomically", AllowAllPermissions),
     ("Settings cannot be disabled through its UI or saved preferences", SettingsCannotBeDisabled),
     ("Settings intents open exact installed and bundled widget pages without changing consent", SettingsIntents),
+    ("Settings intent acknowledges navigation before optional detail inspection", SettingsIntentSlowInspection),
+    ("Cold Settings intent loading is cancelable and newer navigation wins", SettingsIntentColdNavigation),
     ("Snapshot presentation is repeatable", SettingsPolicyScenarios.PresentationIsRepeatable),
     ("Navigation and preference policies are closed", SettingsPolicyScenarios.NavigationAndPreferencePoliciesAreClosed),
     ("Preference persistence owns valid and recovery writes", SettingsPolicyScenarios.PreferencePersistenceOwnsWrites),
@@ -96,9 +100,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Settings retries only transient catalog and registry readiness", ReadinessRetryIsBoundedAndClassified),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
-    ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
+    ("Installed widgets use virtualized filters and explicit review", InstalledWidgetReview),
     ("Full-trust installed applications disclose authority before enabling", FullTrustInstalledWidgetReview),
-    ("Local widget installation is an exact host-owned disabled-review action", LocalWidgetInstallationAction),
+    ("Local widget installation is an exact host-owned action with feature-triggered permissions", LocalWidgetInstallationAction),
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
     ("Enabled widget uninstall confirms before disabling and preserves data", EnabledWidgetUninstall),
     ("Update file flow binds target and reviews the newly selected version", WidgetUpdateReviewFlow),
@@ -345,6 +349,69 @@ static async Task SettingsCannotBeDisabled()
     }));
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
 }
+static async Task SettingsIntentColdNavigation()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(root, "dev.test.first", "dev.publisher", "First target", [], []);
+    WriteInstalledWidget(root, "dev.test.latest", "dev.publisher", "Latest target", [], []);
+    var service = new InitializationDiagnostics();
+    var widget = CreateWithPermissions(temp.Path, root, new ConsentStore(Path.Combine(temp.Path, "consent")), readinessDiagnostics: service);
+    WidgetIntentRequest Request(string id) => WidgetIntentRequest.Create(WidgetIntentContracts.WidgetSettings,
+        JsonSerializer.SerializeToElement(new { packageId = id }), WidgetIntentPresentation.OpenWidget);
+    await widget.InitializeAsync(default);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
+    await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    try
+    {
+        Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(Request("dev.test.first")).AsTask().WaitAsync(TimeSpan.FromMilliseconds(350)));
+        Assert.Equal("intent.destination", Snapshot(widget).ActiveInputScopeId);
+        Assert.Valid(Snapshot(widget));
+        await Action(widget, "back").AsTask().WaitAsync(TimeSpan.FromMilliseconds(350));
+        await widget.IntentNavigationTask;
+        Assert.Equal(SettingsPage.Root, widget.CurrentPage);
+        await widget.OnIntentAsync(Request("dev.test.first"));
+        await widget.OnIntentAsync(Request("dev.test.latest"));
+        service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
+        await widget.IntentNavigationTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+        Assert.True(Nodes(Snapshot(widget).Root).Any(node => node.Text?.Contains("Latest target") == true), "Superseded intent changed the destination.");
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => widget.OnIntentAsync(Request("dev.test.first"), cancelled.Token).AsTask());
+        Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    }
+    finally
+    {
+        service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
+        await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+    }
+}
+
+static async Task SettingsIntentSlowInspection()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(root, "dev.test.slow", "dev.publisher", "Slow target", [], []);
+    var service = new SlowIntentInspection();
+    var widget = CreateWithPermissions(temp.Path, root, new ConsentStore(Path.Combine(temp.Path, "consent")), diagnostics: service);
+    await Activate(widget);
+    var request = WidgetIntentRequest.Create(WidgetIntentContracts.WidgetSettings,
+        JsonSerializer.SerializeToElement(new { packageId = "dev.test.slow" }), WidgetIntentPresentation.OpenWidget);
+    var delivery = widget.OnIntentAsync(request).AsTask();
+    try
+    {
+        await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+        Assert.Equal(WidgetIntentResult.Accepted, await delivery.WaitAsync(TimeSpan.FromMilliseconds(350)));
+    }
+    finally
+    {
+        service.Release.TrySetResult();
+        await delivery;
+        await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+    }
+}
+
 static async Task SettingsIntents()
 {
     using var temp = new TemporaryDirectory();
@@ -359,18 +426,23 @@ static async Task SettingsIntents()
     try
     {
         Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(Request(WidgetIntentContracts.WidgetSettings, "dev.test.installed")));
+        await widget.IntentNavigationTask;
         Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
         Assert.True(Nodes(Snapshot(widget).Root).Any(node => node.Text?.Contains("Installed target") == true), "Details intent selected the wrong package.");
         Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(Request(WidgetIntentContracts.WidgetPermissions, "widgetrail.firstparty.target")));
+        await widget.IntentNavigationTask;
         Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
         Assert.True(Nodes(Snapshot(widget).Root).Any(node => node.Text?.Contains("Bundled target") == true), "Permissions intent retained the previous package.");
         Assert.Valid(Snapshot(widget));
         await Action(widget, "back"); Assert.Equal(SettingsPage.Permissions, widget.CurrentPage);
         Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(Request(WidgetIntentContracts.WidgetSettings, "widgetrail.firstparty.target")));
+        await widget.IntentNavigationTask;
         Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
         var missing = Request(WidgetIntentContracts.WidgetPermissions, "dev.test.missing");
-        Assert.Equal(WidgetIntentResult.Rejected, await widget.OnIntentAsync(missing));
-        Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+        Assert.Equal(WidgetIntentResult.Accepted, await widget.OnIntentAsync(missing));
+        await widget.IntentNavigationTask;
+        Assert.Equal(SettingsPage.IntentDestination, widget.CurrentPage);
+        Assert.True(Nodes(Snapshot(widget).Root).Any(node => node.Id == "intent.destination.error"), "Unavailable target must remain visible as an actionable destination error.");
         Assert.Equal(WidgetIntentResult.Rejected, await widget.OnIntentAsync(missing with { SchemaDigest = new string('0',64) }));
         Assert.Equal(0, (await consent.LoadAsync()).Entries.Count);
         await Action(widget, "open.installed-widgets");
@@ -1297,19 +1369,80 @@ static async Task StructuredInstalledRows()
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     var snapshot = Snapshot(widget);
-    var row = Nodes(snapshot.Root).Single(node => node.Id == "installed.item.0");
+    var row = (await InstalledRows(widget))[0];
     Assert.Equal(ViewNodeKind.ActionSurface, row.Kind);
-    Assert.Equal("installed.select.0", row.ActionId);
+    Assert.Equal("installed.open", row.ActionId);
     Assert.Equal(1, Nodes(row).Count(node => node.IsFocusable));
     Assert.Equal(name, Text(row, row.Id + ".name").Text);
     Assert.Contains("Disabled", Text(row, row.Id + ".status").Text!);
     Assert.True(!string.IsNullOrWhiteSpace(Text(row, row.Id + ".version").Text), "Version field missing.");
     Assert.Contains(name, row.AccessibilityLabel!);
     Assert.Valid(snapshot);
-    await Action(widget, row.ActionId!);
+    await OpenInstalledRow(widget, 0);
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     await Action(widget, "back");
-    Assert.Equal("installed.item.0", Snapshot(widget).InitialFocusId);
+    Assert.Equal("installed.list.all", Snapshot(widget).InitialFocusId);
+    Assert.Equal(SettingsInstalledRow.KeyFor("dev.test.structured", false), Snapshot(widget).FocusGroupEntryRequest!.IndexedItem!.ItemKey);
+}
+
+static async Task InstalledListFilters()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path,"catalog");
+    var bundled = Path.Combine(temp.Path,"bundled");
+    WriteBundledWidget(bundled,"Audio","widgetrail.firstparty.audio-mixer","widgetrail.firstparty","Audio",[],[]);
+    for (var index = 0; index < 3; index++) WriteInstalledWidget(root,"dev.list.widget"+index,"dev.list.publisher","Widget "+index,[],[]);
+    var widget = CreateWithPermissions(temp.Path,root,new ConsentStore(Path.Combine(temp.Path,"consent")),bundled);
+    await Activate(widget); await Action(widget,"open.installed-widgets");
+    Assert.Equal(1,(await InstalledRows(widget,true)).Count);
+    Assert.Equal(3,(await InstalledRows(widget)).Count);
+    await OpenInstalledRow(widget,2);
+    await Action(widget,"back");
+    var returned = Snapshot(widget);
+    var key = SettingsInstalledRow.KeyFor("dev.list.widget2",false);
+    Assert.Equal(key,returned.FocusGroupEntryRequest!.IndexedItem!.ItemKey);
+    Assert.Equal(3,returned.FocusGroupEntryRequest.IndexedItem.Index);
+    var catalog = new WidgetCatalog(root);
+    await catalog.SetOrderAsync(["dev.list.widget2"]);
+    await Action(widget,"refresh");
+    Assert.Equal(key,Snapshot(widget).FocusGroupEntryRequest!.IndexedItem!.ItemKey);
+    Assert.Equal(1,Snapshot(widget).FocusGroupEntryRequest!.IndexedItem!.Index);
+    using var host = WidgetTestHost.CreateIndexedCollectionHost(widget,"settings-test");
+    var list = Nodes(host.CurrentSnapshot.Root).Single(node=>node.IndexedCollection is not null);
+    using var old = await host.AcquireAsync(list.Id,1,1);
+    await Action(widget,"installed.filter.builtin"); host.PublishSnapshot();
+    Assert.True(old.RouteAction(old.Range.Items[0].Key,ControllerButton.A) is null,"A filtered-out row retained input authority");
+    Assert.Equal(1,(await InstalledRows(widget,true)).Count);
+    Assert.Equal(0,(await InstalledRows(widget)).Count);
+    Assert.Equal("installed.filter.builtin",Snapshot(widget).InitialFocusId);
+    await Action(widget,"installed.filter.community");
+    Assert.Equal(3,(await InstalledRows(widget)).Count);
+    Assert.Equal(0,(await InstalledRows(widget,true)).Count);
+    var before = Nodes(Snapshot(widget).Root).Single(node=>node.IndexedCollection is not null).IndexedCollection!.QueryGeneration;
+    await Action(widget,"refresh");
+    var after = Nodes(Snapshot(widget).Root).Single(node=>node.IndexedCollection is not null).IndexedCollection!.QueryGeneration;
+    Assert.Equal(before,after);
+    Assert.Valid(Snapshot(widget));
+}
+
+static async Task InstalledListBounds()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path,"catalog");
+    var bundled = Path.Combine(temp.Path,"bundled");
+    WriteBundledWidget(bundled,"Audio","widgetrail.firstparty.audio-mixer","widgetrail.firstparty","Audio",[],[]);
+    WriteBundledWidget(bundled,"Media","widgetrail.firstparty.media-sessions","widgetrail.firstparty","Media",[],[]);
+    for (var index = 0; index < 256; index++) WriteInstalledWidget(root,$"dev.bounds.widget{index:D3}","dev.bounds.publisher","Widget "+index,[],[]);
+    var widget = CreateWithPermissions(temp.Path,root,new ConsentStore(Path.Combine(temp.Path,"consent")),bundled);
+    await Activate(widget); await Action(widget,"open.installed-widgets");
+    using var host = WidgetTestHost.CreateIndexedCollectionHost(widget,"settings-test");
+    var snapshot = host.CurrentSnapshot;
+    var list = Nodes(snapshot.Root).Single(node=>node.IndexedCollection is not null);
+    Assert.Equal(258,list.IndexedCollection!.Count);
+    Assert.True(Nodes(snapshot.Root).Count()<60,"Full inventory was eagerly rendered in the parent snapshot");
+    using var last = await host.AcquireAsync(list.Id,257,1);
+    Assert.Contains("Widget 255",last.Range.Items.Single().Root.AccessibilityLabel!);
+    Assert.Valid(snapshot);
 }
 
 static async Task InstalledWidgetReview()
@@ -1330,18 +1463,13 @@ static async Task InstalledWidgetReview()
     var first = Snapshot(widget);
     Assert.Equal("installed.widgets", first.ActiveInputScopeId);
     Assert.HasShortcut(first.Root, "installed.widgets", ControllerButton.B, "back");
-    Assert.Equal("installed.next-page", Button(first.Root, "installed.next-page").ActionId);
+    Assert.True(!Nodes(first.Root).Any(node => node.ActionId is "installed.next-page" or "installed.previous-page"), "Community-only pagination remains");
     Assert.True(!Nodes(first.Root).SelectMany(node => node.Shortcuts).Any(shortcut =>
         shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
         "Installed pages must expose buttons without bumper shortcuts.");
-    Assert.Equal(5, ActionControls(first.Root).Count(button =>
-        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)));
-    Assert.Contains("review before enabling", Button(first.Root, "installed.item.0").AccessibilityLabel!);
-
-    await Action(widget, "installed.next-page");
-    var second = Snapshot(widget);
-    Assert.Equal("installed.item.5", second.InitialFocusId);
-    Assert.Equal("installed.previous-page", Button(second.Root, "installed.previous-page").ActionId);
+    Assert.Equal(6, (await InstalledRows(widget)).Count);
+    Assert.Contains("Disabled", (await InstalledRows(widget))[0].AccessibilityLabel!);
+    Assert.True(Nodes(first.Root).Any(node => node.IndexedCollection is { Count: 6 }), "List is not virtualized");
     await Action(widget, "installed.select.5");
     var details = Snapshot(widget);
     Assert.SequenceEqual(SnapshotJson.Serialize(details), SnapshotJson.Serialize(Snapshot(widget)));
@@ -1394,7 +1522,6 @@ static async Task InstalledWidgetReview()
     await Action(widget, "back");
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Valid(first);
-    Assert.Valid(second);
     Assert.Valid(details);
     Assert.Valid(permissions);
 }
@@ -1454,13 +1581,13 @@ static async Task LocalWidgetInstallationAction()
     Assert.True(install.IsDisabled != true, "Local package installation was disabled.");
     Assert.True(install.IsBusy != true, "Local package installation was unexpectedly busy.");
     Assert.Equal("installed.widgets", initial.ActiveInputScopeId);
-    Assert.Equal("installed.install-local", initial.InitialFocusId);
+    Assert.Equal("installed.filter.all", initial.InitialFocusId);
     Assert.Equal(1, Buttons(initial.Root).Count(button =>
         button.ActionId == "host.install-local-widget"));
-    Assert.Equal("installed.retry", install.Focus!.Down);
-    Assert.Equal("installed.retry", Button(initial.Root, "installed.back").Focus!.Up);
-    Assert.Equal("installed.install-local", Button(initial.Root, "installed.retry").Focus!.Up);
-    Assert.Contains("stay off until you review their permissions and turn them on",
+    Assert.Equal("installed.filter.builtin", install.Focus!.Down);
+    Assert.Equal("installed.filter.community", Button(initial.Root, "installed.retry").Focus!.Down);
+    Assert.Equal("settings.back", Button(initial.Root, "installed.retry").Focus!.Up);
+    Assert.Contains("enabled after installation and request permissions when a feature needs them",
         Text(initial.Root, "installed.install-local.help").Text!);
     Assert.True(!JsonSerializer.Serialize(initial).Contains(temp.Path, StringComparison.OrdinalIgnoreCase),
         "The Settings snapshot exposed a local package path.");
@@ -1480,14 +1607,13 @@ static async Task LocalWidgetInstallationAction()
     Assert.True(Button(Snapshot(widget).Root, "installed.install-local").IsDisabled is not true,
         "Refreshing the package list must not disable the focused Install button.");
     var refreshed = Snapshot(widget);
-    Assert.Contains("Local import", Button(refreshed.Root, "installed.item.0").AccessibilityLabel!);
-    Assert.Contains("Disabled", Button(refreshed.Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Local import", (await InstalledRows(widget))[0].AccessibilityLabel!);
+    Assert.Contains("Disabled", (await InstalledRows(widget))[0].AccessibilityLabel!);
     Assert.Equal(false, (await new WidgetCatalog(catalogRoot).DiscoverAsync())
         .Widgets.Single().Enabled);
     Assert.Equal("host.install-local-widget",
         Button(refreshed.Root, "installed.install-local").ActionId);
-    Assert.Equal("installed.retry",
-        Button(refreshed.Root, "installed.item.0").Focus!.Up);
+    Assert.Equal("installed.list.all", Button(refreshed.Root, "installed.filter.all").Focus!.Down);
     Assert.HasShortcut(refreshed.Root, "installed.widgets", ControllerButton.B, "back");
     Assert.Valid(initial);
     Assert.Valid(refreshed);
@@ -1762,15 +1888,13 @@ static async Task BuiltInWidgetInventory()
     await Action(widget, "open.installed-widgets");
 
     var list = Snapshot(widget);
-    Assert.Equal(ViewNodeKind.Scroll,
+    Assert.Equal(ViewNodeKind.Stack,
         Nodes(list.Root).Single(node => node.Id == "installed.widgets").Kind);
-    Assert.Equal(2, ActionControls(list.Root).Count(button =>
-        button.Id.StartsWith("installed.builtin.item.", StringComparison.Ordinal)));
-    Assert.Contains("Enabled", Button(list.Root, "installed.builtin.item.0").AccessibilityLabel!);
-    Assert.Contains("Audio Mixer", Button(list.Root, "installed.builtin.item.0").AccessibilityLabel!);
-    Assert.Contains("Now Playing", Button(list.Root, "installed.builtin.item.1").AccessibilityLabel!);
-    Assert.True(!ActionControls(list.Root).Any(button =>
-        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+    Assert.Equal(2, (await InstalledRows(widget, builtIn: true)).Count);
+    Assert.Contains("Enabled", (await InstalledRows(widget, builtIn: true))[0].AccessibilityLabel!);
+    Assert.Contains("Audio Mixer", (await InstalledRows(widget, builtIn: true))[0].AccessibilityLabel!);
+    Assert.Contains("Now Playing", (await InstalledRows(widget, builtIn: true))[1].AccessibilityLabel!);
+    Assert.True((await InstalledRows(widget)).Count == 0,
         "Empty community catalog exposed a community package row.");
 
     await Action(widget, "installed.builtin.select.0");
@@ -1837,8 +1961,8 @@ static async Task InstalledBuiltInCopy()
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     var list = Snapshot(widget);
-    Assert.Contains("Unused copy", Button(list.Root, "installed.item.0").AccessibilityLabel!);
-    Assert.Contains("Disabled", Button(list.Root, "installed.builtin.item.0").AccessibilityLabel!);
+    Assert.Contains("Unused copy", (await InstalledRows(widget))[0].AccessibilityLabel!);
+    Assert.Contains("Disabled", (await InstalledRows(widget, builtIn: true))[0].AccessibilityLabel!);
     await Action(widget, "installed.select.0");
     var details = Snapshot(widget);
     Assert.Equal("installed.details.builtin", details.InitialFocusId);
@@ -2020,7 +2144,7 @@ static async Task ExplicitRefresh()
     await Action(widget, "back");
     await Action(widget, "back");
     await Action(widget, "open.installed-widgets");
-    Assert.Contains("Refreshed widget", Button(Snapshot(widget).Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Refreshed widget", (await InstalledRows(widget))[0].AccessibilityLabel!);
     await Action(widget, "back");
     await Action(widget, "open.permissions");
     Assert.Contains("Refreshed widget", Button(Snapshot(widget).Root, "permission.item.0").Text!);
@@ -2039,8 +2163,7 @@ static async Task InstalledWidgetCatalogFailure()
     await Action(widget, "open.installed-widgets");
     var snapshot = Snapshot(widget);
     Assert.Contains("invalid_manifest", Text(snapshot.Root, "installed.repair.failure").Text!);
-    Assert.True(!ActionControls(snapshot.Root).Any(button =>
-        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+    Assert.True((await InstalledRows(widget)).Count == 0,
         "Malformed catalog exposed an installed-widget action.");
     Assert.Equal("installed.repair.back", snapshot.InitialFocusId);
     Assert.Valid(snapshot);
@@ -2088,7 +2211,7 @@ static async Task InstalledWidgetCatalogRecovery()
     await Action(widget, "installed.repair.remove");
     var recovered = Snapshot(widget);
     Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
-    Assert.Contains("Recovery", Button(recovered.Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Recovery", (await InstalledRows(widget))[0].AccessibilityLabel!);
     Assert.Contains("Removed inactive dev.test.recovery 8.0.0",
         Text(recovered.Root, "settings.toast.message").Text!);
     Assert.True(!Directory.Exists(Path.Combine(
@@ -2121,7 +2244,7 @@ static async Task InstalledWidgetVersionLimitRetry()
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
-    Assert.Contains("Quota widget", Button(Snapshot(widget).Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Quota widget", (await InstalledRows(widget))[0].AccessibilityLabel!);
 
     WriteInstalledWidget(
         catalogRoot, "dev.test.quota", "dev.publisher.quota",
@@ -2130,7 +2253,7 @@ static async Task InstalledWidgetVersionLimitRetry()
     var limited = Snapshot(widget);
     Assert.Contains("installed_widget_version_limit",
         Text(limited.Root, "installed.help").Text!);
-    Assert.Contains("Last good", Button(limited.Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Last good", (await InstalledRows(widget))[0].AccessibilityLabel!);
     Assert.True(Buttons(limited.Root).Any(button => button.ActionId == "refresh" &&
         button.Id == "installed.retry"), "The quota state did not expose Retry.");
     Assert.True(!Nodes(limited.Root).Any(node => node.Id == "installed.empty"),
@@ -2139,7 +2262,7 @@ static async Task InstalledWidgetVersionLimitRetry()
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     await widget.InitializationTask;
     var reactivated = Snapshot(widget);
-    Assert.Contains("Last good", Button(reactivated.Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Last good", (await InstalledRows(widget))[0].AccessibilityLabel!);
 
     await Action(widget, "installed.select.0");
     var details = Snapshot(widget);
@@ -2154,12 +2277,11 @@ static async Task InstalledWidgetVersionLimitRetry()
         new ConsentStore(Path.Combine(temp.Path, "consent-restarted")));
     await Activate(restarted);
     await Action(restarted, "open.installed-widgets");
-    Assert.Contains("Quota widget", Button(
-        Snapshot(restarted).Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Quota widget", (await InstalledRows(restarted))[0].AccessibilityLabel!);
     await Action(widget, "refresh");
     var recovered = Snapshot(widget);
-    Assert.Contains("Quota widget", Button(recovered.Root, "installed.item.0").AccessibilityLabel!);
-    Assert.True(!Button(recovered.Root, "installed.item.0").AccessibilityLabel!
+    Assert.Contains("Quota widget", (await InstalledRows(widget))[0].AccessibilityLabel!);
+    Assert.True(!(await InstalledRows(widget))[0].AccessibilityLabel!
         .Contains("Last good", StringComparison.Ordinal),
         "Retry did not replace the last-good catalog projection.");
     Assert.DocumentEqual(retainedSettings, await Store(temp.Path).LoadAsync());
@@ -2177,21 +2299,19 @@ static async Task InstalledWidgetActivationReload()
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
-    Assert.True(!ActionControls(Snapshot(widget).Root).Any(button =>
-        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+    Assert.True((await InstalledRows(widget)).Count == 0,
         "Empty catalog unexpectedly contained an installed package.");
 
     WriteInstalledWidget(catalogRoot, "dev.test.later-review", "dev.publisher.later", "Later",
         [PlatformCapabilities.NetworkReadV1], []);
     await Task.Delay(80);
-    Assert.True(!ActionControls(Snapshot(widget).Root).Any(button =>
-        button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
+    Assert.True((await InstalledRows(widget)).Count == 0,
         "Settings polled the package catalog while already visible.");
 
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     await widget.InitializationTask;
-    Assert.True(ActionControls(Snapshot(widget).Root).Any(button => button.Id == "installed.item.0"),
+    Assert.True((await InstalledRows(widget)).Count == 1,
         "Installed package review did not reload on the next activation.");
 }
 
@@ -2206,7 +2326,7 @@ static async Task IncompatibleInstalledWidget()
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
-    Assert.Contains("Incompatible", Button(Snapshot(widget).Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Incompatible", (await InstalledRows(widget))[0].AccessibilityLabel!);
     await Action(widget, "installed.select.0");
     var details = Snapshot(widget);
     Assert.Equal(true, Button(details.Root, "installed.details.toggle").IsDisabled);
@@ -3055,9 +3175,50 @@ static async Task Activate(SettingsWidget widget)
     await widget.InitializationTask;
 }
 
-static ValueTask Action(SettingsWidget widget, string action, string sourceElementId = "test") =>
-    widget.OnActionAsync(new WidgetActionEvent(action is "text.increase" or "text.decrease" or
+static async ValueTask Action(SettingsWidget widget, string action, string sourceElementId = "test")
+{
+    if (action.StartsWith("installed.select.", StringComparison.Ordinal) && int.TryParse(action["installed.select.".Length..], out var installed))
+    { await OpenInstalledRow(widget, installed); return; }
+    if (action.StartsWith("installed.builtin.select.", StringComparison.Ordinal) && int.TryParse(action["installed.builtin.select.".Length..], out var builtIn))
+    { await OpenInstalledRow(widget, builtIn, true); return; }
+    await widget.OnActionAsync(new WidgetActionEvent(action is "text.increase" or "text.decrease" or
         "interface.increase" or "interface.decrease" ? action + "@test-monitor" : action, sourceElementId));
+}
+
+static async Task<IReadOnlyList<ViewNode>> InstalledRows(SettingsWidget widget, bool builtIn = false)
+{
+    using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "settings-test");
+    var list = Nodes(host.CurrentSnapshot.Root).SingleOrDefault(node => node.IndexedCollection is not null);
+    if (list is null) return [];
+    var rows = new List<ViewNode>();
+    for (var start = 0; start < list.IndexedCollection!.Count; start += 16)
+    {
+        using var lease = await host.AcquireAsync(list.Id, start, Math.Min(16, list.IndexedCollection.Count - start));
+        rows.AddRange(lease.Range.Items.Where(item => item.Key.StartsWith(builtIn ? "builtin." : "community.", StringComparison.Ordinal)).Select(item => item.Root));
+    }
+    return rows;
+}
+
+static async Task OpenInstalledRow(SettingsWidget widget, int index, bool builtIn = false)
+{
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Interactive, default);
+    using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "settings-test");
+    var list = Nodes(host.CurrentSnapshot.Root).Single(node => node.IndexedCollection is not null);
+    var found = 0;
+    for (var start = 0; start < list.IndexedCollection!.Count; start += 16)
+    {
+        using var lease = await host.AcquireAsync(list.Id, start, Math.Min(16, list.IndexedCollection.Count - start));
+        foreach (var item in lease.Range.Items.Where(item => item.Key.StartsWith(builtIn ? "builtin." : "community.", StringComparison.Ordinal)))
+        {
+            if (found++ != index) continue;
+            Assert.True(lease.RouteAction(item.Key, ControllerButton.A) is not null, "Indexed row action was not admitted");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (widget.CurrentPage == SettingsPage.InstalledWidgets) await Task.Delay(10, timeout.Token);
+            return;
+        }
+    }
+    throw new InvalidOperationException("The requested installed row does not exist in the visible filter");
+}
 
 static ViewSnapshot Snapshot(SettingsWidget widget)
 {
@@ -3393,6 +3554,19 @@ file sealed class CancelingAuthorityRecoveryDiagnosticsService(
         cancellation.Cancel();
         cancellationToken.ThrowIfCancellationRequested();
         throw new InvalidOperationException("Cancelled recovery unexpectedly continued.");
+    }
+}
+
+file sealed class SlowIntentInspection : IPlatformDiagnosticsService
+{
+    public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
+    public async ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(string id, CancellationToken cancellationToken = default)
+    {
+        Entered.TrySetResult();
+        await Release.Task.WaitAsync(cancellationToken);
+        return new(id, "Slow target", false, "no_local_data", null);
     }
 }
 

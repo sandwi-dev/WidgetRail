@@ -243,6 +243,67 @@ public sealed class PackageIconSessionTests
         });
     }
 
+    private static readonly WidgetCatalogIconSource CatalogSource = new("dev.test.disabled", "1.0.0", false, new('e', 64));
+    private static WidgetPackageIcon CatalogIcon => new("cover", WidgetPackageIconColorMode.ThemeTint) { Catalog = CatalogSource };
+    private static Dictionary<string, object> CatalogPayload()
+    {
+        var body = Payload(); body.Remove("packageContentDigest");
+        body["catalog"] = CatalogSource; body["normalizedBytes"] = Svg.Length;
+        return body;
+    }
+
+    [TestMethod]
+    public async Task CatalogReadersCoalesceAndCancelledViewDoesNotRetireSharedBytes()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            Assert.AreEqual(CatalogSource, BridgeJson.FromElement<WidgetCatalogIconSource>(request.Payload.GetProperty("catalog")));
+            started.SetResult(); await release.Task.WaitAsync(Limit);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.PackageIcon, CatalogPayload());
+        }, async (session, target) =>
+        {
+            using var cancellation = new CancellationTokenSource();
+            var first = session.ResolvePackageIconAsync(target, CatalogIcon, cancellation.Token);
+            var others = Enumerable.Range(0, 40).Select(_ => session.ResolvePackageIconAsync(target, CatalogIcon)).ToArray();
+            await started.Task.WaitAsync(Limit); cancellation.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => first);
+            release.SetResult();
+            foreach (var result in await Task.WhenAll(others).WaitAsync(Limit)) CollectionAssert.AreEqual(Svg, result.NormalizedSvg.ToArray());
+            CollectionAssert.AreEqual(Svg, (await session.ResolvePackageIconAsync(target, CatalogIcon)).NormalizedSvg.ToArray());
+        }, Descriptor with { IconAssets = [], PackageContentDigest = "" });
+    }
+
+    [TestMethod]
+    [DataRow("source")]
+    [DataRow("version")]
+    [DataRow("bytes")]
+    [DataRow("size")]
+    [DataRow("source-hash")]
+    [DataRow("size-type")]
+    public async Task InvalidCatalogResponseCannotPopulateCache(string variant)
+    {
+        await Run(async channel =>
+        {
+            var request = await Read(channel); var body = CatalogPayload();
+            if (variant == "source-hash") body["sourceSha256"] = "invalid";
+            if (variant == "size-type") body["normalizedBytes"] = "not-a-number";
+            if (variant == "source") body["catalog"] = CatalogSource with { BuiltIn = true };
+            if (variant == "version") body["catalog"] = CatalogSource with { Version = "2.0.0" };
+            if (variant == "bytes") body["normalizedSvgBase64"] = Convert.ToBase64String(new byte[Svg.Length]);
+            if (variant == "size") body["normalizedBytes"] = ProtocolConstants.MaximumPackageIconBytes + 1;
+            await Reply(channel, request.RequestId, BridgeMessageTypes.PackageIcon, body);
+            request = await Read(channel);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.PackageIcon, CatalogPayload());
+        }, async (session, target) =>
+        {
+            await Assert.ThrowsAsync<BridgeProtocolException>(() => session.ResolvePackageIconAsync(target, CatalogIcon));
+            CollectionAssert.AreEqual(Svg, (await session.ResolvePackageIconAsync(target, CatalogIcon)).NormalizedSvg.ToArray());
+        });
+    }
+
     private static Dictionary<string, object> Payload(string assetId = "cover") => new() { ["widgetId"] = Descriptor.Id, ["runtimeGeneration"] = Descriptor.RuntimeGeneration,
         ["presentationGeneration"] = Descriptor.PresentationGeneration, ["packageContentDigest"] = Descriptor.PackageContentDigest,
         ["assetId"] = assetId, ["sourceSha256"] = new string('d', 64), ["normalizedSha256"] = Hash, ["normalizedSvgBase64"] = Convert.ToBase64String(Svg) };

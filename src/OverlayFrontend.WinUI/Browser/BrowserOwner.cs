@@ -28,7 +28,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private readonly Dictionary<BrowserSlot, Binding> slots = [];
     private readonly Dictionary<(string Widget, string Document), Entry> entries = [];
     private readonly HashSet<(string Widget, string Document)> retiringEntries = [];
-    private readonly HashSet<Task> retirements = [];
+    private readonly Dictionary<Task, string> retirements = [];
     internal Web.HostedWebViewEnvironment Runtime { get; }
     private Task? reconciliation;
     private bool dirty, retired;
@@ -90,7 +90,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             await pending;
             if (ReferenceEquals(pending, reconciliation)) break;
         }
-        if (retirements.Count != 0) await Task.WhenAll(retirements.ToArray());
+        if (retirements.Count != 0) await Task.WhenAll(retirements.Keys.ToArray());
         // If a native transfer failed before detachment, close that controller
         // before the old window goes away rather than retain a poisoned handle.
         foreach (var pair in entries.ToArray())
@@ -312,13 +312,19 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         }
         finally { foreach (var root in native) root.Loaded -= Loaded; }
     }
+    internal async Task RetireWidgetAsync(string widgetId)
+    {
+        foreach (var pair in entries.Where(pair => pair.Key.Widget == widgetId).ToArray()) _ = RetireAsync(pair.Key, pair.Value);
+        await Task.WhenAll(retirements.Where(pair => pair.Value == widgetId).Select(pair => pair.Key).ToArray());
+    }
+
     private Task RetireAsync((string Widget, string Document) key, Entry entry)
     {
         if (!ReferenceEquals(entries.GetValueOrDefault(key), entry) || !retiringEntries.Add(key)) return Task.CompletedTask;
         entries.Remove(key); entry.Slot?.SetSurface(null);
         var task = RetireCoreAsync(key, entry);
-        retirements.RemoveWhere(retirement => retirement.IsCompleted);
-        retirements.Add(task);
+        foreach (var completed in retirements.Keys.Where(task => task.IsCompleted).ToArray()) retirements.Remove(completed);
+        retirements.Add(task, key.Widget);
         return task;
     }
 
@@ -330,7 +336,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             try
             {
                 await entry.Surface.DisposeAsync();
-                if (entry.Retained || entry.RetentionAttempted)
+                if ((entry.Retained || entry.RetentionAttempted) && session.IsWebBrowserSessionCurrent(entry.Authority, key.Document))
                 {
                     try
                     {
@@ -370,7 +376,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         await popupPlacement.WaitAsync();
         try { foreach (var pair in entries.ToArray()) await RetireAsync(pair.Key, pair.Value); }
         finally { popupPlacement.Release(); }
-        if (retirements.Count != 0) await Task.WhenAll(retirements.ToArray());
+        if (retirements.Count != 0) await Task.WhenAll(retirements.Keys.ToArray());
         lifetime.Dispose();
     }
 }

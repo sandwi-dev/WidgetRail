@@ -1,8 +1,9 @@
 # WinUI radial widget chooser
 
-The configured `AppearanceSettings.WidgetSwitcher` controls the host chooser.
-Rail is unchanged. Radial opens when B leaves the widget's root interaction
-scope; directional/pointer entry into the ordinary rail stays a rail. The wheel
+Radial + rail is the sole host navigation mode. Radial opens when B leaves the
+widget's root interaction scope or the rail; directional/pointer entry into the
+ordinary rail stays a rail. Legacy `appearance.widgetSwitcher` values are retired
+on settings load without changing other preferences. The wheel
 is an overlay above the fixed guide, with existing widget pixels retained behind
 it. It does not change widget viewport size or introduce an SDK declaration.
 
@@ -14,8 +15,8 @@ clockwise), a 20,000 left-stick selection threshold, and neutral rearming when
 entering or changing pages. D-pad traverses the current page with wraparound.
 Right-stick paging uses 15,000/9,000 hysteresis and 360/125 ms repeat timing;
 missed ticks coalesce. Crossing radial ownership with a held right stick requires
-neutral before paging or widget scrolling can resume. Rail-only input does not
-acquire that additional gate.
+neutral before paging or widget scrolling can resume. Input outside the radial
+chooser does not acquire that additional gate.
 
 Pages contain up to eight widgets. Browsing a page changes chrome only; it does
 not select or load a widget. Selecting an item uses existing preview selection;

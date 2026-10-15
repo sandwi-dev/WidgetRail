@@ -29,7 +29,7 @@ internal sealed partial class WidgetStylesValidationPage
             Check(!review.IsCompleted, "repeat cannot approve full trust");
             dialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
             Check(await review.WaitAsync(TimeSpan.FromSeconds(2)), "fresh A invokes the focused full-trust decision");
-            dialog.Complete(new("installed-disabled", "test.widget", "1.0.0", "Widget installed disabled. Review its permissions in Widgets."));
+            dialog.Complete(new("installed", "test.widget", "1.0.0", "Widget installed and enabled. Permissions will be requested when needed."));
             Check(dialog.CloseButtonText == "Done" && dialog.PrimaryButtonText == "", "completion replaces approval with a single Done action");
             dialog.ControllerArmed = true;
             dialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);

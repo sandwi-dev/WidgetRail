@@ -18,6 +18,11 @@ A native list/grid must have a finite viewport. Put it in a bounded surface or a
 star Grid track; do not nest it in an unbounded scroll container. Headers, filters
 and page actions belong outside the virtualized item collection.
 
+When the viewport shrinks while a realized row owns native focus, the shared
+presenter keeps that row visible without changing focus. This is event-driven,
+including when status content reduces the available space. It does not reclaim
+focus after the user leaves the collection.
+
 ## Data and identity
 
 A query freezes membership, ordering and all values needed by item rendering.

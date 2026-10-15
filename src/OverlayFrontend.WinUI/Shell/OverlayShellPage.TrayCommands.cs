@@ -125,6 +125,7 @@ internal sealed partial class OverlayShellPage
 
     private async Task RestartWidgetAsync(BridgeWidgetDescriptor widget, long selection)
     {
+        if (widget.IsStopped) { await ChangeWidgetStoppedAsync(widget.Id, stopped: false); return; }
         if (owner is null) return;
         var requestOwner = owner;
         var failureCurrent = CaptureTrayOperationGuard(widget, selection);
@@ -219,14 +220,14 @@ internal sealed partial class OverlayShellPage
             if (preferencesGroup.Items.Count == 0) menu.Flyout.Items.Remove(preferencesGroup);
             var widgetGroup = Group("Widget", "Widget");
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y, group: widgetGroup);
-            Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true, group: widgetGroup);
+            Add(descriptor.IsStopped ? "Start widget" : "Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true, group: widgetGroup);
             var quickActionStart = menu.Flyout.Items.Count;
             if (DashboardFrame(descriptor) is { } displayed)
                 foreach (var action in displayed.Snapshot.QuickActions)
                     Add(action.Label, "Dashboard." + action.Button,
                         () => InvokeDashboardButtonAsync(descriptor, action.Button, ControllerInputOrigin.AccessibilityAutomation),
                         TrayShortcutAvailable(action.Button) ? action.Button : null);
-            foreach (var action in descriptor.QuickActions)
+            foreach (var action in descriptor.IsStopped ? [] : descriptor.QuickActions)
                 Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection),
                     action.ControllerButton is { } button && TrayShortcutAvailable(button) &&
                     DashboardFrame(descriptor)?.Snapshot.QuickActions.Any(item => item.Button == button) != true
@@ -238,8 +239,8 @@ internal sealed partial class OverlayShellPage
                 menu.Flyout.Items.Add(new MenuFlyoutSeparator());
                 Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
             }
-            if (browserOwner?.HasRunningSession(descriptor.Id) == true)
-                Add("Stop webapp session", "Browser.Stop", () => StopBrowserWidgetAsync(descriptor));
+            if (!descriptor.IsStopped)
+                Add("Stop widget", "Widget.Stop", () => StopWidgetAsync(descriptor));
             menu.Navigation = new(menu.Flyout, () => ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection));
             menu.Flyout.Opened += (_, _) => OnTrayMenuOpened(menu);
             menu.Flyout.Closed += (_, _) =>

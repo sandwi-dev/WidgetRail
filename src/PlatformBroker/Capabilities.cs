@@ -107,6 +107,7 @@ public static class PlatformCapabilities
     public const string ProviderDocumentCreate = "document.create";
     public const string ProviderDocumentDiscard = "document.discard";
     public const string CaptureLibraryReadV1 = "media.capture-library.read.v1";
+    public const string WidgetActivityV1 = "widget.activity.v1";
     public const string WidgetNotificationsV1 = "widget.notifications.v1";
     public const string WidgetPermissionsV1 = "widget.permissions.v1";
     public const string WidgetMarketplaceV1 = "widgets.marketplace.v1";
@@ -321,6 +322,9 @@ public static class PlatformCapabilities
                 ReadOperations: Set(PrivateStateRead),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
                 AllowsBackground: true),
+            [WidgetActivityV1] = new(WidgetActivityV1, 1, BrokerCapabilityKind.Control,
+                Set("activity.report"), Set(), AllowsDashboardGesture: false,
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
             [WidgetNotificationsV1] = new(WidgetNotificationsV1, 1, BrokerCapabilityKind.Control,
                 Set("notifications.publish"), Set(), AllowsDashboardGesture: false,
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
@@ -330,7 +334,7 @@ public static class PlatformCapabilities
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true,
                 BackgroundOperations: Set("permissions.check", "permissions.status", "permissions.cancel")),
             [WidgetMarketplaceV1] = new(WidgetMarketplaceV1,1,BrokerCapabilityKind.Control,
-                Set("marketplace.status","marketplace.refresh","marketplace.inventory","marketplace.download","marketplace.install","marketplace.cancel"),Set(),
+                Set("marketplace.status","marketplace.refresh","marketplace.inventory","marketplace.download","marketplace.install","marketplace.cancel","marketplace.download-updates","marketplace.install-updates"),Set(),
                 ReadOperations: Set("marketplace.status","marketplace.refresh","marketplace.inventory"),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted),
         };

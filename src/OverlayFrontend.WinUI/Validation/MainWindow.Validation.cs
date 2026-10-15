@@ -173,6 +173,12 @@ public sealed partial class MainWindow
         else if (shellConfiguration is not null) return;
         else if (validateTextEntry) RootFrame.Content = new Validation.TextEntryValidationPage();
         else if (validateStyles) {
+            if (Shell.FrontendArguments.Value(arguments, "--widget-status-fixtures") is not null)
+            {
+                var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
+                AppWindow.ResizeClient(new((int)Math.Ceiling(1400 * scale), (int)Math.Ceiling(1100 * scale)));
+                ShellCard.Margin = ShellCard.Padding = new(0); ShellHeader.Visibility = Visibility.Collapsed; ShellLayout.RowSpacing = 0;
+            }
             if (Shell.FrontendArguments.Value(arguments, "--page-navigation-fixtures") is not null ||
                 Shell.FrontendArguments.Value(arguments, "--presentation-layer-fixtures") is not null)
             {
@@ -229,6 +235,8 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-navigation") is { } navigationResult)
+            page.EnableSettingsNavigationValidation(navigationResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-webapp-shell") is { } webappResult)
             page.EnableWebAppValidation(webappResult, Shell.FrontendArguments.Value(arguments, "--webapp-sharing-source"));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-game-help") is { } helpResult)

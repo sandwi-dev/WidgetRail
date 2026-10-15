@@ -186,6 +186,7 @@ internal sealed partial class BrowserSurface
                         FocusInteraction = () => FocusInteraction?.Invoke(),
                         ExitInteraction = () => Run(ClosePopupAsync),
                         InteractionChanged = () => InteractionChanged?.Invoke(),
+                        ActivityChanged = () => ActivityChanged?.Invoke(),
                         CloseRequested = () => DispatcherQueue.TryEnqueue(() =>
                         { if (ReferenceEquals(popup, child)) Run(ClosePopupAsync); else if (ReferenceEquals(preparingPopup, child)) cancellation.Cancel(); }),
                         Recover = async _ => { await ClosePopupAsync(); ShowStatus("The additional page closed. Retry the action to open it again."); },

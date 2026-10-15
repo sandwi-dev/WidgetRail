@@ -56,6 +56,7 @@ internal sealed partial class OverlayShellPage
                     ShowPresentationStatus(frame.Descriptor.Name);
             },
         };
+        mediaOwner.Changed += QueueWidgetStatusRefresh;
         mediaOwner.SetFullscreenHost(fullscreenView.SurfaceHost);
         mediaOwner.FullscreenChanged += RefreshFullscreenView;
         mediaOwner.CompactChanged += RefreshCompactView;
@@ -139,6 +140,8 @@ internal sealed partial class OverlayShellPage
 
     private void ShowPresentationStatus(string widgetName)
     {
+        showingStoppedWidget = false;
+        Retry.Content = "Retry";
         if (retired) return;
         var code = activeWidget is { } id ? mediaOwner?.GetFailure(id) : null;
         var message = code switch
@@ -161,9 +164,11 @@ internal sealed partial class OverlayShellPage
         else ShowRecovery(message, true);
     }
 
-    private void ShowRecovery(string message, bool canRetry)
+    private void ShowRecovery(string message, bool canRetry, bool stopped = false)
     {
-        CompleteStartupPresentation(failed: true);
+        showingStoppedWidget = stopped;
+        Retry.Content = stopped ? "Reload" : "Retry";
+        CompleteStartupPresentation(failed: !stopped);
         var changed = !RecoveryVisible || Status.Text != message;
         openingIndicator?.Clear();
         Status.Text = message;

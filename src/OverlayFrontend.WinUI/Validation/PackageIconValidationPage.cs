@@ -32,8 +32,9 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
         AutomationProperties.SetAutomationId(status, "PackageIcon.Status");
         Content = new StackPanel { Spacing = 12, Children = { status, presenter } };
         presenter.PackageIconDiagnostic = code => diagnostics.Add(code);
-        presenter.ResolvePackageIconAsync = async (id, _) =>
+        presenter.ResolvePackageIconAsync = async (reference, _) =>
         {
+            var id = reference.AssetId;
             requests[id] = requests.GetValueOrDefault(id) + 1;
             if (id == "late") return await late.Task;
             if (id == "missing") throw new InvalidDataException();
@@ -48,10 +49,31 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
         var bytes = Encoding.UTF8.GetBytes($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\"><rect x=\"1\" y=\"1\" width=\"18\" height=\"18\" fill=\"{(id == "red" ? "#e73932" : "#269ced")}\"{opacity}/><circle cx=\"10\" cy=\"10\" r=\"5\" fill=\"#ffffff\"{opacity}/></svg>");
         return new(id, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant(), bytes);
     }
+    private async Task CatalogSourcesAsync()
+    {
+        var host = (StackPanel)Content;
+        using var view = new WidgetPackageIconView { Width = 32, Height = 32 };
+        host.Children.Add(view);
+        var demands = 0;
+        Task<WidgetPresentationPackageIcon> Resolve(WidgetPackageIcon icon, CancellationToken token)
+        { demands++; return Task.FromResult(Bytes(icon.Catalog!.BuiltIn ? "red" : "blue")); }
+        var asset = new WidgetPackageIcon("shared.mark", WidgetPackageIconColorMode.OriginalColor)
+            { Catalog = new("dev.test.icon", "1.0.0", true) };
+        var node = new ViewNode { Id = "catalog.source", Kind = ViewNodeKind.Icon, Glyph = WidgetGlyph.Connection, PackageIcon = asset };
+        view.Update(node, Resolve, "catalog", null);
+        await Until(() => view.Content is Image { Source: SvgImageSource });
+        var before = view.Content;
+        view.Update(node with { PackageIcon = asset with { Catalog = asset.Catalog! with { BuiltIn = false } } }, Resolve, "catalog", null);
+        await Until(() => view.Content is Image { Source: SvgImageSource } && !ReferenceEquals(before, view.Content));
+        Check(demands == 2, "same asset ID in built-in and installed packages has distinct native source identity");
+        host.Children.Remove(view);
+    }
+
     private async Task RunAsync()
     {
         try
         {
+            await CatalogSourcesAsync();
             await OriginalColorSizingAsync();
             Apply();
             await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: Image { Source: SvgImageSource } });

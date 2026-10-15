@@ -5,18 +5,21 @@ using WidgetRail.PlatformDiagnostics;
 
 namespace WidgetRail.FirstPartyWidgets.Settings;
 
+internal enum SettingsWidgetFilter { All, BuiltIn, Community }
+
 internal sealed record SettingsInstalledWidgetState(
     WidgetCatalogSnapshot Catalog,
     WidgetCatalogHealthSnapshot Health,
     IReadOnlyList<WidgetManifest> BuiltIns,
     bool CatalogValid,
     string? Diagnostic,
-    int Page,
+    int RecoveryPage,
     int VersionPage,
     string? SelectedInstalledId,
     string? SelectedBuiltInId,
     WidgetCatalogRepairCandidate? SelectedRepair)
 {
+    public SettingsWidgetFilter Filter { get; init; }
     public Version? UpdateFromVersion { get; init; }
     public SettingsVersionRemoval? VersionRemoval { get; init; }
     public string? VersionFocusId { get; init; }
@@ -29,7 +32,7 @@ internal sealed record SettingsInstalledWidgetState(
         [],
         CatalogValid: true,
         Diagnostic: null,
-        Page: 0,
+        RecoveryPage: 0,
         VersionPage: 0,
         SelectedInstalledId: null,
         SelectedBuiltInId: null,
@@ -102,12 +105,13 @@ internal static class SettingsInstalledWidgetPolicy
             builtIns,
             CatalogValid: true,
             Diagnostic: null,
-            Page: Math.Clamp(current.Page, 0, LastCatalogPage(catalog)),
+            RecoveryPage: 0,
             VersionPage: versionPage,
             SelectedInstalledId: selectedInstalled,
             SelectedBuiltInId: selectedBuiltIn,
             SelectedRepair: null)
         {
+            Filter = current.Filter,
             UpdateFromVersion = selectedInstalled is not null ? current.UpdateFromVersion : null,
             LocalData = selectedInstalled is not null || selectedBuiltIn is not null
                 ? current.LocalData
@@ -137,15 +141,12 @@ internal static class SettingsInstalledWidgetPolicy
             SettingsPage.InstalledWidgetRecovery or
             SettingsPage.InstalledWidgetLocalData)
             page = SettingsPage.InstalledWidgets;
-        var retainedCatalog = current.Catalog.Widgets.Count != 0;
         return new(current with
         {
             Health = health,
             CatalogValid = false,
             Diagnostic = diagnostic,
-            Page = retainedCatalog
-                ? Math.Clamp(current.Page, 0, LastCatalogPage(current.Catalog))
-                : 0,
+            RecoveryPage = 0,
             VersionPage = 0,
             SelectedInstalledId = null,
             SelectedBuiltInId = null,
@@ -156,15 +157,14 @@ internal static class SettingsInstalledWidgetPolicy
         }, page);
     }
 
-    public static SettingsInstalledWidgetState ChangeCatalogPage(
+    public static SettingsInstalledWidgetState ChangeRecoveryPage(
         SettingsInstalledWidgetState state,
         int delta)
     {
-        var count = state.Catalog.Widgets.Count != 0
-            ? state.Catalog.Widgets.Count
-            : state.Health.Candidates.Count(item => item.CanRemove);
-        var last = Math.Max(0, (count - 1) / SettingsWidget.InstalledWidgetsPerPage);
-        return state with { Page = Math.Clamp(state.Page + delta, 0, last) };
+        if (state.CatalogValid || state.Catalog.Widgets.Count != 0) return state;
+        var count = state.Health.Candidates.Count(item => item.CanRemove);
+        var last = Math.Max(0, (count - 1) / SettingsWidget.InstalledRecoveryItemsPerPage);
+        return state with { RecoveryPage = Math.Clamp(state.RecoveryPage + delta, 0, last) };
     }
 
     public static bool TrySelectInstalled(
@@ -181,6 +181,7 @@ internal static class SettingsInstalledWidgetPolicy
             state with
             {
                 SelectedInstalledId = state.Catalog.Widgets[index].Id,
+                Filter = state.Filter == SettingsWidgetFilter.BuiltIn ? SettingsWidgetFilter.Community : state.Filter,
                 SelectedBuiltInId = null,
                 LocalData = null,
                 PackageUninstall = null,
@@ -205,6 +206,7 @@ internal static class SettingsInstalledWidgetPolicy
             state with
             {
                 SelectedBuiltInId = state.BuiltIns[index].Id,
+                Filter = state.Filter == SettingsWidgetFilter.Community ? SettingsWidgetFilter.BuiltIn : state.Filter,
                 SelectedInstalledId = null,
                 LocalData = null,
                 PackageUninstall = null,
@@ -261,9 +263,6 @@ internal static class SettingsInstalledWidgetPolicy
                 LastVersionPage(selected)),
         };
     }
-
-    public static int LastCatalogPage(WidgetCatalogSnapshot snapshot) =>
-        Math.Max(0, (snapshot.Widgets.Count - 1) / SettingsWidget.InstalledWidgetsPerPage);
 
     public static int LastVersionPage(CatalogWidget widget) =>
         Math.Max(0, (widget.Versions.Count - 1) / SettingsWidget.InstalledVersionsPerPage);

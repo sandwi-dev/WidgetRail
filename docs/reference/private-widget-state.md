@@ -126,8 +126,36 @@ different publisher or package cannot read it.
 For unsigned community packages, the authenticated publisher authority includes
 the host-verified immutable content digest. Modified bytes therefore receive a
 different state namespace even if the manifest repeats publisher, package, and
-version text. Exact verified bytes recover their previous namespace. A future
-signed publisher authority can provide intentional update continuity.
+version text. Exact verified bytes recover their previous namespace. Approved Marketplace,
+Settings **Update from file**, and CLI `update` operations can carry preferences
+into the new namespace without reusing the old security authority.
+
+### Keep widget settings during an update
+
+The update review explains that widget settings will be kept. Approving the
+update also approves this bounded preference transfer; there is no additional
+permission prompt and no new SDK API for widget authors.
+
+The host binds the transfer to the exact verified old and staged replacement
+package hashes under the catalog update lock. It retires the old worker and
+blocks reentry before taking the final settings snapshot. It copies only the
+canonical `PrivateState` document, using the same size, corruption, reparse-point,
+locking and atomic-write rules as ordinary state operations. Existing destination
+state wins, including a clear-local-data tombstone. Source state remains intact
+for rollback. Failure to transfer stops publication and leaves the old version
+selected; a busy store has a bounded timeout.
+
+Permissions, credentials, cookies, AppContainer files, and arbitrary application
+files are not copied. Preference documents may contain personal data, so this
+is approval to share settings with the reviewed replacement, not a claim that
+all preferences are nonsensitive. The transfer is a host-only operation, never a
+widget capability or an identity selected through widget IPC.
+
+Raw `install` and version-selection commands do not confer this approval. An
+uninstall followed by a different unsigned package installation also does not
+inherit settings by manifest ID alone. Reinstalling identical bytes can recover
+their existing state. Use the reviewed update flow for changed packages; no
+background scan or automatic migration of older namespaces occurs.
 
 Uninstall retains private state and tombstones. Reinstalling the same
 authenticated authority can recover them. Settings provides a separate **Clear

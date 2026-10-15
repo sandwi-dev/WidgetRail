@@ -460,6 +460,7 @@ field const int WidgetRail.WidgetSdk.WidgetPagedResource<TItem>.MaximumPageSize 
 field const int WidgetRail.WidgetSdk.WidgetResourceError.MaximumMessageLength = 256
 field const int WidgetRail.WidgetSdk.WidgetScenarioDefinition.CurrentVersion = 1
 field const int WidgetRail.WidgetSdk.WidgetScenarioResult.CurrentVersion = 1
+field const string WidgetRail.WidgetSdk.WidgetActivityCapabilities.Service = "widget.activity.v1"
 field const string WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Permission = "system.apps.windows.capture.v1"
 field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.ManagePermission = "media.capture-library.manage.v1"
 field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.ReadPermission = "media.capture-library.read.v1"
@@ -892,6 +893,8 @@ method WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Deconstruct(out WidgetRa
 method WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetActivityService.ClearAsync(string source, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetActivityReceipt>
+method WidgetRail.WidgetSdk.WidgetActivityService.SetAsync(string source, WidgetRail.WidgetProtocol.WidgetActivity activity, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetActivityReceipt>
 method WidgetRail.WidgetSdk.WidgetAppLaunchObservation.<Clone>$() -> WidgetRail.WidgetSdk.WidgetAppLaunchObservation
 method WidgetRail.WidgetSdk.WidgetAppLaunchObservation.Deconstruct(out WidgetRail.WidgetSdk.WidgetAppLaunchObservationState State, out bool SupportsRunning, out bool SupportsEnded) -> void
 method WidgetRail.WidgetSdk.WidgetAppLaunchObservation.Equals(object? obj) -> bool
@@ -2049,6 +2052,7 @@ method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.First(WidgetRail.Widg
 method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.Resolve(WidgetRail.WidgetSdk.WidgetElement root, string? targetId, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
 method static WidgetRail.WidgetSdk.WidgetFocusTargetResult.op_Equality(WidgetRail.WidgetSdk.WidgetFocusTargetResult left, WidgetRail.WidgetSdk.WidgetFocusTargetResult right) -> bool
 method static WidgetRail.WidgetSdk.WidgetFocusTargetResult.op_Inequality(WidgetRail.WidgetSdk.WidgetFocusTargetResult left, WidgetRail.WidgetSdk.WidgetFocusTargetResult right) -> bool
+method static WidgetRail.WidgetSdk.WidgetIcon.CatalogSvg(WidgetRail.WidgetProtocol.WidgetCatalogIconSource source, string assetId, WidgetRail.WidgetProtocol.WidgetPackageIconColorMode colorMode, WidgetRail.WidgetProtocol.WidgetGlyph fallbackGlyph) -> WidgetRail.WidgetSdk.WidgetIcon
 method static WidgetRail.WidgetSdk.WidgetIcon.Glyph(WidgetRail.WidgetProtocol.WidgetGlyph glyph) -> WidgetRail.WidgetSdk.WidgetIcon
 method static WidgetRail.WidgetSdk.WidgetIcon.PackageSvg(string assetId, WidgetRail.WidgetProtocol.WidgetPackageIconColorMode colorMode, WidgetRail.WidgetProtocol.WidgetGlyph fallbackGlyph) -> WidgetRail.WidgetSdk.WidgetIcon
 method static WidgetRail.WidgetSdk.WidgetIcon.op_Equality(WidgetRail.WidgetSdk.WidgetIcon? left, WidgetRail.WidgetSdk.WidgetIcon? right) -> bool
@@ -2626,6 +2630,7 @@ property WidgetRail.WidgetSdk.IWidgetCapabilityClient WidgetRail.WidgetSdk.Widge
 property WidgetRail.WidgetSdk.ToastTone WidgetRail.WidgetSdk.ToastElement.Tone { get; }
 property WidgetRail.WidgetSdk.Widget WidgetRail.WidgetSdk.WidgetScenarioDefinition.Widget { get; }
 property WidgetRail.WidgetSdk.WidgetActionEvent WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Action { get; set; }
+property WidgetRail.WidgetSdk.WidgetActivityService WidgetRail.WidgetSdk.WidgetHostServices.Activity { get; }
 property WidgetRail.WidgetSdk.WidgetAppLaunchObservationState WidgetRail.WidgetSdk.WidgetAppLaunchObservation.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryArtworkFallback WidgetRail.WidgetSdk.WidgetAppLibraryArtwork.Fallback { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryArtworkRole WidgetRail.WidgetSdk.WidgetAppLibraryArtwork.Role { get; set; }
@@ -3005,6 +3010,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Start { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetActivity,WidgetRail.WidgetProtocol.WidgetActivityReceipt> WidgetRail.WidgetSdk.WidgetActivityCapabilities.Report { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetNotificationCommand,WidgetRail.WidgetProtocol.WidgetNotificationReceipt> WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Publish { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionStatuses> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Check { get; }
@@ -3455,6 +3461,7 @@ type sealed class WidgetRail.WidgetSdk.ToastElement : System.IEquatable<WidgetRa
 type sealed class WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest : System.IEquatable<WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest>
 type sealed class WidgetRail.WidgetSdk.WebBrowserElement : System.IEquatable<WidgetRail.WidgetSdk.WebBrowserElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.WidgetActionEvent : System.IEquatable<WidgetRail.WidgetSdk.WidgetActionEvent>
+type sealed class WidgetRail.WidgetSdk.WidgetActivityService
 type sealed class WidgetRail.WidgetSdk.WidgetAppLaunchObservation : System.IEquatable<WidgetRail.WidgetSdk.WidgetAppLaunchObservation>
 type sealed class WidgetRail.WidgetSdk.WidgetAppLibraryArtwork : System.IEquatable<WidgetRail.WidgetSdk.WidgetAppLibraryArtwork>
 type sealed class WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet : System.IEquatable<WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet>
@@ -3613,6 +3620,7 @@ type static class WidgetRail.WidgetSdk.GridTrack
 type static class WidgetRail.WidgetSdk.SliderMath
 type static class WidgetRail.WidgetSdk.StyleExtensions
 type static class WidgetRail.WidgetSdk.UI
+type static class WidgetRail.WidgetSdk.WidgetActivityCapabilities
 type static class WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetAudioCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureCapabilities

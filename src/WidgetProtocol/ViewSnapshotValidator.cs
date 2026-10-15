@@ -1855,7 +1855,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
                     StringLength(node.FocusBackgroundArtworkHandle) +
                     StringLength(node.MediaSessionId) +
-                    StringLength(node.PackageIcon?.AssetId) +
+                    StringLength(node.PackageIcon?.AssetId) + WidgetCatalogIconValidation.TextLength(node.PackageIcon) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
                     StringLength(node.InitialChildFocusId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
@@ -1871,7 +1871,7 @@ public static class ViewSnapshotValidator
                         option is null ? 0 :
                             StringLength(option.Id) + StringLength(option.ActionId) +
                             StringLength(option.Label) + StringLength(option.AccessibilityLabel) +
-                            StringLength(option.PackageIcon?.AssetId)) ?? 0);
+                            StringLength(option.PackageIcon?.AssetId) + WidgetCatalogIconValidation.TextLength(option.PackageIcon)) ?? 0);
                 if (node.ImageSource is not null || node.ArtworkHandle is not null ||
                     node.FocusBackgroundArtworkHandle is not null || node.PackageIcon is not null)
                     aggregateResources++;
@@ -1892,6 +1892,8 @@ public static class ViewSnapshotValidator
             string path)
         {
             if (icon is null) return;
+            if (icon.Catalog is { } source && !WidgetCatalogIconValidation.IsValid(source))
+                Add($"{path}.packageIcon.catalog", "invalid_catalog_icon", "Catalog icon identity is invalid.");
             if (!WidgetManifestValidator.IsPackageIconAssetId(icon.AssetId))
                 Add($"{path}.packageIcon.assetId", "invalid_icon_asset_id",
                     "Package icon asset ID is invalid.");

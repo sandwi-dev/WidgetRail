@@ -453,6 +453,8 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.InlinePngImageVersion,
                     $"{path}.imageSource",
                     $"Inline PNG images require protocol version {ProtocolConstants.InlinePngImageVersion} or later.");
+            if (node.PackageIcon?.Catalog is not null || (node.SelectOptions ?? []).Any(option => option?.PackageIcon?.Catalog is not null))
+                Add("catalog-svg-icon", ProtocolConstants.CatalogIconVersion, $"{path}.packageIcon", "Catalog icons require protocol version 82 or later.");
             if (node.PackageIcon is not null)
                 Add(
                     "package-svg-icon",

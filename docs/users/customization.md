@@ -67,7 +67,8 @@ Corner layouts keep the outside edge and bottom edge of the widget fixed as it
 resizes. The guide and rail stay in place. The open widget is the first visible
 rail icon at bottom left, or the last at bottom right; your saved widget order
 does not change. Guide hints align with the chosen corner and remain centered
-in Center mode. Position works with both Rail and Radial + rail.
+in Center mode. B opens the radial chooser from the rail or the root of a widget;
+directional navigation into the rail continues to use the rail.
 
 Reorder widgets to keep your frequent actions close together. The tray's
 controller guide shows the reorder and reload actions. You can disable widgets
@@ -76,10 +77,12 @@ you do not use, including built-in widgets other than Settings.
 ## Manage widgets
 
 **Settings → Widgets** is the place to review permissions, enable or disable a
-widget, install packages, and manage versions.
+widget, install packages, and manage versions. **All**, **Built-in**, and
+**Community** filters share a virtualized scrolling list. Back from details
+returns to the selected widget and restores it into view.
 
-- **Install:** choose a `.wrwidget` file in the Windows file picker (mouse/keyboard). The overlay shows controller-accessible approval and completion dialogs and refreshes the widget list after installation. Review permissions and enable the installed widget.
-- **Update:** use **Update from file** in the widget's details. A successful update needs review and enablement; new permissions are not granted automatically.
+- **Install:** choose a `.wrwidget` file in the Windows file picker (mouse/keyboard). The overlay shows controller-accessible full-access approval when needed and completion dialogs. Fresh installs start enabled and ask for permissions when features need them.
+- **Update:** use **Marketplace → Updates** for marketplace add-ons, or **Update from file** in widget details for a local package. Updates preserve enabled/disabled and stopped state, permissions and saved data; new permissions are not granted automatically.
 - **Remove old versions:** use the version controls to remove an unused version. The current version is protected.
 - **Uninstall:** remove a community widget from its details. If it is enabled, confirm **Disable and uninstall**. Its saved data is kept.
 - **Clear local data:** separately clear the selected widget's overlay-owned private state and restart its worker. Credentials, provider data and ordinary user files are excluded.
@@ -115,3 +118,22 @@ Choose either **View + Menu** or **Guide** as the opening shortcut. Optional
 Exclusive control has separate driver requirements and compatibility limits.
 Changing it may require reopening other applications before the change takes effect.
 See [Compatibility](known-limitations.md) before using it.
+
+## Stop a widget without disabling it
+
+Choose **Stop widget** at the bottom of its tray menu. This ends its background
+work, playback, browser connections, additional pages and current pin. Saved
+sign-ins, permissions, configuration and remembered pin size/position remain.
+Other widgets keep running.
+
+The widget stays in the rail and radial chooser. Opening it shows **Widget
+stopped** with **X Reload** and a Reload button, rendered by the host without
+starting the worker or browser. **Start widget** is also available in the tray
+menu. Only explicit start/reload clears the stop: switching widgets, reopening
+the overlay, restarting the PC, package updates and intents do not. Stopped
+widgets are unavailable as intent destinations until reloaded.
+
+Disable removes a widget from the chooser. Stop remains remembered if it is
+disabled and enabled again. The single Stop widget command replaces Stop webapp
+session; website controls continue to manage permissions, new-window behavior
+and profile data.

@@ -46,7 +46,7 @@ internal static class SettingsUsabilityScenarios
     {
         foreach (var action in new[] { "motion.choose.system", "motion.choose.full", "motion.choose.reduced",
             "contrast.choose.system", "contrast.choose.standard", "contrast.choose.high", "position.choose.center",
-            "position.choose.left", "position.choose.right", "switcher.choose.radial", "switcher.choose.rail" })
+            "position.choose.left", "position.choose.right" })
         {
             if (!SettingsPreferencePolicy.TryCreate(action, out var mutation)) throw new Exception("Missing choice " + action);
             var once = mutation.Apply(PlatformSettingsDocument.Default);

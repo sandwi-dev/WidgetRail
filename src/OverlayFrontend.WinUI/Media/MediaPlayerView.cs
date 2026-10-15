@@ -68,6 +68,14 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private Func<bool>? currentAuthority;
     private long nextAuthorityCheck;
     internal bool IsVideo => resolved is { IsImage: false };
+    internal Action<bool>? AudioChanged { get; set; }
+    private bool reportedAudio;
+    private void ReportAudio()
+    {
+        var playing = !disposed && IsPlaying && player is { IsMuted: false, Volume: > 0 };
+        if (playing == reportedAudio) return;
+        reportedAudio = playing; AudioChanged?.Invoke(playing);
+    }
     internal bool IsPlaying => player?.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
     internal string PrimaryActionLabel => IsImage ? ImageActionLabel : XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused && !ReferenceEquals(focused, play) && !ReferenceEquals(focused, position)
         ? ReferenceEquals(focused, volume) ? adjustingVolume ? "Done" : "Adjust volume" : AutomationProperties.GetName(focused)
@@ -240,6 +248,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     { lifetime.Cancel(); timer.Stop(); ReleasePlayer(); image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed; status.Text = "This media could not be opened. The source may be unavailable or its format unsupported."; status.Visibility = Visibility.Visible; video.Visibility = toolbar.Visibility = Visibility.Collapsed; }
     private void Refresh()
     {
+        ReportAudio();
         if (disposed || retainedForPageExit) return;
         if (currentAuthority?.Invoke() == false) { Fail(); return; }
         if (resolved?.RequiresRevalidation == true && !checkingAuthority && Environment.TickCount64 >= nextAuthorityCheck && resolveAuthority is not null) _ = RefreshAuthorityAsync(lifetime.Token);
@@ -426,7 +435,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         }
         finally
         {
-            player = null; source = null;
+            player = null; source = null; ReportAudio();
             if (ownsPlayerSlot) { ownsPlayerSlot = false; Interlocked.Decrement(ref residentPlayers); }
         }
     }

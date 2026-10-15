@@ -9,17 +9,21 @@ This page explains the relationships an author or platform contributor needs.
 
 ## Widget management
 
-The Widgets section distinguishes bundled widgets from separately installed
-packages. Bundled widgets update with WidgetRail. Community packages have their
-own versions, permissions, and update files.
+The Widgets section has **All**, **Built-in**, and **Community** filters over a
+virtualized list. Rows have stable package identities, and returning from details
+restores and reveals the selected row. Refreshes preserve the filter and stable
+selection. Bundled widgets update with WidgetRail. Community packages have their
+own versions, permissions, and update files. The ordinary list has no pagination;
+version-management and catalog-recovery pages keep their bounded paging.
 
 Install and Update from file use a Windows file picker followed by themed
 overlay dialogs for full-trust approval, progress and completion. The picker
 requires mouse/keyboard; the overlay dialogs support controller navigation.
-Completion refreshes the widget and permission lists. Installation does not
-automatically enable a community package. Review its permissions before enabling.
-A manual update validates the new package before replacing the selection; the
-older version remains available until it is removed.
+Completion refreshes the widget and permission lists. Fresh installations through
+Settings and Marketplace start enabled and request permissions when needed.
+Updates validate the new package before replacing the selection and preserve
+enabled state, permissions and data; the older version remains available until
+removed. CLI staging remains a separate disabled-install workflow.
 
 Uninstall and unused-version removal require confirmation. Cancelling an
 uninstall does not disable a working widget. The selected version cannot be
@@ -130,3 +134,26 @@ scales. See [Theme packaging](../developers/theme-packaging.md).
 
 The trusted Settings integration does not grant every community widget access
 to installation or startup controls. These are host-owned management operations.
+
+## Catalog icons
+
+Settings' indexed widget rows use host-resolved catalog icons, including disabled
+widgets. Protocol 82 adds a typed package ID, version, source (built-in or installed)
+and optional sealed content digest to an icon reference. Only trusted Settings and
+Marketplace views may use this authority; package manifests and ordinary widgets
+cannot borrow another package's assets. Only the target's presentation icon is
+available. Workers are never started to obtain icons.
+
+The host verifies files with the existing package resolver. These references use
+the same bounded session demand pool, byte cache and native SVG/tint renderer as
+ordinary icons, with semantic glyph fallback. Built-in and installed copies remain
+distinct even when their package and asset IDs match. Catalog replacement retires
+cached management references.
+
+Widget stop state lives in `stopped-widgets.json` under the profile root, separate
+from the main settings schema so older app versions can still read ordinary
+preferences during rollback. The host atomically writes a bounded set of package
+IDs under a cross-process lock. Package operations and Settings resets do not
+clear it. Stop/start publishes a new runtime authority immediately, supersedes
+older catalog discovery and drains only that widget's resources. Settings rows
+distinguish Stopped from Enabled and Disabled.

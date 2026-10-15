@@ -37,10 +37,10 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
     internal async Task<bool> ReviewAsync(LocalWidgetInstallResult package, CancellationToken cancellationToken)
     {
         approval = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Title = "Review full-access widget";
-        message.Text = $"{package.WidgetId}  {package.Version}\n\nThis widget can access your files, network, and other apps with your Windows account’s permissions. It is not sandboxed, and its publisher is not verified.\n\nOnly continue if you trust where you downloaded it. It will be installed disabled; enable it separately after reviewing permissions.";
+        Title = "Review widget";
+        message.Text = $"{package.WidgetId}  {package.Version}\n\n{package.Message}";
         progress.IsActive = false; progress.Visibility = Visibility.Collapsed;
-        PrimaryButtonText = "Install disabled";
+        PrimaryButtonText = "Install widget";
         IsPrimaryButtonEnabled = true;
         ControllerArmed = false;
         FocusCancel(); StateChanged?.Invoke();
@@ -53,7 +53,7 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
         if (approval is not { } decision || decision.Task.IsCompleted) return;
         decision.TrySetResult(true);
         PrimaryButtonText = "";
-        message.Text = "Installing the widget disabled…";
+        message.Text = "Installing the widget…";
         progress.Visibility = Visibility.Visible; progress.IsActive = true;
         ControllerArmed = false; FocusCancel(); StateChanged?.Invoke();
     }
@@ -61,7 +61,7 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
     internal void Complete(LocalWidgetInstallResult result)
     {
         Finished = true; approval?.TrySetResult(false);
-        Title = result.Status == "installed-disabled" ? "Widget installed" : result.Status == "cancelled" ? "Installation cancelled" : "Could not install widget";
+        Title = result.Status == "installed" ? "Widget installed" : result.Status == "cancelled" ? "Installation cancelled" : "Could not install widget";
         message.Text = result.Message;
         PrimaryButtonText = ""; CloseButtonText = "Done";
         progress.IsActive = false; progress.Visibility = Visibility.Collapsed;

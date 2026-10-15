@@ -27,7 +27,6 @@ public sealed record BridgePlatformAppearance
     public bool AnimateWidgetModals { get; init; } = true;
     public string ModalAnimation { get; init; } = "zoom";
     public double WidgetAnimationSpeed { get; init; } = 1;
-    public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
     public OverlayPosition OverlayPosition { get; init; } = OverlayPosition.Center;
     public required WidgetSurfaceAppearanceOverride WidgetSurfaceAppearance { get; init; }
     public required IReadOnlyDictionary<string, WidgetSurfaceAppearanceOverride>
@@ -150,7 +149,6 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             AnimateWidgetModals = appearance.AnimateWidgetModals,
             ModalAnimation = appearance.ModalAnimation.ToString().ToLowerInvariant(),
             WidgetAnimationSpeed = appearance.WidgetAnimationSpeed,
-            WidgetSwitcher = appearance.WidgetSwitcher,
             OverlayPosition = appearance.OverlayPosition,
             WidgetSurfaceAppearance = appearance.WidgetSurfaceAppearance,
             WidgetSurfaceAppearanceOverrides = appearance.WidgetSurfaceAppearanceOverrides,

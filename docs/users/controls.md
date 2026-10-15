@@ -94,32 +94,28 @@ entry disappears with a brief inline message. No extra warning needs dismissing.
 Windows notification UI is not used.
 Pending entries last for the current WidgetRail session; the preference survives restarts.
 
-## Choose a widget switcher
+## Switch widgets with the radial chooser and rail
 
-In **Settings → Overlay → Widget switcher**, choose **Radial + rail** (the default
-for new installations) or **Rail**. Existing saved choices stay unchanged.
-Radial + rail combines the wheel with the horizontal tray:
+The radial chooser and horizontal rail are both available. Older rail-only
+preferences are retired without changing your other settings.
 
-- Press B at a widget's top level to open the wheel. Nested pages and menus
-  still handle Back first.
-- Move down past the widget's bottom row to enter the horizontal tray. Moving
-  left or right previews each widget and enables its dashboard shortcuts.
-  Press A or move up to enter it. B closes the overlay from the horizontal tray.
+- Press B at a widget's top level to open the wheel. Nested pages and menus still
+  handle Back first.
+- Move down past the widget's bottom row to enter the rail. Left/right previews
+  widgets and enables their dashboard shortcuts. Press A or move up to enter.
+  B opens the radial chooser with the current widget selected.
 
-The wheel opens over the current widget without changing its layout.
-Point the left stick toward a widget to preview it behind the wheel and use its
-dashboard shortcuts. Press A to enter it. D-pad or keyboard arrows move between
-slots. B returns to the selected preview.
+The wheel opens over retained widget content without changing its layout. Point
+the left stick toward a widget to preview it, then press A to enter. D-pad and
+keyboard arrows move between slots. B returns to the selected preview.
 
-The wheel holds eight widget icons per page, with the selected widget's name in
-the center. Its preferred diameter is 400 logical pixels, scaled by your display
-and interface settings and reduced when screen space is limited.
-Hold the right stick left or right to
-change pages with the same repeat timing as ordinary navigation. Changing pages
-keeps the selected widget, preview and shortcuts until you choose another icon.
-Selection is shared across all pages; the center keeps showing the selected
-widget's name even when its icon is on another page. Release the left stick
-before pointing at an icon on the new page. Menu and Y retain their tray actions.
+Each page holds eight icons with accessible names and tooltips. The center shows
+the paging controller hint. Its preferred diameter is 400 logical pixels, scaled
+by display/interface settings and reduced to fit available space. Hold the right
+stick left/right to change pages. Browsing pages preserves the selected widget
+until you choose another icon. Release the left stick before pointing at an icon
+on the new page. Menu and Y retain their tray actions.
+
 
 View keeps its pinned-view focus shortcut. Inside a widget, the right stick
 still scrolls; release it to neutral when moving between the wheel and a widget.

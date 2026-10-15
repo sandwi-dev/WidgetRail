@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Activity sources coalesce preserve ownership and stay bounded", ActivityServiceTests.Contract),
     ("Permission requests wait for consent and clean up abandoned prompts", PermissionServiceTests.Contract),
     ("Media player sources are versioned bounded and source-specific", MediaPlayerPresentationTests.Contract),
     ("Line graphs preserve immutable samples and incremental protocol updates", LineGraphPresentationTests.Contract),

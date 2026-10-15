@@ -21,6 +21,8 @@ internal sealed record ConfiguredWidget
     public required string InstanceId { get; init; }
     public WidgetGlyph Icon { get; init; } = WidgetGlyph.Connection;
     public WidgetPackageIcon? PackageIcon { get; init; }
+    [JsonIgnore]
+    public bool IsStopped { get; init; }
     /// <summary>Immutable declaration; native-window authority remains host-only.</summary>
     public bool PinningSupported { get; init; }
     public bool FullWidgetPinningSupported { get; init; }
@@ -96,6 +98,8 @@ internal sealed record ConfiguredWidget
     [JsonIgnore]
     public string PackageContentDigest { get; init; } = string.Empty;
     [JsonIgnore]
+    public string PackageVersion { get; init; } = string.Empty;
+    [JsonIgnore]
     public IReadOnlyDictionary<string, ResolvedPackageIconMetadata> PackageIconAssets { get; init; } =
         new Dictionary<string, ResolvedPackageIconMetadata>(StringComparer.Ordinal);
     [JsonIgnore]
@@ -113,6 +117,7 @@ internal sealed record ConfiguredWidget
         PresentationGeneration = CatalogFingerprint[..32].ToLowerInvariant(),
         Icon = Icon,
         PackageIcon = PackageIcon,
+        IsStopped = IsStopped,
         PackageContentDigest = PackageIconAssets.Count == 0
             ? string.Empty
             : PackageContentDigest,
@@ -191,6 +196,12 @@ public sealed class BridgeCatalog
 
     internal BridgeCatalog WithWidgetSettings(WidgetRail.PlatformSettings.BuiltInWidgetSettings settings) =>
         new(_ordered.Where(widget => widget.Id == "settings" || settings.IsEnabled(widget.PackageId)), IsComplete);
+
+    internal BridgeCatalog WithStoppedWidgets(IReadOnlyList<string> stoppedIds)
+    {
+        var stopped = stoppedIds.ToHashSet(StringComparer.Ordinal);
+        return new(_ordered.Select(widget => WithFingerprints(widget with { IsStopped = stopped.Contains(widget.PackageId) })), IsComplete);
+    }
 
     internal async Task EnsureBundledPermissionDefaultsAsync(
         ConsentStore consentStore, CancellationToken cancellationToken = default)
@@ -598,6 +609,7 @@ public sealed class BridgeCatalog
                 PackageRoot = packageRoot,
                 VerifiedPackageFiles = widget.ActiveVersion.VerifiedFiles,
                 PackageContentDigest = widget.ActiveVersion.ContentDigest,
+                PackageVersion = widget.ActiveVersion.Manifest.Version,
                 PackageIconAssets = iconAssets,
                 DeclaredPackageIconAssetIds = declaredIconAssetIds,
                 PackageIconAdmissionFailure = packageIconFailure,
@@ -668,6 +680,7 @@ public sealed class BridgeCatalog
             source.PublisherId,
             source.InstanceId,
             source.WorkerExecutable,
+            source.IsStopped ? "stopped" : "available",
             .. source.WorkerArguments,
             .. source.DeclaredCapabilities,
             .. (source.Intents is null ? Array.Empty<string>() : new[] { JsonSerializer.Serialize(source.Intents) }),
@@ -863,6 +876,7 @@ public sealed class BridgeCatalog
             PackageRoot = packageRoot,
             VerifiedPackageFiles = verification.VerifiedFiles,
             PackageContentDigest = verification.ContentDigest,
+            PackageVersion = manifest.Version,
             PackageIconAssets = metadata.Available,
             Intents = manifest.Intents,
             DeclaredPackageIconAssetIds = manifest.IconAssets.Keys.ToHashSet(StringComparer.Ordinal),
@@ -1027,6 +1041,7 @@ public sealed class BridgeCatalog
             PackageRoot = packageRoot,
             VerifiedPackageFiles = verification.VerifiedFiles,
             PackageContentDigest = verification.ContentDigest,
+            PackageVersion = manifest.Version,
             PackageIconAssets = iconAssets,
             DeclaredPackageIconAssetIds = declaredIconAssetIds,
             PackageIconAdmissionFailure = packageIconFailure,

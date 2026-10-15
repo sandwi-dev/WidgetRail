@@ -21,6 +21,17 @@ public sealed record WidgetIcon
 
     public static WidgetIcon Glyph(WidgetGlyph glyph) => new(glyph, null);
 
+    /// <summary>Reference a verified catalog icon from a trusted management view.
+    /// Ordinary widgets cannot use catalog authority. No target worker is started.</summary>
+    public static WidgetIcon CatalogSvg(WidgetCatalogIconSource source, string assetId,
+        WidgetPackageIconColorMode colorMode, WidgetGlyph fallbackGlyph)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (!WidgetCatalogIconValidation.IsValid(source)) throw new ArgumentException("Invalid catalog identity.", nameof(source));
+        var icon = PackageSvg(assetId, colorMode, fallbackGlyph);
+        return new(fallbackGlyph, icon.PackageIcon! with { Catalog = source });
+    }
+
     public static WidgetIcon PackageSvg(
         string assetId,
         WidgetPackageIconColorMode colorMode,

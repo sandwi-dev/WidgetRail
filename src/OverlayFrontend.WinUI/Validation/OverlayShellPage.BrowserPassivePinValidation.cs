@@ -21,7 +21,7 @@ internal sealed partial class OverlayShellPage
         }
         if (Environment.GetCommandLineArgs().Contains("--webapp-passive-pin-radial"))
         {
-            Appearance = Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
+
             await SelectAsync("webapp-a", enterWidget: false);
             PrepareRadialBackEntry(); RefreshRadialChooser();
         }

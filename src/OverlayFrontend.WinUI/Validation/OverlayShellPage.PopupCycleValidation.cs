@@ -23,15 +23,15 @@ internal sealed partial class OverlayShellPage
                 if (activeWidget is null) throw new InvalidOperationException("Missing initial widget");
                 var selected = activeWidget;
                 await SelectAsync(selected, enterWidget: false);
-                foreach (var mode in new[] { WidgetSwitcherLayout.Rail, WidgetSwitcherLayout.Radial })
+                foreach (var mode in new[] { "rail", "radial" })
                 {
-                    Appearance = original with { WidgetSwitcher = mode };
+                    radialRequested = false;
                     FocusDirectionalTray();
-                    if (mode == WidgetSwitcherLayout.Radial)
+                    if (mode == "radial")
                     { PrepareRadialBackEntry(); SetInteractive(false); RefreshRadialChooser(); FocusTray(); }
-                    await Until(() => RadialOpen == (mode == WidgetSwitcherLayout.Radial));
+                    await Until(() => RadialOpen == (mode == "radial"));
                     var descriptor = catalogItems.Single(item => item.Id == selected);
-                    if (mode == WidgetSwitcherLayout.Radial)
+                    if (mode == "radial")
                         await Until(() => radialView?.ContextAnchor(selected) is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 });
                     await ShowTrayMenuAsync(descriptor);
                     await Until(() => trayMenu is { Items.Count: > 1 } menu && menu.Items.All(item => item.IsLoaded));
@@ -71,7 +71,7 @@ internal sealed partial class OverlayShellPage
             { var frame = Sample(); frame.DpadNavigation = new() { Direction = direction, Phase = NavigationPhase.Pressed }; Receive(frame); }
             async Task Until(Func<bool> condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string? expression = null)
             { for (var i = 0; i < 200; ++i) { if (condition()) return; await Task.Delay(20); }
-                throw new TimeoutException($"Popup focus did not settle: {expression}; mode={Appearance.WidgetSwitcher}, radial={RadialOpen}, interactive={interactive}, foreground={foreground}, menu={trayMenu?.Items.Count}, selection={selectionVersion}"); }
+                throw new TimeoutException($"Popup focus did not settle: {expression}; radial={RadialOpen}, interactive={interactive}, foreground={foreground}, menu={trayMenu?.Items.Count}, selection={selectionVersion}"); }
         };
     }
 }

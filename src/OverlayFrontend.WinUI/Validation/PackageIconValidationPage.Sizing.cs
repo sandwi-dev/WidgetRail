@@ -18,8 +18,9 @@ internal sealed partial class PackageIconValidationPage
         using var view = new WidgetPackageIconView { Width = 117, Height = 32, HorizontalAlignment = HorizontalAlignment.Left };
         host.Children.Add(view);
         var demands = 0;
-        Task<WidgetPresentationPackageIcon> Resolve(string id, CancellationToken token)
+        Task<WidgetPresentationPackageIcon> Resolve(WidgetPackageIcon reference, CancellationToken token)
         {
+            var id = reference.AssetId;
             demands++;
             var bounds = id == "wide" ? "120 30" : "30 120";
             var dimensions = id == "wide" ? "width=\"120\" height=\"30\"" : "width=\"30\" height=\"120\"";

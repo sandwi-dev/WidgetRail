@@ -256,7 +256,14 @@ public enum WidgetPackageIconColorMode
 /// glyph remains the semantic fallback and is required whenever this value is
 /// present. Package paths and XML never enter a widget snapshot.
 /// </summary>
-public sealed record WidgetPackageIcon(string AssetId, WidgetPackageIconColorMode ColorMode);
+public sealed record WidgetPackageIcon(string AssetId, WidgetPackageIconColorMode ColorMode)
+{
+    /// <summary>Host catalog authority, available only to trusted management views.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WidgetCatalogIconSource? Catalog { get; init; }
+}
+
+public sealed record WidgetCatalogIconSource(string PackageId, string Version, bool BuiltIn, string? ContentDigest = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<ControllerButton>))]
 public enum ControllerButton

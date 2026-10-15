@@ -19,11 +19,11 @@ internal sealed partial class OverlayShellPage
         {
             var checks = new List<string>();
             var samples = new List<object>();
-            var originalSwitcher = Appearance.WidgetSwitcher;
+
             try
             {
                 if (startup is not null) await startup;
-                Appearance = Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Radial };
+
                 await SelectAsync("games-apps", true);
                 await Until(() => MainFocusEnabled && ownsNativeForeground());
                 await Until(() => Collection() is { NativeView.Items.Count: > 2 });
@@ -76,7 +76,7 @@ internal sealed partial class OverlayShellPage
                 Write(true, null);
             }
             catch (Exception error) { Write(false, error.ToString()); }
-            finally { Appearance = Appearance with { WidgetSwitcher = originalSwitcher }; }
+
 
             WidgetIndexedCollectionView? Collection() => surface is null ? null : Descendants(surface)
                 .OfType<WidgetIndexedCollectionView>().FirstOrDefault(element => element.IsLoaded && element.Visibility == Visibility.Visible);

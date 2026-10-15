@@ -14,6 +14,7 @@ internal sealed partial class OverlayShellPage
     {
         InitializeNotificationBell();
         owner!.Session.NotificationReceived += ReceiveWidgetNotification;
+        owner.Session.ActivityReceived += ReceiveWidgetActivity;
         owner.Session.AppUpdateChanged += ReceiveAppUpdate;
         startupUpdateCheck = CheckAppUpdatesAfterStartupAsync();
         browserOwner!.Notifications.Changed += RefreshWebappStatus;

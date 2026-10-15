@@ -65,6 +65,8 @@ internal static class BridgeMessageTypes
     public const string EmbeddedMediaSession = "embedded-media";
     public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
     public const string RestartWidget = "restart-widget";
+    public const string StopWidget = "stop-widget";
+    public const string StartWidget = "start-widget";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string BrowserRetention = "browser-retention";
     public const string Snapshot = "snapshot";
@@ -92,6 +94,8 @@ internal static class BridgeMessageTypes
     public const string ControllerInputResult = "controller-input-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidation = "widget-invalidated";
+    public const string WidgetActivityRetired = "widget-activity-retired";
+    public const string WidgetActivity = "widget-activity";
     public const string WidgetNotification = "widget-notification";
     public const string HostEffect = "widget-host-effect";
     public const string Failure = "widget-failed";
@@ -135,7 +139,8 @@ internal sealed record BridgePackageIconRequest(
     string PackageContentDigest,
     string AssetId,
     string SourceSha256,
-    string NormalizedSha256);
+    string NormalizedSha256,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] WidgetCatalogIconSource? Catalog = null);
 internal sealed record BridgeEmbeddedMediaRequest(
     string WidgetId,
     string InstanceId,

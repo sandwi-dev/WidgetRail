@@ -5,7 +5,7 @@ namespace WinUiShell.Tests;
 public sealed class RadialChooserPolicyTests
 {
     [TestMethod]
-    public void RailOnlyInputNeverGainsRadialNeutralRequirements()
+    public void InputOutsideRadialNeverGainsRadialNeutralRequirements()
     {
         var state = new RadialChooserPolicy(); state.Reset(); state.UpdateOwner(false, 32767, 0);
         Assert.IsTrue(state.AllowScroll);

@@ -4,6 +4,8 @@ internal sealed partial class BrowserOwner
 {
     private readonly HashSet<BrowserSurface> backgroundChanges = [];
     internal event Action? ActivityChanged;
+    internal bool NeedsAttention(string widgetId) => !retired && entries.Any(pair => pair.Key.Widget == widgetId && pair.Value.Surface.HasFailedDocument);
+    internal bool PlayingAudio(string widgetId) => !retired && entries.Any(pair => pair.Key.Widget == widgetId && pair.Value.Surface.PlayingAudio);
     internal bool HasRunningSession(string widgetId) => entries.Any(pair => pair.Key.Widget == widgetId && (pair.Value.Retained || pair.Value.Surface.BackgroundFaulted));
     internal int BackgroundSessionCount => entries.Values.Count(entry => entry.Retained && entry.Surface.KeepsBackgroundSession);
     internal int FailedBackgroundSessionCount => entries.Values.Count(entry => entry.Surface.BackgroundFaulted);

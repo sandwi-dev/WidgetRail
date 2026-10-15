@@ -76,7 +76,7 @@ internal static partial class SettingsPresentation
 
     private static List<string> Focusable(WidgetElement element) => element switch
     {
-        ButtonElement or SelectElement or ActionSurfaceElement => [element.Id],
+        ButtonElement or SelectElement or ActionSurfaceElement or IndexedCollectionElement => [element.Id],
         ContainerElement container => container.Children.SelectMany(Focusable).ToList(),
         _ => [],
     };
