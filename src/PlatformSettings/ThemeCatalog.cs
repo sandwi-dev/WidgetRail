@@ -81,6 +81,26 @@ public sealed class ThemeCatalog
         "WidgetRail.PlatformSettings.Themes.builtin-redline.theme.json";
     private const string BuiltInRedlineSourceResource =
         "WidgetRail.PlatformSettings.Themes.builtin-redline.theme.wrss";
+    private const string BuiltInMineralLightManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-mineral-light.theme.json";
+    private const string BuiltInMineralLightSourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-mineral-light.theme.wrss";
+    private const string BuiltInCanopyManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-canopy.theme.json";
+    private const string BuiltInCanopySourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-canopy.theme.wrss";
+    private const string BuiltInAmberSignalManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-amber-signal.theme.json";
+    private const string BuiltInAmberSignalSourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-amber-signal.theme.wrss";
+    private const string BuiltInVelvetDuskManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-velvet-dusk.theme.json";
+    private const string BuiltInVelvetDuskSourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-velvet-dusk.theme.wrss";
+    private const string BuiltInMonoInkManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-mono-ink.theme.json";
+    private const string BuiltInMonoInkSourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-mono-ink.theme.wrss";
     private static readonly PlatformSettingsJsonContext JsonContext = new(CreateJsonOptions());
 
     private readonly PlatformSettingsPaths _paths;
@@ -116,8 +136,39 @@ public sealed class ThemeCatalog
             ThemeIdentity.BuiltInRedline,
             ThemeIdentity.BuiltInRedlineVersion,
             "widgetrail.builtin");
+        var mineralLight = LoadBuiltInPackage(
+            BuiltInMineralLightManifestResource,
+            BuiltInMineralLightSourceResource,
+            ThemeIdentity.BuiltInMineralLight,
+            ThemeIdentity.BuiltInMineralLightVersion,
+            "widgetrail.builtin");
+        var canopy = LoadBuiltInPackage(
+            BuiltInCanopyManifestResource,
+            BuiltInCanopySourceResource,
+            ThemeIdentity.BuiltInCanopy,
+            ThemeIdentity.BuiltInCanopyVersion,
+            "widgetrail.builtin");
+        var amberSignal = LoadBuiltInPackage(
+            BuiltInAmberSignalManifestResource,
+            BuiltInAmberSignalSourceResource,
+            ThemeIdentity.BuiltInAmberSignal,
+            ThemeIdentity.BuiltInAmberSignalVersion,
+            "widgetrail.builtin");
+        var velvetDusk = LoadBuiltInPackage(
+            BuiltInVelvetDuskManifestResource,
+            BuiltInVelvetDuskSourceResource,
+            ThemeIdentity.BuiltInVelvetDusk,
+            ThemeIdentity.BuiltInVelvetDuskVersion,
+            "widgetrail.builtin");
+        var monoInk = LoadBuiltInPackage(
+            BuiltInMonoInkManifestResource,
+            BuiltInMonoInkSourceResource,
+            ThemeIdentity.BuiltInMonoInk,
+            ThemeIdentity.BuiltInMonoInkVersion,
+            "widgetrail.builtin");
         _builtIns = Array.AsReadOnly<ThemeLoadResult>(
-            [_builtIn, coolSlate, neonCircuit, arcadeRush, redline]);
+            [_builtIn, coolSlate, neonCircuit, arcadeRush, redline,
+             mineralLight, canopy, amberSignal, velvetDusk, monoInk]);
         _builtInsById = new ReadOnlyDictionary<string, ThemeLoadResult>(
             _builtIns.ToDictionary(item => item.Descriptor.Id, StringComparer.Ordinal));
     }

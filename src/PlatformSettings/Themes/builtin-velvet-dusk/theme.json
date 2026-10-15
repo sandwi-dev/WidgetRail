@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "id": "widgetrail.builtin.velvet-dusk",
+  "publisher": "widgetrail.builtin",
+  "name": "Velvet Dusk",
+  "version": "1.0.0",
+  "entryFile": "theme.wrss"
+}

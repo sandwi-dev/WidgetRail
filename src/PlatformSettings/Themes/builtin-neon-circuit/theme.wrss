@@ -1,22 +1,17 @@
-/* Neon Circuit — a dark, controller-first "HUD" reading of the shared
-   minimalist baseline. It keeps every controller-safe dimension, focus ring,
-   and accessibility affordance owned by builtin.default and changes only
-   palette, corner geometry, and label typography.
-
-   Theme layers beat selector specificity. State-dependent fills, focus edges,
-   opacity and scale follow baseline rules and the tokens below, preserving
-   focused, selected, pressed and disabled states. */
+/* Neon Circuit keeps its indigo ground, cyan interaction and angular edges.
+   Quiet sentence-case labels replace competing magenta/uppercase decoration.
+   Tokens preserve platform states; explicit widget styles still win. */
 
 :root {
   --panel-shading: .025;
-  --control-shading: .045;
-  --focus-shading: .065;
+  --control-shading: .035;
+  --focus-shading: .045;
   --inset-shading: -0.035;
   --depth-shadow: rgba(0, 3, 12, 0.38);
   --depth-highlight: rgba(174, 234, 255, 0.09);
   --depth-lowlight: rgba(0, 0, 0, 0.18);
-  --focus-width: 1.5px;
-  --focus-offset: -1.5px;
+  --focus-width: 2px;
+  --focus-offset: -2px;
 
   /* Deep indigo-black instead of warm graphite. Surfaces keep the platform's
      four-step ramp so raised/subtle/active separation still reads at 720p. */
@@ -24,7 +19,7 @@
   --canvas-veil: rgba(2, 4, 10, 0.74);
   --surface: rgba(12, 16, 28, 0.98);
   --surface-raised: rgba(19, 24, 41, 0.98);
-  --modal-surface: rgba(19, 24, 41, 0.80);
+  --modal-surface: rgba(19, 24, 41, 0.96);
   --surface-subtle: rgba(26, 32, 54, 0.94);
   --surface-active: rgba(35, 45, 74, 0.98);
   --surface-muted: rgba(26, 32, 54, 0.92);
@@ -36,31 +31,30 @@
 
   --text: #e8f1fb;
   --controller-glyph-color: #83c6d8;
-  --text-muted: #9aa8c4;
+  --text-muted: #bcc9de;
   --scrollbar-track: #232d4a;
   --scrollbar-thumb: #67bbd0;
-  --text-subdued: #7d89a5;
+  --text-subdued: #8e9bb2;
 
   /* The accent edge reinforces the raised focused surface. */
   --focus: var(--accent);
 
   /* Electric cyan is the single interactive accent: progress, sliders, primary
-     icon buttons, and tile state. Magenta is a label-only companion used for
-     eyebrows, never for a state or a focus cue. */
+     icon buttons, and tile state. Secondary labels stay neutral so they do not
+     compete with focus. */
   --accent: #3fe0ff;
-  --accent-alt: #ff4fd8;
 
-  --success: #4ed6a1;
-  --info: #5cc8ff;
-  --warning: #ffbf4d;
-  --danger: #ff5d7e;
-  --error: #ff5d7e;
+  --success: #91e0b7;
+  --info: #a3d6ff;
+  --warning: #f2d18a;
+  --danger: #ff9fb4;
+  --error: var(--danger);
 
   --scrim: rgba(3, 5, 12, 0.66);
   --poster-scrim: rgba(5, 7, 14, 0.86);
 
-  --font-text: Segoe UI Variable Text, Segoe UI;
-  --font-display: Segoe UI Variable Display, Segoe UI;
+  --font-text: Segoe UI;
+  --font-display: Segoe UI;
 }
 
 /* Geometry: tighter, more angular rounding than the soft default. Radius is
@@ -121,9 +115,7 @@ progress { corner-radius: 1px; }
   border-left-width: 2px;
 }
 
-/* Typography: display text tightens, small labels become tracked uppercase
-   HUD tags. Sizes, line heights, and line caps stay exactly as authored by
-   the platform so text scale and reflow behave identically. */
+/* Strong headings establish hierarchy; compact labels retain word shapes. */
 title { font-weight: 600; letter-spacing: -0.01em; }
 .wrail-section-header__title,
 .wrail-dialog__title,
@@ -131,10 +123,10 @@ title { font-weight: 600; letter-spacing: -0.01em; }
 .wrail-picker__title { font-weight: 600; letter-spacing: -0.01em; }
 
 .wrail-section-header__eyebrow {
-  color: var(--accent-alt);
+  color: var(--text-muted);
   font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .wrail-badge__label,
@@ -142,8 +134,8 @@ title { font-weight: 600; letter-spacing: -0.01em; }
 .wrail-poster-tile__state,
 .wrail-poster-tile__subtitle {
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0em;
+  text-transform: none;
 }
 
 .wrail-window-preview {

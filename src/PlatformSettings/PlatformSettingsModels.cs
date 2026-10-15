@@ -204,11 +204,22 @@ public static partial class ThemeIdentity
     public const string BuiltInArcadeRushVersion = "1.0.0";
     public const string BuiltInRedline = "widgetrail.builtin.redline";
     public const string BuiltInRedlineVersion = "1.0.0";
+    public const string BuiltInMineralLight = "widgetrail.builtin.mineral-light";
+    public const string BuiltInMineralLightVersion = "1.0.0";
+    public const string BuiltInCanopy = "widgetrail.builtin.canopy";
+    public const string BuiltInCanopyVersion = "1.0.0";
+    public const string BuiltInAmberSignal = "widgetrail.builtin.amber-signal";
+    public const string BuiltInAmberSignalVersion = "1.0.0";
+    public const string BuiltInVelvetDusk = "widgetrail.builtin.velvet-dusk";
+    public const string BuiltInVelvetDuskVersion = "1.0.0";
+    public const string BuiltInMonoInk = "widgetrail.builtin.mono-ink";
+    public const string BuiltInMonoInkVersion = "1.0.0";
     public const int MaximumLength = 128;
 
     public static bool IsBuiltIn(string? value) =>
         value is BuiltInDefault or BuiltInCoolSlate or BuiltInNeonCircuit or BuiltInArcadeRush
-             or BuiltInRedline;
+             or BuiltInRedline
+             or BuiltInMineralLight or BuiltInCanopy or BuiltInAmberSignal or BuiltInVelvetDusk or BuiltInMonoInk;
 
     public static bool IsValid(string? value) =>
         value is { Length: > 0 and <= MaximumLength } &&

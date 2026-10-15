@@ -910,7 +910,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var classes = new HashSet<string>(["playnite-library-control"],
             StringComparer.Ordinal);
         var control = theme.Resolve(new WrssElement("button", null, classes));
-        Assert.AreEqual("Segoe UI Variable Text, Segoe UI",
+        Assert.AreEqual("Segoe UI",
             control.Get("font-family")?.Text);
         Assert.AreEqual("13px", control.Get("font-size")?.Text);
         Assert.AreEqual("600", control.Get("font-weight")?.Text);
@@ -932,7 +932,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.IsNotNull(styled.Get("border-color"), state.ToString());
             if (state == WrssPseudoState.Focused)
             {
-                Assert.AreEqual("1.5px", styled.Get("outline-width")?.Text);
+                Assert.AreEqual("2px", styled.Get("outline-width")?.Text);
                 Assert.AreEqual("#b8ae92", styled.Get("outline-color")?.Text);
             }
         }

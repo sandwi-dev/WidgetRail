@@ -1,0 +1,82 @@
+/* Mono Ink — A deliberately achromatic interface: graphite surfaces, white focus, firm geometry, and no decorative shading. Semantic status colors remain available; this is a visual theme, not a replacement for system High Contrast.
+
+   Global defaults only: explicit widget styles and host accessibility policy
+   remain authoritative. Inherit the baseline's spacing, target sizes, state
+   fills and motion; do not replace them with broad role declarations. */
+
+:root {
+  --canvas: #101010;
+  --canvas-veil: rgba(0, 0, 0, 0.76);
+  --surface: #1c1c1c;
+  --surface-raised: #272727;
+  --modal-surface: #272727;
+  --surface-subtle: #333333;
+  --surface-active: #454545;
+  --surface-muted: #333333;
+  --border: #757575;
+  --border-strong: #a3a3a3;
+  --text: #fafafa;
+  --text-muted: #d1d1d1;
+  --text-subdued: #aaaaaa;
+  --accent: #ededed;
+  --focus: var(--accent);
+  --controller-glyph-color: #e0e0e0;
+  --scrollbar-track: #333333;
+  --scrollbar-thumb: #d1d1d1;
+  --success: #b6e8c6;
+  --info: #bcdfff;
+  --warning: #f5dba0;
+  --danger: #ffbfc3;
+  --error: var(--danger);
+  --scrim: rgba(0, 0, 0, 0.76);
+  --poster-scrim: rgba(16, 16, 16, 0.96);
+  --font-text: Segoe UI;
+  --font-display: Segoe UI;
+  --panel-shading: 0;
+  --control-shading: 0;
+  --focus-shading: 0;
+  --inset-shading: 0;
+  --depth-shadow: transparent;
+  --depth-highlight: #757575;
+  --depth-lowlight: #757575;
+  --focus-width: 2px;
+  --focus-offset: -2px;
+}
+
+/* Three nested radius levels give containers and controls distinct roles. */
+panel, tray,
+.wrail-dialog, .wrail-action-sheet, .wrail-picker, .wrail-modal { corner-radius: 4px; }
+
+tray-item, button, select, slider,
+.wrail-icon-button, .wrail-icon-button--small, .wrail-icon-button--large,
+.wrail-card, .wrail-switch, .wrail-stepper__button { corner-radius: 2px; }
+
+.wrail-segmented-tabs, .wrail-navigation-shell__compact,
+.wrail-navigation-shell__rail, .wrail-alert, .wrail-empty-state,
+.wrail-toast, .wrail-action-surface,
+.wrail-poster-tile, .wrail-poster-tile__artwork { corner-radius: 2px; }
+
+.wrail-segmented-tabs__tab, .wrail-navigation-shell__compact-item,
+.wrail-navigation-shell__rail-item, .wrail-settings-row__action,
+.wrail-action-sheet__item, .wrail-picker__option, .wrail-choice-row,
+.wrail-scrubber__slider, .wrail-badge, .wrail-tile__artwork,
+.wrail-code-text { corner-radius: 2px; }
+
+/* Retain the type scale and line limits; hierarchy comes from family/weight. */
+title, .wrail-section-header__title, .wrail-dialog__title,
+.wrail-action-sheet__title, .wrail-picker__title, .wrail-modal__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0em;
+}
+
+/* Selection keeps its fill; the short edge survives when focus moves away. */
+.wrail-segmented-tabs__tab--selected {
+  border-bottom-color: var(--accent);
+  border-bottom-width: 2px;
+}
+.wrail-navigation-shell__item--selected,
+.wrail-choice-row--selected, .wrail-picker__option--selected {
+  border-left-color: var(--accent);
+  border-left-width: 2px;
+}

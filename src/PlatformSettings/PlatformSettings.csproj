@@ -27,5 +27,25 @@
                       LogicalName="WidgetRail.PlatformSettings.Themes.builtin-redline.theme.json" />
     <EmbeddedResource Include="Themes\builtin-redline\theme.wrss"
                       LogicalName="WidgetRail.PlatformSettings.Themes.builtin-redline.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-mineral-light\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-mineral-light.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-mineral-light\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-mineral-light.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-canopy\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-canopy.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-canopy\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-canopy.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-amber-signal\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-amber-signal.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-amber-signal\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-amber-signal.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-velvet-dusk\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-velvet-dusk.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-velvet-dusk\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-velvet-dusk.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-mono-ink\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-mono-ink.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-mono-ink\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-mono-ink.theme.wrss" />
   </ItemGroup>
 </Project>

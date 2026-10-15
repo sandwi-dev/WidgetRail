@@ -1,0 +1,82 @@
+/* Mineral Light — A daylight mineral palette: opaque chalk surfaces, deep petrol ink, and crisp nested corners. Light poster scrims keep dark captions readable over artwork.
+
+   Global defaults only: explicit widget styles and host accessibility policy
+   remain authoritative. Inherit the baseline's spacing, target sizes, state
+   fills and motion; do not replace them with broad role declarations. */
+
+:root {
+  --canvas: #e5ebec;
+  --canvas-veil: rgba(15, 32, 38, 0.48);
+  --surface: #f5f8f8;
+  --surface-raised: #ffffff;
+  --modal-surface: #ffffff;
+  --surface-subtle: #e7eeef;
+  --surface-active: #d0e0e3;
+  --surface-muted: #e7eeef;
+  --border: #a0b3b8;
+  --border-strong: #667f87;
+  --text: #172e34;
+  --text-muted: #425c63;
+  --text-subdued: #5c7278;
+  --accent: #075b73;
+  --focus: var(--accent);
+  --controller-glyph-color: #365c66;
+  --scrollbar-track: #e7eeef;
+  --scrollbar-thumb: #425c63;
+  --success: #176340;
+  --info: #245b8c;
+  --warning: #744b08;
+  --danger: #9b2e48;
+  --error: var(--danger);
+  --scrim: rgba(15, 32, 38, 0.48);
+  --poster-scrim: rgba(245, 248, 248, 0.97);
+  --font-text: Segoe UI;
+  --font-display: Segoe UI;
+  --panel-shading: 0;
+  --control-shading: 0;
+  --focus-shading: 0;
+  --inset-shading: 0;
+  --depth-shadow: rgba(12, 36, 44, 0.12);
+  --depth-highlight: rgba(255, 255, 255, 0.7);
+  --depth-lowlight: rgba(23, 46, 52, 0.16);
+  --focus-width: 2px;
+  --focus-offset: -2px;
+}
+
+/* Three nested radius levels give containers and controls distinct roles. */
+panel, tray,
+.wrail-dialog, .wrail-action-sheet, .wrail-picker, .wrail-modal { corner-radius: 12px; }
+
+tray-item, button, select, slider,
+.wrail-icon-button, .wrail-icon-button--small, .wrail-icon-button--large,
+.wrail-card, .wrail-switch, .wrail-stepper__button { corner-radius: 6px; }
+
+.wrail-segmented-tabs, .wrail-navigation-shell__compact,
+.wrail-navigation-shell__rail, .wrail-alert, .wrail-empty-state,
+.wrail-toast, .wrail-action-surface,
+.wrail-poster-tile, .wrail-poster-tile__artwork { corner-radius: 6px; }
+
+.wrail-segmented-tabs__tab, .wrail-navigation-shell__compact-item,
+.wrail-navigation-shell__rail-item, .wrail-settings-row__action,
+.wrail-action-sheet__item, .wrail-picker__option, .wrail-choice-row,
+.wrail-scrubber__slider, .wrail-badge, .wrail-tile__artwork,
+.wrail-code-text { corner-radius: 4px; }
+
+/* Retain the type scale and line limits; hierarchy comes from family/weight. */
+title, .wrail-section-header__title, .wrail-dialog__title,
+.wrail-action-sheet__title, .wrail-picker__title, .wrail-modal__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0em;
+}
+
+/* Selection keeps its fill; the short edge survives when focus moves away. */
+.wrail-segmented-tabs__tab--selected {
+  border-bottom-color: var(--accent);
+  border-bottom-width: 2px;
+}
+.wrail-navigation-shell__item--selected,
+.wrail-choice-row--selected, .wrail-picker__option--selected {
+  border-left-color: var(--accent);
+  border-left-width: 2px;
+}

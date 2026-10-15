@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "id": "widgetrail.builtin.canopy",
+  "publisher": "widgetrail.builtin",
+  "name": "Canopy",
+  "version": "1.0.0",
+  "entryFile": "theme.wrss"
+}

@@ -1,38 +1,41 @@
 :root {
   --panel-shading: .030;
-  --control-shading: .050;
-  --focus-shading: .070;
+  --control-shading: .035;
+  --focus-shading: .045;
   --inset-shading: -0.035;
   --depth-shadow: rgba(0, 0, 0, 0.28);
   --depth-highlight: rgba(255, 243, 216, 0.09);
   --depth-lowlight: rgba(0, 0, 0, 0.18);
-  --focus-width: 1.5px;
-  --focus-offset: -1.5px;
+  --focus-width: 2px;
+  --focus-offset: -2px;
 
   --canvas: #090908;
   --canvas-veil: rgba(0, 0, 0, 0.70);
   --surface: rgba(21, 21, 20, 0.98);
   --surface-raised: rgba(29, 29, 27, 0.98);
-  --modal-surface: rgba(29, 29, 27, 0.80);
+  --modal-surface: rgba(29, 29, 27, 0.96);
   --surface-subtle: rgba(39, 39, 36, 0.92);
   --surface-active: rgba(48, 47, 43, 0.98);
   --border: rgba(246, 240, 226, 0.12);
   --border-strong: rgba(246, 240, 226, 0.22);
   --text: #f2efe8;
-  --text-muted: #aaa69d;
+  --text-muted: #c2bdb2;
   --controller-glyph-color: #b8ae92;
   --scrollbar-track: #34332f;
   --scrollbar-thumb: #aaa69d;
-  --text-subdued: #7d7a72;
+  --text-subdued: #99958c;
   --focus: var(--accent);
   --accent: #b8ae92;
-  --success: #8eb49a;
-  --info: #96aeb8;
-  --warning: #c8a66a;
-  --danger: #c98181;
+  --success: #b0d4bb;
+  --info: #b1cfdb;
+  --warning: #e4c28c;
+  --danger: #e9afb0;
   --poster-scrim: rgba(9, 9, 8, 0.82);
-  --font-text: Segoe UI Variable Text, Segoe UI;
-  --font-display: Segoe UI Variable Display, Segoe UI;
+  --surface-muted: var(--surface-subtle);
+  --error: var(--danger);
+  --scrim: var(--canvas-veil);
+  --font-text: Segoe UI;
+  --font-display: Segoe UI;
 }
 
 canvas {
@@ -1122,3 +1125,6 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 
 /* Inline intent links share the theme accent; native focus supplies the outline. */
 .wrail-inline-link { color: var(--accent); }
+
+/* Keep an inset focus ring legible on an accent-filled primary action. */
+.wrail-icon-button--primary:focused { outline-color: var(--canvas); }

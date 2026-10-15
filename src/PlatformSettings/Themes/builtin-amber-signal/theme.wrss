@@ -1,0 +1,82 @@
+/* Amber Signal — An amber instrument theme inspired by legible equipment readouts: warm ink, squared controls, and Bahnschrift headings. Amber indicates interaction; errors remain rose and success remains mint.
+
+   Global defaults only: explicit widget styles and host accessibility policy
+   remain authoritative. Inherit the baseline's spacing, target sizes, state
+   fills and motion; do not replace them with broad role declarations. */
+
+:root {
+  --canvas: #18140d;
+  --canvas-veil: rgba(16, 12, 5, 0.74);
+  --surface: #241e13;
+  --surface-raised: #30271a;
+  --modal-surface: #30271a;
+  --surface-subtle: #3b3020;
+  --surface-active: #493b27;
+  --surface-muted: #3b3020;
+  --border: #766247;
+  --border-strong: #a68d64;
+  --text: #fff3dc;
+  --text-muted: #d7c5a3;
+  --text-subdued: #ac9c7d;
+  --accent: #ffce73;
+  --focus: var(--accent);
+  --controller-glyph-color: #e8ce9b;
+  --scrollbar-track: #3b3020;
+  --scrollbar-thumb: #d7c5a3;
+  --success: #a5dfba;
+  --info: #b4d9f4;
+  --warning: #ffe8a6;
+  --danger: #ffb4ba;
+  --error: var(--danger);
+  --scrim: rgba(16, 12, 5, 0.74);
+  --poster-scrim: rgba(24, 20, 13, 0.94);
+  --font-text: Segoe UI;
+  --font-display: Bahnschrift;
+  --panel-shading: .015;
+  --control-shading: .025;
+  --focus-shading: .030;
+  --inset-shading: -.020;
+  --depth-shadow: rgba(15, 8, 0, 0.28);
+  --depth-highlight: rgba(255, 225, 166, 0.08);
+  --depth-lowlight: rgba(16, 8, 0, 0.26);
+  --focus-width: 2px;
+  --focus-offset: -2px;
+}
+
+/* Three nested radius levels give containers and controls distinct roles. */
+panel, tray,
+.wrail-dialog, .wrail-action-sheet, .wrail-picker, .wrail-modal { corner-radius: 6px; }
+
+tray-item, button, select, slider,
+.wrail-icon-button, .wrail-icon-button--small, .wrail-icon-button--large,
+.wrail-card, .wrail-switch, .wrail-stepper__button { corner-radius: 4px; }
+
+.wrail-segmented-tabs, .wrail-navigation-shell__compact,
+.wrail-navigation-shell__rail, .wrail-alert, .wrail-empty-state,
+.wrail-toast, .wrail-action-surface,
+.wrail-poster-tile, .wrail-poster-tile__artwork { corner-radius: 4px; }
+
+.wrail-segmented-tabs__tab, .wrail-navigation-shell__compact-item,
+.wrail-navigation-shell__rail-item, .wrail-settings-row__action,
+.wrail-action-sheet__item, .wrail-picker__option, .wrail-choice-row,
+.wrail-scrubber__slider, .wrail-badge, .wrail-tile__artwork,
+.wrail-code-text { corner-radius: 2px; }
+
+/* Retain the type scale and line limits; hierarchy comes from family/weight. */
+title, .wrail-section-header__title, .wrail-dialog__title,
+.wrail-action-sheet__title, .wrail-picker__title, .wrail-modal__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0em;
+}
+
+/* Selection keeps its fill; the short edge survives when focus moves away. */
+.wrail-segmented-tabs__tab--selected {
+  border-bottom-color: var(--accent);
+  border-bottom-width: 2px;
+}
+.wrail-navigation-shell__item--selected,
+.wrail-choice-row--selected, .wrail-picker__option--selected {
+  border-left-color: var(--accent);
+  border-left-width: 2px;
+}

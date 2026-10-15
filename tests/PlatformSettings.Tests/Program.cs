@@ -5,6 +5,7 @@ using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("All built-in themes remain isolated, selectable and readable", ThemeDesignTests.Run),
     ("Controller glyphs share readable geometry and theme ink", ControllerGlyphThemeTests.Run),
     ("Focus preserves selection and authored fills in every built-in theme", FocusSelectionThemeTests.Run),
     ("Shipping first-party and built-in themes use supported WinUI layout declarations", WinUiShippingStylesTests.Run),
@@ -59,6 +60,7 @@ foreach (var test in tests)
     }
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
+if (args is ["--theme-audit-json", var auditPath]) ThemeDesignTests.WriteAudit(auditPath);
 return failures.Count == 0 ? 0 : 1;
 
 static async Task RetiredFocusSlide()
@@ -415,6 +417,11 @@ static Task ThemeDiscovery()
             ThemeIdentity.BuiltInNeonCircuit,
             ThemeIdentity.BuiltInArcadeRush,
             ThemeIdentity.BuiltInRedline,
+            ThemeIdentity.BuiltInMineralLight,
+            ThemeIdentity.BuiltInCanopy,
+            ThemeIdentity.BuiltInAmberSignal,
+            ThemeIdentity.BuiltInVelvetDusk,
+            ThemeIdentity.BuiltInMonoInk,
             "dev.example.slate",
         ],
         snapshot.Themes.Select(theme => theme.Descriptor.Id));
@@ -426,6 +433,11 @@ static Task ThemeDiscovery()
             ThemeIdentity.BuiltInNeonCircuit,
             ThemeIdentity.BuiltInArcadeRush,
             ThemeIdentity.BuiltInRedline,
+            ThemeIdentity.BuiltInMineralLight,
+            ThemeIdentity.BuiltInCanopy,
+            ThemeIdentity.BuiltInAmberSignal,
+            ThemeIdentity.BuiltInVelvetDusk,
+            ThemeIdentity.BuiltInMonoInk,
         ],
         catalog.BuiltInThemes.Select(theme => theme.Descriptor.Id));
     Assert.True(catalog.BuiltInThemes.All(theme => theme.Descriptor.IsBuiltIn && theme.IsValid),
@@ -447,7 +459,7 @@ static Task ThemeDiscovery()
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
     var canvas = compiled.Theme!.Resolve(new WrssElement("canvas"));
     Assert.Equal("#090908", canvas.Get("background")!.Text);
-    Assert.Equal("Segoe UI Variable Text, Segoe UI", canvas.Get("font-family")!.Text);
+    Assert.Equal("Segoe UI", canvas.Get("font-family")!.Text);
     var panel = compiled.Theme.Resolve(new WrssElement("panel"));
     Assert.Equal("1px", panel.Get("border-width")!.Text);
     Assert.Equal("12px", panel.Get("corner-radius")!.Text);
@@ -574,7 +586,7 @@ static Task ThemeDiscovery()
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("1", focusedButton.Get("scale")!.Text);
     Assert.Equal("#b8ae92", focusedButton.Get("outline-color")!.Text);
-    Assert.Equal("-1.5px", focusedButton.Get("outline-offset")!.Text);
+    Assert.Equal("-2px", focusedButton.Get("outline-offset")!.Text);
     Assert.Equal("90ms", focusedButton.Get("transition-duration")!.Text);
     Assert.Equal("ease-out", focusedButton.Get("transition-easing")!.Text);
     var eyebrow = compiled.Theme.Resolve(new WrssElement(
@@ -644,8 +656,8 @@ static async Task BuiltInCoolSlateSelection()
         null,
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
-    Assert.Equal("#8ca9c4", focused.Get("outline-color")!.Text);
-    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("#acc9df", focused.Get("outline-color")!.Text);
+    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
     Assert.Equal("1", focused.Get("scale")!.Text);
 
     var defaultCanvas = WrssThemeCompiler.Compile(catalog.BuiltInDefault.Package)
@@ -710,8 +722,8 @@ static async Task BuiltInNeonCircuitSelection()
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal(button.Get("background")!.Text, focused.Get("background")!.Text);
     Assert.Equal("#3fe0ff", focused.Get("outline-color")!.Text);
-    Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
-    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("2px", focused.Get("outline-width")!.Text);
+    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
     Assert.Equal("6px", focused.Get("corner-radius")!.Text);
 
     var eyebrow = reload.Current.Theme.Resolve(new WrssElement(
@@ -719,8 +731,8 @@ static async Task BuiltInNeonCircuitSelection()
         null,
         new HashSet<string>(["wrail-section-header__eyebrow"]),
         new HashSet<WrssPseudoState>()));
-    Assert.Equal("uppercase", eyebrow.Get("text-transform")!.Text);
-    Assert.Equal("#ff4fd8", eyebrow.Get("color")!.Text);
+    Assert.Equal("none", eyebrow.Get("text-transform")!.Text);
+    Assert.Equal("#bcc9de", eyebrow.Get("color")!.Text);
 
     var primaryIconButton = reload.Current.Theme.Resolve(new WrssElement(
         "button",
@@ -776,10 +788,10 @@ static async Task BuiltInArcadeRushSelection()
     var panel = reload.Current.Theme.Resolve(new WrssElement("panel"));
     Assert.Equal("14px", panel.Get("corner-radius")!.Text);
 
-    // Pill geometry must not reach the dimensions a controller depends on, and
+    // Rounded geometry must not reach the dimensions a controller depends on, and
     // the themed base rules must not outrank the platform's state rules.
     var button = reload.Current.Theme.Resolve(new WrssElement("button"));
-    Assert.Equal("22px", button.Get("corner-radius")!.Text);
+    Assert.Equal("12px", button.Get("corner-radius")!.Text);
     Assert.Equal("44px", button.Get("min-height")!.Text);
     Assert.Equal("rgba(46, 30, 60, 0.98)", button.Get("background")!.Text);
     Assert.True(button.Get("shadow-blur") is null, "Arcade Rush must not introduce a component shadow.");
@@ -789,26 +801,25 @@ static async Task BuiltInArcadeRushSelection()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal(button.Get("background")!.Text, focused.Get("background")!.Text);
-    Assert.Equal("#ff3ea5", focused.Get("outline-color")!.Text);
-    Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
-    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
-    Assert.Equal("22px", focused.Get("corner-radius")!.Text);
+    Assert.Equal("#ffa6d2", focused.Get("outline-color")!.Text);
+    Assert.Equal("2px", focused.Get("outline-width")!.Text);
+    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("12px", focused.Get("corner-radius")!.Text);
 
     var trayItem = reload.Current.Theme.Resolve(new WrssElement("tray-item"));
-    Assert.Equal("22px", trayItem.Get("corner-radius")!.Text);
+    Assert.Equal("12px", trayItem.Get("corner-radius")!.Text);
     Assert.Equal("44px", trayItem.Get("min-width")!.Text);
     Assert.Equal("44px", trayItem.Get("min-height")!.Text);
 
-    // Uppercase is reserved for the eyebrow role; badges keep sentence case,
-    // which is what separates this theme's label voice from Neon Circuit's.
+    // Labels preserve word shapes; the palette and geometry carry identity.
     var eyebrow = reload.Current.Theme.Resolve(new WrssElement(
         "text",
         null,
         new HashSet<string>(["wrail-section-header__eyebrow"]),
         new HashSet<WrssPseudoState>()));
-    Assert.Equal("uppercase", eyebrow.Get("text-transform")!.Text);
-    Assert.Equal("0.12em", eyebrow.Get("letter-spacing")!.Text);
-    Assert.Equal("#c0aec8", eyebrow.Get("color")!.Text);
+    Assert.Equal("none", eyebrow.Get("text-transform")!.Text);
+    Assert.Equal("0.02em", eyebrow.Get("letter-spacing")!.Text);
+    Assert.Equal("#d5c1dd", eyebrow.Get("color")!.Text);
     var badgeLabel = reload.Current.Theme.Resolve(new WrssElement(
         "text",
         null,
@@ -825,7 +836,7 @@ static async Task BuiltInArcadeRushSelection()
         new HashSet<WrssPseudoState>()));
     Assert.Equal("44px", primaryIconButton.Get("min-height")!.Text);
     Assert.Equal("23px", primaryIconButton.Get("corner-radius")!.Text);
-    Assert.Equal("#ff3ea5", primaryIconButton.Get("background")!.Text);
+    Assert.Equal("#ffa6d2", primaryIconButton.Get("background")!.Text);
 
     var neonCanvas = catalog.Load(
         ThemeIdentity.BuiltInNeonCircuit,
@@ -878,14 +889,15 @@ static async Task BuiltInRedlineSelection()
     // The structural edge is additive: the uniform hairline and the platform's
     // corner radii survive underneath it.
     var panel = reload.Current.Theme.Resolve(new WrssElement("panel"));
-    Assert.Equal("#ff3d2e", panel.Get("border-bottom-color")!.Text);
-    Assert.Equal("2px", panel.Get("border-bottom-width")!.Text);
+    Assert.True(panel.Get("border-bottom-width") is null, "Content panels should not repeat the tray stripe.");
+    var tray = reload.Current.Theme.Resolve(new WrssElement("tray"));
+    Assert.Equal("#e06a5d", tray.Get("border-bottom-color")!.Text);
+    Assert.Equal("2px", tray.Get("border-bottom-width")!.Text);
     Assert.Equal("rgba(255, 214, 208, 0.14)", panel.Get("border-color")!.Text);
     Assert.Equal("1px", panel.Get("border-width")!.Text);
     Assert.Equal("12px", panel.Get("corner-radius")!.Text);
 
-    // Redline leaves geometry to the platform entirely, and the edge marks
-    // containers only — never a hit target.
+    // Redline leaves geometry to the platform and reserves the stripe for the tray.
     var button = reload.Current.Theme.Resolve(new WrssElement("button"));
     Assert.Equal("10px", button.Get("corner-radius")!.Text);
     Assert.Equal("44px", button.Get("min-height")!.Text);
@@ -899,17 +911,17 @@ static async Task BuiltInRedlineSelection()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal(button.Get("background")!.Text, focused.Get("background")!.Text);
-    Assert.Equal("#ff3d2e", focused.Get("outline-color")!.Text);
-    Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
-    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("#ffab91", focused.Get("outline-color")!.Text);
+    Assert.Equal("2px", focused.Get("outline-width")!.Text);
+    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
 
-    // A transparent card has no box to underline, so the edge is zeroed again.
+    // A transparent card must not acquire the tray stripe.
     var transparentCard = reload.Current.Theme.Resolve(new WrssElement(
         "container",
         null,
         new HashSet<string>(["wrail-card", "wrail-card--transparent"]),
         new HashSet<WrssPseudoState>()));
-    Assert.Equal("0px", transparentCard.Get("border-bottom-width")!.Text);
+    Assert.True(transparentCard.Get("border-bottom-width") is null, "Transparent cards must not acquire a structural edge.");
 
     // A red accent forces danger off red; the two must stay separable.
     var dangerItem = reload.Current.Theme.Resolve(new WrssElement(
@@ -917,13 +929,13 @@ static async Task BuiltInRedlineSelection()
         null,
         new HashSet<string>(["wrail-action-sheet__item", "wrail-action-sheet__item--danger"]),
         new HashSet<WrssPseudoState>()));
-    Assert.Equal("#ff5fa8", dangerItem.Get("color")!.Text);
+    Assert.Equal("#ffc0d8", dangerItem.Get("color")!.Text);
     var primaryIconButton = reload.Current.Theme.Resolve(new WrssElement(
         "button",
         null,
         new HashSet<string>(["wrail-icon-button", "wrail-icon-button--primary"]),
         new HashSet<WrssPseudoState>()));
-    Assert.Equal("#ff3d2e", primaryIconButton.Get("background")!.Text);
+    Assert.Equal("#ffab91", primaryIconButton.Get("background")!.Text);
     Assert.True(dangerItem.Get("color")!.Text != primaryIconButton.Get("background")!.Text,
         "Destructive intent must not resolve to the same ink as the accent.");
 
@@ -932,9 +944,9 @@ static async Task BuiltInRedlineSelection()
         null,
         new HashSet<string>(["wrail-section-header__eyebrow"]),
         new HashSet<WrssPseudoState>()));
-    Assert.Equal("#ff3d2e", eyebrow.Get("color")!.Text);
-    Assert.Equal("uppercase", eyebrow.Get("text-transform")!.Text);
-    Assert.Equal("0.14em", eyebrow.Get("letter-spacing")!.Text);
+    Assert.Equal("#dec4bf", eyebrow.Get("color")!.Text);
+    Assert.Equal("none", eyebrow.Get("text-transform")!.Text);
+    Assert.Equal("0.02em", eyebrow.Get("letter-spacing")!.Text);
 
     var defaultCanvas = WrssThemeCompiler.Compile(catalog.BuiltInDefault.Package)
         .Theme!.Resolve(new WrssElement("canvas"));

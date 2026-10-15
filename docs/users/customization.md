@@ -12,6 +12,24 @@ Choose a theme and adjust the interface scale until text and controls are easy
 to read from where you play. Shared widget controls and controller hints use
 theme colors. Widgets may also supply their own artwork and style choices.
 
+The built-in collection includes ten themes:
+
+| Theme | Appearance |
+| --- | --- |
+| Default | Warm graphite with parchment accents |
+| Cool Slate | Blue-grey surfaces with steel accents |
+| Neon Circuit | Indigo surfaces, cyan accents and angular controls |
+| Arcade Rush | Plum surfaces, pink accents and rounded controls |
+| Redline | Oxblood surfaces, coral accents and a scarlet tray edge |
+| Mineral Light | Light mineral surfaces with dark petrol text |
+| Canopy | Evergreen surfaces and pale sage accents |
+| Amber Signal | Warm instrument-panel colors and amber accents |
+| Velvet Dusk | Muted violet surfaces with serif headings |
+| Mono Ink | Graphite and white with firm edges and minimal decoration |
+
+Mono Ink is a visual theme. Use the separate contrast accessibility setting
+when you need the host's high-contrast policy.
+
 **Settings → Overlay → Interface size** ranges from 50% to 125%. Lower it if
 Windows display scaling makes the overlay too large. The size is saved per display.
 

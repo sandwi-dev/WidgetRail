@@ -1,37 +1,40 @@
 :root {
   --panel-shading: .030;
-  --control-shading: .050;
-  --focus-shading: .070;
+  --control-shading: .035;
+  --focus-shading: .045;
   --inset-shading: -0.035;
   --depth-shadow: rgba(0, 7, 20, 0.32);
   --depth-highlight: rgba(210, 230, 255, 0.09);
   --depth-lowlight: rgba(0, 0, 0, 0.18);
-  --focus-width: 1.5px;
-  --focus-offset: -1.5px;
+  --focus-width: 2px;
+  --focus-offset: -2px;
 
   --canvas: #080d14;
   --canvas-veil: rgba(2, 6, 12, 0.72);
   --surface: rgba(15, 23, 34, 0.98);
   --surface-raised: rgba(22, 32, 45, 0.98);
-  --modal-surface: rgba(22, 32, 45, 0.80);
+  --modal-surface: rgba(22, 32, 45, 0.96);
   --surface-subtle: rgba(30, 42, 58, 0.94);
   --surface-active: rgba(39, 54, 72, 0.98);
   --border: rgba(219, 230, 240, 0.12);
   --border-strong: rgba(219, 230, 240, 0.22);
   --text: #edf2f7;
   --controller-glyph-color: #9fb7d0;
-  --text-muted: #a3afbd;
+  --text-muted: #bfccd9;
   --scrollbar-track: #303b49;
   --scrollbar-thumb: #a3afbd;
-  --text-subdued: #74808d;
+  --text-subdued: #92a2b3;
   --focus: var(--accent);
-  --accent: #8ca9c4;
-  --success: #8eb19f;
-  --info: #8ca9c4;
-  --warning: #c1a36f;
-  --danger: #c9868b;
-  --font-text: Segoe UI Variable Text, Segoe UI;
-  --font-display: Segoe UI Variable Display, Segoe UI;
+  --accent: #acc9df;
+  --success: #aad4bf;
+  --info: #acc9df;
+  --warning: #e4c58a;
+  --danger: #e8adb5;
+  --surface-muted: var(--surface-subtle);
+  --error: var(--danger);
+  --scrim: var(--canvas-veil);
+  --font-text: Segoe UI;
+  --font-display: Segoe UI;
 }
 
 /* Widget modal: host-clamped geometry, theme-owned colors and typography. */

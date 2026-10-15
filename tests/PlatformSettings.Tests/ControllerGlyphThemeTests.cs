@@ -14,6 +14,11 @@ internal static class ControllerGlyphThemeTests
                      (ThemeIdentity.BuiltInNeonCircuit, ThemeIdentity.BuiltInNeonCircuitVersion, "#83c6d8"),
                      (ThemeIdentity.BuiltInArcadeRush, ThemeIdentity.BuiltInArcadeRushVersion, "#dba6cf"),
                      (ThemeIdentity.BuiltInRedline, ThemeIdentity.BuiltInRedlineVersion, "#e8a299"),
+                     (ThemeIdentity.BuiltInMineralLight, ThemeIdentity.BuiltInMineralLightVersion, "#365c66"),
+                     (ThemeIdentity.BuiltInCanopy, ThemeIdentity.BuiltInCanopyVersion, "#c6d9b5"),
+                     (ThemeIdentity.BuiltInAmberSignal, ThemeIdentity.BuiltInAmberSignalVersion, "#e8ce9b"),
+                     (ThemeIdentity.BuiltInVelvetDusk, ThemeIdentity.BuiltInVelvetDuskVersion, "#cbbbe2"),
+                     (ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMonoInkVersion, "#e0e0e0"),
                  })
         {
             var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
