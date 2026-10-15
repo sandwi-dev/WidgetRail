@@ -46,7 +46,7 @@ first published/installed release. Mouse hiding and extra repositories deferred.
 - [x] Startup update check preference/service/notification and installer wiring
 - [x] In-app recovery simplification
 - [x] Focused regression checks, native synthetic validation and review
-- [ ] Documentation, complete candidate, payload verification and launch
+- [x] Documentation, complete candidate, payload verification and launch
 
 Initial implementation: shared `NativeMenuNavigator`, recursive menu theme/input
 ownership, grouped tray commands, rail Back behavior, and Settings direct host
@@ -119,8 +119,24 @@ including a guarded reconciliation after initial layout.
 
 ## Acceptance checkpoint
 
-Remaining: build/verify a complete Developer candidate and launch with the normal
-profile, sign-ins and Guide preserved. Physical checks: tiered menu/controller
+Complete Developer candidate built from production-code commit `1b9f9870`:
+`artifacts/settings-updates/candidate-01/WidgetRail-Developer-0.1.0-preview.31-win-x64`.
+The old candidate was gracefully closed; the new candidate was launched normally
+with `--show`, preserving the existing profile and Guide configuration. PID 34524
+reached `input-ready` with Settings selected. `live-payload.json` confirms all 136
+deployed DLLs match the publication. `candidate-verification.json` confirms file
+inventory, catalog/package integrity (15 widgets) and published frontend cleanup.
+No distribution installer, merge, push, release or worktree removal was performed.
+
+Additional evidence: `core-webapp-03/result.json` passes 140 native checks across
+browser controls, permissions, notifications, pin/dialog layers, session capacity,
+renderer recovery and shutdown. The combined test needed explicit restoration of
+its browser starting focus after the synthetic menu fixture; native flyout cleanup
+now awaits Closed. These final edits are validation-only and excluded from the
+published frontend. `full-native-06` still times out at child Page actions after
+45 successful checks, so the extended new-window stress limitation remains open.
+
+Physical checks: tiered menu/controller
 navigation and shortcuts, rail B, Settings header Restart/Quit during loading,
 About Back-to-App updates navigation, preference persistence, and notification
 opening. Full real upgrade/recovery remains for the subsequent release test;

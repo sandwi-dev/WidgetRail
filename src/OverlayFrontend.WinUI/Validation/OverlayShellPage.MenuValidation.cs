@@ -70,6 +70,11 @@ internal sealed partial class OverlayShellPage
             Appearance = Appearance with { WidgetSwitcher = original };
             radialRequested = false; RefreshRadialChooser();
             await SelectAsync("webapp-a", enterWidget: true);
+            // Restore this fixture's browser starting point. Reorder deliberately
+            // leaves focus in the rail, and selection alone preserves focus history.
+            var slot = Slots(surface).First(slot => slot.Surface?.CurrentTitle == "Shell /primary");
+            slot.Focus(FocusState.Keyboard);
+            await WebAppUntil(() => slot.Surface?.IsBrowsing == true);
         }
         async Task Press(ControllerButton button)
         { Receive(new ControllerFrame { Connected = 1 }); await RouteButtonAsync(button, ControllerEventPhase.Pressed); await RouteButtonAsync(button, ControllerEventPhase.Released); }
@@ -113,6 +118,15 @@ internal sealed partial class OverlayShellPage
             check(group.Items[0].FocusState == FocusState.Keyboard, "Controller menu wraparound returns to the first action");
             check(navigator.Back() && group.FocusState == FocusState.Keyboard, "Long submenu returns focus to its parent");
         }
-        finally { flyout.Hide(); }
+        finally
+        {
+            if (group.IsLoaded)
+            {
+                var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                flyout.Closed += (_, _) => closed.TrySetResult();
+                flyout.Hide();
+                await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
     }
 }
