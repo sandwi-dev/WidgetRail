@@ -23,6 +23,23 @@ public sealed class LocalWidgetInstallTests
 
     [TestMethod]
     [DataRow(false)][DataRow(true)]
+    public async Task ApplicationControlsValidateCurrentSettingsFrameWithoutWorkerRoundtrip(bool restart)
+    {
+        var action = new WidgetActionEvent(restart ? "application.restart" : "application.quit",
+            restart ? "settings.restart" : "settings.quit", InputScopeId: "settings-root");
+        await Run(_ => Task.CompletedTask, (session, frame) =>
+        {
+            Assert.AreEqual(restart ? WidgetApplicationControl.Restart : WidgetApplicationControl.Quit,
+                session.ResolveApplicationControl(frame, action));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveApplicationControl(frame, action with { SourceElementId = "forged" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveApplicationControl(frame, action with { Phase = ControllerEventPhase.Repeated }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveApplicationControl(frame with { Authority = frame.Authority with { WidgetId = "community" } }, action));
+            return Task.CompletedTask;
+        }, action);
+    }
+
+    [TestMethod]
+    [DataRow(false)][DataRow(true)]
     public async Task CompletionBeforeAcknowledgementIsNotLostAndUpdateKeepsTarget(bool update)
     {
         var action = update ? Action with { SourceElementId = "installed.update.file." + new string('d',64), InputScopeId = "installed.update" } : Action;

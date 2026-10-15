@@ -65,6 +65,7 @@ public sealed partial class SettingsWidget : Widget
     private readonly SettingsInstalledWidgetUninstallOperation _packageUninstall;
     private readonly string? _bundledWidgetRoot;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private int _applicationControlPending;
     private readonly object _stateLock = new();
     private OverlayDisplayContext _display = OverlayDisplayContext.Unavailable;
     private PlatformSettingsDocument _settings = PlatformSettingsDocument.Default;
@@ -374,6 +375,13 @@ public sealed partial class SettingsWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (action.ActionId is "application.quit" or "application.restart")
+        {
+            // Hosts with direct application controls intercept these commands.
+            // Keep the worker fallback independent of Settings initialization.
+            await RequestApplicationControlAsync(action.ActionId == "application.restart", cancellationToken).ConfigureAwait(false);
+            return;
+        }
         bool initializing;
         lock (_stateLock)
         {
@@ -480,10 +488,6 @@ public sealed partial class SettingsWidget : Widget
                         : startup;
                     lock (_stateLock) _startupStatus = changed;
                     SetOperation(changed.Message, false, changed.Error);
-                    break;
-                case "application.quit":
-                case "application.restart":
-                    await RequestApplicationControlAsync(action.ActionId == "application.restart", cancellationToken).ConfigureAwait(false);
                     break;
                 case "installed.permissions.open": OpenSelectedInstalledPermissions(); break;
                 case "open.permission-diagnostics": OpenPermissionDiagnostics(); break;
@@ -1244,14 +1248,18 @@ public sealed partial class SettingsWidget : Widget
 
     private async Task RequestApplicationControlAsync(bool restart, CancellationToken cancellationToken)
     {
+        if (Interlocked.CompareExchange(ref _applicationControlPending, 1, 0) != 0) return;
+        var accepted = false;
         SetOperation(restart ? "Restarting WidgetRail…" : "Closing WidgetRail…", true, false);
         try
         {
             var result = await _diagnosticsService.RequestApplicationControlAsync(restart, cancellationToken).ConfigureAwait(false);
+            accepted = result.Accepted;
             if (!result.Accepted) SetOperation("WidgetRail could not accept the request. Try again.", false, true);
         }
         catch (PlatformDiagnosticsException) { SetOperation("WidgetRail is unavailable. Try again.", false, true); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { SetOperation("Request cancelled", false, false); }
+        finally { if (!accepted) Interlocked.Exchange(ref _applicationControlPending, 0); }
     }
 
     private async Task AllowAllPermissionsAsync(CancellationToken cancellationToken)

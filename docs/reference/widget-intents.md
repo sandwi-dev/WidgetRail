@@ -325,3 +325,12 @@ dotnet build tests/WidgetIntents.Tests/WidgetIntents.Tests.csproj -c Release -bl
 
 Use a fresh binlog path for subsequent builds. Checks are synthetic and do not
 open websites, launch processes, change system settings or invoke real widgets.
+
+### App update destination
+
+`WidgetIntentContracts.AppUpdates` declares `widgetrail.settings.updates.open`,
+version 1, with an empty object payload. Settings handles it by opening App updates
+and reading status. It never starts a check, download, installation or recovery
+as a side effect of navigation. Pending ordinary widget notifications may use
+`OpenIntent` with any valid sender-declared intent contract; see
+[widget notifications](widget-notifications.md).

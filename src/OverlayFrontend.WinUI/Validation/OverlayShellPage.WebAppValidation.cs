@@ -52,6 +52,20 @@ internal sealed partial class OverlayShellPage
                     await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
                     return;
                 }
+                if (Environment.GetCommandLineArgs().Contains("--settings-updates-menus"))
+                {
+                    step = "tiered menus and rail Back";
+                    await VerifyTieredMenusAsync(Check);
+                }
+                if (Environment.GetCommandLineArgs().Contains("--settings-updates-only"))
+                {
+                    step = "startup update notification";
+                    await VerifyAppUpdateNotificationAsync(Check);
+                    step = "widget notification intents";
+                    await VerifyWidgetNotificationsAsync(Check);
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
                 if (Environment.GetCommandLineArgs().Contains("--webapp-new-window-flow"))
                 {
                     step = "new-window flow";

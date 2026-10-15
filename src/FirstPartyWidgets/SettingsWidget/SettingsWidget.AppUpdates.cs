@@ -3,7 +3,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.FirstPartyWidgets.Settings;
 
-internal sealed record SettingsAppUpdateState(AppUpdateSnapshot Snapshot, bool Confirm = false, string? Error = null, bool NotesExpanded = false)
+internal sealed record SettingsAppUpdateState(AppUpdateSnapshot Snapshot, bool Confirm = false, string? Error = null, bool NotesExpanded = false, string? RecoveryReview = null)
 {
     internal static SettingsAppUpdateState Empty { get; } = new(AppUpdateSnapshot.Unavailable);
 }
@@ -25,6 +25,18 @@ public sealed partial class SettingsWidget
         lock (_stateLock) state = _appUpdateState;
         switch (action.ActionId)
         {
+            case "app-update.auto": await ReadAppUpdatesAsync(new(state.Snapshot.AutomaticallyCheck ? "auto-disable" : "auto-enable"), token).ConfigureAwait(false); break;
+            case "app-update.recovery.review":
+                lock (_stateLock) _appUpdateState = state with { RecoveryReview = state.Snapshot.Recovery?.Id };
+                break;
+            case "app-update.recovery.dismiss": lock (_stateLock) _appUpdateState = state with { RecoveryReview = null }; break;
+            case "app-update.recovery.restore":
+                if (state.RecoveryReview is { } recovery && recovery == state.Snapshot.Recovery?.Id)
+                {
+                    lock (_stateLock) _appUpdateState = state with { RecoveryReview = null };
+                    await ReadAppUpdatesAsync(new("recover", recovery), token).ConfigureAwait(false);
+                }
+                break;
             case "app-update.check": await ReadAppUpdatesAsync(new("check"), token).ConfigureAwait(false); break;
             case "app-update.download": await ReadAppUpdatesAsync(new("download"), token).ConfigureAwait(false); break;
             case "app-update.cancel": await ReadAppUpdatesAsync(new("cancel"), token).ConfigureAwait(false); break;
@@ -74,6 +86,9 @@ internal static partial class SettingsPresentation
             UI.Text("App updates & recovery", "app-update.heading").Classes("page-heading"),
             UI.Text("Current version " + snapshot.CurrentVersion, "app-update.current").Classes("page-help"),
             UI.Text("Updates only start when you choose. WidgetRail must be closed before setup can continue.", "app-update.help").Classes("page-help"),
+            UI.Switch("Automatically check for updates", snapshot.AutomaticallyCheck, "app-update.auto", "app-update.auto")
+                .Disabled(snapshot.State == "unavailable"),
+            UI.Text("Check shortly after startup and notify when an update is available. Downloads and installation remain manual.", "app-update.auto.help").Classes("page-help"),
             UI.Button("Check for updates", "app-update.check", "app-update.check").Busy(busy).Classes("setting-row"),
         };
         if (snapshot.AvailableVersion is { } available)
@@ -97,17 +112,28 @@ internal static partial class SettingsPresentation
         }
         if (busy) items.Add(UI.Button("Cancel", "app-update.cancel", "app-update.cancel").Classes("secondary-button"));
         items.Add(UI.Text("Recovery", "app-update.recovery.heading").Classes("section-heading"));
-        items.Add(UI.Text("A desktop recovery shortcut is created before installation. It restores the previous version and pre-update profile even if WidgetRail will not open. Your newer profile is preserved separately. Windows credentials and external widget data are not rolled back.", "app-update.recovery.help").Classes("page-help"));
+        items.Add(UI.Text("Restore the previous version and its pre-update profile from here. Your newer profile is preserved separately. Windows credentials and external widget data are not rolled back.", "app-update.recovery.help").Classes("page-help"));
+        if (snapshot.Recovery is { } previous)
+            items.Add(UI.Button("Restore version " + previous.PreviousVersion, "app-update.recovery.review", "app-update.recovery.review").Disabled(busy || snapshot.State == "handoff").Classes("secondary-button"));
+        else items.Add(UI.Text("No recovery is available for this installation.", "app-update.recovery.empty").Classes("page-help"));
         items.Add(UI.Button("Back", "back", "app-update.back").Classes("secondary-button"));
-        var view = View(header, PageScope("app-update.page", items.ToArray()), "app-update.check", "app-update.page");
+        var view = View(header, PageScope("app-update.page", items.ToArray()), "app-update.auto", "app-update.page");
         if (state.Confirm && snapshot.State == "ready")
             view = view.WithModal(new WidgetModal("app-update.confirm", "Prepare to install",
                 UI.Stack("app-update.confirm.content",
-                    UI.Text("Both installers have been verified. Continue, then quit WidgetRail from Settings. A Windows confirmation opens after the app exits; your profile is backed up before the interactive installer starts. The desktop recovery shortcut remains available if you finish later.", "app-update.confirm.help"),
+                    UI.Text("Both installers have been verified. Continue, then quit WidgetRail from Settings. A Windows confirmation opens after the app exits; your profile is backed up before the interactive installer starts. After updating, recovery is available on this page.", "app-update.confirm.help"),
                     UI.Text("The backup may contain private settings and widget data. Keep the recovery folder private. Installation is stopped if a complete backup cannot be made.", "app-update.confirm.privacy"),
                     UI.Row("app-update.confirm.actions",
                         UI.Button("Cancel", "app-update.dismiss", "app-update.dismiss"),
                         UI.Button("Continue", "app-update.install", "app-update.install"))), "app-update.dismiss", "app-update.dismiss"));
+        if (state.RecoveryReview is { } reviewed && snapshot.Recovery is { } recovery && recovery.Id == reviewed)
+            view = view.WithModal(new WidgetModal("app-update.recovery.confirm", "Restore previous version?",
+                UI.Stack("app-update.recovery.content",
+                    UI.Text("Restore " + recovery.PreviousVersion + " and its pre-update profile. Your current profile will be kept separately. Continue, then quit WidgetRail to complete recovery.", "app-update.recovery.description"),
+                    UI.Row("app-update.recovery.actions",
+                        UI.Button("Cancel", "app-update.recovery.dismiss", "app-update.recovery.dismiss"),
+                        UI.Button("Continue", "app-update.recovery.restore", "app-update.recovery.restore"))),
+                "app-update.recovery.dismiss", "app-update.recovery.dismiss"));
         return view;
     }
 }

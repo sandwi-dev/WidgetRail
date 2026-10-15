@@ -5,12 +5,14 @@ using System.Text.Json;
 using Microsoft.Win32;
 using WidgetRail.PackageDistribution;
 using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformSettings;
+using System.Threading.Channels;
 
 namespace WidgetRail.WidgetBridge;
 
 internal sealed record AppInstallation(string Version, string Edition, string Root, bool CanInstall);
 
-internal sealed class BridgeAppUpdates : IAsyncDisposable
+internal sealed partial class BridgeAppUpdates : IAsyncDisposable
 {
     private const string Repository = "sandwi-dev/WidgetRail";
     private readonly object _gate = new();
@@ -18,7 +20,10 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
     private readonly string _cache;
     private readonly HttpMessageHandler? _http;
     private readonly Action<string> _launch;
-    private readonly Action<string> _shortcut;
+    private readonly Action<string> _recover;
+    private readonly AppUpdatePreference _preference;
+    private bool _startupChecked, _recoveryLoaded;
+    internal Channel<AppUpdateSnapshot> Changes { get; } = Channel.CreateBounded<AppUpdateSnapshot>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _operation;
     private Task? _job;
@@ -28,12 +33,16 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
     private string? _prepared;
     private bool _disposed;
 
-    public BridgeAppUpdates(AppInstallation installation, string cache, HttpMessageHandler? http = null, Action<string>? launch = null, Action<string>? shortcut = null)
+    public BridgeAppUpdates(AppInstallation installation, string cache, HttpMessageHandler? http = null, Action<string>? launch = null, Action<string>? recover = null, string? profileRoot = null)
     {
-        _installation = installation; _cache = Path.GetFullPath(cache); _http = http; _launch = launch ?? Launch; _shortcut = shortcut ?? WriteShortcut;
+        _installation = installation; _cache = Path.GetFullPath(cache); _http = http; _launch = launch ?? (root => Launch(root, "Install")); _recover = recover ?? (root => Launch(root, "Recover"));
+        _preference = new(profileRoot ?? Path.Combine(_cache, ".preferences"));
         _snapshot = new(0, "idle", installation.Version, CanInstall: installation.CanInstall,
             Message: installation.CanInstall ? "Check releases when you are ready. Updates are never installed automatically."
                 : "Release checks are available. Install updates from the registered Inno installation, not a development candidate.");
+        try { _snapshot = _snapshot with { AutomaticallyCheck = _preference.Read() }; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { _snapshot = _snapshot with { AutomaticallyCheck = false, Message = "Could not read automatic-update preference. Save a choice in App updates." }; }
     }
 
     internal static BridgeAppUpdates Create(string? profile)
@@ -57,7 +66,12 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or ArgumentException) { }
-        return new(installation, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail-Recovery"));
+        var normal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail");
+        var settings = profile ?? normal;
+        var cache = Path.GetFullPath(settings).Equals(Path.GetFullPath(normal), StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail-Recovery")
+            : Path.Combine(settings, "update-recovery");
+        return new(installation, cache, profileRoot: settings);
     }
 
     public ValueTask<AppUpdateSnapshot> HandleAsync(AppUpdateCommand command, CancellationToken token)
@@ -66,7 +80,20 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!_recoveryLoaded) { RefreshRecovery(); _recoveryLoaded = true; }
             if (command.Action == "status") return ValueTask.FromResult(_snapshot);
+            if (command.Action is "auto-enable" or "auto-disable")
+            {
+                try
+                {
+                    _preference.Write(command.Action == "auto-enable");
+                    Set(_snapshot with { AutomaticallyCheck = command.Action == "auto-enable", Message = "Automatic update preference saved. Downloads and installation remain manual." });
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                { Set(_snapshot with { Message = "Could not save automatic-update preference. The previous choice remains active." }); }
+                return ValueTask.FromResult(_snapshot);
+            }
+            if (command.Action == "recover") return ValueTask.FromResult(RequestRecovery(command.ReviewToken!));
             if (command.Action == "cancel")
             {
                 _operation?.Cancel();
@@ -80,9 +107,9 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
                     return ValueTask.FromResult(_snapshot);
                 // This starts only the independent confirmation UI; it never closes
                 // WidgetRail or launches setup while this app remains running.
-                try { _launch(_prepared); Set(_snapshot with { State = "handoff", ReviewToken = null, Message = "Quit WidgetRail now; confirmation opens after it exits. If you finish later, use the desktop recovery shortcut. Setup remains interactive." }); }
+                try { _launch(_prepared); Set(_snapshot with { State = "handoff", ReviewToken = null, Message = "Quit WidgetRail now; confirmation opens after it exits. If you finish later, return to App updates. Setup remains interactive." }); }
                 catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
-                { Set(_snapshot with { Message = "Could not open recovery. Use the WidgetRail Recovery shortcut on your desktop." }); }
+                { Set(_snapshot with { Message = "Could not open recovery. Try again from App updates." }); }
                 return ValueTask.FromResult(_snapshot);
             }
             if (command.Action == "download" && (_release is null || _asset is null || !_installation.CanInstall)) return ValueTask.FromResult(_snapshot);
@@ -145,16 +172,15 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
         { schema = 1, previousVersion = _installation.Version, updateVersion = release.Tag.TrimStart('v'), edition = _installation.Edition, previousRoot = _installation.Root,
             previousSha256 = oldHash, updateSha256 = newHash }), token);
         await File.WriteAllTextAsync(Path.Combine(root, "README.txt"),
-            "WidgetRail update recovery\r\nUse the desktop WidgetRail Recovery shortcut after quitting WidgetRail.\r\n" +
+            "WidgetRail update recovery\r\nStart recovery from Settings > App updates.\r\n" +
             "This private folder contains installers and, after installation, a complete local profile backup. Do not share it.\r\n" +
             "Recovery restores the previous app and profile. The newer profile is kept as profile-after. Windows credentials and external widget data are not rolled back.\r\n", token);
         token.ThrowIfCancellationRequested();
-        _shortcut(root);
         lock (_gate)
         {
             _prepared = root;
             Set(_snapshot with { State = "ready", ReviewToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
-                Message = "Both installers verified. Installation first backs up your profile. Recovery is available from the desktop even if WidgetRail cannot start." });
+                Message = "Both installers verified. Installation first backs up your profile. After updating, recovery is available in Settings > App updates." });
         }
     }
 
@@ -190,39 +216,36 @@ internal sealed class BridgeAppUpdates : IAsyncDisposable
         }
         return a.Pre.Length.CompareTo(b.Pre.Length);
     }
-    private void Set(AppUpdateSnapshot value) => _snapshot = value with { Revision = _snapshot.Revision + 1 };
+    private void Set(AppUpdateSnapshot value)
+    {
+        _snapshot = value with { Revision = _snapshot.Revision + 1 };
+        Changes.Writer.TryWrite(_snapshot);
+    }
+    internal ValueTask<AppUpdateSnapshot> CheckAtStartupAsync(CancellationToken token)
+    {
+        lock (_gate)
+        {
+            if (_startupChecked || _disposed) return ValueTask.FromResult(_snapshot);
+            _startupChecked = true;
+            return _snapshot.AutomaticallyCheck ? HandleAsync(new("check"), token) : ValueTask.FromResult(_snapshot);
+        }
+    }
     private static string SafeError(Exception error) => error is DistributionOperationException or DistributionUsageException
         ? error.Message[..Math.Min(500, error.Message.Length)] : "Could not prepare the update. Check free disk space and access to the recovery folder; no installation started.";
     private static void PlainPath(string path)
     { for (var item = new DirectoryInfo(path); item is not null; item = item.Parent) if (item.Exists && item.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new IOException("Recovery path contains a link."); }
     private static string PowerShell => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
-    private static void Launch(string root)
+    private static void Launch(string root, string mode)
     {
         var info = new ProcessStartInfo(PowerShell) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root };
-        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(root, "Recover.ps1"), "-Mode", "Install", "-WaitForAppExit" }) info.ArgumentList.Add(arg);
+        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(root, "Recover.ps1"), "-Mode", mode, "-WaitForAppExit" }) info.ArgumentList.Add(arg);
         using var process = Process.Start(info) ?? throw new IOException("Recovery could not start.");
-    }
-    private static void WriteShortcut(string root)
-    {
-        // Windows shell link, no shell command-string construction or cmd parsing.
-        var type = Type.GetTypeFromProgID("WScript.Shell") ?? throw new IOException("Windows shortcut creation is unavailable.");
-        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        if (string.IsNullOrWhiteSpace(desktop) || !Directory.Exists(desktop)) throw new IOException("The desktop folder is unavailable.");
-        dynamic shell = Activator.CreateInstance(type)!;
-        dynamic shortcut = shell.CreateShortcut(Path.Combine(desktop, "WidgetRail Recovery " + Path.GetFileName(root)[..8] + ".lnk"));
-        try
-        {
-            shortcut.TargetPath = PowerShell;
-            shortcut.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"" + Path.Combine(root, "Recover.ps1") + "\" -Mode Recover";
-            shortcut.WorkingDirectory = root; shortcut.WindowStyle = 7; shortcut.Description = "Restore WidgetRail and its pre-update profile"; shortcut.Save();
-        }
-        finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcut); System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }
     }
     public async ValueTask DisposeAsync()
     {
         Task? job;
         lock (_gate) { if (_disposed) return; _disposed = true; _lifetime.Cancel(); _operation?.Cancel(); job = _job; }
         if (job is not null) await job.ConfigureAwait(false);
-        _operation?.Dispose(); _lifetime.Dispose();
+        Changes.Writer.TryComplete(); _operation?.Dispose(); _lifetime.Dispose();
     }
 }

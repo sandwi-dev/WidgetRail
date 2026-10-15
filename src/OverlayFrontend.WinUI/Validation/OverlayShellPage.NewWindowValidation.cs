@@ -60,6 +60,8 @@ internal sealed partial class OverlayShellPage
         var pending = Open(parent); await Dialog("Where should this page open?"); await Decide("widget"); await pending;
         var original = await Child();
         await original.EvaluateFixtureAsync("document.body.insertAdjacentHTML('beforeend', '<a href=https://shell.fixture.invalid/new-window style=\"position:fixed;inset:0;z-index:9999\">Replace from child</a>')");
+        await original.EvaluateFixtureAsync("window.linkPainted=false;requestAnimationFrame(()=>requestAnimationFrame(()=>window.linkPainted=true))");
+        await WebAppUntilScript(original, "window.linkPainted===true");
         await WebAppUntil(() => original.IsBrowsing);
         await Press(ControllerButton.Menu); await Dialog("Page actions");
         var childOptions = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
@@ -68,7 +70,7 @@ internal sealed partial class OverlayShellPage
         check(ReferenceEquals(FocusManager.GetFocusedElement(hostChoiceDialog!.XamlRoot), childAction),
             "Child Page actions initially focuses its command without test focus injection");
         await Press(ControllerButton.A); await Dialog("Replace existing page?"); await Decide("widget");
-        var directReplacement = await Child();
+        var directReplacement = await Child(original);
         await WebAppUntil(() => !original.IsReady);
         check(!ReferenceEquals(original, directReplacement) && await directReplacement.EvaluateFixtureAsync("window.opener===null") == "true",
             "Host link replacement from a child retires its requester without joining its menu task or claiming a native opener");
@@ -94,7 +96,7 @@ internal sealed partial class OverlayShellPage
         await WebAppUntil(() => original.IsBrowsing && !HostChoiceActive);
         check(ReferenceEquals(parent.PinnablePopup, original), "Hiding during replacement cancels the decision without closing the existing page");
         pending = Open(original); await Dialog("Replace existing page?"); await Decide("widget"); await Finish(pending);
-        var replacement = await Child();
+        var replacement = await Child(original);
         check(!ReferenceEquals(replacement, original) && !original.IsReady && !replacement.HasPopup,
             "A request from an additional page replaces the sibling without nesting controllers");
         check(replacement.ProfileName == parent.ProfileName,
@@ -105,13 +107,13 @@ internal sealed partial class OverlayShellPage
         original = await Child(); await WebAppUntil(() => pinned?.Popup?.Child == original && parent.IsBrowsing);
         var bounds = pinned!.Window.Bounds;
         pending = Open(parent); await Dialog("Replace existing page?"); await Decide("pin"); await pending;
-        replacement = await Child(); await WebAppUntil(() => pinned?.Popup?.Child == replacement);
+        replacement = await Child(original); await WebAppUntil(() => pinned?.Popup?.Child == replacement);
         check(!ReferenceEquals(original, replacement) && pinned!.Window.Bounds == bounds,
             "Replacing a pinned page preserves this widget's remembered pin geometry");
         await SelectAsync("webapp-b", enterWidget: true);
         await EnterPinnedAsync(); await WebAppUntil(() => replacement.IsBrowsing);
         pending = Open(replacement); await Dialog("Replace existing page?"); await Decide("widget"); await Finish(pending);
-        var returned = await Child();
+        var returned = await Child(replacement);
         await WebAppUntil(() => pinned is null && activeWidget == "webapp-a" && parent.ActiveSurface == returned && returned.IsBrowsing);
         check(true, "Replacing from the interactive pin selects its parent widget even when another widget was open");
         await SelectAsync("webapp-b", enterWidget: true);
@@ -124,7 +126,7 @@ internal sealed partial class OverlayShellPage
         check(ReferenceEquals(pinned, otherPin) && ReferenceEquals(parent.PinnablePopup, returned),
             "Cancelling combined replacement preserves both the other widget's pin and the current page");
         pending = Open(returned); await Dialog("Replace existing page?"); await Decide("pin"); await Finish(pending);
-        var combined = await Child(); await WebAppUntil(() => pinned?.Popup?.Child == combined);
+        var combined = await Child(returned); await WebAppUntil(() => pinned?.Popup?.Child == combined);
         check(!ReferenceEquals(pinned, otherPin) && !returned.IsReady && !HostChoiceActive,
             "One confirmation replaces the existing page and another widget's pin");
         await UnpinAsync(save: true);
@@ -160,9 +162,12 @@ internal sealed partial class OverlayShellPage
             try { await action.WaitAsync(TimeSpan.FromSeconds(2)); }
             catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException or TimeoutException) { }
         }
-        async Task<BrowserSurface> Child()
+        async Task<BrowserSurface> Child(BrowserSurface? previous = null)
         {
-            await WebAppUntil(() => parent.PinnablePopup is { IsReady: true, IsNavigationInProgress: false, CurrentTitle: "Shell /new-window" });
+            // A replacement shares the URL and title. Wait for its identity and
+            // the asynchronous retirement, not merely the still-visible old page.
+            await WebAppUntil(() => parent.PinnablePopup is { IsReady: true, IsNavigationInProgress: false, CurrentTitle: "Shell /new-window" } child &&
+                !ReferenceEquals(child, previous) && previous?.IsReady != true);
             return parent.PinnablePopup!;
         }
         Task Dialog(string title) => WebAppUntil(() => hostChoiceDialog is { IsOpenForValidation: true } dialog && (string?)dialog.Title == title &&

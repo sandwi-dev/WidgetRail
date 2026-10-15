@@ -5,9 +5,10 @@ namespace WidgetRail.WidgetBridge;
 
 internal sealed partial class BridgeClientRegistry
 {
-    private sealed record IntentTicket(string SourceId, string SourceFingerprint, BridgeWorkerRun SourceRun,
+    private sealed record IntentTicket(string SourceId, string SourceFingerprint, BridgeWorkerRun? SourceRun,
         long CreatedAt, WidgetIntentRequest Request, WidgetIntentLaunchKind Kind,
-        IReadOnlyDictionary<string, string> Targets, BridgeIntentPrepareRequest Origin, WidgetIntentRequest Original);
+        IReadOnlyDictionary<string, string> Targets, BridgeIntentPrepareRequest? Origin, WidgetIntentRequest Original,
+        string? NotificationToken = null, bool HostUpdate = false);
     private readonly Dictionary<string, IntentTicket> _intentTickets = new(StringComparer.Ordinal);
     private sealed record ActiveIntentDelivery(string SourceId, CancellationTokenSource Cancellation);
     private readonly Dictionary<string, ActiveIntentDelivery> _activeIntentDeliveries = new(StringComparer.Ordinal);
@@ -64,6 +65,7 @@ internal sealed partial class BridgeClientRegistry
     private bool IntentActionCurrent(IntentTicket ticket)
     {
         if (!IntentSourceCurrent(ticket)) return false;
+        if (ticket.Origin is null) return ticket.HostUpdate || NotificationIntentCurrent(ticket);
         var source = _clients[ticket.SourceId];
         return source.FindInputOriginSnapshot(ticket.Origin.SnapshotSequence) is { } origin && source.CachedSnapshot is { } current &&
             ticket.Original.Matches(ResolveIntentSourceLocked(source, origin, current, ticket.Origin)) && Declared(source, ticket.Request);
@@ -78,7 +80,8 @@ internal sealed partial class BridgeClientRegistry
             if (!IntentActionCurrent(ticket)) return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             if (_intentTickets.Count + _activeIntentDeliveries.Count >= 16 && _intentTickets.Values.All(item => IntentFresh(item.CreatedAt, IntentNow())))
                 return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
-            candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets.SelectMany(widget =>
+            candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets
+                .Where(widget => !ticket.HostUpdate || widget.Id == "settings").SelectMany(widget =>
                 (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version)
                 .Select(handler => (new IntentHandlerCandidate(widget.Id, _catalogRevision + 1, CompiledWidgetIntentContract.Create(handler),
                     true, handler.SupportsPassiveDelivery), widget.CatalogFingerprint, handler.HasDynamicAvailability))).ToList();
@@ -142,7 +145,7 @@ internal sealed partial class BridgeClientRegistry
 
     private async Task<WidgetIntentPreparation?> ReportIntentAsync(string id, IntentTicket ticket, WidgetIntentStatus status, CancellationToken token)
     {
-        if (!ticket.Request.ReportsResult) return null;
+        if (!ticket.Request.ReportsResult || ticket.SourceRun is null) return null;
         ClientRegistration source;
         lock (_gate)
         {
@@ -199,7 +202,7 @@ internal sealed partial class BridgeClientRegistry
         lock (_gate)
         {
             DemandNotDisposed();
-            if (!IntentFresh(ticket.CreatedAt, IntentNow()) || !IntentSourceCurrent(ticket)) return new(false);
+            if (!IntentFresh(ticket.CreatedAt, IntentNow()) || !IntentSourceCurrent(ticket) || ticket.NotificationToken is not null && !NotificationIntentCurrent(ticket)) return new(false);
             if (ticket.Kind == WidgetIntentLaunchKind.ExternalBrowser)
                 return request.TargetWidgetId is null && request.TargetWorkerRun is null && request.PinnedTarget is null
                     ? new(true, ticket.Request.Payload.GetProperty("url").GetString()) : new(false);
@@ -222,7 +225,7 @@ internal sealed partial class BridgeClientRegistry
                 {
                     lock (_gate)
                     {
-                        if (!IntentSourceCurrent(ticket) || !IsCurrentLocked(target) || target.CachedWorkerRun != request.TargetWorkerRun ||
+                        if (!IntentSourceCurrent(ticket) || ticket.NotificationToken is not null && !NotificationIntentCurrent(ticket) || !IsCurrentLocked(target) || target.CachedWorkerRun != request.TargetWorkerRun ||
                             !target.HasCurrentSnapshotWorker || !IntentTargetPresented(target, ticket, request.PinnedTarget) ||
                             !ticket.Targets.TryGetValue(target.Configured.Id, out var fingerprint) || target.Configured.CatalogFingerprint != fingerprint)
                             return new(false);
@@ -281,8 +284,10 @@ internal sealed partial class BridgeClientRegistry
 
     private bool IntentSourceCurrent(IntentTicket ticket) => !_disposed &&
         _clients.TryGetValue(ticket.SourceId, out var source) && IsCurrentLocked(source) &&
-        source.Configured.WorkerFingerprint == ticket.SourceFingerprint && source.HasCurrentSnapshotWorker &&
-        source.CachedWorkerRun == ticket.SourceRun;
+        source.Configured.WorkerFingerprint == ticket.SourceFingerprint &&
+        (ticket.HostUpdate || ticket.NotificationToken is not null
+            ? ticket.HostUpdate || source.Client.IsRunning && new BridgeWorkerRun(source.Generation, source.Client.Starts) == ticket.SourceRun
+            : source.HasCurrentSnapshotWorker && source.CachedWorkerRun == ticket.SourceRun);
 
     private WidgetIntentRequest? ResolveIntentSourceLocked(ClientRegistration source, ViewSnapshot origin,
         ViewSnapshot current, BridgeIntentPrepareRequest request)

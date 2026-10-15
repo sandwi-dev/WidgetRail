@@ -107,6 +107,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Intent bridge end-to-end crosses both pipes and preserves cancellation", BridgeIntentEndToEnd.ThroughBothPipes),
     ("Intent bridge pinned and indexed sources cross both pipes with exact leases", BridgeIntentEndToEnd.SourceProjections),
     ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
+    ("Intent bridge notification grants require declared exact current content and explicit activation", BridgeIntentScenarios.NotificationIntents),
     ("Intent bridge exposes only the matched handler mapping presentation policy", BridgeIntentScenarios.HandlerMappingPolicy),
     ("Intent bridge passive delivery requires live projection and per-mapping opt-in", BridgeIntentScenarios.PassiveDelivery),
     ("Intent bridge fallback tickets are bounded expiring and one-shot", BridgeIntentScenarios.FallbackTickets),
@@ -431,6 +432,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             : instance == "media-player.instance" ? new MediaPlayerScenarios.Probe()
             : instance == "browser.instance" ? new WidgetRail.Samples.Browser.BrowserWidget()
             : instance == "browser-modes.instance" ? new ActivationBrowserFixture()
+            : instance == "settings.fixture" ? new ShellSettingsFixture()
             : instance.StartsWith("webapp-", StringComparison.Ordinal) ? new WebAppFrameworkFixture(instance == "webapp-idle.instance")
             : instance is "intent-source.instance" or "intent-target.instance"
             ? new IntentBridgeProbeWidget(instance == "intent-target.instance")

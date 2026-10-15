@@ -85,6 +85,8 @@ internal sealed partial class OverlayShellPage
 
         var host = interactive ? ControllerGuideModel.WithHost([]) : RadialOpen
             ? ControllerGuideModel.WithHost(RadialGuideHints()) : ControllerGuideModel.TrayHints(false);
+        if (!interactive && !RadialOpen && Appearance.WidgetSwitcher == WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial)
+            host = host.Select(hint => hint.Button == ControllerButton.B ? hint with { Label = "Open radial" } : hint).ToArray();
         var committed = !retired && visible && !switching && activeWidget == requestedWidget && surface is not null &&
             activeWidget is { } id && retainedSurfaces.TryGetValue(id, out var retained) &&
             ReferenceEquals(retained.Presenter, surface) && retained.PresentedLifecycle == DesiredLifecycle;

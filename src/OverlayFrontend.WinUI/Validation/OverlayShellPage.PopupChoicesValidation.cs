@@ -40,6 +40,7 @@ internal sealed partial class OverlayShellPage
         var child = await Child();
         check(PopupPreferences.Get(parent.WidgetId, parent.ProfileName, origin) == BrowserPopupPlacement.InWidget && !child.IsToolbarVisible,
             "Controller A toggles Remember and opens an in-widget popup without permanent chrome");
+        await WebAppUntil(() => child.IsBrowsing);
         await Press(ControllerButton.LeftStick);
         check(child.IsToolbarVisible, "LS reveals an in-widget popup's browser controls");
         await Press(ControllerButton.B);

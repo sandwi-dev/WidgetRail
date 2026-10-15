@@ -130,8 +130,8 @@ internal sealed partial class OverlayShellPage
                 Check(actualMenu.Items.Take(4).All(item => item.Icon is null), "Pin management commands have no invented shortcut hints");
                 Check(actualMenu.Items[4].Icon is FontIcon && AutomationProperties.GetHelpText(actualMenu.Items[4]).Contains("Tray shortcut:"),
                     "Interact exposes its controller shortcut and accessible help");
-                Check(actualMenu.Items[5].Icon is FontIcon && actualMenu.Items[6].Icon is FontIcon &&
-                    actualMenu.Items[6].KeyboardAcceleratorTextOverride == "Hold",
+                Check(actualMenu.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Reorder").Icon is FontIcon &&
+                    actualMenu.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Restart") is { Icon: FontIcon, KeyboardAcceleratorTextOverride: "Hold" },
                     "Reorder and restart show controller glyphs with an explicit hold hint");
                 CloseTrayMenu(true);
                 Check(PinCommands(sourceDescriptor with { PinningSupported = false, FullWidgetPinningSupported = false })

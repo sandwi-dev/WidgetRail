@@ -677,6 +677,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             if (await EnsureInteractionAsync(request.Authority, lifetime.Token))
             {
                 if (request.IndexedLease is not null) await InvokeIntentAsync(request);
+                else if (WidgetRail.WidgetPresentationSession.WidgetPresentationSession.IsApplicationControlAction(request.Action.ActionId))
+                    RequestApplicationControl(owner.Session.ResolveApplicationControl(request.Displayed, request.Action));
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
                     await InstallLocalWidgetAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
@@ -827,6 +829,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         retired = true;
         DisposeNotificationBanner();
         if (owner is not null) owner.Session.NotificationReceived -= ReceiveWidgetNotification;
+        if (owner is not null) owner.Session.AppUpdateChanged -= ReceiveAppUpdate;
         notificationCenter?.Dispose();
         PrepareNativeShutdown();
         localInstallCancellation?.Cancel();
@@ -845,6 +848,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         lifetime.Cancel();
         if (startup is not null) await startup;
         if (applicationControlPump is not null) await applicationControlPump;
+        if (startupUpdateCheck is not null) await startupUpdateCheck;
         if (controllerControlPump is not null) await controllerControlPump;
         if (capturePump is not null) await capturePump;
         if (capturing is not null) await capturing;

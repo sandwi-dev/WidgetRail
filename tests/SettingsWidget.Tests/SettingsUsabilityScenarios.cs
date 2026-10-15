@@ -29,6 +29,8 @@ internal static class SettingsUsabilityScenarios
             pages.Add(page, snapshot);
         }
         bool Has(SettingsPage page, string id) => Walk(pages[page].Root).Any(node => node.Id == id);
+        if (Walk(pages[SettingsPage.About].Root).Single(node => node.Id == "settings.back").Focus?.Down != "about.updates")
+            throw new Exception("About Back must reach App updates before Diagnostics.");
         if (!Has(SettingsPage.Appearance, "interface.stepper") || !Has(SettingsPage.Appearance, "overlay.focus-animation") ||
             Has(SettingsPage.Overlay, "interface.stepper") || Has(SettingsPage.Appearance, "overlay.position"))
             throw new Exception("Category ownership overlaps.");

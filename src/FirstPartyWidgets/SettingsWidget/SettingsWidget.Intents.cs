@@ -6,23 +6,29 @@ public sealed partial class SettingsWidget
 {
     private static readonly CompiledWidgetIntentContract widgetSettingsIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.WidgetSettings);
     private static readonly CompiledWidgetIntentContract widgetPermissionsIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.WidgetPermissions);
+    private static readonly CompiledWidgetIntentContract appUpdatesIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.AppUpdates);
 
     // Intents only navigate. They never grant permissions, enable widgets, or
     // accept a package review on behalf of the user.
     public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
         var contract = request.ContractId == widgetSettingsIntent.Id ? widgetSettingsIntent :
-            request.ContractId == widgetPermissionsIntent.Id ? widgetPermissionsIntent : null;
+            request.ContractId == widgetPermissionsIntent.Id ? widgetPermissionsIntent : request.ContractId == appUpdatesIntent.Id ? appUpdatesIntent : null;
         if (!IsActive || contract is null || !request.IsWellFormed() || request.Version != contract.Version ||
             request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload)) return WidgetIntentResult.Rejected;
-        var packageId = request.Payload.GetProperty("packageId").GetString()!;
+        var packageId = contract == appUpdatesIntent ? null : request.Payload.GetProperty("packageId").GetString()!;
         await _initializationTask.WaitAsync(cancellationToken).ConfigureAwait(false);
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsActive) return WidgetIntentResult.Rejected;
-            if (contract == widgetPermissionsIntent)
+            if (contract == appUpdatesIntent)
+            {
+                Navigate(SettingsPage.AppUpdates);
+                await ReadAppUpdatesAsync(new("status"), cancellationToken).ConfigureAwait(false);
+            }
+            else if (contract == widgetPermissionsIntent)
             {
                 await ReloadPermissionsAsync(cancellationToken).ConfigureAwait(false);
                 lock (_stateLock)

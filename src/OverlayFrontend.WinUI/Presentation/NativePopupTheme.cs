@@ -27,6 +27,7 @@ internal sealed partial class NativePopupTheme
     private ShellChromePalette? palette;
     private readonly LinearGradientBrush panelPaint = new() { StartPoint = new(0, 0), EndPoint = new(0, 1) };
     private double cornerRadius = 10;
+    private Style? menuPresenterStyle;
     private readonly Dictionary<Control, NativePopupSelection> decorations = [];
 
     internal void Attach(FrameworkElement root) { Owners.Remove(root); Owners.Add(root, this); }
@@ -49,13 +50,14 @@ internal sealed partial class NativePopupTheme
     }
     private IDisposable TrackMenu(MenuFlyout menu)
     {
-        var controls = menu.Items.OfType<Control>().ToArray();
+        var controls = MenuItems(menu.Items).OfType<Control>().ToArray();
+        RoutedEventHandler loaded = (_, _) => Apply(menu);
         RoutedEventHandler changed = (sender, _) => PaintMenuItem((Control)sender);
         foreach (var control in controls)
-        { control.GotFocus += changed; control.LostFocus += changed; decorations.Add(control, new(control)); }
+        { control.GotFocus += changed; control.LostFocus += changed; control.Loaded += loaded; decorations.Add(control, new(control)); }
         return Track(() => Apply(menu), () =>
         { foreach (var control in controls)
-          { control.GotFocus -= changed; control.LostFocus -= changed; if (decorations.Remove(control, out var decoration)) decoration.Dispose(); } });
+          { control.GotFocus -= changed; control.LostFocus -= changed; control.Loaded -= loaded; if (decorations.Remove(control, out var decoration)) decoration.Dispose(); } });
     }
     private IDisposable Track(Action apply, Action? release = null)
     {
@@ -72,7 +74,7 @@ internal sealed partial class NativePopupTheme
     {
         var resolved = ShellChromePalette.Resolve(next, settings);
         if (ReferenceEquals(styles, next) && appearance == settings && palette == resolved) return;
-        styles = next; appearance = settings; palette = resolved;
+        styles = next; appearance = settings; palette = resolved; menuPresenterStyle = null;
         surface.Color = resolved.Surface; ink.Color = resolved.Text; muted.Color = resolved.Muted;
         selected.Color = ShellChromePalette.Composite(resolved.Surface, resolved.Selected); selectedInk.Color = resolved.SelectedText;
         focus.Color = resolved.Focus;
@@ -98,24 +100,36 @@ internal sealed partial class NativePopupTheme
         // Flyouts live outside OverlayScaleRoot's transform. Apply its layout
         // zoom once here so native popup metrics match the originating widget.
         var zoom = appearance.InterfaceScale;
-        var style = new Style(typeof(MenuFlyoutPresenter));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, ResolvedPanel));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, ink));
-        style.Setters.Add(new Setter(Control.BorderBrushProperty, border));
-        style.Setters.Add(new Setter(Control.FontSizeProperty, fontSize * zoom));
-        style.Setters.Add(new Setter(Control.FontWeightProperty, fontWeight));
-        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6 * zoom)));
-        style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(cornerRadius * zoom)));
-        style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(zoom)));
-        style.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 220 * zoom));
-        style.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 360 * zoom * Math.Max(1, appearance.TextScale)));
-        if (font is not null) style.Setters.Add(new Setter(Control.FontFamilyProperty, font));
+        var style = menuPresenterStyle;
+        if (style is null)
+        {
+            style = new Style(typeof(MenuFlyoutPresenter));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, ResolvedPanel));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, ink));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, border));
+            style.Setters.Add(new Setter(Control.FontSizeProperty, fontSize * zoom));
+            style.Setters.Add(new Setter(Control.FontWeightProperty, fontWeight));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6 * zoom)));
+            style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(cornerRadius * zoom)));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(zoom)));
+            style.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, 220 * zoom));
+            style.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 360 * zoom * Math.Max(1, appearance.TextScale)));
+            if (font is not null) style.Setters.Add(new Setter(Control.FontFamilyProperty, font));
+            menuPresenterStyle = style;
+        }
         menu.MenuFlyoutPresenterStyle = style;
-        foreach (var item in menu.Items)
+        foreach (var item in MenuItems(menu.Items))
         {
             if (item is MenuFlyoutSeparator separator)
             { separator.Resources["MenuFlyoutSeparatorBackground"] = border; continue; }
             if (item is not Control control) continue;
+            for (DependencyObject? ancestor = control; ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
+                if (ancestor is MenuFlyoutPresenter presenter)
+                {
+                    if (!ReferenceEquals(presenter.Style, style)) presenter.Style = style;
+                    if (presenter.XamlRoot is { } root) presenter.MaxHeight = Math.Max(48, root.Size.Height - 32);
+                    break;
+                }
             control.FontSize = fontSize * zoom;
             control.FontWeight = fontWeight;
             control.MinHeight = 48 * zoom * Math.Max(1, appearance.TextScale);
@@ -136,6 +150,16 @@ internal sealed partial class NativePopupTheme
             control.FocusVisualPrimaryBrush = focus;
             control.UseSystemFocusVisuals = palette?.HighContrast == true;
             PaintMenuItem(control);
+        }
+    }
+
+    private static IEnumerable<MenuFlyoutItemBase> MenuItems(IEnumerable<MenuFlyoutItemBase> items)
+    {
+        foreach (var item in items)
+        {
+            yield return item;
+            if (item is MenuFlyoutSubItem sub)
+                foreach (var child in MenuItems(sub.Items)) yield return child;
         }
     }
 

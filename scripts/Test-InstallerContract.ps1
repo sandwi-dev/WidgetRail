@@ -38,7 +38,7 @@ Require ($taskPage.Contains('if CurPageID <> wpSelectTasks then Exit;') -and
     $taskPage.Contains("WizardSelectTasks('startup')") -and
     $taskPage.Contains('StartupSelectionInitialized := True;')) 'Restore startup only after task creation and preserve edits on Back/Next.'
 Require ($taskPage.Contains("WizardSelectTasks('!startup')") -and
-    $taskPage.Contains('WizardForm.TasksList.Enabled := not ForeignStartup;')) 'Foreign startup entries must remain unselected and unavailable.'
+    $installer.Contains('Check: CanConfigureStartup') -and $installer.Contains('Result := not ForeignStartup;')) 'Foreign startup entries must remain unselected and unavailable without disabling other tasks.'
 Write-Output 'PASS task initialization timing and startup selection contracts'
 
 Require (!$installer.Contains("function HasNet8")) "Setup must not require global .NET."

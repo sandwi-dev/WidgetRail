@@ -87,7 +87,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnosticSink = null,
         Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null,
         string? workerDiagnosticRoot = null,
-        PlatformSettingsStore? settingsStore = null)
+        PlatformSettingsStore? settingsStore = null,
+        BridgeAppUpdates? appUpdates = null)
     {
         _pipeName = ValidatePipeName(pipeName);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <=
@@ -97,7 +98,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _appearance = appearance;
         _controllers = new BridgeControllerControl(settingsStore);
         _settingsRoot = settingsStore?.Paths.RootDirectory;
-        _appUpdates = BridgeAppUpdates.Create(_settingsRoot);
+        _appUpdates = appUpdates ?? BridgeAppUpdates.Create(_settingsRoot);
         _consentStore = consentStore;
         _platformBackend = platformBackend;
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
@@ -237,6 +238,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         // serving unrelated requests such as Settings and the widget catalog.
 
         if (_appearance is not null) _appearance.Changed += OnAppearanceChanged;
+        var appUpdateEvents = PumpAppUpdateEventsAsync(sessionCancellation.Token);
         try
         {
             while (!sessionCancellation.IsCancellationRequested)
@@ -308,6 +310,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         finally
         {
             sessionCancellation.Cancel();
+            try { await appUpdateEvents.ConfigureAwait(false); } catch (OperationCanceledException) { }
             await requestDispatcher.CancelAndDrainAsync().ConfigureAwait(false);
             await _revisionNotifications.CloseAndDrainAsync().ConfigureAwait(false);
             if (_catalogMonitor is not null) _catalogMonitor.Changed -= OnCatalogChanged;
@@ -794,6 +797,30 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             var prepare = BridgeJson.FromElement<BridgeIntentPrepareRequest>(request.Payload);
             var result = await _registry.PrepareIntentAsync(prepare, cancellationToken).ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.PrepareNotificationIntent:
+        {
+            var result = await _registry.PrepareNotificationIntentAsync(BridgeJson.FromElement<BridgeNotificationIntentPrepare>(request.Payload), cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.ReleaseNotificationIntent:
+        {
+            _registry.ReleaseNotificationIntent(BridgeJson.FromElement<BridgeNotificationIntentPrepare>(request.Payload));
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new BridgeEmptyPayload(), cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.PrepareAppUpdateIntent:
+        {
+            var result = await _registry.PrepareAppUpdateIntentAsync(cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.StartAppUpdateCheck:
+        {
+            var status = await _appUpdates.CheckAtStartupAsync(cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.AppUpdateChanged, request.RequestId, status, cancellationToken).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.CommitIntent:

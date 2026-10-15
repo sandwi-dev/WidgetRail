@@ -235,7 +235,7 @@ the native host.
 The installer includes private .NET base and Windows Desktop runtimes, and checks for
 GameInput and WebView2. A missing WebView2 runtime requires an internet download.
 
-Use **Settings → About & troubleshooting → App updates & recovery** to check releases, review notes and prepare verified installers with a pre-update profile backup. Installation stays explicit and requires quitting WidgetRail. The desktop recovery shortcut works even if the updated app cannot start. See [App updates](docs/reference/app-updates.md). You can also manually run a newer installer.
+Use **Settings → About & troubleshooting → App updates & recovery** to review releases and prepare verified installers with a pre-update profile backup. Automatic checks default on and can notify after startup; opening the notification takes you to App updates. Downloading and installation stay explicit. Recovery is available from the same Settings page after updating; no recovery shortcut is created. See [App updates](docs/reference/app-updates.md). You can also manually run a newer installer.
 Built-in widgets update with the application; your settings and installed add-ons
 are retained. Production and Developer use the same application version and
 saved data, rather than separate stable and unstable channels.

@@ -14,6 +14,8 @@ internal sealed partial class OverlayShellPage
     {
         InitializeNotificationBell();
         owner!.Session.NotificationReceived += ReceiveWidgetNotification;
+        owner.Session.AppUpdateChanged += ReceiveAppUpdate;
+        startupUpdateCheck = CheckAppUpdatesAfterStartupAsync();
         browserOwner!.Notifications.Changed += RefreshWebappStatus;
         browserOwner.NotificationBannerRequested += QueueNotificationBanner;
     }
@@ -97,6 +99,10 @@ internal sealed partial class OverlayShellPage
         if (!long.TryParse(selected, out var id) || retired) return;
         var opened = await inbox.OpenAsync(id, async entry =>
         {
+            if (ReferenceEquals(entry.Owner, appUpdateNotificationOwner) && owner is { } updateOwner)
+                return await InvokeIntentCoreAsync(prepareNotification: updateOwner.Session.PrepareAppUpdateIntentAsync);
+            if (entry.Available && entry.Owner is WidgetRail.WidgetPresentationSession.WidgetPresentationNotification { IntentToken: not null } notification && owner is { } current)
+                return await InvokeIntentCoreAsync(prepareNotification: token => current.Session.PrepareNotificationIntentAsync(notification, token));
             if (!entry.Available || entry.Owner is not BrowserSurface source || retired) return false;
             if (pinned is { } pin && pin.WidgetId == entry.Widget && pin.IsCurrent && ReferenceEquals(source.XamlRoot, pin.Window.AutomationRoot.XamlRoot))
             {

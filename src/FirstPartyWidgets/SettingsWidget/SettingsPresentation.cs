@@ -215,8 +215,8 @@ internal static partial class SettingsPresentation
                 Card("About & troubleshooting", "App information, diagnostics, and recovery", "open.about", "category.diagnostics", "diagnostics", WidgetGlyph.Connection))
                 .Classes("category-grid")).Classes("root-category-list");
         var utilities = UI.ResponsiveGrid("settings.home.utilities", 120, 4,
-            UI.Button("Restart", "application.restart", "settings.restart").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Restart WidgetRail" },
-            UI.Button("Quit", "application.quit", "settings.quit").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Quit WidgetRail" })
+            UI.Button("Restart", "application.restart", "settings.restart").Classes("home-utility") with { AccessibilityLabel = "Restart WidgetRail" },
+            UI.Button("Quit", "application.quit", "settings.quit").Classes("home-utility") with { AccessibilityLabel = "Quit WidgetRail" })
             .Classes("home-utilities");
         return RootView(header,
             UI.Stack("settings.home.body", categories, utilities).Classes("home-body"),
@@ -380,7 +380,7 @@ internal static partial class SettingsPresentation
         UI.Text("Inspect service status, widget failures, and recovery information.", "about.diagnostics.help").Classes("page-help"),
         UI.Button("Reset settings…", "open.reset", "category.reset").Classes("danger-button"),
         UI.Text("Review what will be reset before confirming.", "about.reset.help").Classes("page-help")
-    ), "about.diagnostics", "about.page");
+    ), "about.updates", "about.page");
 
     private static WidgetView RenderAuthorityRecovery(
         StackElement header,

@@ -2,7 +2,9 @@
 param(
     [Parameter(Mandatory)][string]$FixtureConfiguration,
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [switch]$IncludeNotifications
+    [switch]$IncludeNotifications,
+    [switch]$IncludeSettingsMenus,
+    [switch]$SettingsUpdatesOnly
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
@@ -14,6 +16,8 @@ if (!(Test-Path -LiteralPath (Join-Path $configuration.InstallationRoot 'runtime
 }
 New-Item -ItemType Directory -Path $output | Out-Null
 $configuration.SettingsRoot = Join-Path $output 'profile'
+New-Item -ItemType Directory -Path $configuration.SettingsRoot | Out-Null
+[IO.File]::WriteAllText((Join-Path $configuration.SettingsRoot 'automatic-app-updates.txt'), $(if ($SettingsUpdatesOnly) { 'enabled' } else { 'disabled' }))
 $configuration.InitialWidgetId = 'webapp-a'
 $configPath = Join-Path $output 'shell.json'
 $configuration | ConvertTo-Json | Set-Content -LiteralPath $configPath
@@ -23,7 +27,9 @@ $arguments = @(
     '--shell-no-controller', '--validation-platform-activation', ('--shell-config="{0}"' -f $configPath),
     ('--validate-webapp-shell="{0}"' -f $result), '--webapp-new-window-flow', '--webapp-popup-placement',
     '--webapp-popup-presentation', '--webapp-pin-dialog-lifecycle', '--webapp-shutdown')
-if ($IncludeNotifications) { $arguments += '--webapp-notifications' }
+if ($IncludeNotifications) { $arguments += '--webapp-notifications'; if ($IncludeSettingsMenus) { $arguments += '--widget-notifications' } }
+if ($IncludeSettingsMenus) { $arguments += '--settings-updates-menus' }
+if ($SettingsUpdatesOnly) { $arguments += '--settings-updates-only' }
 $fixture = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden -PassThru -ArgumentList $arguments
 $fixture.Id | Set-Content (Join-Path $output 'pid.txt')
 try {

@@ -19,7 +19,7 @@ namespace WidgetRail.OverlayFrontend.WinUI
                 var page = (Shell.OverlayShellPage)RootFrame.Content;
                 Check(startHidden && !AppWindow.IsVisible && desktopBackdrop?.IsVisible != true,
                     "Hidden startup leaves both native windows hidden");
-                Check(page.NativeStartupIsIdle, "Hidden loaded tree does not start Bridge or widget initialization");
+                Check(page.NativeStartupIsIdle, "Hidden loaded tree does not start Bridge, widgets or automatic update checks");
                 Check(input is not null && !input.IsActive, "Guide adapter exists without visible navigation polling");
                 ShowOverlay();
                 await page.WaitForNativeStartupAsync().WaitAsync(TimeSpan.FromSeconds(45));
@@ -27,7 +27,9 @@ namespace WidgetRail.OverlayFrontend.WinUI
                 Check(page.NativeStartupHasContent, "First show starts and commits the real initial widget");
                 var identity = page.NativeStartupIdentity;
                 HideOverlay();
-                await Task.Delay(200);
+                var hideDeadline = Environment.TickCount64 + 5_000;
+                while ((AppWindow.IsVisible || input!.IsActive) && Environment.TickCount64 < hideDeadline)
+                    await Task.Delay(25);
                 Check(!AppWindow.IsVisible && !input!.IsActive, "Hide suspends visible input");
                 ShowOverlay();
                 await Task.Delay(500);
@@ -45,7 +47,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell
 {
     internal sealed partial class OverlayShellPage
     {
-        internal bool NativeStartupIsIdle => startup is null && owner is null;
+        internal bool NativeStartupIsIdle => startup is null && owner is null && startupUpdateCheck is null;
         internal bool NativeStartupHasContent => owner is not null && activeWidget is not null && !switching;
         internal object? NativeStartupIdentity => owner;
         internal async Task WaitForNativeStartupAsync()

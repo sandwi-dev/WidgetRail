@@ -49,6 +49,23 @@ internal sealed partial class OverlayShellPage
         radialPage = Math.Max(0, catalogItems.ToList().FindIndex(item => item.Id == radialSelection)) / 8;
         radialInput.RebasePage();
     }
+
+    private async Task BackFromTrayAsync()
+    {
+        if (RadialOpen)
+        {
+            if (!await ReturnFromRadialAsync()) HideRequested?.Invoke();
+            return;
+        }
+        if (Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial && catalogItems.Count > 0)
+        {
+            ClearTrayFocus();
+            PrepareRadialBackEntry();
+            RefreshRadialChooser();
+            PublishControllerGuide();
+        }
+        else HideRequested?.Invoke();
+    }
     private void RefreshRadialChooser()
     {
         if (radialView is null) return;

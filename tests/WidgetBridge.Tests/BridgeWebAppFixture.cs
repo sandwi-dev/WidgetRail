@@ -19,9 +19,18 @@ internal static class BridgeWebAppFixture
             WorkerFingerprint = new string(id[^1], 64), CatalogFingerprint = new string(id[^1], 64),
             PinningSupported = id != "webapp-idle", FullWidgetPinningSupported = id != "webapp-idle",
             ResidencyPolicy = new() { Mode = WidgetResidencyPolicies.UnloadAfterIdle, IdleSeconds = 5 },
+            Intents = id == "webapp-a" ? new() { Requests = [WidgetIntentContracts.Web], Handles = [new(WidgetIntentContracts.Web)] } : null,
+        }).Append(new ConfiguredWidget
+        {
+            Id = "settings", PackageId = "fixture.settings", PublisherId = "fixture.webapp", Name = "Settings fixture",
+            InstanceId = "settings.fixture", WorkerExecutable = Environment.ProcessPath!,
+            WorkerFingerprint = new string('f', 64), CatalogFingerprint = new string('f', 64),
+            Intents = new() { Requests = [WidgetIntentContracts.AppUpdates], Handles = [new(WidgetIntentContracts.AppUpdates)] },
         }).ToArray());
-        await using var server = new WidgetBridgeServer(pipe, catalog, appearance: appearance,
-            consentStore: new ConsentStore(Path.Combine(settingsRoot, "fixture-consent")), platformBackend: new SimulatedPlatformBrokerBackend());
+        await using var server = new WidgetBridgeServer(pipe, catalog, BridgeProtocol.DefaultMaximumMessageBytes, appearance,
+            new ConsentStore(Path.Combine(settingsRoot, "fixture-consent")), new SimulatedPlatformBrokerBackend(), null, null, null, settingsStore: store,
+            appUpdates: new(new("0.1.0-preview.31", "production", "", false), Path.Combine(settingsRoot, "updates"),
+                new ShellUpdateApi(), profileRoot: settingsRoot));
         await server.RunAsync(TimeSpan.FromSeconds(30), default);
     }
 }
@@ -30,7 +39,15 @@ internal sealed class WebAppFrameworkFixture : Widget
 {
     private readonly bool idle;
     private readonly WidgetModel<bool> second;
-    internal WebAppFrameworkFixture(bool idle) { this.idle = idle; second = CreateModel(false); }
+    private readonly WidgetModel<string> noticeStatus;
+    internal WebAppFrameworkFixture(bool idle) { this.idle = idle; second = CreateModel(false); noticeStatus = CreateModel("idle"); }
+    public override ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.ContractId != WidgetIntentContracts.Web.Id || !request.IsWellFormed() || request.Payload.GetProperty("url").GetString() != "https://shell.fixture.invalid/secondary")
+            return ValueTask.FromResult(WidgetIntentResult.Rejected);
+        second.Update(_ => true);
+        return ValueTask.FromResult(WidgetIntentResult.Accepted);
+    }
     public override WidgetView Render()
     {
         if (idle) return new(UI.Button("Idle fixture", "noop", "idle"), "idle");
@@ -42,7 +59,7 @@ internal sealed class WebAppFrameworkFixture : Widget
             [primary.InGrid(columnSpan: second.Value ? 1 : 2),
                 .. (second.Value ? new[] { other.InGrid(column: 1) } : []),
                 UI.Row("app.commands", UI.Button("Toggle second session", "second", "second"),
-                    UI.Button("Synthetic song banner", "notify", "notify"),
+                    UI.Button("Synthetic song banner: " + noticeStatus.Value, "notify", "notify"),
                     UI.Button("Synthetic pending notification", "notify-pending", "notify-pending"),
                     UI.Button("Update synthetic metadata", "notify-update", "notify-update"),
                     UI.Button("Withdraw notification", "notify-withdraw", "notify-withdraw")).InGrid(row: 1, columnSpan: 2)]), "app.page",
@@ -55,9 +72,12 @@ internal sealed class WebAppFrameworkFixture : Widget
         if (action.ActionId.StartsWith("notify", StringComparison.Ordinal))
             Operations.RunLatest("fixture.notification", async context =>
             {
+                noticeStatus.Update(_ => "requested");
                 await Task.Delay(400, context.CancellationToken);
                 var content = new WidgetNotification("fixture-song", "Synthetic track")
                 {
+                    OpenIntent = action.ActionId == "notify-pending" ? WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+                        System.Text.Json.JsonSerializer.SerializeToElement(new { url = "https://shell.fixture.invalid/secondary" }), WidgetIntentPresentation.OpenWidget) : null,
                     Body = "Fixture artist", Metadata = action.ActionId == "notify-update" ? "3:46" : "3:45", ShowWidgetIcon = false,
                     ArtworkUrl = "https://fixture.invalid/thumbnail.png",
                     Retention = action.ActionId == "notify-pending" ? WidgetNotificationRetention.Pending : WidgetNotificationRetention.BannerOnly,
@@ -66,7 +86,11 @@ internal sealed class WebAppFrameworkFixture : Widget
                 };
                 if (action.ActionId == "notify-withdraw") await HostServices.Notifications.DismissAsync(content.Key, context.CancellationToken);
                 else if (action.ActionId == "notify-update") await HostServices.Notifications.UpdateAsync(content, context.CancellationToken);
-                else await HostServices.Notifications.ShowAsync(content, context.CancellationToken);
+                else
+                {
+                    var receipt = await HostServices.Notifications.ShowAsync(content, context.CancellationToken);
+                    noticeStatus.Update(_ => receipt.Accepted ? "accepted" : "rejected");
+                }
             }, WidgetOperationLifetime.Widget);
         return ValueTask.CompletedTask;
     }

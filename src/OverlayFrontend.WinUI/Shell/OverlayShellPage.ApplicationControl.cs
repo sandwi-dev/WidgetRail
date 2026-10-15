@@ -6,6 +6,13 @@ internal sealed partial class OverlayShellPage
 {
     internal event Action<WidgetApplicationControl>? ApplicationControlRequested;
     private Task? applicationControlPump;
+    private bool applicationControlIssued;
+    private void RequestApplicationControl(WidgetApplicationControl action)
+    {
+        if (retired || applicationControlIssued || action == WidgetApplicationControl.None) return;
+        applicationControlIssued = true;
+        DispatcherQueue.TryEnqueue(() => { if (!retired) ApplicationControlRequested?.Invoke(action); });
+    }
 
     private async Task PumpApplicationControlAsync()
     {
@@ -23,7 +30,7 @@ internal sealed partial class OverlayShellPage
                 if (action == WidgetApplicationControl.None) continue;
                 // Dispatch outside this task so window cleanup can await the
                 // pump without reentrant shutdown or a self-await deadlock.
-                DispatcherQueue.TryEnqueue(() => { if (!retired) ApplicationControlRequested?.Invoke(action); });
+                RequestApplicationControl(action);
                 return;
             }
         }

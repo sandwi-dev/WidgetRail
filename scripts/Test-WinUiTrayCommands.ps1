@@ -35,6 +35,7 @@ try {
     $reverse = if ($move -eq 'right') { 'left' } else { 'right' }
     Check 'Native tray menu exposes reorder and restart without dispatching a widget action' {
         $null = Ui @('click',$target,'--right')
+        $null = Ui @('expand','Overlay.TrayGroup.Widget')
         $null = Ui @('wait-for','Overlay.TrayCommand.Reorder','-t','5000')
         $null = Ui @('wait-for','Overlay.TrayCommand.Restart','-t','3000')
         $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Select','--contains','-t','3000')
@@ -67,7 +68,7 @@ try {
     }
     Check 'Dismissal returns focus without leaving a stale command menu' {
         $null = Ui @('click',$target,'--right')
-        $null = Ui @('wait-for','Overlay.TrayCommand.Reorder','-t','3000')
+        $null = Ui @('wait-for','Overlay.TrayGroup.Widget','-t','3000')
         $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Select','--contains','-t','3000')
         $null = Ui @('invoke','Overlay.Guide.1') # Back routes B through the shared shell dispatcher
         $null = Ui @('wait-for',$target,'-p','HasKeyboardFocus','--value','True','-t','3000')

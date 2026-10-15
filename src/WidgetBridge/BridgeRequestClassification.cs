@@ -194,6 +194,9 @@ internal static class BridgeRequestClassifier
                     BridgeRequestKind.Action),
                 BridgeMessageTypes.PrepareIntent => Widget(
                     BridgeJson.FromElement<BridgeIntentPrepareRequest>(request.Payload).WidgetId, BridgeRequestKind.PrepareIntent),
+                BridgeMessageTypes.PrepareNotificationIntent => NotificationIntent(request.Payload, BridgeRequestKind.PrepareIntent),
+                BridgeMessageTypes.ReleaseNotificationIntent => NotificationIntent(request.Payload, BridgeRequestKind.CancelIntent),
+                BridgeMessageTypes.PrepareAppUpdateIntent or BridgeMessageTypes.StartAppUpdateCheck => Empty(request.Payload, BridgeRequestKind.ApplicationControl),
                 BridgeMessageTypes.CommitIntent => IntentCommit(request.Payload),
                 BridgeMessageTypes.CancelIntent => IntentCancel(request.Payload),
                 BridgeMessageTypes.ControllerInput => Widget(
@@ -227,6 +230,12 @@ internal static class BridgeRequestClassifier
             throw new BridgeProtocolException("Indexed identity is invalid.");
     }
 
+    private static BridgeRequestKey NotificationIntent(JsonElement payload, BridgeRequestKind kind)
+    {
+        var request = BridgeJson.FromElement<BridgeNotificationIntentPrepare>(payload);
+        if (!Guid.TryParseExact(request.IntentToken, "N", out _)) throw new BridgeProtocolException("Invalid notification intent token.");
+        return Widget(request.WidgetId, kind);
+    }
     private static BridgeRequestKey IntentCommit(JsonElement payload)
     {
         var request = BridgeJson.FromElement<BridgeIntentCommitRequest>(payload);

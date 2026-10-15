@@ -71,6 +71,11 @@ internal static class BridgeMessageTypes
     public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";
     public const string PrepareIntent = "prepare-widget-intent";
+    public const string PrepareNotificationIntent = "prepare-notification-intent";
+    public const string ReleaseNotificationIntent = "release-notification-intent";
+    public const string PrepareAppUpdateIntent = "prepare-app-update-intent";
+    public const string StartAppUpdateCheck = "start-app-update-check";
+    public const string AppUpdateChanged = "app-update-changed";
     public const string CommitIntent = "commit-widget-intent";
     public const string CancelIntent = "cancel-widget-intent";
     public const string IntentPrepared = "widget-intent-prepared";

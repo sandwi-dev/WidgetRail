@@ -22,6 +22,11 @@ internal static class AppUpdateScenarios
             await Action("open.about"); Check(Node("about.updates").ActionId == "open.app-updates");
             await Action("open.app-updates");
             Check(Snapshot().ActiveInputScopeId == "app-update.page");
+            Check(Node("app-update.auto").ActionId == "app-update.auto");
+            await Action("app-update.auto"); Check(!service.Auto);
+            var intent = WidgetIntentRequest.Create(WidgetIntentContracts.AppUpdates, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget);
+            await Action("back");
+            Check(await widget.OnIntentAsync(intent) == WidgetIntentResult.Accepted && Snapshot().ActiveInputScopeId == "app-update.page");
             await Action("app-update.notes"); Check(Node("app-update.notes.text").Text == "Notes");
             await Action("app-update.download"); Check(Node("app-update.primary").IsBusy == true && Node("app-update.primary").IsDisabled != true);
             service.Ready(); await Action("open.app-updates");
@@ -41,10 +46,13 @@ internal static class AppUpdateScenarios
     private sealed class Service : IPlatformDiagnosticsService
     {
         internal int Installs;
+        internal bool Auto = true;
         private AppUpdateSnapshot snapshot = new(1, "available", "0.1.0-preview.29", "0.1.0-preview.30", "Notes", "Ready to download", CanInstall: true);
         public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken token = default) => ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
         public ValueTask<AppUpdateSnapshot> AppUpdatesAsync(AppUpdateCommand command, CancellationToken token = default)
         {
+            if (command.Action is "auto-enable" or "auto-disable")
+            { Auto = command.Action == "auto-enable"; snapshot = snapshot with { Revision = snapshot.Revision + 1, AutomaticallyCheck = Auto }; }
             if (command.Action == "download") snapshot = snapshot with { Revision = 2, State = "downloading" };
             if (command.Action == "install") { Installs++; snapshot = snapshot with { Revision = 4, State = "handoff", ReviewToken = null }; }
             return ValueTask.FromResult(snapshot);

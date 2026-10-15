@@ -69,5 +69,10 @@ public sealed class WidgetNotificationTests
         Assert.IsFalse(WidgetNotificationContract.IsValid(content with { BackgroundOpacityPercent = 0 }));
         Assert.IsFalse(WidgetNotificationContract.IsValid(content with { DurationMilliseconds = int.MaxValue }));
         Assert.IsFalse(WidgetNotificationContract.IsValid(content with { Retention = (WidgetNotificationRetention)99 }));
+        var intent = WidgetIntentRequest.Create(WidgetIntentContracts.AppUpdates, System.Text.Json.JsonSerializer.SerializeToElement(new { }));
+        Assert.IsTrue(WidgetNotificationContract.IsValid(content with { OpenIntent = intent }));
+        Assert.IsFalse(WidgetNotificationContract.IsValid(content with { OpenIntent = intent, Retention = WidgetNotificationRetention.BannerOnly }));
+        Assert.IsFalse(WidgetNotificationContract.IsValid(content with { OpenIntent = intent, Interaction = WidgetNotificationInteraction.Informational }));
+        Assert.IsFalse(WidgetNotificationContract.IsValid(content with { OpenIntent = intent with { SchemaDigest = "invalid" } }));
     }
 }

@@ -262,9 +262,10 @@ static async Task LoadingBeforeReady()
     Assert.True(Nodes(loading.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface && node.IsBusy != true) == 6, "Home categories must remain usable while loading.");
     Assert.True(!Nodes(loading.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.toast"), "Loading home should have neither a subtitle nor a duplicate loading toast.");
     Assert.SequenceEqual(["settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
-    Assert.True(Buttons(loading.Root).All(node => node.IsBusy == true), "Loading footer actions must remain busy.");
+    Assert.True(Buttons(loading.Root).All(node => node.IsBusy != true), "Application controls must remain usable during loading.");
     await Action(widget, "application.quit");
-    Assert.Equal(0, service.Requests.Count);
+    await Action(widget, "application.restart");
+    Assert.SequenceEqual([false], service.Requests);
     await Action(widget, "open.appearance");
     var section = Snapshot(widget);
     Assert.True(Nodes(section.Root).Any(node => node.Id == "settings.loading.indicator"), "Unready section needs a local loading state.");

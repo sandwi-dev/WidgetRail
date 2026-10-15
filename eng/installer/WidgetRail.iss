@@ -30,7 +30,8 @@ DisableProgramGroupPage=yes
 SetupLogging=yes
 
 [Tasks]
-Name: startup; Description: "Start WidgetRail when I sign in (starts quietly; Windows Startup Apps restrictions still apply)"; Flags: unchecked
+Name: autocheck; Description: "Automatically check for WidgetRail updates (downloads and installation stay manual)"
+Name: startup; Description: "Start WidgetRail when I sign in (starts quietly; Windows Startup Apps restrictions still apply)"; Flags: unchecked; Check: CanConfigureStartup
 
 [Icons]
 Name: "{userprograms}\WidgetRail"; Filename: "{app}\versions\{#PayloadId}\OverlayFrontend.WinUI.exe"; Parameters: "--show"; WorkingDir: "{app}\versions\{#PayloadId}"
@@ -49,14 +50,23 @@ var
   ForeignStartup: Boolean;
   StartupWasEnabled: Boolean;
   StartupSelectionInitialized: Boolean;
+  UpdateCheckWasEnabled: Boolean;
   DeleteUserData: Boolean;
   OwnsInstallation: Boolean;
 
 #include "UninstallData.iss"
 
+function MoveFileEx(ExistingName, NewName: String; Flags: Cardinal): Boolean;
+  external 'MoveFileExW@kernel32.dll stdcall';
+
 function ApplicationRoot: String;
 begin
   Result := ExpandConstant('{app}\versions\{#PayloadId}');
+end;
+
+function CanConfigureStartup: Boolean;
+begin
+  Result := not ForeignStartup;
 end;
 
 function StartupCommand(Root: String): String;
@@ -96,6 +106,7 @@ end;
 procedure InitializeWizard;
 var
   Current: String;
+  PreferenceValue: AnsiString;
 begin
   RegQueryStringValue(HKCU, InstallKey, 'ApplicationRoot', PreviousRoot);
   PreviousCommand := StartupCommand(PreviousRoot);
@@ -108,6 +119,9 @@ begin
     (PreviousRoot = '') or (CompareText(Current, PreviousCommand) <> 0));
   StartupWasEnabled := (PreviousRoot <> '') and not ForeignStartup and
     RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current);
+  UpdateCheckWasEnabled := True;
+  if LoadStringFromFile(ExpandConstant('{localappdata}\WidgetRail\automatic-app-updates.txt'), PreferenceValue) then
+    UpdateCheckWasEnabled := CompareText(Trim(String(PreferenceValue)), 'enabled') = 0;
   WizardForm.WelcomeLabel2.Caption :=
     'Install WidgetRail for your Windows account. Your widgets and settings are kept when upgrading or changing edition.' + #13#10#13#10 +
     '.NET and Windows App SDK are included. Setup installs Microsoft GameInput and WebView2 if needed. GameInput may request administrator approval; WebView2 may need an internet connection. Exclusive controller drivers remain optional and are not installed here.';
@@ -119,14 +133,13 @@ begin
   { Inno populates tasks on page entry, after InitializeWizard. Restore the
     default only once so Back/Next navigation preserves the user's choice. }
   if not StartupSelectionInitialized then begin
-    if StartupWasEnabled then
-      WizardSelectTasks('startup');
+    if StartupWasEnabled then WizardSelectTasks('startup') else WizardSelectTasks('!startup');
+    if UpdateCheckWasEnabled then WizardSelectTasks('autocheck') else WizardSelectTasks('!autocheck');
     StartupSelectionInitialized := True;
   end;
-  { This page contains only startup. Preserve registrations owned elsewhere. }
+  { Only startup is disabled for a foreign registration; updates remain selectable. }
   if ForeignStartup then
     WizardSelectTasks('!startup');
-  WizardForm.TasksList.Enabled := not ForeignStartup;
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo,
@@ -206,8 +219,19 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   Current: String;
   Owned: Boolean;
+  Preference, Temporary, Value: String;
 begin
   if CurStep <> ssPostInstall then Exit;
+  Preference := ExpandConstant('{localappdata}\WidgetRail\automatic-app-updates.txt');
+  Temporary := Preference + '.installer-pending';
+  Value := 'disabled';
+  if WizardIsTaskSelected('autocheck') then Value := 'enabled';
+  { Silent upgrades preserve the existing preference. }
+  if not WizardSilent or not FileExists(Preference) then begin
+    if ForceDirectories(ExtractFileDir(Preference)) and SaveStringToFile(Temporary, Value, False) then begin
+      if not MoveFileEx(Temporary, Preference, 9) then Log('Could not save automatic update preference.');
+    end else Log('Could not prepare automatic update preference.');
+  end;
   Owned := not RegValueExists(HKCU, RunKey, 'WidgetRail');
   if RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current) then
     Owned := ((PreviousRoot <> '') and (CompareText(Current, PreviousCommand) = 0)) or

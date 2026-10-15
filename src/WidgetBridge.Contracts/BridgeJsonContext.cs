@@ -5,6 +5,8 @@ namespace WidgetRail.WidgetBridge;
 
 // Closed presentation transport roots; nested contracts are generated recursively.
 [JsonSerializable(typeof(BridgeWidgetNotification))]
+[JsonSerializable(typeof(BridgeNotificationIntentPrepare))]
+[JsonSerializable(typeof(WidgetRail.PlatformDiagnostics.AppUpdateSnapshot))]
 [JsonSerializable(typeof(BridgeProviderDocumentRequest))]
 [JsonSerializable(typeof(BridgeProviderDocument))]
 [JsonSerializable(typeof(BridgeMediaPlayerRequest))]

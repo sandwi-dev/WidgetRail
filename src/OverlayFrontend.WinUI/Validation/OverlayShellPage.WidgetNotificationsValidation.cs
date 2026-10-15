@@ -11,9 +11,16 @@ internal sealed partial class OverlayShellPage
         await center.Preferences.SetAsync("webapp-a", NotificationPresentation.BannerAndList, lifetime.Token);
         center.Inbox.Clear();
         // The existing quiet interval is a deliberate policy, not fixture flakiness.
-        await Task.Delay(NotificationBannerState.QuietInterval + TimeSpan.FromSeconds(1));
+        // A just-opened startup notice can be dismissed before its original
+        // expiry; quiet time still runs from that expiry by design.
+        await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, notificationBannerState.ExpiresAt - Environment.TickCount64)) +
+            NotificationBannerState.QuietInterval + TimeSpan.FromSeconds(1));
         await Trigger("notify");
-        await WebAppUntil(() => notificationBanner?.IsVisible == true && notificationCard?.TitleText.Text == "Synthetic track");
+        try { await WebAppUntil(() => notificationBanner?.IsVisible == true && notificationCard?.TitleText.Text == "Synthetic track"); }
+        catch (TimeoutException error)
+        {
+            throw new InvalidOperationException($"Widget notification did not show: command={(FindControl<Button>(surface!, "Widget.notify")?.Content as TextBlock)?.Text}, focus={Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name}, ownedA={shellOwnedReleases.Contains(ControllerButton.A)}, mode={center.Mode("webapp-a")}, active={activeWidget}, interactive={interactive}", error);
+        }
         check(visible && center.Inbox.Entries.Count == 0 && notificationBadge.Visibility == Visibility.Collapsed,
             "Ordinary widget SDK notification traverses the broker and bridge while the overlay is visible without adding pending entries");
         check(!notificationBanner!.Interactive && notificationBannerState.EntryId is not null &&
@@ -48,6 +55,10 @@ internal sealed partial class OverlayShellPage
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released); await pending;
         check(activeWidget == "webapp-a" && center.Inbox.Entries.Count == 0, "Pending ordinary notification opens its owning widget and is removed");
+        await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface?.CurrentTitle == "Shell /secondary"));
+        check(true, "Notification Open delivers its declared intent through Bridge and changes the receiver page");
+        await Trigger("second");
+        await WebAppUntil(() => Slots(surface).Count() == 1);
         center.Publish("webapp-a", new object(), new("information", new("information", "Informational fixture")
         { Interaction = WidgetNotificationInteraction.Informational }), () => true);
         pending = OpenNotificationListForValidation();

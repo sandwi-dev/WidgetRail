@@ -23,7 +23,7 @@ internal sealed partial class OverlayShellPage
     private TrayMenu? trayMenu;
     private object? trayMenuRequest;
     private sealed record TrayMenu(BridgeWidgetDescriptor Owner, long Selection, MenuFlyout Flyout,
-        Control Anchor, List<MenuFlyoutItem> Items) { internal int FocusIndex; internal IDisposable? Theme; }
+        Control Anchor, List<MenuFlyoutItem> Items) { internal NativeMenuNavigator? Navigation; internal IDisposable? Theme; }
 
     private void InitializeTrayCommands()
     {
@@ -50,7 +50,7 @@ internal sealed partial class OverlayShellPage
             else if (!reordering && trayMenu is null && args.Key == Windows.System.VirtualKey.Up && FocusedTrayWidget() is { } widget)
             { args.Handled = true; _ = SelectAsync(widget.Id); }
             else if (args.Key == Windows.System.VirtualKey.Escape && trayMenu is null)
-            { HideRequested?.Invoke(); args.Handled = true; }
+            { _ = BackFromTrayAsync(); args.Handled = true; }
         };
     }
 
@@ -211,13 +211,16 @@ internal sealed partial class OverlayShellPage
                 Add("Website settings", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor));
 
             }
-            if (notificationCenter is not null) Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor));
+            var notificationGroup = Group("Notifications", "Notifications");
+            if (notificationCenter is not null) Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor), group: notificationGroup);
             if (browserOwner is { } notificationOwner)
-                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
+                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync, group: notificationGroup);
+            if (notificationGroup.Items.Count == 0) menu.Flyout.Items.Remove(notificationGroup);
+            var widgetGroup = Group("Widget", "Widget");
             if (browserOwner?.HasRunningSession(descriptor.Id) == true)
-                Add("Stop webapp session", "Browser.Stop", () => StopBrowserWidgetAsync(descriptor));
-            Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y);
-            Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true);
+                Add("Stop webapp session", "Browser.Stop", () => StopBrowserWidgetAsync(descriptor), group: widgetGroup);
+            Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y, group: widgetGroup);
+            Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true, group: widgetGroup);
             var quickActionStart = menu.Flyout.Items.Count;
             if (DashboardFrame(descriptor) is { } displayed)
                 foreach (var action in displayed.Snapshot.QuickActions)
@@ -231,10 +234,11 @@ internal sealed partial class OverlayShellPage
                         ? button : null);
             if (menu.Flyout.Items.Count > quickActionStart)
                 menu.Flyout.Items.Insert(quickActionStart, new MenuFlyoutSeparator());
+            menu.Navigation = new(menu.Flyout, () => ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection));
             menu.Flyout.Opened += (_, _) => OnTrayMenuOpened(menu);
             menu.Flyout.Closed += (_, _) =>
             {
-                menu.Theme?.Dispose();
+                menu.Theme?.Dispose(); menu.Navigation?.Dispose();
                 if (!ReferenceEquals(trayMenu, menu)) return;
                 trayMenu = null;
                 if (ReferenceEquals(trayMenuRequest, request)) trayMenuRequest = null;
@@ -248,7 +252,15 @@ internal sealed partial class OverlayShellPage
             bool TrayShortcutAvailable(ControllerButton button) => button is not (ControllerButton.A or ControllerButton.B or ControllerButton.Y or ControllerButton.Menu) &&
                 (button != ControllerButton.View || pinned is null);
 
-            void Add(string label, string id, Func<Task> action, ControllerButton? shortcut = null, bool hold = false)
+            MenuFlyoutSubItem Group(string label, string id)
+            {
+                var group = new MenuFlyoutSubItem { Text = label };
+                AutomationProperties.SetAutomationId(group, "Overlay.TrayGroup." + id);
+                menu.Flyout.Items.Add(group);
+                return group;
+            }
+
+            void Add(string label, string id, Func<Task> action, ControllerButton? shortcut = null, bool hold = false, MenuFlyoutSubItem? group = null)
             {
                 var command = new AsyncRelayCommand(async () =>
                 {
@@ -259,9 +271,7 @@ internal sealed partial class OverlayShellPage
                 var item = new MenuFlyoutItem { Text = label, Command = command };
                 if (shortcut is { } button) ApplyTrayCommandShortcut(item, button, hold);
                 AutomationProperties.SetAutomationId(item, "Overlay.TrayCommand." + id);
-                var index = menu.Items.Count;
-                item.GotFocus += (_, _) => menu.FocusIndex = index;
-                menu.Items.Add(item); menu.Flyout.Items.Add(item);
+                menu.Items.Add(item); (group?.Items ?? menu.Flyout.Items).Add(item);
             }
         }
         catch (OperationCanceledException) when (retired) { }
@@ -297,7 +307,7 @@ internal sealed partial class OverlayShellPage
 
     private void OnTrayMenuOpened(TrayMenu menu)
     {
-        if (ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection)) menu.Items[0].Focus(FocusState.Keyboard);
+        if (ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection)) menu.Navigation?.FocusFirst();
         else if (ReferenceEquals(trayMenu, menu)) CloseTrayMenu(false);
         else menu.Flyout.Hide();
     }
@@ -316,7 +326,7 @@ internal sealed partial class OverlayShellPage
         trayMenu = null;
         UpdateTrayHelp();
         menu.Flyout.Hide();
-        menu.Theme?.Dispose();
+        menu.Theme?.Dispose(); menu.Navigation?.Dispose();
         if (restoreFocus && TrayOwnerCurrent(menu.Owner, menu.Selection)) RequestTrayFocus(menu.Owner);
     }
 
@@ -325,7 +335,7 @@ internal sealed partial class OverlayShellPage
         if (trayMenu is { } menu)
         {
             if (!TrayOwnerCurrent(menu.Owner, menu.Selection)) { CloseTrayMenu(false); return true; }
-            NativeMenuFocus.Move(menu.Items, direction, ref menu.FocusIndex);
+            menu.Navigation?.Move(direction);
             return true;
         }
         if (RadialOpen) { StepRadialSelection(direction); return true; }
@@ -349,15 +359,14 @@ internal sealed partial class OverlayShellPage
         shellOwnedReleases.Add(button);
         if (trayMenu is { } menu)
         {
-            if (button is ControllerButton.B or ControllerButton.Menu) CloseTrayMenu(true);
-            else if (button == ControllerButton.A && TrayOwnerCurrent(menu.Owner, menu.Selection) &&
-                menu.Items[menu.FocusIndex].Command is IAsyncRelayCommand command) await command.ExecuteAsync(null);
+            if (button == ControllerButton.Menu || button == ControllerButton.B && menu.Navigation?.Back() != true) CloseTrayMenu(true);
+            else if (button == ControllerButton.A && TrayOwnerCurrent(menu.Owner, menu.Selection) && menu.Navigation is { } navigation) await navigation.ActivateAsync();
             return;
         }
         if (notificationBell.FocusState != FocusState.Unfocused)
         {
             if (button == ControllerButton.A) await ShowNotificationsAsync();
-            else if (button == ControllerButton.B) HideRequested?.Invoke();
+            else if (button == ControllerButton.B) await BackFromTrayAsync();
             return;
         }
         if (button == ControllerButton.Y && TrayGestureIdentity is { } identity)
@@ -372,7 +381,7 @@ internal sealed partial class OverlayShellPage
             // The shell owns the entire gesture even after focus returns to the
             // widget. Its release must not cancel the newly requested entry.
             shellOwnedReleases.Add(button);
-            if (!await ReturnFromRadialAsync()) HideRequested?.Invoke();
+            await BackFromTrayAsync();
         }
         else if (FocusedTrayWidget() is { } widget)
         {

@@ -104,6 +104,11 @@ internal sealed class GamepadKeyBoundary : IDisposable
         };
     }
 
+    internal static void ObserveOpenPopups(FrameworkElement anchor)
+    {
+        if (anchor.XamlRoot is { } root && Owners.TryGetValue(root, out var owner)) owner.AttachOpenPopups(root);
+    }
+
     internal static void ObserveDialog(ContentDialog dialog)
     {
         dialog.Loaded += (_, _) =>

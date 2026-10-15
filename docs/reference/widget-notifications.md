@@ -65,7 +65,7 @@ popup surfaces. If no corner fits, the banner is suppressed. Fullscreen and syst
 pickers do not receive overlaid notifications. Banners never take controller focus
 or use Windows notification UI.
 
-Every widget's tray menu offers Notification preferences: Banner + list, List only,
+Every widget's tray menu groups notification preferences under **Notifications**: Banner + list, List only,
 or Off. Banner-only requests are suppressed by List only and Off; the host never
 converts temporary status into pending entries. Widget-specific opt-in settings
 can further disable a feature's notifications but cannot override a host mute.
@@ -73,3 +73,31 @@ can further disable a feature's notifications but cannot override a host mute.
 WebView notifications keep their existing default card, originating-page callbacks,
 pending retention and hidden-overlay-only banners. Browser lifecycle invalidation
 and stale-widget fallback behavior are unchanged.
+
+## Open a specific destination
+
+Pending, interactive notifications can carry an optional `OpenIntent`:
+
+```csharp
+new WidgetNotification("download-ready", "Download complete")
+{
+    Body = "Open to view the completed item.",
+    OpenIntent = WidgetIntentRequest.Create(myDetailsContract, payload,
+        WidgetIntentPresentation.OpenWidget),
+};
+```
+
+Declare the requested contract in the sender's manifest `intents.requests` as
+for a normal intent action. The Bridge validates the declaration and payload when
+publishing, stores a bounded opaque grant, and revalidates it on Open. Publication
+never launches a destination. Open uses the existing handler resolution, dynamic
+availability, presentation and delivery machinery. No platform permission is
+implicitly granted. Other websites' notification click callbacks are unchanged.
+
+Replacing or withdrawing the notification invalidates its earlier destination;
+dismissal releases the grant. A stale source cannot deliver a stored intent into
+a new worker generation. Existing host behavior can open the originating widget
+when a notification is stale. `BannerOnly` and `Informational` notifications
+cannot carry `OpenIntent`. Omitting the property retains Open widget behavior.
+Older hosts reject the new field rather than silently executing different
+navigation; authors should target a host release supporting notification intents.

@@ -582,6 +582,9 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         case BridgeMessageTypes.WidgetNotification:
             HandleWidgetNotification(envelope.Payload);
             break;
+        case BridgeMessageTypes.AppUpdateChanged:
+            HandleAppUpdateChanged(envelope.Payload);
+            break;
         case BridgeMessageTypes.HostEffect:
             HandleHostEffect(envelope.Payload);
             break;
