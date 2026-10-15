@@ -505,7 +505,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         interactionAdmission.Invalidate();
         visible = value;
         if (value && notificationBannerState.EntryId is { } bannerId &&
-            (notificationCenter?.Inbox.Find(bannerId)?.ShowWithOverlay != true || !PlaceNotificationBanner())) HideNotificationBanner();
+            (notificationCenter?.Inbox.Find(bannerId) is not { } bannerEntry || !NotificationBannerEligible(bannerEntry) || !PlaceNotificationBanner())) HideNotificationBanner();
         RefreshStartupPresentation();
         // Reopen can await worker/lifecycle admission. Keep the last committed
         // pixels visible during that wait; its inactive presenter still rejects

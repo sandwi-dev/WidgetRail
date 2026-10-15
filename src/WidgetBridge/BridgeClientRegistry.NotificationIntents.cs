@@ -14,6 +14,7 @@ internal sealed partial class BridgeClientRegistry
         lock (_gate)
         {
             token = null;
+            if (command.ConfigureCategoryId is not null) return true;
             var intent = command.Notification?.OpenIntent;
             if (intent is not null && (!_clients.TryGetValue(widget, out var source) || !IsCurrentLocked(source) || source.Configured.WorkerFingerprint != fingerprint ||
                 !Declared(source, intent) || intent.Fallback is { } fallback && !Declared(source, fallback))) return false;
@@ -51,6 +52,36 @@ internal sealed partial class BridgeClientRegistry
         }
         return await ResolveIntentAsync(ticket, token).ConfigureAwait(false);
     }
+    internal async Task<WidgetIntentPreparation> PrepareWidgetSettingsIntentAsync(BridgeWidgetManagementRequest request, CancellationToken token)
+    {
+        ConfiguredWidget managed;
+        lock (_gate)
+        {
+            managed = _catalog.GetConfigured(request.WidgetId);
+            var descriptor = managed.PublicDescriptor();
+            if (!descriptor.CanManage || descriptor.RuntimeGeneration != request.RuntimeGeneration)
+                return new("settings", null, WidgetIntentLaunchKind.Rejected, []);
+        }
+        // Only Settings is created. Managing a stopped widget must never start it.
+        var source = await GetOrCreateAsync("settings", token).ConfigureAwait(false);
+        var intent = WidgetIntentRequest.Create(WidgetIntentContracts.WidgetSettings,
+            JsonSerializer.SerializeToElement(new { packageId = managed.PackageId }), WidgetIntentPresentation.OpenWidget);
+        IntentTicket ticket;
+        lock (_gate)
+        {
+            if (!IsCurrentLocked(source)) return new("settings", null, WidgetIntentLaunchKind.Rejected, []);
+            ticket = new("settings", source.Configured.WorkerFingerprint, null, IntentNow(), intent, WidgetIntentLaunchKind.Unavailable,
+                new Dictionary<string, string>(), null, intent, HostSettings: true, ManagedWidgetId: managed.Id, ManagedFingerprint: managed.WorkerFingerprint);
+            if (!ManagedTargetCurrent(ticket)) return new("settings", null, WidgetIntentLaunchKind.Rejected, []);
+        }
+        return await ResolveIntentAsync(ticket, token).ConfigureAwait(false);
+    }
+    private bool ManagedTargetCurrent(IntentTicket ticket)
+    {
+        if (ticket.ManagedWidgetId is not { } id) return true;
+        try { return _catalog.GetConfigured(id).WorkerFingerprint == ticket.ManagedFingerprint; }
+        catch (BridgeProtocolException) { return false; }
+    }
     // Host-only, closed destination; callers cannot supply an arbitrary payload or source identity.
     internal async Task<WidgetIntentPreparation> PrepareAppUpdateIntentAsync(CancellationToken token)
     {
@@ -61,7 +92,7 @@ internal sealed partial class BridgeClientRegistry
         {
             if (!IsCurrentLocked(source) || !Declared(source, intent)) return new("settings", null, WidgetIntentLaunchKind.Rejected, []);
             ticket = new("settings", source.Configured.WorkerFingerprint, null, IntentNow(), intent, WidgetIntentLaunchKind.Unavailable,
-                new Dictionary<string, string>(), null, intent, HostUpdate: true);
+                new Dictionary<string, string>(), null, intent, HostSettings: true);
         }
         return await ResolveIntentAsync(ticket, token).ConfigureAwait(false);
     }

@@ -24,7 +24,7 @@ internal sealed partial class WebAppCapabilitiesValidationPage : Page, IAsyncDis
             var checks = new List<string>(); string? error = null; string? notification = null; var screenPrompts = 0;
             try
             {
-                browser.Choose = (_, title, message, _, _, _) =>
+                browser.Choose = (_, title, message, _, _, _, _) =>
                 {
                     if (!message.Contains("https://capabilities.fixture.invalid", StringComparison.Ordinal)) throw new InvalidOperationException("Missing capability origin.");
                     if (title == "Share your screen?") { screenPrompts++; return Task.FromResult<string?>(null); }
@@ -48,7 +48,7 @@ internal sealed partial class WebAppCapabilitiesValidationPage : Page, IAsyncDis
                 Check(notification == "\"shown\"", "Default WebView2 notification path reports native display to the website");
                 var prompting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 var cancelled = false;
-                browser.Choose = async (_, _, _, _, token, _) =>
+                browser.Choose = async (_, _, _, _, token, _, _) =>
                 {
                     prompting.TrySetResult();
                     try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }

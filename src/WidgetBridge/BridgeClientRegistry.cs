@@ -1315,17 +1315,17 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
 
     internal BridgeClientPublication<(BridgeWidgetDescriptor Descriptor, BridgeWorkerRun WorkerRun)>? TryAdmitWidgetBackgroundPublication(
         string widgetId,
-        string expectedWorkerFingerprint)
+        string expectedWorkerFingerprint, bool requireInteractive = false)
     {
         lock (_gate)
         {
             if (_clients.TryGetValue(widgetId, out var registration) &&
-                !registration.IsRetiring &&
+                !registration.IsRetiring && IsCurrentLocked(registration) &&
                 string.Equals(
                     registration.Configured.WorkerFingerprint,
                     expectedWorkerFingerprint,
                     StringComparison.Ordinal) &&
-                registration.Client.IsRunning &&
+                registration.Client.IsRunning && (!requireInteractive || registration.HostLifecycle == WidgetLifecycleState.Interactive) &&
                 registration.HostLifecycle is WidgetLifecycleState.Background or WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive)
                 return AdmitPublicationLocked(
                     registration, (registration.Configured.PublicDescriptor(), new BridgeWorkerRun(registration.Generation, registration.Client.Starts)));

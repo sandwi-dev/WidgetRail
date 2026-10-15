@@ -44,7 +44,7 @@ internal sealed partial class WebAppSharingValidationPage : Page, IAsyncDisposab
                 while (!File.Exists(result + ".target"))
                 { if (target.HasExited || DateTime.UtcNow > targetDeadline) throw new TimeoutException("Synthetic target did not become ready."); await Task.Delay(50); }
                 activateParent();
-                browser.Choose = (_, title, message, _, _, _) =>
+                browser.Choose = (_, title, message, _, _, _, _) =>
                 {
                     if (title != "Share your screen?" || !message.Contains("https://share.fixture.invalid", StringComparison.Ordinal)) throw new InvalidOperationException("Unexpected sharing consent.");
                     return Task.FromResult<string?>("choose");

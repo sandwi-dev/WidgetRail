@@ -8,9 +8,10 @@ public sealed partial class WidgetBridgeServer
         WidgetNotificationCommand command, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        using var publication = _registry.TryAdmitWidgetBackgroundPublication(configured.Id, configured.WorkerFingerprint);
+        using var publication = _registry.TryAdmitWidgetBackgroundPublication(configured.Id, configured.WorkerFingerprint, command.ConfigureCategoryId is not null);
         if (publication is null) return new(false);
         var descriptor = publication.Value.Descriptor;
+        if (!WidgetNotificationContract.AllowsCommand(descriptor.NotificationCategories, command)) return new(false);
         if (!_registry.RegisterNotificationIntent(configured.Id, configured.WorkerFingerprint, publication.Value.WorkerRun, command, out var intentToken)) return new(false);
         try
         {

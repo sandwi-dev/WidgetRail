@@ -13,12 +13,12 @@ internal sealed partial class OverlayShellPage
         {
             var choices = pages.Select((page, i) => new HostDialogChoice(i.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 page.PermissionTargetLabel)).ToArray();
-            var selected = await ShowHostChoiceAsync("Website settings", "Choose a website and profile.", choices, lifetime.Token);
+            var selected = await ShowHostPreferenceAsync("Website settings", "Choose a website and profile.", choices, lifetime.Token, closeLabel: "Done");
             if (!int.TryParse(selected, out index) || index < 0 || index >= pages.Length) return;
         }
         if (!browsers.PermissionTargets(widget.Id).Contains(pages[index])) return;
-        await pages[index].ShowSettingsFromHostAsync((_, title, message, choices, token, focusFirstChoice) =>
-            ShowHostChoiceAsync(title, message, choices, token, configure: dialog => dialog.FocusFirstOptionOnOpen = focusFirstChoice));
+        await pages[index].ShowSettingsFromHostAsync((_, title, message, choices, token, focusFirstChoice, preference) =>
+            ShowHostChoiceAsync(title, message, choices, token, configure: dialog => ConfigureBrowserChoice(dialog, focusFirstChoice, preference)));
     }
     private void RefreshWebappStatus()
     {
@@ -28,8 +28,14 @@ internal sealed partial class OverlayShellPage
     }
 
     private Task<string?> ShowBrowserChoiceAsync(Browser.BrowserSurface browser, string title, string message,
-        IReadOnlyList<HostDialogChoice> choices, CancellationToken token, bool focusFirstChoice = false) =>
-        ShowBrowserChoiceCoreAsync(browser, title, message, choices, token, dialog => dialog.FocusFirstOptionOnOpen = focusFirstChoice);
+        IReadOnlyList<HostDialogChoice> choices, CancellationToken token, bool focusFirstChoice = false, HostChoicePreference? preference = null) =>
+        ShowBrowserChoiceCoreAsync(browser, title, message, choices, token, dialog => ConfigureBrowserChoice(dialog, focusFirstChoice, preference));
+
+    private static void ConfigureBrowserChoice(HostChoiceDialog dialog, bool focusFirstChoice, HostChoicePreference? preference)
+    {
+        if (preference is not null) dialog.ConfigurePreferenceList(preference.CurrentChoiceId, preference.CloseLabel);
+        else dialog.FocusFirstOptionOnOpen = focusFirstChoice;
+    }
 
     private Task<string?> ShowBrowserChoiceCoreAsync(Browser.BrowserSurface browser, string title, string message,
         IReadOnlyList<HostDialogChoice> choices, CancellationToken token, Action<HostChoiceDialog>? configure, bool directDecisionButtons = false)

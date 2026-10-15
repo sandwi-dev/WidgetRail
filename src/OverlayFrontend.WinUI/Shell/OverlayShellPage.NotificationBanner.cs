@@ -15,16 +15,26 @@ internal sealed partial class OverlayShellPage
     private PinnedWidgetWindow? notificationBanner;
     private DispatcherQueueTimer? notificationBannerTimer;
     private NotificationCard? notificationCard;
-    private Grid? notificationBannerContent;
+    private NotificationBannerChrome? notificationBannerContent;
     private bool bannerFading;
     private long bannerFadeEnds;
     private int bannerWidth, bannerHeight;
+    private bool NotificationSourceVisible(string widget) =>
+        visible && activeWidget == widget && WidgetSurface.Visibility == Visibility.Visible ||
+        pinned is { Window.IsVisible: true } pin && pin.IsCurrent && pin.WidgetId == widget;
+    private bool NotificationBannerEligible(NotificationEntry entry) => entry.BannerVisibility switch
+    {
+        WidgetNotificationVisibility.Always => true,
+        WidgetNotificationVisibility.SourceHidden =>
+            !NotificationSourceVisible(entry.Widget),
+        _ => !visible,
+    };
     private void QueueNotificationBanner(NotificationEntry entry, bool allowNew)
     {
         // Source visibility policy and visible obstacles vary; both modes use
         // the same nonactivating click-through peer and shared placement policy.
         var previous = notificationBannerState.EntryId;
-        if (retired || visible && !entry.ShowWithOverlay || hostWindow == 0 || notificationCenter is null || !entry.Available ||
+        if (retired || !NotificationBannerEligible(entry) || hostWindow == 0 || notificationCenter is null || !entry.Available ||
             !notificationBannerState.Offer(entry, Environment.TickCount64, allowNew))
         { notificationCenter?.Inbox.ReleaseBanner(entry.Id); return; }
         if (previous is { } old && old != entry.Id) notificationCenter.Inbox.ReleaseBanner(old);
@@ -35,19 +45,19 @@ internal sealed partial class OverlayShellPage
             bannerFading = false;
             var palette = ShellChromePalette.Resolve(ShellPalette, Appearance);
             notificationBanner.InterfaceScale = Appearance.InterfaceScale;
-            notificationBanner.SurfaceBackground.Background = new SolidColorBrush(palette.HighContrast ? palette.Surface : palette.Surface with { A = (byte)(255 * (entry.Content?.BackgroundOpacityPercent ?? 100) / 100) });
-            notificationBanner.SurfaceBackground.BorderBrush = new SolidColorBrush(palette.HighContrast ? palette.Focus : ShellChromePalette.Blend(palette.Surface, palette.Text, .16));
-            notificationBanner.SurfaceBackground.BorderThickness = new(1);
-            notificationBanner.SurfaceBackground.CornerRadius = new(12);
-            notificationCard!.Foreground = new SolidColorBrush(palette.Text);
+            var opacity = notificationCenter.Preferences.Category(entry.Widget, entry.Content?.CategoryId ?? WidgetNotificationContract.DefaultCategoryId).Opacity
+                ?? entry.Content?.BackgroundOpacityPercent ?? 100;
+            notificationBannerContent!.Apply(palette, opacity);
+            notificationCard!.ApplyBannerPalette(palette);
             notificationCard.Update(entry, catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget), Appearance.TextScale);
             var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow((nint)hostWindow);
             var area = OverlayDisplayArea.Resolve(id, id)?.WorkArea;
             if (area is not { } bounds) { HideNotificationBanner(); return; }
             var scale = (XamlRoot?.RasterizationScale ?? 1) * Appearance.InterfaceScale;
-            var width = Math.Min((int)Math.Round(420 * scale), Math.Max(1, bounds.Width - 32));
+            var gutter = NotificationBannerChrome.ShadowGutter * 2;
+            var width = Math.Min((int)Math.Round((420 + gutter) * scale), Math.Max(1, bounds.Width - 32));
             notificationBannerContent!.Measure(new(width / scale, double.PositiveInfinity));
-            var height = Math.Min((int)Math.Ceiling(Math.Clamp(notificationBannerContent.DesiredSize.Height, 92, 240 * Appearance.TextScale) * scale), Math.Max(1, bounds.Height - 32));
+            var height = Math.Min((int)Math.Ceiling(Math.Clamp(notificationBannerContent.DesiredSize.Height, 92 + gutter, 240 * Appearance.TextScale + gutter) * scale), Math.Max(1, bounds.Height - 32));
             bannerWidth = width; bannerHeight = height;
             if (!PlaceNotificationBanner()) { HideNotificationBanner(); return; }
             notificationBanner.Show();
@@ -98,15 +108,14 @@ internal sealed partial class OverlayShellPage
         var window = new PinnedWidgetWindow("notification", (nint)hostWindow, PeerWindowLayer.Notification);
         window.SetHostIdentity("WidgetRail notification", "Overlay.NotificationBanner");
         notificationCard = new(ResolveTrayIconAsync);
-        notificationBannerContent = new Grid { Padding = new(16, 8, 16, 8) };
-        notificationBannerContent.Children.Add(notificationCard);
+        notificationBannerContent = new(notificationCard);
         window.SetContent(notificationBannerContent);
         notificationBannerTimer = DispatcherQueue.CreateTimer();
         notificationBannerTimer.Interval = TimeSpan.FromMilliseconds(100);
         notificationBannerTimer.Tick += (_, _) =>
         {
             var now = Environment.TickCount64;
-            if (retired || notificationBannerState.EntryId is not { } id || notificationCenter?.Inbox.Find(id) is not { Available: true } entry || visible && !entry.ShowWithOverlay || !PlaceNotificationBanner())
+            if (retired || notificationBannerState.EntryId is not { } id || notificationCenter?.Inbox.Find(id) is not { Available: true } entry || !NotificationBannerEligible(entry) || !PlaceNotificationBanner())
             { HideNotificationBanner(); return; }
             if (now >= notificationBannerState.ExpiresAt)
             {
@@ -138,5 +147,5 @@ internal sealed partial class OverlayShellPage
         fade.Dispose();
     }
     private void DisposeNotificationBanner()
-    { HideNotificationBanner(); notificationBanner?.Dispose(); notificationBanner = null; notificationBannerTimer = null; }
+    { HideNotificationBanner(); notificationBannerContent?.Dispose(); notificationBanner?.Dispose(); notificationBanner = null; notificationBannerContent = null; notificationBannerTimer = null; }
 }

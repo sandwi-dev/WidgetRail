@@ -1415,6 +1415,7 @@ method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.Deconstruct(out WidgetRai
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetNotificationService.ConfigureAsync(string categoryId = "general", System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
 method WidgetRail.WidgetSdk.WidgetNotificationService.DismissAsync(string key, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
 method WidgetRail.WidgetSdk.WidgetNotificationService.ShowAsync(WidgetRail.WidgetProtocol.WidgetNotification notification, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
 method WidgetRail.WidgetSdk.WidgetNotificationService.UpdateAsync(WidgetRail.WidgetProtocol.WidgetNotification notification, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>

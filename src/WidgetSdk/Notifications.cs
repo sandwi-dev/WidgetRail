@@ -14,6 +14,13 @@ public sealed class WidgetNotificationService
 {
     private readonly IWidgetCapabilityClient client;
     internal WidgetNotificationService(IWidgetCapabilityClient client) => this.client = client;
+    /// <summary>Open the shared host preferences for a declared category. Only admitted while interactive;
+    /// Accepted means the request was delivered, not that the user enabled notifications.</summary>
+    public ValueTask<WidgetNotificationReceipt> ConfigureAsync(string categoryId = WidgetNotificationContract.DefaultCategoryId, CancellationToken cancellationToken = default)
+    {
+        if (!WidgetNotificationContract.ValidCategoryId(categoryId)) throw new ArgumentException("Invalid notification category.", nameof(categoryId));
+        return SendAsync(new(categoryId) { ConfigureCategoryId = categoryId }, cancellationToken);
+    }
     public ValueTask<WidgetNotificationReceipt> ShowAsync(WidgetNotification notification, CancellationToken cancellationToken = default)
     {
         if (!WidgetNotificationContract.IsValid(notification)) throw new ArgumentException("Notification is invalid.", nameof(notification));

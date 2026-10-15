@@ -35,6 +35,8 @@ internal sealed record ConfiguredWidget
     /// <summary>Copied only from a validated package manifest; never provided by worker IPC.</summary>
     [JsonIgnore]
     public WidgetIntentDeclarations? Intents { get; init; }
+    [JsonIgnore]
+    public IReadOnlyList<WidgetNotificationCategory> NotificationCategories { get; init; } = [];
     /// <summary>Set only after sealed bundled admission; never accepted from JSON.</summary>
     [JsonIgnore]
     public bool GrantsBundledPermissionDefaults { get; init; }
@@ -118,6 +120,8 @@ internal sealed record ConfiguredWidget
         Icon = Icon,
         PackageIcon = PackageIcon,
         IsStopped = IsStopped,
+        NotificationCategories = NotificationCategories,
+        CanManage = Id != "settings" && PackageRoot is not null,
         PackageContentDigest = PackageIconAssets.Count == 0
             ? string.Empty
             : PackageContentDigest,
@@ -582,6 +586,7 @@ public sealed class BridgeCatalog
                     : [],
                 DeclaredCapabilities = declaredCapabilities,
                 Intents = manifest.Intents,
+                NotificationCategories = manifest.NotificationCategories,
                 RequiresAppContainer = executionTrust == WidgetExecutionTrust.Sandboxed,
                 ExecutionTrust = executionTrust,
                 IsolationKey = executionTrust == WidgetExecutionTrust.Sandboxed
@@ -684,6 +689,7 @@ public sealed class BridgeCatalog
             .. source.WorkerArguments,
             .. source.DeclaredCapabilities,
             .. (source.Intents is null ? Array.Empty<string>() : new[] { JsonSerializer.Serialize(source.Intents) }),
+            JsonSerializer.Serialize(source.NotificationCategories),
             source.ExecutionTrust.ToString(),
             source.RequiresAppContainer ? "appcontainer-required" : "job-only",
             source.IsolationKey ?? string.Empty,
@@ -879,6 +885,7 @@ public sealed class BridgeCatalog
             PackageVersion = manifest.Version,
             PackageIconAssets = metadata.Available,
             Intents = manifest.Intents,
+            NotificationCategories = manifest.NotificationCategories,
             DeclaredPackageIconAssetIds = manifest.IconAssets.Keys.ToHashSet(StringComparer.Ordinal),
             PackageIconAdmissionFailure = metadata.Unavailable.Values.FirstOrDefault(),
         };
@@ -1026,6 +1033,7 @@ public sealed class BridgeCatalog
             ] : [],
             DeclaredCapabilities = declaredCapabilities,
             Intents = manifest.Intents,
+            NotificationCategories = manifest.NotificationCategories,
             ExecutionTrust = executionTrust,
             RequiresAppContainer = sandboxed,
             IsolationKey = sandboxed ? BundledIsolationKey(manifest.Publisher, manifest.Id) : null,

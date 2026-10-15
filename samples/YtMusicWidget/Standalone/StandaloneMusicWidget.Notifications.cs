@@ -5,7 +5,7 @@ namespace WidgetRail.Samples.YtMusicWidget.Standalone;
 
 public sealed partial class StandaloneMusicWidget
 {
-    public sealed record NotificationSettings(bool Enabled = false, int BackgroundOpacity = 100, bool SetupSeen = false);
+    public sealed record NotificationSettings(bool SetupSeen = false);
     private NotificationSettings notificationSettings = new();
     private bool notificationSettingsReady;
     private readonly MusicNotificationPolicy notificationPolicy = new();
@@ -19,7 +19,7 @@ public sealed partial class StandaloneMusicWidget
         {
             var stored = await HostServices.PrivateState.ReadAsync<NotificationSettings>(cancellationToken: token);
             lock (_gate) notificationSettings = stored.Value is { } value
-                ? value with { BackgroundOpacity = Math.Clamp(value.BackgroundOpacity, 40, 100) } : new();
+                ? value : new();
         }
         catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or System.Text.Json.JsonException)
         { lock (_gate) notificationSettings = new(SetupSeen: true); }
@@ -42,7 +42,7 @@ public sealed partial class StandaloneMusicWidget
         lock (_gate)
         {
             if (!notificationSettingsReady) return;
-            var update = notificationPolicy.Observe(_service.State, notificationSettings.Enabled, notificationSettings.BackgroundOpacity);
+            var update = notificationPolicy.Observe(_service.State, true);
             if (update is null) return;
             pendingNotification = update.Value.Content;
             notificationNeedsShow |= !update.Value.UpdateOnly;
@@ -67,28 +67,16 @@ public sealed partial class StandaloneMusicWidget
     }
     private void NotificationSettingAction(WidgetActionEvent action)
     {
-        lock (_gate)
+        if (action.ActionId != "notifications.configure") return;
+        Operations.RunLatest("music.notification-preferences", async context =>
         {
-            notificationSettings = action.ActionId == "notifications.toggle"
-                ? notificationSettings with { Enabled = !notificationSettings.Enabled }
-                : notificationSettings with { BackgroundOpacity = (int)Math.Clamp(action.RequestedValue ?? 100, 40, 100) };
-            pendingNotification = null; notificationNeedsShow = false; notificationRevision++;
-            notificationPolicy.Observe(_service.State, false);
-        }
-        Operations.Cancel("music.track-notification");
-        SaveNotificationSettings(); Invalidate();
-        if (!notificationSettings.Enabled)
-            Operations.RunLatest("music.notification-dismiss", async context =>
+            try
             {
-                try
-                {
-                    for (var attempt = 0; attempt < 3; attempt++)
-                    {
-                        if ((await HostServices.Notifications.DismissAsync("now-playing", context.CancellationToken)).Accepted) break;
-                        await Task.Delay(100, context.CancellationToken);
-                    }
-                }
-                catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or OperationCanceledException) { }
-            }, WidgetOperationLifetime.Widget);
+                if (!(await HostServices.Notifications.ConfigureAsync("song-changes", context.CancellationToken)).Accepted && context.IsCurrent)
+                    SetStatus("Notification preferences could not be opened. Try again.");
+            }
+            catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
+            { if (context.IsCurrent) SetStatus("Notification preferences could not be opened. Try again."); }
+        });
     }
 }

@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.spotify",
   "publisher": "widgetrail.samples",
   "name": "Spotify",
-  "version": "0.3.85",
+  "version": "0.3.89",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -26,6 +26,9 @@
     "spotify.brand.green": { "path": "assets/icons/spotify-green.svg" },
     "spotify.brand.white": { "path": "assets/icons/spotify-white.svg" }
   },
+  "notificationCategories": [
+    { "id": "song-changes", "name": "Song changes", "description": "Brief banners with artwork, artist and duration. These notices do not enter the notification list.", "enabledByDefault": true, "retention": "bannerOnly" }
+  ],
   "permissions": [],
   "optionalPermissions": [],
   "intents": {

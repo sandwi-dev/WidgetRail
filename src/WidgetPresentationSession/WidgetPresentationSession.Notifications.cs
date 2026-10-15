@@ -29,6 +29,8 @@ public sealed partial class WidgetPresentationSession
                 descriptor.RuntimeGeneration == message.RuntimeGeneration &&
                 (!_hostEffectAdmissionBoundaries.TryGetValue(descriptor.Id, out var boundary) || message.InitiatedAtMilliseconds > boundary))
             {
+                if (!WidgetNotificationContract.AllowsCommand(descriptor.NotificationCategories, message.Command))
+                    throw new BridgeProtocolException("Notification does not match its declared category.");
                 notificationSequences[descriptor.Id] = message.Sequence;
                 authority = new(descriptor.Id, descriptor.InstanceId, descriptor.RuntimeGeneration, _sessionGenerations.GetValueOrDefault(descriptor.Id));
             }
@@ -51,6 +53,16 @@ public sealed partial class WidgetPresentationSession
         if (notification.IntentToken is null) return;
         await RequestAsync(BridgeMessageTypes.ReleaseNotificationIntent, new BridgeNotificationIntentPrepare(notification.Authority.WidgetId, notification.IntentToken),
             BridgeMessageTypes.Acknowledged, token).ConfigureAwait(false);
+    }
+    public async Task<WidgetIntentPreparation> PrepareWidgetSettingsIntentAsync(WidgetPresentationTarget target, CancellationToken token = default)
+    {
+        _ = ValidateTarget(target);
+        if (!target.Descriptor.CanManage) throw new InvalidOperationException("Widget management is unavailable.");
+        var response = await RequestAsync(BridgeMessageTypes.PrepareWidgetSettingsIntent,
+            new BridgeWidgetManagementRequest(target.Descriptor.Id, target.Descriptor.RuntimeGeneration), BridgeMessageTypes.IntentPrepared, token).ConfigureAwait(false);
+        var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
+        ValidateIntentPreparation(result, "settings");
+        return result;
     }
     public async Task<WidgetIntentPreparation> PrepareAppUpdateIntentAsync(CancellationToken token = default)
     {

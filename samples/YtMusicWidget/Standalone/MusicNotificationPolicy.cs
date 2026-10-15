@@ -12,11 +12,12 @@ public sealed class MusicNotificationPolicy
         var song = state.Current;
         if (!enabled) { current = song; previous = null; return null; }
         if (song is null || !state.Player.Playing || state.Player.Buffering || state.Player.TrackId != song.Id) return null;
-        var changed = !ReferenceEquals(current, song);
+        var changed = current?.Id != song.Id;
         var duration = double.IsFinite(state.Player.Duration) && state.Player.Duration > 0 && state.Player.Duration < 86400
             ? TimeSpan.FromSeconds(state.Player.Duration) : (TimeSpan?)null;
         var content = new WidgetNotification("now-playing", string.IsNullOrWhiteSpace(song.Title) ? "Now playing" : Bound(song.Title, 256))
         {
+            CategoryId = "song-changes",
             Body = Bound(song.Subtitle, 2048), ArtworkUrl = song.Artwork.Length <= 2048 && Uri.TryCreate(song.Artwork, UriKind.Absolute, out var uri) &&
                 uri.Scheme == Uri.UriSchemeHttps && uri.UserInfo.Length == 0 ? song.Artwork : null,
             Metadata = duration is { } time ? time.ToString(time.TotalHours >= 1 ? @"h\:mm\:ss" : @"m\:ss") : "",

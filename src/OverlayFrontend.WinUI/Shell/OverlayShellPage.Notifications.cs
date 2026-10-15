@@ -20,23 +20,98 @@ internal sealed partial class OverlayShellPage
         browserOwner!.Notifications.Changed += RefreshWebappStatus;
         browserOwner.NotificationBannerRequested += QueueNotificationBanner;
     }
-    private async Task ShowNotificationPreferencesAsync(BridgeWidgetDescriptor widget)
+    private async Task ShowNotificationPreferencesAsync(BridgeWidgetDescriptor widget, string? categoryId = null)
     {
-        if (browserOwner is not { } browsers) return;
-        var current = browsers.NotificationPreferences.Get(widget.Id);
-        var choice = await ShowHostChoiceAsync("Notifications", $"{widget.Name}\nCurrent: {NotificationModeLabel(current)}\nWebsite permission, when applicable, is managed separately.",
-            (HostDialogChoice[])[new("banner", "Banner + list"), new("list", "List only"), new("off", "Off")], lifetime.Token);
-        if (choice is null || retired) return;
-        var mode = choice switch { "banner" => NotificationPresentation.BannerAndList, "list" => NotificationPresentation.ListOnly, _ => NotificationPresentation.Off };
+        if (notificationCenter is not { } center || HostChoiceActive) return;
+        var preferences = center.Preferences;
+        var selection = selectionVersion;
+        var sourcePin = PinnedInputActive ? pinned : null;
+        bool Current() => !retired && visible && selectionVersion == selection &&
+            (sourcePin is null ? foreground : ReferenceEquals(pinned, sourcePin) && sourcePin.IsCurrent && sourcePin.HasForeground) && catalogItems.Any(item => item.Id == widget.Id && item.RuntimeGeneration == widget.RuntimeGeneration);
         try
         {
-            await browsers.NotificationPreferences.SetAsync(widget.Id, mode, lifetime.Token);
-            if (notificationBannerState.Widget == widget.Id && mode != NotificationPresentation.BannerAndList) HideNotificationBanner();
+            await center.Ready;
+            await preferences.EnsureCategoriesAsync(widget.Id, widget.NotificationCategories, lifetime.Token);
+            string? returnCategory = null;
+            while (Current())
+            {
+                var category = categoryId;
+                if (category is null)
+                {
+                    var options = new List<HostDialogChoice> { new("$master", $"All notifications · {NotificationModeLabel(preferences.Get(widget.Id))}"),
+                        new("general", $"General · {NotificationModeLabel(preferences.Category(widget.Id, "general").Mode)}") };
+                    options.AddRange(widget.NotificationCategories.Select(item => new HostDialogChoice(item.Id,
+                        $"{item.Name} · {NotificationModeLabel(preferences.Category(widget.Id, item.Id).Mode, item.Retention == WidgetRail.WidgetProtocol.WidgetNotificationRetention.BannerOnly)}")));
+                    category = await ShowHostPreferenceAsync("Notification preferences", widget.Name, options.ToArray(), lifetime.Token, pinnedOwner: sourcePin, currentChoiceId: returnCategory, closeLabel: "Done");
+                    if (category is null || !Current()) return;
+                    returnCategory = category;
+                }
+                if (category is null or "$master")
+                {
+                    var mode = await ChooseNotificationModeAsync(widget.Name, preferences.Get(widget.Id), sourcePin);
+                    if (mode is not null && Current()) await preferences.SetAsync(widget.Id, mode.Value, lifetime.Token);
+                }
+                else
+                {
+                    var declaration = widget.NotificationCategories.FirstOrDefault(item => item.Id == category);
+                    if (category != "general" && declaration is null) return;
+                    var name = declaration?.Name ?? "General";
+                    var bannerOnly = declaration?.Retention == WidgetRail.WidgetProtocol.WidgetNotificationRetention.BannerOnly;
+                    string? returnOption = null;
+                    while (Current())
+                    {
+                        var value = preferences.Category(widget.Id, category);
+                        var master = preferences.Get(widget.Id);
+                        var detail = declaration?.Description ?? "Notifications without a specific category.";
+                        if (master != NotificationPresentation.BannerAndList) detail += $"\nAll notifications: {NotificationModeLabel(master)}. This setting takes priority.";
+                        var choice = await ShowHostPreferenceAsync(name, detail,
+                            (HostDialogChoice[])[new("mode", $"{(bannerOnly ? "Banners" : "Delivery")} · {NotificationModeLabel(value.Mode, bannerOnly)}"),
+                                new("opacity", $"Banner opacity · {(value.Opacity is { } opacity ? opacity + "%" : "Widget default")}")], lifetime.Token, pinnedOwner: sourcePin, currentChoiceId: returnOption, closeLabel: categoryId is null ? "Back" : "Done");
+                        if (choice is null || !Current()) break;
+                        returnOption = choice;
+                        if (choice == "mode")
+                        {
+                            var mode = await ChooseNotificationModeAsync(name, value.Mode, sourcePin, bannerOnly);
+                            if (mode is not null && Current()) await preferences.SetCategoryAsync(widget.Id, category, value with { Mode = mode.Value }, lifetime.Token);
+                        }
+                        else
+                        {
+                            var choices = Enumerable.Range(0, 13).Select(index => 100 - index * 5)
+                                .Append(value.Opacity ?? 100).Distinct().OrderByDescending(opacity => opacity)
+                                .Select(opacity => new HostDialogChoice(opacity.ToString(CultureInfo.InvariantCulture), opacity + "%")).ToArray();
+                            var selected = await ShowHostPreferenceAsync("Banner opacity", $"{name} · Current: {value.Opacity ?? 100}%", choices, lifetime.Token, pinnedOwner: sourcePin, currentChoiceId: (value.Opacity ?? 100).ToString(CultureInfo.InvariantCulture));
+                            if (int.TryParse(selected, out var selectedOpacity) && Current())
+                                await preferences.SetCategoryAsync(widget.Id, category, value with { Opacity = selectedOpacity }, lifetime.Token);
+                        }
+                        HideChangedNotificationBanner(widget.Id);
+                    }
+                }
+                HideChangedNotificationBanner(widget.Id);
+                if (categoryId is not null) return;
+            }
         }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        { await ShowHostChoiceAsync("Could not save notification preferences", "Your previous preference is still active. Try again.", [], lifetime.Token); }
+        { if (Current()) await ShowHostChoiceAsync("Could not save notification preferences", "Your previous preference is still active. Try again.", [], lifetime.Token, pinnedOwner: sourcePin); }
     }
-    private static string NotificationModeLabel(NotificationPresentation mode) => mode switch
+    private async Task<NotificationPresentation?> ChooseNotificationModeAsync(string name, NotificationPresentation current, PinnedSurface? sourcePin, bool bannerOnly = false)
+    {
+        var choices = bannerOnly ? (HostDialogChoice[])[new("banner", "On"), new("off", "Off")]
+            : (HostDialogChoice[])[new("banner", "Banner + list"), new("list", "List only"), new("off", "Off")];
+        var currentId = current == NotificationPresentation.BannerAndList ? "banner" : !bannerOnly && current == NotificationPresentation.ListOnly ? "list" : "off";
+        var description = bannerOnly ? "Brief banners only; these notifications do not enter the list." : "List only keeps pending notifications and suppresses banners.";
+        var choice = await ShowHostPreferenceAsync(bannerOnly ? "Banners" : "Notification delivery", $"{name}\n{description}",
+            choices, lifetime.Token, pinnedOwner: sourcePin, currentChoiceId: currentId);
+        return choice switch { "banner" => NotificationPresentation.BannerAndList, "list" => NotificationPresentation.ListOnly, "off" => NotificationPresentation.Off, _ => null };
+    }
+    private void HideChangedNotificationBanner(string widget)
+    {
+        // Re-rendering a live card would restart motion; apply new appearance on the next notice.
+        if (notificationBannerState.Widget == widget) HideNotificationBanner();
+    }
+    private static string NotificationModeLabel(NotificationPresentation mode, bool bannerOnly = false) => bannerOnly
+        ? mode == NotificationPresentation.BannerAndList ? "On" : "Off"
+        : mode switch
     { NotificationPresentation.BannerAndList => "Banner + list", NotificationPresentation.ListOnly => "List only", _ => "Off" };
 
     private Task ShowNotificationsAsync() => ShowNotificationsAsync(null);

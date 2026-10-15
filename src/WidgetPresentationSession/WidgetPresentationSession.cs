@@ -173,7 +173,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 if (_descriptors.TryGetValue(incoming.Id, out var admitted) &&
                     incoming.IconAssets.SequenceEqual(admitted.IconAssets) &&
                     incoming.QuickActions.SequenceEqual(admitted.QuickActions) &&
-                    (incoming with { IconAssets = admitted.IconAssets, QuickActions = admitted.QuickActions }) == admitted)
+                    incoming.NotificationCategories.SequenceEqual(admitted.NotificationCategories) &&
+                    (incoming with { IconAssets = admitted.IconAssets, QuickActions = admitted.QuickActions, NotificationCategories = admitted.NotificationCategories }) == admitted)
                 {
                     widgets[index] = admitted;
                     byId[incoming.Id] = admitted;
@@ -1421,7 +1422,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             string.IsNullOrWhiteSpace(descriptor.InstanceId) || descriptor.InstanceId.Length > 128 ||
             descriptor.RuntimeGeneration.Length != 32 ||
             descriptor.PresentationGeneration.Length != 32 ||
-            descriptor.QuickActions.Count > 16)
+            descriptor.QuickActions.Count > 16 || !WidgetNotificationContract.ValidCategories(descriptor.NotificationCategories))
             throw new BridgeProtocolException("WidgetBridge returned an invalid widget descriptor.");
     }
 

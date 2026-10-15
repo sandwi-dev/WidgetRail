@@ -114,8 +114,8 @@ internal sealed partial class OverlayShellPage
     private async Task RunTrayHoldAsync(TrayHoldAction action)
     {
         if (action == TrayHoldAction.ToggleReorder) ToggleTrayReorder();
-        else if (action == TrayHoldAction.Restart && FocusedTrayWidget() is { } widget)
-            await RestartWidgetAsync(widget, selectionVersion);
+        else if (action == TrayHoldAction.Notifications)
+            await ShowNotificationsAsync();
     }
 
     private bool TrayOwnerCurrent(BridgeWidgetDescriptor captured, long selection) =>
@@ -219,8 +219,11 @@ internal sealed partial class OverlayShellPage
                 Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor), group: preferencesGroup);
             if (preferencesGroup.Items.Count == 0) menu.Flyout.Items.Remove(preferencesGroup);
             var widgetGroup = Group("Widget", "Widget");
+            if (descriptor.CanManage)
+                Add("Manage widget", "Widget.Manage", () => InvokeIntentCoreAsync(prepareNotification: token =>
+                    owner!.Session.PrepareWidgetSettingsIntentAsync(owner.Session.GetTarget(descriptor.Id), token)), group: widgetGroup);
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y, group: widgetGroup);
-            Add(descriptor.IsStopped ? "Start widget" : "Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), ControllerButton.Y, hold: true, group: widgetGroup);
+            Add(descriptor.IsStopped ? "Start widget" : "Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), group: widgetGroup);
             var quickActionStart = menu.Flyout.Items.Count;
             if (DashboardFrame(descriptor) is { } displayed)
                 foreach (var action in displayed.Snapshot.QuickActions)
@@ -237,7 +240,7 @@ internal sealed partial class OverlayShellPage
             if (browserOwner is { } notificationOwner)
             {
                 menu.Flyout.Items.Add(new MenuFlyoutSeparator());
-                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
+                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync, ControllerButton.Y, hold: true);
             }
             if (!descriptor.IsStopped)
                 Add("Stop widget", "Widget.Stop", () => StopWidgetAsync(descriptor));

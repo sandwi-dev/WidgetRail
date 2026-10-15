@@ -203,3 +203,8 @@ alternative Browser/YouTube intent receiver.
 Sensitive-entry examples retain only a boolean indicating that dummy input arrived;
 the committed string is never placed in a snapshot or persistent state. Ordinary
 text and all demo preferences are session-local, resetting when the worker restarts.
+
+Utilities includes a host-notification example: open category preferences, show a
+brief informational banner, update it without replaying it, and dismiss it. The
+Examples category is declared in the manifest; preference storage and presentation
+are entirely host-owned. No notification or activity starts automatically.

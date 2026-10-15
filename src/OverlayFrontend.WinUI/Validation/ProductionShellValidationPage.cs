@@ -33,6 +33,8 @@ internal sealed partial class ProductionShellValidationPage : Page, IAsyncDispos
 
     private async Task RunAsync()
     {
+        if (Environment.GetCommandLineArgs().Contains("--notification-adoption-focus"))
+        { checks.AddRange(await shell.ValidateWidgetNavigationFocusAsync()); return; }
         var catalog = Enumerable.Range(0, 18).Select(index => new BridgeWidgetDescriptor
         { Id = "fixture." + index, Name = "Widget " + index, Icon = WidgetGlyph.Music,
             InstanceId = "fixture.instance." + index, RuntimeGeneration = "runtime", PresentationGeneration = "presentation", PackageContentDigest = "" }).ToArray();

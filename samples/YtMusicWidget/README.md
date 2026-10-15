@@ -34,16 +34,16 @@ integration; available content, account restrictions and service changes can aff
 
 ## Song-change banners
 
-Setup introduces **Song-change banners**, switched off by default. Enable it there
-or later through **Y → Settings**. A new track shows its thumbnail, title, artist
+Setup introduces **Manage song notifications**. Open it there or through
+**Y → Settings** to enable the host-owned Song changes category, initially off. A new track shows its thumbnail, title, artist
 and total duration in a quiet, non-interactive banner, including while the overlay
 is open. It disappears after four seconds and never adds to the notification list
 or bell count. Rapid changes update the current banner without extending it;
 pause, resume, seeking and playback ticks do not create new banners.
 
-When enabled, **Banner background opacity** adjusts the background while keeping
-text and artwork readable. The setting is saved for this widget. The host's tray
-Notification preferences and quiet/placement rules still apply, so a muted widget
+**Banner opacity** in the same host preferences adjusts the background while keeping
+text and artwork readable. The host saves this category choice across updates.
+The per-widget master preference and quiet/placement rules still apply, so a muted widget
 or a screen with no free corner will not display a banner.
 
 The package includes its own Python and JavaScript helper runtimes. You do not need
@@ -127,3 +127,14 @@ See [development notes](DEVELOPMENT.md) for architecture, tests and packaging, a
 [third-party notices](NOTICE.md) for dependencies and credit to LoZazaMastro's Now Playing.
 The former companion integration remains only as a [regression fixture](../../tests/YtMusicCompanionFixture/README.md)
 for the SDK's [local companion service](../../docs/reference/community-companion-services.md).
+
+Song banners now use the host-owned **Song changes** notification category.
+**Manage song notifications** appears in Setup and opens the same delivery/opacity
+controls as tray Notification preferences. The category starts enabled for new installations; existing host choices are
+preserved. Previous widget-local banner enable/opacity values are not imported. Setup completion still
+uses PrivateState and survives approved package updates. Track observations stay
+active while the player is resident; metadata-only updates never replay a banner.
+
+The Song changes category declares banner-only retention. Its preferences offer
+On/Off and banner opacity; there is no pending-list setting for song changes.
+Value pickers focus the current setting, and B returns without changing it.

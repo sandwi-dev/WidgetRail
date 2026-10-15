@@ -13,7 +13,7 @@ internal static class ControllerGuideModel
         ? (ControllerGuideHint[])[new(ControllerPrompt.DPadHorizontal, "Move widget", Required: true), new(ControllerPrompt.A, "Done", ControllerButton.A),
             new(ControllerPrompt.B, "Done", ControllerButton.B, Required: true), new(ControllerPrompt.Y, "Done", ControllerButton.Y)]
         : (ControllerGuideHint[])[new(ControllerPrompt.A, "Open widget", ControllerButton.A, Required: true),
-            new(ControllerPrompt.Y, "Reorder · hold to restart", ControllerButton.Y),
+            new(ControllerPrompt.Y, "Reorder · hold for notifications", ControllerButton.Y),
             new(ControllerPrompt.Menu, "Commands", ControllerButton.Menu), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
     private static readonly ControllerButton[] order = [ControllerButton.X, ControllerButton.LeftTrigger,
         ControllerButton.RightTrigger, ControllerButton.LeftBumper, ControllerButton.RightBumper,

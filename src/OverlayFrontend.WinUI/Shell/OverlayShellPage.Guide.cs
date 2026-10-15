@@ -16,9 +16,9 @@ internal sealed partial class OverlayShellPage
         object? shellContext = null;
         if (HostChoiceActive)
         {
-            shell = hostChoiceDialog?.SupportsMessageScroll == true
+            shell = hostChoiceDialog?.SupportsScroll == true
                 ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A),
-                    new(ControllerPrompt.B, "Cancel", ControllerButton.B, Required: true), new(ControllerPrompt.RightStickMove, "Scroll")]
+                    new(ControllerPrompt.B, hostChoiceDialog!.CloseButtonText, ControllerButton.B, Required: true), new(ControllerPrompt.RightStickMove, "Scroll")]
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
             shellContext = "host-choice";
             if (hostChoiceDialog?.SupportsDismissChoice == true)

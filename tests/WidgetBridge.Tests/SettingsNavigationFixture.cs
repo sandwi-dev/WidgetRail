@@ -38,16 +38,20 @@ internal static class SettingsNavigationFixture
         try
         {
             Seed(root);
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
             var pipe = "settings-navigation-" + Guid.NewGuid().ToString("N");
             await using var server = new WidgetBridgeServer(pipe, Catalog(root));
             var serving = server.RunAsync(TimeSpan.FromSeconds(3), deadline.Token);
             await using var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token);
             await session.ListWidgetsAsync(deadline.Token);
-            for (var cycle = 0; cycle < 2; cycle++)
+            for (var cycle = 0; cycle < 4; cycle++)
             {
                 var source = await session.EstablishPresentationAsync(session.GetTarget("source"), WidgetLifecycleState.Interactive, deadline.Token);
-                var preparation = await session.PrepareIntentAsync(source, new("manage", "manage", ControllerButton.A, InputScopeId: "root"), deadline.Token);
+                var preparation = cycle < 2
+                    ? await session.PrepareIntentAsync(source, new("manage", "manage", ControllerButton.A, InputScopeId: "root"), deadline.Token)
+                    : await session.PrepareWidgetSettingsIntentAsync(session.GetTarget("managed"), deadline.Token);
+                Check(preparation.Kind == WidgetIntentLaunchKind.Widget && preparation.Destinations.Single().WidgetId == "settings",
+                    "Management request did not cross the bridge to Settings.");
                 await session.SetLifecycleAsync(session.GetTarget("source"), WidgetLifecycleState.Background, deadline.Token);
                 var target = await session.EstablishPresentationAsync(session.GetTarget("settings"), WidgetLifecycleState.Interactive, deadline.Token);
                 var result = await session.CommitIntentAsync(preparation, target, deadline.Token);
@@ -61,6 +65,7 @@ internal static class SettingsNavigationFixture
                     await Task.Delay(25, deadline.Token);
                 } while (true);
                 Check(target.Snapshot.ActiveInputScopeId != "settings-root", "Settings home remained the destination.");
+                Check(session.GetTarget("managed").Descriptor.IsStopped, "Managing a widget must not start it.");
                 // Let optional slow inspections finish before exercising the warm path.
                 await Task.Delay(3300, deadline.Token);
             }
@@ -70,6 +75,10 @@ internal static class SettingsNavigationFixture
         finally { Directory.Delete(root, recursive: true); }
     }
     internal static BridgeCatalog Catalog(string root) => new([
+        new ConfiguredWidget { Id = "managed", Name = "Synthetic navigation target", PackageId = Package,
+            PublisherId = "fixture.publisher", InstanceId = "managed.fixture", IsStopped = true,
+            PackageRoot = Path.Combine(root, "widgets", "packages", Package, "1.0.0"),
+            WorkerExecutable = Environment.ProcessPath!, WorkerFingerprint = new string('c',64), CatalogFingerprint = new string('c',64) },
         new ConfiguredWidget { Id = "source", Name = "Marketplace navigation fixture", PackageId = "fixture.source", PublisherId = "fixture", InstanceId = "settings-source.fixture",
             WorkerExecutable = Environment.ProcessPath!, WorkerFingerprint = new string('a',64), CatalogFingerprint = new string('a',64),
             Intents = new() { Requests = [WidgetIntentContracts.WidgetSettings] } },

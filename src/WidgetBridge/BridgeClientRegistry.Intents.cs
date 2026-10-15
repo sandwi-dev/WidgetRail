@@ -8,7 +8,7 @@ internal sealed partial class BridgeClientRegistry
     private sealed record IntentTicket(string SourceId, string SourceFingerprint, BridgeWorkerRun? SourceRun,
         long CreatedAt, WidgetIntentRequest Request, WidgetIntentLaunchKind Kind,
         IReadOnlyDictionary<string, string> Targets, BridgeIntentPrepareRequest? Origin, WidgetIntentRequest Original,
-        string? NotificationToken = null, bool HostUpdate = false);
+        string? NotificationToken = null, bool HostSettings = false, string? ManagedWidgetId = null, string? ManagedFingerprint = null);
     private readonly Dictionary<string, IntentTicket> _intentTickets = new(StringComparer.Ordinal);
     private sealed record ActiveIntentDelivery(string SourceId, CancellationTokenSource Cancellation);
     private readonly Dictionary<string, ActiveIntentDelivery> _activeIntentDeliveries = new(StringComparer.Ordinal);
@@ -65,7 +65,7 @@ internal sealed partial class BridgeClientRegistry
     private bool IntentActionCurrent(IntentTicket ticket)
     {
         if (!IntentSourceCurrent(ticket)) return false;
-        if (ticket.Origin is null) return ticket.HostUpdate || NotificationIntentCurrent(ticket);
+        if (ticket.Origin is null) return ticket.HostSettings || NotificationIntentCurrent(ticket);
         var source = _clients[ticket.SourceId];
         return source.FindInputOriginSnapshot(ticket.Origin.SnapshotSequence) is { } origin && source.CachedSnapshot is { } current &&
             ticket.Original.Matches(ResolveIntentSourceLocked(source, origin, current, ticket.Origin)) && Declared(source, ticket.Request);
@@ -81,7 +81,7 @@ internal sealed partial class BridgeClientRegistry
             if (_intentTickets.Count + _activeIntentDeliveries.Count >= 16 && _intentTickets.Values.All(item => IntentFresh(item.CreatedAt, IntentNow())))
                 return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets
-                .Where(widget => !widget.IsStopped && (!ticket.HostUpdate || widget.Id == "settings")).SelectMany(widget =>
+                .Where(widget => !widget.IsStopped && (!ticket.HostSettings || widget.Id == "settings")).SelectMany(widget =>
                 (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version)
                 .Select(handler => (new IntentHandlerCandidate(widget.Id, _catalogRevision + 1, CompiledWidgetIntentContract.Create(handler),
                     true, handler.SupportsPassiveDelivery), widget.CatalogFingerprint, handler.HasDynamicAvailability))).ToList();
@@ -115,7 +115,8 @@ internal sealed partial class BridgeClientRegistry
             // Discard catalog entries changed while probing another worker.
             ready.RemoveAll(candidate => !candidates.Any(before => before.Candidate.WidgetId == candidate.WidgetId &&
                 _catalog.IntentWidgets.Any(now => now.Id == candidate.WidgetId && now.CatalogFingerprint == before.Fingerprint)));
-            var declaration = _clients[ticket.SourceId].Configured.Intents!.Requests.Single(item => item.Id == intent.ContractId && item.Version == intent.Version);
+            var declaration = ticket.ManagedWidgetId is not null ? WidgetIntentContracts.WidgetSettings :
+                _clients[ticket.SourceId].Configured.Intents!.Requests.Single(item => item.Id == intent.ContractId && item.Version == intent.Version);
             var resolution = IntentResolutionPolicy.Resolve(CompiledWidgetIntentContract.Create(declaration), intent.Payload, ready.ToArray(), routing: intent.Routing);
             var kind = resolution.Kind switch
             {
@@ -282,11 +283,11 @@ internal sealed partial class BridgeClientRegistry
         }
     }
 
-    private bool IntentSourceCurrent(IntentTicket ticket) => !_disposed &&
+    private bool IntentSourceCurrent(IntentTicket ticket) => !_disposed && ManagedTargetCurrent(ticket) &&
         _clients.TryGetValue(ticket.SourceId, out var source) && IsCurrentLocked(source) &&
         source.Configured.WorkerFingerprint == ticket.SourceFingerprint &&
-        (ticket.HostUpdate || ticket.NotificationToken is not null
-            ? ticket.HostUpdate || source.Client.IsRunning && new BridgeWorkerRun(source.Generation, source.Client.Starts) == ticket.SourceRun
+        (ticket.HostSettings || ticket.NotificationToken is not null
+            ? ticket.HostSettings || source.Client.IsRunning && new BridgeWorkerRun(source.Generation, source.Client.Starts) == ticket.SourceRun
             : source.HasCurrentSnapshotWorker && source.CachedWorkerRun == ticket.SourceRun);
 
     private WidgetIntentRequest? ResolveIntentSourceLocked(ClientRegistration source, ViewSnapshot origin,

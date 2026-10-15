@@ -908,9 +908,9 @@ sealed class FakeService : IMusicService
     public void PlaybackTick() { State = State with { Player = State.Player with { Position = State.Player.Position + 1 } }; Changed?.Invoke(); }
     public void SetPlayerError(string? error) { State = State with { Player = State.Player with { Error = error } }; Changed?.Invoke(); }
     public void ReplaceQueue(IReadOnlyList<MusicItem> queue) { State = State with { Queue = queue, Index = 0 }; Changed?.Invoke(); }
-    public void SetPlayback(bool playing)
+    public void SetPlayback(bool playing, string trackId = "test")
     {
-        State = playing ? new(true, [new("test", "song", "A song title", "Artist name", "https://example.invalid/fixture.png")], 0, false, "off", new("test", true, Position: 15, Duration: 196))
+        State = playing ? new(true, [new(trackId, "song", "A song title", "Artist name", "https://example.invalid/fixture.png")], 0, false, "off", new(trackId, true, Position: 15, Duration: 196))
             : new(true, [], -1, false, "off", new());
         Changed?.Invoke();
     }

@@ -1830,7 +1830,7 @@ static void CopyWrailDistribution(string source, string destination)
     foreach (var name in new[]
              {
                  "wrail.exe", "wrail.dll", "wrail.deps.json", "wrail.runtimeconfig.json",
-                 "PlatformBroker.dll",
+                 "PlatformBroker.dll", "PackageDistribution.dll",
                  "PlatformSettings.dll", "WidgetCatalog.dll", "WidgetProtocol.dll",
                  "WidgetApplicationRuntime.dll", "WidgetRuntime.dll", "WidgetSdk.dll",
                  "WidgetStyling.dll",

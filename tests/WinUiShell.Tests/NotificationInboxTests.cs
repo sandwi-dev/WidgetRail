@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.OverlayFrontend.WinUI.Browser;
 
 namespace WinUiShell.Tests;
@@ -15,6 +16,19 @@ public sealed class NotificationInboxTests
     private static NotificationEntry Add(NotificationInbox inbox, Source source, string tag = "", string widget = "webapp", string profile = "default", string origin = "https://fixture.invalid") =>
         inbox.Add(widget, profile, origin, tag, "Title", "Body", source, source.Callbacks, NotificationPresentation.BannerAndList)!;
 
+    [TestMethod]
+    public void WebsiteBannersUseAlwaysWithoutChangingWidgetVisibilityPolicies()
+    {
+        using var inbox = new NotificationInbox();
+        var entry = Add(inbox, new());
+        Assert.AreEqual(WidgetNotificationVisibility.Always, entry.BannerVisibility);
+        entry.UpdateContent(new("ready", "Ready"));
+        Assert.AreEqual(WidgetNotificationVisibility.OverlayHidden, entry.BannerVisibility);
+        entry.UpdateContent(new("ready", "Ready") { Visibility = WidgetNotificationVisibility.SourceHidden });
+        Assert.AreEqual(WidgetNotificationVisibility.SourceHidden, entry.BannerVisibility);
+        entry.UpdateContent(new("ready", "Ready") { Visibility = WidgetNotificationVisibility.Always });
+        Assert.AreEqual(WidgetNotificationVisibility.Always, entry.BannerVisibility);
+    }
     [TestMethod]
     public void BannerExpiryAndBurstUpdatesKeepPendingItemsAndDoNotExtendInterruption()
     {

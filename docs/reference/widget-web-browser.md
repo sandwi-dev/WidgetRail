@@ -163,8 +163,14 @@ interaction to the main foreground owner first.
 Supported website permissions use host prompts identifying the widget and exact
 HTTPS origin, with Allow once, Always allow and Block choices. **Website settings**
 is available from both the gear and the visible browser widget's tray menu.
-One scrollable list groups **Permissions**, **New windows**, and profile/session
-actions. New-window placement can be changed directly in that list. Microphone,
+One scrollable list groups **Permissions**, **Behavior**, and **Data**, with
+setting names and current values in separate columns. Section headings are native,
+non-focusable group headers outside the selectable rows; the focus outline
+surrounds only the setting. The right stick scrolls the shared choice list, while
+D-pad navigation skips headings. **New windows** is one behavior row; its picker
+focuses the saved placement and returns to that row.
+The heading identifies the origin and, for a non-default profile, the profile.
+Settings closes with **Done**; nested preferences use **Back**. Microphone,
 camera and the other supported permissions are always listed with explicit
 **Ask next time / Allow / Block** choices, including when no decision was saved.
 Changing a permission reloads pages in that profile and ends active calls; it
@@ -476,7 +482,10 @@ Ordinary widgets use the same coordinator and presentation through the
 interaction, artwork and overlay-visibility options. Web notifications retain the
 default policy below.
 Quiet passive banners last four seconds without taking focus or making a sound.
-While the overlay is visible, the bell beside the clock updates its pending-count badge instead. The badge counts all pending entries, including ones already shown. A burst can
+Browser, webapp and hosted-window banners use Always visibility: they can appear
+with the overlay open or hidden, subject to user preferences and available space.
+The bell beside the clock also updates its pending-count badge. The badge counts
+all pending entries, including ones already shown. A burst can
 update the current banner without extending its deadline; an eight-second quiet
 interval follows. Website replacement tags are scoped to widget/profile/origin.
 

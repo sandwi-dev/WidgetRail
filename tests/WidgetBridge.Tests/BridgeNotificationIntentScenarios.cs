@@ -38,4 +38,35 @@ internal static partial class BridgeIntentScenarios
         var host = await hostFixture.Registry.PrepareAppUpdateIntentAsync(default);
         Check(host.Kind == WidgetIntentLaunchKind.Widget && host.Destinations.Single().WidgetId == "settings");
     }
+    internal static async Task WidgetManagementAndCategoryAdmission()
+    {
+        var settings = Target("settings") with { Intents = new() { Handles = [new(WidgetIntentContracts.WidgetSettings)] } };
+        var impostor = Target("impostor") with { Intents = settings.Intents };
+        var managed = Source() with { PackageRoot = Path.GetTempPath(), IsStopped = true };
+        await using var fixture = Fixture([settings, impostor, managed]);
+        var descriptor = managed.PublicDescriptor();
+        var wireRequest = new BridgeEnvelope { Type = BridgeMessageTypes.PrepareWidgetSettingsIntent, RequestId = 1,
+            Payload = BridgeJson.ToElement(new BridgeWidgetManagementRequest("source", descriptor.RuntimeGeneration)) };
+        var classified = BridgeRequestClassifier.Classify(wireRequest);
+        Check(classified.IsKnown && classified.Kind == BridgeRequestKind.PrepareIntent && classified.WidgetId == "source");
+        Check(BridgeRequestClassifier.Classify(wireRequest with { Payload = BridgeJson.ToElement(new BridgeWidgetManagementRequest("bad/id", descriptor.RuntimeGeneration)) }).Kind == BridgeRequestKind.Malformed);
+        Check(descriptor.CanManage);
+        Check((await fixture.Registry.PrepareWidgetSettingsIntentAsync(new("source", new string('f',32)), default)).Kind == WidgetIntentLaunchKind.Rejected);
+        var prepared = await fixture.Registry.PrepareWidgetSettingsIntentAsync(new("source", descriptor.RuntimeGeneration), default);
+        Check(prepared.Kind == WidgetIntentLaunchKind.Widget && prepared.Destinations.Single().WidgetId == "settings");
+        Check(fixture.Clients.All(client => client.WidgetId == "settings"));
+        fixture.Registry.ApplyCatalog(new([settings, impostor, managed with { WorkerFingerprint = new string('f', 64) }]), 1);
+        Check(!(await fixture.Registry.CommitIntentAsync(new("settings", prepared.TicketId!), default)).Accepted);
+        fixture.Registry.ApplyCatalog(new([settings, impostor]), 2);
+        Check(!settings.PublicDescriptor().CanManage);
+        Check(!impostor.PublicDescriptor().CanManage);
+        await using var sourceFixture = Fixture([Source()]);
+        await PrepareSource(sourceFixture);
+        using (var admitted = sourceFixture.Registry.TryAdmitWidgetBackgroundPublication("source", Source().WorkerFingerprint, requireInteractive: true)) Check(admitted is not null);
+        await sourceFixture.SetLifecycleAsync("source", WidgetLifecycleState.Background);
+        using (var admitted = sourceFixture.Registry.TryAdmitWidgetBackgroundPublication("source", Source().WorkerFingerprint, requireInteractive: true)) Check(admitted is null);
+        using (var admitted = sourceFixture.Registry.TryAdmitWidgetBackgroundPublication("source", Source().WorkerFingerprint)) Check(admitted is not null);
+        using (var admitted = sourceFixture.Registry.TryAdmitWidgetBackgroundPublication("source", new string('f',64))) Check(admitted is null);
+    }
+
 }

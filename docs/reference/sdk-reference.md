@@ -12,6 +12,8 @@ Use this index to find one API family at a time. For a first project, start with
 | Browsing and provider surfaces | [Web browser](widget-web-browser.md) |
 | Native media playback | [Media player](widget-media-player.md) |
 | Capture and restricted documents | [Capture and Game Help](widget-capture-and-game-help.md) |
+| Quiet notifications, categories and destinations | [Widget notifications](widget-notifications.md) |
+| Independent widget activity and badges | [Widget activity](widget-activity.md) |
 | Widget-to-widget routing and feedback | [Intents](widget-intents.md) |
 | Describe a view | [UI elements](declarative-ui.md) |
 | Compose a navigation shell or custom header | [Presentation composition](presentation-composition.md) |

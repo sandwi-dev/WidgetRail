@@ -158,6 +158,8 @@ public sealed partial class MainWindow
             RootFrame.Content = new Validation.ContextCaptureValidationPage(captureResult);
         else if (validateWindowPreview) RootFrame.Content = new Validation.WindowPreviewValidationPage();
         else if (arguments.Contains("--validate-shell-status")) RootFrame.Content = new Validation.ShellStatusValidationPage();
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-banner-style") is { } bannerStyleResult)
+        { AppWindow.Resize(new(1500, 1100)); RootFrame.Content = new Validation.NotificationBannerStyleValidationPage(bannerStyleResult); }
         else if (arguments.Contains("--validate-production-shell"))
         { AppWindow.Resize(new(1600, 1100)); RootFrame.Content = new Validation.ProductionShellValidationPage(); }
         else if (arguments.Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();

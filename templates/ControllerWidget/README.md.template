@@ -87,3 +87,32 @@ Accessibility rules applied by the host always override widget styles.
 The original starter code is MIT-licensed. Keep `WIDGETRAIL-NOTICES.txt` when
 redistributing substantial copied portions; choose the license for your own
 widget. Referenced SDK/bootstrap libraries retain their MIT notices.
+
+## Notifications and activity
+
+Ordinary widgets can use `HostServices.Notifications` with bounded manifest
+`notificationCategories`. Introduce optional categories during setup and call
+`ConfigureAsync(categoryId)` from an action to open shared host preferences. Do
+not store a duplicate enabled/opacity choice. Use `UpdateAsync` for metadata or
+progress without replaying a banner, and a declared `OpenIntent` for a pending
+result destination. `SourceHidden` lets the host suppress redundant results when
+the owner is already visible. Notifications do not extend worker lifetime.
+
+Report independent `HostServices.Activity.SetAsync(sourceId, activity)` sources
+only for activity the widget owns; clearing one source leaves the others intact.
+WebView audio and website notifications are detected by the host automatically;
+webapp wrappers need no DOM polling or mirrored status reporting. Website notices
+use the General category and their original website activation callback, with
+banners eligible whether the overlay is open or hidden. Ordinary SDK notices
+default to OverlayHidden; set `Visibility = WidgetNotificationVisibility.Always`
+when they should also appear while the overlay is open.
+
+Keep stable focus IDs and declare navigation/Back destinations. The host preserves
+widget focus through snapshot replacement; notification publication must not
+change the widget's route or force focus.
+
+Declare a notification category's `retention` as `bannerOnly` for transient notices
+or `pending` for notices kept in the list. The host enforces this declaration and
+shows useful controls: On/Off for banner-only categories, or Banner + list / List
+only / Off for pending categories. Omitting `retention` allows both kinds for
+existing categories. Do not advertise pending-list choices for song banners.

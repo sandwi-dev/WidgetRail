@@ -26,6 +26,7 @@
       "path": "assets/icons/gallery-mark.svg"
     }
   },
+  "notificationCategories": [{ "id": "examples", "name": "Examples", "description": "Manually triggered notification demonstrations.", "retention": "bannerOnly" }],
   "permissions": [],
   "optionalPermissions": [
     "presentation.documents.v1",

@@ -75,8 +75,13 @@ internal sealed partial class OverlayShellPage
         // when a control unloads, a window activates, or a view is preparing.
         // Explicit host transfers set interactive=false first; pointer and
         // keyboard traversal remain valid user transfers.
-        nativeTrayFocusTransferAllowed = !interactive || (!switching && surface?.IsApplyingPresentation != true &&
-            (args.FocusState == FocusState.Pointer || args.Direction != FocusNavigationDirection.None));
+        nativeTrayFocusTransferAllowed = AllowsNativeShellFocusTransfer(args);
         if (!retired && !nativeTrayFocusTransferAllowed) args.TryCancel();
     }
+
+    // Removing a pointer-focused control can retain FocusState.Pointer on WinUI's
+    // fallback target. It is only user navigation outside a presentation commit.
+    private bool AllowsNativeShellFocusTransfer(GettingFocusEventArgs args) =>
+        !interactive || (!switching && surface?.IsApplyingPresentation != true &&
+            (args.FocusState == FocusState.Pointer || args.Direction != FocusNavigationDirection.None));
 }

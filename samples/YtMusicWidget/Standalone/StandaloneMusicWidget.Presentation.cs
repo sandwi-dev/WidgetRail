@@ -118,15 +118,9 @@ public sealed partial class StandaloneMusicWidget
         }
         children.Add(UI.Stack("setup.notifications", (WidgetElement[])[
             UI.Text("Song notifications", "notifications.heading").Classes("music-section-title"),
-            UI.Button(notificationSettings.Enabled ? "Song-change banners: On" : "Song-change banners: Off",
-                "notifications.toggle", "notifications.toggle").Selected(notificationSettings.Enabled).Classes("music-secondary"),
-            UI.Text("Artwork, song, artist and duration when tracks change. Works with the overlay open or hidden; banners clear automatically without entering the notification list.",
-                "notifications.description").Classes("music-copy"),
-            .. (notificationSettings.Enabled ? (WidgetElement[])[
-                UI.Text($"Banner opacity · {notificationSettings.BackgroundOpacity}%", "notifications.opacity.label").Classes("music-copy"),
-                UI.Slider(notificationSettings.BackgroundOpacity, 40, 100, 5, "notifications.opacity", "notifications.opacity",
-                "Banner background opacity", notificationSettings.BackgroundOpacity + "%").RequireControllerActivation()
-                ] : [])]).Classes("music-setup-notifications"));
+            UI.Button("Manage song notifications", "notifications.configure", "notifications.configure").Classes("music-secondary"),
+            UI.Text("Song-change banners start on for new installations. Turn them off or adjust banner opacity in notification preferences. Banners clear automatically and work with the overlay open or hidden.",
+                "notifications.description").Classes("music-copy")]).Classes("music-setup-notifications"));
         children.Add(UI.ControllerHint(ControllerButton.B, "Back to music", "setup.back.hint"));
         children.Add(UI.Text("Unofficial YouTube Music client", "setup.notice").Classes("music-muted"));
         return UI.VerticalScroll("setup.scroll", UI.Stack("setup.card", children.ToArray()).Classes("music-setup-card"))

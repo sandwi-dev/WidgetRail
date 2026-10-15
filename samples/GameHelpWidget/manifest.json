@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.game-help",
   "publisher": "widgetrail.samples",
   "name": "Game Help",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "pinningSupported": true,
   "fullWidgetPinningSupported": true,
   "hostApi": {
@@ -30,7 +30,9 @@
     "system.apps.windows.capture.v1",
     "presentation.documents.v1"
   ],
-  "optionalPermissions": ["media.capture-library.read.v1"],
+  "optionalPermissions": [
+    "media.capture-library.read.v1"
+  ],
   "intents": {
     "requests": [
       {
@@ -103,6 +105,44 @@
             "query"
           ]
         }
+      },
+      {
+        "id": "community.widgetrail.game-help.result.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "resultId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            }
+          },
+          "required": [
+            "resultId"
+          ]
+        }
+      }
+    ],
+    "handles": [
+      {
+        "id": "community.widgetrail.game-help.result.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "resultId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            }
+          },
+          "required": [
+            "resultId"
+          ]
+        }
       }
     ]
   },
@@ -116,5 +156,13 @@
   },
   "architectures": [
     "x64"
+  ],
+  "notificationCategories": [
+    {
+      "id": "results",
+      "name": "Answers ready",
+      "description": "A pending notification when an answer finishes while Game Help is not visible.",
+      "retention": "pending"
+    }
   ]
 }

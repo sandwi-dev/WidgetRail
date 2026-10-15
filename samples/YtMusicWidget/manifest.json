@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.ytmusic",
   "publisher": "widgetrail.samples",
   "name": "YouTube Music",
-  "version": "0.3.38",
+  "version": "0.3.42",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -20,6 +20,9 @@
   "iconAssets": {
     "ytmusic.mark": { "path": "assets/icons/yt-music.svg" }
   },
+  "notificationCategories": [
+    { "id": "song-changes", "name": "Song changes", "description": "Brief banners with artwork, artist and duration. These notices do not enter the notification list.", "enabledByDefault": true, "retention": "bannerOnly" }
+  ],
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": {

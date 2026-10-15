@@ -24,7 +24,7 @@ internal sealed partial class WebAppDialogsValidationPage : Page, IAsyncDisposab
             try
             {
                 string? reply = "accept";
-                browser.Choose = (_, title, message, options, _, _) =>
+                browser.Choose = (_, title, message, options, _, _, _) =>
                 {
                     if (!message.Contains("https://dialogs.fixture.invalid", StringComparison.Ordinal)) throw new InvalidOperationException("Missing requesting origin.");
                     if (title == "Page actions")

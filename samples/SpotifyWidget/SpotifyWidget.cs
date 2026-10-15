@@ -30,7 +30,7 @@ public enum SpotifyDestination
 /// Controller-first Spotify community widget. All Spotify access crosses the
 /// public typed SDK; the widget never receives OAuth tokens or a client secret.
 /// </summary>
-public sealed class SpotifyWidget : Widget
+public sealed partial class SpotifyWidget : Widget
 {
     private const string PlaylistsScrollId = "spotify.playlists.scroll";
     private const string DetailScrollId = "spotify.playlist.detail.scroll";
@@ -245,9 +245,12 @@ public sealed class SpotifyWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        lock (_gate) _observingLocalTransport = true;
-        if (_spotify is ISpotifyLocalTransport transport)
-            transport.LocalTransportChanged += OnLocalTransportChanged;
+        lock (_gate)
+        {
+            if (!_observingLocalTransport && _spotify is ISpotifyLocalTransport transport)
+                transport.LocalTransportChanged += OnLocalTransportChanged;
+            _observingLocalTransport = true;
+        }
         var generation = Interlocked.Increment(ref _activeGeneration);
         _pollTask = RunAdaptivePollingAsync(generation, activeLifetime);
         _progressTask = RunPeriodicUpdatesWhileActiveAsync(
@@ -274,9 +277,8 @@ public sealed class SpotifyWidget : Widget
 
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        lock (_gate) _observingLocalTransport = false;
-        if (_spotify is ISpotifyLocalTransport transport)
-            transport.LocalTransportChanged -= OnLocalTransportChanged;
+        // The existing local player keeps running while hidden. Its event subscription
+        // belongs to widget lifetime; only foreground polling and UI ticks stop here.
         Interlocked.Increment(ref _activeGeneration);
         Interlocked.Exchange(ref _immediatePlaybackRead, 0);
         _toastExpiry.Cancel();
@@ -296,7 +298,8 @@ public sealed class SpotifyWidget : Widget
 
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        lock (_gate) ClearOptimisticReconciliationLocked();
+        lock (_gate) { _observingLocalTransport = false; ClearOptimisticReconciliationLocked(); }
+        if (_spotify is ISpotifyLocalTransport transport) transport.LocalTransportChanged -= OnLocalTransportChanged;
         Task? authorization;
         lock (_authorizationGate) authorization = _authorizationTask;
         var tasks = new[] { authorization }
@@ -358,6 +361,11 @@ public sealed class SpotifyWidget : Widget
     {
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
+        if (action.ActionId == "spotify.notifications.configure")
+        {
+            ConfigureSongNotifications();
+            return;
+        }
         var intent = SpotifyRouteActionPolicy.Classify(action);
         // Pending setup work blocks competing actions without declaring their
         // buttons unavailable (which would evict native keyboard/controller focus).
@@ -876,8 +884,11 @@ public sealed class SpotifyWidget : Widget
         }
     }
 
-    private void AdvanceLocalPlaybackSummaryRevisionLocked() =>
+    private void AdvanceLocalPlaybackSummaryRevisionLocked()
+    {
         _localPlaybackSummaryRevision = checked(_localPlaybackSummaryRevision + 1);
+        ObservePlaybackEffects();
+    }
 
     private async Task RefreshAsync(CancellationToken cancellationToken)
     {
@@ -1742,6 +1753,7 @@ public sealed class SpotifyWidget : Widget
                 ClearOptimisticReconciliationLocked();
         }
         Invalidate();
+        ObservePlaybackEffects();
         if (playbackIdentityChanged) InvalidateQueueCollection();
     }
 
@@ -1788,6 +1800,12 @@ public sealed class SpotifyWidget : Widget
 
     private void OnLocalTransportChanged(object? sender, EventArgs args)
     {
+        if (!IsActive)
+        {
+            lock (_gate) { if (!_observingLocalTransport || _authorizationState != SpotifyAuthorizationState.Connected) return; }
+            ObservePlaybackEffects();
+            return;
+        }
         bool refreshQueue = false;
         bool localAvailable;
         lock (_gate)
@@ -1813,7 +1831,8 @@ public sealed class SpotifyWidget : Widget
         if (_pollWake.CurrentCount == 0)
             try { _pollWake.Release(); } catch (SemaphoreFullException) { }
         Invalidate();
-        if (refreshQueue) InvalidateQueueCollection();
+        ObservePlaybackEffects();
+        if (refreshQueue && IsActive) InvalidateQueueCollection();
     }
 
     private void ApplyRefreshFailure(long generation, Exception exception)
@@ -1853,7 +1872,7 @@ public sealed class SpotifyWidget : Widget
                 invalidate = true;
             }
         }
-        if (invalidate) Invalidate();
+        if (invalidate) { ObservePlaybackEffects(); Invalidate(); }
     }
 
     private void SetCommandStatus(string status)

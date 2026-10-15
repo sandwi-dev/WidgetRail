@@ -112,6 +112,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Intent bridge end-to-end crosses both pipes and preserves cancellation", BridgeIntentEndToEnd.ThroughBothPipes),
     ("Intent bridge pinned and indexed sources cross both pipes with exact leases", BridgeIntentEndToEnd.SourceProjections),
     ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
+    ("Intent bridge widget management and interactive category admission", BridgeIntentScenarios.WidgetManagementAndCategoryAdmission),
     ("Intent bridge notification grants require declared exact current content and explicit activation", BridgeIntentScenarios.NotificationIntents),
     ("Intent bridge actual Settings accepts cold and warm navigation before slow inspections", SettingsNavigationFixture.ThroughPipes),
     ("Intent bridge exposes only the matched handler mapping presentation policy", BridgeIntentScenarios.HandlerMappingPolicy),

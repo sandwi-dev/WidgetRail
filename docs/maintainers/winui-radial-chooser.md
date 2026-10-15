@@ -20,7 +20,7 @@ chooser does not acquire that additional gate.
 
 Pages contain up to eight widgets. Browsing a page changes chrome only; it does
 not select or load a widget. Selecting an item uses existing preview selection;
-A opens it. B returns to the current widget. Existing Y reorder/hold restart,
+A opens it. B returns to the current widget. Existing Y reorder/500 ms hold notifications,
 Menu actions, catalog authority and persisted order are reused. Context menus
 can anchor at the hub when the selected widget is on another browsed page.
 

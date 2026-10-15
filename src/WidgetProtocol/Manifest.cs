@@ -33,6 +33,7 @@ public sealed record WidgetManifest
     public WidgetPresentation Presentation { get; init; } = new();
     public IReadOnlyDictionary<string, WidgetPackageIconAsset> IconAssets { get; init; } =
         new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal);
+    public IReadOnlyList<WidgetNotificationCategory> NotificationCategories { get; init; } = [];
     public IReadOnlyList<string> Permissions { get; init; } = [];
     public IReadOnlyList<string> OptionalPermissions { get; init; } = [];
     /// <summary>Optional intent contracts. Declarations never grant platform permissions.</summary>
@@ -208,6 +209,8 @@ public static partial class WidgetManifestValidator
         ArgumentNullException.ThrowIfNull(manifest);
         var errors = new List<ManifestValidationError>();
         WidgetIntentContracts.ValidateDeclarations(manifest.Intents, Add);
+        if (!WidgetNotificationContract.ValidCategories(manifest.NotificationCategories))
+            Add("$.notificationCategories", "invalid_notification_categories", "Declare up to eight unique named notification categories with bounded labels and defaults; general is reserved.");
 
         if (manifest.FullWidgetPinningSupported && !manifest.PinningSupported)
             Add("$.fullWidgetPinningSupported", "pinning_required",

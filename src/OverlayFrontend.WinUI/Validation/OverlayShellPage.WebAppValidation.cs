@@ -35,6 +35,29 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-notifications-only"))
+                {
+                    step = "notification integration";
+                    await first.NativeProfile!.SetPermissionStateAsync(CoreWebView2PermissionKind.Notifications,
+                        "https://shell.fixture.invalid", CoreWebView2PermissionState.Allow);
+                    first.NavigateForValidation("https://shell.fixture.invalid/primary?notifications=1");
+                    await WebAppUntil(() => first.IsBrowsing && !first.IsNavigationInProgress);
+                    await VerifyNotificationsAsync(first, Check);
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
+                if (Environment.GetCommandLineArgs().Contains("--website-settings-only"))
+                {
+                    step = "website settings";
+                    await VerifyWebsiteSettingsAsync(first, Check);
+                    await PinAsync(first.WidgetId, WidgetPinnedProjection.FullWidgetLayoutId);
+                    await EnterPinnedAsync();
+                    await WebAppUntil(() => PinnedInputActive && first.IsBrowsing &&
+                        ReferenceEquals(first.XamlRoot, pinned!.Window.AutomationRoot.XamlRoot));
+                    await VerifyWebsiteSettingsAsync(first, Check);
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
                 if (Environment.GetCommandLineArgs().Contains("--webapp-widget-stop"))
                 {
                     step = "persistent widget stop";
@@ -143,7 +166,7 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntilScript(second, "localStorage.getItem('shared-test')==='present' && document.cookie.includes('shared-test=present')");
                 Check(first.ProfileName == second.ProfileName, "Two declared documents use the same widget/account profile");
                 await Toolbar(first, "Browser.SiteControls");
-                await Choose(10);
+                await Choose(8);
                 await Choose(0);
                 await WebAppUntilScript(first, "location.origin==='https://shell.fixture.invalid' && localStorage.getItem('shared-test')===null");
                 await WebAppUntilScript(second, "location.origin==='https://shell.fixture.invalid' && !document.cookie.includes('shared-test=present')");

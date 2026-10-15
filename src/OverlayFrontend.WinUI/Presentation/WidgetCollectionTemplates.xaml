@@ -189,6 +189,15 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <DataTemplate x:Key="HostChoiceGroupHeaderTemplate" x:DataType="local:DialogChoiceGroup">
+        <TextBlock Text="{x:Bind Title}" Style="{StaticResource CaptionTextBlockStyle}"
+                   Visibility="{x:Bind HeaderVisibility}"
+                   FontWeight="SemiBold" Margin="12,12,12,8" TextWrapping="Wrap"
+                   AutomationProperties.HeadingLevel="Level2" />
+    </DataTemplate>
+    <ItemsPanelTemplate x:Key="HostChoiceGroupedPanel">
+        <ItemsStackPanel AreStickyGroupHeadersEnabled="False" />
+    </ItemsPanelTemplate>
     <DataTemplate
         x:Key="WidgetIndexedGroupHeaderTemplate"
         x:DataType="collections:WidgetIndexedGroup">

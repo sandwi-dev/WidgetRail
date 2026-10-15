@@ -103,8 +103,8 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                     await Until(() => viewport.VerticalOffset > 0);
                     Check(true, "D-pad scrolls the permission message");
                     var offset = viewport.VerticalOffset;
-                    active.SampleMessageScroll(0, -32767, 1000);
-                    active.SampleMessageScroll(0, -32767, 1040);
+                    active.SampleScroll(0, -32767, 1000);
+                    active.SampleScroll(0, -32767, 1040);
                     await Until(() => viewport.VerticalOffset > offset);
                     Check(true, "Right stick scrolls the permission message");
                     active.ControllerArmed = true;

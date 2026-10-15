@@ -4,7 +4,7 @@ using WidgetRail.OverlayFrontend.WinUI.Shell;
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 internal delegate Task<string?> BrowserChoiceHandler(BrowserSurface source, string title, string message,
-    IReadOnlyList<HostDialogChoice> choices, CancellationToken token, bool focusFirstChoice = false);
+    IReadOnlyList<HostDialogChoice> choices, CancellationToken token, bool focusFirstChoice = false, HostChoicePreference? preference = null);
 
 internal sealed partial class BrowserSurface
 {

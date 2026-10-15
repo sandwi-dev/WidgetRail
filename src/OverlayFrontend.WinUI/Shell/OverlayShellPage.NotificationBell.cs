@@ -27,8 +27,10 @@ internal sealed partial class OverlayShellPage
         notificationBell.Click += async (_, _) => { SetInteractive(false); await ShowNotificationsAsync(); };
         notificationBell.GettingFocus += (_, args) =>
         {
-            // Native teardown may temporarily focus the bell. Only explicit
-            // pointer/keyboard navigation transfers ownership from a widget.
+            // Share the rail's ownership boundary. Native removal can carry a
+            // Pointer focus state even though no pointer input occurred.
+            if (!retired && !AllowsNativeShellFocusTransfer(args))
+            { args.TryCancel(); return; }
             if (visible && !switching && !HostChoiceActive &&
                 (args.FocusState == FocusState.Pointer || args.Direction != FocusNavigationDirection.None))
             { ClearTrayFocus(); SetInteractive(false); }

@@ -183,7 +183,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                         var surface = new BrowserSurface(group.Key.Widget, chosen.Document, EnvironmentAsync, providerHtml, library)
                         {
                             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
-                            Choose = (source, title, message, choices, token, focusFirstChoice) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice) ?? Task.FromResult<string?>(null),
+                            Choose = (source, title, message, choices, token, focusFirstChoice, preference) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice, preference) ?? Task.FromResult<string?>(null),
                             ChangeProfile = ChangeProfileAsync,
                             ReceiveNotification = ReceiveNotification,
                             InvalidateNotifications = source => Notifications.InvalidateOwner(source),

@@ -237,6 +237,10 @@ public sealed partial class SdkGalleryWidget
                 if (!Operations.IsBusy("gallery.busy")) Operations.RunLatest("gallery.busy", async context =>
                 { Invalidate(); try { await Task.Delay(2000, context.CancellationToken); } finally { Invalidate(); } });
                 break;
+            case "gallery.notifications.configure": RunService(async token => { await HostServices.Notifications.ConfigureAsync("examples", token); }); break;
+            case "gallery.notifications.show": RunService(async token => { await HostServices.Notifications.ShowAsync(DemoNotification(), token); }); break;
+            case "gallery.notifications.update": RunService(async token => { await HostServices.Notifications.UpdateAsync(DemoNotification() with { Body = "Content changed without extending the banner lifetime." }, token); }); break;
+            case "gallery.notifications.dismiss": RunService(async token => { await HostServices.Notifications.DismissAsync("gallery-example", token); }); break;
             case "gallery.document.create": RunService(CreateDocumentAsync); break;
             case "gallery.permission.check": RunService(async token => {
                 var states = await HostServices.Permissions.CheckAsync([WidgetCaptureCapabilities.Permission], token);
@@ -254,6 +258,12 @@ public sealed partial class SdkGalleryWidget
         }
         return true;
     }
+
+    private static WidgetNotification DemoNotification() => new("gallery-example", "SDK Gallery")
+    {
+        CategoryId = "examples", Body = "A quiet, host-rendered banner.", Visibility = WidgetNotificationVisibility.Always,
+        Retention = WidgetNotificationRetention.BannerOnly, Interaction = WidgetNotificationInteraction.Informational,
+    };
 
     private void RunService(Func<CancellationToken, Task> work)
     {

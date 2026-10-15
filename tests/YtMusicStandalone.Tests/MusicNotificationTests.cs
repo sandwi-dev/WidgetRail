@@ -23,37 +23,34 @@ internal static class MusicNotificationTests
         Check(policy.Observe(state, true) is null, "Resume is quiet");
         Check(policy.Observe(state with { Player = state.Player with { Duration = 192 } }, true) is { UpdateOnly: true }, "Duration only updates existing content");
 
+        Check(policy.Observe(state with { Queue = [next with { Title = "Updated title" }] }, true) is { UpdateOnly: true }, "Recreated metadata for the same song stays quiet");
         var service = new FakeService();
         var store = new WidgetTestPrivateState();
         var published = new List<WidgetNotificationCommand>();
-        var dismissCalls = 0;
         WidgetHostServices Services() => new WidgetTestHostServicesBuilder().WithPrivateState(store)
             .WithHandler(WidgetNotificationCapabilities.Publish, (command, _) =>
             {
                 lock (published) published.Add(command);
-                return ValueTask.FromResult(new WidgetNotificationReceipt(command.Notification is not null || Interlocked.Increment(ref dismissCalls) > 1));
+                return ValueTask.FromResult(new WidgetNotificationReceipt(true));
             }).Build();
         var widget = WidgetTestHost.Attach(new StandaloneMusicWidget(service), Services());
         try
         {
             await WidgetTestHost.InitializeAsync(widget);
-            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
-            for (var i = 0; i < 100 && !Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Id == "notifications.toggle"); i++) await Task.Delay(20);
-            Check(Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "Song-change banners: Off"), "First setup exposes the default-off option");
-            await widget.OnActionAsync(new("notifications.toggle", "notifications.toggle"));
-            Check(Nodes(widget.Render().CreateSnapshot("test", 2).Root).Any(n => n.Text == "Banner opacity · 100%"),
-                "Enabled banner settings visibly identify the opacity slider");
-            service.SetPlayback(true);
-            await Task.Delay(450);
-            lock (published) Check(published.Any(n => n.Notification?.Title == "A song title" && !n.UpdateOnly), "Widget publishes a track banner through SDK");
-            await widget.OnActionAsync(new("notifications.opacity", "notifications.opacity", RequestedValue: 70));
-            Check(Nodes(widget.Render().CreateSnapshot("test", 3).Root).Any(n => n.Text == "Banner opacity · 70%"),
-                "Visible opacity label follows controller adjustment");
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            for (var i = 0; i < 100 && !Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Id == "notifications.configure"); i++) await Task.Delay(20);
+            Check(Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "Manage song notifications"), "Setup exposes shared preferences");
+            Check(!Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Id is "notifications.toggle" or "notifications.opacity"), "No competing local preferences");
+            await widget.OnActionAsync(new("notifications.configure", "notifications.configure"));
+            await Task.Delay(100);
+            lock (published) Check(published.Any(n => n.ConfigureCategoryId == "song-changes"), "Setup opens host category settings");
+            service.SetPlayback(true); await Task.Delay(450);
+            lock (published) Check(published.Any(n => n.Notification?.CategoryId == "song-changes" && !n.UpdateOnly), "Track uses declared category");
             await widget.OnActionAsync(new("panel.back", "panel.back"));
             int before; lock (published) before = published.Count;
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
-            service.SetPlayback(true); await Task.Delay(450);
-            lock (published) Check(published.Count > before && published[^1].Notification?.BackgroundOpacityPercent == 70, "Background track changes still reach the SDK with selected opacity");
+            service.SetPlayback(true, "background-next"); await Task.Delay(450);
+            lock (published) Check(published.Count > before && published[^1].Notification?.CategoryId == "song-changes", "Background track changes use the shared host policy");
         }
         finally { await WidgetTestHost.DestroyAsync(widget); }
         var restored = WidgetTestHost.Attach(new StandaloneMusicWidget(new FakeService()), Services());
@@ -62,12 +59,9 @@ internal static class MusicNotificationTests
             await WidgetTestHost.InitializeAsync(restored);
             await WidgetTestHost.SetLifecycleStateAsync(restored, WidgetLifecycleState.Visible);
             await Task.Delay(300);
-            Check(!Nodes(restored.Render().CreateSnapshot("restored", 1).Root).Any(n => n.Id == "notifications.toggle"), "Completed setup is not reopened on restart");
+            Check(!Nodes(restored.Render().CreateSnapshot("restored", 1).Root).Any(n => n.Id == "notifications.configure"), "Completed setup is not reopened on restart");
             await restored.OnActionAsync(new("tab.setup", "setup"));
-            Check(Nodes(restored.Render().CreateSnapshot("restored", 2).Root).Any(n => n.Text == "Song-change banners: On"), "Notification opt-in survives widget restart");
-            await restored.OnActionAsync(new("notifications.toggle", "notifications.toggle"));
-            await Task.Delay(450);
-            Check(dismissCalls == 2, "Disabling retries dismissal when an earlier publication is still in flight");
+            Check(Nodes(restored.Render().CreateSnapshot("restored", 2).Root).Any(n => n.Text == "Manage song notifications"), "Preferences remain discoverable");
         }
         finally { await WidgetTestHost.DestroyAsync(restored); }
     }

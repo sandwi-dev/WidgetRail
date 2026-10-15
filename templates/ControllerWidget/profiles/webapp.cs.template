@@ -8,6 +8,8 @@ public sealed class {{WidgetName}} : Widget
     private readonly WebBrowserDocument page = new("webapp.session", 1, {{WebAppUrlLiteral}}, "{{WidgetName}}")
     {
         Options = WebBrowserOptions.WebApp,
+        // Website notifications use host banners with the overlay open or hidden,
+        // subject to website permission and the user's notification preferences.
         // Use Options with { ProfileKey = "work" } for a separate account.
         // Background = BrowserBackgroundMode.KeepAlive requests bounded hidden
         // residency; it does not grant microphone, camera, or other permissions.

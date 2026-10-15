@@ -55,6 +55,15 @@ internal sealed partial class NotificationCard : ContentControl
         source.Text = time.Text = TitleText.Text = body.Text = "";
         stale.Visibility = Visibility.Collapsed;
     }
+    internal void ApplyBannerPalette(ShellChromePalette palette)
+    {
+        Foreground = new SolidColorBrush(palette.Text);
+        source.Opacity = time.Opacity = stale.Opacity = 1;
+        source.Foreground = time.Foreground = stale.Foreground = new SolidColorBrush(palette.HighContrast
+            ? palette.Text : ShellChromePalette.Blend(palette.Surface, palette.Text, .74));
+        body.Foreground = new SolidColorBrush(palette.HighContrast
+            ? palette.Text : ShellChromePalette.Blend(palette.Surface, palette.Text, .92));
+    }
     internal void Update(NotificationEntry entry, BridgeWidgetDescriptor? widget, double textScale)
     {
         icon.DataContext = widget;

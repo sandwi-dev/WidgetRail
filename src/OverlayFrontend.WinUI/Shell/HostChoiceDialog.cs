@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -9,13 +11,16 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal sealed record HostDialogChoice(string Id, string Label, long ContentRevision = 0, string? Group = null);
+internal sealed record HostDialogChoice(string Id, string Label, long ContentRevision = 0, string? Group = null, string? Value = null);
+internal sealed record HostChoicePreference(string? CurrentChoiceId = null, string CloseLabel = "Back");
 
 /// <summary>A small host-owned decision surface with the same release/neutral boundary as install dialogs.</summary>
 internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
 {
     private readonly ListView choices = new() { MaxHeight = 320, SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true, HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly ObservableCollection<ListViewItem> choiceItems = [];
+    private CollectionViewSource? groupedChoices;
     private readonly Grid content = new() { RowSpacing = 8, MaxWidth = 480 };
     private readonly StackPanel details = new() { Spacing = 8 };
     internal void ApplyDescriptionBrush(Brush brush)
@@ -33,6 +38,16 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     {
         get => focusFirstOptionOnOpen;
         set { focusFirstOptionOnOpen = value; DefaultButton = value ? ContentDialogButton.None : ContentDialogButton.Close; }
+    }
+    private string? initialChoiceId;
+    private bool initialChoiceScrolled;
+    // Settings lists focus their current value (or first option) and use Back/Done.
+    // Confirmations retain the constructor's safe Cancel policy.
+    internal void ConfigurePreferenceList(string? currentChoiceId = null, string closeLabel = "Back")
+    {
+        FocusFirstOptionOnOpen = true;
+        initialChoiceId = currentChoiceId;
+        CloseButtonText = closeLabel;
     }
 #if ENABLE_WIDGET_VALIDATION
     internal bool IsOpenForValidation => opened;
@@ -73,13 +88,15 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     internal bool SupportsDismissChoice => DismissChoiceRequested is not null;
     private readonly ScrollViewer? messageViewport;
     private readonly RightStickScroll messageScroll = new();
-    internal bool SupportsMessageScroll => messageViewport is not null;
+    private bool choiceScrollPending;
+    internal bool SupportsScroll => messageViewport is not null || content.Children.Contains(choices);
     internal string? SelectedId { get; private set; }
     internal bool ControllerArmed { get; set; }
 
     internal HostChoiceDialog(string title, string message, IReadOnlyList<HostDialogChoice> entries, bool directDecisionButtons = false)
     {
         this.entries = entries.ToList();
+        choices.ItemsSource = choiceItems;
         Resources["ContentDialogPadding"] = new Thickness(16);
         Resources["ContentDialogTitleMargin"] = new Thickness(0, 0, 0, 8);
         Input.GamepadKeyBoundary.ObserveDialog(this);
@@ -124,8 +141,9 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
             {
                 var item = CreateChoice(entries[index]);
                 AutomationProperties.SetAutomationId(item, "Host.Choice.Option." + index);
-                choices.Items.Add(item);
+                choiceItems.Add(item);
             }
+            RefreshChoiceGroups();
             if (entries.Count > 1) content.Children.Add(choices);
             // List entries are already direct actions (pointer, Enter and A).
             // A second generic "Open" button obscures destructive action intent.
@@ -147,6 +165,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
             opened = true;
             closing = false;
             initialFocusRequired = true;
+            initialChoiceScrolled = false;
             InitialFocusTarget()?.Focus(FocusState.Keyboard);
             QueueInitialFocus();
             QueueVisibleChoices();
@@ -165,19 +184,65 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
             });
         };
     }
+    private UIElement CreateChoiceContent(HostDialogChoice entry)
+    {
+        if (choiceContent is not null) return choiceContent(entry);
+        UIElement label = new TextBlock { Text = entry.Label, TextWrapping = TextWrapping.Wrap, MaxLines = 5 };
+        if (entry.Value is { } value)
+        {
+            var row = new Grid { ColumnSpacing = 16 };
+            row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            var current = new TextBlock { Text = value, Opacity = .75, MaxWidth = 140,
+                TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(current, 1);
+            row.Children.Add(label); row.Children.Add(current); label = row;
+        }
+        return label;
+    }
+    private static string ChoiceAccessibleLabel(HostDialogChoice entry) =>
+        (entry.Group is { } group ? group + ". " : "") + entry.Label + (entry.Value is { } value ? ", " + value : "");
     private ListViewItem CreateChoice(HostDialogChoice entry)
     {
-        UIElement label = new TextBlock { Text = entry.Label, TextWrapping = TextWrapping.Wrap, MaxLines = 5 };
-        if (entry.Group is { } group)
-            label = new StackPanel { Spacing = 4, Children = {
-                new TextBlock { Text = group, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Opacity = .8 }, label } };
-        var item = new ListViewItem { Content = choiceContent?.Invoke(entry) ?? label,
+        var item = new ListViewItem { Content = CreateChoiceContent(entry),
             Tag = entry.Id, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetAutomationId(item, "Host.Choice.Item." + entry.Id);
-        AutomationProperties.SetName(item, entry.Group is { } groupName ? groupName + ". " + entry.Label : entry.Label);
+        AutomationProperties.SetName(item, ChoiceAccessibleLabel(entry));
         item.EffectiveViewportChanged += (_, _) => QueueVisibleChoices();
         return item;
     }
+    private void RefreshChoiceGroups()
+    {
+        if (!entries.Any(entry => entry.Group is not null))
+        {
+            if (groupedChoices is null) return;
+            choices.ItemsSource = choiceItems;
+            groupedChoices = null; choices.GroupStyle.Clear();
+            return;
+        }
+        var focused = FocusedChoice()?.Tag as string;
+        var groups = new ObservableCollection<Presentation.DialogChoiceGroup>();
+        Presentation.DialogChoiceGroup? current = null;
+        for (var index = 0; index < entries.Count; index++)
+        {
+            if (current is null || entries[index].Group is not null)
+            {
+                current = new(entries[index].Group ?? ""); groups.Add(current);
+            }
+            current.Add(choiceItems[index]);
+        }
+        groupedChoices = new() { IsSourceGrouped = true, Source = groups };
+        if (choices.GroupStyle.Count == 0)
+        {
+            choices.GroupStyle.Add(new GroupStyle { HidesIfEmpty = true,
+                HeaderTemplate = (DataTemplate)Application.Current.Resources["HostChoiceGroupHeaderTemplate"],
+                HeaderContainerStyle = (Style)Application.Current.Resources["WidgetIndexedListHeaderContainer"] });
+            choices.ItemsPanel = (ItemsPanelTemplate)Application.Current.Resources["HostChoiceGroupedPanel"];
+        }
+        choices.ItemsSource = groupedChoices.View;
+        if (focused is not null) choiceItems.FirstOrDefault(item => item.Tag as string == focused)?.Focus(FocusState.Keyboard);
+    }
+
     private void QueueChoiceFocusSync()
     {
         if (choiceFocusQueued || closing) return;
@@ -231,7 +296,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         var focused = ListFocused();
         var selected = focused ? FocusedChoiceIndex() : -1;
         reportedChoices.Remove(id);
-        entries.RemoveAt(index); choices.Items.RemoveAt(index);
+        entries.RemoveAt(index); choiceItems.RemoveAt(index); RefreshChoiceGroups();
         if (entries.Count == 0)
         {
             choices.SelectedIndex = -1;
@@ -251,17 +316,22 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         if (entries.Any(value => value.Id == entry.Id)) return;
         var index = beforeId is null ? -1 : entries.FindIndex(value => value.Id == beforeId);
         if (index < 0) index = entries.Count;
-        entries.Insert(index, entry); choices.Items.Insert(index, CreateChoice(entry));
+        entries.Insert(index, entry); choiceItems.Insert(index, CreateChoice(entry)); RefreshChoiceGroups();
     }
     internal void UpdateChoice(HostDialogChoice entry)
     {
         var index = entries.FindIndex(value => value.Id == entry.Id);
         if (index < 0) return;
         if (entries[index] == entry) return;
+        var groupChanged = entries[index].Group != entry.Group;
         entries[index] = entry;
-        if (choices.Items[index] is ListViewItem accessible) AutomationProperties.SetName(accessible, entry.Label);
-        if (choiceContent is not null && choices.Items[index] is ListViewItem item) { item.Content = choiceContent(entry); return; }
-        if (choices.Items[index] is ListViewItem { Content: TextBlock text }) text.Text = entry.Label;
+        if (choices.Items[index] is ListViewItem item)
+        {
+            AutomationProperties.SetName(item, ChoiceAccessibleLabel(entry));
+            if (choiceContent is null && entry.Group is null && entry.Value is null && item.Content is TextBlock text) text.Text = entry.Label;
+            else item.Content = CreateChoiceContent(entry);
+        }
+        if (groupChanged) RefreshChoiceGroups();
     }
 
     protected override void OnApplyTemplate()
@@ -280,8 +350,19 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     }
 
     private bool initialFocusQueued, initialFocusRequired;
-    private Control? InitialFocusTarget() => FocusFirstOptionOnOpen && content.Children.Contains(choices) && choices.Items.Count > 0
-        ? choices.Items[0] as Control : GetTemplateChild("CloseButton") as Control;
+    private Control? InitialFocusTarget()
+    {
+        if (!FocusFirstOptionOnOpen) return GetTemplateChild("CloseButton") as Control;
+        if (content.Children.Contains(choices) && choices.Items.Count > 0)
+        {
+            var target = choices.Items.OfType<ListViewItem>().FirstOrDefault(item => item.Tag as string == initialChoiceId)
+                ?? choices.Items[0] as ListViewItem;
+            if (initialFocusRequired && !initialChoiceScrolled && target is not null)
+            { initialChoiceScrolled = true; choices.ScrollIntoView(target); }
+            return target;
+        }
+        return GetTemplateChild(entries.Count == 1 ? "PrimaryButton" : "CloseButton") as Control;
+    }
     private void InitialFocusLayoutUpdated(object? sender, object args) => QueueInitialFocus();
     private void QueueInitialFocus()
     {
@@ -320,6 +401,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     {
         if (closing) return;
         initialFocusRequired = false;
+        RevealVisibleChoice();
         if (ListFocused()) choices.SelectedIndex = FocusedChoiceIndex();
         if (messageViewport is not null && IsWithinFocused(messageViewport) && (direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down) &&
             ScrollMessage(direction == FocusNavigationDirection.Up ? -64 : 64)) return;
@@ -330,11 +412,45 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     internal void ConstrainMessageViewport(double rootHeight)
     { if (messageViewport is not null) messageViewport.MaxHeight = Math.Clamp(rootHeight - 200, 40, 360); }
     internal void ResetController()
-    { ControllerArmed = false; messageScroll.Reset(); }
-    internal void SampleMessageScroll(short x, short y, long timestamp)
+    { ControllerArmed = false; messageScroll.Reset(); choiceScrollPending = false; }
+    internal void SampleScroll(short x, short y, long timestamp)
     {
         var delta = messageScroll.Sample(x, y, timestamp);
-        if (delta.Y != 0) ScrollMessage(delta.Y);
+        if (content.Children.Contains(choices) && FindChoiceViewport() is { } viewport)
+        {
+            if (delta.Y != 0)
+            {
+                initialFocusRequired = false;
+                var target = Math.Clamp(viewport.VerticalOffset + delta.Y, 0, viewport.ScrollableHeight);
+                choiceScrollPending |= Math.Abs(target - viewport.VerticalOffset) > .1;
+                viewport.ChangeView(null, target, null, disableAnimation: true);
+            }
+            if (messageScroll.ShouldSettle(timestamp)) { RevealVisibleChoice(); messageScroll.Reset(); }
+        }
+        else if (delta.Y != 0) ScrollMessage(delta.Y);
+    }
+    private ScrollViewer? FindChoiceViewport() => FindViewport(choices);
+    private static ScrollViewer? FindViewport(DependencyObject node)
+    {
+        if (node is ScrollViewer scroll) return scroll;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+            if (FindViewport(VisualTreeHelper.GetChild(node, i)) is { } found) return found;
+        return null;
+    }
+    private void RevealVisibleChoice()
+    {
+        // Reconcile only a right-stick scroll. Ordinary focus navigation may
+        // still be completing ScrollIntoView when A arrives; do not replace it.
+        if (!choiceScrollPending) return;
+        choiceScrollPending = false;
+        if (!ListFocused() || FindChoiceViewport() is not { } viewport || FocusedChoice() is not { } current) return;
+        var original = current.TransformToVisual(viewport).TransformBounds(new(0, 0, current.ActualWidth, current.ActualHeight));
+        if (original.Top >= 0 && original.Bottom <= viewport.ViewportHeight) return;
+        var visible = choiceItems.Where(item => item.IsLoaded).Select(item => (Item: item,
+            Rect: item.TransformToVisual(viewport).TransformBounds(new(0, 0, item.ActualWidth, item.ActualHeight))))
+            .Where(value => value.Rect.Top >= 0 && value.Rect.Bottom <= viewport.ViewportHeight)
+            .OrderBy(value => Math.Abs(value.Rect.Top - original.Top)).FirstOrDefault();
+        visible.Item?.Focus(FocusState.Keyboard);
     }
     private bool ScrollMessage(double delta)
     {
@@ -354,7 +470,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
             DismissChoiceRequested?.Invoke(id);
         else if (button == ControllerButton.A)
         {
-            if (ListFocused()) Choose(FocusedChoiceIndex());
+            if (ListFocused()) { RevealVisibleChoice(); Choose(FocusedChoiceIndex()); }
             else if (rememberChoice is not null && IsWithinFocused(rememberChoice))
                 rememberChoice.IsChecked = !RememberChoice;
             else if (FocusManager.GetFocusedElement(XamlRoot) is Button focused)

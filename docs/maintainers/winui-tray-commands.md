@@ -12,12 +12,13 @@ Visible lifecycle; they never synthesize ordinary widget input or enter its view
 Changes in selected widget, worker/package identity, quick-action declarations,
 visibility or foreground ownership invalidate an open command surface.
 
-Y remains host-owned: a tap toggles reorder, while holding for 700 ms restarts the
-selected widget once. A canceled hold consumes its release, so returning to the
+Y remains host-owned: a tap toggles reorder, while holding for 500 ms opens the global
+notification panel once. A canceled hold consumes its release, so returning to the
 same widget cannot turn it into a tap. Reorder mode is tap-only. Controller Left/
 Right moves the selected widget without changing its identity; A/B/Y finishes.
 Keyboard F2, Left/Right and Enter/Escape provide the same reorder operation.
-The native command menu provides Reorder and Restart for pointer/accessibility use.
+The Widget submenu provides Manage widget, Reorder widgets and Restart/Start widget.
+Manage widget uses a host-authorized Settings destination and never starts a stopped source.
 Current catalog identity is checked again after obtaining serialized admission.
 
 The hint uses a reserved native layout slot so tray/widget focus changes cannot

@@ -18,6 +18,7 @@ internal sealed class WidgetNativeDepth : IDisposable
 {
     private readonly FrameworkElement element;
     private readonly (Grid Shadow, Grid Edges)? suppliedSlots;
+    private readonly bool outerShadowOnly;
     private (Grid Shadow, Grid Edges)? slots;
     private WidgetVisualAdornment? adornment;
     private WidgetOuterShadowMask? outerMask;
@@ -44,9 +45,10 @@ internal sealed class WidgetNativeDepth : IDisposable
     internal bool UsesRoundedEdges { get; private set; }
     internal static bool HasTemplateSlots(FrameworkElement element) => FindSlots(element) is not null;
 
-    internal WidgetNativeDepth(FrameworkElement element, (Grid Shadow, Grid Edges)? suppliedSlots)
+    internal WidgetNativeDepth(FrameworkElement element, (Grid Shadow, Grid Edges)? suppliedSlots, bool outerShadowOnly = false)
     {
         this.element = element; this.suppliedSlots = suppliedSlots;
+        this.outerShadowOnly = outerShadowOnly;
         element.Loaded += Loaded; element.Unloaded += Unloaded; element.SizeChanged += Resized;
     }
     internal void Apply(WidgetDepthStyle value)
@@ -83,7 +85,8 @@ internal sealed class WidgetNativeDepth : IDisposable
             }
             if (slots is { } target)
             {
-                ElementCompositionPreview.SetElementChildVisual(target.Shadow, shadowVisual);
+                if (outerShadowOnly) outerMask = new(shadowVisual);
+                ElementCompositionPreview.SetElementChildVisual(target.Shadow, outerMask?.Visual ?? shadowVisual);
                 ElementCompositionPreview.SetElementChildVisual(target.Edges, edges);
             }
             else
@@ -137,12 +140,12 @@ internal sealed class WidgetNativeDepth : IDisposable
     private void Retire()
     {
         adornment?.Dispose(); adornment = null;
-        outerMask?.Dispose(); outerMask = null;
         if (slots is { } host)
         {
-            if (ReferenceEquals(ElementCompositionPreview.GetElementChildVisual(host.Shadow), shadowVisual)) ElementCompositionPreview.SetElementChildVisual(host.Shadow, null);
+            if (ReferenceEquals(ElementCompositionPreview.GetElementChildVisual(host.Shadow), outerMask?.Visual ?? shadowVisual)) ElementCompositionPreview.SetElementChildVisual(host.Shadow, null);
             if (ReferenceEquals(ElementCompositionPreview.GetElementChildVisual(host.Edges), edges)) ElementCompositionPreview.SetElementChildVisual(host.Edges, null);
         }
+        outerMask?.Dispose(); outerMask = null;
         if (shadowVisual is not null) shadowVisual.Shadow = null;
         if (shadow is not null) shadow.Mask = null;
         if (maskSurface is not null) maskSurface.SourceVisual = null;

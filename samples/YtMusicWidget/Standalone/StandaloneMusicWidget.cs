@@ -237,7 +237,7 @@ public sealed partial class StandaloneMusicWidget : Widget
     {
         if (!IsActive || action.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated)) return ValueTask.CompletedTask;
         var id = action.ActionId;
-        if (action.Phase == ControllerEventPhase.Repeated && id is not ("player.seek" or "player.volume" or "notifications.opacity")) return ValueTask.CompletedTask;
+        if (action.Phase == ControllerEventPhase.Repeated && id is not ("player.seek" or "player.volume")) return ValueTask.CompletedTask;
         if (id.StartsWith("notifications.", StringComparison.Ordinal)) { NotificationSettingAction(action); return ValueTask.CompletedTask; }
         var saveSetup = _panel == "setup" && (id == "panel.back" || id.StartsWith("tab.", StringComparison.Ordinal) && id != "tab.setup");
         if (saveSetup) lock (_gate) notificationSettings = notificationSettings with { SetupSeen = true };

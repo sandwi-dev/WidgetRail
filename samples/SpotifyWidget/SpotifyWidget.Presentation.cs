@@ -407,13 +407,17 @@ internal static class SpotifyPresentation
                     "spotify.disconnect.setup")
                 .Busy(setupBusy)
                 .FocusUp("spotify.setup.done")
-                .FocusDown("spotify.setup.close")
+                .FocusDown("spotify.notifications.configure")
                 .Classes("spotify-secondary", "spotify-setup-action", "is-quiet"));
             closeFocusUp = "spotify.disconnect.setup";
         }
         else
             actions[^1] = ((ButtonElement)actions[^1])
-                .FocusDown("spotify.setup.close");
+                .FocusDown("spotify.notifications.configure");
+        actions.Add(UI.Text("Song-change banners start on for new installations. Turn them off or adjust banner opacity in notification preferences.", "spotify.notifications.description").Classes("spotify-setup-step"));
+        actions.Add(UI.Button("Manage song notifications", "spotify.notifications.configure", "spotify.notifications.configure")
+            .FocusUp(closeFocusUp).FocusDown("spotify.setup.close").Classes("spotify-secondary", "spotify-setup-action"));
+        closeFocusUp = "spotify.notifications.configure";
         actions.Add(UI.Button("Close setup", "spotify.setup.close",
                 "spotify.setup.close")
             .FocusUp(closeFocusUp)

@@ -520,6 +520,11 @@ public sealed partial class SdkGalleryWidget : Widget
 
     private StackElement UtilitiesPage() => UI.Stack("gallery.utilities",
         IntentExamples(),
+        UI.SectionHeader("Host notifications", "gallery.notifications.heading", description: "Shared preferences, quiet updates and independent activity sources."),
+        UI.Button("Notification preferences", "gallery.notifications.configure", "gallery.notifications.configure"),
+        UI.Button("Show brief banner", "gallery.notifications.show", "gallery.notifications.show"),
+        UI.Button("Update banner quietly", "gallery.notifications.update", "gallery.notifications.update"),
+        UI.Button("Dismiss demo notification", "gallery.notifications.dismiss", "gallery.notifications.dismiss"),
         UI.SectionHeader(
             "Feedback and diagnostics",
             "gallery.utilities.header",

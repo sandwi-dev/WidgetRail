@@ -97,41 +97,39 @@ public sealed class GameHelpTests
     [TestMethod]
     public async Task SearchAndSpoilerPreferencesSurviveWidgetRecreationAndNewConversation()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "widgetrail-help-settings-" + Guid.NewGuid().ToString("N"));
-        var store = new GameHelpPreferencesStore(Path.Combine(directory, "settings.json"));
+        var store = new WidgetTestPrivateState();
+        WidgetHostServices Services() => new WidgetTestHostServicesBuilder().WithPrivateState(store)
+            .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).Build();
+        var first = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(new FakeService()), Services());
         try
         {
-            var first = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(new FakeService(), store), new WidgetTestHostServicesBuilder().WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).Build());
-            try
-            {
-                await WidgetTestHost.InitializeAsync(first);
-                await WidgetTestHost.SetLifecycleStateAsync(first, WidgetLifecycleState.Interactive);
-                await first.OnActionAsync(new("grounding.on", "help.grounding"));
-                await first.OnActionAsync(new("spoiler.2", "help.spoilers"));
-                await first.OnActionAsync(new("new.confirm", "help.new"));
-            }
-            finally { await WidgetTestHost.DestroyAsync(first); }
-            Assert.AreEqual(new GameHelpPreferences(true, "Full solution"), store.Load());
-            var service = new FakeService();
-            var second = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service, new GameHelpPreferencesStore(Path.Combine(directory, "settings.json"))), new WidgetTestHostServicesBuilder().WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).Build());
-            try
-            {
-                await WidgetTestHost.InitializeAsync(second);
-                await WidgetTestHost.SetLifecycleStateAsync(second, WidgetLifecycleState.Interactive);
-                await Until(() => Walk(Snapshot(second).Root).Any(n => n.Id == "help.composer"));
-                await second.OnActionAsync(new("starter.0", "help.starter.0"));
-                await second.OnActionAsync(new("ask.plain", "help.answer-plain"));
-                await Until(() => service.Requests.Count == 1);
-                Assert.IsTrue(service.Requests[0].WebGrounding);
-                Assert.AreEqual("Full solution", service.Requests[0].SpoilerPreference);
-                await second.OnActionAsync(new("grounding.off", "help.grounding"));
-                Assert.IsFalse(store.Load().Grounding);
-            }
-            finally { await WidgetTestHost.DestroyAsync(second); }
-            File.WriteAllText(Path.Combine(directory, "settings.json"), "{broken");
-            Assert.AreEqual(new GameHelpPreferences(), store.Load());
+            await WidgetTestHost.InitializeAsync(first);
+            await WidgetTestHost.SetLifecycleStateAsync(first, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(first).Root).Any(node => node.Id == "help.composer"));
+            await first.OnActionAsync(new("grounding.on", "help.grounding"));
+            await first.OnActionAsync(new("spoiler.2", "help.spoilers"));
+            await Until(() => store.Json?.Contains("Full solution") == true);
+            await first.OnActionAsync(new("new.confirm", "help.new"));
         }
-        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+        finally { await WidgetTestHost.DestroyAsync(first); }
+        var service = new FakeService();
+        var second = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), Services());
+        try
+        {
+            await WidgetTestHost.InitializeAsync(second);
+            await WidgetTestHost.SetLifecycleStateAsync(second, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(second).Root).Any(node => node.Id == "help.composer"));
+            await second.OnActionAsync(new("starter.0", "help.starter.0"));
+            await second.OnActionAsync(new("ask.plain", "help.answer-plain"));
+            await Until(() => service.Requests.Count == 1);
+            Assert.IsTrue(service.Requests[0].WebGrounding);
+            Assert.AreEqual("Full solution", service.Requests[0].SpoilerPreference);
+            var before=store.Revision;
+            await second.OnActionAsync(new("grounding.off", "help.grounding"));
+            await Until(() => store.Revision > before);
+            Assert.IsFalse(JsonSerializer.Deserialize<GameHelpPreferences>(store.Json!)!.Grounding);
+        }
+        finally { await WidgetTestHost.DestroyAsync(second); }
     }
 
     [TestMethod]
@@ -482,6 +480,43 @@ public sealed class GameHelpTests
             var diagnostics = ViewSnapshotValidator.Validate(snapshot);
             Assert.AreEqual(0, diagnostics.Count, string.Join("; ", diagnostics));
         }
+    }
+
+    [TestMethod]
+    public async Task ResultNotificationCompletesInBackgroundAndOpensWithoutRepeatingQuestion()
+    {
+        var completion = new TaskCompletionSource<GameHelpAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new FakeService { Reply = _ => completion.Task };
+        WidgetNotification? notice = null;
+        var services = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetNotificationCapabilities.Publish, (command, _) => { notice = command.Notification; return ValueTask.FromResult(new WidgetNotificationReceipt(true)); }).Build();
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), services);
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(node => node.Id == "help.composer"));
+            await widget.OnActionAsync(new("draft", "help.composer") { CommittedText = "Synthetic question" });
+            await widget.OnActionAsync(new("ask", "help.send"));
+            await Until(() => service.Requests.Count == 1);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+            completion.SetResult(new("Synthetic answer", [], "", [], [], []));
+            await Until(() => notice is not null);
+            Assert.AreEqual("results", notice!.CategoryId);
+            Assert.AreEqual(WidgetNotificationVisibility.SourceHidden, notice.Visibility);
+            Assert.AreEqual(WidgetNotificationRetention.Pending, notice.Retention);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await widget.OnActionAsync(new("settings", "help.settings"));
+            Assert.AreEqual(WidgetIntentResult.Accepted, await widget.OnIntentAsync(notice.OpenIntent!));
+            Assert.AreEqual("help.message.2", Snapshot(widget).ScrollRevealRequest?.TargetId);
+            Assert.AreEqual(1, service.Requests.Count);
+            await widget.OnActionAsync(new("new.confirm", "help.new-proceed"));
+            Assert.AreEqual(WidgetIntentResult.Accepted, await widget.OnIntentAsync(notice.OpenIntent!));
+            Assert.IsNull(Snapshot(widget).ScrollRevealRequest);
+            Assert.AreEqual(1, service.Requests.Count);
+            Assert.AreEqual(WidgetIntentResult.Rejected, await widget.OnIntentAsync(notice.OpenIntent! with { SchemaDigest = new string('a', 64) }));
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
 
     private static WidgetRail.Samples.GameHelp.GameHelpWidget Attach(FakeService service,IReadOnlyList<WidgetTaskWindow> windows)=>

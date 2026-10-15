@@ -28,7 +28,7 @@ internal sealed partial class WebAppFilesValidationPage : Page, IAsyncDisposable
             await File.WriteAllTextAsync(source, "local-upload-marker");
             try
             {
-                browser.Choose = (_, _, message, choices, _, _) =>
+                browser.Choose = (_, _, message, choices, _, _, _) =>
                 {
                     if (!message.Contains("https://files.fixture.invalid", StringComparison.Ordinal)) throw new InvalidOperationException("Missing file origin.");
                     return Task.FromResult<string?>(choices[0].Id);

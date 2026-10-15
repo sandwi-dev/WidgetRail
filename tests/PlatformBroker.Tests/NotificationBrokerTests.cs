@@ -18,8 +18,10 @@ internal static class NotificationBrokerTests
         await broker.ExecuteAsync(request);
         await broker.ExecuteAsync(request with { RequestId = 2 }); // Rate-limited without queuing another publication.
         if (calls != 1) throw new Exception("Repeated publication was not bounded");
+        await broker.ExecuteAsync(request with { RequestId = 4, Payload = BrokerJson.ToElement(new WidgetNotificationCommand("general") { ConfigureCategoryId = "general" }) });
+        if (calls != 2) throw new Exception("A background notice consumed the preferences admission slot");
         await broker.ExecuteAsync(request with { RequestId = 3, Payload = BrokerJson.ToElement(new WidgetNotificationCommand("song")) });
-        if (calls != 2) throw new Exception("Dismissal should remain available during the quiet admission interval");
+        if (calls != 3) throw new Exception("Dismissal should remain available during the quiet admission interval");
         try { await broker.ExecuteAsync(request with { Widget = identity with { PackageId = "another.widget" } }); throw new Exception("Identity spoof accepted"); }
         catch (BrokerException) { }
         try { await broker.ExecuteAsync(request with { Payload = BrokerJson.ToElement(command with { Notification = command.Notification! with { DurationMilliseconds = 999999 } }) }); throw new Exception("Invalid customization accepted"); }

@@ -80,3 +80,23 @@ pwsh -NoProfile -File .\samples\SpotifyWidget\Build-CommunityPackage.ps1 -Config
 
 The package is written to `artifacts/community-addons/spotify/` without installing it.
 See [development notes](DEVELOPMENT.md) for authorization, local playback, caching, and lifecycle details.
+
+## Song banners and activity
+
+Setup includes **Manage song notifications**, which opens the host's shared Song
+changes category. It starts enabled for new installations; existing saved choices are preserved.
+On/Off and opacity are saved by the host.
+Banners show artwork, title, artist and duration, without adding pending entries.
+Repeated position/pause updates do not replay them. Metadata updates are quiet.
+
+Local-player events continue while this already-resident widget is hidden, without
+adding a polling loop or changing residency. Cloud playback is observed through
+the existing visible-widget refresh only: changing songs on another device while
+WidgetRail hides Spotify does not trigger fresh cloud requests or reliable hidden
+song notices. Opening the widget refreshes that state. Local sound and remote
+playback use separate SDK activity sources; muted/paused local playback clears
+local sound. Session teardown removes the event subscription and host activity.
+
+The Song changes category declares banner-only retention. Its preferences offer
+On/Off and banner opacity; there is no pending-list setting for song changes.
+Value pickers focus the current setting, and B returns without changing it.

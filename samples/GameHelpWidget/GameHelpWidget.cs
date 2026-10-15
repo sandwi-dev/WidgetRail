@@ -25,23 +25,17 @@ public sealed partial class GameHelpWidget : Widget
         internal CaptureAttachment? Preview, Context;
     }
     private readonly IGameHelpService service;
-    private readonly GameHelpPreferencesStore? preferences;
     private readonly WidgetModel<State> model;
     private long nextMessage, keyRevision, nextOperation, nextFocusRequest, nextRevealRequest;
     public GameHelpWidget()
     {
         service = new GeminiGameHelpService(() => HostServices);
-        preferences = new();
-        var saved = preferences.Load();
-        model = CreateModel(new State { Grounding = saved.Grounding, Spoilers = saved.Spoilers });
+        model = CreateModel(new State());
     }
-    public GameHelpWidget(IGameHelpService service) : this(service, null) { }
-    internal GameHelpWidget(IGameHelpService service, GameHelpPreferencesStore? preferences)
+    public GameHelpWidget(IGameHelpService service)
     {
         this.service = service;
-        this.preferences = preferences;
-        var saved = preferences?.Load() ?? new();
-        model = CreateModel(new State { Grounding = saved.Grounding, Spoilers = saved.Spoilers });
+        model = CreateModel(new State());
     }
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
@@ -50,6 +44,7 @@ public sealed partial class GameHelpWidget : Widget
         {
             try
             {
+                await LoadPreferencesAsync(context.CancellationToken);
                 var configured = await service.HasKeyAsync(context.CancellationToken);
                 if (context.IsCurrent && revision == Interlocked.Read(ref keyRevision)) model.Update(state => state with { HasKey = configured, KeyReady = true, Error = null });
             }
@@ -127,18 +122,6 @@ public sealed partial class GameHelpWidget : Widget
         return ValueTask.CompletedTask;
     }
     private void RequestFocus(string group) => model.Update(s => s with { FocusGroup = group, FocusRequest = Interlocked.Increment(ref nextFocusRequest) });
-    private void SetPreferences(bool? grounding = null, string? spoilers = null)
-    {
-        var state = model.Value;
-        var next = new GameHelpPreferences(grounding ?? state.Grounding, spoilers ?? state.Spoilers);
-        try
-        {
-            preferences?.Save(next);
-            model.Update(s => s with { Grounding = next.Grounding, Spoilers = next.Spoilers, Error = null });
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        { model.Update(s => s with { Error = "Game Help could not save this setting. Check access to your local app data and try again." }); }
-    }
     private void AddQuestion(string question,bool offerContext)
     {
         var id=Interlocked.Increment(ref nextMessage);
@@ -247,8 +230,10 @@ public sealed partial class GameHelpWidget : Widget
                 if(context.IsCurrent)
                 {
                     if(!context.IsCurrent)return;
-                    model.Update(s=>s with {Messages=s.Messages.Append(new Message(Interlocked.Increment(ref nextMessage),"assistant",answer.Answer,answer)).TakeLast(20).ToArray(),
+                    var resultId = Interlocked.Increment(ref nextMessage);
+                    model.Update(s=>s with {Messages=s.Messages.Append(new Message(resultId,"assistant",answer.Answer,answer)).TakeLast(20).ToArray(),
                         Context=contextAttachment,Preview=null,Busy=false,Error=null});
+                    await NotifyResultAsync(resultId, context.CancellationToken);
                     var retained = model.Value.Messages.Select(message => message.Answer?.Attribution).OfType<ProviderDocumentReference>().ToHashSet();
                     foreach (var reference in state.Messages.Select(message => message.Answer?.Attribution).OfType<ProviderDocumentReference>().Where(reference => !retained.Contains(reference)))
                         try { await HostServices.Documents.DiscardAsync(reference, WidgetLifetimeToken); } catch (WidgetCapabilityException) { }

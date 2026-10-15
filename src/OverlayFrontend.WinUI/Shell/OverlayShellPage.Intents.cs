@@ -190,6 +190,11 @@ internal sealed partial class OverlayShellPage
         finally { browserExternalPending = false; }
     }
 
+    private Task<string?> ShowHostPreferenceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices,
+        CancellationToken token, PinnedSurface? pinnedOwner = null, string? currentChoiceId = null, string closeLabel = "Back") =>
+        ShowHostChoiceAsync(title, message, choices, token, pinnedOwner: pinnedOwner,
+            configure: dialog => dialog.ConfigurePreferenceList(currentChoiceId, closeLabel));
+
     private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token, string? primaryButtonText = null, bool directDecisionButtons = false, PinnedSurface? pinnedOwner = null,
         Action<HostChoiceDialog>? configure = null)
     {
@@ -307,7 +312,7 @@ internal sealed partial class OverlayShellPage
         { dialog.ResetController(); return true; }
         if (frame.State.Buttons == 0 && frame.State.LeftTrigger == 0 && frame.State.RightTrigger == 0) dialog.ControllerArmed = true;
         if (!dialog.ControllerArmed) return true;
-        dialog.SampleMessageScroll(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
+        dialog.SampleScroll(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
         {

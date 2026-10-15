@@ -20,6 +20,7 @@ public sealed partial class SessionTransportTests
         var catalogApplied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var descriptor = Descriptor() with
         {
+            NotificationCategories = [new("songs", "Songs", EnabledByDefault: false)],
             IconAssets = [new("icon", new string('a', 64), new string('b', 64), 100, 100)],
             QuickActions = [new() { Id = "refresh", Label = "Refresh", ActionId = "refresh", SourceElementId = "root" }],
         };

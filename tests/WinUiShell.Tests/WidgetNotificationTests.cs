@@ -47,6 +47,7 @@ public sealed class WidgetNotificationTests
         var entry = inbox.Add("music", "widget", "", "song", "Track", "", new(), Callbacks, NotificationPresentation.BannerAndList, content)!;
         var updated = inbox.UpdateWidget("music", content with { Metadata = "3:45" });
         Assert.AreSame(entry, updated); Assert.AreEqual(1, entry.ContentRevision);
+        Assert.AreSame(entry, inbox.UpdateWidget("music", content with { CategoryId = "general" }));
         Assert.IsNull(inbox.UpdateWidget("music", content with { Retention = WidgetNotificationRetention.Pending }));
         inbox.ReleaseBanner(entry.Id);
         Assert.IsNull(inbox.UpdateWidget("music", content));

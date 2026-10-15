@@ -157,7 +157,7 @@ internal sealed partial class OverlayShellPage
     private IReadOnlyList<ControllerGuideHint> RadialGuideHints()
     {
         var hints = new List<ControllerGuideHint> { new(ControllerPrompt.LeftStickMove, "Choose widget"),
-            new(ControllerPrompt.A, "Open widget", ControllerButton.A), new(ControllerPrompt.Y, "Reorder · hold to restart", ControllerButton.Y),
+            new(ControllerPrompt.A, "Open widget", ControllerButton.A), new(ControllerPrompt.Y, "Reorder · hold for notifications", ControllerButton.Y),
             new(ControllerPrompt.Menu, "Commands", ControllerButton.Menu) };
         if (catalogItems.Count > 8) hints.Insert(1, new(ControllerPrompt.RightStickMove, "Change page"));
         return hints;

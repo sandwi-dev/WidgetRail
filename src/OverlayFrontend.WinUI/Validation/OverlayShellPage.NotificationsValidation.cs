@@ -97,13 +97,13 @@ internal sealed partial class OverlayShellPage
         check(inbox.Entries.Count == 0 && page.IsBrowsing && activeWidget == "webapp-a", "A opens a notification appended to the live list and focuses its exact browser document");
 
         await browserOwner.NotificationPreferences.SetAsync("webapp-a", NotificationPresentation.BannerAndList, lifetime.Token);
-        await page.EvaluateFixtureAsync("window.n=new Notification('Visible overlay notification');");
-        await WebAppUntil(() => inbox.Entries.Count == 1);
-        check(notificationBanner?.IsVisible != true, "A visible overlay receives a quiet pending indicator without a banner");
-        inbox.Clear();
+        await page.EvaluateFixtureAsync("window.n=new Notification('Visible overlay notification',{tag:'banner'});");
+        await WebAppUntil(() => inbox.Entries.Count == 1 && notificationBanner?.IsVisible == true);
+        check(notificationBanner!.IsVisible, "Website notifications show a passive banner with the overlay visible");
+        var visibleBannerId = notificationBannerState.EntryId;
         SetVisible(false);
-        await page.EvaluateFixtureAsync("window.n=new Notification('Quiet banner',{tag:'banner'});");
         await WebAppUntil(() => notificationBanner?.IsVisible == true);
+        check(notificationBannerState.EntryId == visibleBannerId, "Hiding the overlay preserves the same banner and its original lifetime");
         await CapturePopupDecisionAsync(notificationBanner!.AutomationRoot, "notification-banner");
         var expires = notificationBannerState.ExpiresAt;
         var bannerWindow = notificationBanner!;

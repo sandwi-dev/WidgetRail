@@ -137,20 +137,7 @@ internal sealed partial class OverlayShellPage
         await owner!.Session.RestartAsync(owner.Session.GetTarget("webapp-b"), lifetime.Token);
         await WebAppUntil(() => browserOwner.ResidentCount == 1);
 
-        await Press(ControllerButton.LeftStick);
-        FindControl<Button>(parent, "Browser.SiteControls")!.Focus(FocusState.Keyboard);
-        await Press(ControllerButton.A); await Dialog("Website settings");
-        var options = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
-        check(options.Items.OfType<ListViewItem>().Any(item => (string?)item.Tag == "permission.0") &&
-            options.Items.OfType<ListViewItem>().Any(item => (string?)item.Tag == "windows.pin"),
-            "Website settings exposes permissions and all new-window choices together");
-        await CapturePopupDecisionAsync(hostChoiceDialog!, "website-settings");
-        var ask = options.Items.OfType<ListViewItem>().Single(item => (string?)item.Tag == "windows.ask");
-        options.SelectedItem = ask; ask.Focus(FocusState.Keyboard); await Press(ControllerButton.A);
-        await WebAppUntil(() => !HostChoiceActive);
-        check(PopupPreferences.Get(parent.WidgetId, parent.ProfileName, origin) == BrowserPopupPlacement.Ask,
-            "Website settings saves the choice directly without a placement submenu");
-        if (parent.IsToolbarFocused) await Press(ControllerButton.LeftStick);
+        await VerifyWebsiteSettingsAsync(parent, check);
 
         async Task Press(ControllerButton button)
         { Receive(new ControllerFrame { Connected = 1 }); await RouteButtonAsync(button, ControllerEventPhase.Pressed); await RouteButtonAsync(button, ControllerEventPhase.Released); }

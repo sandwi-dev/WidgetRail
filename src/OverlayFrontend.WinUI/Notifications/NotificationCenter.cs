@@ -12,17 +12,25 @@ internal sealed class NotificationCenter : IDisposable
     private bool ready;
     internal NotificationCenter(string settingsRoot)
     {
-        // Preserve the existing per-widget preferences file and its schema.
+        // Retain the existing master preferences; category choices extend the same file.
         Preferences = new(Path.Combine(settingsRoot, "webapp-notifications.json"));
         Ready = LoadAsync();
     }
     private async Task LoadAsync() { await Preferences.LoadAsync(CancellationToken.None); ready = true; }
-    internal NotificationPresentation Mode(string widget) => ready ? Preferences.Get(widget) : NotificationPresentation.ListOnly;
+    internal NotificationPresentation Mode(string widget) => ready ? Preferences.Effective(widget, WidgetNotificationContract.DefaultCategoryId) : NotificationPresentation.ListOnly;
     internal void RequestBanner(NotificationEntry entry, bool allowNew) => BannerRequested?.Invoke(entry, allowNew);
-    internal void Publish(string widget, object owner, WidgetNotificationCommand command, Func<bool> isCurrent, Action? release = null)
+    internal void Publish(string widget, object owner, WidgetNotificationCommand command, Func<bool> isCurrent, Action? release = null, bool sourceVisible = false)
     {
+        if (command.ConfigureCategoryId is not null) { release?.Invoke(); return; }
         if (command.Notification is not { } content) { Inbox.WithdrawWidgetKey(widget, command.Key); return; }
-        var mode = Mode(widget);
+        if (!command.UpdateOnly && content.Visibility == WidgetNotificationVisibility.SourceHidden && sourceVisible)
+        {
+            // Show replaces its key even when the new result needs no notice.
+            Inbox.WithdrawWidgetKey(widget, command.Key); release?.Invoke(); return;
+        }
+        var category = content.CategoryId ?? WidgetNotificationContract.DefaultCategoryId;
+        var mode = ready ? Preferences.Effective(widget, category) : NotificationPresentation.ListOnly;
+        if (Preferences.Category(widget, category).Opacity is { } opacity) content = content with { BackgroundOpacityPercent = opacity };
         if (mode == NotificationPresentation.Off) { release?.Invoke(); return; }
         if (content.Retention == WidgetNotificationRetention.BannerOnly && mode != NotificationPresentation.BannerAndList) { release?.Invoke(); return; }
         var callbacks = new NotificationCallbacks(isCurrent, () => { }, () => { }, () => { }, release ?? (() => { }));

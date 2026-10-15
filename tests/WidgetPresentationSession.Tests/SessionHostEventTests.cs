@@ -287,6 +287,56 @@ public sealed class SessionHostEventTests
         await serverTask.WaitAsync(Deadline);
     }
 
+    [TestMethod]
+    public async Task NotificationCategoriesPreserveLegacyAndRejectReplayOrForeignRuntime()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var descriptor = Descriptor() with { NotificationCategories = [new("songs", "Songs")] };
+        object Notice(long sequence, string? category, string? runtime = null) => new BridgeWidgetNotification(
+            descriptor.Id, descriptor.InstanceId, runtime ?? descriptor.RuntimeGeneration, sequence, 250,
+            new("song", new("song", "Synthetic track") { CategoryId = category }));
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await CatalogAsync(channel, descriptor, 1); var barrier = await ReadAsync(channel);
+            await EventAsync(channel, BridgeMessageTypes.WidgetNotification, Notice(1, null));
+            await EventAsync(channel, BridgeMessageTypes.WidgetNotification, Notice(2, "songs"));
+            await EventAsync(channel, BridgeMessageTypes.WidgetNotification, Notice(2, "songs"));
+            await EventAsync(channel, BridgeMessageTypes.WidgetNotification, Notice(3, "songs", new string('f', 32)));
+            await CatalogReplyAsync(channel, barrier.RequestId, descriptor, 1); await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var received = new ConcurrentQueue<WidgetPresentationNotification>(); session.NotificationReceived += (_, args) => received.Enqueue(args.Notification);
+            await session.ListWidgetsAsync(); await session.ListWidgetsAsync();
+            Assert.HasCount(2, received);
+            Assert.IsNull(received.First().Command.Notification!.CategoryId);
+            Assert.AreEqual("songs", received.Last().Command.Notification!.CategoryId);
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task InvalidNotificationCategoryNeverReachesUi(bool incompatibleRetention)
+    {
+        await using var server = new ScriptedBridgeServer(); var descriptor = Descriptor() with { NotificationCategories = [new("songs", "Songs", Retention: WidgetNotificationRetention.BannerOnly)] };
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await CatalogAsync(channel, descriptor, 1); var barrier = await ReadAsync(channel);
+            await EventAsync(channel, BridgeMessageTypes.WidgetNotification, new BridgeWidgetNotification(descriptor.Id, descriptor.InstanceId,
+                descriptor.RuntimeGeneration, 1, 250, new("song", new("song", "Synthetic") { CategoryId = incompatibleRetention ? "songs" : "undeclared" })));
+            try { await CatalogReplyAsync(channel, barrier.RequestId, descriptor, 1); } catch (IOException) { }
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var delivered = 0; session.NotificationReceived += (_, _) => delivered++;
+            await session.ListWidgetsAsync();
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(async () => await session.ListWidgetsAsync().WaitAsync(Deadline));
+            Assert.AreEqual(0, delivered);
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+
     private static Dictionary<string, object> Effect(BridgeWidgetDescriptor descriptor, long sequence,
         string effect = "closeOverlayAfterAppLaunch") => new()
     {

@@ -75,6 +75,7 @@ internal static class BridgeMessageTypes
     public const string PrepareIntent = "prepare-widget-intent";
     public const string PrepareNotificationIntent = "prepare-notification-intent";
     public const string ReleaseNotificationIntent = "release-notification-intent";
+    public const string PrepareWidgetSettingsIntent = "prepare-widget-settings-intent";
     public const string PrepareAppUpdateIntent = "prepare-app-update-intent";
     public const string StartAppUpdateCheck = "start-app-update-check";
     public const string AppUpdateChanged = "app-update-changed";
@@ -494,3 +495,5 @@ internal sealed record BridgeIndexedArtworkResponse(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
     IndexedCollectionItemReference Item, string ArtworkHandle, string DemandId,
     string ContentType, ReadOnlyMemory<byte> ContentBase64);
+
+internal sealed record BridgeWidgetManagementRequest(string WidgetId, string RuntimeGeneration);

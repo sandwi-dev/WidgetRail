@@ -54,7 +54,10 @@ internal sealed partial class OverlayShellPage
         await Press(ControllerButton.LeftStick);
         FindControl<Button>(parent, "Browser.SiteControls")!.Focus(FocusState.Keyboard);
         await Press(ControllerButton.A);
-        await Decide("windows.ask");
+        await Decide("windows");
+        await Decide("ask");
+        await WebAppUntil(() => hostChoiceDialog?.Title.ToString() == "Website settings");
+        await Press(ControllerButton.B);
         await WebAppUntil(() => !HostChoiceActive && PopupPreferences.Get(parent.WidgetId, parent.ProfileName, origin) == BrowserPopupPlacement.Ask);
         if (parent.IsToolbarFocused) await Press(ControllerButton.LeftStick);
         check(true, "Website controls resets remembered placement to Ask each time");

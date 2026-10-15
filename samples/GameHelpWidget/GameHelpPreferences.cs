@@ -1,46 +1,44 @@
 using System.Text.Json;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.GameHelp;
 
 internal sealed record GameHelpPreferences(bool Grounding = false, string Spoilers = "Hints first");
 
-internal sealed class GameHelpPreferencesStore(string? path = null)
+public sealed partial class GameHelpWidget
 {
-    private readonly string path = path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WidgetRail", "applications", "game-help", "settings.json");
-
-    internal GameHelpPreferences Load()
+    private bool preferencesLoaded;
+    private long preferenceEdit;
+    private async Task LoadPreferencesAsync(CancellationToken token)
     {
+        if (preferencesLoaded) return;
+        var edit = Interlocked.Read(ref preferenceEdit);
         try
         {
-            if (!File.Exists(path) || new FileInfo(path).Length > 4096) return new();
-            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
-            var root = document.RootElement;
-            var grounding = root.TryGetProperty("grounding", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-            var spoilers = root.TryGetProperty("spoilers", out var mode) && mode.ValueKind == JsonValueKind.String ? mode.GetString() : null;
-            return new(grounding, spoilers is "Hints first" or "Balanced" or "Full solution" ? spoilers : "Hints first");
+            var stored = await HostServices.PrivateState.ReadAsync<GameHelpPreferences>(cancellationToken: token);
+            var value = stored.Value ?? new();
+            if (value.Spoilers is not ("Hints first" or "Balanced" or "Full solution")) value = new(value.Grounding);
+            model.Update(state => Interlocked.Read(ref preferenceEdit) == edit
+                ? state with { Grounding = value.Grounding, Spoilers = value.Spoilers } : state);
+            preferencesLoaded = true;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return new(); }
+        catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or JsonException)
+        { preferencesLoaded = true; }
     }
-
-    internal void Save(GameHelpPreferences preferences)
+    private void SetPreferences(bool? grounding = null, string? spoilers = null)
     {
-        if (preferences.Spoilers is not ("Hints first" or "Balanced" or "Full solution")) throw new ArgumentException("Invalid spoiler preference.");
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
+        Interlocked.Increment(ref preferenceEdit);
+        model.Update(state => state with { Grounding = grounding ?? state.Grounding, Spoilers = spoilers ?? state.Spoilers, Error = null });
+        if (!HostServices.Capabilities.IsAvailable) return;
+        Operations.RunLatest("preferences", async context =>
         {
-            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (var json = new Utf8JsonWriter(stream))
+            try
             {
-                json.WriteStartObject();
-                json.WriteNumber("schemaVersion", 1);
-                json.WriteBoolean("grounding", preferences.Grounding);
-                json.WriteString("spoilers", preferences.Spoilers);
-                json.WriteEndObject();
+                var state = model.Value;
+                await HostServices.PrivateState.WriteAsync(new GameHelpPreferences(state.Grounding, state.Spoilers), cancellationToken: context.CancellationToken);
             }
-            File.Move(temporary, path, overwrite: true);
-        }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
+            { if (context.IsCurrent) model.Update(state => state with { Error = "Could not save your preferences. Try the setting again." }); }
+        }, WidgetOperationLifetime.Widget);
     }
 }

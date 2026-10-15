@@ -30,54 +30,70 @@ internal sealed partial class BrowserSurface
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
         try
         {
-            var choices = new List<HostDialogChoice>();
-            if (origin.StartsWith("https://", StringComparison.Ordinal))
+            string? returnChoice = null;
+            while (CanCompleteSiteDecision && ReferenceEquals(core, current))
             {
-                var saved = (await current.Profile.GetNonDefaultPermissionSettingsAsync()).Where(p =>
-                    BrowserSiteIdentity.Origin(p.PermissionOrigin) == origin).ToDictionary(p => p.PermissionKind, p => p.PermissionState);
-                choices.AddRange(WebsitePermissions.Select((p, i) => new HostDialogChoice("permission." + i,
-                    $"{p.Label} · {PermissionSettingLabel(saved.GetValueOrDefault(p.Kind, CoreWebView2PermissionState.Default))}", Group: i == 0 ? "Permissions" : null)));
-            }
-            if (ReadPopupPlacement is { } read && WritePopupPlacement is not null && RequestPopupPin is not null && document.Options.Popups == WidgetProtocol.BrowserPopupMode.Hosted)
-            {
-                var placement = await read(this, origin, token);
-                choices.AddRange(new[] { ("ask", "Ask each time", BrowserPopupPlacement.Ask), ("widget", "Open in widget", BrowserPopupPlacement.InWidget), ("pin", "Open pinned", BrowserPopupPlacement.Pinned) }
-                    .Select((p, i) => new HostDialogChoice("windows." + p.Item1, p.Item2 + (placement == p.Item3 ? " (selected)" : ""), Group: i == 0 ? "New windows" : null)));
-            }
-            choices.Add(new("clear", "Clear website data for this profile", Group: "Data"));
-            if (downloads.Count != 0) choices.Add(new("downloads", $"Downloads ({downloads.Count})"));
-            var selection = await choose(this, "Website settings", $"{document.AccessibleName}\n{origin}\nProfile: {document.Options.ProfileKey}", choices, token, focusFirstChoice: true);
-            token.ThrowIfCancellationRequested();
-            if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
-            if (selection == "downloads") { await ManageDownloadsAsync(token); return; }
-            if (selection is "windows.ask" or "windows.widget" or "windows.pin")
-            {
-                if (WritePopupPlacement is { } write) await write(this, origin, selection switch
-                { "windows.pin" => BrowserPopupPlacement.Pinned, "windows.widget" => BrowserPopupPlacement.InWidget, _ => BrowserPopupPlacement.Ask }, token);
-                return;
-            }
-            BrowserProfileChange? change = null;
-            if (selection?.StartsWith("permission.", StringComparison.Ordinal) == true && int.TryParse(selection[11..], out var index) && index >= 0 && index < WebsitePermissions.Length)
-            {
-                var permission = WebsitePermissions[index];
-                selection = await choose(this, permission.Label, $"{origin}\n\nChanging this setting reloads every page in this profile and ends active calls. Choosing Ask also clears a temporary decision.",
-                    (HostDialogChoice[])[new("ask", "Ask next time"), new("allow", "Allow"), new("block", "Block")], token);
-                if (selection is "ask" or "allow" or "block")
-                    change = new(false, origin, permission.Kind, selection == "allow" ? CoreWebView2PermissionState.Allow :
-                        selection == "block" ? CoreWebView2PermissionState.Deny : CoreWebView2PermissionState.Default);
-            }
-            else if (selection == "clear")
-            {
-                selection = await choose(this, "Clear website data?",
-                    $"{document.AccessibleName} · {document.Options.ProfileKey}\n\nThis signs out all websites and resets their permissions in this profile. All pages in the profile reload, ending active calls. Bookmarks and browsing history are kept.",
-                    (HostDialogChoice[])[new("clear", "Clear website data")], token);
-                if (selection == "clear") change = new(true);
-            }
-            token.ThrowIfCancellationRequested();
-            if (change is not null && CanCompleteSiteDecision && ReferenceEquals(core, current) && ChangeProfile is { } apply)
-            {
-                var changed = await apply(this, change, lifetime.Token);
-                if (!retired) ShowStatus(changed ? "Website settings updated." : "Website settings could not be changed. Try again.");
+                var choices = new List<HostDialogChoice>();
+                if (origin.StartsWith("https://", StringComparison.Ordinal))
+                {
+                    var saved = (await current.Profile.GetNonDefaultPermissionSettingsAsync()).Where(p =>
+                        BrowserSiteIdentity.Origin(p.PermissionOrigin) == origin).ToDictionary(p => p.PermissionKind, p => p.PermissionState);
+                    choices.AddRange(WebsitePermissions.Select((p, i) => new HostDialogChoice("permission." + i,
+                        p.Label, Group: i == 0 ? "Permissions" : null,
+                        Value: PermissionSettingLabel(saved.GetValueOrDefault(p.Kind, CoreWebView2PermissionState.Default)))));
+                }
+                var placement = BrowserPopupPlacement.Ask;
+                if (ReadPopupPlacement is { } read && WritePopupPlacement is not null && RequestPopupPin is not null && document.Options.Popups == WidgetProtocol.BrowserPopupMode.Hosted)
+                {
+                    placement = await read(this, origin, token);
+                    choices.Add(new("windows", "New windows", Group: "Behavior", Value: PopupPlacementLabel(placement)));
+                }
+                choices.Add(new("clear", "Clear website data…", Group: "Data"));
+                if (downloads.Count != 0) choices.Add(new("downloads", "Downloads", Value: downloads.Count.ToString(System.Globalization.CultureInfo.CurrentCulture)));
+                var description = origin + (document.Options.ProfileKey == "default" ? "" : "\nProfile: " + document.Options.ProfileKey);
+                var selection = await choose(this, "Website settings", description, choices, token,
+                    preference: new(returnChoice, "Done"));
+                token.ThrowIfCancellationRequested();
+                if (selection is null || !CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
+                returnChoice = selection;
+                if (selection == "downloads") { await ManageDownloadsAsync(token); continue; }
+                if (selection == "windows")
+                {
+                    var selected = await choose(this, "New windows", "Choose where this website opens additional pages.",
+                        (HostDialogChoice[])[new("ask", "Ask each time"), new("widget", "Open in widget"), new("pin", "Open pinned")], token,
+                        preference: new(placement switch { BrowserPopupPlacement.Pinned => "pin", BrowserPopupPlacement.InWidget => "widget", _ => "ask" }));
+                    token.ThrowIfCancellationRequested();
+                    if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
+                    if (selected is "ask" or "widget" or "pin" && WritePopupPlacement is { } write)
+                        await write(this, origin, selected switch
+                        { "pin" => BrowserPopupPlacement.Pinned, "widget" => BrowserPopupPlacement.InWidget, _ => BrowserPopupPlacement.Ask }, token);
+                    continue;
+                }
+                BrowserProfileChange? change = null;
+                if (selection.StartsWith("permission.", StringComparison.Ordinal) && int.TryParse(selection[11..], out var index) && index >= 0 && index < WebsitePermissions.Length)
+                {
+                    var permission = WebsitePermissions[index];
+                    // Changing permissions reloads the profile: keep the safe confirmation policy.
+                    selection = await choose(this, permission.Label, $"{origin}\n\nChanging this setting reloads every page in this profile and ends active calls. Choosing Ask also clears a temporary decision.",
+                        (HostDialogChoice[])[new("ask", "Ask next time"), new("allow", "Allow"), new("block", "Block")], token);
+                    if (selection is "ask" or "allow" or "block")
+                        change = new(false, origin, permission.Kind, selection == "allow" ? CoreWebView2PermissionState.Allow :
+                            selection == "block" ? CoreWebView2PermissionState.Deny : CoreWebView2PermissionState.Default);
+                }
+                else if (selection == "clear")
+                {
+                    selection = await choose(this, "Clear website data?",
+                        $"{document.AccessibleName} · {document.Options.ProfileKey}\n\nThis signs out all websites and resets their permissions in this profile. All pages in the profile reload, ending active calls. Bookmarks and browsing history are kept.",
+                        (HostDialogChoice[])[new("clear", "Clear website data")], token);
+                    if (selection == "clear") change = new(true);
+                }
+                token.ThrowIfCancellationRequested();
+                if (change is not null && CanCompleteSiteDecision && ReferenceEquals(core, current) && ChangeProfile is { } apply)
+                {
+                    var changed = await apply(this, change, lifetime.Token);
+                    if (!retired) ShowStatus(changed ? "Website settings updated." : "Website settings could not be changed. Try again.");
+                    return;
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -94,6 +110,9 @@ internal sealed partial class BrowserSurface
         (CoreWebView2PermissionKind.Autoplay, "Automatic media playback"),
         (CoreWebView2PermissionKind.MultipleAutomaticDownloads, "Multiple downloads"),
     ];
+    private static string PopupPlacementLabel(BrowserPopupPlacement placement) => placement switch
+    { BrowserPopupPlacement.Pinned => "Open pinned", BrowserPopupPlacement.InWidget => "Open in widget", _ => "Ask each time" };
+
     private static string PermissionSettingLabel(CoreWebView2PermissionState state) => state switch
     { CoreWebView2PermissionState.Allow => "Allow", CoreWebView2PermissionState.Deny => "Block", _ => "Ask" };
 

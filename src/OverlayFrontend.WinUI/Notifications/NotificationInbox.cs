@@ -13,7 +13,9 @@ internal sealed class NotificationEntry(long id, string widget, string profile, 
     internal long ContentRevision { get; private set; }
     internal bool Pending => Content?.Retention != WidgetNotificationRetention.BannerOnly;
     internal bool Interactive => Content?.Interaction != WidgetNotificationInteraction.Informational;
-    internal bool ShowWithOverlay => Content?.Visibility == WidgetNotificationVisibility.Always;
+    // Native website notifications share this path across browsers, webapps and pop-outs.
+    // Ordinary widgets retain their explicit (or SDK-default) visibility policy.
+    internal WidgetNotificationVisibility BannerVisibility => Content?.Visibility ?? WidgetNotificationVisibility.Always;
     internal DateTimeOffset ReceivedAt { get; } = DateTimeOffset.Now;
     internal string Widget { get; } = widget;
     internal string Profile { get; } = profile;
@@ -74,7 +76,7 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     {
         var tag = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content.Key)));
         var entry = entries.Concat(transient).FirstOrDefault(e => e.Widget == widget && e.Profile == "widget" && e.Tag == tag && e.Available);
-        if (entry is null || entry.Content?.Retention != content.Retention) return null;
+        if (entry is null || entry.Content?.Retention != content.Retention || (entry.Content?.CategoryId ?? WidgetNotificationContract.DefaultCategoryId) != (content.CategoryId ?? WidgetNotificationContract.DefaultCategoryId)) return null;
         entry.UpdateContent(content);
         if (entry.Pending) Changed?.Invoke();
         return entry;

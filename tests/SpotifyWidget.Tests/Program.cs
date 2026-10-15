@@ -8,6 +8,8 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Spotify background local events publish without additional polling and retire safely", SpotifyNotificationTests.BackgroundPlayback),
+    ("Spotify notifications deduplicate and activity distinguishes local and remote playback", SpotifyNotificationTests.Run),
     ("Discovered Spotify sources retain prefixes captured actions and route return", SpotifyDiscoveredTests.PrefixAndReturn),
     ("Discovered Spotify search preserves occurrence identity and rejects replacement", SpotifyDiscoveredTests.Search),
     ("Discovered Spotify detail refresh retains occurrence and header contracts", SpotifyDiscoveredTests.DetailRefreshAndOccurrences),
@@ -1479,7 +1481,8 @@ static async Task LocalPlaybackEvents()
     Assert.Equal(local, widget.Playback);
     reads = harness.PlaybackCalls;
     harness.PublishTransport(null);
-    await WaitUntil(() => harness.PlaybackCalls > reads);
+    // Request admission precedes its result publication; wait for the observable result.
+    await WaitUntil(() => harness.PlaybackCalls > reads && widget.Playback?.Item == harness.Playback.Item);
     Assert.Equal(harness.Playback.Item, widget.Playback!.Item);
     await StopAsync(widget);
 }
@@ -2361,10 +2364,10 @@ static Task ResponsibilitySplitContract()
     var presentation = File.ReadAllText(
         Path.Combine(sourceRoot, "SpotifyWidget.Presentation.cs"));
 
-    AssertSourceContains(lifecycle, "public sealed class SpotifyWidget : Widget");
-    Assert.True(!new[] { lifecycle, routes, playback, presentation }.Any(source =>
+    AssertSourceContains(lifecycle, "public sealed partial class SpotifyWidget : Widget");
+    Assert.True(!new[] { routes, playback, presentation }.Any(source =>
             source.Contains("partial class SpotifyWidget", StringComparison.Ordinal)),
-        "SpotifyWidget remains a logical partial type.");
+        "Policy and presentation files must remain independent types.");
 
     AssertSourceContains(lifecycle, "OnActivatedAsync");
     AssertSourceContains(lifecycle, "OnActionAsync");
