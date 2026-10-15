@@ -29,6 +29,14 @@ their identities. Windows font files for Segoe UI, Bahnschrift and Georgia were
 verified on the development machine. No new assets or runtime dependencies are
 required.
 
+The original five themes retain `Segoe UI Variable Text, Segoe UI` for body
+text and `Segoe UI Variable Display, Segoe UI` for headings. WinUI resolves the
+comma-separated fallback lists; WidgetRail passes them through. Amber Signal
+uses `Bahnschrift, Segoe UI`, and Velvet Dusk uses
+`Georgia, Times New Roman, Segoe UI` for headings. The remaining new themes use
+Segoe UI. The earlier claim that native font handling could not interpret these
+lists was incorrect; removing the original fallbacks was not a bug fix.
+
 ## Five additions
 
 All new identities use `widgetrail.builtin.<suffix>`, version `1.0.0`. They are
@@ -53,7 +61,7 @@ status. Mono Ink is not a replacement for High Contrast.
 | Theme | Finding | Applied change |
 | --- | --- | --- |
 | All original themes | The inset primary-button focus ring used the same accent as its fill. At the unshaded point it measured 1:1. A present outline was not necessarily a visible one. | Shared primary focus now uses its contrasting foreground (`--canvas`). Theme focus width increases from 1.5 to 2 DIPs. Focus still preserves the authored fill. |
-| Default | Supporting/status text lost contrast on brighter state surfaces. Native font handling does not implement a CSS family list. | Brighter supporting and status inks, slightly quieter control shading, a single Segoe UI family, and a denser modal surface. The warm neutral accent remains. |
+| Default | Supporting/status text lost contrast on brighter state surfaces. | Brighter supporting and status inks, slightly quieter control shading, and a denser modal surface. The warm neutral accent and original font fallback lists remain. |
 | Cool Slate | The steel accent was too subdued for small text on active surfaces. | A lighter steel accent plus brighter supporting/status inks; its blue-grey character and control geometry remain. |
 | Neon Circuit | Magenta eyebrows and tracked uppercase metadata competed with cyan focus and made small labels harder to scan. | Neutral sentence-case metadata and less tracking. Cyan and angular geometry remain. Supporting/status colors are more readable. |
 | Arcade Rush | Pill-shaped text controls, circular icons and heavily rounded containers gave too many elements equal visual emphasis. Fuchsia focus and small text were weak against the active plum surface. | Readable pink accents; 12-DIP text-control corners and 15-DIP segmented containers; circular icon buttons remain. Labels use sentence case. |

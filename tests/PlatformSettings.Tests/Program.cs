@@ -459,7 +459,7 @@ static Task ThemeDiscovery()
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
     var canvas = compiled.Theme!.Resolve(new WrssElement("canvas"));
     Assert.Equal("#090908", canvas.Get("background")!.Text);
-    Assert.Equal("Segoe UI", canvas.Get("font-family")!.Text);
+    Assert.Equal("Segoe UI Variable Text, Segoe UI", canvas.Get("font-family")!.Text);
     var panel = compiled.Theme.Resolve(new WrssElement("panel"));
     Assert.Equal("1px", panel.Get("border-width")!.Text);
     Assert.Equal("12px", panel.Get("corner-radius")!.Text);

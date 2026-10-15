@@ -33,8 +33,8 @@
   --surface-muted: var(--surface-subtle);
   --error: var(--danger);
   --scrim: var(--canvas-veil);
-  --font-text: Segoe UI;
-  --font-display: Segoe UI;
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
 }
 
 /* Widget modal: host-clamped geometry, theme-owned colors and typography. */

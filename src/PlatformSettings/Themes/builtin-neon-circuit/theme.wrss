@@ -53,8 +53,8 @@
   --scrim: rgba(3, 5, 12, 0.66);
   --poster-scrim: rgba(5, 7, 14, 0.86);
 
-  --font-text: Segoe UI;
-  --font-display: Segoe UI;
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
 }
 
 /* Geometry: tighter, more angular rounding than the soft default. Radius is

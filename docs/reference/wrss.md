@@ -143,8 +143,11 @@ one-sided dividers without nesting extra surfaces.
 
 `font-family` is a bounded family-name field, not browser font loading. The WinUI
 adapter removes quote delimiters and passes the resolved value to XAML
-`FontFamily`; font resolution belongs to WinUI. WidgetRail does not implement a
-CSS font resolver or permit package paths, URLs or arbitrary font bytes here.
+`FontFamily`; font resolution belongs to WinUI. WinUI supports comma-separated
+fallback families, for example `Segoe UI Variable Text, Segoe UI` or
+`Bahnschrift, Segoe UI`. WidgetRail preserves this list; it does not need its own
+CSS font resolver. Package paths, URLs and arbitrary font bytes are not permitted.
+See the native [FontFamily contract](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.media.fontfamily).
 Use a known installed family such as `Consolas` for `.wrail-code-text`.
 `UI.CodeText(...)` adds that class to bounded nonfocusable diagnostics/command text.
 

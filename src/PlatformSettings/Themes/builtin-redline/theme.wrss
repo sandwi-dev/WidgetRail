@@ -49,8 +49,8 @@
   --scrim: rgba(12, 5, 7, 0.62);
   --poster-scrim: rgba(18, 9, 11, 0.86);
 
-  --font-text: Segoe UI;
-  --font-display: Segoe UI;
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
 }
 
 /* One structural edge on the tray, leaving content panels and cards quiet. */

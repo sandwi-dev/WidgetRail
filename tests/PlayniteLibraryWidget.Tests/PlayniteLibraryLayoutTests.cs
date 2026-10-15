@@ -910,7 +910,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var classes = new HashSet<string>(["playnite-library-control"],
             StringComparer.Ordinal);
         var control = theme.Resolve(new WrssElement("button", null, classes));
-        Assert.AreEqual("Segoe UI",
+        Assert.AreEqual("Segoe UI Variable Text, Segoe UI",
             control.Get("font-family")?.Text);
         Assert.AreEqual("13px", control.Get("font-size")?.Text);
         Assert.AreEqual("600", control.Get("font-weight")?.Text);

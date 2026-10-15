@@ -31,7 +31,7 @@
   --scrim: rgba(16, 12, 5, 0.74);
   --poster-scrim: rgba(24, 20, 13, 0.94);
   --font-text: Segoe UI;
-  --font-display: Bahnschrift;
+  --font-display: Bahnschrift, Segoe UI;
   --panel-shading: .015;
   --control-shading: .025;
   --focus-shading: .030;

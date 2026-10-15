@@ -52,8 +52,8 @@
   --scrim: rgba(14, 8, 18, 0.62);
   --poster-scrim: rgba(20, 12, 24, 0.86);
 
-  --font-text: Segoe UI;
-  --font-display: Segoe UI;
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
 }
 
 /* Soft control corners preserve the 44 DIP hit targets and focus geometry. */

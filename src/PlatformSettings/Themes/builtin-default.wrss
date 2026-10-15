@@ -34,8 +34,8 @@
   --surface-muted: var(--surface-subtle);
   --error: var(--danger);
   --scrim: var(--canvas-veil);
-  --font-text: Segoe UI;
-  --font-display: Segoe UI;
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
 }
 
 canvas {
@@ -997,7 +997,7 @@ slider:focused {
 
 /* Diagnostics and commands remain presentational and controller-neutral.
    Consolas is the single stable monospace family in the supported Windows
-   baseline; the native font field does not currently implement CSS stacks. */
+   baseline; installed font resolution belongs to WinUI. */
 .wrail-code-text {
   min-width: 0;
   padding: 8px 10px;
