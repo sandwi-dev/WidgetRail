@@ -148,3 +148,15 @@ About Back-to-App updates navigation, preference persistence, and notification
 opening. Full real upgrade/recovery remains for the subsequent release test;
 candidates intentionally cannot replace the installed app. Marketplace/Widgets
 redesign remains deferred.
+
+### Tray organization follow-up
+
+User-requested organization is in `9d146ffe`; shared single-option submenu
+promotion is in `0b84b495`. The focused native run
+`artifacts/settings-updates/single-menu-native/result.json` passes 44 checks.
+Candidate 03 is now running from
+`artifacts/settings-updates/candidate-03/WidgetRail-Developer-0.1.0-preview.31-win-x64`.
+It combines the new frontend with the unchanged previously verified services and
+widgets; catalog/inventory verification passed for all 15 widgets and
+`live-payload-03.json` verifies all 136 frontend DLLs. Normal profile and Guide
+configuration are preserved. Candidate 02 was verified but never launched.
