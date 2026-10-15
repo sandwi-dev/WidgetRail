@@ -167,8 +167,8 @@ public sealed class ThemeCatalog
             ThemeIdentity.BuiltInMonoInkVersion,
             "widgetrail.builtin");
         _builtIns = Array.AsReadOnly<ThemeLoadResult>(
-            [_builtIn, coolSlate, neonCircuit, arcadeRush, redline,
-             mineralLight, canopy, amberSignal, velvetDusk, monoInk]);
+            [monoInk, velvetDusk, canopy, amberSignal, mineralLight,
+             _builtIn, coolSlate, neonCircuit, arcadeRush, redline]);
         _builtInsById = new ReadOnlyDictionary<string, ThemeLoadResult>(
             _builtIns.ToDictionary(item => item.Descriptor.Id, StringComparer.Ordinal));
     }
@@ -375,7 +375,7 @@ public sealed class ThemeCatalog
         return new ThemeLoadResult(
             new ThemeDescriptor(
                 ThemeIdentity.BuiltInDefault,
-                "Default",
+                "Warm Graphite",
                 Version.Parse(ThemeIdentity.BuiltInDefaultVersion),
                 IsBuiltIn: true),
             package);

@@ -1,4 +1,1 @@
 /* Native browser chrome inherits the active host theme. */
-browser-widget {
-  gap: 8px;
-}

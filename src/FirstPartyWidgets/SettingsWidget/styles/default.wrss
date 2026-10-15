@@ -29,6 +29,7 @@
   outline-offset: var(--focus-offset, -1.5px);
 }
 .theme-name {
+  color: var(--text);
   flex-grow: 1;
   min-width: 0;
   font-size: 16px;

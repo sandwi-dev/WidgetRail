@@ -1,11 +1,11 @@
 :root {
-  --recent-accent: #8ad8ff;
-  --recent-focus: #83cdec;
-  --recent-surface: rgba(14, 18, 26, 0.98);
-  --recent-card: rgba(34, 41, 54, 0.94);
-  --recent-card-most-recent: rgba(29, 50, 63, 0.98);
-  --recent-control-focus: rgba(65, 80, 99, 0.99);
-  --recent-error: #ff7c91;
+  --recent-accent: var(--accent);
+  --recent-focus: var(--focus);
+  --recent-surface: var(--surface);
+  --recent-card: var(--surface-raised);
+  --recent-card-most-recent: var(--surface-active, var(--surface-muted));
+  --recent-control-focus: var(--surface-active, var(--surface-muted));
+  --recent-error: var(--danger, var(--error));
 }
 
 .recent-apps-widget {
@@ -139,5 +139,5 @@
 }
 
 .recent-retry {
-  background: rgba(49, 58, 73, 0.96);
+  background: var(--surface-subtle, var(--surface-muted));
 }

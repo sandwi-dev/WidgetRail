@@ -61,6 +61,37 @@ internal static class FocusSelectionThemeTests
             Check(settings, "button", ["setting-row", "wrail-switch"], ["wrail-switch--on"], false);
             Check(settings, "button", ["setting-row"], []);
 
+            // Widget-specific recipes must preserve the foreground that pairs
+            // with a filled primary surface; a generic focused rule cannot
+            // replace it with ordinary page text or an identical accent edge.
+            foreach (var (fixture, classes) in new (string, string[])[]
+                     {
+                         ("SdkGallery", ["wrail-icon-button", "wrail-icon-button--primary"]),
+                         ("Spotify", ["spotify-primary"]),
+                         ("EmbeddedMedia", ["media-shell-play"]),
+                         ("YouTubeVideo", ["youtube-primary", "youtube-transport-button"]),
+                     })
+            {
+                var styles = Fixture(fixture);
+                var normal = Resolve(styles, "button", classes);
+                var focused = Resolve(styles, "button", classes, WrssPseudoState.Focused);
+                Equal(normal.Get("color")?.Text, focused.Get("color")?.Text, fixture + " primary ink");
+                Equal(normal.Get("color")?.Text, focused.Get("outline-color")?.Text, fixture + " primary focus ink");
+            }
+            var network = Fixture("NetworkControls");
+            Equal(Resolve(network, "button", ["network-secondary-action"]).Get("color")?.Text,
+                Resolve(network, "button", ["network-secondary-action"], WrssPseudoState.Focused).Get("color")?.Text,
+                "Network secondary action keeps neutral ink on focus");
+            var recent = Fixture("RecentApps");
+            Equal(Resolve(shared, "panel", []).Get("background")?.Text,
+                Resolve(recent, "stack", ["recent-apps-widget"]).Get("background")?.Text,
+                "Recent Apps follows the selected surface palette");
+            var gallery = Fixture("SdkGallery");
+            foreach (var tone in new[] { "info", "success", "warning", "danger" })
+                Equal(Resolve(shared, "text", ["wrail-badge__label", "wrail-badge__label--" + tone]).Get("color")?.Text,
+                    Resolve(gallery, "text", ["wrail-badge__label", "wrail-badge__label--" + tone]).Get("color")?.Text,
+                    "Gallery preserves semantic badge ink: " + tone);
+
             WrssTheme Compile(WrssPackageResult widget)
             {
                 var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, widget, theme.Package);

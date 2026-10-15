@@ -1,14 +1,11 @@
-:root {
-  --surface: #1c1c24;
-  --text-muted: #b7b7c4;
-}
+/* Inherit the selected theme; package tokens would override user colors. */
 
-.title {
+#title, .title {
   font-size: 28px;
   font-weight: 700;
 }
 
-.status {
+#status, .status {
   color: var(--accent);
   font-size: 20px;
 }

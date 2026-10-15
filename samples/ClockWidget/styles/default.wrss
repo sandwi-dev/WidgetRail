@@ -1,4 +1,4 @@
-clock-widget {
+#clock-root {
   gap: 12px;
 }
 

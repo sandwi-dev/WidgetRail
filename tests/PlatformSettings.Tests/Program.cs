@@ -102,8 +102,8 @@ static async Task DefaultsAreSafe()
     {
         var settings = await store.LoadAsync();
         Assert.Equal(3, settings.SchemaVersion);
-        Assert.Equal(ThemeIdentity.BuiltInNeonCircuit, settings.Appearance.ThemeId);
-        Assert.Equal(ThemeIdentity.BuiltInNeonCircuitVersion, settings.Appearance.ThemeVersion);
+        Assert.Equal(ThemeIdentity.BuiltInMonoInk, settings.Appearance.ThemeId);
+        Assert.Equal(ThemeIdentity.BuiltInMonoInkVersion, settings.Appearance.ThemeVersion);
         Assert.Equal(1D, settings.Appearance.InterfaceScale);
         Assert.Equal(1D, settings.Appearance.TextScale);
         Assert.Equal(0.64D, settings.Appearance.BackdropOpacity);
@@ -123,7 +123,7 @@ static async Task DefaultsAreSafe()
         using var manager = new ThemeManager(store, Catalog(temp.Path));
         var initialTheme = await manager.ReloadAsync();
         Assert.True(initialTheme.Published, Describe(initialTheme.Diagnostics));
-        Assert.Equal(ThemeIdentity.BuiltInNeonCircuit, initialTheme.Current.ActiveTheme.Id);
+        Assert.Equal(ThemeIdentity.BuiltInMonoInk, initialTheme.Current.ActiveTheme.Id);
 
         await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
         Assert.Equal(ThemeIdentity.BuiltInDefault, (await store.LoadAsync()).Appearance.ThemeId);
@@ -244,7 +244,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(false, (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance.BoldText);
 
     var reset = await store.ReplaceAsync(PlatformSettingsDocument.Default);
-    Assert.Equal(ThemeIdentity.BuiltInNeonCircuit, reset.Appearance.ThemeId);
+    Assert.Equal(ThemeIdentity.BuiltInMonoInk, reset.Appearance.ThemeId);
     Assert.Equal(true, reset.Appearance.AnimateWidgetSwitching);
     Assert.Equal(true, reset.Appearance.BoldText);
     var resetReloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
@@ -446,32 +446,32 @@ static Task ThemeDiscovery()
     var snapshot = catalog.Discover();
     Assert.SequenceEqual(
         [
+            ThemeIdentity.BuiltInMonoInk,
+            ThemeIdentity.BuiltInVelvetDusk,
+            ThemeIdentity.BuiltInCanopy,
+            ThemeIdentity.BuiltInAmberSignal,
+            ThemeIdentity.BuiltInMineralLight,
             ThemeIdentity.BuiltInDefault,
             ThemeIdentity.BuiltInCoolSlate,
             ThemeIdentity.BuiltInNeonCircuit,
             ThemeIdentity.BuiltInArcadeRush,
             ThemeIdentity.BuiltInRedline,
-            ThemeIdentity.BuiltInMineralLight,
-            ThemeIdentity.BuiltInCanopy,
-            ThemeIdentity.BuiltInAmberSignal,
-            ThemeIdentity.BuiltInVelvetDusk,
-            ThemeIdentity.BuiltInMonoInk,
             "dev.example.slate",
         ],
         snapshot.Themes.Select(theme => theme.Descriptor.Id));
     Assert.True(snapshot.Themes.All(theme => theme.IsValid), Describe(snapshot.Themes.SelectMany(item => item.Diagnostics)));
     Assert.SequenceEqual(
         [
+            ThemeIdentity.BuiltInMonoInk,
+            ThemeIdentity.BuiltInVelvetDusk,
+            ThemeIdentity.BuiltInCanopy,
+            ThemeIdentity.BuiltInAmberSignal,
+            ThemeIdentity.BuiltInMineralLight,
             ThemeIdentity.BuiltInDefault,
             ThemeIdentity.BuiltInCoolSlate,
             ThemeIdentity.BuiltInNeonCircuit,
             ThemeIdentity.BuiltInArcadeRush,
             ThemeIdentity.BuiltInRedline,
-            ThemeIdentity.BuiltInMineralLight,
-            ThemeIdentity.BuiltInCanopy,
-            ThemeIdentity.BuiltInAmberSignal,
-            ThemeIdentity.BuiltInVelvetDusk,
-            ThemeIdentity.BuiltInMonoInk,
         ],
         catalog.BuiltInThemes.Select(theme => theme.Descriptor.Id));
     Assert.True(catalog.BuiltInThemes.All(theme => theme.Descriptor.IsBuiltIn && theme.IsValid),

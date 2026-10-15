@@ -78,6 +78,11 @@ title {
   font-weight: 500;
   line-height: 1.12;
 }
+/* UI.Text/RichText resolve as text, not body. Give unclassified labels theme
+   ink without relying on the native host's light/dark resource defaults.
+   Class-specific ink and explicit widget colors retain cascade precedence. */
+text { color: var(--text); }
+
 body {
   color: var(--text);
   font-family: var(--font-text);
@@ -282,7 +287,7 @@ slider:focused {
   border-width: 1px;
   corner-radius: 10px;
 }
-.wrail-badge__icon { width: 14px; height: 14px; }
+.wrail-badge__icon { width: 14px; height: 14px; color: var(--text-muted); }
 .wrail-badge__label {
   color: var(--text-muted);
   font-family: var(--font-text);

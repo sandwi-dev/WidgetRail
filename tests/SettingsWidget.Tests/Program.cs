@@ -811,6 +811,21 @@ static async Task ThemePickerScroll()
         .Where(button => button.Id.StartsWith("theme.item.", StringComparison.Ordinal) &&
                          button.Id.EndsWith(".action", StringComparison.Ordinal))
         .ToArray();
+    // Resolve the actual picker labels, not a synthetic body-role swatch.
+    var styleRoot = Path.Combine(ProjectDirectory(), "styles");
+    var package = WrssPackageLoader.LoadFile(Path.Combine(styleRoot, "default.wrss"), styleRoot);
+    var catalog = new ThemeCatalog(new PlatformSettingsPaths(temp.Path));
+    foreach (var theme in catalog.BuiltInThemes)
+    {
+        var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, package, theme.Package);
+        Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+        var expectedInk = compiled.Theme!.Resolve(new WrssElement("body")).Get("color")!.Text;
+        foreach (var label in Nodes(snapshot.Root).Where(node => node.StyleClasses.Contains("theme-name")))
+        {
+            var ink = compiled.Theme.Resolve(new WrssElement("text", label.Id, label.StyleClasses.ToHashSet())).Get("color");
+            Assert.Equal(expectedInk, ink?.Text);
+        }
+    }
     Assert.True(options.Length >= 7,
         "Theme picker did not expose every installed test theme in one Scroll.");
     for (var index = 0; index < options.Length; index++)

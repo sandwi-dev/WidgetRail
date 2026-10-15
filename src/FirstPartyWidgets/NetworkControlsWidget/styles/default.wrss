@@ -289,5 +289,5 @@
   font-size: 14px;
   text-overflow: ellipsis;
 }
-.network-secondary-action:focused { color: var(--accent-contrast, #ffffff); }
+.network-secondary-action:focused { color: var(--text); }
 .network-secondary-action:disabled { opacity: 0.55; }

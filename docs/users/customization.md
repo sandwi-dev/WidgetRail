@@ -6,7 +6,8 @@ actions live in the Power widget.
 
 ## Appearance
 
-New installations start with the Neon Circuit theme.
+New installations and reset appearance settings start with Mono Ink.
+Changing this default does not replace an existing saved theme selection.
 
 Choose a theme and adjust the interface scale until text and controls are easy
 to read from where you play. Shared widget controls and controller hints use
@@ -16,16 +17,16 @@ The built-in collection includes ten themes:
 
 | Theme | Appearance |
 | --- | --- |
-| Default | Warm graphite with parchment accents |
+| Mono Ink | Graphite and white with firm edges and minimal decoration |
+| Velvet Dusk | Muted violet surfaces with serif headings |
+| Canopy | Evergreen surfaces and pale sage accents |
+| Amber Signal | Warm instrument-panel colors and amber accents |
+| Mineral Light | Light mineral surfaces with dark petrol text |
+| Warm Graphite | Warm graphite with parchment accents; formerly named Default |
 | Cool Slate | Blue-grey surfaces with steel accents |
 | Neon Circuit | Indigo surfaces, cyan accents and angular controls |
 | Arcade Rush | Plum surfaces, pink accents and rounded controls |
 | Redline | Oxblood surfaces, coral accents and a scarlet tray edge |
-| Mineral Light | Light mineral surfaces with dark petrol text |
-| Canopy | Evergreen surfaces and pale sage accents |
-| Amber Signal | Warm instrument-panel colors and amber accents |
-| Velvet Dusk | Muted violet surfaces with serif headings |
-| Mono Ink | Graphite and white with firm edges and minimal decoration |
 
 Mono Ink is a visual theme. Use the separate contrast accessibility setting
 when you need the host's high-contrast policy.

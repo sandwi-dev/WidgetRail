@@ -252,6 +252,7 @@
 .spotify-primary { background: var(--accent); color: var(--canvas, #090908); }
 .spotify-primary:focused,
 .spotify-secondary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+.spotify-primary:focused { outline-color: var(--canvas, #090908); }
 .spotify-setup-scroll {
   min-width: 0px;
   min-height: 156px;

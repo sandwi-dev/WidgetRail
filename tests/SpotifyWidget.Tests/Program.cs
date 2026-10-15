@@ -246,9 +246,9 @@ static async Task PrimaryActionContrast()
         new HashSet<WrssPseudoState> { WrssPseudoState.Focused }))!;
     Assert.Equal("#8f80ff", normal.Get("background")?.Text);
     Assert.Equal("#090908", normal.Get("color")?.Text);
-    Assert.Equal("#ff7898", focused.Get("outline-color")?.Text);
+    Assert.Equal("#090908", focused.Get("outline-color")?.Text);
     Assert.True(normal.Get("background")?.Text != focused.Get("outline-color")?.Text,
-        "Primary fill and focused outline must use distinct semantic theme tokens.");
+        "Primary focus must retain contrasting foreground ink against its accent fill.");
     Assert.Equal("-1.5px", focused.Get("outline-offset")?.Text);
     await StopAsync(widget);
 }

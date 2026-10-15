@@ -2,8 +2,9 @@
 
 Date: 2026-10-15. Baseline: `main` at `235283ddee5d4a2ac73e1a0e19ac57c7d888c02e`.
 The change adds five built-in themes and improves the five existing themes.
-Existing identities and selections remain valid; Neon Circuit remains the
-default for new installations. No skills are installed and no local appearance
+Existing identities and selections remain valid. Mono Ink is now first and the
+default for new/reset settings; Default is renamed Warm Graphite without changing
+its `builtin.default` identity. No skills are installed and no local appearance
 settings are changed by this work.
 
 ## Design basis
@@ -73,6 +74,11 @@ Shared layout, motion settings and host accessibility policy remain intact.
 The corrected baseline primary focus rule also serves all five new themes.
 
 ## Measured results
+
+These palette-only results did not catch missing colors on actual widget text.
+The later [widget-style audit](widget-style-audit.md) supersedes this report's
+coverage claims for widget compatibility and records the native theme-picker
+failure, source-level corrections, and remaining validation limits.
 
 Measurements resolve the production theme cascade, then use sRGB relative
 luminance. Ordinary sampled surfaces are composited over black and white, with

@@ -1,10 +1,7 @@
-:root {
-  --surface: #1c1c24;
-  --text-muted: #b7b7c4;
-}
+/* Inherit the selected theme; package tokens would override user colors. */
 
-.title { font-size: 28px; font-weight: 700; }
-.status { color: var(--accent); font-size: 20px; }
+#title, .title { font-size: 28px; font-weight: 700; }
+#status, .status { color: var(--accent); font-size: 20px; }
 .media-pinned { gap: 12px; }
 .media-pinned--compact { padding: 16px; }
 .media-pinned--detailed { gap: 20px; padding: 20px; }

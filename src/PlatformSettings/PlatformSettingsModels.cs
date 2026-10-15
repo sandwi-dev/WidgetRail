@@ -131,8 +131,8 @@ public sealed record AppearanceSettings
 
     public static AppearanceSettings Default { get; } = new()
     {
-        ThemeId = ThemeIdentity.BuiltInNeonCircuit,
-        ThemeVersion = ThemeIdentity.BuiltInNeonCircuitVersion,
+        ThemeId = ThemeIdentity.BuiltInMonoInk,
+        ThemeVersion = ThemeIdentity.BuiltInMonoInkVersion,
         InterfaceScale = 1,
         TextScale = 1,
         BackdropOpacity = 0.64,

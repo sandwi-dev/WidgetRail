@@ -56,6 +56,8 @@ internal static class ThemeDesignTests
                 Require(metric.Ratio >= metric.Minimum, $"{id}: {metric.Name} is {metric.Ratio:F2}:1; needs {metric.Minimum}:1");
 
             var focused = Resolve(reloaded.Current.Theme, "button", [], WrssPseudoState.Focused);
+            Require(Resolve(reloaded.Current.Theme, "text").Get("color")?.Text ==
+                Resolve(reloaded.Current.Theme, "body").Get("color")?.Text, id + " leaves plain widget text to native default ink");
             Require(focused.Get("outline-width")?.Number >= 2, id + " has a thin focus edge");
             Require(Resolve(reloaded.Current.Theme, "button").Get("min-height")?.Number >= 44, id + " shrinks button targets");
             var busy = Resolve(reloaded.Current.Theme, "button", [], WrssPseudoState.Busy, WrssPseudoState.Focused);

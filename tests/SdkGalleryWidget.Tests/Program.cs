@@ -910,7 +910,7 @@ static Task StyleContract()
     Assert.Equal("2px", fitSurface.Get("border-width")?.Text);
     Assert.False(source.Contains("wrail-navigation-shell", StringComparison.Ordinal),
         "The sample must inherit the platform navigation recipe instead of rebuilding it.");
-    Assert.Equal("rgba(8, 12, 18, 0.68)", root.Get("background")?.Text);
+    Assert.Equal("rgba(23, 26, 34, 0.9604)", root.Get("background")?.Text);
     var background = compiled.Theme.Resolve(new WrssElement(
         "background-surface", StyleClasses: new HashSet<string>(
             ["wrail-background-surface", "gallery-root-background"])))!;

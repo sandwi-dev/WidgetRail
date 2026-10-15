@@ -6,7 +6,7 @@
   gap: 10px;
   padding: 16px 18px;
   overflow: clip;
-  background: rgba(8, 12, 18, 0.68);
+  background: alpha(var(--surface), .98);
   color: var(--text);
 }
 .gallery-explicit-grid { width: 100%; min-width: 0px; }
@@ -85,10 +85,9 @@
   gap: 5px;
   align: center;
 }
-.wrail-badge__icon { width: 14px; height: 14px; color: var(--accent); }
+.wrail-badge__icon { width: 14px; height: 14px; }
 .wrail-badge__label {
   min-width: 0px;
-  color: var(--text-muted);
   font-size: 10px;
   font-weight: 500;
   max-lines: 1;
@@ -117,10 +116,13 @@
 .wrail-icon-button--primary { color: var(--canvas, #0b0d12); background: var(--accent); }
 .wrail-icon-button--danger { color: var(--danger, #e58b8b); }
 .wrail-icon-button:focused {
-  color: var(--text);
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
+}
+.wrail-icon-button--primary:focused {
+  color: var(--canvas, #090908);
+  outline-color: var(--canvas, #090908);
 }
 .wrail-icon-button:pressed { opacity: 0.68; }
 
@@ -254,7 +256,7 @@
   corner-radius: 12px;
 }
 .wrail-poster-tile__artwork { width: 100%; height: 100%; object-fit: cover; corner-radius: 12px; }
-.wrail-poster-tile__scrim { width: 100%; padding: 28px 14px 12px 14px; background: rgba(9, 9, 8, 0.82); }
+.wrail-poster-tile__scrim { width: 100%; padding: 28px 14px 12px 14px; background: var(--poster-scrim, var(--surface)); }
 .wrail-poster-tile__content { min-width: 0px; gap: 4px; }
 .wrail-poster-tile__subtitle { height: 18px; color: var(--text-muted); font-size: 11px; font-weight: 600; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; }
 .wrail-poster-tile__title { height: 42px; color: var(--text); font-size: 17px; font-weight: 600; line-height: 1.2; max-lines: 2; text-overflow: ellipsis; }

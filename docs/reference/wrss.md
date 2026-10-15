@@ -151,6 +151,13 @@ See the native [FontFamily contract](https://learn.microsoft.com/en-us/windows/w
 Use a known installed family such as `Consolas` for `.wrail-code-text`.
 `UI.CodeText(...)` adds that class to bounded nonfocusable diagnostics/command text.
 
+`UI.Text` and `UI.RichText` resolve as the `text` role, not `body`. The platform
+baseline supplies `color: var(--text)` for plain text. Do not assume a color on
+a parent Stack or Row becomes a child's computed style. When a widget uses a
+custom fill, pair its child text with an explicit appropriate foreground;
+semantic label/status classes can override the plain-text default. Validate the
+actual nodes and states, not only a palette's `body` swatch.
+
 `transition-duration` and `transition-easing` are parsed and resolved by WRSS.
 The WinUI adapter uses them for supported control-scale motion. This is not a
 general CSS transition engine: do not assume that changing opacity, colors,

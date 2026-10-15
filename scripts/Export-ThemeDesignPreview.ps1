@@ -85,6 +85,7 @@ const descriptions = {
  'Velvet Dusk':'Muted violet, lavender accents and Georgia headings. A quiet library feel with familiar controls.',
  'Mono Ink':'Graphite and white with firm edges. Color is reserved for status; shading is removed.',
  'Default':'Warm graphite and parchment accents, with brighter supporting text and clearer focus.',
+ 'Warm Graphite':'Warm graphite and parchment accents, with brighter supporting text and clearer focus.',
  'Cool Slate':'Cool blue-grey surfaces, lighter steel accents and more readable status colors.',
  'Neon Circuit':'Indigo and electric cyan, with quiet sentence-case labels and angular controls.',
  'Arcade Rush':'Plum surfaces and readable pink accents. Rounded rectangles balance circular icon buttons.',

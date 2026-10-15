@@ -11,7 +11,7 @@
 .youtube-route-button:focused { color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-route-button:disabled { color: var(--text-subdued); border-color: var(--surface-muted); opacity: 0.72; }
 .youtube-header { min-width: 0px; }
-.youtube-eyebrow { color: #ff5f5f; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; max-lines: 1; }
+.youtube-eyebrow { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; max-lines: 1; }
 .youtube-title { color: var(--text); font-size: 24px; font-weight: 600; max-lines: 1; }
 .youtube-status { color: var(--text-muted); font-size: 11px; max-lines: 2; }
 .youtube-status.is-error { color: var(--danger, #c98181); }
@@ -21,7 +21,7 @@
 .youtube-status-pill.is-error { color: var(--danger, #c98181); background: var(--surface-muted); }
 .youtube-card { width: 100%; min-width: 0px; gap: 8px; padding: 11px; background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 10px; }
 .youtube-card-title { color: var(--text); font-size: 15px; font-weight: 600; max-lines: 2; }
-.youtube-section-label { color: #ff7979; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; max-lines: 1; }
+.youtube-section-label { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; max-lines: 1; }
 .youtube-section-copy, .youtube-copy { color: var(--text-muted); font-size: 12px; max-lines: 5; }
 .youtube-link { width: 100%; min-height: 36px; padding: 3px 12px; color: var(--text); background: var(--surface); border-color: var(--text-subdued); border-width: 1px; corner-radius: 10px; text-align: start; }
 .youtube-link.is-empty { color: var(--text-subdued); }
@@ -81,3 +81,6 @@
 .youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px; max-height: 620px; gap: 10px; padding: 14px 16px; background: var(--surface); color: var(--text); overflow: clip; }
 .wrail-dialog__content { min-height: 0px; flex-grow: 1; }
 .youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 0px; padding: 2px 8px 10px 2px; overflow: clip; }
+
+/* Disabled primary buttons have a neutral fill, so restore the usual edge. */
+.youtube-primary:disabled:focused { outline-color: var(--focus); }
