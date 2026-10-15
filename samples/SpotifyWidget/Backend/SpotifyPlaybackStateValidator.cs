@@ -1,12 +1,9 @@
 using WidgetRail.SpotifyPlayback;
 
-namespace WidgetRail.SpotifyPlaybackHost;
+namespace WidgetRail.WindowsSpotifyProvider;
 
-internal static class SpotifyPlaybackPageValidator
+internal static class SpotifyPlaybackStateValidator
 {
-    internal static bool IsTrustedSource(string? source) =>
-        string.Equals(source, SpotifyPlaybackPage.TopLevelUri, StringComparison.Ordinal);
-
     internal static SpotifyLocalPlaybackState ValidatePlaybackState(
         SpotifyLocalPlaybackState value)
     {

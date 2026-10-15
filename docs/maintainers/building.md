@@ -6,7 +6,7 @@ and isolated managed widget services.
 ## Development tools
 
 - Windows x64 and PowerShell 7.
-- .NET SDK 10.0.302 selected by `global.json`, and .NET 8 Core and Desktop runtimes for widget services and playback helpers.
+- .NET SDK 10.0.302 selected by `global.json`, and .NET 8 Core and Desktop runtimes for the current widget-service and distribution payload.
 - Visual Studio or Build Tools with Desktop development with C++, MSVC x64 tools, and a Windows SDK.
 - Network access for audited NuGet restore.
 

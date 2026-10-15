@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Hosted application</title>
+<style>
+body { color-scheme: dark light; font: 18px system-ui; padding: 24px; }
+button { font: inherit; padding: 12px 20px; }
+</style></head>
+<body><h1>Hosted application</h1><p id="count">Counter: 0</p><button id="increment">Increment</button>
+<script src="web-session.js"></script><script>
+let count = 0;
+function increment(amount) {
+  count += Math.max(-100, Math.min(100, Number.isFinite(amount) ? amount : 1));
+  document.getElementById('count').textContent = `Counter: ${count}`;
+  return { count };
+}
+WidgetRailWebSession.handle('increment', request => increment(request?.amount));
+document.getElementById('increment').addEventListener('click', () => increment(1));
+</script></body></html>

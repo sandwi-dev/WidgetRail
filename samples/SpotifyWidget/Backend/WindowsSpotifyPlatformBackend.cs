@@ -79,11 +79,12 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
 
     internal WindowsSpotifyPlatformBackend(
         ISpotifyClientConfigurationStore configuration,
-        ISpotifyRuntimeDiagnostics runtimeDiagnostics)
+        ISpotifyRuntimeDiagnostics runtimeDiagnostics,
+        WidgetRail.WidgetSdk.WidgetWebSessionService? webSessions = null)
         : this(configuration, new WindowsCredentialSpotifyTokenVault(),
             new SpotifyHttpTransport(), new SpotifyBrowserLauncher(),
             new LoopbackSpotifyAuthorizationCallbackReceiver(), new SpotifyDelay(),
-            TimeProvider.System, runtimeDiagnostics: runtimeDiagnostics) { }
+            TimeProvider.System, runtimeDiagnostics: runtimeDiagnostics, webSessions: webSessions) { }
 
     internal WindowsSpotifyPlatformBackend(
         ISpotifyClientConfigurationStore configuration,
@@ -94,7 +95,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         ISpotifyDelay delay,
         TimeProvider time,
         SpotifyLocalPlaybackManager? localPlayback = null,
-        ISpotifyRuntimeDiagnostics? runtimeDiagnostics = null)
+        ISpotifyRuntimeDiagnostics? runtimeDiagnostics = null,
+        WidgetRail.WidgetSdk.WidgetWebSessionService? webSessions = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
@@ -106,10 +108,9 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         _httpPolicy = new SpotifyHttpPolicy(
             _http, delay ?? throw new ArgumentNullException(nameof(delay)), _time);
         _localPlayback = localPlayback ?? new SpotifyLocalPlaybackManager(
-            DefaultPlaybackHostPath(), AcquireTrustedHostAccessTokenAsync,
-            () => new SpotifyPlaybackHostClient(
-                SpotifyPlaybackHostClientOptions.CreateDefault(DefaultPlaybackHostPath())),
-            _runtimeDiagnostics, _time);
+            () => webSessions?.IsAvailable == true, AcquireTrustedHostAccessTokenAsync,
+            () => new SpotifyWebSessionClient(webSessions ?? throw new SpotifyPlaybackHostClientException(
+                "host_unavailable", "Hosted playback is unavailable.")), _runtimeDiagnostics, _time);
         var authorizedSender = new SpotifyAuthorizedRequestSender(
             SendAuthorizedRequestAsync);
         _playbackApi = new SpotifyPlaybackApi(authorizedSender);
@@ -975,8 +976,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-    private static string DefaultPlaybackHostPath() => Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory, "SpotifyPlaybackHost.exe"));
+
 
     private static IReadOnlyList<SpotifyAuthorizationScope> ApplicationBaseScopes() =>
         [SpotifyAuthorizationScope.PlaybackStateRead,

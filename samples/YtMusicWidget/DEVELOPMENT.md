@@ -1,8 +1,11 @@
 # Standalone YouTube Music development
 
 `Application` starts the public `WidgetApplicationBootstrap`. `Standalone` owns
-the declarative widget, queue and private helper clients. `PlaybackHost` owns one
-hidden WebView2 audio element. `Service/service.py` owns catalogue calls, session
+the declarative widget, queue and provider connection. `WebSessionPlayer` opens
+the sealed `web/player.html` through `HostServices.WebSessions`; WidgetRail owns its
+controller and private profile in the shared WebView2 environment. The page receives
+typed playback commands after session readiness, and the host authorizes only the
+current exact loopback media URL. `Service/service.py` owns catalogue calls, session
 protection, stream resolution and an authenticated-by-random-path audio proxy.
 Provider logic remains package-owned. The shared Bridge caches widget styles by
 package identity as well as appearance revision, so replacing a package applies
@@ -73,10 +76,9 @@ routes around their saved entry. This state is in memory, not persisted across r
   hours with a two-minute reuse margin. Audio, cookies and local capability tokens
   are not cached there. Account changes clear it. The audio proxy retries resolution
   once on HTTP 401/403/404/410, retains Range requests, and keeps upstream URLs private.
-- The player stops on parent exit or stdin closure. Application disposal closes
-  both helpers, with bounded forced cleanup if they do not exit. The player drains
-  its dedicated browser process; the parent removes its temporary profile after
-  the helper exits, when WebView2 has released its remaining file handles.
+- Playback session disposal closes its controller through the host. Worker exit,
+  stop, disable, replacement and host shutdown retire the same session. The provider
+  process remains package-owned and uses its existing bounded shutdown path.
 
 ## Packaging
 
@@ -99,19 +101,15 @@ identity, retained section focus, stale responses, independent transport, sign-i
 lifetime, hidden-input rejection and bounded IPC. `test_service.py` adds isolated
 Python checks for DPAPI, session deletion, proxy admission, radio artwork, bounded
 playlist fetching and caching.
-`test_player.py` runs the real WebView2 helper with a muted local WAV fixture.
+The native `--validate-web-sessions` fixture runs the actual packaged audio page
+with a synthetic loopback WAV stream, without account access. It also checks
+shared browser identity, private storage isolation and automatic Low memory mode.
+The legacy standalone-helper `test_player.py` is retired with that executable.
 
-The managed test executable also accepts `--package-root <installed-package-directory>`
-for an opt-in live search/radio/muted playback check. Install into an isolated catalogue
-with `wrail install <package.wrwidget> --accept-full-trust --catalog <test-catalog>`,
-then pass `<test-catalog>/packages/widgetrail.samples.ytmusic/<version>` to the test.
-It hashes every installed file before and after playback and checks for added files.
-An offline fixture also exercises the production launcher with the late EJS solver
-import, and confirms that the old launch flags reproduce the cache-file mutation.
-Afterward, run `wrail list --catalog <test-catalog>` to verify sealed catalogue admission.
-Testing only mutable staging is not sufficient. These checks do not launch sign-in.
-Live provider tests are not CI gates: YouTube service and account availability
-are outside the repository's control.
+The managed test executable accepts `--package-root <installed-package-directory>`
+for the offline Python launcher/import-integrity probe. Playback now requires a
+host session; it is covered by the native fixture and physical service testing.
+Real provider playback and account availability remain outside CI acceptance.
 
 Layout is rendered by the shared WinUI presenter. The retired native-renderer
 `Test-Layout.ps1`/Taffy probe is no longer a supported command. Follow

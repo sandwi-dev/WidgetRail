@@ -20,11 +20,11 @@ TaskScheduler.UnobservedTaskException += (_, eventArgs) =>
     eventArgs.SetObserved();
 };
 
-var exitCode = await WidgetApplicationBootstrap.RunAsync(args, () =>
+var exitCode = await WidgetApplicationBootstrap.RunAsync(args, services =>
 {
     var identity = new SpotifyIntegrationIdentity(publisherId, packageId);
     var configuration = SpotifyClientConfigurationFileStore.CreateDefault();
-    var backend = new WindowsSpotifyPlatformBackend(configuration, diagnostics);
+    var backend = new WindowsSpotifyPlatformBackend(configuration, diagnostics, services.WebSessions);
     return new SpotifyWidget(
         new SpotifyApplicationService(backend, identity),
         timeProvider: null,

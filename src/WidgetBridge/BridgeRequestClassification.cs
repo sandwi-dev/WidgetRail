@@ -13,6 +13,7 @@ internal enum BridgeRequestKind
     CompleteTaskActivation,
     WindowPreviewPermissions,
     Capture,
+    WebSessions,
     Permissions,
     GetSnapshot,
     ReadIndexedRange,
@@ -155,6 +156,7 @@ internal static class BridgeRequestClassifier
         {
             return request.Type switch
             {
+                BridgeMessageTypes.TakeWebSessions or BridgeMessageTypes.CompleteWebSession or BridgeMessageTypes.WebSessionMessages or BridgeMessageTypes.CheckWebSessionView => BridgeRequestKey.Global(BridgeRequestKind.WebSessions),
                 BridgeMessageTypes.CompleteTaskActivation => TaskActivation(request.Payload),
                 BridgeMessageTypes.ListWidgets => Empty(
                     request.Payload, BridgeRequestKind.ListWidgets),

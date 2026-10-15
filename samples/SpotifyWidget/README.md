@@ -52,13 +52,11 @@ on another device is refreshed periodically through Spotify.
 ## Common questions
 
 **Play here does not start.** Update WidgetRail as well as the Spotify widget.
-Older WidgetRail installers did not include the Windows Desktop runtime the player needs.
+The current player requires the hosted web-session service in the updated host.
 
-**Temporary playback folders remain after closing WidgetRail.** Version 0.3.72
-waits for the playback helper to exit before removing its browser profile. To
-remove leftovers from older versions manually, quit WidgetRail and delete only
-folders named `WidgetRail.SpotifyPlayback.<number>.<identifier>` directly inside
-`%TEMP%`. These are temporary player profiles, not your saved Spotify connection.
+**Where does local playback run?** WidgetRail hosts the player in its shared browser
+runtime with an isolated private profile. No separate playback helper is started.
+Your saved Spotify connection remains in the widget's existing credential store.
 
 **Spotify rejects authorization.** Check the Client ID, the exact redirect URI,
 and whether your Spotify app allows the account you're signing in with.

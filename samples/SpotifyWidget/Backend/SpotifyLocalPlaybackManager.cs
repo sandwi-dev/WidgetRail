@@ -27,7 +27,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     ];
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(35);
 
-    private readonly string _executablePath;
+    private readonly Func<bool> _hostAvailable;
     private readonly Func<ISpotifyPlaybackHostClient> _clientFactory;
     private readonly Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>,
         CancellationToken, Task<TrustedHostSpotifyAccessToken>> _tokenProvider;
@@ -52,23 +52,14 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     private int _disposed;
 
     internal SpotifyLocalPlaybackManager(
-        string executablePath,
-        Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>, CancellationToken,
-            Task<TrustedHostSpotifyAccessToken>> tokenProvider)
-        : this(executablePath, tokenProvider, () => new SpotifyPlaybackHostClient(
-            SpotifyPlaybackHostClientOptions.CreateDefault(executablePath)),
-            SpotifyRuntimeDiagnostics.None) { }
-
-    internal SpotifyLocalPlaybackManager(
-        string executablePath,
+        Func<bool> hostAvailable,
         Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>, CancellationToken,
             Task<TrustedHostSpotifyAccessToken>> tokenProvider,
         Func<ISpotifyPlaybackHostClient> clientFactory,
         ISpotifyRuntimeDiagnostics? runtimeDiagnostics = null,
         TimeProvider? timeProvider = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
-        _executablePath = Path.GetFullPath(executablePath);
+        _hostAvailable = hostAvailable ?? throw new ArgumentNullException(nameof(hostAvailable));
         _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _runtimeDiagnostics = runtimeDiagnostics ?? SpotifyRuntimeDiagnostics.None;
@@ -77,8 +68,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             SpotifyLocalPlaybackState.Unavailable;
     }
 
-    internal bool IsHostAvailable => File.Exists(_executablePath) &&
-        (File.GetAttributes(_executablePath) & FileAttributes.ReparsePoint) == 0;
+    internal bool IsHostAvailable => _hostAvailable();
 
     internal SpotifyLocalTransportObservation? GetTransport(SpotifyIntegrationIdentity identity)
     {

@@ -5,6 +5,9 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Web sessions bind owner and retire pending authority", WebSessionTests.OwnershipAsync),
+    ("Web session canceled startup retires native work", WebSessionTests.CancellationAsync),
+    ("Web session sources validate package and network boundaries", WebSessionTests.SourcesAsync),
     ("Widget notifications are intrinsic bounded and available in background", NotificationBrokerTests.Authority),
     ("Widget activity is intrinsic scoped and clears", ActivityBrokerTests.Authority),
     ("Marketplace management is intrinsic narrow and cannot smuggle mutations through reads", MarketplaceBrokerTests.Authority),
@@ -150,7 +153,7 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(15, rootFields.Count(field =>
+    Assert.Equal(16, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
@@ -159,6 +162,7 @@ static Task CapabilityDomainAuthorityIsSingular()
         // is the explicit consent-management exception: tested separately for
         // requester scoping and host-only completion, never operation authorization.
         typeof(NotificationCapabilityDomain),
+        typeof(WebSessionCapabilityDomain),
         typeof(ActivityCapabilityDomain),
         typeof(DisplayProfilesCapabilityDomain),
         typeof(PowerCapabilityDomain),
@@ -461,7 +465,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(51, PlatformCapabilities.All.Count);
+    Assert.Equal(52, PlatformCapabilities.All.Count);
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceReadV1, out var performanceRead));
     Assert.Equal(BrokerCapabilityKind.Read, performanceRead.KindForOperation(PlatformCapabilities.PerformanceGet));
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceFpsControlV1, out var performanceControl));

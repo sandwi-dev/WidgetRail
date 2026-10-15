@@ -110,6 +110,8 @@ internal sealed partial class BrowserSurface
                 !ReferenceEquals(source, this) && !ReferenceEquals(source, popup))
             { TraceNewWindow("rejected-input-or-owner"); return; }
             var url = window.Url;
+            if (source.IsHostedPackage)
+            { if (source.IsHostedDocument(url)) source.Run(() => source.NavigateRequestedAsync(url)); return; }
             if (source.IsProviderContent)
             { if (WebBrowserDocument.IsWebUrl(url)) source.Run(() => source.OpenProviderLinkAsync(url)); return; }
             if (url != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(url))

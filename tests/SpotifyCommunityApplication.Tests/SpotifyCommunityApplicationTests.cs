@@ -205,7 +205,7 @@ public sealed class SpotifyCommunityApplicationTests
         ISpotifyAuthorizationCallbackReceiver callback) => new(
         configuration, vault, http, browser, callback, new FakeDelay(),
         new ManualTimeProvider(), new SpotifyLocalPlaybackManager(
-            Path.Combine(Path.GetTempPath(), "spotify-host-fixture.exe"),
+            () => false,
             (_, _, _) => Task.FromException<TrustedHostSpotifyAccessToken>(
                 new InvalidOperationException("Local playback was not expected.")),
             () => new NullPlaybackHostClient()));

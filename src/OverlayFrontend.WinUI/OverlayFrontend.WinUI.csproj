@@ -73,6 +73,9 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\WidgetSdk\EmbeddedMediaAdapterRuntime.js" LogicalName="WidgetRail.MediaValidation.AdapterRuntime.js" Condition="'$(EnableWidgetValidation)' == 'true'" />
+    <EmbeddedResource Include="..\WidgetSdk\WebSessionRuntime.js" LogicalName="WidgetRail.SessionFixture.Runtime.js" Condition="'$(EnableWidgetValidation)' == 'true'" />
+    <EmbeddedResource Include="..\..\samples\YtMusicWidget\web\player.html" LogicalName="WidgetRail.SessionFixture.YouTube.html" Condition="'$(EnableWidgetValidation)' == 'true'" />
+    <EmbeddedResource Include="..\..\samples\SpotifyWidget\web\player.html" LogicalName="WidgetRail.SessionFixture.Spotify.html" Condition="'$(EnableWidgetValidation)' == 'true'" />
     <Manifest Include="$(ApplicationManifest)" />
     <ProjectReference Include="..\OverlayPlatformClient\OverlayPlatformClient.csproj" />
     <ProjectReference Include="..\WindowsWindowActivation\WindowsWindowActivation.csproj" />

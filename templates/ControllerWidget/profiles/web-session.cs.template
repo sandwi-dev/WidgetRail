@@ -1,0 +1,68 @@
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}};
+
+public sealed class {{WidgetName}} : Widget
+{
+    private readonly WidgetModel<PageState> reference;
+    private readonly WidgetModel<string> status;
+    private WidgetWebSession? session;
+    private bool showPage = true;
+    private int generation;
+
+    public {{WidgetName}}()
+    {
+        reference = CreateModel(new PageState(null));
+        status = CreateModel("Open the packaged application to begin.");
+    }
+
+    public override WidgetView Render() => new(UI.Stack("root",
+        UI.Text("{{WidgetName}}", "title"), UI.Text(status.Value, "status"),
+        UI.Button(reference.Value.Reference is null ? "Open application" : "Close application", "toggle", "toggle"),
+        UI.Button(showPage ? "Hide page" : "Show page", "view", "view"),
+        UI.Button("Send a message", "message", "message"),
+        reference.Value.Reference is { } page && showPage ? UI.WebView(page, "page") : UI.Text("The session can run without a visible page.", "hidden")),
+        InitialFocusId: "toggle");
+
+    public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken token = default)
+    {
+        if (action.ActionId == "view") { showPage = !showPage; Invalidate(); return; }
+        if (action.ActionId == "message" && session is { } active)
+        {
+            var reply = await active.RequestAsync<CounterRequest, CounterReply>("increment", new(1), token);
+            status.Update(_ => $"Page counter: {reply.Count}");
+        }
+        if (action.ActionId != "toggle") return;
+        if (Interlocked.Exchange(ref session, null) is { } previous)
+        {
+            Interlocked.Increment(ref generation); reference.Update(_ => new(null));
+            await previous.DisposeAsync(); status.Update(_ => "Application closed."); return;
+        }
+        Operations.RunSingleFlight("open", async context =>
+        {
+            var attempt = Interlocked.Increment(ref generation);
+            status.Update(_ => "Opening application…");
+            var source = WebSessionSource.Package("payload/web/index.html",
+                [new() { Path = "payload/web/index.html", ContentType = "text/html" },
+                 new() { Path = "payload/web/web-session.js", ContentType = "text/javascript" }]);
+            var opened = await HostServices.WebSessions.OpenAsync(new("application", "{{WidgetName}}", source), context.CancellationToken);
+            if (attempt != Volatile.Read(ref generation) || context.CancellationToken.IsCancellationRequested) { await opened.DisposeAsync(); return; }
+            session = opened; reference.Update(_ => new(opened.Reference)); status.Update(_ => "Application ready.");
+        }, WidgetOperationLifetime.Widget);
+    }
+
+    protected override async ValueTask OnDestroyingAsync(CancellationToken token)
+    {
+        Interlocked.Increment(ref generation);
+        if (Interlocked.Exchange(ref session, null) is { } active) await active.DisposeAsync();
+    }
+    private sealed record PageState(WebSessionReference? Reference);
+    public sealed record CounterRequest(int Amount);
+    public sealed record CounterReply(int Count);
+}
+
+public static class Scenarios
+{
+    public static WidgetScenarioDefinition Ready() => new(new {{WidgetName}}(), new WidgetTestHostServicesBuilder().Build());
+}

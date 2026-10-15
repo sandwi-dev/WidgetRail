@@ -16,6 +16,7 @@ internal sealed class BrokerWidgetProcessCompanion :
     private readonly BrokerPipeServer _server;
     private readonly DeferredHostEffectCoordinator _hostEffects;
     private readonly bool _isolated;
+    private readonly WebSessionRegistry.Owner? _webSessions;
 
     public BrokerWidgetProcessCompanion(
         string packageId,
@@ -30,7 +31,8 @@ internal sealed class BrokerWidgetProcessCompanion :
         Action<BrokerCapabilityDiagnostic>? diagnosticSink = null,
         Func<MarketplaceCommand,CancellationToken,ValueTask<MarketplaceSnapshot>>? marketplace = null,
         Func<WidgetNotificationCommand, CancellationToken, ValueTask<WidgetNotificationReceipt>>? notifications = null,
-        Func<WidgetActivity, CancellationToken, ValueTask<WidgetActivityReceipt>>? activity = null)
+        Func<WidgetActivity, CancellationToken, ValueTask<WidgetActivityReceipt>>? activity = null,
+        string? webSessionWidgetId = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         var identity = new BrokerWidgetIdentity(packageId, publisherId, instanceId);
@@ -41,22 +43,36 @@ internal sealed class BrokerWidgetProcessCompanion :
         if (_isolated && string.IsNullOrWhiteSpace(context.AppContainerSid))
             throw new InvalidOperationException(
                 "An isolated widget broker requires the runtime AppContainer SID.");
+        _webSessions = webSessionWidgetId is null ? null : WebSessionRegistry.Shared.CreateOwner(webSessionWidgetId, identity, !_isolated);
+        var intrinsic = new List<string> { PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1,
+            PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1 };
+        if (marketplace is not null) intrinsic.Add(PlatformCapabilities.WidgetMarketplaceV1);
+        if (_webSessions is not null) intrinsic.Add(PlatformCapabilities.WebSessionsV1);
         var pipeName = $"wrail-broker-{Environment.ProcessId}-{Guid.NewGuid():N}";
-        _server = new BrokerPipeServer(
-            pipeName,
-            identity,
-            declaredCapabilities,
-            consentStore,
-            backend,
-            artworkRegistry ?? new AppLibraryArtworkRegistry(),
-            isolatedClientAppContainerSid: context.AppContainerSid,
-            hostGrantedCapabilities: marketplace is null ? [PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1] :
-                [PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetMarketplaceV1],
-            hostEffectSink: null,
-            diagnosticSink: diagnosticSink,
-            contextualHostEffectSink: _hostEffects.Register,
-            actionExecutionAdmission: _hostEffects.Admit,
-            marketplace: marketplace, notifications: notifications, activity: activity);
+        try
+        {
+            _server = new BrokerPipeServer(
+                pipeName,
+                identity,
+                declaredCapabilities,
+                consentStore,
+                backend,
+                artworkRegistry ?? new AppLibraryArtworkRegistry(),
+                isolatedClientAppContainerSid: context.AppContainerSid,
+                hostGrantedCapabilities: intrinsic,
+                hostEffectSink: null,
+                diagnosticSink: diagnosticSink,
+                contextualHostEffectSink: _hostEffects.Register,
+                actionExecutionAdmission: _hostEffects.Admit,
+                marketplace: marketplace, notifications: notifications, activity: activity,
+                webSessions: _webSessions is null ? null : _webSessions.ExecuteAsync);
+        }
+        catch
+        {
+            _webSessions?.Dispose();
+            _hostEffects.Dispose();
+            throw;
+        }
         WorkerArguments =
         [
             "--broker-pipe", pipeName,
@@ -135,6 +151,7 @@ internal sealed class BrokerWidgetProcessCompanion :
 
     public ValueTask DisposeAsync()
     {
+        _webSessions?.Dispose();
         _hostEffects.Dispose();
         return _server.DisposeAsync();
     }

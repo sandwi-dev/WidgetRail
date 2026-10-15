@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="{{SdkPackageId}}" Version="{{SdkVersion}}"
+                      PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <Compile Remove="tests\**\*.cs" />
+    <None Include="$(PkgWidgetRail_WidgetSdk)\contentFiles\any\any\WidgetRail\WebSessionRuntime.js"
+          Link="web\web-session.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="web\index.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

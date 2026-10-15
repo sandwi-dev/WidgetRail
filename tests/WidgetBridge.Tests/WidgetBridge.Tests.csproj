@@ -20,12 +20,13 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\SpotifyWidget\Application\SpotifyApplication.csproj"
                       ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\samples\SpotifyWidget\PlaybackHost\SpotifyPlaybackHost.csproj"
-                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\Application\PlayniteLibraryApplication.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" />
     <ProjectReference Include="..\..\samples\BrowserWidget\BrowserWidget.csproj" />
     <ProjectReference Include="..\..\samples\GameHelpWidget\GameHelpWidget.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../src/WidgetSdk/WebSessionRuntime.js" Link="WebSessionRuntime.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

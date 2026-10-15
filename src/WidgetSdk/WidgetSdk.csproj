@@ -22,6 +22,7 @@
     <Compile Include="..\Shared\AppLibraryArtworkHandle.cs" Link="Internal\AppLibraryArtworkHandle.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="WebSessionRuntime.js" Pack="true" PackagePath="contentFiles/any/any/WidgetRail/WebSessionRuntime.js" />
     <None Update="EmbeddedMediaAdapterRuntime.js"
           Pack="true"
           PackagePath="contentFiles/any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js" />

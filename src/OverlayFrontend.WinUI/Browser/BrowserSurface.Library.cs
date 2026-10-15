@@ -25,7 +25,9 @@ internal sealed partial class BrowserSurface
         {
             toolbarFocused = true; interacting = true; browsing = false;
             UpdateChromeVisibility();
-            (rememberedToolbar is { IsEnabled: true, Visibility: Visibility.Visible } remembered ? remembered : addressButton).Focus(FocusState.Keyboard);
+            var entry = rememberedToolbar is { IsEnabled: true, Visibility: Visibility.Visible } remembered ? remembered :
+                addressButton.Visibility == Visibility.Visible ? addressButton : buttons.FirstOrDefault(button => button.IsEnabled && button.Visibility == Visibility.Visible);
+            entry?.Focus(FocusState.Keyboard);
         }
         DrawCursor(); InteractionChanged?.Invoke();
     }
@@ -34,15 +36,16 @@ internal sealed partial class BrowserSurface
         if (compactHeader && XamlRoot is { } root)
         {
             var focused = FocusManager.GetFocusedElement(root) as Button;
-            if (direction == FocusNavigationDirection.Up && focused != addressButton && focused != closePopupButton)
+            if (direction == FocusNavigationDirection.Up && addressButton.Visibility == Visibility.Visible && focused != addressButton && focused != closePopupButton)
             { addressButton.Focus(FocusState.Keyboard); return; }
             if (direction == FocusNavigationDirection.Down && (focused == addressButton || focused == closePopupButton))
-            { compactCommands.Children.OfType<Button>().FirstOrDefault(button => button.IsEnabled)?.Focus(FocusState.Keyboard); return; }
+            { compactCommands.Children.OfType<Button>().FirstOrDefault(button => button.IsEnabled && button.Visibility == Visibility.Visible)?.Focus(FocusState.Keyboard); return; }
         }
         if (direction == FocusNavigationDirection.Down) { ToggleToolbar(); return; }
         if (direction is not (FocusNavigationDirection.Left or FocusNavigationDirection.Right)) return;
         var available = buttons.Where(button => button.IsEnabled && button.Visibility == Visibility.Visible)
             .OrderBy(button => compactHeader ? button == addressButton ? 0 : button == closePopupButton ? 1 : 2 : 0).ToArray();
+        if (available.Length == 0) return;
         var index = Array.IndexOf(available, FocusManager.GetFocusedElement(XamlRoot) as Button);
         var next = Math.Clamp(index + (direction == FocusNavigationDirection.Left ? -1 : 1), 0, available.Length - 1);
         rememberedToolbar = available[next];

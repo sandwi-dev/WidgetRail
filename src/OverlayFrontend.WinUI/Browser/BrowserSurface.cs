@@ -29,6 +29,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     private readonly string profile;
     private readonly string widgetId;
     internal string WidgetId => widgetId;
+    // XAML Parent can be null while an unloaded ancestor still owns its child collection.
+    internal Panel? PlacementHost { get; set; }
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim pointer = new(1, 1);
     private Task? initializing;
@@ -349,7 +351,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             {
                 if (IsProviderContent && args.Uri != document.Url)
                 { args.Cancel = true; if (args.IsUserInitiated && input) Run(() => OpenProviderLinkAsync(args.Uri)); return; }
-                if (!IsProviderContent && args.IsUserInitiated && !args.IsRedirected && BrowserNavigationPolicy.OpenExternally(document, args.Uri))
+                if (!IsProviderContent && !IsHostedPackage && args.IsUserInitiated && !args.IsRedirected && BrowserNavigationPolicy.OpenExternally(document, args.Uri))
                 {
                     args.Cancel = true;
                     var destination = new Uri(args.Uri);
@@ -402,8 +404,9 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             await InitializeFilesAsync();
             if (retired) return;
             ConfigureProviderDocument(env);
+            await ConfigureHostedCoreAsync(env);
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
-            if (!IsProviderContent && FixturePage is not null)
+            if (!IsProviderContent && hostedDefinition is null && FixturePage is not null)
             {
                 // Include requests initiated by out-of-process iframe reloads.
                 // The deprecated two-argument filter misses those documents.
@@ -438,7 +441,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     private async Task OpenExternallyAsync()
     {
-        if (!IsProviderContent && input && core is not null && WebBrowserDocument.IsWebUrl(core.Source) && OpenExternal is { } open)
+        if (!IsProviderContent && !IsHostedPackage && input && core is not null && WebBrowserDocument.IsWebUrl(core.Source) && OpenExternal is { } open)
             if (!await open(new(core.Source), lifetime.Token) && input) ShowStatus("The page could not be opened externally.");
     }
     private void PumpPointer()
@@ -497,7 +500,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
-        if (retired) return; SetPresentation(false, false); retired = true; DisposeMemoryPolicy(); ResetPointerVisual(); lifetime.Cancel();
+        if (retired) return; hostedMessages.Writer.TryComplete(); SetPresentation(false, false); retired = true; DisposeMemoryPolicy(); ResetPointerVisual(); lifetime.Cancel();
         InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;
         nativeNotifications?.Dispose(); nativeNotifications = null;
         if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());

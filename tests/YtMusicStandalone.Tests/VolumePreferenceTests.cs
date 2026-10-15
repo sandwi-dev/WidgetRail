@@ -45,8 +45,8 @@ internal static class VolumePreferenceTests
     }
 
     private static MusicService Create(string path, FakeProcess player) =>
-        new(AppContext.BaseDirectory, .5, (executable, _) => executable.EndsWith("python.exe", StringComparison.OrdinalIgnoreCase)
-            ? new FakeProcess() : player, path);
+        new(AppContext.BaseDirectory, .5, (_, _) => new FakeProcess(),
+            _ => Task.FromResult<IMusicProcess>(player), path);
 
     private static void Check(bool condition, string message)
     {

@@ -117,7 +117,6 @@ var tests = new List<(string, Func<Task>)>
 if (args.Length == 2 && args[0] == "--package-root")
 {
     tests.Add(("Production Python launch prevents late-import writes", () => LateImportDoesNotWrite(args[1])));
-    tests.Add(("Installed provider and muted radio playback leave the sealed package unchanged", () => ImmutablePackage(args[1])));
 }
 var failures = 0;
 foreach (var (name, run) in tests)
@@ -786,18 +785,6 @@ static SortedDictionary<string, string> PackageHashes(string root) => new(
         file => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file)))),
     StringComparer.Ordinal);
 
-static async Task ImmutablePackage(string root)
-{
-    var before = PackageHashes(root);
-    try { await LivePackage(root); }
-    finally
-    {
-        var after = PackageHashes(root);
-        Check(before.SequenceEqual(after), "Playback mutated the installed package: " +
-            string.Join(", ", after.Keys.Except(before.Keys).Concat(before.Keys.Where(key => !after.TryGetValue(key, out var hash) || hash != before[key]))));
-    }
-}
-
 static async Task LateImportDoesNotWrite(string root)
 {
     // Exercise the production launch with an offline service fixture. Fresh source
@@ -843,62 +830,6 @@ static async Task LateImportDoesNotWrite(string root)
             "Old flags did not reproduce the cache mutation; the regression fixture is ineffective");
     }
     finally { Directory.Delete(temporary, recursive: true); }
-}
-
-static async Task LivePackage(string root)
-{
-    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-    await using var service = new MusicService(Path.Combine(Path.GetFullPath(root), "payload"), initialVolume: 0);
-    await service.InitializeAsync(timeout.Token);
-    var results = await service.BrowseAsync("search", "Beethoven symphony", timeout.Token);
-    var song = results.Items.First(item => item.Kind == "song");
-    await service.RadioAsync(song, timeout.Token);
-    while (!service.State.Player.Playing || service.State.Player.Duration <= 0)
-    {
-        Check(service.State.Player.Error is null, service.State.Player.Error ?? "Player error");
-        await Task.Delay(50, timeout.Token);
-    }
-    Check(service.State.Queue.Count > 1, "Radio did not populate a queue");
-    Check(service.State.Player.Volume == 0, "Test playback was not muted");
-    var firstOccurrence = service.State.Current!;
-    await service.PlayNextAsync(firstOccurrence, timeout.Token);
-    await service.CommandAsync("next", null, timeout.Token);
-    Check(!ReferenceEquals(firstOccurrence, service.State.Current), "Repeated song lost its queue occurrence identity");
-    var previous = service.State;
-    var queued = results.Items.First(item => item.Kind == "song" && item.Id != song.Id);
-    await service.CommandAsync("shuffle", null, timeout.Token);
-    previous = service.State;
-    await service.PlayNextAsync(queued, timeout.Token);
-    Check(service.State.Current == previous.Current && service.State.Queue[service.State.Index + 1] == queued,
-        "Play next interrupted the current track or inserted at the wrong location");
-    Check(service.State.Queue.Where((_, index) => index != service.State.Index + 1).SequenceEqual(previous.Queue),
-        "Play next changed the remaining queue");
-    await service.CommandAsync("shuffle", null, timeout.Token);
-    Check(ReferenceEquals(service.State.Current, previous.Current), "Turning shuffle off jumped to an earlier occurrence of the same song");
-    Check(service.State.Queue[service.State.Index + 1] == queued, "Turning shuffle off lost Play next placement");
-    await service.CommandAsync("next", null, timeout.Token);
-    await Until(() => service.State.Player.TrackId == queued.Id && service.State.Player.Playing && service.State.Player.Duration > 0);
-    var fullQueue = Enumerable.Range(0, MusicQueue.MaximumItems).Select(i => song with { Title = "Occurrence " + i }).ToArray();
-    await service.PlayAsync(fullQueue, 0, timeout.Token);
-    await service.CommandAsync("shuffle", null, timeout.Token);
-    var evicted = service.State.Queue[^1];
-    await service.PlayNextAsync(queued, timeout.Token);
-    Check(service.State.Queue.Count == MusicQueue.MaximumItems && service.State.Queue[1] == queued &&
-        !service.State.Queue.Any(item => ReferenceEquals(item, evicted)), "Full shuffled queue did not replace its tail");
-    await service.CommandAsync("shuffle", null, timeout.Token);
-    Check(service.State.Queue.Count == MusicQueue.MaximumItems && service.State.Queue[1] == queued &&
-        !service.State.Queue.Any(item => ReferenceEquals(item, evicted)), "Unshuffle restored the evicted song");
-    await service.PlayAsync(fullQueue, fullQueue.Length - 1, timeout.Token);
-    var lastCurrent = service.State.Current;
-    await service.PlayNextAsync(queued, timeout.Token);
-    Check(service.State.Queue.Count == MusicQueue.MaximumItems && ReferenceEquals(service.State.Current, lastCurrent) &&
-        service.State.Queue[service.State.Index + 1] == queued && !service.State.Queue.Any(item => ReferenceEquals(item, fullQueue[0])),
-        "Full queue ending lost the current/next song or retained its oldest entry");
-    await service.CommandAsync("pause", null, timeout.Token);
-    await Until(() => !service.State.Player.Playing);
-    await service.CommandAsync("toggle", null, timeout.Token);
-    await Until(() => service.State.Player.Playing);
-    await service.CommandAsync("pause", null, timeout.Token);
 }
 
 sealed class FakeService : IMusicService

@@ -41,6 +41,7 @@ internal sealed partial class OverlayShellPage
             ReadPopupPlacement = ReadBrowserPopupPlacementAsync, WritePopupPlacement = SavePopupPreferenceAsync,
             ExpansionInvalidated = () => { if (expandedBrowser is not null) fullscreenLayer.Close(restoreFocus: false); } };
         browserOwner.ActivityChanged += RefreshWebappStatus;
+        browserOwner.StartHostedSessions();
         InitializeNotifications();
         mediaOwner = new(owner.Session, MediaParking, browserOwner.Runtime)
         {

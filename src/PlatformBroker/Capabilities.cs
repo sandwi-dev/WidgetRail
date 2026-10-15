@@ -107,6 +107,7 @@ public static class PlatformCapabilities
     public const string ProviderDocumentCreate = "document.create";
     public const string ProviderDocumentDiscard = "document.discard";
     public const string CaptureLibraryReadV1 = "media.capture-library.read.v1";
+    public const string WebSessionsV1 = "web.sessions.v1";
     public const string WidgetActivityV1 = "widget.activity.v1";
     public const string WidgetNotificationsV1 = "widget.notifications.v1";
     public const string WidgetPermissionsV1 = "widget.permissions.v1";
@@ -322,6 +323,8 @@ public static class PlatformCapabilities
                 ReadOperations: Set(PrivateStateRead),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
                 AllowsBackground: true),
+            [WebSessionsV1] = new(WebSessionsV1, 1, BrokerCapabilityKind.Control, Set("web-session.command"), Set(),
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
             [WidgetActivityV1] = new(WidgetActivityV1, 1, BrokerCapabilityKind.Control,
                 Set("activity.report"), Set(), AllowsDashboardGesture: false,
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),

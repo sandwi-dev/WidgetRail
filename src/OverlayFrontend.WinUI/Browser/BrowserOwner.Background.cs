@@ -13,6 +13,7 @@ internal sealed partial class BrowserOwner
 
     private async Task<bool> SynchronizeRetentionAsync((string Widget, string Document) key, Entry entry)
     {
+        if (entry.Hosted is not null) return true;
         if (backgroundChanges.Contains(entry.Surface)) return true;
         await entry.SessionGate.WaitAsync(lifetime.Token);
         try

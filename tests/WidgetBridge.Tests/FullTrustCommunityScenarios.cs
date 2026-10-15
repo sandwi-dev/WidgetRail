@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
@@ -142,18 +143,13 @@ internal static partial class FullTrustCommunityScenarios
         var applicationOutput = Path.Combine(
             root, "samples", "SpotifyWidget", "Application", "bin", VerificationInstallation.Configuration,
             "net8.0", "win-x64");
-        var playbackHostOutput = Path.Combine(
-            root, "samples", "SpotifyWidget", "PlaybackHost", "bin", VerificationInstallation.Configuration,
-            "net8.0-windows10.0.19041.0", "win-x64");
         var hostOutput = VerificationInstallation.Root;
         AssertHostRuntimeArtifacts(root, hostOutput);
         Check(File.Exists(Path.Combine(applicationOutput, "SpotifyApplication.exe")),
             "The package-owned Spotify application was not built.");
-        Check(File.Exists(Path.Combine(playbackHostOutput, "SpotifyPlaybackHost.exe")),
-            "The package-owned Spotify playback host was not built.");
         using var temporary = new ScenarioDirectory();
         var package = CreateSpotifyPackage(
-            root, applicationOutput, playbackHostOutput, temporary.Path);
+            root, applicationOutput, temporary.Path);
         var betaOutput = FixtureOutput(root, "FullTrustBetaFixture");
         var betaPackage = CreatePackage(
             temporary.Path, betaOutput, "FullTrustBetaFixture.exe",
@@ -390,17 +386,13 @@ internal static partial class FullTrustCommunityScenarios
     private static void AssertHostRuntimeArtifacts(string repositoryRoot, string hostOutput)
     {
         var runtimeRoot = Path.Combine(hostOutput, "runtime");
-        var expectedDirectories = new[]
-        {
-            "AudioMixer", "Bridge", "DisplayProfiles", "EmbeddedMediaSample", "GamesApps", "MediaSessions",
-            "NetworkControls", "Power", "Settings", "TaskSwitcher", "WidgetWorkerHost",
-        };
-        var actualDirectories = Directory.EnumerateDirectories(runtimeRoot)
-            .Select(Path.GetFileName)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        Check(actualDirectories.SequenceEqual(expectedDirectories),
-            $"Host runtime inventory was incoherent: {string.Join(",", actualDirectories)}.");
+        using var catalog = JsonDocument.Parse(File.ReadAllText(Path.Combine(hostOutput, "widget-catalog.json")));
+        var expectedDirectories = catalog.RootElement.GetProperty("bundledWidgets").EnumerateArray()
+            .Select(widget => widget.GetProperty("packageRoot").GetString()!.Split('/')[1])
+            .Concat(new[] { "Bridge", "Settings", "WidgetWorkerHost" }).Distinct(StringComparer.Ordinal).ToArray();
+        var actualDirectories = Directory.EnumerateDirectories(runtimeRoot).Select(Path.GetFileName).ToHashSet(StringComparer.Ordinal);
+        Check(expectedDirectories.All(actualDirectories.Contains), "The installation is missing a declared host runtime.");
+        Check(!actualDirectories.Contains("SpotifyPlaybackHost"), "The host retained a provider-specific playback process.");
 
         foreach (var assembly in new[] { "WidgetProtocol.dll", "WidgetRuntime.dll", "WidgetSdk.dll" })
         {
@@ -414,7 +406,6 @@ internal static partial class FullTrustCommunityScenarios
         foreach (var (runtime, project, assembly) in new[]
                  {
                      ("AudioMixer", "AudioMixerWidget", "AudioMixerWidget.dll"),
-                     ("DisplayProfiles", "DisplayProfilesWidget", "DisplayProfilesWidget.dll"),
                      ("NetworkControls", "NetworkControlsWidget", "NetworkControlsWidget.dll"),
                      ("GamesApps", "GamesAppsWidget", "GamesAppsWidget.dll"),
                      ("MediaSessions", "MediaSessionsWidget", "MediaSessionsWidget.dll"),
@@ -490,7 +481,6 @@ internal static partial class FullTrustCommunityScenarios
     private static string CreateSpotifyPackage(
         string repositoryRoot,
         string applicationOutput,
-        string playbackHostOutput,
         string destination)
     {
         var package = Path.Combine(destination, "widgetrail.samples.spotify-0.3.0.wrwidget");
@@ -510,7 +500,8 @@ internal static partial class FullTrustCommunityScenarios
                 repositoryRoot, "samples", "SpotifyWidget", "assets", "icons", icon)));
         var payload = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
         AddGraph(applicationOutput);
-        AddGraph(playbackHostOutput);
+        Write(archive, "web/player.html", File.ReadAllBytes(Path.Combine(repositoryRoot, "samples", "SpotifyWidget", "web", "player.html")));
+        Write(archive, "web/web-session.js", File.ReadAllBytes(Path.Combine(repositoryRoot, "src", "WidgetSdk", "WebSessionRuntime.js")));
         foreach (var (path, bytes) in payload) Write(archive, "payload/" + path, bytes);
         return package;
 

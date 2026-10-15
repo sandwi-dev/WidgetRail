@@ -20,9 +20,9 @@ Window previews use Windows Graphics Capture and Direct3D through
 are published explicitly with the matching frontend build.
 
 The frontend ships self-contained .NET 10. Managed widget services retain their
-private .NET 8 Core runtime; Spotify and YouTube Music playback helpers also
-need the .NET 8 Desktop runtime. Removing the retired renderer does not remove
-those active helper dependencies.
+private .NET 8 Core runtime. Spotify and YouTube Music use the host WebView2
+environment for playback instead of separate Windows Desktop playback helpers.
+The distribution still carries its existing Desktop runtime payload.
 
 Taffy and the Rust layout bridge are no longer part of the product or build.
 WinUI owns layout. Redistribution notices are retained in

@@ -22,6 +22,14 @@ public sealed record WebBrowserElement : WidgetElement
 
 public static partial class UI
 {
+    /// <summary>Displays an existing session without changing its lifetime or policy.</summary>
+    public static WebBrowserElement WebView(WebSessionReference session, string id,
+        string accessibleName = "Web application", BrowserInteractionMode interactionMode = BrowserInteractionMode.ActivateToInteract)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (!session.IsWellFormed()) throw new ArgumentException("Invalid web session reference.", nameof(session));
+        return new(new(session.Id, 1, WebBrowserDocument.StartPage, accessibleName) { HostedSession = session }, interactionMode, id);
+    }
     /// <summary>Displays original provider attribution using an opaque host-issued reference.</summary>
     public static WebBrowserElement ProviderContent(ProviderDocumentReference reference, BrowserInteractionMode interactionMode,
         string id, string accessibleName = "Document content")

@@ -5,17 +5,18 @@
 This controller-first reference is an autonomous full-trust Community
 application. Its immutable package owns the Spotify Web API client, PKCE flow,
 Windows credential-vault entry, response parsing, playlists, queue, devices,
-playback policy, and the isolated Web Playback child process. It uses only the
+playback policy, and the packaged Spotify Web Playback page. It uses only the
 generic application bootstrap and overlay protocol; no Spotify-specific product
 capability or product-owned Spotify assembly is required.
 
 ## Local playback runtime
 
-Local playback uses a hidden Windows Forms/WebView2 helper. WidgetRail includes
-the .NET 8 Windows Desktop runtime for it in the application's private runtime
-folder. Older installers that contain only base .NET need an application update
-before **Play here** can start this helper. Updating the Spotify widget alone
-does not supply that missing runtime.
+Local playback uses `HostServices.WebSessions` and the shared WidgetRail WebView2
+runtime. `web/player.html` and the SDK messaging runtime are sealed package assets.
+The host owns the private profile, controller, memory policy and shutdown; the
+widget owns Spotify SDK commands, token-request correlation and state validation.
+There is no separate WinForms playback executable. Provider connections and OAuth
+remain in the widget application. See [hosted web sessions](../../docs/developers/hosted-web-sessions.md).
 
 ## Trust and authorization
 
@@ -71,12 +72,11 @@ cursor-rendering fallback is removed.
 
 ## State ownership
 
-The application allocates each playback helper's temporary WebView2 profile and
-removes it after the helper exits, including forced termination. On graceful
-shutdown the helper drains its dedicated browser process before exiting. Stale
-recovery accepts only the generated PID/GUID directory names, skips reparse points
-and live owners, and retries profiles older than one day. Saved authorization and
-playlist caches are separate from these temporary profiles.
+Each playback session uses a private host profile. Closing or replacing the worker
+retires its controller and pending requests; removing a view does not stop the page.
+Saved authorization and playlist caches remain in their existing widget-owned stores.
+Tokens cross only the private packaged-page messaging channel and are never placed
+in snapshots, logs, URLs or durable host state.
 
 Internally, one non-partial widget owns lifecycle, provider calls, resources,
 committed state, and invalidation. Closed value-only policies classify authored
@@ -136,7 +136,7 @@ or local event.
 
 The 250-ms progress tick only repaints the timestamp-based position estimate.
 Deactivation stops widget refreshes and UI event observation; the resident
-helper can continue playing and retain its latest bounded state for reopening.
+hosted session can continue playing and retain its latest bounded state for reopening.
 
 Play/pause, next/previous and seek use the local SDK when eligible. Device
 discovery/transfers, search, playlists, queue operations, starting a specific

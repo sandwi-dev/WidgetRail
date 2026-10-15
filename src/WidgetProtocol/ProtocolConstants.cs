@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 82;
+    public const int CurrentVersion = 83;
+    public const int WebSessionVersion = 83;
     public const int CatalogIconVersion = 82;
     public const int WebAppVersion = 81;
     public const int PageNavigationVersion = 80;

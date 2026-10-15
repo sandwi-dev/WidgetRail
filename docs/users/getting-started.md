@@ -24,7 +24,7 @@ the active edition; it does not create an independent setup.
 5. Open WidgetRail from the Start menu.
 
 You do not need the .NET SDK to use the app. Setup includes private .NET base and
-Windows Desktop runtimes, including support for Spotify's local playback helper.
+Windows Desktop runtimes. Music playback uses the shared host browser runtime.
 It checks GameInput and WebView2 and installs them if needed. GameInput may ask
 for administrator approval. A missing WebView2 runtime requires an internet download.
 

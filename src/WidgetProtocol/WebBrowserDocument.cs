@@ -21,6 +21,8 @@ public sealed record WebBrowserDocument(string Id, long NavigationId, string Url
     public WebBrowserOptions Options { get; init; } = new();
     /// <summary>Optional host-issued provider content; widget-authored HTML is never accepted.</summary>
     public ProviderDocumentReference? ProviderDocument { get; init; }
+    /// <summary>Optional host-owned session created independently of this view.</summary>
+    public WebSessionReference? HostedSession { get; init; }
     public const string StartPage = "about:blank";
     public const long MaximumNavigationId = 9_007_199_254_740_991;
     public bool IsWellFormed() => Enum.IsDefined(InteractionMode) && Options is not null && Options.IsWellFormed() &&
@@ -28,6 +30,7 @@ public sealed record WebBrowserDocument(string Id, long NavigationId, string Url
         NavigationId is >= 1 and <= MaximumNavigationId && (Url == StartPage || IsWebUrl(Url)) &&
         AccessibleName is { Length: > 0 and <= 256 } && !string.IsNullOrWhiteSpace(AccessibleName) &&
         !AccessibleName.Any(char.IsControl) &&
+        (HostedSession is not { } hosted || hosted.IsWellFormed() && Id == hosted.Id && Url == StartPage && ProviderDocument is null && Options == new WebBrowserOptions()) &&
         (ProviderDocument is not { } provider || provider.IsWellFormed() && Url == provider.Url && Options == new WebBrowserOptions()) &&
         (Options.ExternalLinks != BrowserExternalLinkMode.OtherOriginsInWindows || IsWebUrl(Url) && new Uri(Url).Scheme == "https");
 

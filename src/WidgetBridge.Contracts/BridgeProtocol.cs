@@ -17,6 +17,10 @@ public static class BridgeProtocol
 
 internal static class BridgeMessageTypes
 {
+    public const string TakeWebSessions = "web-sessions-take";
+    public const string CheckWebSessionView = "web-session-view";
+    public const string CompleteWebSession = "web-session-complete";
+    public const string WebSessionMessages = "web-session-messages";
     public const string Hello = "hello";
     public const string HelloAccepted = "hello-accepted";
     public const string ListWidgets = "list-widgets";

@@ -269,6 +269,7 @@ public sealed class WidgetHostServices
         Notifications = new WidgetNotificationService(capabilityClient);
         Activity = new WidgetActivityService(capabilityClient);
         Marketplace = new WidgetMarketplaceService(capabilityClient);
+        WebSessions = new WidgetWebSessionService(capabilityClient);
     }
 
     public IWidgetCapabilityClient Capabilities { get; }
@@ -295,6 +296,7 @@ public sealed class WidgetHostServices
     public WidgetNotificationService Notifications { get; }
     public WidgetActivityService Activity { get; }
     public WidgetMarketplaceService Marketplace { get; }
+    public WidgetWebSessionService WebSessions { get; }
 
     internal static WidgetHostServices Unavailable { get; } =
         new(UnavailableWidgetCapabilityClient.Instance);

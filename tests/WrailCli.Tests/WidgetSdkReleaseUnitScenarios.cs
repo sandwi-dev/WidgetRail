@@ -64,8 +64,10 @@ internal static class WidgetSdkReleaseUnitScenarios
                  })
             hash.AppendData(ReadEntry(archive, path));
         hash.AppendData(adapterRuntime);
+        hash.AppendData(ReadEntry(archive, LocalWidgetSdkPackage.WebSessionRuntimePackagePath));
         hash.AppendData(Encoding.UTF8.GetBytes(
             LocalWidgetSdkPackage.AdapterRuntimeContentFilesContract));
+        hash.AppendData(Encoding.UTF8.GetBytes(LocalWidgetSdkPackage.WebSessionRuntimeContentFilesContract));
         hash.AppendData(Encoding.UTF8.GetBytes(LocalWidgetSdkPackage.LicenseExpression));
         var expectedSuffix = Convert.ToHexString(hash.GetHashAndReset())[..16]
             .ToLowerInvariant();

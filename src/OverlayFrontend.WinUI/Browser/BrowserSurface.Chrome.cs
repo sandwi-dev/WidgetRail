@@ -11,7 +11,7 @@ internal sealed partial class BrowserSurface
 {
     private readonly Grid header = new() { ColumnSpacing = 4, Padding = new(8, 4, 8, 4) };
     private readonly ProgressBar progress = new() { Height = 2, IsIndeterminate = true, IsHitTestVisible = false };
-    private Button back = null!, forward = null!, reload = null!, addressButton = null!, bookmark = null!, bookmarks = null!, history = null!, external = null!;
+    private Button back = null!, forward = null!, reload = null!, addressButton = null!, bookmark = null!, bookmarks = null!, history = null!, external = null!, siteControls = null!;
     private readonly TextBlock zoomLabel = new() { Text = "100%", VerticalAlignment = VerticalAlignment.Center };
     private IDisposable? chromeTheme;
     private readonly StackPanel compactCommands = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -42,7 +42,7 @@ internal sealed partial class BrowserSurface
         bookmarks = Add("Bookmarks", "Browser.Bookmarks", Symbol.Library, 6, () => Run(() => ShowLibraryAsync(true)));
         history = Add("History", "Browser.History", Symbol.Clock, 7, () => Run(() => ShowLibraryAsync(false)));
         external = Add("Open externally", "Browser.External", Symbol.Link, 8, () => Run(OpenExternallyAsync));
-        Add("Website settings", "Browser.SiteControls", Symbol.Setting, 9, () => Run(ShowSiteControlsAsync));
+        siteControls = Add("Website settings", "Browser.SiteControls", Symbol.Setting, 9, () => Run(ShowSiteControlsAsync));
         if (isPopup)
         {
             pinPopupButton = Add("Pin additional page", "Browser.PinPopup", Symbol.Pin, 10, () => { if (RequestPopupPin is { } request) Run(() => request(this)); });
@@ -95,6 +95,8 @@ internal sealed partial class BrowserSurface
     private void UpdateChrome()
     {
         UpdateChromeVisibility();
+        if (IsHostedPackage)
+            addressButton.Visibility = bookmark.Visibility = bookmarks.Visibility = history.Visibility = external.Visibility = siteControls.Visibility = Visibility.Collapsed;
         back.IsEnabled = !faulted && !sessionStopped && core?.CanGoBack == true;
         forward.IsEnabled = !faulted && !sessionStopped && core?.CanGoForward == true;
         reload.IsEnabled = core is not null && !faulted;

@@ -8,11 +8,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\samples\SpotifyWidget\PlaybackHost\SpotifyPlaybackHost.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\..\samples\SpotifyWidget\PlaybackHost\SpotifyPlaybackHostForm.cs"
-          Link="source\SpotifyPlaybackHostForm.cs"
-          CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\..\samples\SpotifyWidget\Backend\SpotifyApplicationBackend.csproj" />
   </ItemGroup>
 </Project>

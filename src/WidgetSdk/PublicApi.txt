@@ -474,6 +474,7 @@ field const string WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Service =
 field const string WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Service = "widget.permissions.v1"
 field const string WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.CapabilityId = "storage.private-secrets.v1"
 field const string WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.PreviewPermission = "system.apps.windows.preview.v1"
+field const string WidgetRail.WidgetSdk.WidgetWebSessionCapabilities.CapabilityId = "web.sessions.v1"
 field static readonly System.TimeSpan WidgetRail.WidgetSdk.UI.DefaultToastDuration
 field static readonly System.TimeSpan WidgetRail.WidgetSdk.UI.MaximumToastDuration
 field static readonly System.TimeSpan WidgetRail.WidgetSdk.UI.MinimumToastDuration
@@ -1676,6 +1677,12 @@ method WidgetRail.WidgetSdk.WidgetView.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetView.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetView.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetView.WithModal(WidgetRail.WidgetSdk.WidgetModal modal) -> WidgetRail.WidgetSdk.WidgetView
+method WidgetRail.WidgetSdk.WidgetWebSession.AuthorizeLocalResourceAsync(System.Uri resource, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetWebSession.NavigateAsync(string destination, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetWebSession.PostMessageAsync<T>(T? message, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetWebSession.ReadMessagesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<System.Text.Json.JsonElement>
+method WidgetRail.WidgetSdk.WidgetWebSession.RequestAsync<TRequest,TResponse>(string method, TRequest? payload, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<TResponse?>
+method WidgetRail.WidgetSdk.WidgetWebSessionService.OpenAsync(WidgetRail.WidgetProtocol.WebSessionDefinition definition, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetWebSession>
 method WidgetRail.WidgetSdk.WidgetWifiRadio.<Clone>$() -> WidgetRail.WidgetSdk.WidgetWifiRadio
 method WidgetRail.WidgetSdk.WidgetWifiRadio.Deconstruct(out WidgetRail.WidgetSdk.WidgetWifiRadioState State, out bool CanControl) -> void
 method WidgetRail.WidgetSdk.WidgetWifiRadio.Equals(object? obj) -> bool
@@ -1928,6 +1935,7 @@ method static WidgetRail.WidgetSdk.UI.ValueRow(WidgetRail.WidgetSdk.WidgetIcon i
 method static WidgetRail.WidgetSdk.UI.ValueRow(string label, string value, string id, string? description = null, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? valueAccessibilityLabel = null) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.VerticalScroll(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ScrollElement
 method static WidgetRail.WidgetSdk.UI.WebBrowser(WidgetRail.WidgetProtocol.WebBrowserDocument document, WidgetRail.WidgetProtocol.BrowserInteractionMode interactionMode, string id) -> WidgetRail.WidgetSdk.WebBrowserElement
+method static WidgetRail.WidgetSdk.UI.WebView(WidgetRail.WidgetProtocol.WebSessionReference session, string id, string accessibleName = "Web application", WidgetRail.WidgetProtocol.BrowserInteractionMode interactionMode = WidgetRail.WidgetProtocol.BrowserInteractionMode.ActivateToInteract) -> WidgetRail.WidgetSdk.WebBrowserElement
 method static WidgetRail.WidgetSdk.UI.WindowPreview(string windowId, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain, double aspectRatio = 1.7777777777777777) -> WidgetRail.WidgetSdk.WindowPreviewElement
 method static WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Equality(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
 method static WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Inequality(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
@@ -2422,6 +2430,7 @@ method virtual WidgetRail.WidgetSdk.WidgetTaskWindow.Equals(WidgetRail.WidgetSdk
 method virtual WidgetRail.WidgetSdk.WidgetTaskWindowRequest.Equals(WidgetRail.WidgetSdk.WidgetTaskWindowRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetTimedMutation.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetView.Equals(WidgetRail.WidgetSdk.WidgetView? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetWebSession.DisposeAsync() -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadio.Equals(WidgetRail.WidgetSdk.WidgetWifiRadio? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Equals(WidgetRail.WidgetSdk.WidgetWifiRadioChanged? other) -> bool
 method virtual WidgetRail.WidgetSdk.WindowPreviewElement.<Clone>$() -> WidgetRail.WidgetSdk.WindowPreviewElement
@@ -2523,6 +2532,7 @@ property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetNavigatio
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetOperationContext.CancellationToken { get; }
 property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.CancellationObserved { get; }
 property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.HandlerCompleted { get; }
+property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetWebSession.Completion { get; }
 property System.Threading.Tasks.Task<WidgetRail.WidgetSdk.WidgetOperationResult> WidgetRail.WidgetSdk.WidgetOperationHandle.Completion { get; set; }
 property System.TimeProvider? WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.TimeProvider { get; set; }
 property System.TimeProvider? WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.TimeProvider { get; set; }
@@ -2606,6 +2616,7 @@ property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetScena
 property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScenarioRunResult.FinalSnapshot { get; set; }
 property WidgetRail.WidgetProtocol.VirtualCollectionWindowChange WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowChange { get; set; }
 property WidgetRail.WidgetProtocol.WebBrowserDocument WidgetRail.WidgetSdk.WebBrowserElement.Document { get; set; }
+property WidgetRail.WidgetProtocol.WebSessionReference WidgetRail.WidgetSdk.WidgetWebSession.Reference { get; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.IconElement.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.NavigationShellDestination.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.WidgetIcon.FallbackGlyph { get; }
@@ -2756,6 +2767,7 @@ property WidgetRail.WidgetSdk.WidgetResourceError? WidgetRail.WidgetSdk.WidgetRe
 property WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue> WidgetRail.WidgetSdk.WidgetResource<TValue>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetResourceStatus WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Status { get; set; }
 property WidgetRail.WidgetSdk.WidgetTaskSwitcherService WidgetRail.WidgetSdk.WidgetHostServices.TaskSwitcher { get; }
+property WidgetRail.WidgetSdk.WidgetWebSessionService WidgetRail.WidgetSdk.WidgetHostServices.WebSessions { get; }
 property WidgetRail.WidgetSdk.WidgetWifiRadio WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Radio { get; set; }
 property WidgetRail.WidgetSdk.WidgetWifiRadioState WidgetRail.WidgetSdk.WidgetWifiRadio.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetWifiScanState WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks.ScanState { get; set; }
@@ -2862,6 +2874,7 @@ property bool WidgetRail.WidgetSdk.WidgetScenarioRunResult.Passed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioStepResult.Passed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetTaskWindow.IsMinimized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetTimedMutation.IsScheduled { get; }
+property bool WidgetRail.WidgetSdk.WidgetWebSessionService.IsAvailable { get; }
 property bool WidgetRail.WidgetSdk.WidgetWifiRadio.CanControl { get; set; }
 property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsDisabled { get; set; }
@@ -3011,6 +3024,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Start { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionCapabilities.Command { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetActivity,WidgetRail.WidgetProtocol.WidgetActivityReceipt> WidgetRail.WidgetSdk.WidgetActivityCapabilities.Report { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetNotificationCommand,WidgetRail.WidgetProtocol.WidgetNotificationReceipt> WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Publish { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Request { get; }
@@ -3614,6 +3628,8 @@ type sealed class WidgetRail.WidgetSdk.WidgetTestPrivateState
 type sealed class WidgetRail.WidgetSdk.WidgetTimedMutation : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetView : System.IEquatable<WidgetRail.WidgetSdk.WidgetView>
+type sealed class WidgetRail.WidgetSdk.WidgetWebSession : System.IAsyncDisposable
+type sealed class WidgetRail.WidgetSdk.WidgetWebSessionService
 type sealed class WidgetRail.WidgetSdk.WidgetWifiRadio : System.IEquatable<WidgetRail.WidgetSdk.WidgetWifiRadio>
 type sealed class WidgetRail.WidgetSdk.WidgetWifiRadioChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetWifiRadioChanged>
 type sealed class WidgetRail.WidgetSdk.WindowPreviewElement : System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, System.IEquatable<WidgetRail.WidgetSdk.WindowPreviewElement>, WidgetRail.WidgetSdk.WidgetElement
@@ -3645,6 +3661,7 @@ type static class WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities
 type static class WidgetRail.WidgetSdk.WidgetTestHost
 type static class WidgetRail.WidgetSdk.WidgetTicker
 type static class WidgetRail.WidgetSdk.WidgetTransitionExtensions
+type static class WidgetRail.WidgetSdk.WidgetWebSessionCapabilities
 type struct WidgetRail.WidgetSdk.NavigationShellContentEntry
 type struct WidgetRail.WidgetSdk.WidgetArtworkHandle : System.IEquatable<WidgetRail.WidgetSdk.WidgetArtworkHandle>
 type struct WidgetRail.WidgetSdk.WidgetCollectionCursor : System.IEquatable<WidgetRail.WidgetSdk.WidgetCollectionCursor>

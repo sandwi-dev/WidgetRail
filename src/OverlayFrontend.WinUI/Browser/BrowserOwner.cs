@@ -17,6 +17,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         internal BrowserSurface Surface = surface;
         internal BrowserSlot? Slot;
         internal long LastUse;
+        internal WebSessionReference? Hosted;
         internal bool Retained;
         internal bool RetentionAttempted;
         internal readonly SemaphoreSlim SessionGate = new(1, 1);
@@ -131,7 +132,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                 SynchronizeExpandedBinding();
                 foreach (var pair in entries.ToArray())
                 {
-                    if (!session.IsWebBrowserSessionCurrent(pair.Value.Authority, pair.Key.Document))
+                    if (pair.Value.Hosted is null && !session.IsWebBrowserSessionCurrent(pair.Value.Authority, pair.Key.Document))
                         await RetireAsync(pair.Key, pair.Value);
                     else if (pair.Value.Retained && !pair.Value.Surface.KeepsBackgroundSession)
                         await SynchronizeRetentionAsync(pair.Key, pair.Value);
@@ -144,11 +145,20 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     // Input readiness changes while entering a widget and must
                     // never shuttle that page between XAML roots.
                     var chosen = group.OrderByDescending(binding => binding.Slot.Expanded).ThenByDescending(binding => binding.Slot.Pinned).ThenByDescending(binding => binding.Slot.AcceptsInput).First();
-                    if (entries.TryGetValue(group.Key, out var existing) &&
+                    if (entries.TryGetValue(group.Key, out var hosted) && hosted.Hosted is { } reference)
+                    {
+                        if (chosen.Document.HostedSession != reference ||
+                            (hosted.Authority.WorkerRun != chosen.Authority.WorkerRun &&
+                             !await session.CheckWebSessionViewAsync(chosen.Authority, reference, lifetime.Token)))
+                        { chosen.Slot.SetSurface(null); chosen.Slot.SetMessage("This web session belongs to a retired widget run."); continue; }
+                        if (!session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
+                    }
+                    if (entries.TryGetValue(group.Key, out var existing) && existing.Hosted is null &&
                         (existing.Surface.ProviderReference != chosen.Document.ProviderDocument || !existing.Surface.UsesProfile(chosen.Document)))
                         await RetireAsync(group.Key, existing);
                     if (!entries.TryGetValue(group.Key, out var entry))
                     {
+                        if (chosen.Document.HostedSession is not null) { chosen.Slot.SetMessage("This web session is unavailable. Reopen it from the widget."); continue; }
                         if (retiringEntries.Contains(group.Key)) continue;
                         if (changingProfiles.Contains(BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document))) continue;
                         if (entries.Count + retiringEntries.Count >= 4)
@@ -180,41 +190,19 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             if (slots.GetValueOrDefault(chosen.Slot)?.Document != chosen.Document ||
                                 !session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
                         }
-                        var surface = new BrowserSurface(group.Key.Widget, chosen.Document, EnvironmentAsync, providerHtml, library)
-                        {
-                            OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
-                            Choose = (source, title, message, choices, token, focusFirstChoice, preference) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice, preference) ?? Task.FromResult<string?>(null),
-                            ChangeProfile = ChangeProfileAsync,
-                            ReceiveNotification = ReceiveNotification,
-                            InvalidateNotifications = source => Notifications.InvalidateOwner(source),
-                            ChooseFiles = (source, request, token) => ChooseFiles?.Invoke(source, request, token) ?? Task.FromResult(Array.Empty<string>()),
-                            ReservePopup = ReservePopup,
-                            ReleasePopup = surface => popupOwners.Remove(surface),
-                            PopupClosed = PopupClosed,
-                            PreparePopup = PreparePopupAsync,
-                            ChoosePopupPlacement = ChoosePopupPlacement,
-                            ReadPopupPlacement = ReadPopupPlacement, WritePopupPlacement = WritePopupPlacement,
-                            RequestPopupPin = session.GetState(group.Key.Widget)?.LastGood?.Descriptor.FullWidgetPinningSupported == true && RequestPopupPin is not null
-                                ? source => RequestPopupPin?.Invoke(source) ?? Task.CompletedTask : null,
-                            PopupIsPinned = source => popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Child, source),
-                            ChangeRunning = ChangeRunningAsync,
-                            Recover = RecoverAsync,
-                            PrepareScreenPicker = (source, token) => PrepareScreenPicker?.Invoke(source, token) ?? Task.FromResult(false),
-                            ActivityChanged = () => { Refresh(); ActivityChanged?.Invoke(); },
-                            CheckProviderAuthority = chosen.Document.ProviderDocument is null ? null : async token =>
-                                { _ = await session.ResolveProviderDocumentAsync(chosen.Authority, chosen.Document, token); },
-                        };
+                        var surface = CreateSurface(group.Key.Widget, chosen.Document, chosen.Authority, providerHtml, library);
                         entry = new(chosen.Authority, surface); entries.Add(group.Key, entry); CreatedCount++;
                         // WinUI can move composition across XamlRoots while the
                         // native WebView retains its original creation HWND.
                         // Create on the durable host, never on a disposable pin.
-                        parking.Children.Add(surface);
+                        parking.Children.Add(surface); surface.PlacementHost = parking;
                         try { await surface.PrepareCoreAsync(lifetime.Token); }
                         catch (InvalidOperationException) when (surface.NeedsRecovery) { /* The initialized error surface still needs placement. */ }
                         if (retired) break;
                     }
                     entry.LastUse = Environment.TickCount64;
-                    entry.Surface.Update(chosen.Document);
+                    if (entry.Hosted is not null) { entry.Authority = chosen.Authority; entry.Surface.ApplyHostedView(chosen.Document); }
+                    else entry.Surface.Update(chosen.Document);
                     if (!await SynchronizeRetentionAsync(group.Key, entry))
                     {
                         chosen.Slot.SetMessage("A background webapp cannot start right now. Stop another webapp session and try again.");
@@ -258,10 +246,39 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("browser-placement", error); }
     }
+    private BrowserSurface CreateSurface(string widgetId, WebBrowserDocument document,
+        WidgetPresentationAuthority authority, IReadOnlyList<string>? providerHtml = null, BrowserLibraryStore? library = null)
+    {
+        return new BrowserSurface(widgetId, document, EnvironmentAsync, providerHtml, library)
+        {
+            OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
+            Choose = (source, title, message, choices, token, focusFirstChoice, preference) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice, preference) ?? Task.FromResult<string?>(null),
+            ChangeProfile = ChangeProfileAsync,
+            ReceiveNotification = ReceiveNotification,
+            InvalidateNotifications = source => Notifications.InvalidateOwner(source),
+            ChooseFiles = (source, request, token) => ChooseFiles?.Invoke(source, request, token) ?? Task.FromResult(Array.Empty<string>()),
+            ReservePopup = ReservePopup,
+            ReleasePopup = surface => popupOwners.Remove(surface),
+            PopupClosed = PopupClosed,
+            PreparePopup = PreparePopupAsync,
+            ChoosePopupPlacement = ChoosePopupPlacement,
+            ReadPopupPlacement = ReadPopupPlacement, WritePopupPlacement = WritePopupPlacement,
+            RequestPopupPin = session.GetState(widgetId)?.LastGood?.Descriptor.FullWidgetPinningSupported == true && RequestPopupPin is not null
+                ? source => RequestPopupPin?.Invoke(source) ?? Task.CompletedTask : null,
+            PopupIsPinned = source => popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Child, source),
+            ChangeRunning = ChangeRunningAsync,
+            Recover = RecoverAsync,
+            PrepareScreenPicker = (source, token) => PrepareScreenPicker?.Invoke(source, token) ?? Task.FromResult(false),
+            ActivityChanged = () => { Refresh(); ActivityChanged?.Invoke(); },
+            CheckProviderAuthority = document.ProviderDocument is null ? null : async token =>
+                { _ = await session.ResolveProviderDocumentAsync(authority, document, token); },
+        };
+    }
+
     private async Task MoveAsync(BrowserSurface surface, Grid target, Func<bool>? stillCurrent = null)
     {
         if (stillCurrent?.Invoke() == false) return;
-        if (ReferenceEquals(surface.Parent, target)) return;
+        if (target.Children.Contains(surface)) { surface.PlacementHost = target; return; }
         PlacementMoveCount++;
         var native = surface.NativeCompositionRoots.ToArray();
         var unloading = native.Where(root => root.IsLoaded).ToDictionary(root => root,
@@ -274,7 +291,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         foreach (var root in unloading.Keys) root.Unloaded += Unloaded;
         try
         {
-            if (surface.Parent is Panel previous) previous.Children.Remove(surface);
+            var previous = surface.Parent as Panel ?? Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(surface) as Panel ?? surface.PlacementHost;
+            if (previous?.Children.Contains(surface) == true) previous.Children.Remove(surface);
+            surface.PlacementHost = null;
             // A detached ancestor may already report a null XamlRoot while its
             // WebView is still unloading. Drain that native detach even within
             // one root; otherwise collapsing an expanded subtree can reattach
@@ -305,6 +324,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         try
         {
             target.Children.Add(surface);
+            surface.PlacementHost = target;
             Loaded(target, null!);
             if (target.IsLoaded && !ReferenceEquals(target, parking))
                 await Task.WhenAll(loading.Values.Select(completion => completion.Task)).WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
@@ -336,7 +356,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             try
             {
                 await entry.Surface.DisposeAsync();
-                if ((entry.Retained || entry.RetentionAttempted) && session.IsWebBrowserSessionCurrent(entry.Authority, key.Document))
+                if (entry.Hosted is { } reference && !retired)
+                    await session.PublishWebSessionMessagesAsync(new(reference, [], "session_closed"), lifetime.Token);
+                if (entry.Hosted is null && (entry.Retained || entry.RetentionAttempted) && session.IsWebBrowserSessionCurrent(entry.Authority, key.Document))
                 {
                     try
                     {
@@ -351,7 +373,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             ActivityChanged?.Invoke();
             if (!entries.Values.Any(other => other.Surface.ProfileName == entry.Surface.ProfileName) && libraries.Remove(entry.Surface.ProfileName, out var library))
                 await library.DrainAsync();
-            if (entry.Surface.Parent is Panel parent) parent.Children.Remove(entry.Surface);
+            var parent = entry.Surface.Parent as Panel ?? entry.Surface.PlacementHost;
+            if (parent?.Children.Contains(entry.Surface) == true) parent.Children.Remove(entry.Surface);
+            entry.Surface.PlacementHost = null;
         }
         finally { retiringEntries.Remove(key); if (!retired) parking.DispatcherQueue.TryEnqueue(Refresh); }
     }
@@ -370,6 +394,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         try { await notificationPreferencesLoading; } catch (OperationCanceledException) { }
         if (ownsNotifications) NotificationCenter.Dispose();
         foreach (var slot in slots.Keys) { slot.PlacementChanged = null; slot.SetSurface(null); } slots.Clear();
+        if (hostedPump is not null) await hostedPump;
+        if (hostedOperations.Count != 0) await Task.WhenAll(hostedOperations.ToArray());
         if (reconciliation is not null) await reconciliation;
         if (popupReconciliation is { } popupTransfer)
             try { await popupTransfer; } catch (OperationCanceledException) { }
@@ -377,6 +403,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         try { foreach (var pair in entries.ToArray()) await RetireAsync(pair.Key, pair.Value); }
         finally { popupPlacement.Release(); }
         if (retirements.Count != 0) await Task.WhenAll(retirements.Keys.ToArray());
+        if (hostedMessagePumps.Count != 0) await Task.WhenAll(hostedMessagePumps.Values.ToArray());
         lifetime.Dispose();
     }
 }

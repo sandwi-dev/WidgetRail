@@ -343,7 +343,7 @@ internal static class ControllerWidgetScaffolder
         if (profiles.Count != WidgetTemplateProfiles.All.Length ||
             WidgetTemplateProfiles.All.Any(id => !profiles.ContainsKey(id)))
             throw new CliUsageException(
-                "Template inventory must declare basic, data, media, embedded-media, multipage, and webapp exactly once.");
+                "Template inventory must declare basic, data, media, embedded-media, multipage, webapp, and web-session exactly once.");
         if (!profiles.TryGetValue(selectedProfile, out var selected))
             throw new CliUsageException(
                 $"Template profile '{selectedProfile}' is unavailable. Rebuild or reinstall wrail.");

@@ -48,7 +48,8 @@ or a screen with no free corner will not display a banner.
 
 The package includes its own Python and JavaScript helper runtimes. You do not need
 to install Python, YTMDesktop, or a Google developer app. Use a current WidgetRail
-installation, which supplies the Windows Desktop runtime and checks WebView2 availability.
+installation, which hosts playback through its shared WebView2 runtime. The widget
+keeps its provider process, but no longer starts a separate playback browser helper.
 The standalone package currently supports Windows x64.
 
 ## Playback and radio

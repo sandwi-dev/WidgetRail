@@ -1,0 +1,23 @@
+# {{WidgetName}}
+
+This widget opens a packaged web application through WidgetRail's shared browser
+runtime. The C# widget owns the session; `UI.WebView` optionally displays it.
+Hide the page and send another message to see that its state remains alive.
+Close application or stop the widget to release the session.
+
+Build with `dotnet build -c Release`, then use `wrail pack .` and `wrail dev .`.
+The SDK package supplies `WebSessionRuntime.js`; the project copies it beside
+the HTML page. Package resource paths start at the package root, so generated
+build-output assets use `payload/web/...`.
+
+`WidgetRailWebSession.handle` receives typed SDK requests and returns a JSON
+response. `WidgetRailWebSession.post` sends unsolicited messages consumed through
+`ReadMessagesAsync`. Payloads are limited to 16 KiB, pending requests to 16, and
+queues to 64. Consume unsolicited messages if your page emits them. Observe
+session completion and reopen explicitly after a page/process failure; requests
+are never silently replayed.
+
+Packaged pages use isolated profiles, sealed resources and an explicit network
+origin list. The example needs no network or local-service access. Remote pages
+can use `WebSessionSource.Remote`, but do not receive a widget message channel.
+Use the simpler `webapp` template when a visible website is all you need.

@@ -14,6 +14,32 @@ internal static class EmbeddedMediaAssetResolver
         var media = publication.Snapshot.EmbeddedMediaSession ??
             throw new BridgeProtocolException("The current snapshot has no embedded media surface.");
         var configured = publication.Configured;
+        var resources = ResolveResources(configured, media.Resources);
+
+        var descriptor = configured.PublicDescriptor();
+        return new(
+            request.WidgetId,
+            publication.Snapshot.WidgetInstanceId,
+            descriptor.RuntimeGeneration,
+            descriptor.PresentationGeneration,
+            publication.Snapshot.Sequence,
+            media.Id,
+            media.EntryAsset,
+            media.Surface,
+            media.AspectRatio,
+            media.AccessibleName,
+            media.Commands,
+            media.AllowedFrameOrigins,
+            media.AllowedFrameDomainFamilies,
+            media.PendingCommand,
+            media.SupportedPresentations,
+            media.MediaSeekStepSeconds,
+            resources);
+    }
+
+    internal static IReadOnlyList<BridgeEmbeddedMediaResource> ResolveResources(ConfiguredWidget configured,
+        IReadOnlyList<EmbeddedMediaResource> declarations)
+    {
         if (string.IsNullOrWhiteSpace(configured.PackageRoot) ||
             configured.VerifiedPackageFiles.Count == 0)
             throw new BridgeProtocolException(
@@ -23,7 +49,7 @@ internal static class EmbeddedMediaAssetResolver
             Path.GetFullPath(configured.PackageRoot));
         var resources = new List<BridgeEmbeddedMediaResource>();
         long aggregate = 0;
-        foreach (var resource in media.Resources)
+        foreach (var resource in declarations)
         {
             if (!configured.VerifiedPackageFiles.TryGetValue(
                     resource.Path, out var verified))
@@ -80,25 +106,7 @@ internal static class EmbeddedMediaAssetResolver
             }
         }
 
-        var descriptor = configured.PublicDescriptor();
-        return new(
-            request.WidgetId,
-            publication.Snapshot.WidgetInstanceId,
-            descriptor.RuntimeGeneration,
-            descriptor.PresentationGeneration,
-            publication.Snapshot.Sequence,
-            media.Id,
-            media.EntryAsset,
-            media.Surface,
-            media.AspectRatio,
-            media.AccessibleName,
-            media.Commands,
-            media.AllowedFrameOrigins,
-            media.AllowedFrameDomainFamilies,
-            media.PendingCommand,
-            media.SupportedPresentations,
-            media.MediaSeekStepSeconds,
-            resources);
+        return resources;
     }
 
     private static void RejectReparsePoints(string root, string target)

@@ -35,10 +35,8 @@ if (-not [string]::IsNullOrWhiteSpace($Version)) {
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
 $cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
 $applicationProject = Join-Path $sampleRoot 'Application\SpotifyApplication.csproj'
-$playbackHostProject = Join-Path $sampleRoot 'PlaybackHost\SpotifyPlaybackHost.csproj'
 $buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
 $applicationPublishRoot = Join-Path $artifactsRoot 'application-publish'
-$playbackHostPublishRoot = Join-Path $artifactsRoot 'playback-host-publish'
 $deterministicPathMap = "$buildGraphRoot=/_/build%2C$repositoryRoot=/_/"
 
 function Assert-ChildPath {
@@ -86,9 +84,8 @@ Assert-NoReparsePoint -Path $artifactsRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $stagingRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $buildGraphRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $applicationPublishRoot
-Assert-ChildPath -Parent $artifactsRoot -Child $playbackHostPublishRoot
 foreach ($generatedDirectory in @(
-    $stagingRoot, $buildGraphRoot, $applicationPublishRoot, $playbackHostPublishRoot)) {
+    $stagingRoot, $buildGraphRoot, $applicationPublishRoot)) {
     Assert-NoReparsePoint -Path $generatedDirectory
     if (Test-Path -LiteralPath $generatedDirectory) {
         Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
@@ -99,7 +96,6 @@ New-Item -ItemType Directory -Force -Path $payloadRoot, `
 Assert-NoReparsePoint -Path $stagingRoot
 Assert-NoReparsePoint -Path $buildGraphRoot
 Assert-NoReparsePoint -Path $applicationPublishRoot
-Assert-NoReparsePoint -Path $playbackHostPublishRoot
 
 & dotnet publish $applicationProject `
     "-bl:$buildLogRoot/application-{}.binlog" `
@@ -116,24 +112,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "Spotify application publish failed with exit code $LASTEXITCODE."
 }
 
-& dotnet publish $playbackHostProject `
-    "-bl:$buildLogRoot/playback-{}.binlog" `
-    --configuration $Configuration `
-    --no-self-contained `
-    --nologo `
-    --property:ContinuousIntegrationBuild=true `
-    --property:PathMap=$deterministicPathMap `
-    --property:UseSharedCompilation=false `
-    --property:BuildInParallel=false `
-    --artifacts-path $buildGraphRoot `
-    --output $playbackHostPublishRoot
-if ($LASTEXITCODE -ne 0) {
-    throw "Spotify playback-host publish failed with exit code $LASTEXITCODE."
-}
-
-# Package the complete framework-dependent application graphs. Configuration
-# values and OAuth credentials remain in their existing user stores and never
-# enter the addon archive. Colliding dependency files must be byte-identical.
 function Copy-PublishGraph {
     param([Parameter(Mandatory = $true)] [string]$Source)
 
@@ -165,7 +143,10 @@ function Copy-PublishGraph {
 }
 
 Copy-PublishGraph -Source $applicationPublishRoot
-Copy-PublishGraph -Source $playbackHostPublishRoot
+$webRoot = Join-Path $stagingRoot 'web'
+New-Item -ItemType Directory -Path $webRoot -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'web/player.html') -Destination (Join-Path $webRoot 'player.html')
+Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src/WidgetSdk/WebSessionRuntime.js') -Destination (Join-Path $webRoot 'web-session.js')
 if ([string]::IsNullOrWhiteSpace($Version)) {
     Copy-Item -LiteralPath $manifestPath `
         -Destination (Join-Path $stagingRoot 'manifest.json') -Force
@@ -206,16 +187,15 @@ $requiredFiles = @(
     'payload\SpotifyApplication.exe',
     'payload\SpotifyApplication.dll',
     'payload\SpotifyApplicationBackend.dll',
-    'payload\SpotifyPlaybackHost.exe',
-    'payload\SpotifyPlaybackHost.dll',
+    'web\player.html',
+    'web\web-session.js',
     'payload\SpotifyPlaybackProtocol.dll',
     'payload\SpotifyWidget.dll',
     'payload\WidgetApplicationRuntime.dll',
     # Shared host-service client protocol used by WidgetApplicationRuntime.
-    'payload\PlatformBroker.dll',
+    'payload\WidgetBrokerTransport.dll',
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
-    'payload\WebView2Loader.dll',
     'styles\default.wrss'
 )
 $missingFiles = @($requiredFiles | Where-Object { $_ -notin $stagedFiles })

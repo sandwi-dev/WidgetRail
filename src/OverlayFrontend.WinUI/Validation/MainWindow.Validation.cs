@@ -163,6 +163,7 @@ public sealed partial class MainWindow
         else if (arguments.Contains("--validate-production-shell"))
         { AppWindow.Resize(new(1600, 1100)); RootFrame.Content = new Validation.ProductionShellValidationPage(); }
         else if (arguments.Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();
+        else if (arguments.Contains("--validate-web-sessions")) RootFrame.Content = new Validation.HostedWebSessionValidationPage();
         else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage(crossRootMediaProbe);
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
         else if (validateShellSizing) RootFrame.Content = new Validation.ShellSizingValidationPage();
@@ -237,6 +238,8 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-hosted-session") is { } sessionResult)
+            page.EnableHostedSessionValidation(sessionResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-navigation") is { } navigationResult)
             page.EnableSettingsNavigationValidation(navigationResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-webapp-shell") is { } webappResult)

@@ -372,6 +372,12 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(BridgeMessageTypes.CompleteTaskActivation, request.RequestId,
                 activationResponse, cancellationToken).ConfigureAwait(false);
             return;
+        case BridgeMessageTypes.TakeWebSessions:
+        case BridgeMessageTypes.CheckWebSessionView:
+        case BridgeMessageTypes.CompleteWebSession:
+        case BridgeMessageTypes.WebSessionMessages:
+            await HandleWebSessionsAsync(request, cancellationToken).ConfigureAwait(false);
+            break;
         case BridgeMessageTypes.ResolveProviderDocument:
             await HandleProviderDocumentAsync(request, cancellationToken).ConfigureAwait(false);
             return;
@@ -1394,6 +1400,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 _capabilityDiagnosticSink?.Invoke(configured.Id, diagnostic),
             notifications: (command, token) => PublishWidgetNotificationAsync(configured, command, token),
             activity: (value, token) => PublishWidgetActivityAsync(configured, value, token),
+            webSessionWidgetId: configured.Id,
             marketplace: IsTrustedMarketplace(configured) && _marketplace is not null ? HandleMarketplaceWidgetAsync : null);
     }
 

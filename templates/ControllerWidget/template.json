@@ -115,6 +115,73 @@
         { "source": "styles/default.wrss", "destination": "styles/default.wrss", "kind": "binary" },
         { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
       ]
+    },
+    {
+      "id": "web-session",
+      "name": "Hosted web session",
+      "description": "Packaged web application with typed messaging, background lifetime and an optional native browser view.",
+      "files": [
+        {
+          "source": "WIDGETRAIL-NOTICES.txt",
+          "destination": "WIDGETRAIL-NOTICES.txt",
+          "kind": "binary"
+        },
+        {
+          "source": "WidgetName.web-session.csproj.template",
+          "destination": "{{WidgetName}}.csproj",
+          "kind": "text"
+        },
+        {
+          "source": "manifest.webapp.json.template",
+          "destination": "manifest.json",
+          "kind": "text"
+        },
+        {
+          "source": "NuGet.Config.template",
+          "destination": "NuGet.Config",
+          "kind": "text"
+        },
+        {
+          "source": "README.web-session.md.template",
+          "destination": "README.md",
+          "kind": "text"
+        },
+        {
+          "source": "profiles/web-session.cs.template",
+          "destination": "src/{{WidgetName}}.cs",
+          "kind": "text"
+        },
+        {
+          "source": "web-session/index.html",
+          "destination": "web/index.html",
+          "kind": "binary"
+        },
+        {
+          "source": "styles/default.wrss",
+          "destination": "styles/default.wrss",
+          "kind": "binary"
+        },
+        {
+          "source": "widgetrail.scenarios.json.template",
+          "destination": "widgetrail.scenarios.json",
+          "kind": "text"
+        },
+        {
+          "source": "tests/NuGet.Config.template",
+          "destination": "tests/NuGet.Config",
+          "kind": "text"
+        },
+        {
+          "source": "tests/WidgetName.Tests.csproj.template",
+          "destination": "tests/{{WidgetName}}.Tests.csproj",
+          "kind": "text"
+        },
+        {
+          "source": "tests/WebSessionScenarioTests.cs.template",
+          "destination": "tests/ScenarioTests.cs",
+          "kind": "text"
+        }
+      ]
     }
   ]
 }

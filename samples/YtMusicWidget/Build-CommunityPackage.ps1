@@ -19,7 +19,7 @@ if (Test-Path -LiteralPath $staging) { throw 'Use a fresh output directory; stag
 $payload = Join-Path $staging 'payload'
 $logs = Join-Path $output 'logs'
 New-Item -ItemType Directory -Path $payload, $logs -Force | Out-Null
-foreach ($project in @('Application/YtMusicApplication.csproj', 'PlaybackHost/YtMusicPlaybackHost.csproj')) {
+foreach ($project in @('Application/YtMusicApplication.csproj')) {
     $name = [IO.Path]::GetFileNameWithoutExtension($project)
     $publish = Join-Path $output $name
     & dotnet publish (Join-Path $PSScriptRoot $project) -c $Configuration --no-self-contained --nologo --output $publish "-bl:$logs/$name-{}.binlog"
@@ -36,6 +36,10 @@ foreach ($project in @('Application/YtMusicApplication.csproj', 'PlaybackHost/Yt
         } else { Copy-Item -LiteralPath $file.FullName -Destination $target }
     }
 }
+$webRoot = Join-Path $staging 'web'
+New-Item -ItemType Directory -Path $webRoot -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'web/player.html') -Destination (Join-Path $webRoot 'player.html')
+Copy-Item -LiteralPath (Join-Path $repository 'src/WidgetSdk/WebSessionRuntime.js') -Destination (Join-Path $webRoot 'web-session.js')
 & (Join-Path $PSScriptRoot 'Service/Prepare-Runtime.ps1') -Destination (Join-Path $payload 'python') -DownloadCache (Join-Path $repository 'artifacts/ytmusic/downloads')
 New-Item -ItemType Directory -Path (Join-Path $payload 'service'), (Join-Path $staging 'styles'), (Join-Path $staging 'assets/icons') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Service/service.py') -Destination (Join-Path $payload 'service/service.py')

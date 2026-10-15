@@ -130,7 +130,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
-    ("New ships six deterministic template profiles", AdvancedTemplateProfiles),
+    ("New ships seven deterministic template profiles", AdvancedTemplateProfiles),
     ("Webapp scaffolding rejects unsafe URLs before publishing", WebAppScaffoldRejectsUnsafeUrls),
     ("Media template authors typed pinned layouts end to end", MediaTemplatePinnedLayouts),
     ("Embedded media template closes its lifecycle and adapter contract", EmbeddedMediaTemplateEndToEnd),
@@ -1165,7 +1165,7 @@ static async Task AdvancedTemplateProfiles()
         "new", "widget", "InvalidStarter", "--template", "unknown",
         "--output", invalidTarget);
     Assert.Equal(2, invalid.Code);
-    Assert.Contains("Choose basic, data, media, embedded-media, multipage, or webapp", invalid.Error);
+    Assert.Contains("Choose basic, data, media, embedded-media, multipage, webapp, or web-session", invalid.Error);
     Assert.True(!Directory.Exists(invalidTarget),
         "An invalid template selection published a partial target.");
 }

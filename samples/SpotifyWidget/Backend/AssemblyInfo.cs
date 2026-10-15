@@ -4,3 +4,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("SpotifyPlaybackClient.Tests")]
 [assembly: InternalsVisibleTo("WindowsSpotifyProvider.Tests")]
 [assembly: InternalsVisibleTo("SpotifyApplication")]
+
+[assembly: InternalsVisibleTo("SpotifyPlaybackHost.Tests")]

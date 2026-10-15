@@ -983,8 +983,7 @@ static async Task LocalPlaybackLifecycle()
             "\"is_restricted\":false,\"name\":\"Remote " + index + "\"," +
             "\"supports_volume\":true,\"type\":\"Computer\"," +
             "\"volume_percent\":50}"));
-        var manager = new SpotifyLocalPlaybackManager(
-            hostPath,
+        var manager = new SpotifyLocalPlaybackManager(() => true,
             (identity, scopes, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -1092,7 +1091,7 @@ static async Task LocalPlaybackStateAuthority()
     {
         var client = new FakeLocalPlaybackHostClient("local-device");
         var time = new ManualTimeProvider();
-        var manager = new SpotifyLocalPlaybackManager(hostPath,
+        var manager = new SpotifyLocalPlaybackManager(() => true,
             (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                 "local-token", DateTimeOffset.UtcNow.AddMinutes(10), LocalPlaybackScopes())),
             () => client, timeProvider: time);
@@ -1189,7 +1188,7 @@ static async Task LocalPlaybackReadRaces()
     try
     {
         var client = new FakeLocalPlaybackHostClient("race-device");
-        await using var manager = new SpotifyLocalPlaybackManager(hostPath,
+        await using var manager = new SpotifyLocalPlaybackManager(() => true,
             (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                 "local-token", DateTimeOffset.UtcNow.AddMinutes(10), LocalPlaybackScopes())), () => client);
         var identity = Identity();
@@ -1230,8 +1229,7 @@ static async Task LocalPlaybackRoutingAuthority()
     try
     {
         var client = new FakeLocalPlaybackHostClient("private-routing-device");
-        var manager = new SpotifyLocalPlaybackManager(
-            hostPath,
+        var manager = new SpotifyLocalPlaybackManager(() => true,
             (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                 "local-token", DateTimeOffset.UtcNow.AddMinutes(10),
                 LocalPlaybackScopes())),
@@ -1316,8 +1314,7 @@ static async Task LocalPlaybackActivationFailureCleanup()
                     TaskCreationOptions.RunContinuationsAsynchronously);
             else
                 client.FailCommandType = "activate_element";
-            var manager = new SpotifyLocalPlaybackManager(
-                hostPath,
+            var manager = new SpotifyLocalPlaybackManager(() => true,
                 (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                     "local-token", DateTimeOffset.UtcNow.AddMinutes(10),
                     LocalPlaybackScopes())),
@@ -1378,8 +1375,7 @@ static async Task DisconnectClearsSession()
         var vault = new FakeVault("durable-refresh", scopes);
         var client = new FakeLocalPlaybackHostClient("private-disconnect-device");
         WindowsSpotifyPlatformBackend? backend = null;
-        var manager = new SpotifyLocalPlaybackManager(
-            hostPath,
+        var manager = new SpotifyLocalPlaybackManager(() => true,
             (identity, requiredScopes, cancellationToken) =>
                 backend!.AcquireTrustedHostAccessTokenAsync(
                     identity, requiredScopes, cancellationToken),
@@ -1437,8 +1433,7 @@ static async Task LocalPlaybackErrorStates()
         {
             var client = new FakeLocalPlaybackHostClient(
                 "private-device", connectErrorCode: hostCode);
-            var manager = new SpotifyLocalPlaybackManager(
-                hostPath,
+            var manager = new SpotifyLocalPlaybackManager(() => true,
                 (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                     "initial-token", DateTimeOffset.UtcNow.AddMinutes(10),
                     LocalPlaybackScopes())),
@@ -1478,8 +1473,7 @@ static async Task LocalPlaybackErrorStates()
         async Task AssertTokenFailureAsync(string code)
         {
             var factoryCalls = 0;
-            var reauthorization = new SpotifyLocalPlaybackManager(
-                hostPath,
+            var reauthorization = new SpotifyLocalPlaybackManager(() => true,
                 (_, _, _) => Task.FromException<TrustedHostSpotifyAccessToken>(
                     new SpotifyProviderException(code, "Spotify authorization is incomplete.")),
                 () =>
@@ -1525,8 +1519,7 @@ static async Task LocalPlaybackCancellation()
     {
         var client = new FakeLocalPlaybackHostClient(
             "private-device", raiseReadyOnConnect: false);
-        var manager = new SpotifyLocalPlaybackManager(
-            hostPath,
+        var manager = new SpotifyLocalPlaybackManager(() => true,
             (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                 "initial-token", DateTimeOffset.UtcNow.AddMinutes(10),
                 LocalPlaybackScopes())),
@@ -1563,8 +1556,7 @@ static async Task LocalPlaybackBackendDisposal()
     try
     {
         var client = new FakeLocalPlaybackHostClient("private-disposal-device");
-        var manager = new SpotifyLocalPlaybackManager(
-            hostPath,
+        var manager = new SpotifyLocalPlaybackManager(() => true,
             (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                 "initial-token", DateTimeOffset.UtcNow.AddMinutes(10),
                 LocalPlaybackScopes())),

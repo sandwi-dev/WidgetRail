@@ -8,7 +8,7 @@ internal static class PlaybackRecoveryTests
         var backend = new FakeProcess();
         var player = new FakeProcess();
         await using var service = new MusicService(AppContext.BaseDirectory, 0,
-            (path, _) => path.EndsWith("python.exe", StringComparison.Ordinal) ? backend : player);
+            (_, _) => backend, _ => Task.FromResult<IMusicProcess>(player));
         var tracks = Enumerable.Range(0, 6).Select(i => new MusicItem($"{i:00000000000}", "song", "Song " + i)).ToArray();
         await service.PlayAsync(tracks, 0, default);
         var first = player.Generation;

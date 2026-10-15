@@ -54,6 +54,7 @@ internal sealed partial class BridgeClientRegistry
         lock (_gate)
         {
             PruneBrowserRetentionsLocked();
+            if (WidgetRail.PlatformBroker.WebSessionRegistry.Shared.HasBackgroundSession(registration.Configured.InstanceId)) return true;
             return browserRetentions.Values.Any(retention => ReferenceEquals(retention.Registration, registration));
         }
     }

@@ -9,10 +9,10 @@ internal delegate Task<string?> BrowserChoiceHandler(BrowserSurface source, stri
 internal sealed partial class BrowserSurface
 {
     internal BrowserChoiceHandler? Choose { get; set; }
-    internal bool CanRequestSiteDecision => !retired && !faulted && visible && input && !IsProviderContent;
+    internal bool CanRequestSiteDecision => !retired && !faulted && visible && input && !IsProviderContent && !IsHostedPackage;
     // Native/modal UI temporarily owns input. A confirmed decision may complete
     // before the shell's foreground notification restores browser input.
-    internal bool CanCompleteSiteDecision => !retired && !faulted && visible && !profileChanging && !IsProviderContent;
+    internal bool CanCompleteSiteDecision => !retired && !faulted && visible && !profileChanging && !IsProviderContent && !IsHostedPackage;
     private readonly SemaphoreSlim siteDecisionGate = new(1, 1);
     private CancellationTokenSource? siteDecisions;
     private int queuedSiteDecisions;
@@ -52,6 +52,7 @@ internal sealed partial class BrowserSurface
 
     private void PermissionRequested(CoreWebView2 sender, CoreWebView2PermissionRequestedEventArgs args)
     {
+        if (TryHostedPermission(args)) return;
 #if ENABLE_WIDGET_VALIDATION
         if (FixturePermissionTrace.Count < 16)
             FixturePermissionTrace.Add($"kind={args.PermissionKind} canAsk={CanRequestSiteDecision} choose={Choose is not null} dialog={HasDialog} queued={queuedSiteDecisions} secureOrigin={BrowserSiteIdentity.Origin(args.Uri) is not null}");

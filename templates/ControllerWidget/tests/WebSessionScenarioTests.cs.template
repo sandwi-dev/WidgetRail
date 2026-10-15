@@ -1,0 +1,16 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WidgetRail.WidgetProtocol;
+
+namespace {{Publisher}}.{{WidgetName}}.Tests;
+
+[TestClass]
+public sealed class ScenarioTests
+{
+    [TestMethod]
+    public void InitialPageHasAnActionableEntryPoint()
+    {
+        var snapshot = new {{WidgetName}}().Render().CreateSnapshot("{{WidgetId}}", 1);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        Assert.AreEqual("toggle", snapshot.InitialFocusId);
+    }
+}

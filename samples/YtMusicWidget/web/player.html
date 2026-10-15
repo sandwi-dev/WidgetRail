@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; media-src http://127.0.0.1:*; connect-src 'none';">
-</head><body><script>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; media-src http://127.0.0.1:*; connect-src 'none';">
+</head><body><script src="web-session.js"></script><script>
 'use strict';
 let audio = null, generation = 0, trackId = '', volume = .5, failed = false;
 const send = message => chrome.webview.postMessage(message);
@@ -45,10 +45,11 @@ function load(p) {
   play(a);
   state();
 }
-chrome.webview.addEventListener('message',({data:r})=>{
-  try {
-    const p = r.args || {};
-    switch(r.method) {
+for (const method of ['ready','load','toggle','play','pause','stop','seek','volume']) {
+  WidgetRailWebSession.handle(method, p => {
+    p = p || {};
+    if (method === 'ready') return {};
+    switch(method) {
       case 'load': load(p); break;
       case 'toggle': if(audio) {if(audio.paused) play(audio); else audio.pause();} break;
       case 'play': if(audio) play(audio); break;
@@ -58,9 +59,9 @@ chrome.webview.addEventListener('message',({data:r})=>{
       case 'volume': if(Number.isFinite(p.value)) {volume=Math.max(0,Math.min(1,p.value));if(audio)audio.volume=volume;} break;
       default: throw new Error('Unknown command');
     }
-    send({id:r.id,result:{}}); state();
-  } catch {send({id:r.id,error:'playback_failed'});}
-});
+    state(); return {};
+  });
+}
 if(navigator.mediaSession) {
   for (const [action,command] of [['play','play'],['pause','pause'],['nexttrack','next'],['previoustrack','previous']])
     navigator.mediaSession.setActionHandler(action,()=>send({event:'command',generation,command}));

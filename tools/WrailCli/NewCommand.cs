@@ -14,7 +14,7 @@ internal static partial class NewCommand
         if (parsed.Positionals.Count != 2 || parsed.Positionals[0] != "widget")
             throw new CliUsageException(
                 "Usage: wrail new widget <Name> [--output <directory>] [--id <id>] " +
-                "[--publisher <id>] [--template <basic|data|media|embedded-media|multipage|webapp>] [--url <https-url>]");
+                "[--publisher <id>] [--template <basic|data|media|embedded-media|multipage|webapp|web-session>] [--url <https-url>]");
 
         var name = parsed.Positionals[1];
         if (!TypeNameRegex().IsMatch(name))
@@ -29,7 +29,7 @@ internal static partial class NewCommand
         var profile = parsed.Option("--template") ?? "basic";
         if (!WidgetTemplateProfiles.All.Contains(profile, StringComparer.Ordinal))
             throw new CliUsageException(
-                $"Unknown widget template '{profile}'. Choose basic, data, media, embedded-media, multipage, or webapp.");
+                $"Unknown widget template '{profile}'. Choose basic, data, media, embedded-media, multipage, webapp, or web-session.");
         var url = parsed.Option("--url");
         if (profile == "webapp")
         {
@@ -93,7 +93,7 @@ internal static partial class NewCommand
 internal static class WidgetTemplateProfiles
 {
     internal static readonly string[] All =
-        ["basic", "data", "media", "embedded-media", "multipage", "webapp"];
+        ["basic", "data", "media", "embedded-media", "multipage", "webapp", "web-session"];
 }
 
 internal static class TemplateLocator

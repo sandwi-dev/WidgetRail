@@ -1,19 +1,14 @@
 using System.Text.Json;
-using WidgetRail.SpotifyPlaybackHost;
+using WidgetRail.WindowsSpotifyProvider;
 using WidgetRail.SpotifyPlayback;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Lifecycle is deterministic and terminal", LifecycleContract),
     ("Premium and streaming scope are explicit preconditions", PreconditionsContract),
     ("Token lease is bounded expiring scoped and redacted", TokenLeaseContract),
     ("Protocol is exact versioned and bounded", ProtocolContract),
     ("Events are camel-case bounded envelopes", EventContract),
-    ("Line reader bounds CRLF EOF and oversized input", BoundedReaderContract),
-    ("Page responses require a pending matching request", ResponseCorrelationContract),
     ("Page playback state rejects unsafe metadata and artwork", PageStateContract),
-    ("Only the internal playback document is a trusted page source", PageSourceContract),
-    ("Autoplay permission is exact ephemeral and probe-free", AutoplayPermissionContract),
 };
 
 var failures = 0;
@@ -29,36 +24,6 @@ foreach (var (name, run) in tests)
 if (failures != 0) Environment.Exit(1);
 Console.WriteLine($"SpotifyPlaybackHost.Tests passed ({tests.Length} tests)");
 
-static Task LifecycleContract()
-{
-    var machine = new SpotifyPlaybackStateMachine();
-    Assert.Equal(SpotifyPlaybackLifecycleState.LoadingSdk, machine.State);
-    Assert.Equal(SpotifyPlaybackLifecycleState.LoadingSdk,
-        machine.Apply(SpotifyPlaybackSignal.ConnectRequested).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Disconnected,
-        machine.Apply(SpotifyPlaybackSignal.SdkLoaded).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Connecting,
-        machine.Apply(SpotifyPlaybackSignal.ConnectRequested).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Ready,
-        machine.Apply(SpotifyPlaybackSignal.Ready).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.NotReady,
-        machine.Apply(SpotifyPlaybackSignal.NotReady).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Connecting,
-        machine.Apply(SpotifyPlaybackSignal.ConnectRequested).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Faulted,
-        machine.Apply(SpotifyPlaybackSignal.AuthenticationError).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Connecting,
-        machine.Apply(SpotifyPlaybackSignal.ConnectRequested).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Disconnecting,
-        machine.Apply(SpotifyPlaybackSignal.DisconnectRequested).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Disconnected,
-        machine.Apply(SpotifyPlaybackSignal.Disconnected).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Stopped,
-        machine.Apply(SpotifyPlaybackSignal.Shutdown).Current);
-    Assert.Equal(SpotifyPlaybackLifecycleState.Stopped,
-        machine.Apply(SpotifyPlaybackSignal.SdkLoaded).Current);
-    return Task.CompletedTask;
-}
 
 static Task PreconditionsContract()
 {
@@ -142,48 +107,20 @@ static Task EventContract()
     return Task.CompletedTask;
 }
 
-static async Task BoundedReaderContract()
-{
-    Assert.Equal("first", await BoundedTextLineReader.ReadAsync(
-        new StringReader("first\r\nsecond"), 16, CancellationToken.None));
-    Assert.Equal("tail", await BoundedTextLineReader.ReadAsync(
-        new StringReader("tail"), 16, CancellationToken.None));
-    Assert.Equal<string?>(null, await BoundedTextLineReader.ReadAsync(
-        new StringReader(string.Empty), 16, CancellationToken.None));
-    await Assert.ThrowsAsync<SpotifyPlaybackProtocolException>(async () =>
-        await BoundedTextLineReader.ReadAsync(
-            new StringReader("12345\n"), 4, CancellationToken.None), "message_too_large");
-}
 
-static Task ResponseCorrelationContract()
-{
-    var pending = new PendingPageResponses();
-    pending.Register("state-1", "current_state");
-    Assert.True(!pending.TryConsume("other", "current_state"));
-    Assert.True(!pending.TryConsume("state-1", "command_completed"));
-    Assert.True(pending.TryConsume("state-1", "current_state"));
-    Assert.True(!pending.TryConsume("state-1", "current_state"));
-
-    pending.Register("volume-1", "volume");
-    Assert.True(pending.TryConsume("volume-1", "command_failed"));
-    pending.Register("duplicate", "command_completed");
-    Assert.Throws<SpotifyPlaybackProtocolException>(() =>
-        pending.Register("duplicate", "command_completed"), "too_many_pending_commands");
-    return Task.CompletedTask;
-}
 
 static Task PageStateContract()
 {
     var safe = PlaybackState("https://i.scdn.co/image/abc");
-    Assert.Equal(safe, SpotifyPlaybackPageValidator.ValidatePlaybackState(safe));
+    Assert.Equal(safe, SpotifyPlaybackStateValidator.ValidatePlaybackState(safe));
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
-        SpotifyPlaybackPageValidator.ValidatePlaybackState(
+        SpotifyPlaybackStateValidator.ValidatePlaybackState(
             PlaybackState("file:///C:/Users/example/secret")), "invalid_page_event");
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
-        SpotifyPlaybackPageValidator.ValidatePlaybackState(
+        SpotifyPlaybackStateValidator.ValidatePlaybackState(
             PlaybackState("https://attacker.example/art.jpg")), "invalid_page_event");
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
-        SpotifyPlaybackPageValidator.ValidatePlaybackState(
+        SpotifyPlaybackStateValidator.ValidatePlaybackState(
             PlaybackState("https://i.scdn.co/image/abc", "bad\nname")), "invalid_page_event");
     return Task.CompletedTask;
 }
@@ -194,43 +131,7 @@ static SpotifyLocalPlaybackState PlaybackState(string artworkUrl, string name = 
     new("spotify:track:abc", "abc123", "track", "audio", name, true,
         "Album", artworkUrl, ["Artist"]));
 
-static Task PageSourceContract()
-{
-    Assert.True(SpotifyPlaybackPageValidator.IsTrustedSource(
-        "https://spotify-playback.widgetrail.internal/index.html"));
-    Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("about:blank"));
-    Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("https://sdk.scdn.co/"));
-    Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource(null));
-    return Task.CompletedTask;
-}
 
-static Task AutoplayPermissionContract()
-{
-    var html = SpotifyPlaybackPage.Html;
-    Assert.True(html.Contains("case 'activate_element':", StringComparison.Ordinal));
-    Assert.True(html.Contains("player.activateElement()", StringComparison.Ordinal));
-    Assert.True(!html.Contains("autoplay_policy", StringComparison.Ordinal));
-    Assert.True(!html.Contains("MutationObserver", StringComparison.Ordinal));
-    Assert.True(!html.Contains("permissionsPolicy", StringComparison.Ordinal));
-
-    var source = File.ReadAllText(Path.Combine(
-        AppContext.BaseDirectory, "source", "SpotifyPlaybackHostForm.cs"));
-    Assert.True(source.Contains(
-        "foreach (var origin in new[] { TopLevelOrigin, SdkOrigin })",
-        StringComparison.Ordinal));
-    Assert.True(source.Contains("CoreWebView2PermissionKind.Autoplay",
-        StringComparison.Ordinal));
-    Assert.True(source.Contains("CoreWebView2PermissionState.Allow",
-        StringComparison.Ordinal));
-    Assert.True(source.Contains("args.SavesInProfile = false",
-        StringComparison.Ordinal));
-    Assert.True(source.Contains(
-        "private static readonly Uri SdkOrigin = new(\"https://sdk.scdn.co\")",
-        StringComparison.Ordinal));
-    Assert.True(!source.Contains("Emit(\"autoplay_permission\"",
-        StringComparison.Ordinal));
-    return Task.CompletedTask;
-}
 
 internal static class Assert
 {

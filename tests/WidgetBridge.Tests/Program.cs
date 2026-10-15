@@ -22,6 +22,11 @@ if (args is ["--export-gallery-scroll", var galleryDirectory, var galleryStylePa
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
+if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "web-session-fixture.marker")))
+{
+    await BridgeWebSessionFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
+    return 0;
+}
 if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "settings-navigation-fixture.marker")))
 {
     await SettingsNavigationFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
@@ -439,6 +444,8 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         return await WidgetWorkerBootstrap.RunAsync(arguments, () => SettingsNavigationFixture.CreateSettings(RequiredValue(arguments, "--settings-fixture-root")));
     if (instance == "settings-source.fixture")
         return await WidgetWorkerBootstrap.RunAsync(arguments, () => new SettingsNavigationSource());
+    if (instance == "web-session.instance")
+        return await WidgetApplicationBootstrap.RunAsync(arguments, () => new HostedSessionFixtureWidget());
     if (instance == "fulltrust-services.instance")
         return await WidgetApplicationBootstrap.RunAsync(arguments, () => new FullTrustHostServicesTests.ProbeWidget());
     if (instance == "game-help.instance")
