@@ -24,6 +24,8 @@ public sealed partial class PobWidget : Widget
     private string compatibilityNotice = "";
     private bool busy, activated;
     private bool nodeReturnToMap;
+    private ToastElement? feedback;
+    private WidgetTimedMutation? feedbackExpiry;
     private readonly Dictionary<string,int> selections = new();
     private long focusRequestSequence;
     private static readonly string[] Sections = ["Calcs", "Tree", "Skills", "Items", "Configuration", "Notes"];
@@ -80,11 +82,40 @@ public sealed partial class PobWidget : Widget
         Operations.RunSingleFlight("pob.work", async context =>
         {
             try { await operation(context.CancellationToken); RefreshLibrary(); lock (gate) status = ""; }
-            catch (OperationCanceledException) { lock (gate) status = "Operation cancelled."; }
+            catch (OperationCanceledException) { lock (gate) { status = ""; ShowFeedback("Cancelled", "You can continue working.", ToastTone.Info); } }
             catch (Exception error) when (error is WidgetCapabilityException or IOException or JsonException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or HttpRequestException)
-            { lock (gate) status = error is System.ComponentModel.Win32Exception native ? $"The build engine could not start (Windows error {native.NativeErrorCode}). Reinstall this widget or retry." : Limit(error.Message, 350); }
+            {
+                lock (gate)
+                {
+                    var failureMessage = error is System.ComponentModel.Win32Exception native ? $"The build engine could not start (Windows error {native.NativeErrorCode}). Reinstall this widget or retry." : Limit(error.Message, 350);
+                    if(result is null || error is System.ComponentModel.Win32Exception) status=failureMessage;
+                    else { status=""; ShowFeedback("Action not completed",failureMessage,ToastTone.Warning); }
+                }
+            }
             finally { lock (gate) { busy = false; } Invalidate(); }
         }, WidgetOperationLifetime.Widget);
+    }
+
+    private void ShowFeedback(string title,string message,ToastTone tone)
+    {
+        var next=UI.Toast(title,message,tone,"pob.feedback.toast");
+        feedback=next;
+        feedbackExpiry??=CreateTimedMutation(WidgetOperationLifetime.Widget);
+        _=feedbackExpiry.ScheduleLatest(UI.DefaultToastDuration,()=>
+        {
+            lock(gate)if(ReferenceEquals(feedback,next))feedback=null;
+            Invalidate();
+        });
+    }
+
+    private WidgetElement WithFeedback(WidgetElement body,string scope)
+    {
+        // Both layers occupy the full widget bounds; a toast never takes height
+        // away from the content or changes its input scope or initial focus.
+        var layers=new List<WidgetElement>{body.InGrid(rowSpan:2,columnSpan:3)};
+        if(feedback is not null)layers.Add(feedback.Classes("pob-feedback-toast").InGrid(row:1,column:1));
+        return UI.Grid("pob.feedback.layer",[GridTrack.Star(),GridTrack.Auto()],
+            [GridTrack.Star(),GridTrack.Star(2),GridTrack.Star()],layers.ToArray()).InputScope(scope).Classes("pob-feedback-layer");
     }
 
     public override WidgetView Render()
@@ -132,14 +163,14 @@ public sealed partial class PobWidget : Widget
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
             var initial = result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
-            var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").InputScope(scope).RememberChildFocus(initial);
+            var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").RememberChildFocus(initial);
             if (busy) root = root.Shortcut(ControllerButton.B, "cancel-operation");
             if (result is not null)
             {
                 root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
                 if (!busy && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
             }
-            return new(root, initial, ActiveInputScopeId: scope,
+            return new(WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = section == "Tree" ? 1320 : 1180, PreferredHeight = section == "Tree" ? 900 : 820, MinimumWidth = 820, MinimumHeight = 600 })
             {
                 FocusGroupEntryRequest = !busy && focusRequestSequence > 0 && (detailKind.Length == 0 || InlineDetail)

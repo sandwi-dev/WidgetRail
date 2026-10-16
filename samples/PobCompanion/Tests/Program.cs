@@ -140,6 +140,20 @@ if(firstXml is not null)
         while(Nodes(Snapshot(widget,100).Root).Any(n=>n.Id=="pob.cancel-operation"))
         { if(limit.Elapsed>TimeSpan.FromSeconds(65))throw new TimeoutException(action);await Task.Delay(25); }
     }
+    await Action("section.3");
+    var beforeFeedback=Snapshot(widget,290);
+    clipboard=new string('x',32769);
+    await Action("item-paste");
+    var withFeedback=Snapshot(widget,291);
+    Check(Nodes(withFeedback.Root).Any(n=>n.Id=="pob.feedback.toast") &&
+        !Nodes(withFeedback.Root).Any(n=>n.Id=="pob.status") &&
+        withFeedback.ActiveInputScopeId==beforeFeedback.ActiveInputScopeId && withFeedback.InitialFocusId==beforeFeedback.InitialFocusId,
+        "Recoverable action errors use a toast without changing content focus or persistent status");
+    Check(Nodes(withFeedback.Root).Any(n=>n.Kind==ViewNodeKind.Text && n.Text?.Contains("Inspecting")==true),
+        "The item being inspected has a textual selection marker independent of focus");
+    await Task.Delay(UI.DefaultToastDuration+TimeSpan.FromMilliseconds(200));
+    Check(!Nodes(Snapshot(widget,292).Root).Any(n=>n.Id=="pob.feedback.toast"),"Transient feedback expires automatically");
+    clipboard="";
     await Action("section.4");
     var configuration=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="configuration fixture"},default);
     var exportedConditions=configuration.State.GetProperty("conditions").EnumerateArray().ToArray();

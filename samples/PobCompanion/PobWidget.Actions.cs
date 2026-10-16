@@ -192,7 +192,7 @@ public sealed partial class PobWidget
             }
         }
         catch(Exception e) when(e is OperationCanceledException or WidgetCapabilityException or ObjectDisposedException or IOException)
-        {if(!WidgetLifetimeToken.IsCancellationRequested){lock(gate){if(ReferenceEquals(mapSession,session)){mapSession=null;status="Tree map closed. You can reopen it or use the searchable node list.";if(detailKind=="map")detailKind="";}}Invalidate();}}
+        {if(!WidgetLifetimeToken.IsCancellationRequested){lock(gate){if(ReferenceEquals(mapSession,session)){mapSession=null;ShowFeedback("Tree map closed","Reopen it or use the searchable node list.",ToastTone.Warning);if(detailKind=="map")detailKind="";}}Invalidate();}}
     }
     private readonly SemaphoreSlim mapSerial = new(1);
     private WidgetWebSession? sentMapSession;

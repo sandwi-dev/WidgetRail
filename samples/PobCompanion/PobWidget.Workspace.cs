@@ -159,6 +159,7 @@ public sealed partial class PobWidget
             var id = I(entry, "id");
             var title = skills ? S(entry, "title") : S(entry, "name", S(entry, "base"));
             var subtitle = skills ? $"{A(entry, "gems").Length} gems" + (B(entry, "main") ? " · Main skill" : "") + (B(entry, "enabled") ? "" : " · Disabled") : S(entry, "slot");
+            if(id==detailId)subtitle+=" · Inspecting";
             list.Add(UI.ActionSurface(kind + "." + id, "pob." + kind + "." + id, title + ", " + subtitle, ActionSurfaceOrientation.Vertical,
                 Text(Limit(title, 160), kind + ".title." + id, "pob-list-title"),
                 Text(subtitle, kind + ".subtitle." + id, "pob-small"))
