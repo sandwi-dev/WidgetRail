@@ -53,9 +53,10 @@ instead of jumping with every arriving page.
 
 An overflowing scroll container becomes a reading focus target when it has no
 usable interactive control in its visible viewport, even if controls exist
-farther down. It shows the theme's focus outline. If scrolling moves a focused
-control offscreen, the outline marks the viewport until focus settles onto a
-visible control, or onto the reading container when none is available. Settlement
+farther down. It shows the theme's focus outline when focused. Right-stick
+scrolling retains the current focus without switching the outline to another
+target mid-gesture. Once scrolling ends, focus settles onto a visible control,
+or onto the reading container when none is available. Settlement
 preserves the scroll position; virtualized collections still wait for their rows
 to become ready. Content that fits without scrolling adds no extra focus stop.
 

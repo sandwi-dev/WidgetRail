@@ -62,10 +62,13 @@ internal sealed partial class WidgetViewPresenter
     private void RefreshScrollFocusOutline()
     {
         Binding? next=null;
-        if(!disposed&&presentationActive&&presentationInputEnabled&&automaticFocusEnabled&&!presentationOnly&&!HasTransientControl&&XamlRoot is not null)
+        // Free scrolling retains both the logical focus and its presentation.
+        // Do not flash a viewport outline as the anchor crosses the clip edge;
+        // SettleScrollFocus chooses the final visible target after release.
+        if(scrollGesture is null&&!disposed&&presentationActive&&presentationInputEnabled&&automaticFocusEnabled&&!presentationOnly&&!HasTransientControl&&XamlRoot is not null)
         {
             var focused=FocusManager.GetFocusedElement(XamlRoot) as FrameworkElement;
-            var viewport=scrollGesture?.Viewport??directionalScroll?.Viewport;
+            var viewport=directionalScroll?.Viewport;
             if(viewport is null&&focused is not null)
                 for(DependencyObject? parent=focused;parent is not null&&!ReferenceEquals(parent,this);parent=VisualTreeHelper.GetParent(parent))
                     if(parent is ScrollViewer scroll){viewport=scroll;break;}

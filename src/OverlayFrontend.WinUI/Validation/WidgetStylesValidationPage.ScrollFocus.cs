@@ -147,11 +147,18 @@ internal sealed partial class WidgetStylesValidationPage
             Check(!scroll.IsTabStop,"mixed region uses its visible action instead of a container stop (horizontal="+horizontal+")");
             presenter.ScrollBy(horizontal?300:0,horizontal?0:300);
             await Wait(()=>scroll.IsTabStop);
-            Check(presenter.ScrollFocusOutlineForValidation=="mixed.scroll","viewport outline replaces an offscreen action outline while scrolling (horizontal="+horizontal+")");
+            Check(presenter.ScrollFocusOutlineForValidation is null&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.mixed.first")),
+                "free scrolling keeps its original focus without an intermediate viewport outline (horizontal="+horizontal+")");
+            presenter.ScrollBy(horizontal?40:0,horizontal?0:40);
+            await Wait(()=>(horizontal?scroll.HorizontalOffset:scroll.VerticalOffset)>330);
+            Check(presenter.ScrollFocusOutlineForValidation is null&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.mixed.first")),
+                "continued scrolling does not settle focus between samples (horizontal="+horizontal+")");
             Check(presenter.SettleScrollFocus()&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),scroll),
                 "scroll release focuses the container when all actions are outside the viewport (horizontal="+horizontal+")");
             presenter.ScrollBy(horizontal?1000:0,horizontal?0:1000);
             await Wait(()=>(horizontal?scroll.HorizontalOffset:scroll.VerticalOffset)>500);
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),scroll),
+                "a newly visible option waits for scroll release before taking reading focus (horizontal="+horizontal+")");
             Check(presenter.SettleScrollFocus()&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.mixed.last")),
                 "scroll release settles onto a newly visible option (horizontal="+horizontal+")");
             await Wait(()=>!scroll.IsTabStop);
