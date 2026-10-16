@@ -37,7 +37,7 @@ internal static class QuickControlsTests
                 state[skills?"skills":"items"]=JsonSerializer.SerializeToNode(Enumerable.Range(1,count).Select(i=>new{id=i,title="Skill "+i,name="Item "+i,slot="Slot "+i,gems=Array.Empty<object>(),details=Array.Empty<object>()}));
                 state[skills?"skillSets":"itemSets"]=JsonSerializer.SerializeToNode(Enumerable.Range(1,sets).Select(i=>new{id=i,title="Set "+i,active=i==1}));
                 Set("result",new PobResult(JsonSerializer.SerializeToElement(state),xml));Set("section",section);Set("detailKind","");
-                check(Shortcut(View(),"pob.inventory.rows")== (count>8&&sets>1),section+" needs both a long list and a set control: "+count+" / "+sets);
+                check(Shortcut(View(),"pob.inventory.rows")== (count>8&&(skills||sets>1)),section+" long-list shortcut reaches available group/set controls: "+count+" / "+sets);
                 if(count>8&&sets>1){await Jump("pob.inventory.tools");await Jump("pob.inventory.rows");}
             }
             foreach(var count in new[]{3,12})

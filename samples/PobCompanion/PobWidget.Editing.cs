@@ -15,10 +15,10 @@ public sealed partial class PobWidget
         history.Clear();foreach(var entry in retained)history.Push(entry);
     }
 
-    private void Edit(object command,bool closeDetail=false)=>Work(async token=>
+    private void Edit(object command,bool closeDetail=false,string? skillDestination=null)=>Work(async token=>
     {
         var before=result!;
-        var next=await engine.ExecuteAsync(command,token,before.Xml);
+        var next=await engine.ExecuteAsync(command is Func<object> create?create():command,token,before.Xml);
         var options=await ReadVisibleSkillOptionsAsync(next,token);
         // Cancellation or calculation failure before this boundary never saves
         // a partial edit or changes history. Publication follows atomic file save.
@@ -27,7 +27,12 @@ public sealed partial class PobWidget
         lock(gate)
         {
             PushHistory(undo,before.Xml);redo.Clear();result=next;
-            if(closeDetail)detailKind="";
+            if(skillDestination is not null)
+            {
+                detailId=I(next.State,"editedSkillGroup");selections["skill"]=detailId;
+                detailKind=detailId>0?skillDestination:"";focusRequestSequence++;
+            }
+            else if(closeDetail)detailKind="";
             else PublishVisibleSkillOptions(options);
         }
         await RefreshCommittedMapAsync(token);

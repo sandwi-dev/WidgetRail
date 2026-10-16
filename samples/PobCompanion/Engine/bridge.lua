@@ -4,6 +4,7 @@ local output = io.stdout
 local adapterDirectory=assert(arg[0]:match('^(.*[/\\])'),'Adapter requires an absolute path')
 local treeGeometry=dofile(adapterDirectory..'tree-geometry.lua')
 local treePresentation=dofile(adapterDirectory..'tree-presentation.lua')
+local skillManagement=dofile(adapterDirectory..'skill-management.lua')
 io.stdout:setvbuf('no')
 print = function(...) -- Keep the protocol channel independent of upstream diagnostics.
   local parts = {}; for i=1,select('#',...) do parts[i]=tostring(select(i,...)) end
@@ -31,6 +32,25 @@ local function configValue(d)
 end
 local function recalc()
   if wipeGlobalCache then wipeGlobalCache() end
+  local mainGroup=build.skillsTab.socketGroupList[build.mainSocketGroup or 1]
+  local calcsGroup=build.skillsTab.socketGroupList[build.calcsTab.input.skill_number or 1]
+  local function locate(group)
+    if not group then return end
+    for i,current in ipairs(build.skillsTab.socketGroupList)do if current==group then return i end end
+    -- An equivalent item can have a new item ID. Match its regenerated skill
+    -- by equipment slot and skill identity, not its old numeric list position.
+    if not group.source or not group.gemList[1] then return end
+    local function source(g)return g.source and (g.source:match('^Item:') and 'Item' or g.source)end
+    local found
+    for i,current in ipairs(build.skillsTab.socketGroupList)do
+      if source(current)==source(group) and current.slot==group.slot and current.gemList[1] and
+        current.gemList[1].skillId==group.gemList[1].skillId then
+        if found then return end -- Never guess between ambiguous generated groups.
+        found=i
+      end
+    end
+    return found
+  end
   -- Desktop settles auto-level changes on its next frame. A headless reply must
   -- include the calculations for the level it reports, including after refunds.
   for _=1,4 do
@@ -38,9 +58,13 @@ local function recalc()
     build.buildFlag=true
     runCallback('OnFrame')
     assert(not launch.promptMsg, 'PoB could not calculate this build')
-    if level==build.characterLevel then return end
+    local mainIndex,calcsIndex=locate(mainGroup),locate(calcsGroup)
+    local selectionChanged=false
+    if mainIndex and mainIndex~=build.mainSocketGroup then build.mainSocketGroup=mainIndex;selectionChanged=true end
+    if calcsIndex and calcsIndex~=build.calcsTab.input.skill_number then build.calcsTab.input.skill_number=calcsIndex;selectionChanged=true end
+    if level==build.characterLevel and not selectionChanged then return end
   end
-  error('Automatic level did not settle; choose a manual level in desktop PoB')
+  error('Calculation selection or automatic level did not settle')
 end
 local function choices(order, sets, active)
   local out={}; for _,id in ipairs(order or {}) do
@@ -79,6 +103,8 @@ local function snapshot()
     notes=clean(build.notesTab.controls.edit.buf),notesRuns=textRuns(build.notesTab.controls.edit.buf),warnings={},loadouts={},nodes={},links={},classes={},ascendancies={},slots={},skillOptions={},breakdowns={}}
   local active=build.calcsTab.mainEnv.player.mainSkill
   result.mainSkill=active and active.activeEffect and active.activeEffect.grantedEffect.name or ''
+  result.skillSlots={}
+  for _,slot in ipairs(build.skillsTab.controls.groupSlot.list)do result.skillSlots[#result.skillSlots+1]={name=slot.slotName or '',label=clean(slot.label or slot.slotName or 'None')}end
   result.mainSkillGroup=build.mainSocketGroup
   result.mainSkillDisabled=active and (active.disableReason~=nil or active.skillFlags and active.skillFlags.disable==true) or false
   result.mainSkillDisabledReason=active and clean(active.disableReason) or ''
@@ -175,10 +201,13 @@ local function snapshot()
     end
   end
   for i,g in ipairs(build.skillsTab.socketGroupList) do
+    local sourceName=g.sourceItem and (g.sourceItem.name or g.sourceItem.baseName) or g.sourceNode and g.sourceNode.name
+    local levelReadOnly=g.source~=nil
     local gems={}; for j,gem in ipairs(g.gemList) do
-      gems[#gems+1]={id=j,name=clean(gem.nameSpec or (gem.gemData and gem.gemData.name)),level=gem.level,quality=gem.quality,enabled=gem.enabled~=false,count=gem.count or 1}
+      gems[#gems+1]={id=j,name=clean(gem.nameSpec or (gem.gemData and gem.gemData.name)),level=gem.level,levelReadOnly=levelReadOnly,quality=gem.quality,enabled=gem.enabled~=false,count=gem.count or 1}
     end
-    result.skills[#result.skills+1]={id=i,title=clean(g.label~='' and g.label or (gems[1] and gems[1].name) or 'Group'),gems=gems,enabled=g.enabled~=false,main=i==build.mainSocketGroup,fullDps=g.includeInFullDPS==true}
+    result.skills[#result.skills+1]={id=i,title=clean(g.label~='' and g.label or (gems[1] and gems[1].name) or 'Group'),gems=gems,enabled=g.enabled~=false,main=i==build.mainSocketGroup,fullDps=g.includeInFullDPS==true,
+      generated=g.source~=nil,label=clean(g.label),groupCount=g.groupCount or 1,sourceName=clean(sourceName),sourceKind=g.sourceItem and 'item' or g.sourceNode and 'passive' or g.source and 'automatic' or '',slot=clean(g.slot)}
     if g.enabled~=false and g.includeInFullDPS then result.fullDpsIncludedGroups=result.fullDpsIncludedGroups+1 end
   end
   for slotIndex,slot in ipairs(build.itemsTab.orderedSlots) do
@@ -253,6 +282,9 @@ end
 local function command(req)
   local compareBase=req.compare==true and copyTable(build.calcsTab.mainOutput,true)or nil
   local op=req.op
+  if op=='gem-catalog' then return {state={gemCatalog=skillManagement.catalog(req)},xml=build:SaveDB('code')}end
+  if op=='skill-copy' then return {state={groupClipboard=skillManagement.copy(req)},xml=build:SaveDB('code')}end
+  local editedGroup
   if op=='load' then
     assert(type(req.xml)=='string' and #req.xml<4*1024*1024,'Invalid build')
     launch.promptMsg=nil
@@ -287,6 +319,8 @@ local function command(req)
       build.spec:AllocNode(n)
       assert(n.alloc,'PoB could not allocate this path in the selected tree mode')
     end
+  elseif op=='skill-group' or op=='gem-manage' then
+    editedGroup=skillManagement.edit(req)
   elseif op=='skill' then
     local g=build.skillsTab.socketGroupList[validIndex(req.id,build.skillsTab.socketGroupList)]
     if req.field=='main' then build.mainSocketGroup=req.id
@@ -297,7 +331,13 @@ local function command(req)
     local g=build.skillsTab.socketGroupList[validIndex(req.group,build.skillsTab.socketGroupList)]
     local gem=g.gemList[validIndex(req.id,g.gemList)]
     assert(req.field=='level' or req.field=='quality' or req.field=='count','Invalid gem field')
-    assert(finite(req.value) and req.value>=0 and req.value<=1000,'Invalid gem value'); gem[req.field]=req.value
+    if req.field=='level' then
+      assert(not g.source,'This skill level is controlled by its source. Change the granting item or passive instead.')
+      local effect=gem.grantedEffect or gem.gemData and gem.gemData.grantedEffect
+      assert(finite(req.value) and req.value%1==0 and effect and effect.levels[req.value],'This gem does not support that level.')
+    end
+    assert(finite(req.value) and req.value>=0 and req.value<=1000,'Invalid gem value')
+    gem[req.field]=req.value
     build.skillsTab:ProcessSocketGroup(g)
   elseif op=='inspect-skill' then
     local group=validIndex(req.group,build.skillsTab.socketGroupList)
@@ -344,6 +384,10 @@ local function command(req)
   elseif op~='snapshot' then error('Unknown operation') end
   recalc()
   local state=snapshot()
+  if op=='skill-group' or op=='gem-manage' then
+    state.editedSkillGroup=0
+    for i,g in ipairs(build.skillsTab.socketGroupList)do if g==editedGroup then state.editedSkillGroup=i;break end end
+  end
   if compareBase then state.comparison=comparison(compareBase)end
   return {state=state,xml=build:SaveDB('code')}
 end

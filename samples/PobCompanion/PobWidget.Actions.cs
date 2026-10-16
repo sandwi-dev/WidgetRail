@@ -39,6 +39,7 @@ public sealed partial class PobWidget
             }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
             if(id is not "undo" and not "redo")historyFocusRequested=false;
+            if(HandleSkillManagementAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(id=="apply"&&pendingBefore is not null)
             {
                 var previous=pendingBefore!; var current=result!;
@@ -110,7 +111,13 @@ public sealed partial class PobWidget
                     Preview(new{op="node",id=detailId,mode=B(node,"allocated")?"refund":"allocate"});
             }
             else if(id is "skill-main" or "skill-enabled" or "skill-fullDps") Edit(new{op="skill",id=detailId,field=id[6..]});
-            else if(parts[0]=="gem"&&parts.Length==3&&int.TryParse(parts[1],out var gem)&&double.TryParse(action.CommittedText,NumberStyles.Number,CultureInfo.InvariantCulture,out var number)) Edit(new{op="gem",group=detailId,id=gem,field=parts[2],value=number});
+            else if(parts[0]=="gem"&&parts.Length==3&&int.TryParse(parts[1],out var gem)&&double.TryParse(action.CommittedText,NumberStyles.Number,CultureInfo.InvariantCulture,out var number))
+            {
+                var skill=A(State,"skills").FirstOrDefault(s=>I(s,"id")==detailId);
+                var entry=A(skill,"gems").FirstOrDefault(g=>I(g,"id")==gem);
+                if(parts[2]=="level"&&B(entry,"levelReadOnly"))ShowFeedback("Level is source-controlled","Change the granting item or passive to change this skill's level.",ToastTone.Info);
+                else Edit(new{op="gem",group=detailId,id=gem,field=parts[2],value=number});
+            }
             else if(id=="level"&&int.TryParse(action.CommittedText,out var level)) Edit(new{op="level",value=level});
             else if(parts[0] is "class" or "ascendancy" && parts.Length==2 && int.TryParse(parts[1],out var classId)) Preview(new{op=parts[0],id=classId});
             else if(parts[0]=="loadout"&&int.TryParse(parts.ElementAtOrDefault(1),out var index)&&index>=0&&index<A(State,"loadouts").Length) Edit(new{op="loadout",name=S(A(State,"loadouts")[index],"name")},closeDetail:true);

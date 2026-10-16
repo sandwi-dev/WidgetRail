@@ -103,6 +103,8 @@ public sealed partial class PobWidget
     private WidgetElement Workspace()
     {
         if(detailKind=="library")return LibraryWorkspace();
+        if(detailKind=="skill-manage")return SkillManagementWorkspace();
+        if(detailKind=="gem-picker")return GemPickerWorkspace();
         if (detailKind.Length > 0 && !InlineDetail)
             return UI.VerticalScroll("pob.scroll", Content().ToArray()).Classes("pob-scroll", "pob-panel");
         if (section == "Calcs" || detailKind == "stat") return Overview();
@@ -224,12 +226,14 @@ public sealed partial class PobWidget
         { detailKind = kind; detailId = selections.TryGetValue(kind, out var remembered) && entries.Any(e => I(e, "id") == remembered) ? remembered : I(entries[0], "id"); }
         var header = new List<WidgetElement> { Text(skills ? "Skill groups" : "Equipped items", "list.heading", "pob-eyebrow") };
         AddSet(header, skills ? "skillSets" : "itemSets", skills ? "skills" : "items");
+        if(skills)header.Add(UI.Row("pob.group-create.actions",Button("New group","group-create"),Button("Paste group","group-paste")).Classes("pob-toolbar"));
         var list = new List<WidgetElement>();
         foreach (var entry in entries)
         {
             var id = I(entry, "id");
             var title = skills ? S(entry, "title") : S(entry, "name", S(entry, "base"));
             var subtitle = skills ? $"{A(entry, "gems").Length} gems" + (B(entry, "main") ? " · Main skill" : "") + (B(entry,"fullDps")?" · Full DPS":"") + (B(entry, "enabled") ? "" : " · Disabled") : S(entry, "slot");
+            if(skills&&B(entry,"generated"))subtitle="Granted skill"+(S(entry,"slot").Length>0?" · "+S(entry,"slot"):"")+(B(entry,"main")?" · Main skill":"")+(B(entry,"fullDps")?" · Full DPS":"")+(B(entry,"enabled")?"":" · Disabled");
             if(id==detailId)subtitle+=" · Inspecting";
             list.Add(UI.ActionSurface(kind + "." + id, "pob." + kind + "." + id, title + ", " + subtitle, ActionSurfaceOrientation.Vertical,
                 Text(Limit(title, 160), kind + ".title." + id, "pob-list-title"),
@@ -248,10 +252,13 @@ public sealed partial class PobWidget
         var action=skills?"skill-options":pastedItem is null?"item-paste":"item-resume";
         var detailPanel=UI.Stack("pob.detail",
             Text(skills ? "Skill details" : "Item details", "detail.heading", "pob-eyebrow"),
-            UI.Button(skills?"Selected skill options":pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action)
-                .FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),
+            skills?UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId),Button("Manage group","group-manage").FocusLeft(returnId)).Classes("pob-toolbar"):
+                UI.Button(pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action).FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),
             UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
             .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
+        if(skills&&entries.Length==0)
+            detailPanel=UI.Stack("pob.detail",Text("No skill groups in this set.","skill-empty.title","pob-heading"),
+                Text("Choose New group to add a skill and its supports, or paste a group copied from desktop PoB.","skill-empty.help","pob-muted")).Classes("pob-panel");
         if(skills&&entries.Length>0)
         {
             var gems=A(entries.First(e=>I(e,"id")==detailId),"gems");
@@ -261,22 +268,22 @@ public sealed partial class PobWidget
                 detailPanel=UI.Stack("pob.detail",
                     QuickControls(UI.Stack("pob.skill.actions",new WidgetElement[]{
                         Text("Skill details","detail.heading","pob-eyebrow"),
-                        UI.Button("Selected skill options",action,"pob."+action).FocusLeft(returnId).Classes("pob-button"),
+                        UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId),Button("Manage group","group-manage").FocusLeft(returnId)).Classes("pob-toolbar"),
                         details[0],
                         UI.Grid("pob.skill.group-actions",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star(),GridTrack.Star()],
                             details.Skip(1).Take(3).Select((row,index)=>LinkLeft(row,returnId).InGrid(column:index)).ToArray()).Spacing(0,8)
                         }).Classes("pob-buildtools"),
                         "pob."+action,"pob.detail.scroll","Gems",true),
                     QuickControls(UI.VerticalScroll("pob.detail.scroll",details.Skip(4).Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"),
-                        "pob.gem."+I(gems[0],"id")+"level","pob.skill.actions","Skill actions",true))
+                        "pob.gem."+I(gems[0],"id")+(B(gems[0],"levelReadOnly")?"quality":"level"),"pob.skill.actions","Skill actions",true))
                     .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
         }
         var sets=A(State,skills?"skillSets":"itemSets").Length>1;
-        var quick=sets&&NeedsQuickControls(entries.Length);
+        var quick=(skills||sets)&&NeedsQuickControls(entries.Length);
         ContainerElement tools=UI.Stack("pob.inventory.tools",header.ToArray()).Classes("pob-buildtools");
         ContainerElement rows=UI.VerticalScroll("pob.inventory.rows",list.ToArray()).Classes("pob-scroll");
-        if(sets)tools=QuickControls(tools,"pob.set."+(skills?"skills":"items"),"pob.inventory.rows",skills?"Skill groups":"Equipment",quick);
-        if(entries.Length>0)rows=QuickControls(rows,"pob."+kind+"."+I(entries[0],"id"),"pob.inventory.tools",skills?"Skill set":"Equipment set",quick);
+        if(sets||skills)tools=QuickControls(tools,sets?"pob.set."+(skills?"skills":"items"):"pob.group-create","pob.inventory.rows",skills?"Skill groups":"Equipment",quick);
+        if(entries.Length>0)rows=QuickControls(rows,"pob."+kind+"."+I(entries[0],"id"),"pob.inventory.tools",skills?"Group controls":"Equipment set",quick);
         return Split("inventory",UI.Stack("pob.list",tools,rows).Classes("pob-panel","pob-tree-main"), detailPanel, 1, 1.55);
     }
 

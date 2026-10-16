@@ -166,7 +166,7 @@ public sealed partial class PobWidget : Widget
             else
             {
                 children.Add(BuildHeader());
-                children.Add(section is "Tree" or "Configuration" or "Notes" ? CompactHeadlines() : Headlines());
+                children.Add(section is "Tree" or "Configuration" or "Notes" || detailKind is "skill-manage" or "gem-picker" ? CompactHeadlines() : Headlines());
                 children.Add(Navigation());
                 if (pendingBefore is not null && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
@@ -189,7 +189,7 @@ public sealed partial class PobWidget : Widget
             {
                 FocusGroupEntryRequest = ContentFocusRequest(),
             };
-            return WithBuildConfirmation(view);
+            return WithSkillConfirmation(WithBuildConfirmation(view));
         }
     }
 
@@ -198,6 +198,7 @@ public sealed partial class PobWidget : Widget
         "Calcs" => "pob.headline.0",
         "Tree" => detailKind=="node" ? A(State,"nodes").Any(n=>I(n,"id")==detailId && (B(n,"canAllocate")||B(n,"canRefund"))) ? "pob.node-change" : "pob.back" : "pob.search",
         "Skills" when A(State,"skills").Length>0 => "pob.skill."+detailId,
+        "Skills" => "pob.group-create",
         "Items" when A(State,"items").Length>0 => "pob.item."+detailId,
         "Configuration" when ConfigurationSections().Length>0 => "pob.config.category."+Math.Max(0,Array.IndexOf(ConfigurationSections(),configSection)),
         _ => "pob.tab."+Array.IndexOf(Sections,section),
@@ -289,11 +290,19 @@ public sealed partial class PobWidget : Widget
             var fields = new[]{"level","quality","count"};
             var controls = fields.Select((field, index) => UI.Stack("pob.gemfield." + id + field,
                 Text(char.ToUpperInvariant(field[0]) + field[1..], "gemlabel."+id+field, "pob-small"),
-                UI.TextEntry(S(gem,field),field,"gem."+id+"."+field,"pob.gem."+id+field).Classes("pob-input"))
+                field=="level"&&B(gem,"levelReadOnly")
+                    ? Text(S(gem,field),"gem."+id+field,"pob-field-label")
+                    : UI.TextEntry(S(gem,field),field,"gem."+id+"."+field,"pob.gem."+id+field).Classes("pob-input"))
                 .InGrid(column:index)).ToArray();
-            rows.Add(UI.Stack("pob.gemcard." + id, Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue"),
-                UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],fields.Select(_=>GridTrack.Star()).ToArray(),controls).Spacing(0,8))
-                .Classes("pob-context-card"));
+            var card=new List<WidgetElement>{Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue"),
+                UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],fields.Select(_=>GridTrack.Star()).ToArray(),controls).Spacing(0,8)};
+            if(B(gem,"levelReadOnly"))
+            {
+                var source=S(skill,"sourceName");var slot=S(skill,"slot");
+                var origin=source.Length>0?source+(slot.Length>0?" · "+slot:""):"this build's effects";
+                card.Add(Text("Granted by "+origin+". Level is determined by its source.","gem.source."+id,"pob-muted"));
+            }
+            rows.Add(UI.Stack("pob.gemcard."+id,card.ToArray()).Classes("pob-context-card"));
         }
         return rows;
     }

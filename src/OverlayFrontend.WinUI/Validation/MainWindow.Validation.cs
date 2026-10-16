@@ -245,6 +245,8 @@ public sealed partial class MainWindow
             page.EnablePobQuickControlsValidation(quickProbe);
         if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-notes") is {} notesProbe)
             page.EnablePobNotesValidation(notesProbe);
+        if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-skill-edits") is {} skillProbe)
+            page.EnablePobSkillEditsValidation(skillProbe);
         if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-browser-guide") is {} guideProbe)
             page.EnableBrowserGuideValidation(guideProbe);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments,"--validation-viewport-dips") is { } viewport)

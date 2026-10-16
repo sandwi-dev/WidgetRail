@@ -81,6 +81,7 @@ public sealed partial class PobWidget
         if(busy||focusRequestSequence==0)return null;
         if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};
         if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.history"};
+        if(detailKind is "skill-manage" or "gem-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="gem-picker"?"pob.gem-picker.tools":"pob.skill-manage.tools"};
         if(detailKind.Length>0&&!InlineDetail)return null;
         if(section=="Tree"&&detailKind!="node"&&passiveReturnKey is not null&&passives is not null)
         {
