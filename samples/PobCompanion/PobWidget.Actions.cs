@@ -66,6 +66,10 @@ public sealed partial class PobWidget
             else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(Sections,section);section=Sections[(index+(id=="next-section"?1:Sections.Length-1))%Sections.Length];detailKind="";page=0;filter=""; }
             else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";page=0;filter="";}
             else if(id=="search") {filter=action.CommittedText??"";page=0;}
+            else if(parts[0]=="config-section"&&parts.Length==2&&int.TryParse(parts[1],out var category)&&category>=0&&category<ConfigurationSections().Length)
+            {configSection=ConfigurationSections()[category];filter="";}
+            else if(id=="config-help")configHelp=!configHelp;
+            else if(id=="config-clear-search")filter="";
             else if(id=="page-next")page++;
             else if(id=="page-previous")page=Math.Max(0,page-1);
             else if(parts[0] is "node" or "skill" or "item" && parts.Length==2 && int.TryParse(parts[1],out var detail))
@@ -115,6 +119,7 @@ public sealed partial class PobWidget
     private void Restore(string xml,bool clearPreview)=>Work(async token=>{var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);lock(gate){result=next;if(clearPreview)pendingBefore=null;}await RefreshMapAsync(token);},"Restoring build…");
 
     private WidgetWebSession? mapSession;
+    private string? mapArtworkVersion;
     private void SendNodeSelection(int nodeId)
     {
         if(mapSession is not {} session)return;
@@ -137,11 +142,22 @@ public sealed partial class PobWidget
     private async Task OpenMapAsync(CancellationToken token)
     {
         if(mapSession is not null){await mapSession.DisposeAsync();mapSession=null;}
-        var source=WebSessionSource.Package("payload/web/tree.html",[
+        var resources=new List<EmbeddedMediaResource>{
             new(){Path="payload/web/tree.html",ContentType="text/html"},new(){Path="payload/web/tree.js",ContentType="text/javascript"},
-            new(){Path="payload/web/tree.css",ContentType="text/css"},new(){Path="payload/web/web-session.js",ContentType="text/javascript"}]);
+            new(){Path="payload/web/tree.css",ContentType="text/css"},new(){Path="payload/web/web-session.js",ContentType="text/javascript"}};
+        var version=S(State,"treeVersion");
+        if(!version.All(c=>char.IsAsciiLetterOrDigit(c)||c=='_'))throw new IOException("Invalid tree artwork version.");
+        var art=artworkDirectory is null?null:Path.Combine(artworkDirectory,version);
+        if(art is not null&&Directory.Exists(art))
+        {
+            resources.Add(new(){Path="payload/web/art/"+version+"/index.json",ContentType="application/json"});
+            foreach(var file in Directory.EnumerateFiles(art,"nodes-*.jpg").Order())
+                resources.Add(new(){Path="payload/web/art/"+version+"/"+Path.GetFileName(file),ContentType="image/jpeg"});
+        }
+        var source=WebSessionSource.Package("payload/web/tree.html",resources);
         var session=await HostServices.WebSessions.OpenAsync(new("passive-tree","Passive skill tree",source){Browser=new(){Chrome=BrowserChrome.OnDemand,Background=BrowserBackgroundMode.Automatic}},token);
         mapSession=session;
+        mapArtworkVersion=version;
         _=ReceiveMapAsync(session);
         lock(gate)detailKind="map";
         Invalidate();
@@ -158,6 +174,15 @@ public sealed partial class PobWidget
                 {
                     JsonElement snapshot;lock(gate)snapshot=State;
                     await SendMapAsync(session,snapshot,false,WidgetLifetimeToken);
+                }
+                else if(S(message,"type")=="inspect"&&message.TryGetProperty("id",out var inspectedId)&&inspectedId.TryGetInt32(out var inspected)&&
+                    message.TryGetProperty("revision",out var requestRevision)&&requestRevision.TryGetInt64(out var inspectedRevision))
+                {
+                    JsonElement node;lock(gate)node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==inspected);
+                    if(node.ValueKind==JsonValueKind.Object)
+                        await session.PostMessageAsync(new{type="tooltip",id=inspected,revision=inspectedRevision,
+                            name=Limit(S(node,"name"),160),description=Limit(S(node,"description"),2500),kind=S(node,"kind"),allocated=B(node,"allocated"),
+                            points=B(node,"allocated")?I(node,"refundCount"):I(node,"pathCount"),canAllocate=B(node,"canAllocate"),canRefund=B(node,"canRefund"),requiresChoice=B(node,"requiresChoice")},WidgetLifetimeToken);
                 }
                 else if(S(message,"type")=="select")
                 {
@@ -178,6 +203,7 @@ public sealed partial class PobWidget
     {
         WidgetWebSession? session; JsonElement snapshot;
         lock(gate){session=mapSession;snapshot=State;}
+        if(session is not null&&mapArtworkVersion!=S(snapshot,"treeVersion")){await OpenMapAsync(token);return;}
         if(session is not null) await SendMapAsync(session,snapshot,true,token);
     }
     private async Task SendMapAsync(WidgetWebSession session,JsonElement snapshot,bool preserve,CancellationToken token)

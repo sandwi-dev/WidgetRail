@@ -130,11 +130,14 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         }
         if (directDecisionButtons)
         {
-            if (entries.Count != 2) throw new ArgumentException("Direct decisions require two choices.", nameof(entries));
+            if (entries.Count is <1 or >2) throw new ArgumentException("Direct decisions require one or two choices.", nameof(entries));
             PrimaryButtonText = entries[0].Label;
-            SecondaryButtonText = entries[1].Label;
             PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(0); };
-            SecondaryButtonClick += (_, args) => { args.Cancel = true; Choose(1); };
+            if(entries.Count==2)
+            {
+                SecondaryButtonText = entries[1].Label;
+                SecondaryButtonClick += (_, args) => { args.Cancel = true; Choose(1); };
+            }
         }
         else if (entries.Count > 0)
         {
@@ -145,14 +148,8 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
                 choiceItems.Add(item);
             }
             RefreshChoiceGroups();
-            if (entries.Count > 1) content.Children.Add(choices);
-            // List entries are already direct actions (pointer, Enter and A).
-            // A second generic "Open" button obscures destructive action intent.
-            if (entries.Count == 1)
-            {
-                PrimaryButtonText = entries[0].Label;
-                PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(0); };
-            }
+            // A one-item list is still a list. Only an explicit decision uses footer actions.
+            content.Children.Add(choices);
         }
         choices.ItemClick += (_, args) =>
         {

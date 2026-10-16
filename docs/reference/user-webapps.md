@@ -4,7 +4,7 @@ Open **Settings → Widgets → Add webapp**, enter or paste a website address, 
 
 Each webapp has a stable identity and its own persistent browser profile. Renaming it preserves sign-in, website permissions and extension preferences. It uses the host's standard webapp browser, notifications, pinning and lifecycle behavior without a separate widget executable. Tray **Widget → Manage widget** opens its editor; **Settings → Widgets → Manage webapps** also provides rename and removal. Removal takes the entry and cached icon out of the rail; browser data is retained.
 
-Turn off **Show in rail** in the editor to hide a webapp without removing it. It remains available in **Manage webapps** so you can enable it again.
+Turn off **Enabled** in the editor to remove a webapp from the rail and radial chooser without deleting it. It remains available in **Manage webapps** so you can enable it again.
 
 HTTP-only sites keep ordinary links inside the webapp, matching the browser's navigation policy. HTTPS sites use the standard webapp policy for links to other origins.
 

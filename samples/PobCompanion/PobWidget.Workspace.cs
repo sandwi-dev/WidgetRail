@@ -19,7 +19,7 @@ public sealed partial class PobWidget
         {
             var choices = loadouts.Select((l, i) => new SelectOption("loadout" + i, S(l, "title"), "loadout." + i, B(l, "active"))).ToList();
             if (!choices.Any(c => c.IsSelected)) choices.Insert(0, new("custom", "Independent sets", "noop", true));
-            controls.Add(UI.Select("Loadout", choices, "pob.loadout").Classes("pob-button", "pob-loadout"));
+            controls.Add(UI.Select("Loadout", choices, "pob.loadout").Classes("pob-select", "pob-loadout"));
         }
         controls.Add(Button("Build & import", "menu"));
         var heading = new List<WidgetElement>();
@@ -35,7 +35,7 @@ public sealed partial class PobWidget
     {
         var tabs = Sections.Select((s, i) => (WidgetElement)UI.Button(s, "section." + i, i == 0 ? "pob.section" : "pob.tab." + i)
             .Selected(section == s).Classes("pob-tab").InGrid(column: i)).ToArray();
-        return UI.Grid("pob.navigation", [GridTrack.Auto()], Sections.Select(_ => GridTrack.Star()).ToArray(), tabs).Spacing(0, 5).Classes("pob-tabs");
+        return UI.Grid("pob.navigation", [GridTrack.Auto()], Sections.Select(s => GridTrack.Star(s == "Configuration" ? 1.5 : 1)).ToArray(), tabs).Spacing(0, 5).Classes("pob-tabs");
     }
 
     private WidgetElement Headlines()
@@ -89,6 +89,8 @@ public sealed partial class PobWidget
         if (section == "Calcs" || detailKind == "stat") return Overview();
         if (section is "Skills" or "Items") return InventoryWorkspace();
         if (section == "Tree") return TreeWorkspace();
+        if (section == "Configuration") return ConfigurationWorkspace();
+        if (section == "Notes") return NotesWorkspace();
         return UI.VerticalScroll("pob.scroll", Content().ToArray()).Classes("pob-scroll", "pob-panel");
     }
 
@@ -209,7 +211,7 @@ public sealed partial class PobWidget
         else
         {
             side.Add(Text("Find a passive", "tree.searchtitle", "pob-eyebrow"));
-            side.Add(UI.TextEntry(filter, "Search passives", "search", "pob.search").Classes("pob-button"));
+            side.Add(UI.TextEntry(filter, "Search passives", "search", "pob.search").Classes("pob-input"));
             var nodes = A(State, "nodes").Where(n => filter.Length > 0 ? (S(n, "name") + S(n, "description")).Contains(filter, StringComparison.OrdinalIgnoreCase) : B(n, "allocated")).ToArray();
             AddPage(side, nodes, n => Button(S(n, "name"), "node." + I(n, "id")));
         }

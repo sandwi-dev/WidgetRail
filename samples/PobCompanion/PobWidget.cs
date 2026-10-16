@@ -11,6 +11,7 @@ public sealed partial class PobWidget : Widget
     private readonly int game;
     private readonly string dataDirectory;
     private readonly PobEngine engine;
+    private readonly string? artworkDirectory;
     private readonly Func<string> readClipboard = ClipboardText.Read;
     private PobResult? result, pendingBefore;
     private readonly Stack<string> undo = new();
@@ -32,6 +33,7 @@ public sealed partial class PobWidget : Widget
         this.game = game;
         this.dataDirectory = dataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "applications", "pob" + game);
         engine = new(Path.Combine(payloadDirectory, "pob-engine"), Path.Combine(payloadDirectory, "runtime"), Path.Combine(payloadDirectory, "Engine", "bridge.lua"));
+        artworkDirectory=Path.Combine(payloadDirectory,"web","art");
     }
     public PobWidget(int game, PobEngine engine, string dataDirectory, Func<string>? readClipboard = null) { this.game = game; this.engine = engine; this.dataDirectory = dataDirectory; this.readClipboard = readClipboard ?? ClipboardText.Read; }
     private JsonElement State => result?.State ?? default;
@@ -97,7 +99,7 @@ public sealed partial class PobWidget : Widget
                 children.Add(Text($"PoE {game} Build Companion", "title", "pob-title"));
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
                 children.Add(Button("Paste build from clipboard", "paste"));
-                children.Add(UI.TextEntry("", "Build link or XML file path", "import", "pob.import").Classes("pob-button"));
+                children.Add(UI.TextEntry("", "Build link or XML file path", "import", "pob.import").Classes("pob-input"));
                 children.Add(Button("Create a new build", "new"));
                 children.Add(Text("Calculations run locally. Imported originals are kept separately from your working copies. Not affiliated with Grinding Gear Games.", "notice", "pob-muted"));
                 AddLibrary(children);
@@ -105,7 +107,7 @@ public sealed partial class PobWidget : Widget
             else
             {
                 children.Add(BuildHeader());
-                children.Add(section == "Tree" ? CompactHeadlines() : Headlines());
+                children.Add(section is "Tree" or "Configuration" or "Notes" ? CompactHeadlines() : Headlines());
                 children.Add(Navigation());
                 if (pendingBefore is not null)
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not saved", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
@@ -150,23 +152,23 @@ public sealed partial class PobWidget : Widget
         if (detailKind == "menu")
         {
             rows.Add(Button("Back", "back"));
-            rows.Add(UI.TextEntry(BuildName(), "Build name", "rename", "pob.rename").Classes("pob-button"));
+            rows.Add(UI.TextEntry(BuildName(), "Build name", "rename", "pob.rename").Classes("pob-input"));
             rows.Add(Button("Paste another build", "paste"));
-            rows.Add(UI.TextEntry("", "Build link or XML file path", "import", "pob.import").Classes("pob-button"));
+            rows.Add(UI.TextEntry("", "Build link or XML file path", "import", "pob.import").Classes("pob-input"));
             rows.Add(Button("Copy PoB share code", "export"));
             rows.Add(Button("Save XML beside working copy", "export-file"));
             if (undo.Count > 0) rows.Add(Button("Undo last change", "undo"));
-            rows.Add(UI.TextEntry(S(State, "level"), "Character level", "level", "pob.level").Classes("pob-button"));
+            rows.Add(UI.TextEntry(S(State, "level"), "Character level", "level", "pob.level").Classes("pob-input"));
             foreach (var field in new[] { "classes", "ascendancies" })
             {
                 var kind = field == "classes" ? "class" : "ascendancy";
                 var options = A(State, field);
                 if (options.Length > 0) rows.Add(UI.Select(kind,
-                    options.Select(o => new SelectOption(kind + I(o,"id"), S(o,"title"), kind + "." + I(o,"id"), B(o,"active"))).ToArray(), "pob." + kind).Classes("pob-button"));
+                    options.Select(o => new SelectOption(kind + I(o,"id"), S(o,"title"), kind + "." + I(o,"id"), B(o,"active"))).ToArray(), "pob." + kind).Classes("pob-select"));
             }
             AddLibrary(rows); return rows;
         }
-        if (detailKind == "custom") { rows.Add(Button("Back to conditions", "back")); AddTextPages(rows, S(State, "customMods", "No custom modifiers in this configuration.")); return rows; }
+        if (detailKind == "custom") { rows.Add(Button("Back to conditions", "back")); AddReading(rows, S(State, "customMods", "No custom modifiers in this configuration."), "custom"); return rows; }
         if (detailKind == "choose-slot")
         {
             rows.Add(Button("Back to equipment", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
@@ -179,21 +181,9 @@ public sealed partial class PobWidget : Widget
             {
                 var choices=A(option,"options");if(choices.Length==0)continue;
                 var selected=Array.FindIndex(choices,o=>B(o,"active"));if(selected<0)selected=0;
-                var key=S(option,"id"); rows.Add(UI.Select(StatLabel(key.Replace("mainSkill","")),choices.Select((o,i)=>new SelectOption("choice"+i,S(o,"title"),"skill-option."+key+"."+I(o,"id"),i==selected)).ToArray(),"pob.option."+key).Classes("pob-button"));
+                var key=S(option,"id"); rows.Add(UI.Select(StatLabel(key.Replace("mainSkill","")),choices.Select((o,i)=>new SelectOption("choice"+i,S(o,"title"),"skill-option."+key+"."+I(o,"id"),i==selected)).ToArray(),"pob.option."+key).Classes("pob-select"));
             }
             if(rows.Count==2)rows.Add(Text("No additional choices for this skill.","no-options","pob-muted"));return rows;
-        }
-        switch (section)
-        {
-            case "Configuration":
-                AddSet(rows,"configSets","config");
-                rows.Add(Text("Imported assumptions remain active. Change them only if they match your intended scenario.","conditions.help","pob-muted"));
-                rows.Add(UI.TextEntry(filter,"Search conditions","search","pob.search").Classes("pob-button"));
-                rows.Add(Button("Read custom modifiers","custom"));
-                AddPage(rows,A(State,"conditions").Where(c => filter.Length == 0 || S(c,"title").Contains(filter,StringComparison.OrdinalIgnoreCase)).ToArray(),c=>Condition(c)); break;
-            case "Notes":
-                foreach(var link in GuideLinks().Select((url,index)=>(url,index))) rows.Add(UI.Button("Open guide · "+new Uri(link.url).Host,"guide-link."+link.index,"pob.guide-link."+link.index).OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url=link.url})).Classes("pob-button"));
-                AddTextPages(rows,S(State,"notes","No notes in this build.")); break;
         }
         return rows;
     }
@@ -201,16 +191,20 @@ public sealed partial class PobWidget : Widget
     private WidgetElement Condition(JsonElement c)
     {
         var key=Array.FindIndex(A(State,"conditions"),v=>S(v,"id")==S(c,"id")).ToString(CultureInfo.InvariantCulture); var value=c.GetProperty("value");
-        if (value.ValueKind is JsonValueKind.True or JsonValueKind.False) return Button(S(c,"title")+" · "+(value.GetBoolean()?"On":"Off"),"condition."+key);
+        var title=InlineLabel(S(c,"title"),S(c,"id"));
+        var categoryTarget="pob.config.category."+Math.Max(0,Array.IndexOf(ConfigurationSections(),configSection));
+        if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            return UI.Switch(title,value.GetBoolean(),"condition."+key,"pob.condition."+key).FocusLeft(categoryTarget).Classes("pob-toggle");
         var options=A(c,"options");
         if (options.Length>0)
         {
             var selected = Array.FindIndex(options,o=>S(o,"value")==S(c,"value"));
-            var choices=options.Select((o,i)=>new SelectOption("value"+i,S(o,"label"),"option."+key+"."+i,i==selected)).ToList();
-            if(selected<0) choices.Insert(0,new("current","Current · "+S(c,"value"),"noop",true));
-            return UI.Select(S(c,"title").TrimEnd(' ',':'),choices,"pob.condition."+key).Classes("pob-button");
+            var choices=options.Select((o,i)=>new SelectOption("value"+i,InlineLabel(S(o,"label"),"Default"),"option."+key+"."+i,i==selected)).ToList();
+            if(selected<0) choices.Insert(0,new("current",InlineLabel("Current · "+S(c,"value")),"noop",true));
+            return UI.Select(title.TrimEnd(' ',':'),choices,"pob.condition."+key).FocusLeft(categoryTarget).Classes("pob-select");
         }
-        return UI.Stack("pob.conditionrow."+key, Text(S(c,"title"),"conditionlabel."+key),UI.TextEntry(Limit(S(c,"value"),500),"Value","condition."+key,"pob.condition."+key).Classes("pob-button"));
+        return UI.Stack("pob.conditionrow."+key, Text(title,"conditionlabel."+key,"pob-field-label"),
+            UI.TextEntry(S(c,"value"),title,"condition."+key,"pob.condition."+key,2048).FocusLeft(categoryTarget).Classes("pob-input"));
     }
     private List<WidgetElement> NodeDetails()
     {
@@ -245,7 +239,7 @@ public sealed partial class PobWidget : Widget
             var fields = new[]{"level","quality","count"};
             var controls = fields.Select((field, index) => UI.Stack("pob.gemfield." + id + field,
                 Text(char.ToUpperInvariant(field[0]) + field[1..], "gemlabel."+id+field, "pob-small"),
-                UI.TextEntry(S(gem,field),field,"gem."+id+"."+field,"pob.gem."+id+field).Classes("pob-button"))
+                UI.TextEntry(S(gem,field),field,"gem."+id+"."+field,"pob.gem."+id+field).Classes("pob-input"))
                 .InGrid(column:index)).ToArray();
             rows.Add(UI.Stack("pob.gemcard." + id, Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue"),
                 UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],fields.Select(_=>GridTrack.Star()).ToArray(),controls).Spacing(0,8))
@@ -256,7 +250,7 @@ public sealed partial class PobWidget : Widget
     private void AddSet(List<WidgetElement> rows,string field,string kind)
     {
         var sets=A(State,field); if(sets.Length<2)return;
-        rows.Add(UI.Select("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Classes("pob-button"));
+        rows.Add(UI.Select("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Classes("pob-select"));
     }
     private void AddPage(List<WidgetElement> rows,JsonElement[] entries,Func<JsonElement,WidgetElement> render)
     {
@@ -265,12 +259,6 @@ public sealed partial class PobWidget : Widget
         rows.AddRange(entries.Skip(page*PageSize).Take(PageSize).Select(render));
         if(page>0)rows.Add(Button("Previous page","page-previous"));
         if((page+1)*PageSize<entries.Length)rows.Add(Button("Next page","page-next"));
-    }
-    private void AddTextPages(List<WidgetElement> rows,string text)
-    {
-        var chunks=Enumerable.Range(0,Math.Max(1,(text.Length+2499)/2500)).Select(i=>text.Substring(Math.Min(i*2500,text.Length),Math.Min(2500,Math.Max(0,text.Length-i*2500)))).ToArray();
-        page=Math.Clamp(page,0,chunks.Length-1);rows.Add(Text(chunks[page],"reading"));
-        if(page>0)rows.Add(Button("Previous page","page-previous"));if(page+1<chunks.Length)rows.Add(Button("Next page","page-next"));
     }
     private static string Format(double n)=>n.ToString("N1",CultureInfo.CurrentCulture);
     private string[] GuideLinks()=>System.Text.RegularExpressions.Regex.Matches(S(State,"notes"),@"https://[^\s<>""\[\]]+",System.Text.RegularExpressions.RegexOptions.None,TimeSpan.FromMilliseconds(100)).Select(m=>m.Value.TrimEnd('.',',',')')).Where(s=>s.Length<=2048&&Uri.TryCreate(s,UriKind.Absolute,out var uri)&&uri.UserInfo.Length==0).Distinct().Take(12).ToArray();

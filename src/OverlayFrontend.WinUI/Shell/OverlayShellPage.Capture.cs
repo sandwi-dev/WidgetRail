@@ -109,7 +109,7 @@ internal sealed partial class OverlayShellPage
                     $"A {imageSize} screenshot will be taken {delay}.") +
                 " The application in front when capture begins will be captured." +
                 (video && request.Options is not null ? "\n\nReopen WidgetRail to finish recording and review it." : "\n\nReopen WidgetRail when finished to review your capture."),
-                (HostDialogChoice[])[new("proceed", "Proceed")], token);
+                (HostDialogChoice[])[new("proceed", "Proceed")], token, directDecisionButtons:true);
             if (selected != "proceed" || HideForCaptureRequested is null || !await session.IsCaptureCurrentAsync(request.RequestId, token) ||
                 !await HideForCaptureRequested(token)) throw new OperationCanceledException();
             renewal = RenewAsync();

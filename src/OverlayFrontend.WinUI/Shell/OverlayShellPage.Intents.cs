@@ -131,7 +131,7 @@ internal sealed partial class OverlayShellPage
                     if (completion.BrowserFallbackUrl is { } fallback)
                     {
                         if (await ShowHostChoiceAsync("Could not open the link", "The selected widget could not open this page.",
-                            (HostDialogChoice[])[new("browser", "Open in default browser")], cancellation.Token) == "browser") external = fallback;
+                            (HostDialogChoice[])[new("browser", "Open in default browser")], cancellation.Token, directDecisionButtons:true) == "browser") external = fallback;
                     }
                     else await ShowHostChoiceAsync("Cannot open this item", "The destination is no longer available. Please try again.", [], cancellation.Token);
                 }
@@ -214,7 +214,7 @@ internal sealed partial class OverlayShellPage
         var root = pinnedOwner?.Window.AutomationRoot.XamlRoot ?? XamlRoot;
         var originalFocus = FocusManager.GetFocusedElement(root) as Control;
         var originalState = original?.CapturePresentationState();
-        var dialog = new HostChoiceDialog(title, message, choices, directDecisionButtons) { XamlRoot = root };
+        var dialog = new HostChoiceDialog(title, message, choices, directDecisionButtons || primaryButtonText is not null && choices.Count==1) { XamlRoot = root };
         dialog.ConstrainMessageViewport(root.Size.Height);
         if (primaryButtonText is not null) dialog.PrimaryButtonText = primaryButtonText;
         hostChoiceDialog = dialog;

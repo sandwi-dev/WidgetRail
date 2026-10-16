@@ -1,4 +1,4 @@
-text { color: var(--text); }
+text { color: var(--text); text-align: start; }
 .pob-root { width: 100%; height: 100%; min-height: 0px; min-width: 0px; gap: 12px; padding: 20px; }
 .pob-title { font-size: 26px; font-weight: 600; color: var(--text); max-lines: 1; text-overflow: ellipsis; }
 .pob-heading { font-size: 18px; font-weight: 600; color: var(--text); }
@@ -8,21 +8,21 @@ text { color: var(--text); }
 .pob-eyebrow { color: var(--text-muted); font-size: 11px; font-weight: 600; }
 .pob-toolbar { gap: 8px; align: center; }
 .pob-loadout { max-width: 280px; }
-.pob-button { min-height: 40px; padding: 9px 12px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 8px; color: var(--text); font-size: 14px; }
+.pob-button { min-height: 44px; padding: 10px 12px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 8px; color: var(--text); font-size: 14px; text-align: start; }
 .pob-button:focused { background: var(--surface); color: var(--text); border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: -2px; }
 .pob-scroll { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; gap: 10px; }
 .pob-workspace { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; }
 .pob-panel { padding: 16px; background: var(--surface-raised); corner-radius: 12px; gap: 12px; }
 .pob-card { padding: 14px; background: var(--surface-raised); corner-radius: 12px; gap: 7px; min-width: 0px; }
 .pob-context-card { padding: 12px; background: var(--surface); corner-radius: 8px; gap: 6px; }
-.pob-metric { padding: 12px 16px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; gap: 4px; min-width: 0px; }
+.pob-metric { padding: 12px 16px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; gap: 4px; min-width: 0px; text-align: start; }
 .pob-metric:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .pob-number { font-size: 29px; font-weight: 600; }
 .pob-stat-row { padding: 7px 4px; min-height: 38px; gap: 8px; justify: space-between; corner-radius: 5px; background: transparent; }
 .pob-stat-row:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .pob-stat-row:selected { background: var(--surface); }
 .pob-stat-label { color: var(--text-muted); font-size: 13px; min-width: 0px; flex-grow: 1; }
-.pob-stat-value { color: var(--text); font-size: 15px; font-weight: 600; }
+.pob-stat-value { color: var(--text); font-size: 15px; font-weight: 600; text-align: end; }
 .pob-tabs { padding: 4px; background: var(--surface-raised); corner-radius: 10px; }
 .pob-tab { padding: 10px 8px; min-height: 40px; color: var(--text-muted); background: transparent; border-width: 1px; border-color: transparent; corner-radius: 7px; text-align: center; }
 .pob-tab:selected { background: var(--surface); color: var(--text); border-color: var(--border, var(--surface-muted)); }
@@ -52,3 +52,14 @@ text { color: var(--text); }
 .pob-root { background: var(--surface); }
 
 .pob-tree-title { font-size:24px; font-weight:700; color:var(--text); max-lines:1; text-overflow:ellipsis; }
+.pob-input { min-height:44px; padding:10px 12px; font-size:14px; text-align:start; }
+.pob-select { min-height:44px; padding:10px 12px; font-size:14px; text-align:start; }
+.pob-toggle { min-height:44px; padding:10px 12px; font-size:14px; text-align:start; }
+.pob-category { min-height:44px; padding:10px 12px; text-align:start; background:transparent; color:var(--text); border-color:transparent; border-width:1px; corner-radius:6px; font-size:14px; }
+.pob-category:selected { background:var(--surface); border-color:var(--border-strong,var(--focus)); }
+.pob-category:focused { outline-color:var(--focus); outline-width:2px; outline-offset:-2px; }
+.pob-setting { gap:8px; padding:12px 0px; }
+.pob-field-label { font-size:14px; font-weight:600; color:var(--text); }
+.pob-help { font-size:13px; color:var(--text-muted); text-align:start; }
+.pob-prose { font-size:15px; color:var(--text); text-align:start; }
+.pob-reading { gap:12px; max-width:900px; width:100%; }

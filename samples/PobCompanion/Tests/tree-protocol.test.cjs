@@ -11,18 +11,20 @@ class Element {
   append(child) { child.parent = this; this.children.push(child); elements.set(child.id, child); }
   remove() { this.parent.children = this.parent.children.filter(child => child !== this); elements.delete(this.id); }
   setAttribute(name, value) { this.attributes[name] = value; }
-  addEventListener() {}
+  addEventListener(type,handler) { (this.events ??= {})[type]=handler; }
   getContext() { return new Proxy({}, { get: () => () => {} }); }
+  getBoundingClientRect() { return {left:0,top:0}; }
 }
-for (const id of ['map','lines','nodes','status','added','removed','selected','fit','ascendancy','locate','in','out','left','right','up','down']) elements.set(id, new Element(id));
-let receive;
+for (const id of ['map','lines','nodes','status','added','removed','selected','fit','ascendancy','locate','in','out','left','right','up','down','tooltip','tooltip-name','tooltip-kind','tooltip-copy','tooltip-cost']) elements.set(id, new Element(id));
+let receive, resize;
 const sandbox = {
-  document: { getElementById: id => elements.get(id), createElement: () => new Element(), activeElement: null },
+  document: { getElementById: id => elements.get(id), createElement: () => new Element(), activeElement: null, documentElement:{clientWidth:1000,clientHeight:600,dataset:{}} },
   chrome: { webview: { addEventListener: (_, callback) => receive = callback } },
   WidgetRailWebSession: { post: value => sent.push(value) },
-  window: { addEventListener() {} }, ResizeObserver: class { observe() {} },
+  window: { addEventListener() {} }, ResizeObserver: class { constructor(callback) { resize=callback; } observe() {} },
   getComputedStyle: () => ({ color: '#fff', backgroundColor: '#000' }), devicePixelRatio: 1,
   requestAnimationFrame: callback => frames.push(callback),
+  fetch:()=>Promise.reject(new Error('No fixture artwork')),setTimeout:callback=>{callback();return 1;},clearTimeout(){},
 };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../web/tree.js'), 'utf8'), sandbox);
 function message(data) { receive({ data }); while (frames.length) frames.shift()(); }
@@ -56,4 +58,27 @@ message({ type: 'end', revision: 2 });
 assert.match(label(1), /Attribute/, 'An old begin cannot replace the committed tree');
 elements.get('passive-2').onclick();
 assert.equal(sent.at(-1).id, 2);
+const map = elements.get('map');
+let prevented=false;
+map.events.wheel({ctrlKey:true,deltaX:0,deltaY:100,preventDefault(){prevented=true;}});
+assert.equal(prevented,false,'Mouse-sourced pinch must reach the browser');
+map.events.wheel({ctrlKey:false,deltaX:0,deltaY:100,preventDefault(){prevented=true;}});
+assert.equal(prevented,true,'Ordinary wheel still pans the tree');
+assert.equal(elements.get('ascendancy').disabled,true,'No selected ascendancy must not fall back to main tree');
+message({type:'begin',revision:4});
+message({type:'nodes',revision:4,items:[node(1,0,'Main',true),{...node(3,8000,'Ascendancy passive',false),ascendancy:true,ascendancyName:'Test ascendancy'}]});
+message({type:'end',revision:4,ascendancy:'Test ascendancy'});
+assert.equal(elements.get('ascendancy').disabled,false);
+elements.get('ascendancy').onclick();while(frames.length)frames.shift()();
+assert.equal(parseFloat(elements.get('passive-3').style.left),map.clientWidth/2,'Frame the selected ascendancy before any nodes are allocated');
+elements.get('passive-3').onpointerenter();
+assert.equal(sent.at(-1).type,'inspect');
+message({type:'tooltip',revision:4,id:3,name:'Test passive',kind:'Notable',description:'Adds damage',allocated:false,canAllocate:true,points:2});
+assert.equal(elements.get('tooltip-copy').textContent,'Adds damage');
+message({type:'tooltip',revision:3,id:3,name:'Stale',description:'Wrong'});
+assert.equal(elements.get('tooltip-copy').textContent,'Adds damage','Old tooltip replies cannot replace current information');
+elements.get('fit').onclick();while(frames.length)frames.shift()();
+assert.equal(elements.get('tooltip').hidden,true,'Changing tree framing dismisses the tooltip for the previous location');
+message({type:'tooltip',revision:4,id:3,name:'Late reply',description:'Wrong location'});
+assert.equal(elements.get('tooltip').hidden,true,'Late hover replies cannot reopen a tooltip after moving the map');
 console.log('PASS real tree page: atomic full/delta updates, changed labels/shapes, stale transactions, discard and selection');

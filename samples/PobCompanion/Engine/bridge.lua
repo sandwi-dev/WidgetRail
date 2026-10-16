@@ -28,10 +28,17 @@ local function configValue(d)
   return build.configTab:GetDefaultState(d.var,t)
 end
 local function recalc()
-  build.buildFlag=true
   if wipeGlobalCache then wipeGlobalCache() end
-  runCallback('OnFrame')
-  assert(not launch.promptMsg, 'PoB could not calculate this build')
+  -- Desktop settles auto-level changes on its next frame. A headless reply must
+  -- include the calculations for the level it reports, including after refunds.
+  for _=1,4 do
+    local level=build.characterLevel
+    build.buildFlag=true
+    runCallback('OnFrame')
+    assert(not launch.promptMsg, 'PoB could not calculate this build')
+    if level==build.characterLevel then return end
+  end
+  error('Automatic level did not settle; choose a manual level in desktop PoB')
 end
 local function choices(order, sets, active)
   local out={}; for _,id in ipairs(order or {}) do
@@ -138,7 +145,9 @@ local function snapshot()
     if item then result.items[#result.items+1]={id=slotIndex,itemId=item.id,slot=slot.slotName or slot.id or '',name=clean(item.name or item.baseName),rarity=item.rarity,raw=item.raw or '',base=clean(item.baseName),details=itemDetails(item,slot)} end
   end
   local seen={}
+  local configSection='General'
   for _,d in ipairs(configDefinitions) do
+    if d.section then configSection=clean(d.section) end
     if d.var then
       local control=build.configTab.varControls[d.var]
       local ok,shown=pcall(function()return control and control:IsShown()end)
@@ -147,7 +156,10 @@ local function snapshot()
       if not seen[d.var] and value~=nil and (build.configTab.input[d.var]~=nil or (ok and shown)) then
         seen[d.var]=true
         local options={}; if type(d.list)=='table' then for _,o in ipairs(d.list) do if type(o)=='table' then options[#options+1]={label=clean(o.label),value=o.val} end end end
-        result.conditions[#result.conditions+1]={id=d.var,title=clean(d.label or d.var),kind=d.type or 'text',value=value,options=options,description=type(d.tooltip)=='string' and clean(d.tooltip) or ''}
+        local description=d.tooltip
+        if type(description)=='function' then local valid,text=pcall(description,build.configTab.modList,build);description=valid and text or '' end
+        result.conditions[#result.conditions+1]={id=d.var,title=clean(d.label or d.var),section=configSection,applicable=ok and shown==true,
+          kind=d.type or 'text',value=value,options=options,description=type(description)=='string' and clean(description) or ''}
       end
     end
   end
@@ -162,8 +174,8 @@ local function snapshot()
       if path and build.spec.GetEffectiveAllocationPath then path=build.spec:GetEffectiveAllocationPath(n) end
       local canAllocate=not n.alloc and not start and path~=nil and not requiresChoice
       result.nodes[#result.nodes+1]={id=id,x=n.x,y=n.y,name=clean(n.dn),allocated=n.alloc==true,kind=n.type,
-        description=clean(table.concat(n.sd or {},'\n')),distance=n.pathDist or 0,
-        ascendancy=n.ascendancyName~=nil,canAllocate=canAllocate,canRefund=n.alloc==true and not start,requiresChoice=requiresChoice==true,
+        description=clean(table.concat(n.sd or {},'\n')),icon=n.icon or '',distance=n.pathDist or 0,
+        ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and not start,requiresChoice=requiresChoice==true,
         pathCount=path and #path or 0,refundCount=n.depends and #n.depends or 0}
     end
   end

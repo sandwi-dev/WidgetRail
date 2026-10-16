@@ -7,6 +7,12 @@ internal sealed partial class BrowserSurface
 {
     private AutomaticFieldTarget? fixtureLiveTarget;
     internal void ZoomForEditingValidation(double delta) => ChangeZoom(delta);
+    internal async Task HoverTreeNodeForValidationAsync()
+    {
+        using var point=JsonDocument.Parse(await EvaluateFixtureAsync("(()=>{const r=document.querySelector('.node').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()"));
+        await core!.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",JsonSerializer.Serialize(new{type="mouseMoved",
+            x=point.RootElement.GetProperty("x").GetDouble(),y=point.RootElement.GetProperty("y").GetDouble()}));
+    }
     internal async Task<string> ReadLiveFrameForValidationAsync()
     {
         if (FixturePage is null || fixtureLiveTarget is not { } target) throw new InvalidOperationException("Synthetic live frame required.");

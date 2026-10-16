@@ -76,6 +76,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private static void UpdateButtonLabel(Button button, string source)
     {
+        if (button is WidgetValueButton value) { value.SetLabel(source); return; }
         if (button.Content is not TextBlock label) button.Content = label = new TextBlock();
         WidgetTextStyleAdapter.SetSource(label, source);
     }

@@ -23,6 +23,8 @@ internal sealed partial class NativePopupTheme
                 {
                     control.Foreground = owner.dialogButtonText; control.FontWeight = owner.fontWeight; control.Background = owner.dialogButton;
                     control.BorderBrush = owner.dialogBorder; control.FontSize = owner.fontSize * zoom; control.MinHeight = 44 * zoom;
+                    if (control is WidgetValueButton)
+                    { control.Background = owner.dialogSurface; control.BorderThickness = new Thickness(1,1,1,2); }
                     control.FocusVisualPrimaryBrush = owner.dialogFocus; control.UseSystemFocusVisuals = true;
                     if (owner.font is not null) control.FontFamily = owner.font;
                     if (control is CheckBox)

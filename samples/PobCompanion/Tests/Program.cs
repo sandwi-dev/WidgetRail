@@ -15,6 +15,11 @@ void Check(bool passed,string name){results.Add(new{name,passed});Console.WriteL
 await BundleTests.RunAsync(Check);
 var tiny=$"<{(game==2?"PathOfBuilding2":"PathOfBuilding")}><Build level=\"1\"/></{(game==2?"PathOfBuilding2":"PathOfBuilding")}>";
 Check(BuildDocument.Decode(BuildDocument.Encode(tiny),game)==tiny,"Share code codec round trip");
+var longNotes=string.Concat(Enumerable.Repeat("A paragraph with a complete sentence.\n\n",180))+"Last paragraph 🧭";
+var reading=new List<WidgetElement>();PobWidget.AddReading(reading,longNotes,"notes");
+var readingView=new WidgetView(UI.Stack("reading",reading.ToArray())).CreateSnapshot("reading",1);
+Check(string.Concat(Nodes(readingView.Root).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text))==longNotes,"Continuous notes retain every character across bounded text blocks");
+Check(!Nodes(readingView.Root).Any(n=>n.Kind==ViewNodeKind.Button),"Reading notes never requires a Next page action");
 foreach(var path in new[]{@"\\example.invalid\share\build.xml",@"\\.\pipe\not-a-build"})
 {
     try{await BuildDocument.ReadAsync(path,game,default);Check(false,"Reject network and device paths before opening a file");}
@@ -130,6 +135,51 @@ if(firstXml is not null)
         while(Nodes(Snapshot(widget,100).Root).Any(n=>n.Id=="pob.cancel-operation"))
         { if(limit.Elapsed>TimeSpan.FromSeconds(65))throw new TimeoutException(action);await Task.Delay(25); }
     }
+    await Action("section.4");
+    var configuration=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="configuration fixture"},default);
+    var exportedConditions=configuration.State.GetProperty("conditions").EnumerateArray().ToArray();
+    var categories=exportedConditions.Select(c=>c.GetProperty("section").GetString()).Distinct().ToArray();
+    var observed=new HashSet<string>();
+    for(var category=0;category<categories.Length;category++)
+    {
+        await Action("config-section."+category);
+        var configSnapshot=Snapshot(widget,300+category);
+        var visible=Nodes(configSnapshot.Root).ToArray();
+        Check(visible.Any(n=>n.Id=="pob.config.title"&&n.Text==categories[category]),"Configuration preserves section "+categories[category]);
+        Check(!visible.Any(n=>n.Id is "pob.page-next" or "pob.page-previous"),"Configuration section scrolls without paging");
+        foreach(var node in visible.Where(n=>n.Id.StartsWith("pob.config.row.")))observed.Add(node.Id);
+    }
+    Check(observed.Count==exportedConditions.Length,"Every exported condition renders in its upstream section");
+    var multilineChoiceCount=0;
+    for(var multilineIndex=0;multilineIndex<exportedConditions.Length;multilineIndex++)
+    {
+        var condition=exportedConditions[multilineIndex];
+        if(!condition.TryGetProperty("options",out var choices))continue;
+        var choiceIndex=0;
+        foreach(var choice in choices.EnumerateArray())
+        {
+            if((choice.GetProperty("label").GetString()??"").Any(char.IsControl))
+            {
+                multilineChoiceCount++;
+                await Action($"option.{multilineIndex}.{choiceIndex}");await Action("apply");
+                var saved=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(Path.Combine(data,id+".xml")),name="multiline choice"},default);
+                var actual=saved.State.GetProperty("conditions").EnumerateArray().Single(c=>c.GetProperty("id").GetString()==condition.GetProperty("id").GetString()).GetProperty("value");
+                Check(actual.GetRawText()==choice.GetProperty("value").GetRawText(),"Multiline choice labels preserve the exact backend value after Apply and reload");
+                await Action("undo");
+                break;
+            }
+            choiceIndex++;
+        }
+    }
+    if(game==2)Check(multilineChoiceCount>0,"PoE 2 fixture exercises upstream multiline quest choices");
+    await Action("search","Enemy");
+    Check(Nodes(Snapshot(widget,350).Root).Any(n=>n.Id=="pob.config.title"&&n.Text=="Search results"),"Configuration search spans sections");
+    await Action("config-help");Snapshot(widget,351);
+    await Action("search","no-matching-condition-xyz");
+    Check(Nodes(Snapshot(widget,352).Root).Any(n=>n.Id=="pob.config.empty"),"Empty configuration search stays usable");
+    await Action("config-clear-search");
+    await Action("section.5");
+    Check(!Nodes(Snapshot(widget,353).Root).Any(n=>n.Id is "pob.page-next" or "pob.page-previous"),"Notes use a continuous scroll view");
     var working=Path.Combine(data,id+".xml");
     var originalSaved=File.ReadAllText(working);
     var widgetBaseline=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="widget baseline"},default);

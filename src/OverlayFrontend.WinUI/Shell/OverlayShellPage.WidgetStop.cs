@@ -13,7 +13,7 @@ internal sealed partial class OverlayShellPage
         if (owner is null || !widget.CanStop || widget.IsStopped) return;
         if (await ShowHostChoiceAsync("Stop widget?",
             $"{widget.Name}\n\nThis ends its activity, playback, calls and pinned content. It stays stopped until you reload it, including after restarting WidgetRail. Saved data and sign-ins are kept.",
-            (HostDialogChoice[])[new("stop", "Stop widget")], lifetime.Token) != "stop") return;
+            (HostDialogChoice[])[new("stop", "Stop widget")], lifetime.Token, directDecisionButtons:true) != "stop") return;
         await ChangeWidgetStoppedAsync(widget.Id, stopped: true);
     }
 

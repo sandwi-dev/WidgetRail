@@ -30,7 +30,8 @@ internal sealed partial class HostedWebSessionValidationPage : Page, IAsyncDispo
     {
         try
         {
-            var source = WebSessionSource.Package("index.html", new EmbeddedMediaResource[] { new() { Path = "index.html", ContentType = "text/html" } }) with { AllowAutoplay = true };
+            var source = WebSessionSource.Package("index.html", new EmbeddedMediaResource[] { new() { Path = "index.html", ContentType = "text/html" },
+                new(){Path="fixture.json",ContentType="application/json"} }) with { AllowAutoplay = true };
             var definition = new WebSessionDefinition("fixture", "Synthetic packaged session", source);
             var html = """
                 <!doctype html><html><body><button>Session fixture</button><script>
@@ -49,7 +50,9 @@ internal sealed partial class HostedWebSessionValidationPage : Page, IAsyncDispo
                 </script></body></html>
                 """;
             var bytes = Encoding.UTF8.GetBytes(html);
-            var resources = new[] { new BridgeWebSessionResource("index.html", "text/html", Convert.ToHexString(SHA256.HashData(bytes)), Convert.ToBase64String(bytes)) };
+            var jsonBytes=Encoding.UTF8.GetBytes("{\"value\":42}");
+            var resources = new[] { new BridgeWebSessionResource("index.html", "text/html", Convert.ToHexString(SHA256.HashData(bytes)), Convert.ToBase64String(bytes)),
+                new BridgeWebSessionResource("fixture.json","application/json",Convert.ToHexString(SHA256.HashData(jsonBytes)),Convert.ToBase64String(jsonBytes)) };
             first = Create("first", definition, resources); second = Create("second", definition, resources);
             parking.Children.Add(first); parking.Children.Add(second);
             await first.StartHostedSessionAsync(lifetime.Token);
@@ -67,6 +70,9 @@ internal sealed partial class HostedWebSessionValidationPage : Page, IAsyncDispo
             first.PostHostedMessage(encoded);
             using var echo = JsonDocument.Parse(WebSessionContract.DecodeMessage(await first.HostedMessages.ReadAsync(lifetime.Token)));
             Check(echo.RootElement.GetProperty("echo").GetProperty("text").GetString() == "synthetic", "Packaged messaging round trips while hidden");
+            await first.EvaluateFixtureAsync("window.assetRead=null;window.missingStatus=null;fetch('fixture.json').then(r=>r.json()).then(v=>window.assetRead=v.value);fetch('undeclared.json').then(r=>window.missingStatus=r.status);");
+            for(var attempt=0;attempt<30 && await first.EvaluateFixtureAsync("assetRead===42 && missingStatus===403")!="true";attempt++) await Task.Delay(50,lifetime.Token);
+            Check(await first.EvaluateFixtureAsync("assetRead===42 && missingStatus===403")=="true","Local fetch admits sealed JSON but rejects undeclared same-origin resources");
             await first.EvaluateFixtureAsync("window.blocked=null;fetch('http://127.0.0.1:23456/ungranted').then(()=>window.blocked=false,()=>window.blocked=true);");
             await Task.Delay(200, lifetime.Token);
             Check(await first.EvaluateFixtureAsync("window.blocked") == "true", "Undeclared local network requests are blocked");

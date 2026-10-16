@@ -40,7 +40,7 @@ internal sealed partial class OverlayShellPage
     {
         var apps = await WebApps.ReadAsync(lifetime.Token);
         var id = await ShowHostChoiceAsync("Your webapps", apps.Count == 0 ? "Add a webapp to keep a website in your rail." : "Choose a webapp to rename or remove.",
-            apps.Select(app => new HostDialogChoice(app.Id, app.Name, Value: (app.Enabled ? "" : "Hidden · ") + new Uri(app.Url).Host)).ToArray(), lifetime.Token, configure: dialog => dialog.FocusFirstOptionOnOpen = true);
+            apps.Select(app => new HostDialogChoice(app.Id, app.Name, Value: (app.Enabled ? "" : "Disabled · ") + new Uri(app.Url).Host)).ToArray(), lifetime.Token, configure: dialog => dialog.ConfigurePreferenceList(closeLabel:"Back"));
         if (id is not null) await EditUserWebAppAsync(id);
     }
 

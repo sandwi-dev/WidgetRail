@@ -18,6 +18,18 @@ internal sealed partial class OverlayShellPage
         replayRoots.Add(root, new());
         root.AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
         {
+            if(args.Key is VirtualKey.F11 or VirtualKey.F12)
+            {
+                args.Handled=true;
+                var trigger=ControllerFrame.Create();trigger.Connected=1;Receive(trigger);
+                if(args.Key==VirtualKey.F11){trigger.LeftTriggerPressed=1;trigger.State.LeftTrigger=255;}
+                else{trigger.RightTriggerPressed=1;trigger.State.RightTrigger=255;}
+                Receive(trigger);
+                trigger.LeftTriggerPressed=trigger.RightTriggerPressed=0;
+                trigger.State.LeftTrigger=trigger.State.RightTrigger=0;
+                if(args.Key==VirtualKey.F11)trigger.LeftTriggerReleased=1;else trigger.RightTriggerReleased=1;
+                Receive(trigger);return;
+            }
             ushort mask = args.Key switch
             {
                 VirtualKey.F5 => 0x10, // Menu

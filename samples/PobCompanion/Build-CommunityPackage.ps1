@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$EngineCheckout,
     [Parameter(Mandatory)][string]$RuntimeDirectory,
     [Parameter(Mandatory)][string]$Cli,
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+    [string]$Python = 'python'
 )
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -23,6 +24,8 @@ dotnet publish (Join-Path $PSScriptRoot "Applications/Poe$Game/Poe${Game}Compani
 if($LASTEXITCODE -ne 0){throw 'Companion publish failed.'}
 foreach($dir in @('Engine','web')){Copy-Item (Join-Path $PSScriptRoot $dir) -Destination $payload -Recurse}
 Copy-Item (Join-Path $root 'src/WidgetSdk/WebSessionRuntime.js') (Join-Path $payload 'web/web-session.js')
+& $Python (Join-Path $PSScriptRoot 'Build-TreeArtwork.py') --engine $EngineCheckout --runtime $RuntimeDirectory --output (Join-Path $payload 'web/art')
+if($LASTEXITCODE -ne 0){throw 'Tree artwork preparation failed. Install requirements-artwork.txt into your build Python environment.'}
 Copy-Item (Join-Path $PSScriptRoot 'styles/default.wrss') (Join-Path $stage 'styles/default.wrss')
 Copy-Item (Join-Path $PSScriptRoot 'assets/companion.svg') (Join-Path $stage 'assets/icons/companion.svg')
 $engineTarget=Join-Path $out 'engine-source';New-Item -ItemType Directory -Force -Path $engineTarget,(Join-Path $payload 'runtime'),(Join-Path $payload 'licenses') | Out-Null

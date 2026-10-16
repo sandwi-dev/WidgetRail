@@ -157,6 +157,26 @@ select:focused {
   outline-offset: var(--focus-offset);
   scale: 1;
 }
+/* Buffered text-entry triggers retain their input identity even before focus. */
+textEntry {
+  min-height: 44px;
+  padding: 10px 14px;
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong, var(--border));
+  border-width: 1px;
+  corner-radius: 6px;
+  font-family: var(--font-text);
+  font-size: 15px;
+  font-weight: 400;
+  text-align: start;
+}
+textEntry:focused {
+  outline-color: var(--focus);
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
+}
+textEntry:disabled { opacity: 0.64; }
 progress {
   min-height: 4px;
   background: var(--surface-active);

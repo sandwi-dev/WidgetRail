@@ -99,7 +99,7 @@ internal sealed partial class OverlayShellPage
                     }
                     else if (action is "zip" or "folder") await ImportExtensionAsync(action == "folder", entry.Slot, pin);
                     else if (action == "remove" && await ShowHostChoiceAsync("Remove extension everywhere?", entry.Manifest.Name + "\nThis removes it and its saved settings from every profile.",
-                        (HostDialogChoice[])[new("remove", "Remove everywhere")], lifetime.Token, pinnedOwner: pin) == "remove")
+                        (HostDialogChoice[])[new("remove", "Remove everywhere")], lifetime.Token, directDecisionButtons:true, pinnedOwner: pin) == "remove")
                     { await manager.RemoveAsync(entry.Slot, lifetime.Token); break; }
                 }
             }
@@ -127,7 +127,7 @@ internal sealed partial class OverlayShellPage
             "\n\nStarts disabled in every profile unless you enable the default below. You can enable individual profiles after installation.");
         HostChoiceDialog? review = null;
         if (await ShowHostChoiceAsync(replace is null ? "Install extension?" : "Update extension?", description,
-            (HostDialogChoice[])[new("install", replace is null ? "Install" : "Update everywhere")], lifetime.Token, pinnedOwner: pin,
+            (HostDialogChoice[])[new("install", replace is null ? "Install" : "Update everywhere")], lifetime.Token, directDecisionButtons:true, pinnedOwner: pin,
             configure: dialog => { review = dialog; if (replace is null) dialog.AddRememberChoice("Enabled by default in existing and new eligible profiles"); }) == "install")
             await manager.InstallAsync(import, replace, review?.RememberChoice == true, lifetime.Token);
     }
@@ -172,7 +172,7 @@ internal sealed partial class OverlayShellPage
             {
                 var entry = (await manager.Store.ReadAsync(lifetime.Token)).Library.Single(e => e.Slot == parts[3]);
                 if (await ShowHostChoiceAsync("Remove extension everywhere?", entry.Manifest.Name + "\nThis removes it and its saved settings from every profile.",
-                    (HostDialogChoice[])[new("remove", "Remove everywhere")], lifetime.Token) == "remove") await manager.RemoveAsync(entry.Slot, lifetime.Token);
+                    (HostDialogChoice[])[new("remove", "Remove everywhere")], lifetime.Token, directDecisionButtons:true) == "remove") await manager.RemoveAsync(entry.Slot, lifetime.Token);
             }
         }
         catch (OperationCanceledException) when (retired || lifetime.IsCancellationRequested) { }

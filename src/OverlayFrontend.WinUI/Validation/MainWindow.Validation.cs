@@ -239,6 +239,8 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-tree") is {} treeProbe)
+            page.EnablePobTreeValidation(treeProbe);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments,"--validation-viewport-dips") is { } viewport)
         {
             var dimensions=viewport.Split('x');

@@ -29,7 +29,8 @@ internal sealed partial class OverlayShellPage
 
     private Task<string?> ShowBrowserChoiceAsync(Browser.BrowserSurface browser, string title, string message,
         IReadOnlyList<HostDialogChoice> choices, CancellationToken token, bool focusFirstChoice = false, HostChoicePreference? preference = null) =>
-        ShowBrowserChoiceCoreAsync(browser, title, message, choices, token, dialog => ConfigureBrowserChoice(dialog, focusFirstChoice, preference));
+        ShowBrowserChoiceCoreAsync(browser, title, message, choices, token, dialog => ConfigureBrowserChoice(dialog, focusFirstChoice, preference),
+            directDecisionButtons: !focusFirstChoice && preference is null && choices.Count==1);
 
     private static void ConfigureBrowserChoice(HostChoiceDialog dialog, bool focusFirstChoice, HostChoicePreference? preference)
     {

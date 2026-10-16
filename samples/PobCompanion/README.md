@@ -7,10 +7,10 @@ Two controller-first widgets share one implementation and run the unmodified Pat
 Paste a PoB share code or supported public build link, or enter the path to an exported XML file. The widget keeps the original import and a separate working copy. It reopens the selected working copy after restart.
 
 - **Calcs** groups headline statistics and detailed calculation breakdowns.
-- **Tree** shows the upstream passive-tree positions and rendered connections, with an adjacent node inspector. Main tree, ascendancy and selected-node framing keep navigation local.
+- **Tree** shows upstream passive-tree positions, rendered connections and node artwork, with an adjacent node inspector. Hover or dwell with the controller pointer for modifiers and point costs. Search selection frames the node; Main tree and Ascendancy frame their respective areas. L2/R2 use the host's pinch zoom, while the map buttons change its internal scale.
 - **Skills** and **Items** keep the list beside the selected entry. Item descriptions use upstream tooltip formatting.
-- **Configuration** edits supported upstream conditions while retaining imported assumptions.
-- **Notes** displays imported notes and opens guide links through the host.
+- **Configuration** retains upstream section names and order in a category list. Controls scroll within each section; search covers all sections, and Show explanations reveals the upstream help. Retained settings that are currently inapplicable are identified explicitly. Changes remain previews until applied.
+- **Notes** displays a continuous scrolling document and opens guide links through the host.
 
 Node allocation and refund changes are previews. **Apply** saves the working copy; **Discard** restores the previous tree and calculations. Refund previews include dependent nodes. **Undo** restores up to twelve committed changes during the current session. Switching active sets is saved immediately. Export uses the upstream engine's XML format and standard compressed share-code encoding.
 
@@ -31,6 +31,8 @@ Default working copies live under `%LOCALAPPDATA%/WidgetRail/applications/pob1` 
 ## Rebuilding
 
 `engine-lock.json` pins the PoB releases, LuaJIT and lua-utf8 source commits. `Prepare-Engines.ps1` fetches those exact sources and builds the x64 runtime using Visual Studio C++ tools. It writes `paths.json` containing the prepared source/runtime directories. `Build-CommunityPackage.ps1` accepts `-Game 1` or `-Game 2`, those directories, and a current `wrail` CLI path, producing a validated `.wrwidget` package in a fresh output directory.
+
+Artwork preparation uses Python with the versions in `requirements-artwork.txt`; pass `-Python` when using a dedicated build environment. `Build-TreeArtwork.py` reads artwork directly from the pinned Git objects, converts upstream sprite metadata and DDS arrays into small browser atlases, and verifies the resource bounds for each tree. Only the open tree's assets enter its web session. Python and the conversion libraries are not runtime dependencies. Node artwork retains the upstream game's visual identity; surrounding controls, connectors, focus and preview markers follow the selected WidgetRail theme.
 
 Install each resulting `.wrwidget` through **Settings → Widgets → Install local widget**. The packages use the full-access application runtime to launch their local Lua engine.
 

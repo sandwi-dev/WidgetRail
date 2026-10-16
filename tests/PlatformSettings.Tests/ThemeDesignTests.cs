@@ -60,6 +60,10 @@ internal static class ThemeDesignTests
                 Resolve(reloaded.Current.Theme, "body").Get("color")?.Text, id + " leaves plain widget text to native default ink");
             Require(focused.Get("outline-width")?.Number >= 2, id + " has a thin focus edge");
             Require(Resolve(reloaded.Current.Theme, "button").Get("min-height")?.Number >= 44, id + " shrinks button targets");
+            var field=Resolve(reloaded.Current.Theme,"textEntry");
+            Require(field.Get("min-height")?.Number>=44 && field.Get("text-align")?.Text=="start",id+" lacks usable text-entry defaults");
+            Require(field.Get("background") is not null && field.Get("color")?.Text==Resolve(reloaded.Current.Theme,"text").Get("color")?.Text,id+" leaves text entry to native colors");
+            Require(Resolve(reloaded.Current.Theme,"textEntry",[],WrssPseudoState.Focused).Get("outline-width")?.Number>=2,id+" loses text-entry focus");
             var busy = Resolve(reloaded.Current.Theme, "button", [], WrssPseudoState.Busy, WrssPseudoState.Focused);
             Require(busy.Get("outline-color")?.Text == focused.Get("outline-color")?.Text, id + " loses busy focus");
 

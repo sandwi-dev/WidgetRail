@@ -195,7 +195,8 @@ internal sealed partial class BrowserSurface
         // CSP covers WebSockets/workers as well as ordinary requests; resource interception
         // additionally admits only the exact current loopback media URL granted by the broker.
         return "default-src 'none'; script-src 'self' 'unsafe-inline' " + origins +
-            "; style-src 'self' 'unsafe-inline'; connect-src " + (connections.Length == 0 ? "'none'" : connections) +
+            // Local fetches still pass the exact sealed-asset GET/HEAD allowlist above.
+            "; style-src 'self' 'unsafe-inline'; connect-src 'self' " + connections +
             "; media-src 'self' blob: http://127.0.0.1:* " + origins +
             "; img-src 'self' data: " + origins + "; font-src 'self'; frame-src " + (origins.Length == 0 ? "'none'" : origins) +
             "; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";

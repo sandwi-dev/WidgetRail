@@ -54,7 +54,7 @@ internal sealed class UserWebAppEditor : IDisposable
         nameButton = Add("", "Name", () => EditAsync(false));
         if (existing is not null)
         {
-            enabledChoice = new CheckBox { Content = "Show in rail", IsChecked = existing.Enabled, MinHeight = 44 };
+            enabledChoice = new CheckBox { Content = "Enabled", IsChecked = existing.Enabled, MinHeight = 44 };
             AutomationProperties.SetAutomationId(enabledChoice,"WebApp.Editor.Enabled");
             body.Children.Add(enabledChoice);
         }
@@ -82,7 +82,10 @@ internal sealed class UserWebAppEditor : IDisposable
 
     private Button Add(string label, string id, Func<Task> action)
     {
-        var button = new Button { Content = label, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, MinHeight = 44 };
+        Button button = id is "Address" or "Name" ? new WidgetValueButton() : new Button { Content = label };
+        button.HorizontalAlignment = HorizontalAlignment.Stretch;
+        button.HorizontalContentAlignment = id is "Address" or "Name" ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        button.MinHeight = 44;
         AutomationProperties.SetAutomationId(button, "WebApp.Editor." + id);
         actions.Add(button, action); body.Children.Add(button);
         button.Click += async (_, _) => await RunAsync(action);
@@ -117,6 +120,11 @@ internal sealed class UserWebAppEditor : IDisposable
     }
     private static void ValueLabel(Button button,string label)
     {
+        if (button is WidgetValueButton value)
+        {
+            value.SetLabel(label); value.SetAccessibleValue(label, false);
+            AutomationProperties.SetName(button,label); return;
+        }
         if (button.Content is not TextBlock text)
         {
             text = new TextBlock { TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis,

@@ -21,21 +21,26 @@ public static class TreeMapMessages
             {
                 id, x = n.GetProperty("x").GetDouble(), y = n.GetProperty("y").GetDouble(),
                 name = name.Length > 100 ? name[..100] : name, allocated, ascendancy = n.GetProperty("ascendancy").GetBoolean(), kind = n.GetProperty("kind").GetString(),
+                ascendancyName = n.TryGetProperty("ascendancyName",out var ascendancyName) ? ascendancyName.GetString() : "",
+                icon = n.TryGetProperty("icon",out var icon) ? icon.GetString() : "",
                 change = allocated == was ? "" : allocated ? "added" : "removed",
             }, Json);
         });
         if (reuseGeometry)
             AddBatches(messages, "states", nodes.Where(node=>node.GetProperty("allocated").GetBoolean() || node.GetProperty("change").GetString()!="" || ChangedLabel(node))
-                .Select(node=>JsonSerializer.SerializeToElement(new { id=node.GetProperty("id").GetInt32(), allocated=node.GetProperty("allocated").GetBoolean(), change=node.GetProperty("change").GetString(), name=node.GetProperty("name").GetString(), kind=node.GetProperty("kind").GetString() })), revision);
+                .Select(node=>JsonSerializer.SerializeToElement(new { id=node.GetProperty("id").GetInt32(), allocated=node.GetProperty("allocated").GetBoolean(), change=node.GetProperty("change").GetString(), name=node.GetProperty("name").GetString(), kind=node.GetProperty("kind").GetString(),icon=node.GetProperty("icon").GetString() })), revision);
         else
         {
             AddBatches(messages, "nodes", nodes, revision);
             AddBatches(messages, "links", state.GetProperty("links").EnumerateArray(), revision);
         }
-        messages.Add(JsonSerializer.SerializeToElement(new { type = "end", revision, preserve, selected, preview = before.HasValue }));
+        messages.Add(JsonSerializer.SerializeToElement(new { type = "end", revision, preserve, selected, preview = before.HasValue,
+            ascendancy = state.TryGetProperty("ascendancy",out var ascendancy) ? ascendancy.GetString() : "",
+            treeVersion = state.TryGetProperty("treeVersion",out var treeVersion) ? treeVersion.GetString() : "" }));
         return messages;
         bool ChangedLabel(JsonElement node) => previousMapNodes is null || !previousMapNodes.TryGetValue(node.GetProperty("id").GetInt32(),out var old) ||
-            old.GetProperty("name").GetString()!=node.GetProperty("name").GetString() || old.GetProperty("kind").GetString()!=node.GetProperty("kind").GetString();
+            old.GetProperty("name").GetString()!=node.GetProperty("name").GetString() || old.GetProperty("kind").GetString()!=node.GetProperty("kind").GetString() ||
+            (old.TryGetProperty("icon",out var oldIcon)?oldIcon.GetString():"")!=node.GetProperty("icon").GetString();
     }
     public static string GeometryKey(JsonElement state)
     {
@@ -47,6 +52,7 @@ public static class TreeMapMessages
             {
                 writer.WriteStartArray();
                 foreach(var field in new[]{"id","x","y","ascendancy"}) node.GetProperty(field).WriteTo(writer);
+                if(node.TryGetProperty("ascendancyName",out var ascendancyName))ascendancyName.WriteTo(writer);else writer.WriteNullValue();
                 writer.WriteEndArray();
             }
             writer.WriteStartArray();

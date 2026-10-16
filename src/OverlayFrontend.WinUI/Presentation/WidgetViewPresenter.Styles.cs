@@ -375,7 +375,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             // A live preview is a graphics viewport, not a text presenter.
             // Text alignment on its authored placeholder must not center the
             // empty capture Grid at its zero intrinsic width.
-            Put(Control.HorizontalContentAlignmentProperty, element is Previews.WidgetWindowPreview ? null : Alignment(style) switch
+            Put(Control.HorizontalContentAlignmentProperty, element is WidgetValueButton ? HorizontalAlignment.Stretch : element is Previews.WidgetWindowPreview ? null : Alignment(style) switch
             {
                 TextAlignment.Left => HorizontalAlignment.Left, TextAlignment.Right => HorizontalAlignment.Right,
                 TextAlignment.Center => HorizontalAlignment.Center, _ => (HorizontalAlignment?)null,
