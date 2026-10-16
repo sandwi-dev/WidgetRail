@@ -35,11 +35,21 @@ internal sealed partial class OverlayShellPage
                 if(browser.HasDialog)throw new InvalidOperationException("Unsupported packaged-page shortcut opened a dialog");
                 checks.Add("Hidden packaged-page shortcuts remain unavailable when dispatched through controller handling");
                 await Until("document.querySelectorAll('.node').length>0 && document.getElementById('status').textContent!=='Loading passive tree…'");
-                await Until("performance.getEntriesByType('resource').some(r=>r.name.includes('nodes-')&&r.name.endsWith('.jpg'))");
+                // Large builds may initially fit below the icon-detail threshold.
+                await browser.EvaluateFixtureAsync("document.getElementById('in').click();document.getElementById('in').click();");
+                await Until("performance.getEntriesByType('resource').some(r=>r.name.includes('nodes-')&&r.name.endsWith('.webp'))");
                 checks.Add("Real tree page loads sealed upstream icon atlases");
+                await browser.EvaluateFixtureAsync("window.artDecoded=false;Promise.all(performance.getEntriesByType('resource').filter(r=>r.name.endsWith('.webp')).map(r=>new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>image.naturalWidth>0?resolve():reject();image.onerror=reject;image.src=r.name;}))).then(()=>window.artDecoded=true);");
+                await Until("window.artDecoded===true");
+                checks.Add("WebP atlas pixels decode successfully in the native WebView");
+                await Until("![...document.querySelectorAll('.node')].some(n=>/OnlyImage|Class start|Ascendancy start/.test(n.getAttribute('aria-label')))");
+                checks.Add("Visible hit targets exclude decorative artwork and start landmarks");
                 await browser.HoverTreeNodeForValidationAsync();
                 await Until("!document.getElementById('tooltip').hidden && document.getElementById('tooltip-name').textContent.length>0");
                 checks.Add("Native WebView hover receives node details through the widget session");
+                // Leave headroom below the map's maximum zoom for the 1.5x check.
+                await browser.EvaluateFixtureAsync("document.getElementById('out').click();document.getElementById('out').click();");
+                await Task.Delay(100);
                 await browser.EvaluateFixtureAsync("(()=>{const m=document.getElementById('map'),n=[...document.querySelectorAll('.node')].find(n=>Math.abs(parseFloat(n.style.left)-m.clientWidth/2)>10&&Math.abs(parseFloat(n.style.left)-m.clientWidth/2)<m.clientWidth/4&&Math.abs(parseFloat(n.style.top)-m.clientHeight/2)<m.clientHeight/4);if(!n)throw Error('No central probe node');window.zoomProbe={id:n.id,x:parseFloat(n.style.left),w:m.clientWidth,h:m.clientHeight,bar:document.querySelector('nav').getBoundingClientRect().height};})()");
                 browser.HandleButton(ControllerButton.RightTrigger,ControllerEventPhase.Pressed);
                 await Until("(()=>{const p=zoomProbe,n=document.getElementById(p.id);return n&&Math.abs((parseFloat(n.style.left)-p.w/2)/(p.x-p.w/2)-1.5)<.01;})()");

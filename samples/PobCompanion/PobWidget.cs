@@ -248,6 +248,7 @@ public sealed partial class PobWidget : Widget
             if(B(original,"allocated"))n=original;
         }
         var rows = new List<WidgetElement> { Button("Back to tree","back"), Text(S(n,"name"),"node.name","pob-heading") };
+        if(S(n,"socketedItem").Length>0)rows.Add(Text("Socketed: "+S(n,"socketedItem"),"node.socket","pob-gold"));
         if(pendingBefore is null)AddNodeDescription(rows,n,"node.description");
         if (pendingBefore is not null)
         {
@@ -272,7 +273,7 @@ public sealed partial class PobWidget : Widget
         }
         else
         {
-            rows.Add(Text(B(n,"allocated")?$"Allocated. Refunding affects {I(n,"refundCount")} node(s).":B(n,"canAllocate")?$"Allocation path: {I(n,"pathCount")} node(s).":B(n,"requiresChoice")?"This node needs a choice in desktop PoB before importing.":"No available allocation path for this build.","node.state","pob-muted"));
+            rows.Add(Text(B(n,"allocated")?$"Allocated. Refunding affects {I(n,"refundCount")} node(s).":B(n,"granted")?"Granted by an item; no passive points spent.":B(n,"canAllocate")?$"Allocation path: {I(n,"pathCount")} node(s).":B(n,"requiresChoice")?"This node needs a choice in desktop PoB before importing.":"No available allocation path for this build.","node.state","pob-muted"));
             if(B(n,"canAllocate") || B(n,"canRefund")) rows.Add(Button(B(n,"allocated")?"Preview refund":"Preview allocation path","node-change"));
         }
         return rows;

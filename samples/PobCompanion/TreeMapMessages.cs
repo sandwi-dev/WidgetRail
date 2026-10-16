@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Security.Cryptography;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PobCompanion;
 
@@ -12,7 +13,8 @@ public static class TreeMapMessages
         var previousMapNodes = previousMapState?.GetProperty("nodes").EnumerateArray().ToDictionary(n=>n.GetProperty("id").GetInt32());
         var previous = before?.GetProperty("nodes").EnumerateArray().ToDictionary(n => n.GetProperty("id").GetInt32(), n => n.GetProperty("allocated").GetBoolean());
         var messages = new List<JsonElement> { JsonSerializer.SerializeToElement(new { type = "begin", reuseGeometry, revision }) };
-        var nodes = state.GetProperty("nodes").EnumerateArray().Select(n =>
+        var visibleIds=state.GetProperty("nodes").EnumerateArray().Where(n=>Flag(n,"visible",true)).Select(n=>n.GetProperty("id").GetInt32()).ToHashSet();
+        var nodes = state.GetProperty("nodes").EnumerateArray().Where(n=>visibleIds.Contains(n.GetProperty("id").GetInt32())).Select(n =>
         {
             var id = n.GetProperty("id").GetInt32(); var allocated = n.GetProperty("allocated").GetBoolean();
             var was = previous is not null && previous.TryGetValue(id, out var value) ? value : allocated;
@@ -23,16 +25,18 @@ public static class TreeMapMessages
                 name = name.Length > 100 ? name[..100] : name, allocated, ascendancy = n.GetProperty("ascendancy").GetBoolean(), kind = n.GetProperty("kind").GetString(),
                 ascendancyName = n.TryGetProperty("ascendancyName",out var ascendancyName) ? ascendancyName.GetString() : "",
                 icon = n.TryGetProperty("icon",out var icon) ? icon.GetString() : "",
+                interactive=Flag(n,"interactive",true),decoration=Flag(n,"decoration"),landmark=Flag(n,"landmark"),granted=Flag(n,"granted"),dimmed=Flag(n,"dimmed"),
+                radius=n.TryGetProperty("radius",out var radius)?radius.GetDouble():50,
+                socketedItem=n.TryGetProperty("socketedItem",out var jewel)?jewel.GetString():"",
                 change = allocated == was ? "" : allocated ? "added" : "removed",
             }, Json);
         });
         if (reuseGeometry)
-            AddBatches(messages, "states", nodes.Where(node=>node.GetProperty("allocated").GetBoolean() || node.GetProperty("change").GetString()!="" || ChangedLabel(node))
-                .Select(node=>JsonSerializer.SerializeToElement(new { id=node.GetProperty("id").GetInt32(), allocated=node.GetProperty("allocated").GetBoolean(), change=node.GetProperty("change").GetString(), name=node.GetProperty("name").GetString(), kind=node.GetProperty("kind").GetString(),icon=node.GetProperty("icon").GetString() })), revision);
+            AddBatches(messages, "states", nodes.Where(node=>node.GetProperty("allocated").GetBoolean() || Flag(node,"granted") || node.GetProperty("change").GetString()!="" || ChangedLabel(node)), revision);
         else
         {
             AddBatches(messages, "nodes", nodes, revision);
-            AddBatches(messages, "links", state.GetProperty("links").EnumerateArray(), revision);
+            AddBatches(messages, "links", state.GetProperty("links").EnumerateArray().Where(edge=>visibleIds.Contains(edge.GetProperty("a").GetInt32())&&visibleIds.Contains(edge.GetProperty("b").GetInt32())), revision);
         }
         messages.Add(JsonSerializer.SerializeToElement(new { type = "end", revision, preserve, selected, preview = before.HasValue,
             ascendancy = state.TryGetProperty("ascendancy",out var ascendancy) ? ascendancy.GetString() : "",
@@ -40,8 +44,10 @@ public static class TreeMapMessages
         return messages;
         bool ChangedLabel(JsonElement node) => previousMapNodes is null || !previousMapNodes.TryGetValue(node.GetProperty("id").GetInt32(),out var old) ||
             old.GetProperty("name").GetString()!=node.GetProperty("name").GetString() || old.GetProperty("kind").GetString()!=node.GetProperty("kind").GetString() ||
-            (old.TryGetProperty("icon",out var oldIcon)?oldIcon.GetString():"")!=node.GetProperty("icon").GetString();
+            new[]{"icon","socketedItem","radius","interactive","decoration","landmark","granted","dimmed"}.Any(key=>
+                (old.TryGetProperty(key,out var oldValue)?oldValue.GetRawText():null)!=(node.TryGetProperty(key,out var newValue)?newValue.GetRawText():null));
     }
+    private static bool Flag(JsonElement node,string key,bool fallback=false)=>node.TryGetProperty(key,out var value)?value.ValueKind==JsonValueKind.True:fallback;
     public static string GeometryKey(JsonElement state)
     {
         using var stream = new MemoryStream();
@@ -52,6 +58,7 @@ public static class TreeMapMessages
             {
                 writer.WriteStartArray();
                 foreach(var field in new[]{"id","x","y","ascendancy"}) node.GetProperty(field).WriteTo(writer);
+                writer.WriteBooleanValue(Flag(node,"visible",true));
                 if(node.TryGetProperty("ascendancyName",out var ascendancyName))ascendancyName.WriteTo(writer);else writer.WriteNullValue();
                 writer.WriteEndArray();
             }
@@ -70,18 +77,7 @@ public static class TreeMapMessages
     }
     private static void AddBatches(List<JsonElement> messages, string type, IEnumerable<JsonElement> entries, long revision)
     {
-        var chunk = new List<JsonElement>(); var bytes = 80;
-        foreach (var entry in entries)
-        {
-            var length = JsonSerializer.SerializeToUtf8Bytes(entry).Length + 1;
-            if (length > 15000) throw new IOException("A tree element exceeds the map message limit.");
-            if (chunk.Count > 0 && bytes + length > 15000)
-            {
-                messages.Add(JsonSerializer.SerializeToElement(new { type, revision, items = chunk }));
-                chunk.Clear(); bytes = 80;
-            }
-            chunk.Add(entry); bytes += length;
-        }
-        if (chunk.Count > 0) messages.Add(JsonSerializer.SerializeToElement(new { type, revision, items = chunk }));
+        messages.AddRange(WebSessionMessageBatcher.Create(entries,
+            chunk => JsonSerializer.SerializeToElement(new { type, revision, items = chunk })));
     }
 }

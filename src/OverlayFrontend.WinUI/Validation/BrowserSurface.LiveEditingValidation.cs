@@ -10,7 +10,9 @@ internal sealed partial class BrowserSurface
     internal string ZoomStateForValidation => $"input={input}; browsing={browsing}; loading={loading}; requested={requestedZoom}; applied={appliedZoom}; pumping={zoomPumping}";
     internal async Task HoverTreeNodeForValidationAsync()
     {
-        using var point=JsonDocument.Parse(await EvaluateFixtureAsync("(()=>{const r=document.querySelector('.node').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()"));
+        await core!.CallDevToolsProtocolMethodAsync("Runtime.evaluate", "{\"expression\":\"new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))\",\"awaitPromise\":true}");
+        using var point=JsonDocument.Parse(await EvaluateFixtureAsync("(()=>{for(const node of document.querySelectorAll('.node')){const r=node.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;if(document.elementFromPoint(x,y)===node)return {x,y};}throw Error('No unobscured passive hit target');})()"));
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent","{\"type\":\"mouseMoved\",\"x\":0,\"y\":0}");
         await core!.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",JsonSerializer.Serialize(new{type="mouseMoved",
             x=point.RootElement.GetProperty("x").GetDouble(),y=point.RootElement.GetProperty("y").GetDouble()}));
     }

@@ -3,6 +3,7 @@
 local output = io.stdout
 local adapterDirectory=assert(arg[0]:match('^(.*[/\\])'),'Adapter requires an absolute path')
 local treeGeometry=dofile(adapterDirectory..'tree-geometry.lua')
+local treePresentation=dofile(adapterDirectory..'tree-presentation.lua')
 io.stdout:setvbuf('no')
 print = function(...) -- Keep the protocol channel independent of upstream diagnostics.
   local parts = {}; for i=1,select('#',...) do parts[i]=tostring(select(i,...)) end
@@ -209,14 +210,16 @@ local function snapshot()
   result.passivePoints=passivePoints;result.ascendancyPoints=ascendancyPoints
   for id,n in pairs(build.spec.nodes) do
     if finite(n.x) and finite(n.y) then
-      local start=n.type=='ClassStart' or n.type=='AscendClassStart'
+      local display=treePresentation(build,n)
       local requiresChoice=n.type=='Mastery' or n.isMultipleChoiceOption or n.isSwitchable
       local path=n.path
       if path and build.spec.GetEffectiveAllocationPath then path=build.spec:GetEffectiveAllocationPath(n) end
-      local canAllocate=not n.alloc and not start and path~=nil and not requiresChoice
+      local canAllocate=display.interactive and not n.alloc and not display.granted and path~=nil and not requiresChoice
       result.nodes[#result.nodes+1]={id=id,x=n.x,y=n.y,name=clean(n.dn),allocated=n.alloc==true,kind=n.type,
-        description=clean(table.concat(n.sd or {},'\n')),descriptionRuns=textRuns(table.concat(n.sd or {},'\n')),icon=n.icon or '',distance=n.pathDist or 0,
-        ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and not start,requiresChoice=requiresChoice==true,
+        description=clean(table.concat(n.sd or {},'\n')),descriptionRuns=textRuns(table.concat(n.sd or {},'\n')),icon=display.icon,distance=n.pathDist or 0,
+        visible=display.visible,interactive=display.interactive,decoration=display.decoration,landmark=display.landmark,granted=display.granted,radius=display.radius,
+        socketedItem=clean(display.socketedItem),dimmed=display.dimmed,
+        ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and display.interactive,requiresChoice=requiresChoice==true and display.interactive,
         pathCount=path and #path or 0,refundCount=n.depends and #n.depends or 0}
     end
   end
@@ -268,6 +271,7 @@ local function command(req)
     else error('Invalid set type') end
   elseif op=='node' then
     local n=build.spec.nodes[validIndex(req.id,build.spec.nodes)]
+    assert(treePresentation(build,n).interactive,'This entry is not an interactive passive')
     assert(n.type~='ClassStart' and n.type~='AscendClassStart','Starting nodes cannot be changed')
     assert(req.mode=='allocate' or req.mode=='refund','Choose allocation or refund')
     if req.mode=='refund' then
@@ -276,6 +280,7 @@ local function command(req)
       assert(not n.alloc,'PoB could not refund this passive')
     else
       assert(not n.alloc,'This passive is already allocated')
+      assert(not treePresentation(build,n).granted,'This passive is already granted by an item')
       assert(n.path,'There is no allocation path from this build')
       assert(n.type~='Mastery' and not n.isMultipleChoiceOption and not n.isSwitchable,
         'This passive requires an additional choice. Set it in desktop PoB before importing.')

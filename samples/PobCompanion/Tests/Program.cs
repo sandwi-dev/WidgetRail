@@ -5,7 +5,7 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -16,7 +16,8 @@ if(args.Length==5)
 {
     var fixture=Directory.EnumerateFiles(fixtures,"*.xml").OrderBy(path=>path,StringComparer.Ordinal).First();
     var workXml=await BuildDocument.ReadAsync(fixture,game,default);
-    if(args[4]=="--comparison-only")await ComparisonTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
+    if(args[4]=="--tree-only")await TreePresentationTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--comparison-only")await ComparisonTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--management-only")await ManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else await WorkStateTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     Console.WriteLine(JsonSerializer.Serialize(new{game,passed=results.Count-failures,failed=failures,results}));return failures==0?0:1;
@@ -54,7 +55,7 @@ Check(PobWidget.ReadFormattedRuns(JsonSerializer.SerializeToElement(new{text=ord
 var tooltip=PobWidget.CreateTooltip(plainNode,3);
 Check(tooltip.GetProperty("paragraphs").GetArrayLength()==paragraphs.Count&&tooltip.GetProperty("paragraphs")[0].EnumerateArray().Any(r=>r.GetProperty("tone").GetString()=="gold"),"Hover and native descriptions share the same formatted paragraphs");
 var hugeTooltip=PobWidget.CreateTooltip(JsonSerializer.SerializeToElement(new{id=2,name="Long node",kind="Normal",description=new string('界',12000)}),4);
-Check(JsonSerializer.SerializeToUtf8Bytes(hugeTooltip).Length<=16384&&hugeTooltip.GetProperty("truncated").GetBoolean(),"Long Unicode hover descriptions remain within the web-session bound and identify truncation");
+Check(JsonSerializer.SerializeToUtf8Bytes(hugeTooltip).Length<=WebSessionContract.MaximumMessageBytes&&hugeTooltip.GetProperty("truncated").GetBoolean(),"Long Unicode hover descriptions remain within the web-session bound and identify truncation");
 foreach(var path in new[]{@"\\example.invalid\share\build.xml",@"\\.\pipe\not-a-build"})
 {
     try{await BuildDocument.ReadAsync(path,game,default);Check(false,"Reject network and device paths before opening a file");}
@@ -506,7 +507,7 @@ static HashSet<int> Allocated(JsonElement state)=>state.GetProperty("nodes").Enu
 static void CheckMap(JsonElement state,JsonElement before,string change,int expected,Action<bool,string> check)
 {
     var messages=TreeMapMessages.Create(state,before,true,0);
-    check(messages.All(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length<=16384),"All "+change+" map messages fit the host limit");
+    check(messages.All(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length<=WebSessionContract.MaximumMessageBytes),"All "+change+" map messages fit the host limit");
     var projected=messages.Where(m=>m.GetProperty("type").GetString()=="nodes").SelectMany(m=>m.GetProperty("items").EnumerateArray());
     check(projected.Count(n=>n.GetProperty("change").GetString()==change)==expected,"Map marks every "+change+" preview node");
     check(messages.Last().GetProperty("preview").GetBoolean(),"Map receives explicit preview state");
@@ -518,7 +519,7 @@ static void CheckMap(JsonElement state,JsonElement before,string change,int expe
     var labels=before.GetProperty("nodes").EnumerateArray().ToDictionary(n=>n.GetProperty("id").GetInt32(),n=>(n.GetProperty("name").GetString(),n.GetProperty("kind").GetString()));
     foreach(var n in states)labels[n.GetProperty("id").GetInt32()]=(n.GetProperty("name").GetString(),n.GetProperty("kind").GetString());
     check(state.GetProperty("nodes").EnumerateArray().All(n=>labels[n.GetProperty("id").GetInt32()]==(n.GetProperty("name").GetString(),n.GetProperty("kind").GetString())),"Incremental map preserves dynamic node names and shapes");
-    check(delta.All(m=>m.GetProperty("revision").GetInt64()==42)&&delta.All(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length<=16384),"Incremental transaction has bounded messages and one revision");
+    check(delta.All(m=>m.GetProperty("revision").GetInt64()==42)&&delta.All(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length<=WebSessionContract.MaximumMessageBytes),"Incremental transaction has bounded messages and one revision");
     check(delta.Sum(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length)<messages.Sum(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length)/10,"Preview transfers less than one tenth of a full tree");
 }
 

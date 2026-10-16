@@ -94,7 +94,7 @@ public sealed partial class PobWidget
             else if(id=="config-help")configHelp=!configHelp;
             else if(id=="config-clear-search"){filter="";passiveReturnKey=null;}
             else if(parts[0] is "node" or "skill" or "item" && parts.Length==2 && int.TryParse(parts[1],out var detail))
-            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail)){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);}}}
+            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail&&(parts[0]!="node"||B(x,"interactive")))){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);}}}
             else if(id=="node-change")
             {
                 var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
@@ -182,8 +182,8 @@ public sealed partial class PobWidget
         if(art is not null&&Directory.Exists(art))
         {
             resources.Add(new(){Path="payload/web/art/"+version+"/index.json",ContentType="application/json"});
-            foreach(var file in Directory.EnumerateFiles(art,"nodes-*.jpg").Order())
-                resources.Add(new(){Path="payload/web/art/"+version+"/"+Path.GetFileName(file),ContentType="image/jpeg"});
+            foreach(var file in Directory.EnumerateFiles(art,"*.webp").Order())
+                resources.Add(new(){Path="payload/web/art/"+version+"/"+Path.GetFileName(file),ContentType="image/webp"});
         }
         var source=WebSessionSource.Package("payload/web/tree.html",resources);
         var session=await HostServices.WebSessions.OpenAsync(new("passive-tree","Passive skill tree",source){Browser=new(){Chrome=BrowserChrome.OnDemand,Background=BrowserBackgroundMode.Automatic}},token);
@@ -210,12 +210,12 @@ public sealed partial class PobWidget
                     message.TryGetProperty("revision",out var requestRevision)&&requestRevision.TryGetInt64(out var inspectedRevision))
                 {
                     JsonElement node;lock(gate)node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==inspected);
-                    if(node.ValueKind==JsonValueKind.Object)
+                    if(node.ValueKind==JsonValueKind.Object&&B(node,"interactive"))
                         await session.PostMessageAsync(CreateTooltip(node,inspectedRevision),WidgetLifetimeToken);
                 }
                 else if(S(message,"type")=="select")
                 {
-                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&A(State,"nodes").Any(n=>I(n,"id")==id)){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;passiveReturnKey=null;}}
+                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&A(State,"nodes").Any(n=>I(n,"id")==id&&B(n,"interactive"))){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;passiveReturnKey=null;}}
                     Invalidate();
                 }
             }
@@ -229,7 +229,7 @@ public sealed partial class PobWidget
         var rich=DescriptionParagraphs(node).Select(p=>p.Select(r=>new{text=r.Text,tone=r.Tone}).ToArray()).ToArray();
         JsonElement Payload(bool formatted)=>JsonSerializer.SerializeToElement(new{type="tooltip",id=I(node,"id"),revision,
             name=Limit(S(node,"name"),160),description=formatted?"":Limit(S(node,"description"),1500),
-            paragraphs=formatted?rich:null,kind=S(node,"kind"),allocated=B(node,"allocated"),
+            paragraphs=formatted?rich:null,kind=S(node,"kind"),allocated=B(node,"allocated"),granted=B(node,"granted"),socketedItem=S(node,"socketedItem"),
             points=B(node,"allocated")?I(node,"refundCount"):I(node,"pathCount"),canAllocate=B(node,"canAllocate"),canRefund=B(node,"canRefund"),requiresChoice=B(node,"requiresChoice"),
             truncated=!formatted&&S(node,"description").Length>1500});
         var payload=Payload(true);

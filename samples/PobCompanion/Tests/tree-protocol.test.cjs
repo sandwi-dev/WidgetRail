@@ -49,13 +49,13 @@ message({ type: 'nodes', revision: 1, items: [node(99, 0, 'Stale', true)] });
 message({ type: 'end', revision: 1 });
 assert.equal(label(99), undefined, 'Late chunks cannot contaminate a newer transaction');
 message({ type: 'end', revision: 2, preserve: true, preview: true, selected: 1 });
-assert.match(label(1), /Strength, Notable/);
+assert.match(label(1), /Strength, Notable passive/);
 assert.match(label(2), /preview added/);
 assert.equal(elements.get('passive-1').disabled, true);
 message({ type: 'begin', revision: 3, reuseGeometry: true });
 message({ type: 'states', revision: 3, items: [{ id: 1, allocated: true, name: 'Attribute', kind: 'Normal', change: '' }] });
 message({ type: 'end', revision: 3, preserve: true, preview: false, selected: 1 });
-assert.match(label(1), /Attribute, Normal/);
+assert.match(label(1), /Attribute, Small passive/);
 assert.match(label(2), /unallocated$/);
 assert.equal(elements.get('passive-1').disabled, false);
 message({ type: 'begin', revision: 2 });
@@ -126,3 +126,30 @@ assert.equal(copy.children[1].children[0].textContent,'<script>plain text</scrip
 assert.ok(parseFloat(elements.get('tooltip').style.left)>=8&&parseFloat(elements.get('tooltip').style.left)+380<=992,'Hover stays within horizontal viewport bounds');
 assert.ok(parseFloat(elements.get('tooltip').style.top)>=8&&parseFloat(elements.get('tooltip').style.top)+300<=592,'Hover stays within vertical viewport bounds');
 console.log('PASS persistent selection marker, useful locate zoom, rich hover and bounded placement');
+message({type:'begin',revision:6});
+message({type:'nodes',revision:6,items:[
+  {...node(10,-500,'Decorative mastery',false),kind:'OnlyImage',decoration:true,interactive:false},
+  {...node(11,0,'Actual mastery',true),kind:'Mastery',interactive:true},
+  {...node(12,500,'Jewel socket',true),kind:'Socket',interactive:true,socketedItem:'Test jewel'},
+  {...node(13,1000,'Class start',true),kind:'ClassStart',landmark:true,interactive:false},
+  {...node(14,1500,'Item passive',false),interactive:true,granted:true}]});
+message({type:'end',revision:6,selected:10});
+assert.equal(label(10),undefined,'Decorative art never creates a passive button');
+assert.equal(label(13),undefined,'Class landmarks never create an allocation button');
+assert.equal(marker.hidden,true,'A stale decorative selection cannot show the selected-passive marker');
+assert.match(label(11),/Mastery passive/);
+assert.match(label(12),/Occupied jewel socket/);
+assert.match(label(14),/granted by item/);
+elements.get('passive-11').onpointerenter();
+message({type:'tooltip',revision:6,id:11,name:'Actual mastery',kind:'Mastery',allocated:true,canRefund:true,requiresChoice:true,points:1});
+assert.match(elements.get('tooltip-cost').textContent,/Refund 1 point/,'Allocated masteries advertise refund rather than an unavailable choice');
+message({type:'begin',revision:7,reuseGeometry:true});
+message({type:'states',revision:7,items:[{id:12,allocated:true,socketedItem:''}]});
+message({type:'end',revision:7,preserve:true});
+assert.match(label(12),/Empty jewel socket/,'Socket removal updates reused geometry');
+assert.match(label(14),/unallocated$/,'Removed item grants do not retain active state');
+message({type:'begin',revision:8});
+message({type:'nodes',revision:8,items:[node(11,0,'Remaining passive',true)]});
+message({type:'end',revision:8});
+assert.equal(label(12),undefined,'Visibility replacement removes old hit targets');
+console.log('PASS decorations, landmarks, real masteries, occupied sockets, item grants and visibility replacement');

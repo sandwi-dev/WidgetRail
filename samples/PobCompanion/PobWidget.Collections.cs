@@ -40,8 +40,8 @@ public sealed partial class PobWidget
         passives??=CreateList("pob.passive-source",true);
         if(!ReferenceEquals(passiveResult,result)||passiveFilter!=filter)
         {
-            var entries=A(State,"nodes").Where(n=>filter.Length>0
-                ? (S(n,"name")+" "+S(n,"description")).Contains(filter,StringComparison.OrdinalIgnoreCase):B(n,"allocated"))
+            var entries=A(State,"nodes").Where(n=>B(n,"interactive")&&(filter.Length>0
+                ? (S(n,"name")+" "+S(n,"description")).Contains(filter,StringComparison.OrdinalIgnoreCase):B(n,"allocated")||B(n,"granted")))
                 .Select(n=>new ListEntry("node."+I(n,"id"),S(n,"name"),"node."+I(n,"id"))).ToArray();
             var next=new ListQuery(documentId+":"+S(State,"treeVersion")+":"+filter,entries);
             var same=passiveQuery.Context==next.Context&&passiveQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));
