@@ -154,7 +154,19 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
                 PrimaryButtonClick += (_, args) => { args.Cancel = true; Choose(0); };
             }
         }
-        choices.ItemClick += (_, args) => { if (args.ClickedItem is ListViewItem { Tag: string id }) Choose(this.entries.FindIndex(entry => entry.Id == id)); };
+        choices.ItemClick += (_, args) =>
+        {
+            // WinUI can report the owned item's content (for example its Grid),
+            // rather than the explicitly supplied ListViewItem container.
+            var item = choiceItems.FirstOrDefault(item => ReferenceEquals(item, args.ClickedItem) || ReferenceEquals(item.Content, args.ClickedItem));
+            if (item?.Tag is string id)
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    // Finish the native ItemClick before tearing down its popup
+                    // and allowing a follow-up dialog to take focus.
+                    if (opened && !closing) Choose(this.entries.FindIndex(entry => entry.Id == id));
+                });
+        };
         choices.SelectionChanged += (_, _) => SelectionContextChanged?.Invoke();
         choices.GotFocus += (_, _) => QueueChoiceFocusSync();
         choices.LostFocus += (_, _) => QueueChoiceFocusSync();

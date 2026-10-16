@@ -33,6 +33,7 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
     private readonly (Button Button, WidgetPackageIconView Icon, WidgetStatusBadges Badges)[] items;
     internal Func<BridgeWidgetDescriptor, WidgetStatus>? StatusFor { get; set; }
     private ShellChromePalette? badgePalette;
+    internal Action<WidgetPackageIconView, BridgeWidgetDescriptor>? ApplyWebAppIcon { get; set; }
     private readonly Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolveIcon;
     private readonly ShellChromeStyles chrome = new();
     private readonly SolidColorBrush clear = new(Microsoft.UI.Colors.Transparent);
@@ -139,6 +140,7 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
                     entry.Icon.Update(new() { Id = "radial.icon", Kind = ViewNodeKind.Icon, Glyph = item.Icon,
                         PackageIcon = item.PackageIcon, AccessibilityLabel = item.Name },
                         (reference, token) => resolveIcon(item, reference.AssetId, token), generation, null);
+                    ApplyWebAppIcon?.Invoke(entry.Icon, item);
                 }
 
                 AutomationProperties.SetAutomationId(entry.Button, "Overlay.Radial.Widget." + (item?.Id ?? index.ToString()));

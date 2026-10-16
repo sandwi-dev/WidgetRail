@@ -18,7 +18,7 @@ internal sealed partial class OverlayShellPage
     private HostChoiceDialog? hostChoiceDialog;
     private TaskCompletionSource? hostChoiceCompletion;
     private PinnedSurface? hostChoicePin;
-    private bool HostChoiceActive => hostChoiceDialog is not null;
+    private bool HostChoiceActive => hostChoiceDialog is not null || webAppEditor is not null;
     private bool HostChoiceHasForeground => hostChoicePin is { } pin
         ? ReferenceEquals(pinned, pin) && pin.IsCurrent && PinnedInputActive : foreground;
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternalWebPageRequested { get; set; }
@@ -218,6 +218,9 @@ internal sealed partial class OverlayShellPage
         dialog.ConstrainMessageViewport(root.Size.Height);
         if (primaryButtonText is not null) dialog.PrimaryButtonText = primaryButtonText;
         hostChoiceDialog = dialog;
+#if ENABLE_WIDGET_VALIDATION
+        AttachValidationInputReplay(dialog);
+#endif
         configure?.Invoke(dialog);
         hostChoicePin = pinnedOwner;
         pinnedOwner?.SetInput(false);

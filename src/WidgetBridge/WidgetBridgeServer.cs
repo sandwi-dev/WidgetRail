@@ -1186,6 +1186,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         ConfiguredWidget configured,
         Func<IDisposable> processLeaseFactory)
     {
+        if(configured.UserWebApp is not null)return new HostWebAppClient(configured);
         var client = new WidgetProcessClient(new WidgetProcessOptions
         {
             ExecutablePath = configured.WorkerExecutable,

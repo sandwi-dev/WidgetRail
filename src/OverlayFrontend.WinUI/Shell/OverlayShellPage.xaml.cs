@@ -225,6 +225,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private void SetCatalog(WidgetPresentationCatalog catalog)
     {
+        if (catalog.IsComplete) webAppIcons?.Prune(catalog.Widgets.Where(widget => widget.IsUserWebApp).Select(widget => widget.Id).ToHashSet(StringComparer.Ordinal));
         ReconcilePresentationMemory(catalog);
         var selected = requestedWidget;
         preferences = preferences.Reconcile(catalog.Widgets.Select(widget => widget.Id), catalog.IsComplete);
@@ -498,7 +499,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (retired || visible == value) return;
         retainingExitPresentation = !value && retainExitPresentation;
         ProductionRoot.IsHitTestVisible = value;
-        if (!value) localInstallCancellation?.Cancel();
+        if (!value) { localInstallCancellation?.Cancel(); webAppEditor?.Close(); }
         if (!value) intentCancellation?.Cancel();
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         if (!value) ExitPinnedInteraction(restoreMain: false);
@@ -565,7 +566,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetForeground(bool value)
     {
         if (foreground == value || retired) return;
-        if (!value) intentCancellation?.Cancel();
+        if (!value) { intentCancellation?.Cancel(); webAppEditor?.Close(); }
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
         foreground = value;
@@ -695,7 +696,13 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         {
             if (await EnsureInteractionAsync(request.Authority, lifetime.Token))
             {
-                if (request.IndexedLease is not null) await InvokeIntentAsync(request);
+                if (request.Action.ActionId is WidgetRail.WidgetPresentationSession.WidgetPresentationSession.AddWebAppAction or WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ManageWebAppsAction)
+                {
+                    owner.Session.ValidateWebAppManagement(request.Displayed, request.Action);
+                    if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.AddWebAppAction) await EditUserWebAppAsync();
+                    else await ManageUserWebAppsAsync();
+                }
+                else if (request.IndexedLease is not null) await InvokeIntentAsync(request);
                 else if (WidgetRail.WidgetPresentationSession.WidgetPresentationSession.IsApplicationControlAction(request.Action.ActionId))
                     RequestApplicationControl(owner.Session.ResolveApplicationControl(request.Displayed, request.Action));
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
@@ -870,6 +877,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         notificationCenter?.Dispose();
         PrepareNativeShutdown();
         localInstallCancellation?.Cancel();
+        webAppEditor?.Close();
         openingIndicator?.Dispose();
         intentCancellation?.Cancel();
         ++startupPresentationVersion;

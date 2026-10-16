@@ -8,9 +8,15 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     /// <summary>Explicit hardware-free shell regression route; uses the production normalized-input consumer.</summary>
+    private bool validationInputReplayEnabled;
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<UIElement, object> replayRoots = new();
     internal void EnableValidationInputReplay()
+    { validationInputReplayEnabled = true; AttachValidationInputReplay(this); }
+    private void AttachValidationInputReplay(UIElement root)
     {
-        AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
+        if (!validationInputReplayEnabled || replayRoots.TryGetValue(root, out _)) return;
+        replayRoots.Add(root, new());
+        root.AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
         {
             ushort mask = args.Key switch
             {
@@ -26,6 +32,7 @@ internal sealed partial class OverlayShellPage
             args.Handled = true;
             var frame = ControllerFrame.Create();
             frame.Connected = 1;
+            Receive(frame); // Neutral arms newly opened dialogs before this test gesture.
             frame.PressedButtons = frame.State.Buttons = mask;
             Receive(frame);
             frame.PressedButtons = frame.State.Buttons = 0;

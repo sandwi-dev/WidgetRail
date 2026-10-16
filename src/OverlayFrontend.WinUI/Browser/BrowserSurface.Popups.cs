@@ -188,6 +188,7 @@ internal sealed partial class BrowserSurface
                         RegisterExtensionProfile = RegisterExtensionProfile,
                         ReceiveNotification = ReceiveNotification, InvalidateNotifications = InvalidateNotifications,
                         ReadPopupPlacement = ReadPopupPlacement, WritePopupPlacement = WritePopupPlacement,
+                        AddWebApp = window.ExtensionId is null ? AddWebApp : null,
                         RequestPopupPin = window.ExtensionId is null ? RequestPopupPin : null, PopupIsPinned = PopupIsPinned,
                         IsInteractionFocused = () => IsInteractionFocused?.Invoke() == true,
                         FocusInteraction = () => FocusInteraction?.Invoke(),

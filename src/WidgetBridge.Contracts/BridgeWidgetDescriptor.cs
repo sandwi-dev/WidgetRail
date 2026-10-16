@@ -29,6 +29,8 @@ public sealed record BridgeWidgetDescriptor
     public required WidgetGlyph Icon { get; init; }
     public IReadOnlyList<WidgetNotificationCategory> NotificationCategories { get; init; } = [];
     public bool CanManage { get; init; }
+    /// <summary>Host-created local website entry; never declared by a widget package.</summary>
+    public bool IsUserWebApp { get; init; }
     public bool IsStopped { get; init; }
     public bool CanStop { get; init; } = true;
     public WidgetPackageIcon? PackageIcon { get; init; }

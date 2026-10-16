@@ -12,7 +12,7 @@ internal sealed partial class OverlayShellPage
         var host = (ContentControl)sender;
         if (host.Content is not WidgetCatalogItemContent)
         {
-            var tile = new WidgetCatalogItemContent(ResolveTrayIconAsync) { ShowLabel = false };
+            var tile = new WidgetCatalogItemContent(ResolveTrayIconAsync) { ShowLabel = false, ApplyWebAppIcon = ApplyUserWebAppIcon };
             tile.Loaded += (_, _) => { statusTiles.Add(tile); QueueWidgetStatusRefresh(); };
             tile.Unloaded += (_, _) => statusTiles.Remove(tile);
             tile.DataContextChanged += (_, _) => QueueWidgetStatusRefresh();

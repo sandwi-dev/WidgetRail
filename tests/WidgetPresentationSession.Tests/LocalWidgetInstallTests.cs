@@ -22,6 +22,23 @@ public sealed class LocalWidgetInstallTests
     private static string PackagePath => Path.Combine(Path.GetTempPath(), "fixture.wrwidget");
 
     [TestMethod]
+    [DataRow(false)][DataRow(true)]
+    public async Task UserWebAppManagementRequiresExactCurrentSettingsCommand(bool manage)
+    {
+        var action = new WidgetActionEvent(manage ? WidgetPresentationSession.ManageWebAppsAction : WidgetPresentationSession.AddWebAppAction,
+            manage ? "installed.manage-webapps" : "installed.add-webapp", InputScopeId: "installed.widgets");
+        await Run(_ => Task.CompletedTask, (session, frame) =>
+        {
+            session.ValidateWebAppManagement(frame, action);
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateWebAppManagement(frame, action with { SourceElementId = "forged" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateWebAppManagement(frame, action with { Phase = ControllerEventPhase.Repeated }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateWebAppManagement(frame, action with { CommittedText = "forged" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateWebAppManagement(frame with { Authority = frame.Authority with { WidgetId = "community" } }, action));
+            return Task.CompletedTask;
+        }, action);
+    }
+
+    [TestMethod]
     public async Task ExtensionManagementRequiresCurrentSettingsCommand()
     {
         var action = new WidgetActionEvent(WidgetPresentationSession.ManageBrowserExtensionsAction, "category.extensions", InputScopeId: "settings-root");

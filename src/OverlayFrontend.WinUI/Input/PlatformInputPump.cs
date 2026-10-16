@@ -276,7 +276,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
             current != 0 && IsWindow(current) != 0, process, (uint)Environment.ProcessId, OwnsAuxiliaryProcess?.Invoke(process) == true);
     }
 
-    private static bool IsForegroundProcess()
+    internal static bool IsForegroundProcess()
     {
         GetWindowThreadProcessId(GetForegroundWindow(), out var process);
         return process == (uint)Environment.ProcessId;

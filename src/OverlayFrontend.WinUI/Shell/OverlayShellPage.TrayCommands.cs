@@ -222,7 +222,7 @@ internal sealed partial class OverlayShellPage
             if (preferencesGroup.Items.Count == 0) menu.Flyout.Items.Remove(preferencesGroup);
             var widgetGroup = Group("Widget", "Widget");
             if (descriptor.CanManage)
-                Add("Manage widget", "Widget.Manage", () => InvokeIntentCoreAsync(prepareNotification: token =>
+                Add("Manage widget", "Widget.Manage", () => descriptor.IsUserWebApp ? EditUserWebAppAsync(descriptor.Id) : InvokeIntentCoreAsync(prepareNotification: token =>
                     owner!.Session.PrepareWidgetSettingsIntentAsync(owner.Session.GetTarget(descriptor.Id), token)), group: widgetGroup);
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; }, ControllerButton.Y, group: widgetGroup);
             Add(descriptor.IsStopped ? "Start widget" : "Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), group: widgetGroup);

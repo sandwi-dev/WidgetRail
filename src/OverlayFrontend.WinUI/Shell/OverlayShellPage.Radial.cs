@@ -22,7 +22,7 @@ internal sealed partial class OverlayShellPage
 
     private void InitializeRadialChooser()
     {
-        radialView = new(ResolveTrayIconAsync) { Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Bottom,
+        radialView = new(ResolveTrayIconAsync) { ApplyWebAppIcon = ApplyUserWebAppIcon, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Bottom,
             HorizontalAlignment = HorizontalAlignment.Center, Margin = new(0, 0, 0, 12) };
         ShellOverlayLayer.Children.Add(radialView);
         WidgetHost.GettingFocus += (_, args) =>

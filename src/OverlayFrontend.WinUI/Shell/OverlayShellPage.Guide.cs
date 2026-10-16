@@ -14,7 +14,13 @@ internal sealed partial class OverlayShellPage
     {
         IReadOnlyList<ControllerGuideHint>? shell = null;
         object? shellContext = null;
-        if (HostChoiceActive)
+        if (webAppEditor is { } editor)
+        {
+            shell = editor.Keyboard is { } keyboard ? WidgetViewPresenter.CaptureKeyboardGuide(keyboard) :
+                (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Cancel", ControllerButton.B, Required: true)];
+            shellContext = ("webapp-editor", editor.Keyboard);
+        }
+        else if (HostChoiceActive)
         {
             shell = hostChoiceDialog?.SupportsScroll == true
                 ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A),

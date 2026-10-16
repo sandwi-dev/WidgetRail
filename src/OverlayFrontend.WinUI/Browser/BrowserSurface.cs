@@ -386,8 +386,9 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                 if (IsProviderContent)
                     Diagnostics.FrontendFailureLog.Current.Write("provider-startup", null,
                         FormattableString.Invariant($"widget={widgetId} success={args.IsSuccess} environmentMs={EnvironmentInitializationMilliseconds:F1} controllerMs={ControllerInitializationMilliseconds:F1} navigationMs={DocumentNavigationMilliseconds:F1}"));
-                loading = false; ShowStatus(args.IsSuccess || args.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled ? null : "The page could not be loaded. Reload to try again."); UpdateAddress(); UpdateChrome(); RefreshZoom(); if (args.IsSuccess) { RecordVisit(); Run(RefreshProviderHeightAsync); } };
+                loading = false; ShowStatus(args.IsSuccess || args.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled ? null : "The page could not be loaded. Reload to try again."); UpdateAddress(); UpdateChrome(); RefreshZoom(); if (args.IsSuccess) { RecordVisit(); Run(RefreshProviderHeightAsync); Run(CaptureWebAppIconAsync); } };
             core.HistoryChanged += (_, _) => UpdateChrome();
+            core.FaviconChanged += (_, _) => Run(CaptureWebAppIconAsync);
             core.DocumentTitleChanged += (_, _) => UpdateAddress();
             core.SourceChanged += (_, _) => { UpdateAddress(); if (!loading) RecordVisit(); };
             // WinRT event senders can be another managed projection of the same

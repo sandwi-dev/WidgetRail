@@ -92,7 +92,9 @@ public sealed partial class MainWindow : Window
             else
             {
                 ResetValidationInput();
-                (RootFrame.Content as Shell.OverlayShellPage)?.SetForeground(input?.IsForeground == true);
+                // The keyboard can activate an owned PopupHost even without a
+                // controller pump (including hardware-free validation).
+                (RootFrame.Content as Shell.OverlayShellPage)?.SetForeground(input?.IsForeground ?? Input.PlatformInputPump.IsForegroundProcess());
                 (RootFrame.Content as Shell.OverlayShellPage)?.ResetInputPresentation();
             }
         };

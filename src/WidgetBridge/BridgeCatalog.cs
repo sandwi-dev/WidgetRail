@@ -29,6 +29,8 @@ internal sealed record ConfiguredWidget
     public bool PinningSupported { get; init; }
     public bool FullWidgetPinningSupported { get; init; }
     public required string WorkerExecutable { get; init; }
+    [JsonIgnore]
+    public WidgetRail.PlatformSettings.UserWebApp? UserWebApp { get; init; }
     public string? StyleFile { get; init; }
     /// <summary>Optional sealed package supplying icons and intent declarations for a host-configured dedicated worker.</summary>
     public string? IconPackageRoot { get; init; }
@@ -124,7 +126,8 @@ internal sealed record ConfiguredWidget
         IsStopped = IsStopped,
         CanStop = CanStop,
         NotificationCategories = NotificationCategories,
-        CanManage = Id != "settings" && PackageRoot is not null,
+        CanManage = Id != "settings" && (PackageRoot is not null || UserWebApp is not null),
+        IsUserWebApp = UserWebApp is not null,
         PackageContentDigest = PackageIconAssets.Count == 0
             ? string.Empty
             : PackageContentDigest,
@@ -203,6 +206,25 @@ public sealed class BridgeCatalog
 
     internal BridgeCatalog WithWidgetSettings(WidgetRail.PlatformSettings.BuiltInWidgetSettings settings) =>
         new(_ordered.Where(widget => widget.Id == "settings" || settings.IsEnabled(widget.PackageId)), IsComplete);
+
+    internal BridgeCatalog WithUserWebApps(IReadOnlyList<WidgetRail.PlatformSettings.UserWebApp> apps)
+    {
+        var combined=_ordered.Where(w=>w.UserWebApp is null).ToList();
+        foreach(var app in apps.Where(a=>a.Enabled))
+        {
+            if(!WidgetRail.PlatformSettings.UserWebAppStore.IsId(app.Id) || combined.Any(w=>w.Id==app.Id))
+                throw new BridgeCatalogException("A local webapp identity is invalid or conflicts with another widget.");
+            combined.Add(WithFingerprints(new ConfiguredWidget
+            {
+                Id=app.Id,PackageId=app.Id,PublisherId="widgetrail.local",Name=app.Name,InstanceId=app.Id+".default",
+                Icon=WidgetGlyph.Connection,UserWebApp=app,WorkerExecutable="host-managed-webapp-v1",
+                PinningSupported=true,FullWidgetPinningSupported=true,
+                ResidencyPolicy=new(){Mode=WidgetResidencyPolicies.UnloadAfterIdle,IdleSeconds=300},
+            }));
+        }
+        if(combined.Count>MaximumWidgetDeclarations)throw new BridgeCatalogException("The widget catalog is full.");
+        return new(combined,IsComplete);
+    }
 
     internal BridgeCatalog WithStoppedWidgets(IReadOnlyList<string> stoppedIds)
     {
@@ -688,6 +710,7 @@ public sealed class BridgeCatalog
             source.PublisherId,
             source.InstanceId,
             source.WorkerExecutable,
+            source.UserWebApp?.Url ?? string.Empty,
             source.IsStopped ? "stopped" : "available",
             .. source.WorkerArguments,
             .. source.DeclaredCapabilities,

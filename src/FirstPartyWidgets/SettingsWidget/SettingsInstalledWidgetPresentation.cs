@@ -20,7 +20,7 @@ internal static class SettingsInstalledWidgetPresentation
             new SegmentedTab("installed.filter.builtin", "Built-in", "installed.filter.builtin"),
             new SegmentedTab("installed.filter.community", "Community", "installed.filter.community"));
         tabs = tabs with { Children = tabs.Children.Select(child => child is ButtonElement button
-            ? button.FocusUp("installed.retry").FocusDown(list.Count == 0 ? "installed.install-local" : list.Id) : child).ToArray() };
+            ? button.FocusUp("installed.add-webapp").FocusDown(list.Count == 0 ? "installed.install-local" : list.Id) : child).ToArray() };
         var children = new List<WidgetElement>
         {
             UI.Text("Widgets", "installed.heading").Classes("page-heading"),
@@ -29,11 +29,14 @@ internal static class SettingsInstalledWidgetPresentation
                     .OpenIntent(WidgetIntentContracts.Marketplace, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget)
                     .FocusUp("settings.back").FocusDown(tab),
                 UI.Button("Install local widget", "host.install-local-widget", "installed.install-local")
-                    .Disabled(!state.CatalogValid).Busy(busy).FocusUp("settings.back").FocusDown(tab),
+                    .Disabled(!state.CatalogValid).Busy(busy).FocusUp("settings.back").FocusDown("installed.add-webapp"),
                 UI.Button(state.CatalogValid ? "Refresh" : "Retry", "refresh", "installed.retry")
                     .Busy(busy).FocusUp("settings.back").FocusDown(tab)).Classes("installed-list-actions"),
             UI.Text("New widgets are enabled after installation and request permissions when a feature needs them.",
                 "installed.install-local.help").Classes("page-help"),
+            UI.Row("installed.webapp-actions",
+                UI.Button("Add webapp", "host.add-webapp", "installed.add-webapp").FocusUp("installed.install-local").FocusDown(tab),
+                UI.Button("Manage webapps", "host.manage-webapps", "installed.manage-webapps").FocusUp("installed.retry").FocusDown(tab)).Classes("installed-list-actions"),
             tabs,
         };
         if (!state.CatalogValid)

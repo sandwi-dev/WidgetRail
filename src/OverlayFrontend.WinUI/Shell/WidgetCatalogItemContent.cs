@@ -16,6 +16,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// </summary>
 internal sealed partial class WidgetCatalogItemContent : ContentControl, IDisposable
 {
+    internal Action<WidgetPackageIconView, BridgeWidgetDescriptor>? ApplyWebAppIcon { get; set; }
     private readonly Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolve;
     private readonly StackPanel panel = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
     private readonly Grid stage = new();
@@ -103,6 +104,7 @@ internal sealed partial class WidgetCatalogItemContent : ContentControl, IDispos
         icon.Update(new() { Id = "catalog.icon", Kind = ViewNodeKind.Icon, Glyph = captured.Icon,
             PackageIcon = captured.PackageIcon, AccessibilityLabel = captured.Name },
             (reference, token) => resolve(captured, reference.AssetId, token), generation, null);
+        ApplyWebAppIcon?.Invoke(icon, captured);
     }
 
     private void ReleaseIcon()

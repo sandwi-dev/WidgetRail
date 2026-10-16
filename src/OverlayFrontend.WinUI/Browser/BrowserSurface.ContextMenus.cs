@@ -9,6 +9,7 @@ internal sealed partial class BrowserSurface
 #if ENABLE_WIDGET_VALIDATION
     internal Action? BeforeContextCommandForValidation { get; set; }
 #endif
+    internal Func<string, string, Task>? AddWebApp { get; set; }
     private static bool IsNewWindowCommand(CoreWebView2ContextMenuItem item) => item.Name is "openLinkInNewWindow" or "openLinkInNewTab";
 
     private void ContextMenuRequested(CoreWebView2 owner, CoreWebView2ContextMenuRequestedEventArgs args)
@@ -22,6 +23,7 @@ internal sealed partial class BrowserSurface
         var sourcePage = pageEpoch;
         var link = args.ContextMenuTarget.HasLinkUri ? args.ContextMenuTarget.LinkUri : null;
         string? selectedLink = null;
+        string? addAddress = null, addTitle = null;
         BrowserPopupPlacement? selectedPlacement = null;
         webDialogPending = true; CancelPointer();
         RunSiteDecision(async () =>
@@ -53,9 +55,13 @@ internal sealed partial class BrowserSurface
                             Group: hostedLink && !otherActions ? "Other actions" : null));
                         otherActions = true;
                     }
+                    if (groups.Count == 1 && AddWebApp is not null && !IsHostedPackage)
+                        choices.Add(new("webapp.add", "Add as webapp", Group: "This page"));
                     if (groups.Count > 1) choices.Add(new("back", "Back"));
                     var answer = await Choose!(this, "Page actions", origin, choices, token, focusFirstChoice: true);
                     token.ThrowIfCancellationRequested();
+                    if (answer == "webapp.add" && choices.Any(choice => choice.Id == answer))
+                    { if (CanCompleteSiteDecision && ReferenceEquals(owner, core)) { addAddress = owner.Source; addTitle = owner.DocumentTitle; } break; }
                     if (answer == "back") { groups.Pop(); continue; }
                     if (answer is "new.pin" or "new.widget" && choices.Any(choice => choice.Id == answer))
                     {
@@ -90,6 +96,8 @@ internal sealed partial class BrowserSurface
                 webDialogPending = false;
                 deferral.Complete();
                 InteractionChanged?.Invoke();
+                if (addAddress is { } website)
+                    DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested && sourcePage == pageEpoch && AddWebApp is { } add) Run(() => add(website, addTitle ?? "")); });
                 if (selectedLink is { } url)
                 {
                     // Finish the menu decision before opening a replacement. A

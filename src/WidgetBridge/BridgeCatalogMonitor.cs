@@ -419,8 +419,9 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             {
                 var directory = Path.GetDirectoryName(_settingsFilePath)!;
                 Directory.CreateDirectory(directory);
-                _settingsWatcher = CreateWatcher(directory, Path.GetFileName(_settingsFilePath), false,
-                    path => string.Equals(path, _settingsFilePath, StringComparison.OrdinalIgnoreCase));
+                var webapps=Path.Combine(directory,"webapps.json");
+                _settingsWatcher = CreateWatcher(directory, "*.json", false,
+                    path => string.Equals(path, _settingsFilePath, StringComparison.OrdinalIgnoreCase) || string.Equals(path,webapps,StringComparison.OrdinalIgnoreCase));
             }
             return Task.CompletedTask;
         }

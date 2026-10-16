@@ -45,7 +45,7 @@ internal sealed partial class OverlayShellPage
     private void ReceiveCore(ControllerFrame frame, out bool delivered)
     {
         delivered = false;
-        if (ReceiveSystemFilePicker(frame) || ReceiveLocalInstall(frame)) return;
+        if (ReceiveWebAppEditor(frame) || ReceiveSystemFilePicker(frame) || ReceiveLocalInstall(frame)) return;
         if (ReceiveHostChoice(frame)) return;
         if (nativeBrowserPickerActive) { heldAction.Reset(); rightStick.Reset(); return; }
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
@@ -187,6 +187,7 @@ internal sealed partial class OverlayShellPage
             return;
         }
         if (retired || !visible) return;
+        if (webAppEditor is { } editor) { editor.Handle(button, phase); return; }
         if (SystemFilePickerOpen) return;
         if (nativeBrowserPickerActive) return;
         if (LocalInstallActive) { localInstallDialog?.Handle(button, phase); return; }

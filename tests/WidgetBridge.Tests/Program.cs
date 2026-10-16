@@ -136,6 +136,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Worker run media gate waits retain registration through cancellation and retirement", WorkerRunInputScenarios.MediaGateWaitRetainsRegistrationUntilCancelledOrRejected),
     ("Worker run action controller and pinned gate waits retain registration through retirement", WorkerRunInputScenarios.InputGateWaitRetainsRegistrationUntilCancelledOrRejected),
     ("Shell palette accepts every real resolved theme role across bridge session", ShellPaletteEndToEndScenario.RunAsync),
+    ("Local webapp catalog and host renderer preserve ordinary browser lifecycle", HostWebAppScenarios.RunAsync),
     ("Pinned action worker validates layout sequence scope text and context triggers", PinnedActionBridgeScenarios.WorkerAuthority),
     ("Pinned actions and artwork cross session bridge and real worker", PinnedActionBridgeScenarios.EndToEnd),
     ("Pinned action bridge rejects stale binding scope version and foreign artwork", PinnedActionBridgeScenarios.Authority),

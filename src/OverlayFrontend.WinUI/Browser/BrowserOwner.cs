@@ -42,6 +42,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal BrowserChoiceHandler? Choose { get; set; }
     internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
     internal Func<BrowserSurface, CancellationToken, Task<bool>>? PrepareScreenPicker { get; set; }
+    internal Func<string, string, byte[], Task>? SaveWebAppIcon { get; set; }
+    internal Func<string, string, Task>? AddWebApp { get; set; }
     internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
     internal Func<BrowserSurface, BrowserSurface?, string?, BrowserPopupPlacement?, CancellationToken, Task<BrowserPopupRequest?>>? ChoosePopupPlacement { get; set; }
     internal Func<BrowserSurface, string, CancellationToken, Task<BrowserPopupPlacement>>? ReadPopupPlacement { get; set; }
@@ -258,6 +260,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         {
             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
             Choose = (source, title, message, choices, token, focusFirstChoice, preference) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice, preference) ?? Task.FromResult<string?>(null),
+            SaveWebAppIcon = (id, url, bytes) => SaveWebAppIcon?.Invoke(id, url, bytes) ?? Task.CompletedTask,
+            AddWebApp = (url, title) => AddWebApp?.Invoke(url, title) ?? Task.CompletedTask,
             ChangeProfile = ChangeProfileAsync,
             RegisterExtensionProfile = (source, token) => Extensions.RegisterAsync(source.ExtensionProfile with { Label = (session.GetState(widgetId)?.LastGood?.Descriptor.Name ?? widgetId) + " · " + document.Options.ProfileKey }, source.NativeProfile!, token),
             ReceiveNotification = ReceiveNotification,

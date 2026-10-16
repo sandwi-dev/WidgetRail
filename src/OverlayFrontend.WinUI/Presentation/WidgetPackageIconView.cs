@@ -144,7 +144,27 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
     internal void Update(ViewNode node, Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolver,
         string generation, Action<string>? diagnostic)
     {
+        userIconNode = node;
+        if (userIconGeneration != generation) { userIconKey = null; userIconGeneration = generation; }
         icon.Update(node.Glyph!.Value, node.PackageIcon, node.AccessibilityLabel, resolver, generation, diagnostic);
+        UpdateSizing();
+    }
+    private string? userIconKey, userIconGeneration;
+    private ViewNode? userIconNode;
+    internal async Task SetUserIconAsync(string key, Task<ImageSource?> source)
+    {
+        if (disposed || userIconKey == key) return;
+        userIconKey = key;
+        var image = await source;
+        if (disposed || userIconKey != key) return;
+        if (image is not null) Content = new Image { Source = image, Stretch = Stretch.Uniform, IsHitTestVisible = false };
+        else if (userIconNode is { } node)
+        {
+            var glyph = new FontIcon();
+            glyph.SetBinding(FontIcon.FontSizeProperty, new Microsoft.UI.Xaml.Data.Binding
+                { Source = this, Path = new PropertyPath(nameof(FontSize)), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
+            WidgetGlyphs.Apply(glyph,node,false); Content = glyph;
+        }
         UpdateSizing();
     }
     internal void RetryTransientFailure() => icon.RetryTransientFailure();

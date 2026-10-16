@@ -16,6 +16,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
     ("Retired rail-only preference preserves all other settings", RetiredSwitcherPreference),
     ("Widget stop state is atomic and isolated from rollback settings", WidgetStopState),
+    ("Local webapps preserve identity icons and concurrent changes across restarts", UserWebAppStoreTests.Run),
     ("Schema-one settings retire obsolete selections and preserve unrelated state", LegacySchemaOneRetiresObsoleteSettings),
     ("Schema-two source preferences retire read-only until a normal write", SchemaTwoRetiresSourcePreferences),
     ("Malformed duplicate unknown and oversized settings fail closed", StrictSettingsFailClosed),
