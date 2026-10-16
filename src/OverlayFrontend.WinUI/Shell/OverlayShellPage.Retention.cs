@@ -73,7 +73,6 @@ internal sealed partial class OverlayShellPage
             };
             ConfigureFocusTrace(presenter, id);
             ConfigureDevelopmentInspection(presenter);
-            presenter.DirectionalBoundaryReached += direction => LeaveWidgetDirectionalBoundary(presenter, direction);
             presenter.Failed = error =>
             {
                 if (ReferenceEquals(surface, presenter)) ReportFailure(error);

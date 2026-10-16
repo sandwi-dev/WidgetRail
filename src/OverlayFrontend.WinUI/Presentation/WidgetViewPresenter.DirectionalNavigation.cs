@@ -7,8 +7,6 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    internal event Action<FocusNavigationDirection>? DirectionalBoundaryReached;
-
     private void DirectionalKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (args.Handled || presentationOnly || XamlRoot is null || Input.GamepadKeyBoundary.Owns(this, args) || HasTransientControl ||
@@ -23,7 +21,7 @@ internal sealed partial class WidgetViewPresenter
         if (direction == FocusNavigationDirection.None) return;
         // Tunnel before a native control can perform a second spatial move.
         args.Handled = true;
-        if (!MoveFocus(direction, args.KeyStatus.WasKeyDown)) DirectionalBoundaryReached?.Invoke(direction);
+        MoveFocus(direction, args.KeyStatus.WasKeyDown);
     }
 
     private bool MoveDirectionalFocus(FocusNavigationDirection direction, bool isRepeat)

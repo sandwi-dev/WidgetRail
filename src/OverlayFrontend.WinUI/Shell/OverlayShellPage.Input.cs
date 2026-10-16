@@ -113,7 +113,7 @@ internal sealed partial class OverlayShellPage
             else if (interactive && surface is { } focusedSurface)
             {
                 rightStick.Reset();
-                if (!focusedSurface.MoveFocus(next, direction.Phase == NavigationPhase.Repeated)) LeaveWidgetDirectionalBoundary(focusedSurface, next);
+                focusedSurface.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);
             }
             else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
@@ -165,8 +165,8 @@ internal sealed partial class OverlayShellPage
 
     private void FocusDirectionalTray()
     {
-        // Native OverlayState distinguishes Directional entry from Back entry:
-        // the bottom edge always enters the rail, even with a radial switcher.
+        // Validation fixtures can enter the rail directly, independently of
+        // the configured switcher. Widget directional boundaries stay local.
         radialRequested = false;
         SetInteractive(false);
         RefreshRadialChooser();
@@ -248,10 +248,4 @@ internal sealed partial class OverlayShellPage
         catch (Exception error) { ReportFailure(error); }
     }
 
-    private void LeaveWidgetDirectionalBoundary(Presentation.WidgetViewPresenter presenter, FocusNavigationDirection direction)
-    {
-        if (!retired && visible && interactive && ReferenceEquals(surface, presenter) && !PinnedInputActive &&
-            !IsMediaFullscreen && direction == FocusNavigationDirection.Down && presenter.CanLeaveRootScope)
-            FocusDirectionalTray();
-    }
 }
