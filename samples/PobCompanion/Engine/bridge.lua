@@ -17,9 +17,10 @@ assert(build, 'PoB initialization failed')
 collectgarbage('setpause', 120)
 collectgarbage('setstepmul', 200)
 local function clean(s) return tostring(s or ''):gsub('%^x%x%x%x%x%x%x',''):gsub('%^%d','') end
+local textRuns=dofile(adapterDirectory..'text-runs.lua')
 local function finite(v) return type(v)=='number' and v==v and v~=math.huge and v~=-math.huge end
 local configDefinitions=LoadModule('Modules/ConfigOptions')
-local skillControlNames={'mainActiveSkill','mainSkillPart','mainSkillMinion','mainSkillMinionSkill','mainSkillStatSet'}
+local skillControlNames={'mainSkill','statSet','mainSkillPart','mainSkillMinion','mainSkillMinionSkill','mainSkillMinionSkillStatSet'}
 local function configValue(d)
   local value=build.configTab.input[d.var]
   if value~=nil then return value end
@@ -65,7 +66,7 @@ local function itemDetails(item,slot)
           local prefix=colorCodes[entry[1]]
           if prefix and line.text:sub(1,#prefix)==prefix then tone=entry[2];break end
         end
-        lines[#lines+1]={text=text,tone=tone}
+        lines[#lines+1]={text=text,tone=tone,runs=textRuns(line.text)}
       end
     else flush()end
   end
@@ -74,9 +75,16 @@ end
 local function snapshot()
   local result={name=clean(build.buildName),level=build.characterLevel,treeVersion=build.spec.treeVersion,
     class=build.spec.curClassName,ascendancy=build.spec.curAscendClassName,autoLevel=build.characterLevelAutoMode==true,stats={},trees={},skills={},items={},conditions={},
-    notes=clean(build.notesTab.controls.edit.buf),warnings={},loadouts={},nodes={},links={},classes={},ascendancies={},slots={},skillOptions={},breakdowns={}}
+    notes=clean(build.notesTab.controls.edit.buf),notesRuns=textRuns(build.notesTab.controls.edit.buf),warnings={},loadouts={},nodes={},links={},classes={},ascendancies={},slots={},skillOptions={},breakdowns={}}
   local active=build.calcsTab.mainEnv.player.mainSkill
   result.mainSkill=active and active.activeEffect and active.activeEffect.grantedEffect.name or ''
+  result.mainSkillGroup=build.mainSocketGroup
+  result.mainSkillDisabled=active and (active.disableReason~=nil or active.skillFlags and active.skillFlags.disable==true) or false
+  result.mainSkillDisabledReason=active and clean(active.disableReason) or ''
+  result.skillOptionsGroup=build.mainSocketGroup
+  local calcsSkill=build.calcsTab.calcsEnv.player.mainSkill
+  result.breakdownContext={skill=calcsSkill and calcsSkill.activeEffect.grantedEffect.name or '',
+    group=build.calcsTab.calcsEnv.mainSocketGroup,mode=build.calcsTab.input.misc_buffMode or ''}
   for _,name in ipairs(skillControlNames) do
     local control=build.controls[name]
     local ok,shown=pcall(function()return control and control:IsShown()end)
@@ -100,18 +108,31 @@ local function snapshot()
     local actor=isMinion and build.calcsTab.calcsEnv.minion or build.calcsTab.calcsEnv.player
     local key=isMinion and stat.name:sub(7) or stat.name
     local detail=actor and actor.breakdown and actor.breakdown[key]
-    local lines={}
+    local lines,columns,rows={},{},{}
     if type(detail)=='table' then
-      for _,line in ipairs(detail)do if type(line)=='string' then lines[#lines+1]=clean(line) end end
-      if detail.slots then for name,value in pairs(detail.slots)do if type(value)=='number' or type(value)=='string'then lines[#lines+1]=clean(name)..': '..clean(value)end end end
-      if detail.rowList and detail.colList then for _,row in ipairs(detail.rowList)do
-        local cells={};for _,column in ipairs(detail.colList)do local value=row[column.key];if type(value)=='string'or type(value)=='number'then cells[#cells+1]=clean(column.label)..': '..clean(value)end end
-        if #cells>0 and #lines<100 then lines[#lines+1]=table.concat(cells,' · ')end
-      end end
+      for _,line in ipairs(detail)do if type(line)=='string' then lines[#lines+1]=line end end
+      if detail.slots then for name,value in pairs(detail.slots)do if type(value)=='number' or type(value)=='string'then lines[#lines+1]=name..': '..value end end end
+      if detail.rowList and detail.colList then
+        for _,column in ipairs(detail.colList)do columns[#columns+1]=clean(column.label or column.key)end
+        for i,row in ipairs(detail.rowList)do
+          if i>100 then break end
+          local cells={};for _,column in ipairs(detail.colList)do
+            local value=row[column.key];local text=(type(value)=='string'or type(value)=='number')and tostring(value)or'—'
+            cells[#cells+1]={text=clean(text),runs=textRuns(text)}
+          end
+          rows[#rows+1]={cells=cells}
+        end
+      end
     end
-    if #lines>0 then result.breakdowns[#result.breakdowns+1]={name=stat.name,text=table.concat(lines,'\n')}end
+    if #lines>0 or #rows>0 then local text=table.concat(lines,'\n');result.breakdowns[#result.breakdowns+1]={name=stat.name,text=clean(text),runs=textRuns(text),value=actor.output[key],columns=columns,rows=rows,rowCount=detail.rowList and #detail.rowList or 0}end
   end
   for _,line in ipairs(build.controls.warnings.lines or {}) do result.warnings[#result.warnings+1]=clean(line) end
+  result.fullDpsIncludedGroups=0
+  result.fullDpsContributions={}
+  for _,skill in ipairs(build.calcsTab.mainOutput.SkillDPS or {})do
+    if finite(skill.dps)then result.fullDpsContributions[#result.fullDpsContributions+1]={
+      name=clean(skill.name),dps=skill.dps,count=skill.count or 1,source=clean(skill.source),trigger=clean(skill.trigger),part=clean(skill.skillPart)}end
+  end
   for i,spec in ipairs(build.treeTab.specList) do result.trees[#result.trees+1]={id=i,title=clean(spec.title or 'Default'),active=i==build.treeTab.activeSpec} end
   result.itemSets=choices(build.itemsTab.itemSetOrderList,build.itemsTab.itemSets,build.itemsTab.activeItemSetId)
   result.skillSets=choices(build.skillsTab.skillSetOrderList,build.skillsTab.skillSets,build.skillsTab.activeSkillSetId)
@@ -138,6 +159,7 @@ local function snapshot()
       gems[#gems+1]={id=j,name=clean(gem.nameSpec or (gem.gemData and gem.gemData.name)),level=gem.level,quality=gem.quality,enabled=gem.enabled~=false,count=gem.count or 1}
     end
     result.skills[#result.skills+1]={id=i,title=clean(g.label~='' and g.label or (gems[1] and gems[1].name) or 'Group'),gems=gems,enabled=g.enabled~=false,main=i==build.mainSocketGroup,fullDps=g.includeInFullDPS==true}
+    if g.enabled~=false and g.includeInFullDPS then result.fullDpsIncludedGroups=result.fullDpsIncludedGroups+1 end
   end
   for slotIndex,slot in ipairs(build.itemsTab.orderedSlots) do
     result.slots[#result.slots+1]={name=slot.slotName}
@@ -159,7 +181,7 @@ local function snapshot()
         local description=d.tooltip
         if type(description)=='function' then local valid,text=pcall(description,build.configTab.modList,build);description=valid and text or '' end
         result.conditions[#result.conditions+1]={id=d.var,title=clean(d.label or d.var),section=configSection,applicable=ok and shown==true,
-          kind=d.type or 'text',value=value,options=options,description=type(description)=='string' and clean(description) or ''}
+          kind=d.type or 'text',value=value,options=options,description=type(description)=='string' and clean(description) or '',descriptionRuns=type(description)=='string' and textRuns(description) or {}}
       end
     end
   end
@@ -174,7 +196,7 @@ local function snapshot()
       if path and build.spec.GetEffectiveAllocationPath then path=build.spec:GetEffectiveAllocationPath(n) end
       local canAllocate=not n.alloc and not start and path~=nil and not requiresChoice
       result.nodes[#result.nodes+1]={id=id,x=n.x,y=n.y,name=clean(n.dn),allocated=n.alloc==true,kind=n.type,
-        description=clean(table.concat(n.sd or {},'\n')),icon=n.icon or '',distance=n.pathDist or 0,
+        description=clean(table.concat(n.sd or {},'\n')),descriptionRuns=textRuns(table.concat(n.sd or {},'\n')),icon=n.icon or '',distance=n.pathDist or 0,
         ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and not start,requiresChoice=requiresChoice==true,
         pathCount=path and #path or 0,refundCount=n.depends and #n.depends or 0}
     end
@@ -232,11 +254,24 @@ local function command(req)
     assert(req.field=='level' or req.field=='quality' or req.field=='count','Invalid gem field')
     assert(finite(req.value) and req.value>=0 and req.value<=1000,'Invalid gem value'); gem[req.field]=req.value
     build.skillsTab:ProcessSocketGroup(g)
+  elseif op=='inspect-skill' then
+    local group=validIndex(req.group,build.skillsTab.socketGroupList)
+    local saved=build:SaveDB('code')
+    build.mainSocketGroup=group; recalc()
+    local inspected=snapshot()
+    -- The upstream selector callbacks are tied to the calculation group. Use a
+    -- temporary calculation context, then restore the exact authored build.
+    loadBuildFromXML(saved,'Working build');recalc()
+    return {state=inspected,xml=saved}
   elseif op=='skill-option' then
+    local group=validIndex(req.group,build.skillsTab.socketGroupList)
+    local mainGroup=build.mainSocketGroup
+    build.mainSocketGroup=group;recalc()
     local allowed=false;for _,name in ipairs(skillControlNames)do if name==req.control then allowed=true end end
     assert(allowed,'Invalid skill option');local control=build.controls[req.control]
     assert(control and control:IsShown(),'Skill option no longer applies')
     validIndex(req.value,control.list);control:SetSel(req.value)
+    build.mainSocketGroup=mainGroup
   elseif op=='config' then
     assert(type(req.key)=='string','Unknown condition')
     local definition;for _,d in ipairs(configDefinitions)do if d.var==req.key then definition=d;break end end

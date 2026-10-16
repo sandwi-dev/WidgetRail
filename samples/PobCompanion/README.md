@@ -6,9 +6,9 @@ Two controller-first widgets share one implementation and run the unmodified Pat
 
 Paste a PoB share code or supported public build link, or enter the path to an exported XML file. The widget keeps the original import and a separate working copy. It reopens the selected working copy after restart.
 
-- **Calcs** groups headline statistics and detailed calculation breakdowns.
+- **Calcs** groups statistics beside their calculation setup. Main-skill DPS identifies the skill; disabled skills show an unavailable value and PoB's reason. Full DPS identifies its included groups and contributors. Saved desktop Calcs breakdowns identify their own skill and buff mode, which can differ from the main sidebar selection.
 - **Tree** shows upstream passive-tree positions, rendered connections and node artwork, with an adjacent node inspector. Hover or dwell with the controller pointer for modifiers and point costs. Search selection frames the node; Main tree and Ascendancy frame their respective areas. L2/R2 use the same internal map zoom as the minus/plus buttons, keeping the toolbar and surrounding layout at their normal size.
-- **Skills** and **Items** keep the list beside the selected entry. Item descriptions use upstream tooltip formatting.
+- **Skills** and **Items** keep the list beside the selected entry. Skill options inspect and edit that group without changing the main calculation group. Item comparisons name the replaced and proposed items and show changed statistics before Apply. Descriptions preserve upstream inline formatting through native rich text and theme colors.
 - **Configuration** retains upstream section names and order in a category list. Controls scroll within each section; search covers all sections, and Show explanations reveals the upstream help. Retained settings that are currently inapplicable are identified explicitly. Changes remain previews until applied.
 - **Notes** displays a continuous scrolling document and opens guide links through the host.
 
@@ -17,6 +17,8 @@ Node allocation and refund changes are previews. **Apply** saves the working cop
 Tree preview actions stay above the scrolling comparison panel. Right from a skill or item row enters its details; Left returns to the selected row. Section switches explicitly focus the destination content and use the host's section transitions. Animation follows the user's motion preference. Startup shows a loading indicator while the calculation engine prepares the saved build.
 
 Use **Build & import** to rename a build, open another saved build, import, export or change character details. LB/RB switches sections. Controller focus and list navigation remain native; the optional tree visualization uses a host-owned packaged web session.
+
+Passive search results and saved builds use virtualized lists with stable row identities. Returning from a passive inspector restores the selected row. Notes, configuration sections and equipment-slot choices scroll continuously rather than using Next page actions.
 
 ## Scope and compatibility
 

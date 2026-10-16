@@ -12,6 +12,7 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
     private readonly SemaphoreSlim serial = new(1);
     private Process? process;
     private Task? diagnostics;
+    private CancellationTokenSource? diagnosticsCancellation;
     private string unread = "";
     private Decoder decoder = Encoding.UTF8.GetDecoder();
     private string? lastXml;
@@ -68,8 +69,16 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
         start.Environment.Remove("CI");
         process = Process.Start(start) ?? throw new IOException("Could not start the build engine.");
         var stderr = process.StandardError;
+        var drainCancellation=new CancellationTokenSource();
+        diagnosticsCancellation=drainCancellation;
         // Drain without retaining build content or unbounded upstream diagnostics.
-        diagnostics = Task.Run(async () => { try { var buffer = new char[4096]; while (await stderr.ReadAsync(buffer) > 0) { } } catch (IOException) { } catch (ObjectDisposedException) { } });
+        diagnostics = Task.Run(async () =>
+        {
+            try { var buffer = new char[4096]; while (await stderr.ReadAsync(buffer.AsMemory(),drainCancellation.Token) > 0) { } }
+            catch (IOException) { }
+            catch (ObjectDisposedException) { }
+            catch (OperationCanceledException) { }
+        });
         using var hello = JsonDocument.Parse(await ReadLineAsync(process.StandardOutput, token));
         if (!hello.RootElement.TryGetProperty("ready", out var ready) || !ready.GetBoolean()) throw new IOException("Build engine initialization failed.");
         if (lastXml is not null)
@@ -109,6 +118,13 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
 
     private void Retire()
     {
+        var drainCancellation=diagnosticsCancellation;diagnosticsCancellation=null;
+        drainCancellation?.Cancel();
+        if(drainCancellation is not null)
+        {
+            if(diagnostics is { } drain)_=drain.ContinueWith(_=>drainCancellation.Dispose(),TaskScheduler.Default);
+            else drainCancellation.Dispose();
+        }
         var old = process; process = null; unread = ""; decoder = Encoding.UTF8.GetDecoder();
         if (old is null) return;
         try { if (!old.HasExited) old.Kill(entireProcessTree: true); }

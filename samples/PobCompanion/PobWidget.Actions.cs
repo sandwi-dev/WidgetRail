@@ -19,7 +19,22 @@ public sealed partial class PobWidget
             if(id=="apply")
             {
                 var previous=pendingBefore!; var current=result!;
-                Work(async token=>{token.ThrowIfCancellationRequested();Persist(current);lock(gate){undo.Push(previous.Xml);while(undo.Count>12){var keep=undo.Take(12).Reverse().ToArray();undo.Clear();foreach(var s in keep)undo.Push(s);}pendingBefore=null;focusRequestSequence++;}if(mapSession is {} map)await SendMapAsync(map,current.State,true,token);},"Saving change…");
+                Work(async token=>
+                {
+                    token.ThrowIfCancellationRequested();Persist(current);
+                    lock(gate)
+                    {
+                        undo.Push(previous.Xml);
+                        while(undo.Count>12){var keep=undo.Take(12).Reverse().ToArray();undo.Clear();foreach(var s in keep)undo.Push(s);}
+                        pendingBefore=null;focusRequestSequence++;
+                        if(detailKind=="choose-slot")
+                        {
+                            var item=A(State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
+                            detailKind="item";detailId=I(item,"id");selections["item"]=detailId;pastedItem=null;
+                        }
+                    }
+                    if(mapSession is {} map)await SendMapAsync(map,current.State,true,token);
+                },"Saving change…");
             }
             else if(id=="cancel") Restore(pendingBefore!.Xml,clearPreview:true);
             else if(id=="undo" && undo.Count>0) { var xml=undo.Peek(); Work(async token=>{var restored=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);Persist(restored);lock(gate){result=restored;undo.Pop();detailKind="";}await RefreshMapAsync(token);},"Undoing change…"); }
@@ -36,7 +51,7 @@ public sealed partial class PobWidget
                     if(parts[0]!="saved")BuildDocument.SaveAtomic(Path.Combine(dataDirectory,newId+".original.xml"),xml);
                     BuildDocument.SaveAtomic(Path.Combine(dataDirectory,newId+".xml"),loaded.Xml);
                     BuildDocument.SaveAtomic(Path.Combine(dataDirectory,"selected.txt"),newId);
-                    lock(gate){documentId=newId;result=loaded;pendingBefore=null;undo.Clear();selections.Clear();detailKind="";section="Calcs";page=0;filter="";compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version. Your original export is retained.":"";}
+                    lock(gate){documentId=newId;result=loaded;pendingBefore=null;undo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version. Your original export is retained.":"";}
                     EnsureBuildName(loaded);
                     await RefreshMapAsync(token);
                 },"Loading and calculating build…");
@@ -45,7 +60,7 @@ public sealed partial class PobWidget
             {
                 var loaded=await engine.ExecuteAsync(new{op="new"},token);var newId=Guid.NewGuid().ToString("N");
                 token.ThrowIfCancellationRequested();Persist(loaded,newId);
-                lock(gate){documentId=newId;result=loaded;pendingBefore=null;undo.Clear();selections.Clear();detailKind="";section="Calcs";page=0;filter="";compatibilityNotice="";}
+                lock(gate){documentId=newId;result=loaded;pendingBefore=null;undo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";}
                 await RefreshMapAsync(token);
             },"Creating build…");
             else if(id=="rename" && documentId is not null) Work(_=>
@@ -57,23 +72,26 @@ public sealed partial class PobWidget
             },"Renaming build…");
             else if(id=="export") Work(_=>{ClipboardText.Write(BuildDocument.Encode(result!.Xml));return Task.CompletedTask;},"Copying build…");
             else if(id=="export-file") Work(_=>{BuildDocument.SaveAtomic(Path.Combine(dataDirectory,documentId+".export.xml"),result!.Xml);return Task.CompletedTask;},"Exporting build…");
-            else if(id=="menu") { detailKind="menu";page=0; }
-            else if(id=="custom") { detailKind="custom";page=0; }
-            else if(id=="skill-options") {detailKind="skill-options";page=0;}
-            else if(parts[0]=="skill-option"&&parts.Length==3&&int.TryParse(parts[2],out var optionValue)) Preview(new{op="skill-option",control=parts[1],value=optionValue});
-            else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";page=0;}
-            else if(id=="back") { detailKind=detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;page=0;pastedItem=null;if(section=="Tree")focusRequestSequence++; }
-            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(Sections,section);section=Sections[(index+(id=="next-section"?1:Sections.Length-1))%Sections.Length];detailKind="";page=0;filter="";focusRequestSequence++; }
-            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";page=0;filter="";focusRequestSequence++;}
-            else if(id=="search") {filter=action.CommittedText??"";page=0;}
+            else if(id=="menu") { detailKind="menu"; }
+            else if(id=="library") { detailKind="library"; }
+            else if(id=="custom") { detailKind="custom"; }
+            else if(id=="skill-options" && detailKind=="skill") OpenSkillOptions();
+            else if(parts[0]=="main-group"&&parts.Length==2&&int.TryParse(parts[1],out var mainGroup)&&A(State,"skills").Any(s=>I(s,"id")==mainGroup))
+                Preview(new{op="skill",id=mainGroup,field="main"});
+            else if(parts[0]=="skill-option"&&parts.Length==4&&detailKind=="skill-options"&&
+                int.TryParse(parts[1],out var group)&&group==detailId&&group==inspectedSkillGroup&&int.TryParse(parts[3],out var optionValue))
+                PreviewSkillOption(parts[2],optionValue);
+            else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";}
+            else if(id=="back") { detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;pastedItem=null;if(section=="Tree")focusRequestSequence++; }
+            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(Sections,section);section=Sections[(index+(id=="next-section"?1:Sections.Length-1))%Sections.Length];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++; }
+            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++;}
+            else if(id=="search") {filter=action.CommittedText??"";passiveReturnKey=null;}
             else if(parts[0]=="config-section"&&parts.Length==2&&int.TryParse(parts[1],out var category)&&category>=0&&category<ConfigurationSections().Length)
-            {configSection=ConfigurationSections()[category];filter="";}
+            {configSection=ConfigurationSections()[category];filter="";passiveReturnKey=null;}
             else if(id=="config-help")configHelp=!configHelp;
-            else if(id=="config-clear-search")filter="";
-            else if(id=="page-next")page++;
-            else if(id=="page-previous")page=Math.Max(0,page-1);
+            else if(id=="config-clear-search"){filter="";passiveReturnKey=null;}
             else if(parts[0] is "node" or "skill" or "item" && parts.Length==2 && int.TryParse(parts[1],out var detail))
-            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail)){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;page=0;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);}}}
+            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail)){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);}}}
             else if(id=="node-change")
             {
                 var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
@@ -96,9 +114,9 @@ public sealed partial class PobWidget
                 else if(v.ValueKind==JsonValueKind.String&&action.CommittedText is not null)changed=action.CommittedText;
                 if(changed is not null)Preview(new{op="config",key=S(c,"id"),value=changed});
             }
-            else if(id=="item-paste") Work(_=>{var raw=readClipboard();if(raw.Length>32768)throw new IOException("Item text is too long.");lock(gate){pastedItem=raw;detailKind="choose-slot";page=0;}return Task.CompletedTask;},"Reading item…");
+            else if(id=="item-paste") Work(_=>{var raw=readClipboard();if(raw.Length>32768)throw new IOException("Item text is too long.");lock(gate){pastedItem=raw;detailKind="choose-slot";}return Task.CompletedTask;},"Reading item…");
             else if(parts[0]=="replace-slot"&&parts.Length==2&&int.TryParse(parts[1],out var slotIndex)&&slotIndex>=0&&slotIndex<A(State,"slots").Length&&pastedItem is not null)
-                Preview(new{op="item",raw=pastedItem,slot=S(A(State,"slots")[slotIndex],"name")});
+            {previewSlot=S(A(State,"slots")[slotIndex],"name");Preview(new{op="item",raw=pastedItem,slot=previewSlot});}
             else if(id=="map") Work(OpenMapAsync,"Opening tree map…");
             if (section == "Tree" && mapSession is null && (parts[0] == "section" || id is "next-section" or "previous-section"))
                 Work(OpenMapAsync, "Opening passive tree…");
@@ -114,9 +132,9 @@ public sealed partial class PobWidget
         BuildDocument.SaveAtomic(Path.Combine(dataDirectory,targetId+".xml"),current.Xml);
         BuildDocument.SaveAtomic(Path.Combine(dataDirectory,"selected.txt"),targetId);
     }
-    private void Switch(object command)=>Work(async token=>{var next=await engine.ExecuteAsync(command,token,result!.Xml);Persist(next);lock(gate){result=next;page=0;detailKind="";}await RefreshMapAsync(token);},"Switching build set…");
+    private void Switch(object command)=>Work(async token=>{var next=await engine.ExecuteAsync(command,token,result!.Xml);Persist(next);lock(gate){result=next;detailKind="";}await RefreshMapAsync(token);},"Switching build set…");
     private void Preview(object command)=>Work(async token=>{var before=result!;var next=await engine.ExecuteAsync(command,token,result!.Xml);lock(gate){pendingBefore=before;result=next;focusRequestSequence++;}await RefreshMapAsync(token);},"Calculating comparison…");
-    private void Restore(string xml,bool clearPreview)=>Work(async token=>{var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);lock(gate){result=next;if(clearPreview){pendingBefore=null;focusRequestSequence++;}}await RefreshMapAsync(token);},"Restoring build…");
+    private void Restore(string xml,bool clearPreview)=>Work(async token=>{var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);lock(gate){result=next;if(clearPreview){pendingBefore=null;focusRequestSequence++;}}if(detailKind=="skill-options")await RefreshSkillOptionsAsync(detailId,token);await RefreshMapAsync(token);},"Restoring build…");
 
     private WidgetWebSession? mapSession;
     private string? mapArtworkVersion;
@@ -186,7 +204,7 @@ public sealed partial class PobWidget
                 }
                 else if(S(message,"type")=="select")
                 {
-                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&A(State,"nodes").Any(n=>I(n,"id")==id)){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;page=0;}}
+                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&A(State,"nodes").Any(n=>I(n,"id")==id)){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;passiveReturnKey=null;}}
                     Invalidate();
                 }
             }

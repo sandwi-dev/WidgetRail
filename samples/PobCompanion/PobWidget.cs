@@ -18,8 +18,9 @@ public sealed partial class PobWidget : Widget
     private string? documentId;
     private (string Id,string Name)[] savedBuilds = [];
     private string? pastedItem;
+    private string? previewSlot;
     private string section = "Calcs", filter = "", status = "", detailKind = "";
-    private int page, detailId;
+    private int detailId;
     private string statDetail = "";
     private string compatibilityNotice = "";
     private bool busy, activated;
@@ -29,7 +30,6 @@ public sealed partial class PobWidget : Widget
     private readonly Dictionary<string,int> selections = new();
     private long focusRequestSequence;
     private static readonly string[] Sections = ["Calcs", "Tree", "Skills", "Items", "Configuration", "Notes"];
-    private const int PageSize = 9;
     public PobWidget(int game, string payloadDirectory, string? dataDirectory = null)
     {
         this.game = game;
@@ -40,8 +40,8 @@ public sealed partial class PobWidget : Widget
     public PobWidget(int game, PobEngine engine, string dataDirectory, Func<string>? readClipboard = null) { this.game = game; this.engine = engine; this.dataDirectory = dataDirectory; this.readClipboard = readClipboard ?? ClipboardText.Read; }
     private JsonElement State => result?.State ?? default;
     private static string S(JsonElement e, string key, string fallback = "") => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.ValueKind != JsonValueKind.Null ? v.ValueKind == JsonValueKind.String ? v.GetString()! : v.ToString() : fallback;
-    private static int I(JsonElement e, string key) => e.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
-    private static bool B(JsonElement e, string key) => e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
+    private static int I(JsonElement e, string key) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
+    private static bool B(JsonElement e, string key) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
     private static JsonElement[] A(JsonElement e, string key) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().ToArray() : [];
     private static string Limit(string text, int length = 3000) => text.Length <= length ? text : text[..length] + "…";
     private static WidgetElement Text(string text, string id, string css = "pob-text") => UI.Text(Limit(text), "pob." + id).Classes(css.Split(' ', StringSplitOptions.RemoveEmptyEntries));
@@ -139,7 +139,9 @@ public sealed partial class PobWidget : Widget
             var children = new List<WidgetElement>();
             if (!string.IsNullOrWhiteSpace(status)) children.Add(Text(status, "status", "pob-muted"));
             if (busy) children.Add(Button("Cancel operation", "cancel-operation"));
-            if (result is null)
+            if (result is null && detailKind=="library")
+                children.Add(LibraryWorkspace());
+            else if (result is null)
             {
                 children.Add(Text($"PoE {game} Build Companion", "title", "pob-title"));
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
@@ -161,10 +163,11 @@ public sealed partial class PobWidget : Widget
                 children.Add(Text("LB / RB  Switch section     ·     A  Inspect or change     ·     Working copy saved locally", "footer", "pob-footer"));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
-            var initial = result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
+            var initial = detailKind=="library" ? "pob.back" : result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
             var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").RememberChildFocus(initial);
             if (busy) root = root.Shortcut(ControllerButton.B, "cancel-operation");
+            else if(result is null&&detailKind=="library")root=root.Shortcut(ControllerButton.B,"back");
             if (result is not null)
             {
                 root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
@@ -173,8 +176,7 @@ public sealed partial class PobWidget : Widget
             return new(WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = section == "Tree" ? 1320 : 1180, PreferredHeight = section == "Tree" ? 900 : 820, MinimumWidth = 820, MinimumHeight = 600 })
             {
-                FocusGroupEntryRequest = !busy && focusRequestSequence > 0 && (detailKind.Length == 0 || InlineDetail)
-                    ? new() { RequestId = focusRequestSequence, GroupId = section == "Tree" ? "pob.tree.side" : "pob.root" } : null,
+                FocusGroupEntryRequest = ContentFocusRequest(),
             };
         }
     }
@@ -192,13 +194,7 @@ public sealed partial class PobWidget : Widget
     private void AddLibrary(List<WidgetElement> children)
     {
         if (savedBuilds.Length == 0) return;
-        children.Add(Text("Saved builds", "library.heading", "pob-heading"));
-        var pages = Math.Max(1,(savedBuilds.Length+PageSize-1)/PageSize);
-        var selectedPage = Math.Clamp(page,0,pages-1);
-        foreach (var build in savedBuilds.Skip(selectedPage*PageSize).Take(PageSize))
-            children.Add(Button(build.Name + (build.Id==documentId ? " · Current" : ""), "saved." + build.Id));
-        if (selectedPage>0) children.Add(Button("Previous builds","page-previous"));
-        if (selectedPage+1<pages) children.Add(Button("More builds","page-next"));
+        children.Add(Button($"Saved builds ({savedBuilds.Length})","library"));
     }
 
     private List<WidgetElement> Content()
@@ -226,23 +222,13 @@ public sealed partial class PobWidget : Widget
         if (detailKind == "custom") { rows.Add(Button("Back to conditions", "back")); AddReading(rows, S(State, "customMods", "No custom modifiers in this configuration."), "custom"); return rows; }
         if (detailKind == "choose-slot")
         {
+            if(pendingBefore is not null)return ItemComparisonContent();
             rows.Add(Button("Back to equipment", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
-            var slots = A(State, "slots"); AddPage(rows, slots, slot => Button(S(slot,"name"), "replace-slot." + Array.FindIndex(slots,s=>S(s,"name")==S(slot,"name")))); return rows;
+            var slots = A(State, "slots"); rows.AddRange(slots.Select((slot,index)=>Button(S(slot,"name"),"replace-slot."+index)));return rows;
         }
-        if (detailKind == "skill-options")
-        {
-            rows.Add(Button("Back to skills","back")); rows.Add(Text(S(State,"mainSkill"),"mainSkill","pob-heading"));
-            foreach(var option in A(State,"skillOptions"))
-            {
-                var choices=A(option,"options");if(choices.Length==0)continue;
-                var selected=Array.FindIndex(choices,o=>B(o,"active"));if(selected<0)selected=0;
-                var key=S(option,"id"); rows.Add(UI.Select(StatLabel(key.Replace("mainSkill","")),choices.Select((o,i)=>new SelectOption("choice"+i,S(o,"title"),"skill-option."+key+"."+I(o,"id"),i==selected)).ToArray(),"pob.option."+key).Classes("pob-select"));
-            }
-            if(rows.Count==2)rows.Add(Text("No additional choices for this skill.","no-options","pob-muted"));return rows;
-        }
+        if (detailKind == "skill-options") return SkillOptionsContent();
         return rows;
     }
-
     private WidgetElement Condition(JsonElement c)
     {
         var key=Array.FindIndex(A(State,"conditions"),v=>S(v,"id")==S(c,"id")).ToString(CultureInfo.InvariantCulture); var value=c.GetProperty("value");
@@ -264,7 +250,8 @@ public sealed partial class PobWidget : Widget
     private List<WidgetElement> NodeDetails()
     {
         var n=A(State,"nodes").First(n=>I(n,"id")==detailId);
-        var rows = new List<WidgetElement> { Button("Back to tree","back"), Text(S(n,"name"),"node.name","pob-heading"), Text(S(n,"description"),"node.description") };
+        var rows = new List<WidgetElement> { Button("Back to tree","back"), Text(S(n,"name"),"node.name","pob-heading") };
+        AddFormatted(rows,n,"description","descriptionRuns","node.description");
         if (pendingBefore is not null)
         {
             var previous = A(pendingBefore.State,"nodes").Where(x=>B(x,"allocated")).Select(x=>I(x,"id")).ToHashSet();
@@ -272,7 +259,7 @@ public sealed partial class PobWidget : Widget
             var added=current.Except(previous).ToHashSet();var removed=previous.Except(current).ToHashSet();
             rows.Add(Text($"Preview: +{added.Count} allocated, -{removed.Count} refunded", "node.preview", "pob-heading"));
             rows.Add(Text($"Passive points: {S(pendingBefore.State,"passivePoints")} to {S(State,"passivePoints")}\nAscendancy points: {S(pendingBefore.State,"ascendancyPoints")} to {S(State,"ascendancyPoints")}", "node.points"));
-            rows.Add(Text(Compare(pendingBefore.State, State),"node.comparison","pob-muted"));
+            AddComparison(rows,pendingBefore.State,State,"node.comparison");
             foreach(var changed in A(State,"nodes").Where(x=>added.Contains(I(x,"id")) || removed.Contains(I(x,"id"))).Take(30))
                 rows.Add(Text((added.Contains(I(changed,"id"))?"+ ":"- ")+S(changed,"name"),"changed."+I(changed,"id"),added.Contains(I(changed,"id"))?"pob-green":"pob-life"));
             rows.Add(Text("Apply saves this preview. Discard restores the previous tree and totals.","node.preview.help","pob-muted"));
@@ -287,7 +274,7 @@ public sealed partial class PobWidget : Widget
     private List<WidgetElement> SkillDetails()
     {
         var skill=A(State,"skills").First(s=>I(s,"id")==detailId);
-        var rows=new List<WidgetElement>{Button("Back to skills","back"),Text(S(skill,"title"),"skill.name","pob-heading"),Button("Use as main skill","skill-main"),Button(B(skill,"enabled")?"Disable group":"Enable group","skill-enabled"),Button(B(skill,"fullDps")?"Exclude from combined DPS":"Include in combined DPS","skill-fullDps")};
+        var rows=new List<WidgetElement>{Button("Back to skills","back"),Text(S(skill,"title"),"skill.name","pob-heading"),Button("Use as main skill","skill-main"),Button(B(skill,"enabled")?"Disable group":"Enable group","skill-enabled"),Button(B(skill,"fullDps")?"Exclude from Full DPS":"Include in Full DPS","skill-fullDps")};
         foreach(var gem in A(skill,"gems"))
         {
             var id=I(gem,"id");
@@ -307,25 +294,6 @@ public sealed partial class PobWidget : Widget
         var sets=A(State,field); if(sets.Length<2)return;
         rows.Add(UI.Select("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Disabled(pendingBefore is not null).Classes("pob-select"));
     }
-    private void AddPage(List<WidgetElement> rows,JsonElement[] entries,Func<JsonElement,WidgetElement> render)
-    {
-        page=Math.Clamp(page,0,Math.Max(0,(entries.Length-1)/PageSize));
-        rows.Add(Text(entries.Length+" entries · page "+(page+1)+" of "+Math.Max(1,(entries.Length+PageSize-1)/PageSize),"pagecount","pob-muted"));
-        rows.AddRange(entries.Skip(page*PageSize).Take(PageSize).Select(render));
-        if(page>0)rows.Add(Button("Previous page","page-previous"));
-        if((page+1)*PageSize<entries.Length)rows.Add(Button("Next page","page-next"));
-    }
-    private static string Format(double n)=>n.ToString("N1",CultureInfo.CurrentCulture);
     private string[] GuideLinks()=>System.Text.RegularExpressions.Regex.Matches(S(State,"notes"),@"https://[^\s<>""\[\]]+",System.Text.RegularExpressions.RegexOptions.None,TimeSpan.FromMilliseconds(100)).Select(m=>m.Value.TrimEnd('.',',',')')).Where(s=>s.Length<=2048&&Uri.TryCreate(s,UriKind.Absolute,out var uri)&&uri.UserInfo.Length==0).Distinct().Take(12).ToArray();
-    private static string StatLabel(string key)=>key switch {"CombinedDPS"=>"Selected skill DPS (combined)","FullDPS"=>"All included skills DPS","TotalDPS"=>"Selected skill hit DPS","EnergyShield"=>"Energy shield","EffectiveHitPool"=>"Effective hit pool",_=>System.Text.RegularExpressions.Regex.Replace(key,"([a-z])([A-Z])","$1 $2")};
-    private static string Compare(JsonElement before,JsonElement after)
-    {
-        var old=A(before,"stats").ToDictionary(s=>S(s,"name"),s=>s.GetProperty("value").GetDouble());
-        var changes = A(after, "stats")
-            .Where(s => S(s, "name") is "CombinedDPS" or "Life" or "EnergyShield")
-            .Where(s => old.TryGetValue(S(s, "name"), out var v) && Math.Abs(v - s.GetProperty("value").GetDouble()) > .01)
-            .Select(s => StatLabel(S(s, "name")) + " " + Format(old[S(s, "name")]) + " → " + Format(s.GetProperty("value").GetDouble()));
-        var summary = string.Join(" · ", changes);
-        return summary.Length > 0 ? summary : "No change to headline stats";
-    }
+    private static string StatLabel(string key)=>key switch {"CombinedDPS"=>"Main skill DPS (combined)","FullDPS"=>"All included skills DPS","TotalDPS"=>"Main skill hit DPS","EnergyShield"=>"Energy shield","EffectiveHitPool"=>"Effective hit pool",_=>System.Text.RegularExpressions.Regex.Replace(key,"([a-z])([A-Z])","$1 $2")};
 }

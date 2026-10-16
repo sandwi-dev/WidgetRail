@@ -20,6 +20,12 @@ var reading=new List<WidgetElement>();PobWidget.AddReading(reading,longNotes,"no
 var readingView=new WidgetView(UI.Stack("reading",reading.ToArray())).CreateSnapshot("reading",1);
 Check(string.Concat(Nodes(readingView.Root).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text))==longNotes,"Continuous notes retain every character across bounded text blocks");
 Check(!Nodes(readingView.Root).Any(n=>n.Kind==ViewNodeKind.Button),"Reading notes never requires a Next page action");
+var formatted=new List<WidgetElement>();
+var colored=JsonSerializer.SerializeToElement(new{text="Life: +20, Cold: +5",runs=new[]{new{text="Life: ",tone="text"},new{text="+20",tone="warning"},new{text=", Cold: ",tone="text"},new{text="+5",tone="blue"}}});
+PobWidget.AddFormatted(formatted,colored,"text","runs","test");
+var richView=new WidgetView(UI.Stack("rich",formatted.ToArray())).CreateSnapshot("rich",1);
+Check(string.Concat(Nodes(richView.Root).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text))==colored.GetProperty("text").GetString() &&
+    Nodes(richView.Root).Any(n=>n.Kind==ViewNodeKind.RichText) && Nodes(richView.Root).Any(n=>n.StyleClasses.Contains("pob-blue")),"Rich descriptions preserve text and semantic inline colors");
 foreach(var path in new[]{@"\\example.invalid\share\build.xml",@"\\.\pipe\not-a-build"})
 {
     try{await BuildDocument.ReadAsync(path,game,default);Check(false,"Reject network and device paths before opening a file");}
@@ -73,6 +79,37 @@ if(firstXml is not null){var again=await engine.ExecuteAsync(new{op="load",xml=f
 Check(firstXml is not null,"At least one real fixture exercised");
 if(firstXml is not null)
 {
+    var optionsBaseline=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="skill options audit"},default);
+    var mainGroup=optionsBaseline.State.GetProperty("mainSkillGroup").GetInt32();
+    var inspectedCount=0;var editedOption=false;
+    foreach(var skill in optionsBaseline.State.GetProperty("skills").EnumerateArray().Where(s=>s.GetProperty("id").GetInt32()!=mainGroup).Take(8))
+    {
+        var group=skill.GetProperty("id").GetInt32();
+        // PoB serializes passive-node sets in hash order after a reload. Compare
+        // against this load's XML, not an earlier serialization of the same sets.
+        var queryBaseline=await engine.ExecuteAsync(new{op="load",xml=optionsBaseline.Xml,name="query baseline"},default);
+        var inspected=await engine.ExecuteAsync(new{op="inspect-skill",group},default);
+        Check(inspected.State.GetProperty("skillOptionsGroup").GetInt32()==group && inspected.Xml==queryBaseline.Xml,"Inspection returns selected non-main group options without changing authored XML");
+        var restored=await engine.ExecuteAsync(new{op="snapshot"},default);
+        Check(restored.State.GetProperty("mainSkillGroup").GetInt32()==mainGroup && SameStats(restored.State,optionsBaseline.State),"Inspecting skill options restores the original calculation group and totals");
+        inspectedCount++;
+        var option=inspected.State.GetProperty("skillOptions").EnumerateArray().FirstOrDefault();
+        if(!editedOption&&option.ValueKind==JsonValueKind.Object)
+        {
+            var alternative=option.GetProperty("options").EnumerateArray().First(o=>!o.GetProperty("active").GetBoolean()).GetProperty("id").GetInt32();
+            var key=option.GetProperty("id").GetString();
+            var edited=await engine.ExecuteAsync(new{op="skill-option",group,control=key,value=alternative},default,optionsBaseline.Xml);
+            var verified=await engine.ExecuteAsync(new{op="inspect-skill",group},default,edited.Xml);
+            Check(edited.State.GetProperty("mainSkillGroup").GetInt32()==mainGroup && verified.State.GetProperty("skillOptions").EnumerateArray().Single(o=>o.GetProperty("id").GetString()==key)
+                .GetProperty("options").EnumerateArray().Single(o=>o.GetProperty("active").GetBoolean()).GetProperty("id").GetInt32()==alternative,
+                "Editing non-main skill options updates its upstream control and preserves the main group after reload");
+            var other=await engine.ExecuteAsync(new{op="inspect-skill",group=mainGroup},default,edited.Xml);
+            Check(other.State.GetProperty("skillOptions").GetRawText()==optionsBaseline.State.GetProperty("skillOptions").GetRawText(),"Non-main skill edit leaves the main skill options unchanged");
+            editedOption=true;
+        }
+    }
+    Check(inspectedCount>0,"Fixture exercises inspection of non-main groups");
+    if(game==2)Check(editedOption,"PoE 2 fixture exercises a non-main skill option edit");
     var baseline=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="Tree baseline"},default);
     var nodes=baseline.State.GetProperty("nodes").EnumerateArray().ToArray();
     var allocation=nodes.First(n=>n.GetProperty("canAllocate").GetBoolean() && n.GetProperty("pathCount").GetInt32() is >=2 and <=5);
@@ -114,6 +151,7 @@ if(firstXml is not null)
 {
     var data=Path.Combine(Path.GetTempPath(),"widgetrail-pob-ui-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(data);
     var id=Guid.NewGuid().ToString("N");File.WriteAllText(Path.Combine(data,id+".xml"),firstXml);File.WriteAllText(Path.Combine(data,"selected.txt"),id);
+    for(var copy=0;copy<11;copy++)File.WriteAllText(Path.Combine(data,Guid.NewGuid().ToString("N")+".xml"),firstXml);
     var clipboard="";
     var widget=new PobWidget(game,engine,data,()=>clipboard);
     WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().Build());
@@ -139,6 +177,46 @@ if(firstXml is not null)
         var limit=Stopwatch.StartNew();
         while(Nodes(Snapshot(widget,100).Root).Any(n=>n.Id=="pob.cancel-operation"))
         { if(limit.Elapsed>TimeSpan.FromSeconds(65))throw new TimeoutException(action);await Task.Delay(25); }
+    }
+    await Action("section.0");
+    var calculationView=Snapshot(widget,280);
+    var auditState=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="presentation audit"},default);
+    if(auditState.State.GetProperty("mainSkillDisabled").GetBoolean())
+        Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.headline.value.0"&&n.Text=="—") &&
+            Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.warning"&&n.Text!.Contains(auditState.State.GetProperty("mainSkillDisabledReason").GetString()!)),
+            "Disabled main skill shows unavailable DPS and the actual upstream reason together");
+    if(auditState.State.GetProperty("fullDpsIncludedGroups").GetInt32()==0)
+        Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.stat.value.FullDPS"&&n.Text=="—")&&Nodes(calculationView.Root).Any(n=>n.Id=="pob.full-dps.explanation"),"Unconfigured Full DPS is distinguished from a legitimate zero");
+    await Action("menu");await Action("library");
+    using(var libraryHost=WidgetTestHost.CreateIndexedCollectionHost(widget,"pob-library-audit",400))
+    {
+        Check(Nodes(libraryHost.CurrentSnapshot.Root).Single(n=>n.Id=="pob.saved-builds").IndexedCollection?.Count==12,"Saved builds expose every entry through the indexed library");
+        using var lease=await libraryHost.AcquireAsync("pob.saved-builds",9,3);
+        Check(lease.Range.Items.Count==3,"Saved builds beyond the first nine are available without pagination");
+    }
+    await Action("back");
+    Check(Nodes(Snapshot(widget,281).Root).Any(n=>n.Id=="pob.rename"),"Library Back returns to Build and import");
+    await Action("back");
+    await Action("section.3");
+    Check(Nodes(Snapshot(widget,285).Root).Any(n=>n.Kind==ViewNodeKind.RichText),"Item inspector renders upstream inline text runs");
+    await Action("section.1");
+    await Action("search","life");
+    using(var collectionHost=WidgetTestHost.CreateIndexedCollectionHost(widget,"pob-list-audit",500))
+    {
+        var list=Nodes(collectionHost.CurrentSnapshot.Root).Single(n=>n.Id=="pob.passives");
+        Check(list.IndexedCollection?.Count>9,"Passive search exposes results beyond the old page size");
+        using var lease=await collectionHost.AcquireAsync("pob.passives",9,3);
+        var row=lease.Range.Items[1];
+        Check(lease.Range.Items.Count==3,"Passive collection reads only its requested offscreen range");
+        Check(lease.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Offscreen passive action is admitted through its captured row lease");
+        for(var n=0;n<100&&!Nodes(collectionHost.PublishSnapshot().Root).Any(v=>v.Id=="pob.node.name");n++)await Task.Delay(20);
+        Check(Nodes(collectionHost.CurrentSnapshot.Root).Any(v=>v.Id=="pob.node.name"),"Leased passive action opens its inspector");
+        await widget.OnActionAsync(new("back","pob.back"));
+        var returned=collectionHost.PublishSnapshot();
+        Check(returned.FocusGroupEntryRequest?.GroupId=="pob.passives","Back explicitly restores focus to the virtualized passive collection");
+        await widget.OnActionAsync(new("search","pob.search"){CommittedText="no-matching-passive-xyz"});
+        var empty=collectionHost.PublishSnapshot();
+        Check(Nodes(empty.Root).Single(n=>n.Id=="pob.passives").IndexedCollection?.Count==0 && lease.RouteAction(row.Key,ControllerButton.A) is null,"Search replaces membership and retires stale passive actions");
     }
     await Action("section.3");
     var beforeFeedback=Snapshot(widget,290);
@@ -258,8 +336,10 @@ if(firstXml is not null)
     var slotIndex=Array.FindIndex(slots,s=>s.GetProperty("name").GetString()==firstItem.GetProperty("slot").GetString());
     await Action("item-paste");await Action("replace-slot."+slotIndex);
     Check(Nodes(Snapshot(widget,104).Root).Any(n=>n.Id=="pob.apply"),"Widget item replacement enters comparison");
+    Check(Nodes(Snapshot(widget,1041).Root).Any(n=>n.Id=="pob.item.compare.names"&&n.Text!.Contains(firstItem.GetProperty("name").GetString()!)),"Equipment preview identifies the actual replaced item beside the proposed item");
     await Action("apply");
     var changedItems=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="verify item"},default);
+    Check(Nodes(Snapshot(widget,1042).Root).Any(n=>n.Id=="pob.workspace.inventory"),"Applying equipment comparison returns to the item workspace");
     var replaced=changedItems.State.GetProperty("items").EnumerateArray().Single(i=>i.GetProperty("slot").GetString()==firstItem.GetProperty("slot").GetString());
     Check(replaced.GetProperty("itemId").GetInt32()!=firstItem.GetProperty("itemId").GetInt32()&&SameStats(changedItems.State,widgetBaseline.State),"Item replacement persists the selected slot without changing equivalent-item totals");
     await Action("undo");

@@ -52,8 +52,8 @@ public sealed partial class PobWidget
         {
             var stat=A(State,"stats").FirstOrDefault(s=>S(s,"name")==key);
             if(stat.ValueKind!=JsonValueKind.Object)continue;
-            var label=key=="CombinedDPS"?"DPS":StatLabel(key);
-            values.Add(Text(label+"  "+StatValue(key,stat.GetProperty("value").GetDouble()),"compact."+key,"pob-compact-value "+StatColor(key)));
+            var label=key=="CombinedDPS"?S(State,"mainSkill","Main skill")+" DPS":StatLabel(key);
+            values.Add(Text(label+"  "+DisplayStatValue(key,stat.GetProperty("value").GetDouble()),"compact."+key,"pob-compact-value "+StatColor(key)));
         }
         values.Add(Text($"Passives {S(State,"passivePoints")}  |  Ascendancy {S(State,"ascendancyPoints")}","compact.points","pob-muted"));
         return UI.Row("pob.headlines",values.ToArray()).Classes("pob-compact-stats");
@@ -62,8 +62,8 @@ public sealed partial class PobWidget
     private WidgetElement StatCard(string key, int index)
     {
         var value = A(State, "stats").FirstOrDefault(s => S(s, "name") == key);
-        var caption = key == "CombinedDPS" ? "Selected skill DPS" : StatLabel(key);
-        var number = value.ValueKind == JsonValueKind.Object ? StatValue(key, value.GetProperty("value").GetDouble()) : "—";
+        var caption = key == "CombinedDPS" ? "Main skill DPS" : StatLabel(key);
+        var number = value.ValueKind == JsonValueKind.Object ? DisplayStatValue(key, value.GetProperty("value").GetDouble()) : "—";
         return UI.ActionSurface("stat." + key, "pob.headline." + index, caption + " " + number, ActionSurfaceOrientation.Vertical,
             Text(caption, "headline.label." + index, "pob-eyebrow pob-inset-muted"),
             Text(number, "headline.value." + index, "pob-number pob-inset " + StatColor(key)),
@@ -73,7 +73,9 @@ public sealed partial class PobWidget
 
     private string Delta(string key)
     {
-        if (pendingBefore is null) return key == "CombinedDPS" ? "PoB calculated" : "Current loadout";
+        if (pendingBefore is null) return key == "CombinedDPS" ? S(State,"mainSkill","No main skill")+(B(State,"mainSkillDisabled")?" · Skill disabled":"") : "Current loadout";
+        if(key=="CombinedDPS"&&(B(State,"mainSkillDisabled")||B(pendingBefore.State,"mainSkillDisabled")))
+            return B(State,"mainSkillDisabled")?"Skill disabled · see calculation setup":"Skill is now usable";
         var before = A(pendingBefore.State, "stats").FirstOrDefault(s => S(s, "name") == key);
         var after = A(State, "stats").FirstOrDefault(s => S(s, "name") == key);
         if (before.ValueKind != JsonValueKind.Object || after.ValueKind != JsonValueKind.Object) return "Not available";
@@ -84,6 +86,7 @@ public sealed partial class PobWidget
 
     private WidgetElement Workspace()
     {
+        if(detailKind=="library")return LibraryWorkspace();
         if (detailKind.Length > 0 && !InlineDetail)
             return UI.VerticalScroll("pob.scroll", Content().ToArray()).Classes("pob-scroll", "pob-panel");
         if (section == "Calcs" || detailKind == "stat") return Overview();
@@ -115,7 +118,7 @@ public sealed partial class PobWidget
             foreach (var stat in stats)
             {
                 var key = S(stat, "name");
-                var label = ShortStatLabel(key); var value = StatValue(key, stat.GetProperty("value").GetDouble());
+                var label = ShortStatLabel(key); var value = DisplayStatValue(key, stat.GetProperty("value").GetDouble());
                 rows.Add(UI.ActionSurface("stat." + key, "pob.stat." + key, label + " " + value, ActionSurfaceOrientation.Horizontal,
                     Text(label, "stat.label." + key, "pob-stat-label pob-inset-muted"), Text(value, "stat.value." + key, "pob-stat-value pob-inset " + StatColor(key)))
                     .Selected(detailKind == "stat" && statDetail == key).Classes("pob-stat-row"));
@@ -123,11 +126,41 @@ public sealed partial class PobWidget
             cards.Add(UI.Stack("pob.group." + id, rows.ToArray()).Classes("pob-card").InGrid(row: id / 2, column: id % 2));
         }
         var grid = UI.Grid("pob.statgrid", Enumerable.Range(0, (cards.Count + 1) / 2).Select(_ => GridTrack.Auto()).ToArray(), [GridTrack.Star(), GridTrack.Star()], cards.ToArray()).Spacing(12, 12);
-        var notes = new List<WidgetElement> { Text(detailKind == "stat" ? StatLabel(statDetail) : "Build at a glance", "inspector.title", "pob-heading") };
+        var notes = new List<WidgetElement> { Text(detailKind == "stat" ? StatLabel(statDetail) : "Calculation setup", "inspector.title", "pob-heading") };
+        var skills=A(State,"skills");
+        if(skills.Length>0)notes.Add(UI.Select("Main skill group",skills.Select(s=>new SelectOption("group"+I(s,"id"),S(s,"title"),"main-group."+I(s,"id"),B(s,"main"))).ToArray(),"pob.main-group")
+            .Disabled(pendingBefore is not null).Classes("pob-select"));
+        if(!string.IsNullOrWhiteSpace(S(State,"mainSkillDisabledReason")))
+            notes.Add(Text(S(State,"mainSkill")+": "+S(State,"mainSkillDisabledReason"),"main-skill.warning","pob-life"));
+        if(I(State,"fullDpsIncludedGroups")==0)
+            notes.Add(Text("Full DPS is not configured. Include groups from Skills to calculate their combined total.","full-dps.explanation","pob-muted"));
         if (detailKind == "stat")
         {
+            if(statDetail=="FullDPS")
+            {
+                foreach(var (skill,index) in A(State,"fullDpsContributions").Select((s,i)=>(s,i)))
+                {
+                    var count=skill.GetProperty("count").GetDouble();
+                    notes.Add(UI.RichText("pob.contribution."+index,
+                        Text(S(skill,"name")+(count!=1?$" ×{count}":"")+": ","contribution.name."+index,"pob-green"),
+                        Text(StatValue("FullDPS",skill.GetProperty("dps").GetDouble()*count),"contribution.value."+index)));
+                    if(S(skill,"source").Length>0)notes.Add(Text("From "+S(skill,"source"),"contribution.source."+index,"pob-muted"));
+                }
+            }
             var breakdown = A(State, "breakdowns").FirstOrDefault(b => S(b, "name") == statDetail);
-            notes.Add(Text(S(breakdown, "text", "PoB has no textual breakdown for this value. The total includes the selected skill and the active Conditions."), "inspector.breakdown"));
+            if(breakdown.ValueKind==JsonValueKind.Object)
+            {
+                // PoB's Calcs tab can select a different skill and buff mode from
+                // the sidebar. Never present its breakdown as the headline total.
+                var context=State.GetProperty("breakdownContext");
+                notes.Add(Text("Saved desktop Calcs context", "breakdown.context.heading", "pob-eyebrow pob-gold"));
+                notes.Add(Text(S(context,"skill")+" · "+S(context,"mode"),"breakdown.context", "pob-muted"));
+                if(breakdown.TryGetProperty("value",out var value)&&value.TryGetDouble(out var number))
+                    notes.Add(Text(StatLabel(statDetail)+": "+StatValue(statDetail,number),"breakdown.value"));
+                if(S(breakdown,"text").Length>0)AddFormatted(notes,breakdown,"text","runs","inspector.breakdown");
+                AddBreakdownRows(notes,breakdown);
+            }
+            else if(statDetail!="FullDPS")notes.Add(Text("PoB provides no textual breakdown for this total.","inspector.breakdown","pob-muted"));
         }
         else
         {
@@ -135,7 +168,11 @@ public sealed partial class PobWidget
             foreach (var (field, title) in new[] { ("trees", "PASSIVE TREE"), ("skillSets", "SKILLS"), ("itemSets", "EQUIPMENT"), ("configSets", "CONDITIONS") })
             {
                 var active = A(State, field).FirstOrDefault(s => B(s, "active"));
-                notes.Add(UI.Stack("pob.active." + field, Text(title, "active.label." + field, "pob-eyebrow"), Text(S(active, "title", "Default"), "active.value." + field)).Classes("pob-context-card"));
+                var setup=new List<WidgetElement>{Text(title,"active.label."+field,"pob-eyebrow")};
+                var kind=field switch{"trees"=>"tree","skillSets"=>"skills","itemSets"=>"items",_=>"config"};
+                if(A(State,field).Length>1)AddSet(setup,field,kind);
+                else setup.Add(Text(S(active,"title","Default"),"active.value."+field));
+                notes.Add(UI.Stack("pob.active."+field,setup.ToArray()).Classes("pob-context-card"));
             }
         }
         if (compatibilityNotice.Length > 0) notes.Add(Text(compatibilityNotice, "compatibility", "pob-muted"));
@@ -154,11 +191,11 @@ public sealed partial class PobWidget
         { detailKind = kind; detailId = selections.TryGetValue(kind, out var remembered) && entries.Any(e => I(e, "id") == remembered) ? remembered : I(entries[0], "id"); }
         var list = new List<WidgetElement> { Text(skills ? "Skill groups" : "Equipped items", "list.heading", "pob-eyebrow") };
         AddSet(list, skills ? "skillSets" : "itemSets", skills ? "skills" : "items");
-        foreach (var entry in entries.Take(100))
+        foreach (var entry in entries)
         {
             var id = I(entry, "id");
             var title = skills ? S(entry, "title") : S(entry, "name", S(entry, "base"));
-            var subtitle = skills ? $"{A(entry, "gems").Length} gems" + (B(entry, "main") ? " · Main skill" : "") + (B(entry, "enabled") ? "" : " · Disabled") : S(entry, "slot");
+            var subtitle = skills ? $"{A(entry, "gems").Length} gems" + (B(entry, "main") ? " · Main skill" : "") + (B(entry,"fullDps")?" · Full DPS":"") + (B(entry, "enabled") ? "" : " · Disabled") : S(entry, "slot");
             if(id==detailId)subtitle+=" · Inspecting";
             list.Add(UI.ActionSurface(kind + "." + id, "pob." + kind + "." + id, title + ", " + subtitle, ActionSurfaceOrientation.Vertical,
                 Text(Limit(title, 160), kind + ".title." + id, "pob-list-title"),
@@ -201,9 +238,10 @@ public sealed partial class PobWidget
         var rows = new List<WidgetElement> { Text(S(item, "slot").ToUpperInvariant(), "item.slot", "pob-eyebrow"), Text(S(item, "name"), "item.name", "pob-heading " + css) };
         foreach (var (block, index) in A(item,"details").Select((b,i)=>(b,i)))
         {
-            var lines=A(block,"lines").Select((line,i)=>Text(S(line,"text"),"item.copy."+index+"."+i,S(line,"tone") switch
-                { "blue"=>"pob-blue", "orange"=>"pob-orange", "gold"=>"pob-gold", "warning"=>"pob-life", _=>"pob-text" })).ToArray();
-            rows.Add(UI.Stack("pob.item.block."+index,lines).Classes("pob-context-card"));
+            var lines=new List<WidgetElement>();
+            foreach(var (line,i) in A(block,"lines").Select((line,i)=>(line,i)))
+                AddFormatted(lines,line,"text","runs","item.copy."+index+"."+i);
+            rows.Add(UI.Stack("pob.item.block."+index,lines.ToArray()).Classes("pob-context-card"));
         }
         return rows;
     }
@@ -229,8 +267,9 @@ public sealed partial class PobWidget
         {
             side.Add(Text("Find a passive", "tree.searchtitle", "pob-eyebrow"));
             side.Add(UI.TextEntry(filter, "Search passives", "search", "pob.search").Classes("pob-input"));
-            var nodes = A(State, "nodes").Where(n => filter.Length > 0 ? (S(n, "name") + S(n, "description")).Contains(filter, StringComparison.OrdinalIgnoreCase) : B(n, "allocated")).ToArray();
-            AddPage(side, nodes, n => Button(S(n, "name"), "node." + I(n, "id")));
+            var list=PassiveList();
+            side.Add(Text($"{passiveQuery.Entries.Length} passives","tree.count","pob-muted"));
+            side.Add(list);
         }
         var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
         var entry=detailKind=="node" ? node.ValueKind==JsonValueKind.Object && (B(node,"canAllocate")||B(node,"canRefund")) ? "pob.node-change" : "pob.back" : "pob.search";
@@ -245,7 +284,8 @@ public sealed partial class PobWidget
                 UI.VerticalScroll("pob.tree.preview-details",side.ToArray()).Classes("pob-scroll"))
                 .RememberChildFocus("pob.apply").Classes("pob-panel","pob-tree-main");
         }
-        else sidebar=UI.VerticalScroll("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-scroll","pob-panel");
+        else if(detailKind=="node")sidebar=UI.VerticalScroll("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-scroll","pob-panel");
+        else sidebar=UI.Stack("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-tree-main","pob-panel");
         return Split("tree", UI.Stack("pob.tree.main", main.ToArray()).Classes("pob-panel", "pob-tree-main"), sidebar, 3, 1);
     }
 
@@ -254,9 +294,11 @@ public sealed partial class PobWidget
         UI.Grid("pob.workspace." + id, [GridTrack.Star()], [GridTrack.Star(leftWeight), GridTrack.Star(rightWeight)], left, right.InGrid(column: 1)).Spacing(0, 14).Classes("pob-workspace");
     private static string StatColor(string key) => key.Contains("Life", StringComparison.Ordinal) || key.StartsWith("Fire", StringComparison.Ordinal) ? "pob-life" : key.Contains("Mana", StringComparison.Ordinal) || key.Contains("EnergyShield", StringComparison.Ordinal) || key.StartsWith("Cold", StringComparison.Ordinal) ? "pob-blue" : key.StartsWith("Chaos", StringComparison.Ordinal) ? "pob-violet" : key.Contains("DPS", StringComparison.Ordinal) || key.StartsWith("Lightning", StringComparison.Ordinal) ? "pob-gold" : "pob-green";
     private static string StatValue(string key, double number) => number.ToString(Math.Abs(number) >= 1000 ? "N0" : "0.#", System.Globalization.CultureInfo.CurrentCulture) + (key.EndsWith("Resist", StringComparison.Ordinal) ? "%" : "");
+    private string DisplayStatValue(string key,double number)=>
+        (key is "CombinedDPS" or "TotalDPS" && B(State,"mainSkillDisabled")) || (key=="FullDPS"&&I(State,"fullDpsIncludedGroups")==0)?"—":StatValue(key,number);
     private static string ShortStatLabel(string key) => key switch
     {
-        "CombinedDPS" => "Selected skill", "FullDPS" => "All included skills", "TotalDPS" => "Hit damage / second",
+        "CombinedDPS" => "Main skill", "FullDPS" => "Full DPS (included groups)", "TotalDPS" => "Hit damage / second",
         "PhysicalMaximumHitTaken" => "Physical", "FireMaximumHitTaken" => "Fire", "ColdMaximumHitTaken" => "Cold", "LightningMaximumHitTaken" => "Lightning", "ChaosMaximumHitTaken" => "Chaos",
         "FireResist" => "Fire", "ColdResist" => "Cold", "LightningResist" => "Lightning", "ChaosResist" => "Chaos",
         _ => StatLabel(key),

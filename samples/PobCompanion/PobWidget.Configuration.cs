@@ -62,7 +62,7 @@ public sealed partial class PobWidget
             if(condition.TryGetProperty("applicable",out var applicable)&&!applicable.GetBoolean())
                 rows.Add(Text("Saved setting; not currently applicable to this build.","config.retained."+index,"pob-small"));
             if(configHelp&&!string.IsNullOrWhiteSpace(S(condition,"description")))
-                AddReading(rows,S(condition,"description"),"config.description."+index,"pob-help");
+                AddFormatted(rows,condition,"description","descriptionRuns","config.description."+index,"pob-help");
             controls.Add(UI.Stack("pob.config.row."+index,rows.ToArray()).Classes("pob-setting"));
         }
         if(matching.Length==0)controls.Add(Text("No matching settings. Try another search.","config.empty","pob-muted"));
@@ -77,7 +77,7 @@ public sealed partial class PobWidget
         foreach(var link in GuideLinks().Select((url,index)=>(url,index)))
             rows.Add(UI.Button("Open guide · "+new Uri(link.url).Host,"guide-link."+link.index,"pob.guide-link."+link.index)
                 .OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url=link.url})).Classes("pob-button"));
-        AddReading(rows,S(State,"notes"),"notes");
+        AddFormatted(rows,State,"notes","notesRuns","notes","pob-prose");
         return UI.VerticalScroll("pob.notes.scroll",UI.Stack("pob.notes.document",rows.ToArray()).Classes("pob-reading")).Classes("pob-scroll","pob-panel");
     }
 

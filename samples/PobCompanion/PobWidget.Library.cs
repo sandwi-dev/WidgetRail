@@ -19,7 +19,7 @@ public sealed partial class PobWidget
         if(!Directory.Exists(dataDirectory))return;
         var entries=Directory.EnumerateFiles(dataDirectory,"*.xml")
             .Where(file=>Guid.TryParseExact(Path.GetFileNameWithoutExtension(file),"N",out _))
-            .Select(file=>new FileInfo(file)).OrderByDescending(file=>file.LastWriteTimeUtc).Take(256)
+            .Select(file=>new FileInfo(file)).OrderByDescending(file=>file.LastWriteTimeUtc)
             .Select(file=>
             {
                 var id=Path.GetFileNameWithoutExtension(file.Name);

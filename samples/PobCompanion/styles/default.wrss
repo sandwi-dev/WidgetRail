@@ -27,7 +27,7 @@ text { color: var(--text); text-align: start; }
 .pob-tab { padding: 10px 8px; min-height: 40px; color: var(--text-muted); background: transparent; border-width: 1px; border-color: transparent; corner-radius: 7px; text-align: center; }
 .pob-tab:selected { background: var(--surface); color: var(--text); border-color: var(--border, var(--surface-muted)); }
 .pob-tab:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
-.pob-list-item { padding: 12px; min-height: 64px; gap: 6px; background: var(--surface); border-color: transparent; border-width: 1px; corner-radius: 8px; }
+.pob-list-item { padding: 12px; min-height: 64px; gap: 6px; text-align: start; background: var(--surface); border-color: transparent; border-width: 1px; corner-radius: 8px; }
 .pob-list-item:selected { background: var(--surface-raised); border-color: transparent; }
 .pob-list-item:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .wrail-tile__content { flex-grow: 1; min-width: 0px; gap: 5px; }
@@ -38,17 +38,18 @@ text { color: var(--text); text-align: start; }
 .pob-preview { padding: 8px 12px; background: var(--surface-raised); corner-radius: 8px; gap: 12px; align: center; }
 .pob-footer { font-size: 11px; color: var(--text-muted); }
 /* Semantic accents follow the active palette; labels carry the meaning in high contrast. */
-.pob-life, .pob-inset.pob-life { color: var(--data-red, var(--text)); }
-.pob-blue, .pob-inset.pob-blue { color: var(--data-blue, var(--text)); }
-.pob-gold, .pob-inset.pob-gold { color: var(--data-gold, var(--text)); }
-.pob-violet, .pob-inset.pob-violet { color: var(--data-purple, var(--text)); }
-.pob-green, .pob-inset.pob-green { color: var(--data-green, var(--text)); }
+.pob-life, .pob-inset.pob-life, .pob-inline.pob-life { color: var(--data-red, var(--text)); }
+.pob-blue, .pob-inset.pob-blue, .pob-inline.pob-blue { color: var(--data-blue, var(--text)); }
+.pob-gold, .pob-inset.pob-gold, .pob-inline.pob-gold { color: var(--data-gold, var(--text)); }
+.pob-violet, .pob-inset.pob-violet, .pob-inline.pob-violet { color: var(--data-purple, var(--text)); }
+.pob-green, .pob-inset.pob-green, .pob-inline.pob-green { color: var(--data-green, var(--text)); }
 .pob-inset-muted { color: var(--text-muted); }
 .pob-list-title { color: var(--text); font-size: 15px; font-weight: 600; max-lines: 2; text-overflow: ellipsis; }
 .pob-stat-row { border-width: 0px; }
 .pob-compact-stats { gap: 24px; padding: 8px 12px; background: var(--surface-raised); corner-radius: 8px; }
 .pob-compact-value { font-size: 14px; font-weight: 600; }
-.pob-orange { color: var(--data-orange, var(--text)); }
+.pob-orange, .pob-inline.pob-orange { color: var(--data-orange, var(--text)); }
+.pob-inline.pob-muted { color: var(--text-muted); }
 .pob-root { background: var(--surface); }
 
 .pob-tree-title { font-size:24px; font-weight:700; color:var(--text); max-lines:1; text-overflow:ellipsis; }
