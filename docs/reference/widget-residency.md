@@ -131,3 +131,12 @@ legacy field and the versioned object.
 Settings > Widgets shows the resolved policy, including the exact
 idle duration and an explicit warning that suspension is cooperative rather
 than thread suspension.
+
+## Essential Settings widget
+
+Starting with preview.35, the host marks Settings as unavailable for explicit Stop
+through its catalog-derived `CanStop` descriptor. The tray omits Stop widget, the
+bridge rejects direct stop requests, and catalog projection ignores old saved
+Settings stop entries. Restart remains available and normal hidden suspension is
+unchanged. Other widgets retain their existing stop/start and persistence behavior.
+This is host policy, not a widget-manifest permission or an author-controlled flag.

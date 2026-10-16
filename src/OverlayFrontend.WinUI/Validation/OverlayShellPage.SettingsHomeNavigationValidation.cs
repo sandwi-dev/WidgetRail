@@ -9,6 +9,17 @@ internal sealed partial class OverlayShellPage
 {
     private async Task VerifySettingsHomeDownAsync(Action<bool, string> check)
     {
+        var settings = catalogItems.Single(widget => widget.Id == "settings");
+        check(!settings.CanStop && !settings.IsStopped, "Settings is available and cannot be stopped");
+        await ShowTrayMenuAsync(settings);
+        await Task.Delay(200);
+        check(trayMenu is not null && !trayMenu.Flyout.Items.OfType<MenuFlyoutItem>().Any(item => item.Text == "Stop widget"),
+            "Settings tray omits Stop widget");
+        check(trayMenu!.Flyout.Items.OfType<MenuFlyoutSubItem>().Where(item => item.Text == "Widget")
+            .SelectMany(item => item.Items.OfType<MenuFlyoutItem>()).Any(item => item.Text == "Restart widget"),
+            "Settings retains Restart widget");
+        CloseTrayMenu(restoreFocus: false);
+        await SelectAsync("settings", true);
         await Task.Delay(500);
         var viewport = FindControl<ScrollViewer>(surface!, "Widget.settings.categories")!;
         var traces = new List<string>();

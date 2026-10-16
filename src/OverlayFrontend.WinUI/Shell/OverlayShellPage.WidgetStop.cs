@@ -10,7 +10,7 @@ internal sealed partial class OverlayShellPage
 
     private async Task StopWidgetAsync(BridgeWidgetDescriptor widget)
     {
-        if (owner is null || widget.IsStopped) return;
+        if (owner is null || !widget.CanStop || widget.IsStopped) return;
         if (await ShowHostChoiceAsync("Stop widget?",
             $"{widget.Name}\n\nThis ends its activity, playback, calls and pinned content. It stays stopped until you reload it, including after restarting WidgetRail. Saved data and sign-ins are kept.",
             (HostDialogChoice[])[new("stop", "Stop widget")], lifetime.Token) != "stop") return;

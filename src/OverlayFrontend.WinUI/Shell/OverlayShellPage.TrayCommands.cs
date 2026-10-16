@@ -244,7 +244,7 @@ internal sealed partial class OverlayShellPage
                 menu.Flyout.Items.Add(new MenuFlyoutSeparator());
                 Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync, ControllerButton.Y, hold: true);
             }
-            if (!descriptor.IsStopped)
+            if (descriptor.CanStop && !descriptor.IsStopped)
                 Add("Stop widget", "Widget.Stop", () => StopWidgetAsync(descriptor));
             menu.Navigation = new(menu.Flyout, () => ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection));
             menu.Flyout.Opened += (_, _) => OnTrayMenuOpened(menu);

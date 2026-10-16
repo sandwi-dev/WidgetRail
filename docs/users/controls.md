@@ -18,6 +18,11 @@ with F1, enable **Settings → Controllers → F1 keyboard shortcut**. This is o
 default, leaving F1 available to other applications until enabled.
 Text fields can use the built-in controller keyboard.
 
+**Stop widget** keeps a widget stopped until you start it again, including across
+overlay restarts. Settings is always available and does not offer Stop widget;
+its Restart widget action remains available. Old saved stop choices for Settings
+are ignored. Settings still suspends when hidden.
+
 ## Controller keyboard
 
 The D-pad and left stick wrap around the keyboard's rows and top/bottom edges.

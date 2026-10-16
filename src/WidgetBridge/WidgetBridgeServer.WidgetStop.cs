@@ -15,6 +15,8 @@ public sealed partial class WidgetBridgeServer
         {
             var (catalog, _) = _registry.CatalogSnapshot();
             var target = catalog.GetConfigured(widgetId);
+            if (stopped && !target.CanStop)
+                throw new BridgeProtocolException("Settings must remain available and cannot be stopped.");
             var saved = await runtimeStopStore.SetStoppedAsync(target.PackageId, stopped, token).ConfigureAwait(false);
             // Once persisted, publish even if the caller has left the page. Never
             // acknowledge a stop while the old worker can accept new operations.

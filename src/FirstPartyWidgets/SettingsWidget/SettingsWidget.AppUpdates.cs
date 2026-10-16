@@ -96,14 +96,14 @@ internal static partial class SettingsPresentation
             UI.Switch("Automatically check for updates", snapshot.AutomaticallyCheck, "app-update.auto", "app-update.auto")
                 .Disabled(snapshot.State == "unavailable" || handingOff),
             UI.Text("Check shortly after startup and notify when an update is available. Downloads and installation remain manual.", "app-update.auto.help").Classes("page-help"),
-            UI.Button("Check for updates", "app-update.check", "app-update.check").Busy(busy).Disabled(handingOff).Classes("setting-row"),
+            UI.Button("Check for updates", "app-update.check", "app-update.check").Busy(busy).Disabled(handingOff).Classes("secondary-button"),
         };
         if (snapshot.AvailableVersion is { } available)
         {
             items.Add(UI.Text("Available " + available, "app-update.available").Classes("section-heading"));
             if (snapshot.Notes.Length != 0)
             {
-                items.Add(UI.Button(state.NotesExpanded ? "Hide release notes" : "Show release notes", "app-update.notes", "app-update.notes.toggle").Classes("setting-row"));
+                items.Add(UI.Button(state.NotesExpanded ? "Hide release notes" : "Show release notes", "app-update.notes", "app-update.notes.toggle").Classes("secondary-button"));
                 if (state.NotesExpanded) items.AddRange(ReleaseNoteElements(snapshot.Notes));
             }
             if (snapshot.CanInstall)

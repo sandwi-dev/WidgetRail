@@ -239,7 +239,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             {
                 if (existing.position != index) catalogItems.Move(existing.position, index);
                 // Keep native tray containers and focus for unchanged descriptors.
-                if (catalogItems[index].IsStopped != next.IsStopped || catalogItems[index].Name != next.Name || catalogItems[index].InstanceId != next.InstanceId ||
+                if (catalogItems[index].CanStop != next.CanStop || catalogItems[index].IsStopped != next.IsStopped || catalogItems[index].Name != next.Name || catalogItems[index].InstanceId != next.InstanceId ||
                     !catalogItems[index].QuickActions.SequenceEqual(next.QuickActions) || catalogItems[index].RuntimeGeneration != next.RuntimeGeneration ||
                     catalogItems[index].PresentationGeneration != next.PresentationGeneration || catalogItems[index].InstanceId != next.InstanceId ||
                     catalogItems[index].PackageContentDigest != next.PackageContentDigest || catalogItems[index].Icon != next.Icon ||

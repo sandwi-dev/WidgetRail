@@ -373,10 +373,10 @@ internal static partial class SettingsPresentation
         UI.Text("WidgetRail", "about.name").Classes("section-heading"),
         UI.Text("Version " + ProductVersion, "about.version").Classes("page-help"),
         UI.Text("Controller-first widgets for your desktop and games.", "about.description").Classes("page-help"),
-        UI.Button("App updates", "open.app-updates", "about.updates").Classes("setting-row"),
-        UI.Button("Diagnostics", "open.diagnostics", "about.diagnostics").Classes("setting-row"),
+        UI.Button("App updates", "open.app-updates", "about.updates").Classes("secondary-button"),
+        UI.Button("Diagnostics", "open.diagnostics", "about.diagnostics").Classes("secondary-button"),
         UI.Text("Inspect service status, widget failures, and recovery information.", "about.diagnostics.help").Classes("page-help"),
-        UI.Button("Reset settings…", "open.reset", "category.reset").Classes("danger-button"),
+        UI.Button("Reset settings…", "open.reset", "category.reset").Classes("secondary-button", "danger-button"),
         UI.Text("Review what will be reset before confirming.", "about.reset.help").Classes("page-help")
     ), "about.updates", "about.page");
 

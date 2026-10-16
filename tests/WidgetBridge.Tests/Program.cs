@@ -189,6 +189,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog management icons resolve disabled packages without workers", CatalogManagementIcons),
     ("Catalog management icons reject untrusted establishment and deferred roots", BridgeClientRegistryScenarios.CatalogIconAuthorityCoversEstablishmentAndDeferredRoots),
     ("Persistent widget stop retires workers and requires explicit start", PersistentWidgetStop),
+    ("Persistent widget stop cannot disable Settings or restore an old Settings stop", SettingsCannotBeStopped),
     ("Settings update cancellation releases worker admission", BridgeClientRegistryScenarios.CancelledSettingsUpdateReleasesAdmission),
     ("Settings update retires the old worker and blocks reentry", BridgeClientRegistryScenarios.SettingsUpdateRetiresAndBlocksWorkers),
     ("Persistent widget stop defeats an in-flight restart", BridgeClientRegistryScenarios.StopDuringRestartNeverPublishesFreshWorker),
@@ -1751,6 +1752,42 @@ static async Task StopSurvivesCatalogDiscovery()
     monitor.PublishStoppedWidgets([]);
     await monitor.ReloadNowAsync();
     Assert.True(!monitor.Current.Widgets.Single().IsStopped, "Explicit start was overwritten by refresh.");
+}
+
+static async Task SettingsCannotBeStopped()
+{
+    using var temp = new TemporaryDirectory("wrail-essential-settings-stop");
+    using var fixture = TemporaryCatalog.CreateMany(
+        new("settings", "widgetrail.firstparty.settings", "widgetrail.firstparty", "settings.instance"),
+        new("neighbor", "dev.test.neighbor", "dev.test", "neighbor.instance"));
+    var store = new PlatformSettingsStore(new(temp.Path));
+    var stopStore = new WidgetStopStateStore(new(temp.Path));
+    await stopStore.SetStoppedAsync("widgetrail.firstparty.settings", true);
+    await stopStore.SetStoppedAsync("dev.test.neighbor", true);
+    for (var launch = 0; launch < 2; launch++)
+    {
+        var catalog = BridgeCatalog.Load(fixture.Path).WithStoppedWidgets(await stopStore.LoadAsync());
+        var pipe = $"wrail-essential-stop-{Guid.NewGuid():N}";
+        await using var server = new WidgetBridgeServer(pipe, catalog, 256 * 1024,
+            appearance: null, consentStore: null, platformBackend: null, catalogMonitor: null,
+            residencyBudget: null, capabilityDiagnosticSink: null, settingsStore: store);
+        var serving = server.RunAsync(TimeSpan.FromSeconds(5));
+        await using (var session = await WidgetPresentationSession.ConnectAsync(pipe))
+        {
+            await session.ListWidgetsAsync();
+            var settings = session.GetTarget("settings");
+            Assert.True(!settings.Descriptor.CanStop && !settings.Descriptor.IsStopped,
+                "Settings must remain available even with a persisted stop from an older version.");
+            var neighbor = session.GetTarget("neighbor").Descriptor;
+            Assert.True(neighbor.CanStop && neighbor.IsStopped, "Ordinary widget stop policy changed.");
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.StopWidgetAsync(settings));
+            await session.ListWidgetsAsync();
+            Assert.True(!session.GetTarget("settings").Descriptor.IsStopped, "Rejected stop affected Settings.");
+            Assert.Equal(0, server.RunningWorkerCount);
+            Assert.Equal(2, (await stopStore.LoadAsync()).Count);
+        }
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
 }
 
 static async Task PersistentWidgetStop()

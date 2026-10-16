@@ -82,7 +82,7 @@ internal static class SettingsNavigationFixture
         new ConfiguredWidget { Id = "source", Name = "Marketplace navigation fixture", PackageId = "fixture.source", PublisherId = "fixture", InstanceId = "settings-source.fixture",
             WorkerExecutable = Environment.ProcessPath!, WorkerFingerprint = new string('a',64), CatalogFingerprint = new string('a',64),
             Intents = new() { Requests = [WidgetIntentContracts.WidgetSettings] } },
-        new ConfiguredWidget { Id = "settings", Name = "Settings", PackageId = "fixture.settings", PublisherId = "fixture", InstanceId = "settings-navigation.fixture",
+        new ConfiguredWidget { Id = "settings", Name = "Settings", PackageId = "widgetrail.firstparty.settings", PublisherId = "widgetrail.firstparty", InstanceId = "settings-navigation.fixture",
             WorkerExecutable = Environment.ProcessPath!, WorkerArguments = ["--settings-fixture-root", root], WorkerFingerprint = new string('b',64), CatalogFingerprint = new string('b',64),
             StylePackage = SettingsStyle(),
             // This navigation fixture uses the icons' semantic fallbacks. The

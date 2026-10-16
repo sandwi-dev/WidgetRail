@@ -23,6 +23,8 @@ internal sealed record ConfiguredWidget
     public WidgetPackageIcon? PackageIcon { get; init; }
     [JsonIgnore]
     public bool IsStopped { get; init; }
+    [JsonIgnore]
+    public bool CanStop => !BridgeCatalog.IsEssentialSettings(this);
     /// <summary>Immutable declaration; native-window authority remains host-only.</summary>
     public bool PinningSupported { get; init; }
     public bool FullWidgetPinningSupported { get; init; }
@@ -120,6 +122,7 @@ internal sealed record ConfiguredWidget
         Icon = Icon,
         PackageIcon = PackageIcon,
         IsStopped = IsStopped,
+        CanStop = CanStop,
         NotificationCategories = NotificationCategories,
         CanManage = Id != "settings" && PackageRoot is not null,
         PackageContentDigest = PackageIconAssets.Count == 0
@@ -204,7 +207,7 @@ public sealed class BridgeCatalog
     internal BridgeCatalog WithStoppedWidgets(IReadOnlyList<string> stoppedIds)
     {
         var stopped = stoppedIds.ToHashSet(StringComparer.Ordinal);
-        return new(_ordered.Select(widget => WithFingerprints(widget with { IsStopped = stopped.Contains(widget.PackageId) })), IsComplete);
+        return new(_ordered.Select(widget => WithFingerprints(widget with { IsStopped = widget.CanStop && stopped.Contains(widget.PackageId) })), IsComplete);
     }
 
     internal async Task EnsureBundledPermissionDefaultsAsync(
@@ -803,7 +806,7 @@ public sealed class BridgeCatalog
     private static string BundledIsolationKey(string publisherId, string packageId) =>
         $"bundled-v1\n{publisherId}\n{packageId}";
 
-    private static bool IsEssentialSettings(ConfiguredWidget source) =>
+    internal static bool IsEssentialSettings(ConfiguredWidget source) =>
         string.Equals(source.Id, "settings", StringComparison.Ordinal) &&
         string.Equals(source.PackageId, "widgetrail.firstparty.settings", StringComparison.Ordinal) &&
         string.Equals(source.PublisherId, "widgetrail.firstparty", StringComparison.Ordinal);

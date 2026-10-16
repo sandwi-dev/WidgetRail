@@ -30,6 +30,7 @@ public sealed record BridgeWidgetDescriptor
     public IReadOnlyList<WidgetNotificationCategory> NotificationCategories { get; init; } = [];
     public bool CanManage { get; init; }
     public bool IsStopped { get; init; }
+    public bool CanStop { get; init; } = true;
     public WidgetPackageIcon? PackageIcon { get; init; }
     public required string PackageContentDigest { get; init; }
     public IReadOnlyList<BridgePackageIconAssetDescriptor> IconAssets { get; init; } = [];
