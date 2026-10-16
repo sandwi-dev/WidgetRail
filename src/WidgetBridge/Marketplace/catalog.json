@@ -1,5 +1,10 @@
 [
   {
+    "id": "widgetrail.samples.mapgenie", "publisher": "widgetrail.samples", "name": "MapGenie",
+    "description": "Explore interactive game maps, find collectibles and track your progress.",
+    "screenshots": []
+  },
+  {
     "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
     "description": "Watch Twitch streams with controller navigation and pinnable webapp windows.",
     "screenshots": []

@@ -1,0 +1,22 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.samples.mapgenie",
+  "publisher": "widgetrail.samples",
+  "name": "MapGenie",
+  "version": "0.1.0",
+  "pinningSupported": true,
+  "fullWidgetPinningSupported": true,
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/MapGenie.dll",
+    "type": "widgetrail.samples.MapGenie.MapGenie"
+  },
+  "presentation": { "icon": "fullscreen", "packageIcon": { "assetId": "mapgenie.mark", "colorMode": "originalColor" } },
+  "iconAssets": { "mapgenie.mark": { "path": "assets/icons/mapgenie.svg" } },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 300 },
+  "resourceRequest": { "updateHz": 4 },
+  "architectures": ["x64", "arm64"]
+}
