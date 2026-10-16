@@ -25,7 +25,7 @@ public sealed partial class PobWidget : Widget
     private bool busy, activated;
     private bool nodeReturnToMap;
     private readonly Dictionary<string,int> selections = new();
-    private long treeFocusRequest;
+    private long focusRequestSequence;
     private static readonly string[] Sections = ["Calcs", "Tree", "Skills", "Items", "Configuration", "Notes"];
     private const int PageSize = 9;
     public PobWidget(int game, string payloadDirectory, string? dataDirectory = null)
@@ -91,6 +91,20 @@ public sealed partial class PobWidget : Widget
     {
         lock (gate)
         {
+            if (busy && result is null)
+            {
+                var loading=UI.Stack("pob.root",
+                    Text($"PoE {game} Build Companion","title","pob-title"),
+                    UI.Stack("pob.loading.panel",
+                        UI.LoadingIndicator("pob.loading",status,LoadingIndicatorSize.Large),
+                        Text(status,"loading.status","pob-heading"),
+                        Text("Starting the calculation engine and preparing your build.","loading.help","pob-muted"))
+                        .Classes("pob-loading-panel"),
+                    Button("Cancel","cancel-operation"))
+                    .Classes("pob-root").InputScope("pob.loading").Shortcut(ControllerButton.B,"cancel-operation");
+                return new(loading,"pob.cancel-operation",ActiveInputScopeId:"pob.loading",
+                    Surface:new(){Mode=WidgetSurfaceMode.Standard,PreferredWidth=760,PreferredHeight=440,MinimumWidth=620,MinimumHeight=360});
+            }
             var children = new List<WidgetElement>();
             if (!string.IsNullOrWhiteSpace(status)) children.Add(Text(status, "status", "pob-muted"));
             if (busy) children.Add(Button("Cancel operation", "cancel-operation"));
@@ -109,14 +123,14 @@ public sealed partial class PobWidget : Widget
                 children.Add(BuildHeader());
                 children.Add(section is "Tree" or "Configuration" or "Notes" ? CompactHeadlines() : Headlines());
                 children.Add(Navigation());
-                if (pendingBefore is not null)
+                if (pendingBefore is not null && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not saved", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
-                children.Add(Workspace());
+                children.Add(UI.Stack("pob.section.content",Workspace()).Classes("pob-workspace")
+                    .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
                 children.Add(Text("LB / RB  Switch section     ·     A  Inspect or change     ·     Working copy saved locally", "footer", "pob-footer"));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
-            var activeTab = Array.IndexOf(Sections,section);
-            var initial = result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : activeTab == 0 ? "pob.section" : "pob.tab."+activeTab;
+            var initial = result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
             var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").InputScope(scope).RememberChildFocus(initial);
             if (busy) root = root.Shortcut(ControllerButton.B, "cancel-operation");
@@ -128,11 +142,21 @@ public sealed partial class PobWidget : Widget
             return new(root, initial, ActiveInputScopeId: scope,
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = section == "Tree" ? 1320 : 1180, PreferredHeight = section == "Tree" ? 900 : 820, MinimumWidth = 820, MinimumHeight = 600 })
             {
-                FocusGroupEntryRequest = section == "Tree" && pendingBefore is null && !busy && treeFocusRequest > 0 && (detailKind.Length == 0 || InlineDetail)
-                    ? new() { RequestId = treeFocusRequest, GroupId = "pob.tree.side" } : null,
+                FocusGroupEntryRequest = !busy && focusRequestSequence > 0 && (detailKind.Length == 0 || InlineDetail)
+                    ? new() { RequestId = focusRequestSequence, GroupId = section == "Tree" ? "pob.tree.side" : "pob.root" } : null,
             };
         }
     }
+
+    private string SectionEntry() => section switch
+    {
+        "Calcs" => "pob.headline.0",
+        "Tree" => detailKind=="node" ? A(State,"nodes").Any(n=>I(n,"id")==detailId && (B(n,"canAllocate")||B(n,"canRefund"))) ? "pob.node-change" : "pob.back" : "pob.search",
+        "Skills" when A(State,"skills").Length>0 => "pob.skill."+detailId,
+        "Items" when A(State,"items").Length>0 => "pob.item."+detailId,
+        "Configuration" when ConfigurationSections().Length>0 => "pob.config.category."+Math.Max(0,Array.IndexOf(ConfigurationSections(),configSection)),
+        _ => "pob.tab."+Array.IndexOf(Sections,section),
+    };
 
     private void AddLibrary(List<WidgetElement> children)
     {
@@ -250,7 +274,7 @@ public sealed partial class PobWidget : Widget
     private void AddSet(List<WidgetElement> rows,string field,string kind)
     {
         var sets=A(State,field); if(sets.Length<2)return;
-        rows.Add(UI.Select("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Classes("pob-select"));
+        rows.Add(UI.Select("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Disabled(pendingBefore is not null).Classes("pob-select"));
     }
     private void AddPage(List<WidgetElement> rows,JsonElement[] entries,Func<JsonElement,WidgetElement> render)
     {

@@ -5,7 +5,7 @@ const path = require('node:path');
 
 // Exercise the real page's message handler and resulting accessible node labels.
 // The canvas is stubbed; native screenshots validate its actual drawing.
-const elements = new Map(), frames = [], sent = [];
+const elements = new Map(), frames = [], sent = [], windowEvents = new Map();
 class Element {
   constructor(id) { this.id = id; this.children = []; this.style = {}; this.dataset = {}; this.attributes = {}; this.clientWidth = 1000; this.clientHeight = 600; }
   append(child) { child.parent = this; this.children.push(child); elements.set(child.id, child); }
@@ -21,7 +21,7 @@ const sandbox = {
   document: { getElementById: id => elements.get(id), createElement: () => new Element(), activeElement: null, documentElement:{clientWidth:1000,clientHeight:600,dataset:{}} },
   chrome: { webview: { addEventListener: (_, callback) => receive = callback } },
   WidgetRailWebSession: { post: value => sent.push(value) },
-  window: { addEventListener() {} }, ResizeObserver: class { constructor(callback) { resize=callback; } observe() {} },
+  window: { addEventListener(type, handler) { windowEvents.set(type,handler); } }, ResizeObserver: class { constructor(callback) { resize=callback; } observe() {} },
   getComputedStyle: () => ({ color: '#fff', backgroundColor: '#000' }), devicePixelRatio: 1,
   requestAnimationFrame: callback => frames.push(callback),
   fetch:()=>Promise.reject(new Error('No fixture artwork')),setTimeout:callback=>{callback();return 1;},clearTimeout(){},
@@ -82,3 +82,21 @@ assert.equal(elements.get('tooltip').hidden,true,'Changing tree framing dismisse
 message({type:'tooltip',revision:4,id:3,name:'Late reply',description:'Wrong location'});
 assert.equal(elements.get('tooltip').hidden,true,'Late hover replies cannot reopen a tooltip after moving the map');
 console.log('PASS real tree page: atomic full/delta updates, changed labels/shapes, stale transactions, discard and selection');
+message({type:'begin',revision:5});
+message({type:'nodes',revision:5,items:[node(1,-400,'Left',true),node(2,400,'Right',true)]});
+message({type:'end',revision:5});
+const position=()=>elements.get('passive-2').style.left;
+elements.get('out').onclick();while(frames.length)frames.shift()();
+const beforeZoom=position();
+elements.get('in').onclick();while(frames.length)frames.shift()();
+const buttonZoom=position();
+elements.get('out').onclick();while(frames.length)frames.shift()();
+let consumed=false;
+windowEvents.get('widgetrailzoom')({detail:{direction:1},preventDefault(){consumed=true;}});
+while(frames.length)frames.shift()();
+assert.equal(consumed,true,'Tree consumes controller zoom before browser pinch');
+assert.equal(position(),buttonZoom,'R2 uses exactly the plus-button map transform');
+windowEvents.get('widgetrailzoom')({detail:{direction:-1},preventDefault(){}});
+while(frames.length)frames.shift()();
+assert.ok(Math.abs(parseFloat(position())-parseFloat(beforeZoom))<.001,'L2 reverses the internal zoom step');
+console.log('PASS controller zoom shares minus/plus controls and consumes browser zoom');

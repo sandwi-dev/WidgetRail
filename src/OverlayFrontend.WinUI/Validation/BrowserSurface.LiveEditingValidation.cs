@@ -7,6 +7,7 @@ internal sealed partial class BrowserSurface
 {
     private AutomaticFieldTarget? fixtureLiveTarget;
     internal void ZoomForEditingValidation(double delta) => ChangeZoom(delta);
+    internal string ZoomStateForValidation => $"input={input}; browsing={browsing}; loading={loading}; requested={requestedZoom}; applied={appliedZoom}; pumping={zoomPumping}";
     internal async Task HoverTreeNodeForValidationAsync()
     {
         using var point=JsonDocument.Parse(await EvaluateFixtureAsync("(()=>{const r=document.querySelector('.node').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()"));

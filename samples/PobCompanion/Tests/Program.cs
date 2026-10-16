@@ -125,6 +125,11 @@ if(firstXml is not null)
         for (var n=0; n<100 && Nodes(Snapshot(widget,n).Root).Any(v=>v.Id=="pob.cancel-operation");n++) await Task.Delay(50);
         var snapshot=Snapshot(widget,section);
         Check(Nodes(snapshot.Root).Any(v=>v.Id=="pob.headlines"),"Section "+section+" retains build totals");
+        Check(snapshot.FocusGroupEntryRequest is not null && Nodes(snapshot.Root).Any(v=>v.Transition?.GroupId=="pob.sections"),
+            "Section "+section+" declares content focus and a shared section transition");
+        if(section is 2 or 3)
+            Check(Nodes(snapshot.Root).Where(v=>v.Kind==ViewNodeKind.ActionSurface&&v.Id.StartsWith(section==2?"pob.skill.":"pob.item.")).All(v=>v.Focus?.Right=="pob.detail"),
+                "Inventory rows explicitly link Right to their detail focus group");
         if (section is 2 or 3) Check(Nodes(snapshot.Root).Any(v=>v.Id=="pob.workspace.inventory") && Nodes(snapshot.Root).Any(v=>v.Id=="pob.detail"),"Section "+section+" keeps list and details together");
         if (section == 0) Check(Nodes(snapshot.Root).Count(v=>v.Id.StartsWith("pob.group."))>=4,"Overview categorizes statistics");
     }
@@ -184,9 +189,20 @@ if(firstXml is not null)
     var originalSaved=File.ReadAllText(working);
     var widgetBaseline=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="widget baseline"},default);
     var allocationNode=widgetBaseline.State.GetProperty("nodes").EnumerateArray().First(n=>n.GetProperty("canAllocate").GetBoolean()&&n.GetProperty("pathCount").GetInt32() is >=2 and <=5);
+    await Action("section.1");
     await Action("node."+allocationNode.GetProperty("id").GetInt32());await Action("node-change");
+    var previewView=Snapshot(widget,1000);
+    var previewPanel=Nodes(previewView.Root).Single(n=>n.Id=="pob.tree.side");
+    Check(previewView.FocusGroupEntryRequest?.GroupId=="pob.tree.side" &&
+        Nodes(previewPanel).Any(n=>n.Id=="pob.apply") && Nodes(previewPanel).Any(n=>n.Id=="pob.cancel"),
+        "Tree preview explicitly enters the panel containing Apply and Discard");
+    Check(!Nodes(previewView.Root).Any(n=>n.Id=="pob.preview") &&
+        Nodes(previewView.Root).Single(n=>n.Id=="pob.tab.4").IsDisabled==true,
+        "Tree preview keeps actions beside details and disables unrelated navigation");
+    var previewEntry=previewView.FocusGroupEntryRequest?.RequestId;
     Check(Nodes(Snapshot(widget,101).Root).Any(n=>n.Id=="pob.apply")&&File.ReadAllText(working)==originalSaved,"Widget allocation preview does not mutate saved working copy");
     await Action("cancel");
+    Check(Snapshot(widget,1001).FocusGroupEntryRequest?.RequestId>previewEntry,"Discard explicitly restores the node-inspector focus group");
     Check(!Nodes(Snapshot(widget,102).Root).Any(n=>n.Id=="pob.apply")&&File.ReadAllText(working)==originalSaved,"Widget Discard preserves the working file");
     await Action("node-change");await Action("apply");
     var appliedSaved=File.ReadAllText(working);
@@ -201,6 +217,7 @@ if(firstXml is not null)
     Check(Allocated(widgetBaseline.State).Except(Allocated(refundedFile.State)).Count()==refundNode.GetProperty("refundCount").GetInt32(),"Widget refund Apply persists all dependent removals");
     await Action("undo");
     var firstSkill=widgetBaseline.State.GetProperty("skills").EnumerateArray().First();
+    await Action("section.2");
     await Action("skill."+firstSkill.GetProperty("id").GetInt32());await Action("skill-enabled");
     Check(Nodes(Snapshot(widget,103).Root).Any(n=>n.Id=="pob.apply"),"Widget skill edit enters comparison before saving");
     await Action("apply");

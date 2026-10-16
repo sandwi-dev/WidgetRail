@@ -19,7 +19,7 @@ public sealed partial class PobWidget
             if(id=="apply")
             {
                 var previous=pendingBefore!; var current=result!;
-                Work(async token=>{token.ThrowIfCancellationRequested();Persist(current);lock(gate){undo.Push(previous.Xml);while(undo.Count>12){var keep=undo.Take(12).Reverse().ToArray();undo.Clear();foreach(var s in keep)undo.Push(s);}pendingBefore=null;}if(mapSession is {} map)await SendMapAsync(map,current.State,true,token);},"Saving change…");
+                Work(async token=>{token.ThrowIfCancellationRequested();Persist(current);lock(gate){undo.Push(previous.Xml);while(undo.Count>12){var keep=undo.Take(12).Reverse().ToArray();undo.Clear();foreach(var s in keep)undo.Push(s);}pendingBefore=null;focusRequestSequence++;}if(mapSession is {} map)await SendMapAsync(map,current.State,true,token);},"Saving change…");
             }
             else if(id=="cancel") Restore(pendingBefore!.Xml,clearPreview:true);
             else if(id=="undo" && undo.Count>0) { var xml=undo.Peek(); Work(async token=>{var restored=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);Persist(restored);lock(gate){result=restored;undo.Pop();detailKind="";}await RefreshMapAsync(token);},"Undoing change…"); }
@@ -62,9 +62,9 @@ public sealed partial class PobWidget
             else if(id=="skill-options") {detailKind="skill-options";page=0;}
             else if(parts[0]=="skill-option"&&parts.Length==3&&int.TryParse(parts[2],out var optionValue)) Preview(new{op="skill-option",control=parts[1],value=optionValue});
             else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";page=0;}
-            else if(id=="back") { detailKind=detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;page=0;pastedItem=null;if(section=="Tree")treeFocusRequest++; }
-            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(Sections,section);section=Sections[(index+(id=="next-section"?1:Sections.Length-1))%Sections.Length];detailKind="";page=0;filter=""; }
-            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";page=0;filter="";}
+            else if(id=="back") { detailKind=detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;page=0;pastedItem=null;if(section=="Tree")focusRequestSequence++; }
+            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(Sections,section);section=Sections[(index+(id=="next-section"?1:Sections.Length-1))%Sections.Length];detailKind="";page=0;filter="";focusRequestSequence++; }
+            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";page=0;filter="";focusRequestSequence++;}
             else if(id=="search") {filter=action.CommittedText??"";page=0;}
             else if(parts[0]=="config-section"&&parts.Length==2&&int.TryParse(parts[1],out var category)&&category>=0&&category<ConfigurationSections().Length)
             {configSection=ConfigurationSections()[category];filter="";}
@@ -73,7 +73,7 @@ public sealed partial class PobWidget
             else if(id=="page-next")page++;
             else if(id=="page-previous")page=Math.Max(0,page-1);
             else if(parts[0] is "node" or "skill" or "item" && parts.Length==2 && int.TryParse(parts[1],out var detail))
-            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail)){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;page=0;nodeReturnToMap=false;if(parts[0]=="node"){treeFocusRequest++;SendNodeSelection(detail);}}}
+            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail)){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;page=0;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);}}}
             else if(id=="node-change")
             {
                 var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
@@ -115,8 +115,8 @@ public sealed partial class PobWidget
         BuildDocument.SaveAtomic(Path.Combine(dataDirectory,"selected.txt"),targetId);
     }
     private void Switch(object command)=>Work(async token=>{var next=await engine.ExecuteAsync(command,token,result!.Xml);Persist(next);lock(gate){result=next;page=0;detailKind="";}await RefreshMapAsync(token);},"Switching build set…");
-    private void Preview(object command)=>Work(async token=>{var before=result!;var next=await engine.ExecuteAsync(command,token,result!.Xml);lock(gate){pendingBefore=before;result=next;}await RefreshMapAsync(token);},"Calculating comparison…");
-    private void Restore(string xml,bool clearPreview)=>Work(async token=>{var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);lock(gate){result=next;if(clearPreview)pendingBefore=null;}await RefreshMapAsync(token);},"Restoring build…");
+    private void Preview(object command)=>Work(async token=>{var before=result!;var next=await engine.ExecuteAsync(command,token,result!.Xml);lock(gate){pendingBefore=before;result=next;focusRequestSequence++;}await RefreshMapAsync(token);},"Calculating comparison…");
+    private void Restore(string xml,bool clearPreview)=>Work(async token=>{var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);lock(gate){result=next;if(clearPreview){pendingBefore=null;focusRequestSequence++;}}await RefreshMapAsync(token);},"Restoring build…");
 
     private WidgetWebSession? mapSession;
     private string? mapArtworkVersion;
@@ -186,7 +186,7 @@ public sealed partial class PobWidget
                 }
                 else if(S(message,"type")=="select")
                 {
-                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&A(State,"nodes").Any(n=>I(n,"id")==id)){detailId=id;selections["node"]=id;treeFocusRequest++;detailKind="node";nodeReturnToMap=true;page=0;}}
+                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&A(State,"nodes").Any(n=>I(n,"id")==id)){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;page=0;}}
                     Invalidate();
                 }
             }

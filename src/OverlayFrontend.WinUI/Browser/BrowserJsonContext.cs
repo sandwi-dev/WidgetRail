@@ -24,6 +24,7 @@ internal sealed record BrowserPinchGesture(double x, double y, double scaleFacto
 internal sealed record BrowserDragEvent(string type, double x, double y, JsonElement data);
 
 [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(BrowserPointerEvent))]
 [JsonSerializable(typeof(BrowserEvaluation))]
 [JsonSerializable(typeof(BrowserAttachTarget))]

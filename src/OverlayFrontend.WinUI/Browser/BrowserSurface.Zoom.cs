@@ -12,6 +12,28 @@ internal sealed partial class BrowserSurface
     {
         CancelSpatialNavigation();
         if (!input || core is null || faulted || HasDialog) return;
+        if (IsHostedPackage)
+        {
+            var current = core;
+            var epoch = pageEpoch;
+            if (!IsHostedDocument(current.Source) || loading) return;
+            var origin = JsonSerializer.Serialize(new Uri(document.Url).GetLeftPart(UriPartial.Authority), BrowserJsonContext.Default.String);
+            var direction = delta > 0 ? "1" : "-1";
+            // Packaged canvases can consume zoom locally without magnifying their
+            // toolbar or making a round trip through the widget worker.
+            Run(async () =>
+            {
+                var handled = await current.ExecuteScriptAsync("(()=>{if(location.origin!==" + origin + ")return null;" +
+                    "return !window.dispatchEvent(new CustomEvent('widgetrailzoom',{cancelable:true,detail:{direction:" + direction + "}}));})()");
+                if (retired || !input || HasDialog || loading || pageEpoch != epoch || !ReferenceEquals(core, current)) return;
+                if (handled == "false") ChangePageZoom(delta);
+            });
+            return;
+        }
+        ChangePageZoom(delta);
+    }
+    private void ChangePageZoom(double delta)
+    {
         requestedZoom = Math.Clamp(Math.Round(requestedZoom + delta, 1), 1, 2.5);
         zoomAnchorX = cursorX; zoomAnchorY = cursorY;
         RefreshZoom();

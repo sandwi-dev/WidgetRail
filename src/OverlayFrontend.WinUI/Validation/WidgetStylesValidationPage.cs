@@ -57,6 +57,14 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         if (Environment.GetCommandLineArgs().Contains("--local-install-only"))
         { await LocalInstallDialogAsync(); return; }
         await AuthoringAdmissionAsync();
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--scroll-focus-result") is { } scrollResult)
+        {
+            Exception? failure = null;
+            try { await NativeScrollFocusAsync(); }
+            catch (Exception error) { failure = error; throw; }
+            finally { System.IO.File.WriteAllText(scrollResult, System.Text.Json.JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() })); }
+            return;
+        }
         if (Environment.GetCommandLineArgs().Contains("--switch-commands-only"))
         { await SwitchCommandsAsync(); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--settings-layout-fixtures") is { } settingsFixtures)

@@ -7,12 +7,14 @@ Two controller-first widgets share one implementation and run the unmodified Pat
 Paste a PoB share code or supported public build link, or enter the path to an exported XML file. The widget keeps the original import and a separate working copy. It reopens the selected working copy after restart.
 
 - **Calcs** groups headline statistics and detailed calculation breakdowns.
-- **Tree** shows upstream passive-tree positions, rendered connections and node artwork, with an adjacent node inspector. Hover or dwell with the controller pointer for modifiers and point costs. Search selection frames the node; Main tree and Ascendancy frame their respective areas. L2/R2 use the host's pinch zoom, while the map buttons change its internal scale.
+- **Tree** shows upstream passive-tree positions, rendered connections and node artwork, with an adjacent node inspector. Hover or dwell with the controller pointer for modifiers and point costs. Search selection frames the node; Main tree and Ascendancy frame their respective areas. L2/R2 use the same internal map zoom as the minus/plus buttons, keeping the toolbar and surrounding layout at their normal size.
 - **Skills** and **Items** keep the list beside the selected entry. Item descriptions use upstream tooltip formatting.
 - **Configuration** retains upstream section names and order in a category list. Controls scroll within each section; search covers all sections, and Show explanations reveals the upstream help. Retained settings that are currently inapplicable are identified explicitly. Changes remain previews until applied.
 - **Notes** displays a continuous scrolling document and opens guide links through the host.
 
 Node allocation and refund changes are previews. **Apply** saves the working copy; **Discard** restores the previous tree and calculations. Refund previews include dependent nodes. **Undo** restores up to twelve committed changes during the current session. Switching active sets is saved immediately. Export uses the upstream engine's XML format and standard compressed share-code encoding.
+
+Tree preview actions stay above the scrolling comparison panel. Right from a skill or item row enters its details; Left returns to the selected row. Section switches explicitly focus the destination content and use the host's section transitions. Animation follows the user's motion preference. Startup shows a loading indicator while the calculation engine prepares the saved build.
 
 Use **Build & import** to rename a build, open another saved build, import, export or change character details. LB/RB switches sections. Controller focus and list navigation remain native; the optional tree visualization uses a host-owned packaged web session.
 

@@ -79,6 +79,13 @@ internal sealed partial class HostedWebSessionValidationPage : Page, IAsyncDispo
             parking.Children.Remove(first); viewport.Children.Add(first); first.SetPresentation(true, false);
             await Task.Delay(200, lifetime.Token);
             Check(await first.EvaluateFixtureAsync("!fixtureAudio.paused && localStorage.getItem('private')==='first'") == "true", "Attaching a view preserves the live page and playback");
+            first.SetPresentation(true,true);first.Enter();
+            first.ZoomForEditingValidation(.5);
+            for(var attempt=0;attempt<100 && await first.EvaluateFixtureAsync("visualViewport.scale>1.2")!="true";attempt++)await Task.Delay(50,lifetime.Token);
+            Check(await first.EvaluateFixtureAsync("visualViewport.scale>1.2")=="true","A packaged page without a zoom handler retains default browser zoom");
+            first.ZoomForEditingValidation(-.5);
+            for(var attempt=0;attempt<100 && await first.EvaluateFixtureAsync("visualViewport.scale<1.01")!="true";attempt++)await Task.Delay(50,lifetime.Token);
+            Check(await first.EvaluateFixtureAsync("visualViewport.scale<1.01")=="true","Default browser zoom returns to its original scale");
             viewport.Children.Remove(first); parking.Children.Add(first); first.SetPresentation(false, false);
             await Task.Delay(300, lifetime.Token);
             Check(await first.EvaluateFixtureAsync("!fixtureAudio.paused") == "true", "Detaching the view preserves background playback");

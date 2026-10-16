@@ -76,6 +76,26 @@ Unsolicited page messages must be consumed; overflowing the 64-message queue fau
 the session rather than silently dropping application events. JSON is limited to
 16 KiB and depth 16. The `widgetRail` envelope namespace is reserved for the library.
 
+## Controller zoom in packaged pages
+
+L2/R2 normally use browser pinch zoom. A packaged page with its own map, chart or
+canvas can instead handle the cancelable `widgetrailzoom` event on `window`.
+`event.detail.direction` is `-1` for L2 and `1` for R2. Call `preventDefault()`
+synchronously and use the same zoom function as the page's minus/plus controls:
+
+```javascript
+window.addEventListener('widgetrailzoom', event => {
+  event.preventDefault();
+  zoomCanvas(event.detail.direction);
+});
+```
+
+Each trigger press produces one step; holding follows the host's normal repeat
+delay and cadence. The event stays within the active packaged page and does not
+travel through the widget process. Without a handler that cancels the event,
+browser pinch zoom remains the default. Remote websites do not receive this event.
+The page owns the scale limits and keeps its toolbar at its normal size.
+
 ## Network and security
 
 Package resources must exist in the host-verified inventory and pass digest checks.

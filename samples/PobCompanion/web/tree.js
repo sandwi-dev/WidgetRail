@@ -140,8 +140,13 @@
   document.getElementById('fit').onclick = () => fit();
   document.getElementById('ascendancy').onclick = () => fit(true);
   document.getElementById('locate').onclick = () => { hover(0,0,0);const n=byId.get(selected); if(n){autoFit=false;cx=n.x;cy=n.y;scale=Math.max(scale,.12);redraw();} };
-  document.getElementById('in').onclick = () => { hover(0,0,0);autoFit=false;scale=Math.min(1,scale*1.5);redraw(); };
-  document.getElementById('out').onclick = () => { hover(0,0,0);autoFit=false;scale=Math.max(.01,scale/1.5);redraw(); };
+  function zoom(direction) { hover(0,0,0);autoFit=false;scale=Math.max(.01,Math.min(1,scale*(direction>0?1.5:1/1.5)));redraw(); }
+  document.getElementById('in').onclick = () => zoom(1);
+  document.getElementById('out').onclick = () => zoom(-1);
+  window.addEventListener('widgetrailzoom',e=>{
+    if(e.detail?.direction!==1 && e.detail?.direction!==-1)return;
+    e.preventDefault();zoom(e.detail.direction);
+  });
   for(const [name,dx,dy] of [['left',-1,0],['right',1,0],['up',0,-1],['down',0,1]]) document.getElementById(name).onclick=()=>{hover(0,0,0);autoFit=false;cx+=dx*100/scale;cy+=dy*100/scale;redraw();};
   map.addEventListener('wheel',e=>{
     hover(0,0,0);

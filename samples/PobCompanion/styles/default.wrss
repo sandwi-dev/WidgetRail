@@ -63,3 +63,4 @@ text { color: var(--text); text-align: start; }
 .pob-help { font-size:13px; color:var(--text-muted); text-align:start; }
 .pob-prose { font-size:15px; color:var(--text); text-align:start; }
 .pob-reading { gap:12px; max-width:900px; width:100%; }
+.pob-loading-panel { flex-grow:1; min-height:160px; padding:24px; gap:16px; align:center; justify:center; background:var(--surface-raised); corner-radius:12px; }

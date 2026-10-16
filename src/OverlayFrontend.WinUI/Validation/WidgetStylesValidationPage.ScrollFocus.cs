@@ -52,6 +52,31 @@ internal sealed partial class WidgetStylesValidationPage
         Check(presenter.SettleScrollFocus() && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), target),
             "revoking widget focus cancels pending scroll settlement");
         presenter.SetAutomaticFocusEnabled(true);
+        var readOnly = scrollNode with { Id = "scroll-reading.viewport", Children = Enumerable.Range(0, 24)
+            .Select(index => new ViewNode { Id = "paragraph-" + index, Kind = ViewNodeKind.Text, Text = "Preview details " + index }).ToArray() };
+        var apply = new ViewNode { Id = "reading.apply", Kind = ViewNodeKind.Button, Text = "Apply", ActionId = "apply" };
+        var discard = new ViewNode { Id = "reading.discard", Kind = ViewNodeKind.Button, Text = "Discard", ActionId = "discard" };
+        var rightPanel = new ViewNode { Id = "reading.panel", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[apply, discard, readOnly] };
+        presenter.Apply(CreateFrame(root with { Kind = ViewNodeKind.Row, Children = (ViewNode[])[scrollNode, rightPanel] },
+            new Dictionary<string, BridgeNodeRenderStyles> {
+                [scrollNode.Id] = Compute("scroll { width: 220px; height: 240px; }", scrollNode.Id, "scroll"),
+                [rightPanel.Id] = Compute("stack { width: 220px; }", rightPanel.Id, "stack"),
+                [readOnly.Id] = Compute("scroll { height: 150px; }", readOnly.Id, "scroll") }));
+        await Wait(() => Find<ScrollViewer>("Widget.scroll-reading.viewport")?.ScrollableHeight > 100);
+        var applyButton = Find<Button>("Widget.reading.apply")!;
+        applyButton.Focus(FocusState.Keyboard);
+        await Task.Delay(100);
+        var leftOffset=Find<ScrollViewer>("Widget.scroll-focus.viewport")!.VerticalOffset;
+        Check(presenter.ScrollBy(0, 180), "right-stick scrolling can read a text-only preview beside action buttons");
+        await Task.Delay(30);
+        Check(Find<ScrollViewer>("Widget.scroll-reading.viewport")!.VerticalOffset>0 &&
+            Find<ScrollViewer>("Widget.scroll-focus.viewport")!.VerticalOffset==leftOffset,
+            "fixed detail actions scroll their own panel instead of the neighboring list");
+        Check(presenter.SettleScrollFocus() && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), applyButton),
+            "text-only scrolling preserves action focus without waiting for nonexistent rows");
+        presenter.MoveFocus(FocusNavigationDirection.Down);
+        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Find<Button>("Widget.reading.discard")),
+            "directional navigation resumes after scrolling a text-only preview");
         presenter.Width = priorWidth; presenter.Height = priorHeight;
     }
 }

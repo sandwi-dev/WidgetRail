@@ -29,6 +29,14 @@ internal sealed partial class WidgetViewPresenter
         for (var current = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; current is not null && !ReferenceEquals(current, this);
              current = VisualTreeHelper.GetParent(current))
             if (current is ScrollViewer viewer && CanScroll(viewer)) { target = viewer; break; }
+        // A panel can keep its actions fixed above a scrolling document. Prefer
+        // that panel's viewport before falling back to another column's list.
+        for (var current = FocusedBinding(); target is null && current is not null;
+             current = declarations[current.Identity.Id].ParentId is { } parent ? bindings.GetValueOrDefault(parent) : null)
+            target = bindings.Values.Where(binding => binding.Identity.Scope == activeScope &&
+                    IsDescendant(binding.Identity.Id, current.Identity.Id))
+                .Select(binding => binding.Element as ScrollViewer)
+                .FirstOrDefault(viewer => viewer is not null && CanScroll(viewer));
         target ??= bindings.Values.Where(binding => binding.Identity.Scope == activeScope &&
                 binding.Element.Visibility == Visibility.Visible)
             .Select(binding => binding.Element is ScrollViewer viewer ? viewer :
@@ -65,6 +73,13 @@ internal sealed partial class WidgetViewPresenter
         var width = scroll.ViewportWidth;
         var height = scroll.ViewportHeight;
         if (width <= 0 || height <= 0) return false;
+        // Reading-only viewports (notes, preview details) have no row to receive
+        // focus. Keep the existing action focused and let navigation resume.
+        // Indexed collections may still be realizing rows, so retain their wait.
+        if (owner.Element is not WidgetIndexedCollectionView &&
+            !bindings.Values.Any(binding => Navigable(binding) && binding.Element is Control &&
+                IsDescendant(binding.Identity.Id, owner.Identity.Id)))
+        { scrollGesture = null; return true; }
         var controls = owner.Element is WidgetIndexedCollectionView collection
             ? collection.ScrollFocusCandidates()
             : bindings.Values.Where(binding => Navigable(binding) && binding.Element is Control &&
