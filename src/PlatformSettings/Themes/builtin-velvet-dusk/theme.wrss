@@ -55,7 +55,7 @@
 panel, tray,
 .wrail-dialog, .wrail-action-sheet, .wrail-picker, .wrail-modal { corner-radius: 18px; }
 
-tray-item, button, select, slider,
+tray-item, button, select, slider, scroll,
 .wrail-icon-button, .wrail-icon-button--small, .wrail-icon-button--large,
 .wrail-card, .wrail-switch, .wrail-stepper__button { corner-radius: 8px; }
 

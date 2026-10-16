@@ -53,6 +53,9 @@ canvas {
 }
 backdrop { background: var(--canvas-veil); }
 scroll {
+  /* Reserve breathing room even before the viewport receives reading focus. */
+  padding: 8px;
+  corner-radius: 10px;
   scrollbar-width: 4px;
   scrollbar-track-color: var(--scrollbar-track);
   scrollbar-thumb-color: var(--scrollbar-thumb);
