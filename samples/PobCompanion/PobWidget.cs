@@ -143,7 +143,8 @@ public sealed partial class PobWidget : Widget
                     Surface:new(){Mode=WidgetSurfaceMode.Standard,PreferredWidth=760,PreferredHeight=440,MinimumWidth=620,MinimumHeight=360});
             }
             var children = new List<WidgetElement>();
-            if (result is null && detailKind=="library")
+            if(OnlineImportView)children.Add(OnlineImportPage());
+            else if (result is null && detailKind=="library")
                 children.Add(LibraryWorkspace());
             else if(ManagementView&&result is not null)
             {
@@ -154,7 +155,8 @@ public sealed partial class PobWidget : Widget
             {
                 children.Add(Text($"PoE {game} Build Companion", "title", "pob-title"));
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
-                children.Add(Button("Paste build from clipboard", "paste"));
+                children.Add(UI.Row("pob.start.import-actions",Button("Open pob.cool","open-online-import"),Button("Paste build from clipboard", "paste")).Classes("pob-toolbar"));
+                children.Add(Text(OnlineImportHelp,"import.online-help","pob-small pob-muted"));
                 children.Add(ImportField());
                 children.Add(Button("Create a new build", "new"));
                 children.Add(Text("Calculations run locally. Imported originals are kept separately from your working copies. Not affiliated with Grinding Gear Games.", "notice", "pob-muted"));
@@ -171,15 +173,15 @@ public sealed partial class PobWidget : Widget
                     .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
-            var initial = detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
+            var initial = OnlineImportView?"pob.online-import.browser":detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
             var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").RememberChildFocus(initial);
             if (busy) root = root.Shortcut(ControllerButton.B, "cancel-operation");
-            else if(result is null&&detailKind=="library")root=root.Shortcut(ControllerButton.B,"back");
+            else if(OnlineImportView||result is null&&detailKind=="library")root=root.Shortcut(ControllerButton.B,"back");
             if (result is not null)
             {
-                if(!ManagementView)root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
-                if (!busy && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
+                if(!ManagementView&&!OnlineImportView)root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
+                if (!busy && !OnlineImportView && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
             }
             var view=new WidgetView(WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = ManagementView?(detailKind=="library"?1040:840):section == "Tree" ? 1320 : 1180, PreferredHeight = ManagementView?(detailKind=="library"&&savedBuilds.Length<=5?680:800):section == "Tree" ? 900 : 820, MinimumWidth = ManagementView?680:820, MinimumHeight = 600 })

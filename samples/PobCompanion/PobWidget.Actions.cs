@@ -28,6 +28,13 @@ public sealed partial class PobWidget
                 return ValueTask.CompletedTask;
             }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
+            if(id=="open-online-import")
+            {
+                onlineImportReturn=detailKind;onlineImportNavigation++;
+                detailKind="online-import";Invalidate();return ValueTask.CompletedTask;
+            }
+            if(id=="back"&&OnlineImportView)
+            {detailKind=onlineImportReturn;Invalidate();return ValueTask.CompletedTask;}
             if(id is not "undo" and not "redo")historyFocusRequested=false;
             if(id=="apply"&&pendingBefore is not null)
             {
