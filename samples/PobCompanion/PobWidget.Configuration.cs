@@ -43,7 +43,7 @@ public sealed partial class PobWidget
         }
         navigation.Add(UI.Switch("Show explanations",configHelp,"config-help","pob.config.help").Classes("pob-toggle"));
         var controls=new List<WidgetElement>{Text(searching?"Search results":configSection,"config.title","pob-heading"),
-            Text(searching?$"{matching.Length} matching settings across all sections":"Changes are previewed before you apply them.","config.summary","pob-muted")};
+            Text(searching?$"{matching.Length} matching settings across all sections":"Changes update the build immediately. Use Undo to reverse them.","config.summary","pob-muted")};
         string? previousGroup=null;
         foreach(var condition in matching)
         {
@@ -62,7 +62,7 @@ public sealed partial class PobWidget
             if(condition.TryGetProperty("applicable",out var applicable)&&!applicable.GetBoolean())
                 rows.Add(Text("Saved setting; not currently applicable to this build.","config.retained."+index,"pob-small"));
             if(configHelp&&!string.IsNullOrWhiteSpace(S(condition,"description")))
-                AddFormatted(rows,condition,"description","descriptionRuns","config.description."+index,"pob-help");
+                AddFormatted(rows,condition,"description","descriptionRuns","config.description."+index,"pob-help",emphasizeStats:true);
             controls.Add(UI.Stack("pob.config.row."+index,rows.ToArray()).Classes("pob-setting"));
         }
         if(matching.Length==0)controls.Add(Text("No matching settings. Try another search.","config.empty","pob-muted"));

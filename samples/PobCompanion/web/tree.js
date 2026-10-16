@@ -7,6 +7,7 @@
   let currentAscendancy = '';
   let treeVersion = '', artwork = null;
   const sheets = new Map(), tooltipCache = new Map(), tooltip = document.getElementById('tooltip');
+  const selectionMarker=document.getElementById('selection-marker'),selectionLabel=document.getElementById('selection-label');
   let hoverId = 0, hoverTimer = null, hoverX = 0, hoverY = 0;
   function loadArtwork(version){
     artwork=null;sheets.clear();
@@ -30,15 +31,27 @@
   function showTooltip(data) {
     if(data.id!==hoverId)return;
     document.getElementById('tooltip-name').textContent=data.name;
-    document.getElementById('tooltip-kind').textContent=`${data.kind} · ${data.allocated?'Allocated':'Unallocated'}`;
-    document.getElementById('tooltip-copy').textContent=data.description;
+    const kind={Normal:'Small passive',Notable:'Notable passive',AscendClassStart:'Ascendancy start',ClassStart:'Class start'}[data.kind]||data.kind;
+    document.getElementById('tooltip-kind').textContent=`${kind} · ${data.allocated?'Allocated':'Unallocated'}`;
+    const copy=document.getElementById('tooltip-copy');copy.replaceChildren();
+    const tones=new Set(['text','warning','blue','green','gold','orange','violet','muted','emphasis']);
+    if(Array.isArray(data.paragraphs))for(const runs of data.paragraphs){
+      if(!Array.isArray(runs))continue;
+      const paragraph=document.createElement('p');
+      for(const run of runs){if(typeof run.text!=='string')continue;const span=document.createElement('span');span.textContent=run.text;span.className='tone-'+(tones.has(run.tone)?run.tone:'text');paragraph.append(span);}
+      copy.append(paragraph);
+    }else copy.textContent=data.description||'';
     document.getElementById('tooltip-cost').textContent=data.requiresChoice?'Choose this option in desktop PoB':data.allocated
       ? data.canRefund?`Refund ${data.points} point${data.points===1?'':'s'} including dependants`:'Starting node'
       : data.canAllocate?`${data.points} point${data.points===1?'':'s'} to allocate path`:'No available allocation path';
     tooltip.hidden=false;
-    const rect=map.getBoundingClientRect();
-    tooltip.style.left=Math.max(8,Math.min(rect.left+hoverX+18,document.documentElement.clientWidth-tooltip.offsetWidth-8))+'px';
-    tooltip.style.top=Math.max(8,Math.min(rect.top+hoverY+18,document.documentElement.clientHeight-tooltip.offsetHeight-8))+'px';
+    const rect=map.getBoundingClientRect(),x=rect.left+hoverX,y=rect.top+hoverY;
+    const width=tooltip.offsetWidth,height=tooltip.offsetHeight,vw=document.documentElement.clientWidth,vh=document.documentElement.clientHeight;
+    const candidates=[[x+24,y+18],[x-width-24,y+18],[x+24,y-height-18],[x-width-24,y-height-18]]
+      .map(([left,top])=>({left:Math.max(8,Math.min(left,vw-width-8)),top:Math.max(8,Math.min(top,vh-height-8))}));
+    const overlap=p=>Math.max(0,Math.min(p.left+width,x+20)-Math.max(p.left,x-20))*Math.max(0,Math.min(p.top+height,y+20)-Math.max(p.top,y-20));
+    candidates.sort((a,b)=>overlap(a)-overlap(b));
+    tooltip.style.left=candidates[0].left+'px';tooltip.style.top=candidates[0].top+'px';
   }
   function hover(id,x,y) {
     hoverX=x;hoverY=y;
@@ -53,6 +66,8 @@
   let scale = .1, cx = 0, cy = 0, selected = 0, preview = false, queued = false, hasSnapshot = false, autoFit = true, fitAscendancy = false;
   const point = n => [(n.x - cx) * scale + map.clientWidth / 2, (n.y - cy) * scale + map.clientHeight / 2];
   const cssColor = id => getComputedStyle(document.getElementById(id)).color;
+  const nodeRadius=n=>Math.max(['Notable','Keystone','ClassStart','AscendClassStart'].includes(n.kind)?4:2,
+    Math.min(n.kind==='Keystone'?26:['Notable','ClassStart','AscendClassStart'].includes(n.kind)?20:12,scale*(n.kind==='Keystone'?140:['Notable','ClassStart','AscendClassStart'].includes(n.kind)?90:50)));
   function redraw() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
   function pick(id) {
     if (preview) return;
@@ -84,8 +99,7 @@
     const visible = nodes.map(n => ({ n, p: point(n) })).filter(({ p }) => p[0] > 0 && p[0] < w && p[1] > 0 && p[1] < h);
     for (const { n, p: [x, y] } of visible) {
       const color = colors[n.change || (n.allocated ? 'active' : 'base')];
-      const major = ['Notable', 'Keystone', 'ClassStart', 'AscendClassStart'].includes(n.kind);
-      const radius = Math.max(major?4:2, Math.min(n.kind==='Keystone'?26:major?20:12, scale * (n.kind==='Keystone'?140:major?90:50)));
+      const radius = nodeRadius(n);
       context.strokeStyle = color; context.fillStyle = n.allocated ? color : getComputedStyle(map).backgroundColor;
       context.lineWidth = n.allocated ? 2 : 1; context.beginPath();
       if (n.kind === 'Keystone') { context.moveTo(x, y-radius); context.lineTo(x+radius, y); context.lineTo(x, y+radius); context.lineTo(x-radius, y); context.closePath(); }
@@ -98,6 +112,17 @@
         context.setLineDash(n.change === 'removed' ? [3, 2] : []);
         context.beginPath(); context.arc(x, y, radius+4, 0, Math.PI*2); context.stroke(); context.setLineDash([]);
       }
+    }
+    const target=byId.get(selected),position=target?point(target):null;
+    const selectionVisible=position&&position[0]>=0&&position[0]<=w&&position[1]>=0&&position[1]<=h;
+    selectionMarker.hidden=selectionLabel.hidden=!selectionVisible;
+    if(selectionVisible){
+      const [x,y]=position,radius=Math.max(22,nodeRadius(target)+8);
+      Object.assign(selectionMarker.style,{left:x+'px',top:y+'px',width:radius*2+'px',height:radius*2+'px'});
+      selectionLabel.textContent='Selected · '+target.name;
+      const lw=selectionLabel.offsetWidth,lh=selectionLabel.offsetHeight;
+      selectionLabel.style.left=Math.max(8,Math.min(x-lw/2,w-lw-8))+'px';
+      selectionLabel.style.top=Math.max(8,Math.min(y-radius-lh-10>=8?y-radius-lh-10:y+radius+10,h-lh-8))+'px';
     }
     // Large invisible input targets do not change the visual size of a passive.
     const focused = Number(document.activeElement?.dataset.node || 0);
@@ -116,11 +141,12 @@
       button.onpointerenter=()=>hover(n.id,p[0],p[1]);button.onpointerleave=()=>hover(0,0,0);
       button.onfocus=()=>hover(n.id,p[0],p[1]);button.onblur=()=>hover(0,0,0);
       button.setAttribute('aria-label', `${n.name}, ${n.kind}, ${n.allocated ? 'allocated' : 'unallocated'}${n.change ? ', preview ' + n.change : ''}`);
+      button.setAttribute('aria-pressed',String(n.id===selected));
       button.disabled = preview;
     }
     for (const button of [...container.children]) if (!retained.has(button.id)) button.remove();
     const name = byId.get(selected)?.name;
-    status.textContent = !hasSnapshot ? 'Loading passive tree…' : preview ? 'Preview: solid ring adds, dashed ring refunds' : name || 'Select a passive to inspect';
+    status.textContent = !hasSnapshot ? 'Loading passive tree…' : preview ? 'Preview: solid ring adds, dashed ring refunds' : name ? name+(selectionVisible?'':' · Off screen — Locate selected') : 'Select a passive to inspect';
   }
   function fit(ascendancy = false) {
     hover(0,0,0);
@@ -139,7 +165,8 @@
   }
   document.getElementById('fit').onclick = () => fit();
   document.getElementById('ascendancy').onclick = () => fit(true);
-  document.getElementById('locate').onclick = () => { hover(0,0,0);const n=byId.get(selected); if(n){autoFit=false;cx=n.x;cy=n.y;scale=Math.max(scale,.12);redraw();} };
+  function locateSelected(){hover(0,0,0);const n=byId.get(selected);if(n){autoFit=false;cx=n.x;cy=n.y;scale=Math.max(scale,.3);redraw();}}
+  document.getElementById('locate').onclick = locateSelected;
   function zoom(direction) { hover(0,0,0);autoFit=false;scale=Math.max(.01,Math.min(1,scale*(direction>0?1.5:1/1.5)));redraw(); }
   document.getElementById('in').onclick = () => zoom(1);
   document.getElementById('out').onclick = () => zoom(-1);
@@ -177,7 +204,7 @@
       incoming={revision,nodes:m.reuseGeometry?nodes.map(n=>({...n,allocated:false,change:''})):[],links:m.reuseGeometry?links:[]};
       incoming.byId=new Map(incoming.nodes.map(n=>[n.id,n]));return;
     }
-    if(m.type==='select'){hover(0,0,0);selected=m.id;const n=byId.get(selected);if(n){autoFit=false;cx=n.x;cy=n.y;scale=Math.max(scale,.14);}redraw();return;}
+    if(m.type==='select'){selected=m.id;locateSelected();return;}
     if(!incoming||m.revision!==incoming.revision)return;
     if(m.type==='states'&&Array.isArray(m.items))for(const state of m.items){const node=incoming.byId.get(state.id);if(node){node.allocated=!!state.allocated;node.change=state.change||'';node.name=state.name;node.kind=state.kind;node.icon=state.icon||'';}}
     if(m.type==='nodes'&&Array.isArray(m.items)&&incoming.nodes.length+m.items.length<=15000)incoming.nodes.push(...m.items);

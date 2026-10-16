@@ -27,6 +27,8 @@ public sealed partial class PobWidget : Widget
     private bool nodeReturnToMap;
     private ToastElement? feedback;
     private WidgetTimedMutation? feedbackExpiry;
+    internal static readonly TimeSpan InformationFeedbackDuration=TimeSpan.FromSeconds(3);
+    internal static readonly TimeSpan ErrorFeedbackDuration=TimeSpan.FromSeconds(8);
     private readonly Dictionary<string,int> selections = new();
     private long focusRequestSequence;
     private static readonly string[] Sections = ["Calcs", "Tree", "Skills", "Items", "Configuration", "Notes"];
@@ -77,31 +79,31 @@ public sealed partial class PobWidget : Widget
 
     private void Work(Func<CancellationToken, Task> operation, string message)
     {
-        lock (gate) { if (busy) return; busy = true; status = message; }
+        lock (gate) { if (busy) return; busy = true; status = message; feedback=null; }
         Invalidate();
         Operations.RunSingleFlight("pob.work", async context =>
         {
-            try { await operation(context.CancellationToken); RefreshLibrary(); lock (gate) status = ""; }
-            catch (OperationCanceledException) { lock (gate) { status = ""; ShowFeedback("Cancelled", "You can continue working.", ToastTone.Info); } }
+            try { await operation(context.CancellationToken); RefreshLibrary(); }
+            catch (OperationCanceledException) { lock (gate) { ShowFeedback("Cancelled", "You can continue working.", ToastTone.Info); } }
             catch (Exception error) when (error is WidgetCapabilityException or IOException or JsonException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or HttpRequestException)
             {
                 lock (gate)
                 {
                     var failureMessage = error is System.ComponentModel.Win32Exception native ? $"The build engine could not start (Windows error {native.NativeErrorCode}). Reinstall this widget or retry." : Limit(error.Message, 350);
-                    if(result is null || error is System.ComponentModel.Win32Exception) status=failureMessage;
-                    else { status=""; ShowFeedback("Action not completed",failureMessage,ToastTone.Warning); }
+                    ShowFeedback("Action not completed",failureMessage,ToastTone.Warning);
                 }
             }
-            finally { lock (gate) { busy = false; } Invalidate(); }
+            finally { lock (gate) { busy = false;status=""; } Invalidate(); }
         }, WidgetOperationLifetime.Widget);
     }
 
     private void ShowFeedback(string title,string message,ToastTone tone)
     {
-        var next=UI.Toast(title,message,tone,"pob.feedback.toast");
+        var duration=tone is ToastTone.Warning or ToastTone.Danger?ErrorFeedbackDuration:InformationFeedbackDuration;
+        var next=UI.Toast(title,message,tone,"pob.feedback.toast",duration);
         feedback=next;
         feedbackExpiry??=CreateTimedMutation(WidgetOperationLifetime.Widget);
-        _=feedbackExpiry.ScheduleLatest(UI.DefaultToastDuration,()=>
+        _=feedbackExpiry.ScheduleLatest(duration,()=>
         {
             lock(gate)if(ReferenceEquals(feedback,next))feedback=null;
             Invalidate();
@@ -113,9 +115,17 @@ public sealed partial class PobWidget : Widget
         // Both layers occupy the full widget bounds; a toast never takes height
         // away from the content or changes its input scope or initial focus.
         var layers=new List<WidgetElement>{body.InGrid(rowSpan:2,columnSpan:3)};
-        if(feedback is not null)layers.Add(feedback.Classes("pob-feedback-toast").InGrid(row:1,column:1));
-        return UI.Grid("pob.feedback.layer",[GridTrack.Star(),GridTrack.Auto()],
+        if(busy)
+            layers.Add(UI.Row("pob.operation.toast",
+                UI.LoadingIndicator("pob.operation.progress",status,LoadingIndicatorSize.Compact),
+                UI.Stack("pob.operation.copy",Text(status,"operation.title","pob-operation-title"),Text("B to cancel","operation.help","pob-small"))
+                    .Classes("pob-operation-copy"),
+                UI.Button("Cancel","cancel-operation","pob.cancel-operation").Classes("pob-button"))
+                .Classes("wrail-toast","wrail-toast--info","pob-operation-toast","pob-feedback-toast").InGrid(row:1,column:1));
+        else if(feedback is not null)layers.Add(feedback.Classes("pob-feedback-toast").InGrid(row:1,column:1));
+        var layer=UI.Grid("pob.feedback.layer",[GridTrack.Star(),GridTrack.Auto()],
             [GridTrack.Star(),GridTrack.Star(2),GridTrack.Star()],layers.ToArray()).InputScope(scope).Classes("pob-feedback-layer");
+        return busy?layer.Shortcut(ControllerButton.B,"cancel-operation"):layer;
     }
 
     public override WidgetView Render()
@@ -137,8 +147,6 @@ public sealed partial class PobWidget : Widget
                     Surface:new(){Mode=WidgetSurfaceMode.Standard,PreferredWidth=760,PreferredHeight=440,MinimumWidth=620,MinimumHeight=360});
             }
             var children = new List<WidgetElement>();
-            if (!string.IsNullOrWhiteSpace(status)) children.Add(Text(status, "status", "pob-muted"));
-            if (busy) children.Add(Button("Cancel operation", "cancel-operation"));
             if (result is null && detailKind=="library")
                 children.Add(LibraryWorkspace());
             else if (result is null)
@@ -160,7 +168,6 @@ public sealed partial class PobWidget : Widget
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not saved", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
                 children.Add(UI.Stack("pob.section.content",Workspace()).Classes("pob-workspace")
                     .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
-                children.Add(Text("LB / RB  Switch section     ·     A  Inspect or change     ·     Working copy saved locally", "footer", "pob-footer"));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
             var initial = detailKind=="library" ? "pob.back" : result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
@@ -208,7 +215,6 @@ public sealed partial class PobWidget : Widget
             rows.Add(UI.TextEntry("", "Build link or XML file path", "import", "pob.import").Classes("pob-input"));
             rows.Add(Button("Copy PoB share code", "export"));
             rows.Add(Button("Save XML beside working copy", "export-file"));
-            if (undo.Count > 0) rows.Add(Button("Undo last change", "undo"));
             rows.Add(UI.TextEntry(S(State, "level"), "Character level", "level", "pob.level").Classes("pob-input"));
             foreach (var field in new[] { "classes", "ascendancies" })
             {
@@ -251,7 +257,7 @@ public sealed partial class PobWidget : Widget
     {
         var n=A(State,"nodes").First(n=>I(n,"id")==detailId);
         var rows = new List<WidgetElement> { Button("Back to tree","back"), Text(S(n,"name"),"node.name","pob-heading") };
-        AddFormatted(rows,n,"description","descriptionRuns","node.description");
+        AddNodeDescription(rows,n,"node.description");
         if (pendingBefore is not null)
         {
             var previous = A(pendingBefore.State,"nodes").Where(x=>B(x,"allocated")).Select(x=>I(x,"id")).ToHashSet();

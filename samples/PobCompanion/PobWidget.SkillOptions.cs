@@ -11,9 +11,15 @@ public sealed partial class PobWidget
     private async Task RefreshSkillOptionsAsync(int group,CancellationToken token)
     {
         string xml;lock(gate)xml=result!.Xml;
+        var options=await ReadSkillOptionsAsync(group,xml,token);
+        lock(gate){inspectedSkillOptions=options;inspectedSkillGroup=group;}
+    }
+
+    private async Task<JsonElement> ReadSkillOptionsAsync(int group,string xml,CancellationToken token)
+    {
         var inspected=await engine.ExecuteAsync(new{op="inspect-skill",group},token,xml);
         if(I(inspected.State,"skillOptionsGroup")!=group)throw new IOException("PoB returned options for a different skill group.");
-        lock(gate){inspectedSkillOptions=inspected.State.GetProperty("skillOptions").Clone();inspectedSkillGroup=group;}
+        return inspected.State.GetProperty("skillOptions").Clone();
     }
 
     private void OpenSkillOptions()
@@ -24,18 +30,6 @@ public sealed partial class PobWidget
             await RefreshSkillOptionsAsync(group,token);
             lock(gate)detailKind="skill-options";
         },"Reading skill options…");
-    }
-
-    private void PreviewSkillOption(string control,int value)
-    {
-        var group=detailId;
-        Work(async token=>
-        {
-            var before=result!;
-            var next=await engine.ExecuteAsync(new{op="skill-option",group,control,value},token,before.Xml);
-            lock(gate){pendingBefore=before;result=next;}
-            await RefreshSkillOptionsAsync(group,token);
-        },"Calculating comparison…");
     }
 
     private List<WidgetElement> SkillOptionsContent()

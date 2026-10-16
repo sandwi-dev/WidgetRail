@@ -7,7 +7,12 @@ const path = require('node:path');
 // The canvas is stubbed; native screenshots validate its actual drawing.
 const elements = new Map(), frames = [], sent = [], windowEvents = new Map();
 class Element {
-  constructor(id) { this.id = id; this.children = []; this.style = {}; this.dataset = {}; this.attributes = {}; this.clientWidth = 1000; this.clientHeight = 600; }
+  constructor(id,tag='div') { this.id = id; this.tagName=tag; this.children = []; this.style = {}; this.dataset = {}; this.attributes = {}; this.clientWidth = 1000; this.clientHeight = 600; }
+  get textContent(){return this.children.length?this.children.map(c=>c.textContent).join(''):(this.text||'');}
+  set textContent(value){this.text=value;this.children=[];}
+  get offsetWidth(){return this.id==='tooltip'?380:200;}
+  get offsetHeight(){return this.id==='tooltip'?300:32;}
+  replaceChildren(){this.children=[];this.text='';}
   append(child) { child.parent = this; this.children.push(child); elements.set(child.id, child); }
   remove() { this.parent.children = this.parent.children.filter(child => child !== this); elements.delete(this.id); }
   setAttribute(name, value) { this.attributes[name] = value; }
@@ -15,10 +20,10 @@ class Element {
   getContext() { return new Proxy({}, { get: () => () => {} }); }
   getBoundingClientRect() { return {left:0,top:0}; }
 }
-for (const id of ['map','lines','nodes','status','added','removed','selected','fit','ascendancy','locate','in','out','left','right','up','down','tooltip','tooltip-name','tooltip-kind','tooltip-copy','tooltip-cost']) elements.set(id, new Element(id));
+for (const id of ['map','lines','nodes','status','added','removed','selected','fit','ascendancy','locate','in','out','left','right','up','down','tooltip','tooltip-name','tooltip-kind','tooltip-copy','tooltip-cost','selection-marker','selection-label']) elements.set(id, new Element(id));
 let receive, resize;
 const sandbox = {
-  document: { getElementById: id => elements.get(id), createElement: () => new Element(), activeElement: null, documentElement:{clientWidth:1000,clientHeight:600,dataset:{}} },
+  document: { getElementById: id => elements.get(id), createElement: tag => new Element(undefined,tag), activeElement: null, documentElement:{clientWidth:1000,clientHeight:600,dataset:{}} },
   chrome: { webview: { addEventListener: (_, callback) => receive = callback } },
   WidgetRailWebSession: { post: value => sent.push(value) },
   window: { addEventListener(type, handler) { windowEvents.set(type,handler); } }, ResizeObserver: class { constructor(callback) { resize=callback; } observe() {} },
@@ -100,3 +105,24 @@ windowEvents.get('widgetrailzoom')({detail:{direction:-1},preventDefault(){}});
 while(frames.length)frames.shift()();
 assert.ok(Math.abs(parseFloat(position())-parseFloat(beforeZoom))<.001,'L2 reverses the internal zoom step');
 console.log('PASS controller zoom shares minus/plus controls and consumes browser zoom');
+message({type:'select',id:2});
+const marker=elements.get('selection-marker'),selectedLabel=elements.get('selection-label');
+assert.equal(marker.hidden,false);
+assert.match(selectedLabel.textContent,/Selected.*Right/);
+for(let i=0;i<12;i++){elements.get('out').onclick();while(frames.length)frames.shift()();}
+assert.ok(parseFloat(marker.style.width)>=44,'Selection stays large enough to spot at minimum zoom');
+for(let i=0;i<20;i++)elements.get('right').onclick();while(frames.length)frames.shift()();
+assert.equal(marker.hidden,true);
+assert.match(elements.get('status').textContent,/Off screen/);
+elements.get('locate').onclick();while(frames.length)frames.shift()();
+assert.equal(parseFloat(marker.style.left),map.clientWidth/2,'Locate selected centers the actual marker');
+assert.ok(Math.abs(parseFloat(elements.get('passive-1').style.left)-parseFloat(elements.get('passive-2').style.left))>=240,'Locate selected zooms enough to distinguish adjacent nodes');
+elements.get('passive-2').onpointerenter();
+message({type:'tooltip',revision:5,id:2,name:'Right',kind:'Keystone',paragraphs:[[{text:'+10 ',tone:'gold'},{text:'Energy Shield',tone:'blue'}],[{text:'<script>plain text</script>',tone:'text'}]],allocated:false,canAllocate:true,points:3});
+const copy=elements.get('tooltip-copy');
+assert.equal(copy.children.length,2,'Hover keeps distinct modifiers in separate paragraphs');
+assert.equal(copy.children[0].children[1].className,'tone-blue');
+assert.equal(copy.children[1].children[0].textContent,'<script>plain text</script>','Hover inserts source text without evaluating markup');
+assert.ok(parseFloat(elements.get('tooltip').style.left)>=8&&parseFloat(elements.get('tooltip').style.left)+380<=992,'Hover stays within horizontal viewport bounds');
+assert.ok(parseFloat(elements.get('tooltip').style.top)>=8&&parseFloat(elements.get('tooltip').style.top)+300<=592,'Hover stays within vertical viewport bounds');
+console.log('PASS persistent selection marker, useful locate zoom, rich hover and bounded placement');

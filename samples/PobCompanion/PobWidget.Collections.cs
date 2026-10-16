@@ -68,7 +68,9 @@ public sealed partial class PobWidget
 
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
-        if(busy||focusRequestSequence==0||detailKind.Length>0&&!InlineDetail)return null;
+        if(busy||focusRequestSequence==0)return null;
+        if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.history"};
+        if(detailKind.Length>0&&!InlineDetail)return null;
         if(section=="Tree"&&detailKind!="node"&&passiveReturnKey is not null&&passives is not null)
         {
             var index=Array.FindIndex(passiveQuery.Entries,e=>e.Key==passiveReturnKey);

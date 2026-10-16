@@ -26,6 +26,18 @@ PobWidget.AddFormatted(formatted,colored,"text","runs","test");
 var richView=new WidgetView(UI.Stack("rich",formatted.ToArray())).CreateSnapshot("rich",1);
 Check(string.Concat(Nodes(richView.Root).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text))==colored.GetProperty("text").GetString() &&
     Nodes(richView.Root).Any(n=>n.Kind==ViewNodeKind.RichText) && Nodes(richView.Root).Any(n=>n.StyleClasses.Contains("pob-blue")),"Rich descriptions preserve text and semantic inline colors");
+var plainStat="Unarmed Attacks have:\n+0.1% to Critical Hit Chance per 10 Item Energy Shield\n1% more Attack Speed per 75 Item Evasion on Equipped Armour Items";
+var plainNode=JsonSerializer.SerializeToElement(new{id=1,name="Plain passive",kind="Keystone",description=plainStat,allocated=false});
+var statRuns=PobWidget.ReadFormattedRuns(plainNode,"description","descriptionRuns",true);
+Check(string.Concat(statRuns.Select(r=>r.Text))==plainStat && statRuns.Any(r=>r.Text=="+0.1%"&&r.Tone=="gold")&&statRuns.Any(r=>r.Text=="Energy Shield"&&r.Tone=="blue"),"Plain stat descriptions gain numeric and resource emphasis without changing wording");
+var paragraphs=PobWidget.DescriptionParagraphs(plainNode);
+Check(string.Join("\n",paragraphs.Select(p=>string.Concat(p.Select(r=>r.Text))))==plainStat&&paragraphs.Count==2,"Passive paragraphs preserve the condition and its following modifier");
+var warning=JsonSerializer.SerializeToElement(new{text="25 Cold damage",runs=new[]{new{text="25 Cold damage",tone="warning"}}});
+Check(PobWidget.ReadFormattedRuns(warning,"text","runs",true).All(r=>r.Tone=="warning"),"Stat emphasis never overrides upstream warning colors");
+var tooltip=PobWidget.CreateTooltip(plainNode,3);
+Check(tooltip.GetProperty("paragraphs").GetArrayLength()==paragraphs.Count&&tooltip.GetProperty("paragraphs")[0].EnumerateArray().Any(r=>r.GetProperty("tone").GetString()=="gold"),"Hover and native descriptions share the same formatted paragraphs");
+var hugeTooltip=PobWidget.CreateTooltip(JsonSerializer.SerializeToElement(new{id=2,name="Long node",kind="Normal",description=new string('界',12000)}),4);
+Check(JsonSerializer.SerializeToUtf8Bytes(hugeTooltip).Length<=16384&&hugeTooltip.GetProperty("truncated").GetBoolean(),"Long Unicode hover descriptions remain within the web-session bound and identify truncation");
 foreach(var path in new[]{@"\\example.invalid\share\build.xml",@"\\.\pipe\not-a-build"})
 {
     try{await BuildDocument.ReadAsync(path,game,default);Check(false,"Reject network and device paths before opening a file");}
@@ -185,6 +197,8 @@ if(firstXml is not null)
         Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.headline.value.0"&&n.Text=="—") &&
             Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.warning"&&n.Text!.Contains(auditState.State.GetProperty("mainSkillDisabledReason").GetString()!)),
             "Disabled main skill shows unavailable DPS and the actual upstream reason together");
+    if(auditState.State.GetProperty("mainSkillDamageKind").GetString()=="buff")
+        Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.headline.value.0"&&n.Text=="—")&&Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.explanation")&&!Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.warning"),"Buff-only main skill explains no direct damage without inventing an error");
     if(auditState.State.GetProperty("fullDpsIncludedGroups").GetInt32()==0)
         Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.stat.value.FullDPS"&&n.Text=="—")&&Nodes(calculationView.Root).Any(n=>n.Id=="pob.full-dps.explanation"),"Unconfigured Full DPS is distinguished from a legitimate zero");
     await Action("menu");await Action("library");
@@ -229,7 +243,9 @@ if(firstXml is not null)
         "Recoverable action errors use a toast without changing content focus or persistent status");
     Check(Nodes(withFeedback.Root).Any(n=>n.Kind==ViewNodeKind.Text && n.Text?.Contains("Inspecting")==true),
         "The item being inspected has a textual selection marker independent of focus");
-    await Task.Delay(UI.DefaultToastDuration+TimeSpan.FromMilliseconds(200));
+    await Task.Delay(PobWidget.InformationFeedbackDuration+TimeSpan.FromMilliseconds(100));
+    Check(Nodes(Snapshot(widget,2911).Root).Any(n=>n.Id=="pob.feedback.toast"),"Errors stay visible longer than informational messages");
+    await Task.Delay(PobWidget.ErrorFeedbackDuration-PobWidget.InformationFeedbackDuration+TimeSpan.FromMilliseconds(150));
     Check(!Nodes(Snapshot(widget,292).Root).Any(n=>n.Id=="pob.feedback.toast"),"Transient feedback expires automatically");
     clipboard="";
     await Action("section.4");
@@ -258,10 +274,10 @@ if(firstXml is not null)
             if((choice.GetProperty("label").GetString()??"").Any(char.IsControl))
             {
                 multilineChoiceCount++;
-                await Action($"option.{multilineIndex}.{choiceIndex}");await Action("apply");
+                await Action($"option.{multilineIndex}.{choiceIndex}");
                 var saved=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(Path.Combine(data,id+".xml")),name="multiline choice"},default);
                 var actual=saved.State.GetProperty("conditions").EnumerateArray().Single(c=>c.GetProperty("id").GetString()==condition.GetProperty("id").GetString()).GetProperty("value");
-                Check(actual.GetRawText()==choice.GetProperty("value").GetRawText(),"Multiline choice labels preserve the exact backend value after Apply and reload");
+                Check(actual.GetRawText()==choice.GetProperty("value").GetRawText(),"Multiline choice labels preserve the exact backend value after immediate save and reload");
                 await Action("undo");
                 break;
             }
@@ -311,12 +327,22 @@ if(firstXml is not null)
     var firstSkill=widgetBaseline.State.GetProperty("skills").EnumerateArray().First();
     await Action("section.2");
     await Action("skill."+firstSkill.GetProperty("id").GetInt32());await Action("skill-enabled");
-    Check(Nodes(Snapshot(widget,103).Root).Any(n=>n.Id=="pob.apply"),"Widget skill edit enters comparison before saving");
-    await Action("apply");
+    var immediateSkill=Snapshot(widget,103);
+    Check(!Nodes(immediateSkill.Root).Any(n=>n.Id=="pob.apply")&&Nodes(immediateSkill.Root).Single(n=>n.Id=="pob.undo").IsDisabled!=true,
+        "Routine skill edits save immediately and expose Undo without a preview step");
     var skillResult=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="verify skill"},default);
     Check(skillResult.State.GetProperty("skills").EnumerateArray().First().GetProperty("enabled").GetBoolean()!=firstSkill.GetProperty("enabled").GetBoolean(),"Widget skill toggle survives reload");
     await Action("undo");
-    await Action("level","76");await Action("apply");
+    Check(Snapshot(widget,1031).ActiveInputScopeId==immediateSkill.ActiveInputScopeId&&Nodes(Snapshot(widget,1032).Root).Any(n=>n.Id=="pob.workspace.inventory"),"Undo preserves the current skill workspace and input scope");
+    Check(Snapshot(widget,10311).FocusGroupEntryRequest?.GroupId=="pob.history","Undo restores focus within the history controls rather than the first section tab");
+    var undoneSkill=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="undo skill"},default);
+    Check(undoneSkill.State.GetProperty("skills").EnumerateArray().First().GetProperty("enabled").GetBoolean()==firstSkill.GetProperty("enabled").GetBoolean(),"Undo restores the saved skill state");
+    await Action("redo");
+    var redoneSkill=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="redo skill"},default);
+    Check(redoneSkill.State.GetProperty("skills").EnumerateArray().First().GetProperty("enabled").GetBoolean()!=firstSkill.GetProperty("enabled").GetBoolean(),"Redo reapplies the saved skill state");
+    await Action("undo");
+    await Action("level","76");
+    Check(Nodes(Snapshot(widget,1033).Root).Single(n=>n.Id=="pob.redo").IsDisabled==true,"A new committed edit clears the redo branch");
     Check(XDocument.Parse(File.ReadAllText(working)).Root!.Element("Build")!.Attribute("level")!.Value=="76","Widget level edit survives reload");
     await Action("undo");
     var conditions=widgetBaseline.State.GetProperty("conditions").EnumerateArray().ToArray();
@@ -324,12 +350,46 @@ if(firstXml is not null)
     Check(conditionIndex>=0,"Fixture supplies a boolean configuration condition");
     if(conditionIndex>=0)
     {
-        await Action("condition."+conditionIndex);await Action("apply");
+        await Action("condition."+conditionIndex);
         var changedConfig=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="verify config"},default);
         var key=conditions[conditionIndex].GetProperty("id").GetString();
         var value=changedConfig.State.GetProperty("conditions").EnumerateArray().Single(c=>c.GetProperty("id").GetString()==key).GetProperty("value").GetBoolean();
-        Check(value!=conditions[conditionIndex].GetProperty("value").GetBoolean(),"Widget condition edit survives reload");await Action("undo");
+        Check(value!=conditions[conditionIndex].GetProperty("value").GetBoolean()&&!Nodes(Snapshot(widget,1034).Root).Any(n=>n.Id=="pob.apply"),"Configuration edit saves immediately without confirmation");
+        await Action("undo");await Action("redo");
+        var redoneConfig=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="redo configuration"},default);
+        Check(redoneConfig.State.GetProperty("conditions").EnumerateArray().Single(c=>c.GetProperty("id").GetString()==key).GetProperty("value").GetBoolean()==value,"Configuration Undo and Redo restore the saved value");
+        await Action("undo");
     }
+    foreach(var candidate in widgetBaseline.State.GetProperty("skills").EnumerateArray().Where(s=>!s.GetProperty("main").GetBoolean()).Take(8))
+    {
+        var group=candidate.GetProperty("id").GetInt32();
+        var inspected=await engine.ExecuteAsync(new{op="inspect-skill",group},default,File.ReadAllText(working));
+        var option=inspected.State.GetProperty("skillOptions").EnumerateArray().FirstOrDefault();
+        if(option.ValueKind!=JsonValueKind.Object)continue;
+        var control=option.GetProperty("id").GetString();
+        var choices=option.GetProperty("options").EnumerateArray().ToArray();
+        var original=choices.Single(c=>c.GetProperty("active").GetBoolean()).GetProperty("id").GetInt32();
+        var alternative=choices.First(c=>!c.GetProperty("active").GetBoolean()).GetProperty("id").GetInt32();
+        await Action("section.2");await Action("skill."+group);await Action("skill-options");
+        var optionScope=Snapshot(widget,1035).ActiveInputScopeId;
+        await Action($"skill-option.{group}.{control}.{alternative}");
+        var changed=await engine.ExecuteAsync(new{op="inspect-skill",group},default,File.ReadAllText(working));
+        int SelectedOption(PobResult current)=>current.State.GetProperty("skillOptions").EnumerateArray().Single(o=>o.GetProperty("id").GetString()==control)
+            .GetProperty("options").EnumerateArray().Single(c=>c.GetProperty("active").GetBoolean()).GetProperty("id").GetInt32();
+        Check(SelectedOption(changed)==alternative&&!Nodes(Snapshot(widget,1036).Root).Any(n=>n.Id=="pob.apply"),"Non-main skill option saves immediately without changing to preview scope");
+        await Action("undo");
+        var reverted=await engine.ExecuteAsync(new{op="inspect-skill",group},default,File.ReadAllText(working));
+        Check(SelectedOption(reverted)==original&&Snapshot(widget,1037).ActiveInputScopeId==optionScope&&Nodes(Snapshot(widget,1038).Root).Any(n=>n.Id=="pob.option."+control),"Undo refreshes the inspected skill's options in place");
+        await Action("redo");
+        var repeated=await engine.ExecuteAsync(new{op="inspect-skill",group},default,File.ReadAllText(working));
+        Check(SelectedOption(repeated)==alternative,"Redo restores the inspected skill option");
+        await Action("undo");await Action("back");break;
+    }
+    var savedBeforeFailure=File.ReadAllText(working);
+    var undoBeforeFailure=Nodes(Snapshot(widget,1039).Root).Single(n=>n.Id=="pob.undo").IsDisabled;
+    await Action("level","101");
+    Check(File.ReadAllText(working)==savedBeforeFailure&&Nodes(Snapshot(widget,1040).Root).Single(n=>n.Id=="pob.undo").IsDisabled==undoBeforeFailure,"Rejected immediate edit leaves the saved build and undo availability unchanged");
+    await Action("section.3");
     var firstItem=widgetBaseline.State.GetProperty("items").EnumerateArray().First();
     clipboard=firstItem.GetProperty("raw").GetString()!;
     var slots=widgetBaseline.State.GetProperty("slots").EnumerateArray().ToArray();
@@ -352,6 +412,12 @@ if(firstXml is not null)
         await Action("loadout."+nextLoadout);
         var switched=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="verify loadout"},default);
         Check(switched.State.GetProperty("loadouts").EnumerateArray().ElementAt(nextLoadout).GetProperty("active").GetBoolean(),"Switching loadouts persists coordinated active sets");
+        await Action("undo");
+        var undoSet=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="undo loadout"},default);
+        Check(SameStats(undoSet.State,widgetBaseline.State),"Set changes participate in Undo without losing earlier edits");
+        await Action("redo");
+        var redoSet=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="redo loadout"},default);
+        Check(SameStats(redoSet.State,switched.State),"Redo restores the coordinated set selection");
     }
     await Action("rename","Controller test build");
     Check(File.ReadAllText(Path.Combine(data,id+".name.txt"))=="Controller test build","Build name persists independently of the imported format");
@@ -360,17 +426,28 @@ if(firstXml is not null)
     var newId=File.ReadAllText(Path.Combine(data,"selected.txt"));
     Check(newId!=id && File.ReadAllText(working)==previousWorking,"New build preserves the previous working file");
     await Action("menu");
-    Check(!Nodes(Snapshot(widget,106).Root).Any(n=>n.Id=="pob.undo"),"New build does not inherit another build's undo history");
+    Check(Nodes(Snapshot(widget,106).Root).Single(n=>n.Id=="pob.undo").IsDisabled==true && Nodes(Snapshot(widget,106).Root).Single(n=>n.Id=="pob.redo").IsDisabled==true,"New build does not inherit another build's undo history");
     await Action("import",working);
     var importedId=File.ReadAllText(Path.Combine(data,"selected.txt"));
     Check(XNode.DeepEquals(XDocument.Parse(previousWorking),XDocument.Parse(File.ReadAllText(Path.Combine(data,importedId+".original.xml")))),"Import retains the original separately from its working copy");
     await Action("saved."+id);
     var beforeCancel=File.ReadAllText(working);
+    var beforeWork=Snapshot(widget,1065);
     await widget.OnActionAsync(new("level","pob.level"){CommittedText="77"});
+    var duringWork=Snapshot(widget,1066);
+    Check(Nodes(duringWork.Root).Any(n=>n.Id=="pob.operation.toast") &&
+        !Nodes(duringWork.Root).Any(n=>n.Id=="pob.status") &&
+        Nodes(duringWork.Root).Single(n=>n.Id=="pob.root").Children.Select(n=>n.Id).SequenceEqual(Nodes(beforeWork.Root).Single(n=>n.Id=="pob.root").Children.Select(n=>n.Id)),
+        "Active calculations float above an unchanged content layout");
+    Check(duringWork.ActiveInputScopeId==beforeWork.ActiveInputScopeId&&duringWork.InitialFocusId==beforeWork.InitialFocusId,
+        "Progress notification does not change the content scope or initial focus");
     await widget.OnActionAsync(new("cancel-operation","pob.cancel-operation"));
     for(var n=0;n<600&&Nodes(Snapshot(widget,107).Root).Any(v=>v.Id=="pob.cancel-operation");n++)await Task.Delay(25);
     Check(File.ReadAllText(working)==beforeCancel && !Nodes(Snapshot(widget,108).Root).Any(v=>v.Id=="pob.apply"),"Cancelling an active edit preserves the working file without a partial preview");
-    await Action("level","78");await Action("apply");
+    Check(Nodes(Snapshot(widget,1081).Root).Any(n=>n.Id=="pob.feedback.toast")&&!Nodes(Snapshot(widget,1082).Root).Any(n=>n.Id=="pob.operation.toast"),"Cancellation replaces progress with informational feedback");
+    await Task.Delay(PobWidget.InformationFeedbackDuration+TimeSpan.FromMilliseconds(150));
+    Check(!Nodes(Snapshot(widget,1083).Root).Any(n=>n.Id=="pob.feedback.toast"),"Informational feedback expires on its shorter schedule");
+    await Action("level","78");
     Check(XDocument.Parse(File.ReadAllText(working)).Root!.Element("Build")!.Attribute("level")!.Value=="78","An edit after cancellation restores the engine session and saves correctly");
     await Action("undo");
     await using(var reopenedEngine=new PobEngine(engineRoot,runtime,adapter))

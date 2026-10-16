@@ -22,20 +22,31 @@ public sealed partial class PobWidget
             controls.Add(UI.Select("Loadout", choices, "pob.loadout").Disabled(pendingBefore is not null).Classes("pob-select", "pob-loadout"));
         }
         controls.Add(UI.Button("Build & import", "menu", "pob.menu").Disabled(pendingBefore is not null).Classes("pob-button"));
+        var history=UI.Row("pob.history",
+            UI.Button("Undo","undo","pob.undo").Disabled(undo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"),
+            UI.Button("Redo","redo","pob.redo").Disabled(redo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"))
+            .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
         if (section != "Tree") heading.Add(Text($"POE {game}  /  BUILD COMPANION", "eyebrow", "pob-eyebrow"));
         heading.Add(Text(BuildName(), "title", section == "Tree" ? "pob-tree-title" : "pob-title"));
         heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}  ·  Tree {S(State, "treeVersion").Replace('_', '.')}", "context", "pob-muted"));
         return UI.Grid("pob.header", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto()],
             UI.Stack("pob.identity", heading.ToArray()),
-            UI.Row("pob.buildcontrols", controls.ToArray()).Classes("pob-toolbar").InGrid(column: 1)).Spacing(0, 20);
+            UI.Stack("pob.buildtools",UI.Row("pob.buildcontrols", controls.ToArray()).Classes("pob-toolbar"),history)
+                .Classes("pob-buildtools").InGrid(column: 1)).Spacing(0, 20);
     }
 
     private WidgetElement Navigation()
     {
         var tabs = Sections.Select((s, i) => (WidgetElement)UI.Button(s, "section." + i, i == 0 ? "pob.section" : "pob.tab." + i)
-            .Selected(section == s).Disabled(pendingBefore is not null).Classes("pob-tab").InGrid(column: i)).ToArray();
-        return UI.Grid("pob.navigation", [GridTrack.Auto()], Sections.Select(s => GridTrack.Star(s == "Configuration" ? 1.5 : 1)).ToArray(), tabs).Spacing(0, 5).Classes("pob-tabs");
+            .Selected(section == s).Disabled(pendingBefore is not null).Classes("pob-tab").InGrid(column: i + 1)).ToList();
+        tabs.Insert(0, UI.ControllerGlyph(ControllerButton.LeftBumper, "pob.navigation.previous", "Previous section")
+            .Classes("pob-section-hint").InGrid(column: 0));
+        tabs.Add(UI.ControllerGlyph(ControllerButton.RightBumper, "pob.navigation.next", "Next section")
+            .Classes("pob-section-hint").InGrid(column: Sections.Length + 1));
+        return UI.Grid("pob.navigation", [GridTrack.Auto()],
+            [GridTrack.Auto(), .. Sections.Select(s => GridTrack.Star(s == "Configuration" ? 1.5 : 1)), GridTrack.Auto()],
+            tabs.ToArray()).Spacing(0, 5).Classes("pob-tabs");
     }
 
     private WidgetElement Headlines()
@@ -73,7 +84,7 @@ public sealed partial class PobWidget
 
     private string Delta(string key)
     {
-        if (pendingBefore is null) return key == "CombinedDPS" ? S(State,"mainSkill","No main skill")+(B(State,"mainSkillDisabled")?" · Skill disabled":"") : "Current loadout";
+        if (pendingBefore is null) return key == "CombinedDPS" ? S(State,"mainSkill","No main skill")+(B(State,"mainSkillDisabled")?" · Skill disabled":S(State,"mainSkillDamageKind")=="buff"?" · No direct damage":S(State,"mainSkillDamageKind")=="minion"?" · Minion skill":"") : "Current loadout";
         if(key=="CombinedDPS"&&(B(State,"mainSkillDisabled")||B(pendingBefore.State,"mainSkillDisabled")))
             return B(State,"mainSkillDisabled")?"Skill disabled · see calculation setup":"Skill is now usable";
         var before = A(pendingBefore.State, "stats").FirstOrDefault(s => S(s, "name") == key);
@@ -132,6 +143,11 @@ public sealed partial class PobWidget
             .Disabled(pendingBefore is not null).Classes("pob-select"));
         if(!string.IsNullOrWhiteSpace(S(State,"mainSkillDisabledReason")))
             notes.Add(Text(S(State,"mainSkill")+": "+S(State,"mainSkillDisabledReason"),"main-skill.warning","pob-life"));
+        else if(S(State,"mainSkillDamageKind") is "buff" or "minion")
+        {
+            notes.Add(Text(S(State,"mainSkillDamageKind")=="buff"?"This selection supplies a buff rather than direct damage. Select an attack or a damaging component to inspect its damage.":"This is a minion skill. Inspect the Minions statistics for its damage.","main-skill.explanation","pob-muted"));
+            if(S(State,"mainSkillDescription").Length>0)AddFormatted(notes,State,"mainSkillDescription","mainSkillDescriptionRuns","main-skill.description",emphasizeStats:true);
+        }
         if(I(State,"fullDpsIncludedGroups")==0)
             notes.Add(Text("Full DPS is not configured. Include groups from Skills to calculate their combined total.","full-dps.explanation","pob-muted"));
         if (detailKind == "stat")
@@ -157,7 +173,7 @@ public sealed partial class PobWidget
                 notes.Add(Text(S(context,"skill")+" · "+S(context,"mode"),"breakdown.context", "pob-muted"));
                 if(breakdown.TryGetProperty("value",out var value)&&value.TryGetDouble(out var number))
                     notes.Add(Text(StatLabel(statDetail)+": "+StatValue(statDetail,number),"breakdown.value"));
-                if(S(breakdown,"text").Length>0)AddFormatted(notes,breakdown,"text","runs","inspector.breakdown");
+                if(S(breakdown,"text").Length>0)AddFormatted(notes,breakdown,"text","runs","inspector.breakdown",emphasizeStats:true);
                 AddBreakdownRows(notes,breakdown);
             }
             else if(statDetail!="FullDPS")notes.Add(Text("PoB provides no textual breakdown for this total.","inspector.breakdown","pob-muted"));
@@ -295,7 +311,7 @@ public sealed partial class PobWidget
     private static string StatColor(string key) => key.Contains("Life", StringComparison.Ordinal) || key.StartsWith("Fire", StringComparison.Ordinal) ? "pob-life" : key.Contains("Mana", StringComparison.Ordinal) || key.Contains("EnergyShield", StringComparison.Ordinal) || key.StartsWith("Cold", StringComparison.Ordinal) ? "pob-blue" : key.StartsWith("Chaos", StringComparison.Ordinal) ? "pob-violet" : key.Contains("DPS", StringComparison.Ordinal) || key.StartsWith("Lightning", StringComparison.Ordinal) ? "pob-gold" : "pob-green";
     private static string StatValue(string key, double number) => number.ToString(Math.Abs(number) >= 1000 ? "N0" : "0.#", System.Globalization.CultureInfo.CurrentCulture) + (key.EndsWith("Resist", StringComparison.Ordinal) ? "%" : "");
     private string DisplayStatValue(string key,double number)=>
-        (key is "CombinedDPS" or "TotalDPS" && B(State,"mainSkillDisabled")) || (key=="FullDPS"&&I(State,"fullDpsIncludedGroups")==0)?"—":StatValue(key,number);
+        (key is "CombinedDPS" or "TotalDPS" && (B(State,"mainSkillDisabled")||S(State,"mainSkillDamageKind") is "buff" or "minion")) || (key=="FullDPS"&&I(State,"fullDpsIncludedGroups")==0)?"—":StatValue(key,number);
     private static string ShortStatLabel(string key) => key switch
     {
         "CombinedDPS" => "Main skill", "FullDPS" => "Full DPS (included groups)", "TotalDPS" => "Hit damage / second",

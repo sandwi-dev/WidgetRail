@@ -2,8 +2,8 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Passive skill tree</title><link rel="stylesheet" href="tree.css"></head>
 <body>
 <nav aria-label="Map controls"><button id="fit">Main tree</button><button id="ascendancy">Ascendancy</button><button id="locate">Locate selected</button><button id="out" aria-label="Zoom out">−</button><button id="in" aria-label="Zoom in">+</button><button id="left" aria-label="Pan left">←</button><button id="up" aria-label="Pan up">↑</button><button id="down" aria-label="Pan down">↓</button><button id="right" aria-label="Pan right">→</button></nav>
-<main id="map" aria-label="Interactive passive tree"><canvas id="lines" aria-hidden="true"></canvas><div id="nodes"></div></main>
+<main id="map" aria-label="Interactive passive tree"><canvas id="lines" aria-hidden="true"></canvas><div id="nodes"></div><div id="selection-marker" hidden aria-hidden="true"></div><div id="selection-label" hidden aria-hidden="true"></div></main>
 <footer><span id="status" role="status">Loading passive tree...</span><span class="legend">Filled: allocated · Ring: selected · + / −: preview</span></footer>
-<aside id="tooltip" role="tooltip" hidden><strong id="tooltip-name"></strong><span id="tooltip-kind"></span><p id="tooltip-copy"></p><span id="tooltip-cost"></span></aside>
+<aside id="tooltip" role="tooltip" hidden><strong id="tooltip-name"></strong><span id="tooltip-kind"></span><div id="tooltip-copy"></div><span id="tooltip-cost"></span><small>Select for full details</small></aside>
 <span class="color-probe" id="added"></span><span class="color-probe" id="removed"></span><span class="color-probe" id="selected"></span>
 <script src="web-session.js"></script><script src="tree.js"></script></body></html>
