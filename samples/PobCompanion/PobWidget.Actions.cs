@@ -27,6 +27,8 @@ public sealed partial class PobWidget
                 else if(id=="delete-confirm"){deleteBuildId=null;DeleteBuild(deleting);}
                 return ValueTask.CompletedTask;
             }
+            if (pendingBefore is not null && detailKind=="node" && id=="preview-nodes")
+            { showChangedNodes=!showChangedNodes;Invalidate();return ValueTask.CompletedTask; }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
             if(id is not "undo" and not "redo")historyFocusRequested=false;
             if(id=="apply"&&pendingBefore is not null)
@@ -132,10 +134,10 @@ public sealed partial class PobWidget
     }
     private void Preview(object command)=>Work(async token=>
     {
-        var before=result!;var next=await engine.ExecuteAsync(command,token,before.Xml);
+        var before=result!;var next=await engine.ExecuteAsync(command,token,before.Xml,compare:true);
         var pending=new PobPendingChange(next.Xml,detailKind=="node"?"node":detailKind=="choose-slot"?"item":"character",detailId,previewSlot);
         token.ThrowIfCancellationRequested();SaveWork(before,CurrentWork(before.Xml,pending,pastedItem),refreshXml:false);
-        lock(gate){pendingBefore=before;result=next;focusRequestSequence++;}
+        lock(gate){pendingBefore=before;result=next;showChangedNodes=false;focusRequestSequence++;}
         await RefreshCommittedMapAsync(token);
     },"Calculating comparison…");
     private void Restore(string xml,bool clearPreview)=>Work(async token=>

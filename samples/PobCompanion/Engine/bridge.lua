@@ -227,7 +227,28 @@ end
 local function validIndex(value,list)
   assert(type(value)=='number' and value%1==0 and list[value], 'Invalid selection'); return value
 end
+local function comparison(base)
+  local groups={}
+  local function add(title,stats,actor,before,after)
+    local lines={}
+    -- Upstream owns relevance, thresholds, formatting, percentage changes and
+    -- lower-is-better semantics. Capture its display output without copying rules.
+    local tooltip={AddLine=function(_,size,line)
+      if line~='' then lines[#lines+1]={text=clean(line),runs=textRuns(line)}end
+    end}
+    build:CompareStatList(tooltip,stats,actor,before,after,'')
+    if #lines>0 then groups[#groups+1]={title=title,lines=lines}end
+  end
+  local env=build.calcsTab.mainEnv
+  local current=build.calcsTab.mainOutput
+  if env.player.mainSkill.minion and base.Minion and current.Minion then
+    add('Minion',build.minionDisplayStats,env.minion,base.Minion,current.Minion)
+  end
+  add('Player',build.displayStats,env.player,base,current)
+  return groups
+end
 local function command(req)
+  local compareBase=req.compare==true and copyTable(build.calcsTab.mainOutput,true)or nil
   local op=req.op
   if op=='load' then
     assert(type(req.xml)=='string' and #req.xml<4*1024*1024,'Invalid build')
@@ -317,7 +338,9 @@ local function command(req)
     validIndex(req.id,build.spec.curClass.classes);build.spec:SelectAscendClass(req.id)
   elseif op~='snapshot' then error('Unknown operation') end
   recalc()
-  return {state=snapshot(),xml=build:SaveDB('code')}
+  local state=snapshot()
+  if compareBase then state.comparison=comparison(compareBase)end
+  return {state=state,xml=build:SaveDB('code')}
 end
 output:write(json.encode({ready=true,version=launch.versionNumber})..'\n')
 for line in io.lines() do

@@ -20,7 +20,7 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
     public long WorkingSet { get { if (process is not { HasExited: false } p) return 0; p.Refresh(); return p.WorkingSet64; } }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task<PobResult> ExecuteAsync(object command, CancellationToken token, string? expectedState = null)
+    public async Task<PobResult> ExecuteAsync(object command, CancellationToken token, string? expectedState = null, bool compare = false)
     {
         await serial.WaitAsync(token);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -32,6 +32,11 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
             // operate on a different build from the one visible in the widget.
             if (expectedState is not null && expectedState != lastXml)
                 await ExchangeAsync(new { op = "load", xml = expectedState, name = "Working build" }, deadline.Token);
+            if (compare)
+            {
+                var request = JsonSerializer.SerializeToNode(command, Json)!.AsObject();
+                request["compare"] = true; command = request;
+            }
             return await ExchangeAsync(command, deadline.Token);
         }
         catch (PobCommandException) { throw; }

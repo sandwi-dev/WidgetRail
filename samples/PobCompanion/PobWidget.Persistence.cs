@@ -33,9 +33,9 @@ public sealed partial class PobWidget
     private async Task OpenSavedWorkAsync(string id, CancellationToken token)
     {
         PobWorkState? work;PobResult committed,shown;var recovered=false;var readOnly=false;
-        async Task<PobResult> Load(string xml)
+        async Task<PobResult> Load(string xml,bool compare=false)
         {
-            var loaded=await engine.ExecuteAsync(new{op="load",xml,name="Saved build"},token);
+            var loaded=await engine.ExecuteAsync(new{op="load",xml,name="Saved build"},token,compare:compare);
             BuildDocument.VerifySkillPreservation(xml,loaded.Xml);return loaded;
         }
         try
@@ -45,7 +45,7 @@ public sealed partial class PobWidget
             committed=await Load(xml);shown=committed;
             if(work?.Pending is {} pending)
             {
-                shown=await Load(pending.Xml);
+                shown=await Load(pending.Xml,compare:true);
                 if(pending.Kind=="node"&&!A(shown.State,"nodes").Any(n=>I(n,"id")==pending.NodeId)||
                     pending.Kind=="item"&&(string.IsNullOrWhiteSpace(pending.Slot)||!A(shown.State,"slots").Any(s=>S(s,"name")==pending.Slot)))
                     throw new IOException("The saved comparison cannot be displayed by this engine.");
@@ -79,7 +79,7 @@ public sealed partial class PobWidget
         EnsureBuildName(committed, id);
         lock (gate)
         {
-            documentId = id; result = shown; pendingBefore = work?.Pending is null ? null : committed;recoveryReadOnly=readOnly;
+            documentId = id; result = shown; pendingBefore = work?.Pending is null ? null : committed;recoveryReadOnly=readOnly;showChangedNodes=false;
             undo.Clear(); redo.Clear();
             foreach (var entry in (work?.Undo ?? []).Reverse()) undo.Push(entry);
             foreach (var entry in (work?.Redo ?? []).Reverse()) redo.Push(entry);

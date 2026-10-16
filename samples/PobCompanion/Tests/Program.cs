@@ -5,7 +5,7 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -16,7 +16,8 @@ if(args.Length==5)
 {
     var fixture=Directory.EnumerateFiles(fixtures,"*.xml").OrderBy(path=>path,StringComparer.Ordinal).First();
     var workXml=await BuildDocument.ReadAsync(fixture,game,default);
-    if(args[4]=="--management-only")await ManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    if(args[4]=="--comparison-only")await ComparisonTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--management-only")await ManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else await WorkStateTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     Console.WriteLine(JsonSerializer.Serialize(new{game,passed=results.Count-failures,failed=failures,results}));return failures==0?0:1;
 }
@@ -316,6 +317,10 @@ if(firstXml is not null)
     await Action("section.1");
     await Action("node."+allocationNode.GetProperty("id").GetInt32());await Action("node-change");
     var previewView=Snapshot(widget,1000);
+    Check(!Nodes(previewView.Root).Any(n=>n.Id.StartsWith("pob.changed."))&&Nodes(previewView.Root).Any(n=>n.Id=="pob.preview-nodes"),
+        "Tree preview starts with overall impact and collapsed changed-node details");
+    Check(Nodes(previewView.Root).Any(n=>n.Id=="pob.node.comparison.heading"),"Tree preview uses the upstream comparison summary");
+    await Action("preview-nodes");previewView=Snapshot(widget,10001);
     var allocatedPreview=await engine.ExecuteAsync(new{op="load",xml=PobWorkStore.Read(data,id,game)!.Pending!.Xml,name="verify allocation preview"},default);
     CheckPassiveDescriptions(widgetBaseline.State,allocatedPreview.State,previewView,Check);
     var previewPanel=Nodes(previewView.Root).Single(n=>n.Id=="pob.tree.side");
@@ -340,6 +345,8 @@ if(firstXml is not null)
     var refundNode=widgetBaseline.State.GetProperty("nodes").EnumerateArray().First(n=>n.GetProperty("canRefund").GetBoolean()&&n.GetProperty("refundCount").GetInt32() is >=2 and <=5);
     await Action("node."+refundNode.GetProperty("id").GetInt32());await Action("node-change");
     var refundedPreview=await engine.ExecuteAsync(new{op="load",xml=PobWorkStore.Read(data,id,game)!.Pending!.Xml,name="verify refund preview"},default);
+    Check(!Nodes(Snapshot(widget,10020).Root).Any(n=>n.Id.StartsWith("pob.changed.")),"A new refund resets changed-node details to collapsed");
+    await Action("preview-nodes");
     CheckPassiveDescriptions(widgetBaseline.State,refundedPreview.State,Snapshot(widget,1002),Check);
     await Action("apply");
     var refundedFile=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="verify refund"},default);

@@ -25,6 +25,7 @@ public sealed partial class PobWidget : Widget
     private string compatibilityNotice = "";
     private bool busy, activated;
     private bool nodeReturnToMap;
+    private bool showChangedNodes;
     private ToastElement? feedback;
     private WidgetTimedMutation? feedbackExpiry;
     internal static readonly TimeSpan InformationFeedbackDuration=TimeSpan.FromSeconds(3);
@@ -247,18 +248,19 @@ public sealed partial class PobWidget : Widget
             if(B(original,"allocated"))n=original;
         }
         var rows = new List<WidgetElement> { Button("Back to tree","back"), Text(S(n,"name"),"node.name","pob-heading") };
-        AddNodeDescription(rows,n,"node.description");
+        if(pendingBefore is null)AddNodeDescription(rows,n,"node.description");
         if (pendingBefore is not null)
         {
             var previous = A(pendingBefore.State,"nodes").Where(x=>B(x,"allocated")).Select(x=>I(x,"id")).ToHashSet();
             var current = A(State,"nodes").Where(x=>B(x,"allocated")).Select(x=>I(x,"id")).ToHashSet();
             var added=current.Except(previous).ToHashSet();var removed=previous.Except(current).ToHashSet();
-            rows.Add(Text($"Preview: +{added.Count} allocated, -{removed.Count} refunded", "node.preview", "pob-heading"));
+            rows.Add(Text(string.Join(" · ",new[]{added.Count>0?$"{added.Count} allocated":null,removed.Count>0?$"{removed.Count} refunded":null}.Where(s=>s is not null)), "node.preview", "pob-heading"));
             rows.Add(Text($"Passive points: {S(pendingBefore.State,"passivePoints")} to {S(State,"passivePoints")}\nAscendancy points: {S(pendingBefore.State,"ascendancyPoints")} to {S(State,"ascendancyPoints")}", "node.points"));
             if(I(pendingBefore.State,"level")!=I(State,"level"))
                 rows.Add(Text($"{(B(State,"autoLevel")?"Automatic character level":"Character level")}: {S(pendingBefore.State,"level")} to {S(State,"level")}","node.level","pob-muted"));
             AddComparison(rows,pendingBefore.State,State,"node.comparison");
-            foreach(var (source,ids,allocated) in new[]{(State,added,true),(pendingBefore.State,removed,false)})
+            rows.Add(Button($"{(showChangedNodes?"Hide":"Show")} changed nodes ({added.Count+removed.Count})","preview-nodes").Selected(showChangedNodes));
+            if(showChangedNodes)foreach(var (source,ids,allocated) in new[]{(State,added,true),(pendingBefore.State,removed,false)})
                 foreach(var changed in A(source,"nodes").Where(x=>ids.Contains(I(x,"id"))))
                 {
                     var id="changed."+I(changed,"id");

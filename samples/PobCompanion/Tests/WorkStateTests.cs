@@ -61,11 +61,16 @@ internal static class WorkStateTests
             var nodeId=node.GetProperty("id").GetInt32();
             await Action("section.1");await Action("node."+nodeId);await Action("node-change");
             var preview=Saved().Pending!;
+            string Summary()=>string.Join("\n",Nodes(Snapshot().Root).Where(n=>n.Id.StartsWith("pob.node.comparison.")).Select(n=>n.Text));
+            var previewSummary=Summary();
+            check(Has("pob.node.comparison.heading"),"Pending tree preview has an upstream impact summary");
             check(preview.Kind=="node"&&preview.NodeId==nodeId&&preview.Xml!=Saved().CommittedXml&&File.ReadAllText(working)==Saved().CommittedXml,
                 "Preview is durable without applying it to the committed XML");
             await Close();await Open();
             check(Has("pob.apply")&&Snapshot().ActiveInputScopeId=="pob.scope.tree.preview"&&Snapshot().InitialFocusId=="pob.apply",
                 "New widget restores the pending node comparison and its actions");
+            check(Summary()==previewSummary&&!Nodes(Snapshot().Root).Any(n=>n.Id.StartsWith("pob.changed.")),
+                "Restart regenerates the same comparison summary with node details collapsed");
             await Action("cancel");check(Saved().Pending is null&&SameBuild(Saved().CommittedXml,edited),"Discard persists the original build and clears the pending comparison");
             await Close();await Open();check(!Has("pob.apply"),"Discarded preview does not return on the next restart");
             await Action("section.1");await Action("node."+nodeId);await Action("node-change");await Close();await Open();

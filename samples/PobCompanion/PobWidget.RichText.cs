@@ -86,24 +86,22 @@ public sealed partial class PobWidget
 
     private static void AddComparison(List<WidgetElement> rows,JsonElement before,JsonElement after,string id)
     {
-        var old=A(before,"stats").ToDictionary(s=>S(s,"name"),s=>s.GetProperty("value").GetDouble());
-        var changed=0;
-        foreach(var stat in A(after,"stats"))
+        if(after.TryGetProperty("comparison",out _))
         {
-            var key=S(stat,"name");
-            if(key is not ("CombinedDPS" or "FullDPS" or "Life" or "EnergyShield" or "Mana" or "Armour" or "Evasion"))continue;
-            if(key.Contains("DPS",StringComparison.Ordinal)&&(key=="FullDPS"?I(before,"fullDpsIncludedGroups")==0||I(after,"fullDpsIncludedGroups")==0:B(before,"mainSkillDisabled")||B(after,"mainSkillDisabled")))continue;
-            if(!old.TryGetValue(key,out var previous))continue;
-            var next=stat.GetProperty("value").GetDouble();var delta=next-previous;
-            if(Math.Abs(delta)<.01)continue;
-            changed++;
-            rows.Add(UI.RichText("pob."+id+"."+key,
-                Text(StatLabel(key)+": ",id+".label."+key,"pob-muted"),
-                Text(StatValue(key,previous)+" → "+StatValue(key,next),id+".value."+key),
-                Text($" ({(delta>0?"+":"")}{StatValue(key,delta)})",id+".delta."+key,delta>0?"pob-green":"pob-life")));
+            rows.Add(Text("Overall impact",id+".heading","pob-heading"));
+            var groups=A(after,"comparison");
+            if(groups.Length==0)rows.Add(Text("No changes to PoB's displayed stats.",id+".unchanged","pob-muted"));
+            for(var group=0;group<groups.Length;group++)
+            {
+                var entry=groups[group];var prefix=id+".group."+group;
+                if(groups.Length>1||S(entry,"title")=="Minion")rows.Add(Text(S(entry,"title"),prefix+".title","pob-eyebrow"));
+                var lines=A(entry,"lines");
+                for(var i=0;i<lines.Length;i++)AddFormatted(rows,lines[i],"text","runs",prefix+"."+i);
+            }
+            if(B(after,"mainSkillDisabled"))rows.Add(Text(S(after,"mainSkill")+": "+S(after,"mainSkillDisabledReason"),id+".disabled","pob-life"));
+            return;
         }
-        if(B(after,"mainSkillDisabled"))rows.Add(Text(S(after,"mainSkill")+": "+S(after,"mainSkillDisabledReason"),id+".disabled","pob-life"));
-        if(changed==0)rows.Add(Text("No change to available headline stats.",id+".unchanged","pob-muted"));
+        rows.Add(Text("Comparison details are unavailable.",id+".unavailable","pob-life"));
     }
 
     private static void AddBreakdownRows(List<WidgetElement> content,JsonElement breakdown)

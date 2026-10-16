@@ -22,6 +22,8 @@ Node allocation/refunds, equipment replacements and structural class/ascendancy 
 
 Tree preview actions stay above the scrolling comparison panel. Right from a skill or item row enters its details; Left returns to the selected row. Section switches explicitly focus the destination content and use the host's section transitions. Animation follows the user's motion preference. Startup shows a loading indicator while the calculation engine prepares the saved build.
 
+Comparison previews use upstream PoB's displayed-stat comparison rules, including relevant stats, percentage changes, lower-is-better values and separate minion/player groups. They compare the actual committed and proposed calculations, including any automatic character-level change. Tree previews start with this overall impact and point counts; **Show changed nodes** expands all node names and modifiers, using pre-refund descriptions for removed nodes. Expanding details does not apply or discard the change. Restored previews regenerate their summaries from both saved XML snapshots.
+
 Subsequent work uses a floating progress notification with Cancel (or B), without inserting rows into the workspace. Progress remains until the operation completes. Informational feedback lasts three seconds; warnings and errors last eight seconds. A new operation replaces prior feedback.
 
 Use **Build & import** to rename a build, open another saved build, import, export or change character details. LB/RB switches sections, with native controller symbols beside the tabs instead of a separate footer. Controller focus and list navigation remain native; the optional tree visualization uses a host-owned packaged web session.
@@ -61,6 +63,8 @@ Artwork preparation uses Python with the versions in `requirements-artwork.txt`;
 Install each resulting `.wrwidget` through **Settings → Widgets → Install local widget**. The packages use the full-access application runtime to launch their local Lua engine.
 
 The executable test harness accepts `game engine-directory runtime-directory fixture-directory`. Add `--work-state-only` for focused tests that destroy and recreate widgets and Lua processes, restore previews and history, exercise item drafts, and inject save failures. Use `--management-only` for recovery fallbacks, build-library operations and contextual inspectors. These tests use independent temporary working copies. XML comparisons preserve authored values and ordered lists while accounting for upstream map ordering and documented load defaults.
+
+Use `--comparison-only` to compare allocation, large-refund and minion summaries against a separate upstream desktop tooltip invocation. The oracle loads the before/after XML without loading the widget adapter. It also checks restored and unchanged comparisons.
 
 `Tests/Test-LibraryFocus.ps1` checks native arrow navigation into and out of the virtualized library, including remembered rows and detail controls. Open Saved builds in a disposable candidate profile with at least two builds, then supply its process ID, main-window handle and a fresh evidence directory. It changes focus only and records each WinApp result.
 
