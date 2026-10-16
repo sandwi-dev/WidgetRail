@@ -18,6 +18,18 @@ internal sealed partial class OverlayShellPage
         replayRoots.Add(root, new());
         root.AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
         {
+            // Arrange rail ownership without relying on the removed widget exit.
+            if (args.Key == VirtualKey.F4) { args.Handled = true; FocusDirectionalTray(); return; }
+            if (args.Key is VirtualKey.F2 or VirtualKey.F3)
+            {
+                args.Handled = true;
+                var directionFrame = ControllerFrame.Create(); directionFrame.Connected = 1;
+                var down = new NavigationEvent { Direction = NavigationDirection.Down,
+                    Phase = args.KeyStatus.WasKeyDown ? NavigationPhase.Repeated : NavigationPhase.Pressed };
+                if (args.Key == VirtualKey.F2) directionFrame.DpadNavigation = down;
+                else directionFrame.StickNavigation = down;
+                Receive(directionFrame); return;
+            }
             if(args.Key is VirtualKey.F11 or VirtualKey.F12)
             {
                 args.Handled=true;

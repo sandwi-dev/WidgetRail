@@ -531,7 +531,7 @@ static async Task ControllerFocusGraph()
     Assert.Equal(rows[1].Id, rows[0].Focus!.Down);
     Assert.Equal(rows[2].Id, rows[1].Focus!.Down);
     Assert.True(rows[2].Focus!.Down is null,
-        "Final Wi-Fi network must leave Down unclaimed for the host tray boundary.");
+        "Final Wi-Fi network leaves Down to host navigation within the widget.");
     foreach (var row in rows)
     {
         Assert.Equal(row.Id, row.Focus!.Left);
@@ -855,7 +855,7 @@ static async Task BluetoothDeviceListing()
     Assert.Equal(devices[1].Id, devices[0].Focus!.Down);
     Assert.Equal(devices[2].Id, devices[1].Focus!.Down);
     Assert.True(devices[2].Focus!.Down is null,
-        "Final Bluetooth device must leave Down unclaimed for the host tray boundary.");
+        "Final Bluetooth device leaves Down to host navigation within the widget.");
     Assert.True(!Nodes(snapshot.Root).Any(node =>
             node.Text?.Contains("bluetooth-a", StringComparison.Ordinal) == true),
         "Opaque Bluetooth identity leaked into visible UI text.");
