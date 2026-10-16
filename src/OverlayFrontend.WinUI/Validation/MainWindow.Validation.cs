@@ -241,6 +241,8 @@ public sealed partial class MainWindow
     {
         if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-tree") is {} treeProbe)
             page.EnablePobTreeValidation(treeProbe);
+        if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-browser-guide") is {} guideProbe)
+            page.EnableBrowserGuideValidation(guideProbe);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments,"--validation-viewport-dips") is { } viewport)
         {
             var dimensions=viewport.Split('x');

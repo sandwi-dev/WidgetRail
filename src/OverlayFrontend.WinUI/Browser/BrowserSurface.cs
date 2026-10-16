@@ -277,8 +277,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             CancelPointer(); interacting = browsing = false; DrawCursor(); ExitInteraction?.Invoke();
             InteractionChanged?.Invoke();
         }
-        else if (button == ControllerButton.LeftBumper && !sessionStopped && core?.CanGoBack == true) core.GoBack();
-        else if (button == ControllerButton.RightBumper && !sessionStopped && core?.CanGoForward == true) core.GoForward();
+        else if (button == ControllerButton.LeftBumper && CanNavigateBack) core!.GoBack();
+        else if (button == ControllerButton.RightBumper && CanNavigateForward) core!.GoForward();
         else if (button == ControllerButton.X) Reload();
         else if (button == ControllerButton.Y) Run(EditAddressAsync);
         else if (button == ControllerButton.Menu) Run(OpenContextMenuAsync);

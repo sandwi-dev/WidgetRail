@@ -22,6 +22,18 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(()=>FindSlot(surface)?.Surface is {IsReady:true,IsNavigationInProgress:false});
                 var browser=FindSlot(surface)!.Surface!;
                 browser.SetPresentation(true,true);browser.Enter();
+                var hints=Presentation.WidgetViewPresenter.CaptureBrowserGuide(FindSlot(surface)!);
+                if(hints.Any(h=>h.Button is ControllerButton.Y or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.Menu))
+                    throw new InvalidOperationException("Packaged tree advertises unavailable address/history/page actions");
+                if(!new[]{ControllerButton.A,ControllerButton.X,ControllerButton.LeftTrigger,ControllerButton.RightTrigger,ControllerButton.LeftStick}
+                    .All(button=>hints.Any(h=>h.Button==button)))throw new InvalidOperationException("Packaged tree lost supported controller hints");
+                checks.Add("Packaged tree hides unavailable address/history/page actions while retaining select, reload, zoom and toolbar");
+                browser.HandleButton(ControllerButton.Y,ControllerEventPhase.Pressed);
+                browser.HandleButton(ControllerButton.Y,ControllerEventPhase.Released);
+                browser.HandleButton(ControllerButton.Menu,ControllerEventPhase.Pressed);
+                browser.HandleButton(ControllerButton.Menu,ControllerEventPhase.Released);
+                if(browser.HasDialog)throw new InvalidOperationException("Unsupported packaged-page shortcut opened a dialog");
+                checks.Add("Hidden packaged-page shortcuts remain unavailable when dispatched through controller handling");
                 await Until("document.querySelectorAll('.node').length>0 && document.getElementById('status').textContent!=='Loading passive tree…'");
                 await Until("performance.getEntriesByType('resource').some(r=>r.name.includes('nodes-')&&r.name.endsWith('.jpg'))");
                 checks.Add("Real tree page loads sealed upstream icon atlases");

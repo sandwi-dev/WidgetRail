@@ -9,6 +9,13 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 internal sealed partial class BrowserSurface
 {
+    // Page capabilities shared by chrome, controller dispatch and guide hints.
+    // Input ownership/dialog admission remains with the respective entry point.
+    internal bool CanNavigateBack => IsReady && !IsProviderContent && !sessionStopped && core!.CanGoBack;
+    internal bool CanNavigateForward => IsReady && !IsProviderContent && !sessionStopped && core!.CanGoForward;
+    internal bool CanReloadPage => IsReady && !IsProviderContent;
+    internal bool CanEditAddress => IsReady && !IsProviderContent && !IsHostedPackage;
+    internal bool CanOpenPageActions => IsReady && !IsProviderContent && !IsHostedPackage && !sessionStopped;
     private readonly Grid header = new() { ColumnSpacing = 4, Padding = new(8, 4, 8, 4) };
     private readonly ProgressBar progress = new() { Height = 2, IsIndeterminate = true, IsHitTestVisible = false };
     private Button back = null!, forward = null!, reload = null!, addressButton = null!, bookmark = null!, bookmarks = null!, history = null!, external = null!, siteControls = null!;
@@ -30,8 +37,8 @@ internal sealed partial class BrowserSurface
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
         for (var i = 0; i < (isPopup ? 12 : 10); ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
-        back = Add("Previous page", "Browser.Back", Symbol.Back, 0, () => { if (core?.CanGoBack == true) core.GoBack(); });
-        forward = Add("Forward", "Browser.Forward", Symbol.Forward, 1, () => { if (core?.CanGoForward == true) core.GoForward(); });
+        back = Add("Previous page", "Browser.Back", Symbol.Back, 0, () => { if (CanNavigateBack) core!.GoBack(); });
+        forward = Add("Forward", "Browser.Forward", Symbol.Forward, 1, () => { if (CanNavigateForward) core!.GoForward(); });
         addressButton = Add("Search Google or enter a URL", "Browser.Address", Symbol.Globe, 2, () => Run(EditAddressAsync));
         addressButton.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         addressButton.Content = address; address.Text = document.Url == WidgetProtocol.WebBrowserDocument.StartPage ? "Search Google or enter a URL" : new Uri(document.Url).IdnHost;
@@ -87,19 +94,20 @@ internal sealed partial class BrowserSurface
     }
     private void Reload()
     {
-        if (core is null || faulted) return;
+        if (!CanReloadPage) return;
         if (sessionStopped)
         { if (ChangeRunning is { } change) Run(async () => { if (!await change(this, true)) ShowStatus("This webapp could not restart. Stop another background session and try again."); }); return; }
-        if (loading) core.Stop(); else core.Reload();
+        if (loading) core!.Stop(); else core!.Reload();
     }
     private void UpdateChrome()
     {
         UpdateChromeVisibility();
         if (IsHostedPackage)
             addressButton.Visibility = bookmark.Visibility = bookmarks.Visibility = history.Visibility = external.Visibility = siteControls.Visibility = Visibility.Collapsed;
-        back.IsEnabled = !faulted && !sessionStopped && core?.CanGoBack == true;
-        forward.IsEnabled = !faulted && !sessionStopped && core?.CanGoForward == true;
-        reload.IsEnabled = core is not null && !faulted;
+        back.IsEnabled = CanNavigateBack;
+        forward.IsEnabled = CanNavigateForward;
+        reload.IsEnabled = CanReloadPage;
+        addressButton.IsEnabled = CanEditAddress;
         reload.Content = new SymbolIcon(loading ? Symbol.Cancel : Symbol.Refresh);
         var label = sessionStopped ? "Restart webapp" : loading ? "Stop loading" : "Reload";
         AutomationProperties.SetName(reload, label); ToolTipService.SetToolTip(reload, label);

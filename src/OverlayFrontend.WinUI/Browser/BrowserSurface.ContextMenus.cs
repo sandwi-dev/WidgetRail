@@ -115,7 +115,7 @@ internal sealed partial class BrowserSurface
 
     private async Task OpenContextMenuAsync()
     {
-        if (!CanRequestSiteDecision || HasDialog || core is not { } current) return;
+        if (!CanOpenPageActions || !CanRequestSiteDecision || HasDialog || core is not { } current) return;
         CancelPointer();
         using var metrics = JsonDocument.Parse(await current.CallDevToolsProtocolMethodAsync("Page.getLayoutMetrics", "{}"));
         if (!CanRequestSiteDecision || HasDialog || !ReferenceEquals(current, core)) return;

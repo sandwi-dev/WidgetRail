@@ -16,7 +16,7 @@ internal sealed partial class BrowserSurface
     // Address entry remains a draft: typing must not navigate after each letter.
     private async Task EditAddressAsync()
     {
-        if (IsHostedPackage) return;
+        if (!CanEditAddress) return;
         if (!input || retired || HasDialog || core is not { } current || faulted || XamlRoot is null) return;
         var generation = ++editGeneration;
         var epoch = pageEpoch;
