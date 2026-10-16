@@ -27,11 +27,11 @@ internal sealed partial class WidgetViewPresenter
 
     private void DirectionalScrollViewChanged(object? sender, ScrollViewerViewChangedEventArgs args)
     {
-        RefreshScrollFocusOutline();
         // Once native movement settles, subsequent input starts from its actual
         // position (including wheel/touch changes), not our old requested offset.
         if (!args.IsIntermediate && directionalScroll is { } gesture && ReferenceEquals(sender, gesture.Viewport))
             currentDirectionalScroll = gesture with { Pending = false };
+        RefreshScrollFocusOutline();
     }
 
     private static bool Horizontal(FocusNavigationDirection direction) =>

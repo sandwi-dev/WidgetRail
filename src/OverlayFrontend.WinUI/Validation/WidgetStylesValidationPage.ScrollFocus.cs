@@ -29,6 +29,17 @@ internal sealed partial class WidgetStylesValidationPage
         first.Focus(FocusState.Keyboard);
         // Finish initial entry/BringIntoView before simulating a later stick gesture.
         await Task.Delay(100);
+        var revealFlashed=false;
+        RoutedEventHandler observeReveal=(_,_)=>revealFlashed|=presenter.ScrollFocusOutlineForValidation is not null;
+        EventHandler<ScrollViewerViewChangedEventArgs> observeView=(_,_)=>revealFlashed|=presenter.ScrollFocusOutlineForValidation is not null;
+        presenter.GotFocus+=observeReveal;scroll.ViewChanged+=observeView;
+        for(var index=1;index<=7;index++){presenter.MoveFocus(FocusNavigationDirection.Down);await Task.Delay(35);}
+        await Wait(()=>scroll.VerticalOffset>0);
+        Check(!revealFlashed&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.scroll-row-7")),
+            "directional navigation reveals offscreen controls without flashing a container outline");
+        presenter.GotFocus-=observeReveal;scroll.ViewChanged-=observeView;
+        first.Focus(FocusState.Keyboard);first.StartBringIntoView(new(){AnimationDesired=false});
+        await Wait(()=>scroll.VerticalOffset<1);
         Check(presenter.ScrollBy(0, 480), "right-stick scrolling selects the focused declaration's native viewport");
         await Wait(() => scroll.VerticalOffset >= 470);
         var settledOffset = scroll.VerticalOffset;

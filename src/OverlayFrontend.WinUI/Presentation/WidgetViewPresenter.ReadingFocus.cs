@@ -62,16 +62,15 @@ internal sealed partial class WidgetViewPresenter
     private void RefreshScrollFocusOutline()
     {
         Binding? next=null;
-        // Free scrolling retains both the logical focus and its presentation.
-        // Do not flash a viewport outline as the anchor crosses the clip edge;
-        // SettleScrollFocus chooses the final visible target after release.
+        // A proxy outline belongs only to a settled directional reading gesture.
+        // Ordinary control focus can precede BringIntoView: being offscreen during
+        // that reveal does not make the viewport the focus target. Free scrolling
+        // likewise retains its anchor until SettleScrollFocus runs after release.
         if(scrollGesture is null&&!disposed&&presentationActive&&presentationInputEnabled&&automaticFocusEnabled&&!presentationOnly&&!HasTransientControl&&XamlRoot is not null)
         {
             var focused=FocusManager.GetFocusedElement(XamlRoot) as FrameworkElement;
-            var viewport=directionalScroll?.Viewport;
-            if(viewport is null&&focused is not null)
-                for(DependencyObject? parent=focused;parent is not null&&!ReferenceEquals(parent,this);parent=VisualTreeHelper.GetParent(parent))
-                    if(parent is ScrollViewer scroll){viewport=scroll;break;}
+            var viewport=directionalScroll is {Pending:false} gesture && ReferenceEquals(focused,gesture.NativeAnchor)
+                ? gesture.Viewport : null;
             if(viewport is not null&&focused is not null&&!ReferenceEquals(focused,viewport)&&
                 !WidgetReadingScrollFocus.IsVisible(focused,viewport)&&FindBinding(viewport) is {} owner&&
                 owner.Identity.Scope==activeScope&&IsMemoryVisible(viewport))next=owner;

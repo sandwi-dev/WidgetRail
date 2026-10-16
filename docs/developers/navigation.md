@@ -59,6 +59,10 @@ target mid-gesture. Once scrolling ends, focus settles onto a visible control,
 or onto the reading container when none is available. Settlement
 preserves the scroll position; virtualized collections still wait for their rows
 to become ready. Content that fits without scrolling adds no extra focus stop.
+Directional navigation may focus an offscreen control before WinUI reveals it.
+That transition keeps the control's focus and does not temporarily paint the
+container as focused. A viewport proxy outline is reserved for a settled
+directional reading gesture whose retained anchor is outside the viewport.
 
 From a focused reading container, D-pad/left-stick input scrolls along its axis;
 ordinary navigation resumes when an option becomes visible. Moving across that
