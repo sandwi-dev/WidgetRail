@@ -68,7 +68,7 @@ public sealed partial class PobWidget
         {
             var stat=A(State,"stats").FirstOrDefault(s=>S(s,"name")==key);
             if(stat.ValueKind!=JsonValueKind.Object)continue;
-            var label=key=="CombinedDPS"?S(State,"mainSkill","Main skill")+" DPS":StatLabel(key);
+            var label=key=="CombinedDPS"?S(State,"mainSkill","Main skill")+(B(State,"mainSkillShowsAverage")?" average damage":" DPS"):StatLabel(key);
             values.Add(Text(label+"  "+DisplayStatValue(key,stat.GetProperty("value").GetDouble()),"compact."+key,"pob-compact-value "+StatColor(key)));
         }
         values.Add(Text($"Passives {S(State,"passivePoints")}  |  Ascendancy {S(State,"ascendancyPoints")}","compact.points","pob-muted"));
@@ -78,7 +78,7 @@ public sealed partial class PobWidget
     private WidgetElement StatCard(string key, int index)
     {
         var value = A(State, "stats").FirstOrDefault(s => S(s, "name") == key);
-        var caption = key == "CombinedDPS" ? "Main skill DPS" : StatLabel(key);
+        var caption = key == "CombinedDPS" ? (B(State,"mainSkillShowsAverage")?"Main skill average damage":"Main skill DPS") : StatLabel(key);
         var number = value.ValueKind == JsonValueKind.Object ? DisplayStatValue(key, value.GetProperty("value").GetDouble()) : "—";
         return UI.ActionSurface("stat." + key, "pob.headline." + index, caption + " " + number, ActionSurfaceOrientation.Vertical,
             Text(caption, "headline.label." + index, "pob-eyebrow pob-inset-muted"),
@@ -369,9 +369,9 @@ public sealed partial class PobWidget
     private static string StatValue(string key, double number) => number.ToString(Math.Abs(number) >= 1000 ? "N0" : "0.#", System.Globalization.CultureInfo.CurrentCulture) + (key.EndsWith("Resist", StringComparison.Ordinal) ? "%" : "");
     private string DisplayStatValue(string key,double number)=>
         (key is "CombinedDPS" or "TotalDPS" && (B(State,"mainSkillDisabled")||S(State,"mainSkillDamageKind") is "buff" or "minion")) || (key=="FullDPS"&&I(State,"fullDpsIncludedGroups")==0)?"—":StatValue(key,number);
-    private static string ShortStatLabel(string key) => key switch
+    private string ShortStatLabel(string key) => key switch
     {
-        "CombinedDPS" => "Main skill", "FullDPS" => "Full DPS (included groups)", "TotalDPS" => "Hit damage / second",
+        "CombinedDPS" => B(State,"mainSkillShowsAverage")?"Average damage":"Main skill DPS", "FullDPS" => "Full DPS (included groups)", "TotalDPS" => "Hit damage / second",
         "PhysicalMaximumHitTaken" => "Physical", "FireMaximumHitTaken" => "Fire", "ColdMaximumHitTaken" => "Cold", "LightningMaximumHitTaken" => "Lightning", "ChaosMaximumHitTaken" => "Chaos",
         "FireResist" => "Fire", "ColdResist" => "Cold", "LightningResist" => "Lightning", "ChaosResist" => "Chaos",
         _ => StatLabel(key),

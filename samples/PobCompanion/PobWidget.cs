@@ -218,7 +218,10 @@ public sealed partial class PobWidget : Widget
         {
             if(pendingBefore is not null)return ItemComparisonContent();
             rows.Add(Button("Discard item draft", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
-            var slots = A(State, "slots"); rows.AddRange(slots.Select((slot,index)=>Button(S(slot,"name"),"replace-slot."+index)));return rows;
+            var slots = A(State, "slots"); rows.AddRange(slots.Select((slot,index)=>(slot,index))
+                .Where(x=>itemDraftSlots.Contains(S(x.slot,"name"))).Select(x=>Button(S(x.slot,"name"),"replace-slot."+x.index)));
+            if(itemDraftSlots.Length==0)rows.Add(Text("No compatible slots are available in this setup.","slot.empty","pob-muted"));
+            return rows;
         }
         if (detailKind == "skill-options") return SkillOptionsContent();
         return rows;
@@ -316,5 +319,5 @@ public sealed partial class PobWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(PobNoteLinks.UseFallback(feedback));
     }
-    private static string StatLabel(string key)=>key switch {"CombinedDPS"=>"Main skill DPS (combined)","FullDPS"=>"All included skills DPS","TotalDPS"=>"Main skill hit DPS","EnergyShield"=>"Energy shield","EffectiveHitPool"=>"Effective hit pool",_=>System.Text.RegularExpressions.Regex.Replace(key,"([a-z])([A-Z])","$1 $2")};
+    private string StatLabel(string key)=>key switch {"CombinedDPS"=>B(State,"mainSkillShowsAverage")?"Main skill average damage":"Main skill DPS (combined)","FullDPS"=>"All included skills DPS","TotalDPS"=>"Main skill hit DPS","EnergyShield"=>"Energy shield","EffectiveHitPool"=>"Effective hit pool",_=>System.Text.RegularExpressions.Regex.Replace(key,"([a-z])([A-Z])","$1 $2")};
 }

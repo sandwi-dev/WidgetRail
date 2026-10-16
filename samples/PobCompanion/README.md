@@ -2,9 +2,22 @@
 
 Two controller-first widgets share one implementation and run the unmodified Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ.
 
+## Screenshots
+
+Native WidgetRail captures in Velvet Dusk, using midgame and late-game setups from [Ghost Activity's Martial Artist guide](https://pobb.in/ttCJAV3WX9bn). These are workflow examples, not current-league build recommendations. The PNG files in [screenshots](screenshots/) are also available for the marketplace listing.
+
+![Calculations and setup](screenshots/calculations.png)
+![Skill groups and gem editing](screenshots/skills.png)
+![Passive tree and node details](screenshots/tree.png)
+![Configuration sections](screenshots/configuration.png)
+
 ## Using a build
 
 Paste a PoB share code or supported public build link, or enter the path to an exported XML file. The widget keeps the original import and a separate working copy. It reopens the selected working copy after restart.
+
+For engines with linked loadouts, **Build & import → Save current setup as a new loadout** creates independent tree, item, skill and configuration sets. Existing loadouts remain accessible even when they previously shared a single set. Switching sets retains the main skill by its identity when there is one unambiguous match; otherwise it selects the first group instead of retaining an unrelated row number.
+
+Damage labels follow PoB's display mode: skills that report average damage are labelled accordingly, with hit damage per second shown separately in Calcs. Item replacement offers slots accepted by the engine for the pasted item. Configuration omits inapplicable default controls while retaining authored non-default settings.
 
 Imports default to **New build**. In Build & import, choose **Replace current build** to refresh the open build from a file, link or share code. The replacement is validated before confirmation, retains the build's name and identity, and participates in Undo/Redo across restarts. Finish any pasted item draft first. Account sign-in is not included: it requires an authorized GGG application registration for WidgetRail, separate from the upstream desktop client's identity.
 
@@ -73,6 +86,8 @@ Install each resulting `.wrwidget` through **Settings → Widgets → Install lo
 The executable test harness accepts `game engine-directory runtime-directory fixture-directory`. Add `--work-state-only` for focused tests that destroy and recreate widgets and Lua processes, restore previews and history, exercise item drafts, and inject save failures. Use `--management-only` for recovery fallbacks, build-library operations and contextual inspectors. These tests use independent temporary working copies. XML comparisons preserve authored values and ordered lists while accounting for upstream map ordering and documented load defaults.
 
 Use `--comparison-only` to compare allocation, large-refund and minion summaries against a separate upstream desktop tooltip invocation. The oracle loads the before/after XML without loading the widget adapter. It also checks restored and unchanged comparisons.
+
+Use `--loadouts-only` with a linked-loadout fixture to check independent copies, existing loadout preservation and configuration persistence. Use `--guide-workflow-only` with an XML exported from the guide walkthrough containing `Midgame` and `Late game` loadouts to compare their totals against a separate upstream calculation process and exercise damage labels, skill identity and item-slot eligibility. The UI walkthrough itself uses the native controls; these calculation checks do not replace that exercise.
 
 `Tests/Test-LibraryFocus.ps1` checks native arrow navigation into and out of the virtualized library, including remembered rows and detail controls. Open Saved builds in a disposable candidate profile with at least two builds, then supply its process ID, main-window handle and a fresh evidence directory. It changes focus only and records each WinApp result.
 

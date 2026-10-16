@@ -5,6 +5,12 @@ namespace WidgetRail.Samples.PobCompanion;
 public sealed partial class PobWidget
 {
     private bool recoveryReadOnly;
+    private string[] itemDraftSlots=[];
+    private async Task<string[]> ItemSlotsAsync(string text,string xml,CancellationToken token)
+    {
+        var response=await engine.ExecuteAsync(new{op="item-slots",raw=text},token,xml);
+        return A(response.State,"slots").Select(s=>S(s,"name")).ToArray();
+    }
     private PobWorkState CurrentWork(string committedXml, PobPendingChange? pending = null, string? draft = null) =>
         new(committedXml, undo.ToArray(), redo.ToArray(), pending, draft);
 
@@ -32,7 +38,7 @@ public sealed partial class PobWidget
 
     private async Task OpenSavedWorkAsync(string id, CancellationToken token)
     {
-        PobWorkState? work;PobResult committed,shown;var recovered=false;var readOnly=false;
+        PobWorkState? work;PobResult committed,shown;var recovered=false;var readOnly=false;string[] draftSlots=[];
         async Task<PobResult> Load(string xml,bool compare=false)
         {
             var loaded=await engine.ExecuteAsync(new{op="load",xml,name="Saved build"},token,compare:compare);
@@ -50,6 +56,7 @@ public sealed partial class PobWidget
                     pending.Kind=="item"&&(string.IsNullOrWhiteSpace(pending.Slot)||!A(shown.State,"slots").Any(s=>S(s,"name")==pending.Slot)))
                     throw new IOException("The saved comparison cannot be displayed by this engine.");
             }
+            if(work?.ItemDraft is {} draft)draftSlots=await ItemSlotsAsync(draft,committed.Xml,token);
         }
         catch(Exception error)when(!token.IsCancellationRequested&&RecoveryFailure(error)&&PobWorkStore.Exists(dataDirectory,id))
         {
@@ -83,7 +90,7 @@ public sealed partial class PobWidget
             undo.Clear(); redo.Clear();
             foreach (var entry in (work?.Undo ?? []).Reverse()) undo.Push(entry);
             foreach (var entry in (work?.Redo ?? []).Reverse()) redo.Push(entry);
-            pastedItem = work?.ItemDraft; previewSlot = work?.Pending?.Slot;
+            pastedItem = work?.ItemDraft; previewSlot = work?.Pending?.Slot; itemDraftSlots=draftSlots;
             selections.Clear(); detailId = 0; section = "Calcs"; detailKind = ""; filter = "";
             passiveReturnKey = null; nodeReturnToMap = false; historyFocusRequested = false; compatibilityNotice = "";
             // Restore only the context needed to finish the user's pending work.
@@ -107,13 +114,13 @@ public sealed partial class PobWidget
     private static bool RecoveryFailure(Exception error)=>error is IOException or System.Text.Json.JsonException or
         InvalidOperationException or UnauthorizedAccessException or System.Xml.XmlException or OperationCanceledException;
 
-    private void SetItemDraft(string? raw) => Work(_ =>
+    private void SetItemDraft(string? raw) => Work(async token =>
     {
         var text = raw ?? readClipboard();
         if (text.Length > 32768 || string.IsNullOrWhiteSpace(text)) throw new IOException("Copy an item description first (up to 32,768 characters).");
+        var slots=await ItemSlotsAsync(text,result!.Xml,token);
         SaveWork(result!, CurrentWork(result!.Xml, draft: text), refreshXml: false);
-        lock (gate) { pastedItem = text; detailKind = "choose-slot"; section = "Items"; }
-        return Task.CompletedTask;
+        lock (gate) { pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; section = "Items"; }
     }, "Reading item…");
 
     private void DiscardItemDraft() => Work(_ =>

@@ -83,6 +83,7 @@ public sealed partial class PobWidget
             else if(id=="library-delete"&&librarySelection is {} remove)deleteBuildId=remove;
             else if(id=="export") Work(_=>{ClipboardText.Write(BuildDocument.Encode(result!.Xml));return Task.CompletedTask;},"Copying build…");
             else if(id=="export-file") Work(_=>{BuildDocument.SaveAtomic(Path.Combine(dataDirectory,documentId+".export.xml"),result!.Xml);return Task.CompletedTask;},"Exporting build…");
+            else if(id=="loadout-create")Edit(new{op="loadout-create",name=action.CommittedText??""},closeDetail:true);
             else if(id=="menu") { detailKind="menu"; }
             else if(id=="library") { detailKind="library";librarySelection=documentId; }
             else if(id=="custom") { detailKind="custom"; }

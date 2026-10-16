@@ -103,6 +103,8 @@ local function snapshot()
     notes=clean(build.notesTab.controls.edit.buf),notesRuns=textRuns(build.notesTab.controls.edit.buf),warnings={},loadouts={},nodes={},links={},classes={},ascendancies={},slots={},skillOptions={},breakdowns={}}
   local active=build.calcsTab.mainEnv.player.mainSkill
   result.mainSkill=active and active.activeEffect and active.activeEffect.grantedEffect.name or ''
+  result.mainSkillShowsAverage=active and active.skillData and not not active.skillData.showAverage or false
+  result.canCreateLoadout=type(build.CustomLoadout)=='function'
   result.skillSlots={}
   for _,slot in ipairs(build.skillsTab.controls.groupSlot.list)do result.skillSlots[#result.skillSlots+1]={name=slot.slotName or '',label=clean(slot.label or slot.slotName or 'None')}end
   result.mainSkillGroup=build.mainSocketGroup
@@ -224,7 +226,9 @@ local function snapshot()
       local ok,shown=pcall(function()return control and control:IsShown()end)
       local value=configValue(d)
       -- Imported settings remain visible even if current eligibility changes.
-      if not seen[d.var] and value~=nil and (build.configTab.input[d.var]~=nil or (ok and shown)) then
+      local stored=build.configTab.input[d.var]
+      local authored=stored~=nil and stored~=build.configTab:GetDefaultState(d.var,type(stored))
+      if not seen[d.var] and value~=nil and (authored or (ok and shown)) then
         seen[d.var]=true
         local options={}; if type(d.list)=='table' then for _,o in ipairs(d.list) do if type(o)=='table' then options[#options+1]={label=clean(o.label),value=o.val} end end end
         local description=d.tooltip
@@ -284,6 +288,19 @@ local function command(req)
   local op=req.op
   if op=='gem-catalog' then return {state={gemCatalog=skillManagement.catalog(req)},xml=build:SaveDB('code')}end
   if op=='skill-copy' then return {state={groupClipboard=skillManagement.copy(req)},xml=build:SaveDB('code')}end
+  if op=='item-slots' then
+    assert(type(req.raw)=='string' and #req.raw<=32768,'Invalid item text')
+    build.itemsTab:CreateDisplayItemFromRaw(req.raw)
+    local item=build.itemsTab.displayItem
+    assert(item and item.base,'Item was not recognized')
+    local slots={}
+    for _,slot in ipairs(build.itemsTab.orderedSlots)do
+      if slot:IsShown() and not slot.inactive and build.itemsTab:IsItemValidForSlot(item,slot.slotName)then slots[#slots+1]={name=slot.slotName}end
+    end
+    return {state={slots=slots},xml=build:SaveDB('code')}
+  end
+  local previousMain=build.skillsTab.socketGroupList[build.mainSocketGroup or 1]
+  local previousSkillSet=build.skillsTab.activeSkillSetId
   local editedGroup
   if op=='load' then
     assert(type(req.xml)=='string' and #req.xml<4*1024*1024,'Invalid build')
@@ -295,6 +312,36 @@ local function command(req)
     assert(type(req.name)=='string' and #req.name<512,'Invalid loadout')
     local found; for i,name in ipairs(build.controls.buildLoadouts.list) do if name==req.name and not name:match('^%^7%^7') then found=i end end
     assert(found,'Loadout no longer exists'); build.controls.buildLoadouts:SetSel(found)
+  elseif op=='loadout-create' then
+    assert(type(build.CustomLoadout)=='function','This engine does not support linked loadouts')
+    assert(type(req.name)=='string' and #req.name<=240,'Invalid loadout name')
+    local name=req.name:match('^%s*(.-)%s*$')
+    assert(#name>0 and require('lua-utf8').len(name)<=60 and not name:find('[%c%^{}]'),'Choose a plain loadout name of 1 to 60 characters')
+    for _,list in ipairs({build.treeTab.specList,build.itemsTab.itemSets,build.skillsTab.skillSets,build.configTab.configSets})do
+      for _,set in pairs(list)do assert(clean(set.title or 'Default'):lower()~=name:lower(),'A tree or set already uses this name; choose a different loadout name')end
+    end
+    local specId,itemId,skillId,configId=build.treeTab.activeSpec,build.itemsTab.activeItemSetId,build.skillsTab.activeSkillSetId,build.configTab.activeConfigSetId
+    -- PoB implicitly shares singleton sets. Materialize the existing links before
+    -- adding another set, otherwise those previously valid loadouts disappear.
+    local existing={}
+    for _,title in ipairs(build.controls.buildLoadouts.list)do
+      if not title:match('^%^7%^7') and title~='No Loadouts' then existing[#existing+1]=title end
+    end
+    for _,entry in ipairs({
+      {build.itemsTab,'itemSetOrderList','itemSets','CopyItemSet'},
+      {build.skillsTab,'skillSetOrderList','skillSets','CopySkillSet'},
+      {build.configTab,'configSetOrderList','configSets','CopyConfigSet'},
+    })do
+      local tab,order,sets,copy=unpack(entry)
+      if #tab[order]==1 then
+        local source=tab[order][1]
+        for _,title in ipairs(existing)do
+          if (tab[sets][source].title or 'Default')~=title then tab[copy](tab,source,title)end
+        end
+      end
+    end
+    build:CustomLoadout(specId,itemId,skillId,configId,name)
+    build:SyncLoadouts()
   elseif op=='set' then
     if req.kind=='tree' then build.treeTab:SetActiveSpec(validIndex(req.id,build.treeTab.specList))
     elseif req.kind=='items' then build.itemsTab:SetActiveItemSet(validIndex(req.id,build.itemsTab.itemSets))
@@ -382,6 +429,19 @@ local function command(req)
   elseif op=='ascendancy' then
     validIndex(req.id,build.spec.curClass.classes);build.spec:SelectAscendClass(req.id)
   elseif op~='snapshot' then error('Unknown operation') end
+  if previousSkillSet~=build.skillsTab.activeSkillSetId and op~='load' and op~='new' then
+    -- Upstream retains a global row number between sets. Retain the actual
+    -- skill when uniquely identifiable; never silently select an unrelated buff.
+    local effect=previousMain and previousMain.gemList[1] and previousMain.gemList[1].skillId
+    local match,ambiguous
+    for i,g in ipairs(build.skillsTab.socketGroupList)do
+      if effect and g.gemList[1] and g.gemList[1].skillId==effect then
+        if match then ambiguous=true else match=i end
+      end
+    end
+    build.mainSocketGroup=not ambiguous and match or 1
+    build.calcsTab.input.skill_number=build.mainSocketGroup
+  end
   recalc()
   local state=snapshot()
   if op=='skill-group' or op=='gem-manage' then
