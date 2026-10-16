@@ -19,10 +19,10 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
     private readonly AppInstallation _installation;
     private readonly string _cache;
     private readonly HttpMessageHandler? _http;
-    private readonly Action<string> _launch;
-    private readonly Action<string> _recover;
+    private readonly Func<string, CancellationToken, Task> _launch;
+    private readonly Action _requestExit;
     private readonly AppUpdatePreference _preference;
-    private bool _startupChecked, _recoveryLoaded;
+    private bool _startupChecked;
     internal Channel<AppUpdateSnapshot> Changes { get; } = Channel.CreateBounded<AppUpdateSnapshot>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _operation;
@@ -33,9 +33,11 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
     private string? _prepared;
     private bool _disposed;
 
-    public BridgeAppUpdates(AppInstallation installation, string cache, HttpMessageHandler? http = null, Action<string>? launch = null, Action<string>? recover = null, string? profileRoot = null)
+    public BridgeAppUpdates(AppInstallation installation, string cache, HttpMessageHandler? http = null,
+        Func<string, CancellationToken, Task>? launch = null, Action? requestExit = null, string? profileRoot = null)
     {
-        _installation = installation; _cache = Path.GetFullPath(cache); _http = http; _launch = launch ?? (root => Launch(root, "Install")); _recover = recover ?? (root => Launch(root, "Recover"));
+        _installation = installation; _cache = Path.GetFullPath(cache); _http = http;
+        _launch = launch ?? LaunchAsync; _requestExit = requestExit ?? (() => { });
         _preference = new(profileRoot ?? Path.Combine(_cache, ".preferences"));
         _snapshot = new(0, "idle", installation.Version, CanInstall: installation.CanInstall,
             Message: installation.CanInstall ? "Check releases when you are ready. Updates are never installed automatically."
@@ -45,7 +47,7 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         { _snapshot = _snapshot with { AutomaticallyCheck = false, Message = "Could not read automatic-update preference. Save a choice in App updates." }; }
     }
 
-    internal static BridgeAppUpdates Create(string? profile)
+    internal static BridgeAppUpdates Create(string? profile, Action requestExit)
     {
         var current = typeof(BridgeAppUpdates).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "unknown";
         var installation = new AppInstallation(current, "production", "", false);
@@ -68,10 +70,8 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or ArgumentException) { }
         var normal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail");
         var settings = profile ?? normal;
-        var cache = Path.GetFullPath(settings).Equals(Path.GetFullPath(normal), StringComparison.OrdinalIgnoreCase)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail-Recovery")
-            : Path.Combine(settings, "update-recovery");
-        return new(installation, cache, profileRoot: settings);
+        var cache = Path.Combine(settings, "updates");
+        return new(installation, cache, requestExit: requestExit, profileRoot: settings);
     }
 
     public ValueTask<AppUpdateSnapshot> HandleAsync(AppUpdateCommand command, CancellationToken token)
@@ -80,7 +80,6 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_recoveryLoaded) { RefreshRecovery(); _recoveryLoaded = true; }
             if (command.Action == "status") return ValueTask.FromResult(_snapshot);
             if (command.Action is "auto-enable" or "auto-disable")
             {
@@ -93,11 +92,11 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
                 { Set(_snapshot with { Message = "Could not save automatic-update preference. The previous choice remains active." }); }
                 return ValueTask.FromResult(_snapshot);
             }
-            if (command.Action == "recover") return ValueTask.FromResult(RequestRecovery(command.ReviewToken!));
+            if (_snapshot.State == "handoff") return ValueTask.FromResult(_snapshot);
             if (command.Action == "cancel")
             {
                 _operation?.Cancel();
-                if (_job?.IsCompleted != false) Set(_snapshot with { State = "cancelled", ReviewToken = null, Message = "Cancelled. Any prepared recovery files are retained locally." });
+                if (_job?.IsCompleted != false) Set(_snapshot with { State = "cancelled", ReviewToken = null, Message = "Download cancelled. No installation started." });
                 return ValueTask.FromResult(_snapshot);
             }
             if (_job?.IsCompleted == false) return ValueTask.FromResult(_snapshot);
@@ -105,11 +104,24 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
             {
                 if (_snapshot.State != "ready" || command.ReviewToken != _snapshot.ReviewToken || !_installation.CanInstall || _prepared is null)
                     return ValueTask.FromResult(_snapshot);
-                // This starts only the independent confirmation UI; it never closes
-                // WidgetRail or launches setup while this app remains running.
-                try { _launch(_prepared); Set(_snapshot with { State = "handoff", ReviewToken = null, Message = "Quit WidgetRail now; confirmation opens after it exits. If you finish later, return to App updates. Setup remains interactive." }); }
-                catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
-                { Set(_snapshot with { Message = "Could not open recovery. Try again from App updates." }); }
+                var prepared = _prepared;
+                Set(_snapshot with { State = "handoff", ReviewToken = null, Message = "Starting setup. WidgetRail will close automatically and reopen after installation." });
+                _job = Task.Run(async () =>
+                {
+                    try
+                    {
+                        // Do not close a working app until the helper has verified
+                        // the installer and acknowledged that it is ready to wait.
+                        await _launch(prepared, _lifetime.Token).ConfigureAwait(false);
+                        _requestExit();
+                    }
+                    catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or TimeoutException or OperationCanceledException)
+                    {
+                        lock (_gate) if (!_disposed) Set(_snapshot with { State = "ready",
+                            ReviewToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+                            Message = "Setup could not start. WidgetRail is still open; try Install and restart again." });
+                    }
+                });
                 return ValueTask.FromResult(_snapshot);
             }
             if (command.Action == "download" && (_release is null || _asset is null || !_installation.CanInstall)) return ValueTask.FromResult(_snapshot);
@@ -117,7 +129,7 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
             _operation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             var cancellation = _operation.Token;
             Set(_snapshot with { State = command.Action == "check" ? "checking" : "downloading", ReviewToken = null,
-                Message = command.Action == "check" ? "Checking releases…" : "Preparing verified update and recovery installers…", DownloadedBytes = 0, TotalBytes = null });
+                Message = command.Action == "check" ? "Checking releases…" : "Downloading update…", DownloadedBytes = 0, TotalBytes = null });
             _job = Task.Run(async () =>
             {
                 try { if (command.Action == "check") await CheckAsync(cancellation); else await DownloadAsync(cancellation); }
@@ -150,37 +162,25 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         GitHubRelease release; GitHubAsset asset;
         lock (_gate) { release = _release!; asset = _asset!; }
         PlainPath(_cache); Directory.CreateDirectory(_cache);
-        // Never prune somebody's recovery copy. A deliberate filesystem cleanup is
-        // required after testing before unbounded recovery sets can accumulate.
-        if (Directory.EnumerateDirectories(_cache).Where(p => !Path.GetFileName(p).StartsWith(".", StringComparison.Ordinal)).Take(3).Count() >= 3)
-            throw new DistributionOperationException("Three recovery folders are retained. Remove an obsolete folder from WidgetRail-Recovery after confirming it is no longer needed, then retry.");
         using var client = new GitHubReleaseClient(_http, includeInstallers: true);
-        var previous = await client.GetReleaseAsync(Repository, "v" + _installation.Version, token);
-        var previousAsset = previous.Assets.SingleOrDefault(a => a.Name == InstallerName(_installation.Version, _installation.Edition))
-            ?? throw new DistributionOperationException("The installed version's recovery installer is unavailable. No update will start.");
         var root = Path.Combine(_cache, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         var newHash = await SaveInstallerAsync(client, release, asset, Path.Combine(root, "update.exe"), token);
-        var oldHash = await SaveInstallerAsync(client, previous, previousAsset, Path.Combine(root, "previous.exe"), token);
-        foreach (var name in new[] { "RecoveryEngine.ps1", "RecoveryProgress.ps1", "Recover.ps1" })
+        foreach (var name in new[] { "UpdateInstaller.ps1", "InstallUpdate.ps1" })
         {
-            using var input = typeof(BridgeAppUpdates).Assembly.GetManifestResourceStream("WidgetRail.Recovery." + name)!;
+            using var input = typeof(BridgeAppUpdates).Assembly.GetManifestResourceStream("WidgetRail.Update." + name)!;
             await using var output = new FileStream(Path.Combine(root, name), FileMode.CreateNew, FileAccess.Write, FileShare.None);
             await input.CopyToAsync(output, token);
         }
         await File.WriteAllTextAsync(Path.Combine(root, "plan.json"), JsonSerializer.Serialize(new
         { schema = 1, previousVersion = _installation.Version, updateVersion = release.Tag.TrimStart('v'), edition = _installation.Edition, previousRoot = _installation.Root,
-            previousSha256 = oldHash, updateSha256 = newHash }), token);
-        await File.WriteAllTextAsync(Path.Combine(root, "README.txt"),
-            "WidgetRail update recovery\r\nStart recovery from Settings > App updates.\r\n" +
-            "This private folder contains installers and, after installation, a complete local profile backup. Do not share it.\r\n" +
-            "Recovery restores the previous app and profile. The newer profile is kept as profile-after. Windows credentials and external widget data are not rolled back.\r\n", token);
+            updateSha256 = newHash }), token);
         token.ThrowIfCancellationRequested();
         lock (_gate)
         {
             _prepared = root;
             Set(_snapshot with { State = "ready", ReviewToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
-                Message = "Both installers verified. Installation first backs up your profile. After updating, recovery is available in Settings > App updates." });
+                Message = "Update verified. Install and restart will close WidgetRail and open the installer. Your settings and sign-ins stay in place." });
         }
     }
 
@@ -231,15 +231,25 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         }
     }
     private static string SafeError(Exception error) => error is DistributionOperationException or DistributionUsageException
-        ? error.Message[..Math.Min(500, error.Message.Length)] : "Could not prepare the update. Check free disk space and access to the recovery folder; no installation started.";
+        ? error.Message[..Math.Min(500, error.Message.Length)] : "Could not download the update. Check free disk space and try again; no installation started.";
     private static void PlainPath(string path)
-    { for (var item = new DirectoryInfo(path); item is not null; item = item.Parent) if (item.Exists && item.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new IOException("Recovery path contains a link."); }
+    { for (var item = new DirectoryInfo(path); item is not null; item = item.Parent) if (item.Exists && item.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new IOException("Update path contains a link."); }
     private static string PowerShell => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
-    private static void Launch(string root, string mode)
+    private static async Task LaunchAsync(string root, CancellationToken token)
     {
-        var info = new ProcessStartInfo(PowerShell) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root };
-        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(root, "Recover.ps1"), "-Mode", mode, "-WaitForAppExit" }) info.ArgumentList.Add(arg);
-        using var process = Process.Start(info) ?? throw new IOException("Recovery could not start.");
+        var info = new ProcessStartInfo(PowerShell) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, WorkingDirectory = root };
+        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(root, "InstallUpdate.ps1") }) info.ArgumentList.Add(arg);
+        using var process = Process.Start(info) ?? throw new IOException("Update helper could not start.");
+        try
+        {
+            if (await process.StandardOutput.ReadLineAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(20), token).ConfigureAwait(false) != "ready")
+                throw new IOException("Update helper did not become ready.");
+        }
+        catch
+        {
+            if (!process.HasExited) process.Kill();
+            throw;
+        }
     }
     public async ValueTask DisposeAsync()
     {

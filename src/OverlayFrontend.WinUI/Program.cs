@@ -18,6 +18,9 @@ internal static partial class Program
             // Recovery owns profile files while setup/restore runs outside this app.
             if (Mutex.TryOpenExisting(@"Local\WidgetRail.Recovery", out var updateRecovery))
             { updateRecovery.Dispose(); return 0; }
+            // Setup handoff owns the installation until it relaunches the new app.
+            if (Mutex.TryOpenExisting(@"Local\WidgetRail.UpdateInstaller", out var updateInstaller))
+            { updateInstaller.Dispose(); return 0; }
             if (ControllerRecoveryStartup.TryRun(args, [], out var recoveryExitCode))
                 return recoveryExitCode;
             var arguments = args;

@@ -99,7 +99,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _controllers = new BridgeControllerControl(settingsStore);
         _settingsRoot = settingsStore?.Paths.RootDirectory;
         runtimeStopStore = settingsStore is null ? null : new WidgetStopStateStore(settingsStore.Paths);
-        _appUpdates = appUpdates ?? BridgeAppUpdates.Create(_settingsRoot);
+        _appUpdates = appUpdates ?? BridgeAppUpdates.Create(_settingsRoot,
+            () => Interlocked.Exchange(ref _pendingApplicationControl, 1));
         _consentStore = consentStore;
         _platformBackend = platformBackend;
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();

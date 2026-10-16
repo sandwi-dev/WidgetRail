@@ -18,6 +18,12 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
     return 0;
 }
 
+if (args is ["--export-update-fixtures", var updateFixtureDirectory])
+{
+    await AppUpdateScenarios.ExportAsync(updateFixtureDirectory, ExportRendererSnapshot);
+    return 0;
+}
+
 if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
 {
     using var temp = new TemporaryDirectory();
@@ -47,7 +53,7 @@ if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Extensions use dedicated pages with shared policy and host-owned mutations", ExtensionPages),
-    ("App updates use explicit review and preserve busy focus", AppUpdateScenarios.ControllerFlow),
+    ("App updates install directly and preserve bounded readable notes and busy focus", AppUpdateScenarios.ControllerFlow),
     ("Marketplace download review is controller-native and full access requires confirmation", MarketplaceScenarios.ControllerFlow),
     ("Diagnostics export stays focusable and retains its saved location", DiagnosticsExportScenarios.ExportRetainsFocusAndResult),
     ("Installed rows separate visible fields and preserve one action", StructuredInstalledRows),
@@ -3135,6 +3141,11 @@ static async Task ShippedAssetsValidate()
             StringComparer.Ordinal)));
     Assert.Equal("anywhere", diagnosticMetric.Get("overflow-wrap")?.Text);
     Assert.Equal("2", diagnosticMetric.Get("max-lines")?.Text);
+    var releaseNotes = compiled.Theme.Resolve(new WrssElement(
+        "text", "app-update.notes.text",
+        new HashSet<string>(["app-update-notes"], StringComparer.Ordinal)));
+    Assert.Equal("anywhere", releaseNotes.Get("overflow-wrap")?.Text);
+    Assert.True(releaseNotes.Get("max-lines") is null, "Release notes must not inherit a line cap from helper text.");
 }
 
 static async Task ExportRendererFixture(string outputPath)

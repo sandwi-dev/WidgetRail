@@ -87,6 +87,12 @@
 }
 
 .controllers-help { max-lines: 6; }
+.app-update-notes {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
 .widget-switcher-help { max-lines: 10; }
 .controllers-status { color: var(--accent); font-weight: 600; max-lines: 6; }
 .controllers-warning { color: var(--warning); }

@@ -12,12 +12,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Release check selects matching edition and preserves notes", Check),
     ("Stable installations do not select preview releases", Stable),
     ("Candidate cannot install or prepare downloads", Candidate),
-    ("Preparation verifies both installers and consumes exact confirmation once", Prepare),
+    ("Preparation verifies one installer and waits for helper readiness before closing", Prepare),
     ("Corrupt download cannot offer installation", Corrupt),
-    ("Missing recovery release prevents installation", MissingPrevious),
+    ("Missing previous release does not block installation", MissingPrevious),
     ("Cancellation leaves installation untouched", Cancel),
     ("Automatic checks default on, run once, honor opt-out and persist", Automatic),
-    ("Recovery is selected in-app and bound to exact current backup metadata", Recovery),
+    ("Failed helper launch keeps the app open and permits retry", LaunchFailure),
 };
 var errors = 0;
 foreach (var test in tests) try { await test.Run(); Console.WriteLine("PASS " + test.Name); } catch (Exception error) { errors++; Console.WriteLine("FAIL " + test.Name + ": " + error); }
@@ -56,25 +56,32 @@ static async Task Prepare()
     await fixture.Service.HandleAsync(new("check"), default); await Wait(fixture.Service);
     await fixture.Service.HandleAsync(new("download"), default);
     var ready = await Wait(fixture.Service);
-    Assert(ready.State == "ready", ready.Message); Assert(fixture.Api.Downloads == 2 && fixture.Recoveries == 0 && fixture.Launches == 0);
+    Assert(ready.State == "ready", ready.Message); Assert(fixture.Api.Downloads == 1 && fixture.Exits == 0 && fixture.Launches == 0);
     await fixture.Service.HandleAsync(new("install", new string('A', 64)), default); Assert(fixture.Launches == 0);
+    await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default);
+    await fixture.Launched.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Assert(fixture.Exits == 0);
     await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default); Assert(fixture.Launches == 1);
-    await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default); Assert(fixture.Launches == 1);
+    fixture.LaunchReady.SetResult();
+    await fixture.Exited.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Assert(fixture.Exits == 1);
     Assert(Directory.EnumerateFiles(fixture.Root, "plan.json", SearchOption.AllDirectories).Count() == 1);
+    Assert(!Directory.EnumerateFiles(fixture.Root, "previous.exe", SearchOption.AllDirectories).Any());
+    Assert(!Directory.EnumerateDirectories(fixture.Root, "profile-before", SearchOption.AllDirectories).Any());
 }
 static async Task Corrupt()
 {
     await using var fixture = new Fixture(); fixture.Api.Corrupt = true;
     await fixture.Service.HandleAsync(new("check"), default); await Wait(fixture.Service);
     await fixture.Service.HandleAsync(new("download"), default);
-    Assert((await Wait(fixture.Service)).State == "failed" && fixture.Launches == 0 && fixture.Recoveries == 0);
+    Assert((await Wait(fixture.Service)).State == "failed" && fixture.Launches == 0 && fixture.Exits == 0);
 }
 static async Task MissingPrevious()
 {
     await using var fixture = new Fixture(); fixture.Api.MissingPrevious = true;
     await fixture.Service.HandleAsync(new("check"), default); await Wait(fixture.Service);
     await fixture.Service.HandleAsync(new("download"), default);
-    Assert((await Wait(fixture.Service)).State == "failed" && fixture.Api.Downloads == 0);
+    Assert((await Wait(fixture.Service)).State == "ready" && fixture.Api.Downloads == 1);
 }
 static async Task Cancel()
 {
@@ -97,25 +104,25 @@ static async Task Automatic()
     await restarted.HandleAsync(new("auto-enable"), default);
     Assert(new AppUpdatePreference(Path.Combine(fixture.Root, ".preferences")).Read());
 }
-static async Task Recovery()
+static async Task LaunchFailure()
 {
     await using var fixture = new Fixture();
     await fixture.Service.HandleAsync(new("check"), default); await Wait(fixture.Service);
-    await fixture.Service.HandleAsync(new("download"), default); await Wait(fixture.Service);
-    var root = Directory.GetDirectories(fixture.Root).Single(path => Guid.TryParseExact(Path.GetFileName(path), "N", out _));
-    await File.WriteAllTextAsync(Path.Combine(root, "state.json"), "{\"phase\":\"installed\"}");
-    var damaged = Path.Combine(fixture.Root, Guid.NewGuid().ToString("N"));
-    Directory.CreateDirectory(damaged);
-    await File.WriteAllTextAsync(Path.Combine(damaged, "plan.json"), "invalid");
-    await File.WriteAllTextAsync(Path.Combine(damaged, "state.json"), "{}");
-    Directory.SetLastWriteTimeUtc(damaged, DateTime.UtcNow.AddSeconds(1));
-    var restores = 0;
-    await using var updated = new BridgeAppUpdates(new("0.1.0-preview.30", "production", "", true), fixture.Root, fixture.Api, recover: _ => restores++);
-    var state = await updated.HandleAsync(new("status"), default);
-    Assert(state.Recovery?.PreviousVersion == "0.1.0-preview.29");
-    await updated.HandleAsync(new("recover", new string('0',64)), default); Assert(restores == 0);
-    await updated.HandleAsync(new("recover", state.Recovery!.Id), default); Assert(restores == 1);
-    await updated.HandleAsync(new("recover", state.Recovery.Id), default); Assert(restores == 1);
+    await fixture.Service.HandleAsync(new("download"), default);
+    var ready = await Wait(fixture.Service);
+    fixture.LaunchReady.SetException(new IOException("Synthetic helper failure"));
+    await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default);
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    AppUpdateSnapshot state;
+    do { await Task.Delay(10, deadline.Token); state = await fixture.Service.HandleAsync(new("status"), default); } while (state.State == "handoff");
+    Assert(state.State == "ready" && state.ReviewToken != ready.ReviewToken && fixture.Exits == 0);
+    await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default);
+    Assert(fixture.Launches == 1);
+    fixture.LaunchReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    fixture.LaunchReady.SetResult();
+    await fixture.Service.HandleAsync(new("install", state.ReviewToken), default);
+    await fixture.Exited.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Assert(fixture.Launches == 2 && fixture.Exits == 1);
 }
 static void Assert(bool value, string message = "Assertion failed") { if (!value) throw new Exception(message); }
 static async Task<AppUpdateSnapshot> Wait(BridgeAppUpdates service)
@@ -133,8 +140,13 @@ sealed class Fixture : IAsyncDisposable
     public string Root { get; } = Path.Combine(Path.GetTempPath(), "wrail-updates-test-" + Guid.NewGuid().ToString("N"));
     public FakeApi Api { get; } = new();
     public BridgeAppUpdates Service { get; }
-    public int Launches; public int Recoveries;
-    public Fixture(bool canInstall = true, string version = "0.1.0-preview.29") => Service = new(new(version, "production", "", canInstall), Root, Api, _ => Launches++, _ => Recoveries++);
+    public int Launches; public int Exits;
+    public TaskCompletionSource Launched = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource LaunchReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource Exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Fixture(bool canInstall = true, string version = "0.1.0-preview.29") => Service = new(new(version, "production", "", canInstall), Root, Api,
+        async (_, token) => { Interlocked.Increment(ref Launches); Launched.TrySetResult(); await LaunchReady.Task.WaitAsync(token); },
+        () => { Interlocked.Increment(ref Exits); Exited.TrySetResult(); });
     public async ValueTask DisposeAsync() { await Service.DisposeAsync(); Api.Dispose(); if (Directory.Exists(Root)) Directory.Delete(Root, true); }
 }
 sealed class FakeApi : HttpMessageHandler
