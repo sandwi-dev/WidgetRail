@@ -72,7 +72,10 @@ internal static class QuickControlsTests
                 check(!Shortcut(View(),"pob.tree.preview-details"),"Collapsed preview is not treated as a long list");
             }
             Set("pendingBefore",null);Set("detailKind","");Set("section","Notes");
-            check(!Nodes(View().Root).SelectMany(n=>n.Shortcuts??[]).Any(s=>s.Button==ControllerButton.LeftStick),"Reading content does not acquire list shortcuts");
+            check(Shortcut(View(),"pob.notes.scroll"),"Notes exposes the explicitly requested navigation-tab shortcut");
+            await Jump("pob.notes.tab-target");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.notes.tab-target").InitialChildFocusId=="pob.tab.5"&&View().ScrollRevealRequest is null,
+                "Notes shortcut focuses its navigation tab without scrolling to the content heading");
             await widget.OnActionAsync(new("quick-controls.pob.library.tools","fixture"));
             check(View().FocusGroupEntryRequest?.GroupId!="pob.library.tools","Retired panel shortcut cannot focus a missing group");
             Set("section","Configuration");Set("pendingBefore",baseline);

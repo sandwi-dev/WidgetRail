@@ -63,7 +63,10 @@ $manifest=[ordered]@{
     presentation=@{icon='connection';packageIcon=@{assetId='companion.mark';colorMode='themeTint'}}
     iconAssets=@{'companion.mark'=@{path='assets/icons/companion.svg'}}
     permissions=@();optionalPermissions=@()
-    intents=@{requests=@(@{id='widgetrail.web.open';version=1;payloadSchema=@{type='object';additionalProperties=$false;properties=@{url=@{type='string';minLength=1;maxLength=2048}};required=@('url')}})}
+    intents=@{requests=@(
+        @{id='widgetrail.web.open';version=1;payloadSchema=@{type='object';additionalProperties=$false;properties=@{url=@{type='string';minLength=1;maxLength=2048}};required=@('url')}},
+        @{id='widgetrail.video.open';version=1;payloadSchema=@{type='object';additionalProperties=$false;properties=@{provider=@{type='string';minLength=1;maxLength=64};videoId=@{type='string';minLength=1;maxLength=256};startTimeSeconds=@{type='number';minimum=0;maximum=604800}};required=@('provider','videoId')}}
+    )}
     residencyPolicy=@{schemaVersion=1;mode='unload-after-idle';idleSeconds=120}
     resourceRequest=@{updateHz=4};architectures=@('x64')
 }

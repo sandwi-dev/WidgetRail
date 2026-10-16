@@ -81,11 +81,16 @@ public sealed partial class PobWidget
     private WidgetElement NotesWorkspace()
     {
         var rows=new List<WidgetElement>{Text("Build notes","notes.heading","pob-heading")};
-        foreach(var link in GuideLinks().Select((url,index)=>(url,index)))
-            rows.Add(UI.Button("Open guide · "+new Uri(link.url).Host,"guide-link."+link.index,"pob.guide-link."+link.index)
-                .OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url=link.url})).Classes("pob-button"));
+        foreach(var (link,index) in PobNoteLinks.Read(S(State,"notes")).Select((link,index)=>(link,index)))
+            rows.Add((UI.Button(link.Label,"note-link."+index,"pob.note-link."+index) with {Intent=link.Intent}).Classes("pob-button"));
         AddFormatted(rows,State,"notes","notesRuns","notes","pob-prose");
-        return UI.VerticalScroll("pob.notes.scroll",UI.Stack("pob.notes.document",rows.ToArray()).Classes("pob-reading")).Classes("pob-scroll","pob-panel");
+        var scroll=UI.VerticalScroll("pob.notes.scroll",UI.Stack("pob.notes.document",rows.ToArray()).Classes("pob-reading")).Classes("pob-scroll","pob-panel");
+        if(!busy&&pendingBefore is null)
+        {
+            quickControlTargets.Add("pob.notes.tab-target");
+            scroll=scroll.Shortcut(ControllerButton.LeftStick,"quick-controls.pob.notes.tab-target","Notes tab");
+        }
+        return scroll;
     }
 
     // Bound individual protocol strings without breaking the document into UI pages.

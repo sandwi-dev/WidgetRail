@@ -38,8 +38,13 @@ public sealed partial class PobWidget
 
     private WidgetElement Navigation()
     {
-        var tabs = Sections.Select((s, i) => (WidgetElement)UI.Button(s, "section." + i, i == 0 ? "pob.section" : "pob.tab." + i)
-            .Selected(section == s).Disabled(pendingBefore is not null).Classes("pob-tab").InGrid(column: i + 1)).ToList();
+        var tabs = Sections.Select((s, i) =>
+        {
+            WidgetElement tab=UI.Button(s,"section."+i,i==0?"pob.section":"pob.tab."+i)
+                .Selected(section==s).Disabled(pendingBefore is not null).Classes("pob-tab");
+            if(s=="Notes")tab=UI.Stack("pob.notes.tab-target",tab).RememberChildFocus("pob.tab."+i);
+            return tab.InGrid(column:i+1);
+        }).ToList();
         tabs.Insert(0, UI.ControllerGlyph(ControllerButton.LeftBumper, "pob.navigation.previous", "Previous section")
             .Classes("pob-section-hint").InGrid(column: 0));
         tabs.Add(UI.ControllerGlyph(ControllerButton.RightBumper, "pob.navigation.next", "Next section")

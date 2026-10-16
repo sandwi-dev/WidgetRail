@@ -243,6 +243,8 @@ public sealed partial class MainWindow
             page.EnablePobTreeValidation(treeProbe);
         if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-quick-controls") is {} quickProbe)
             page.EnablePobQuickControlsValidation(quickProbe);
+        if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-notes") is {} notesProbe)
+            page.EnablePobNotesValidation(notesProbe);
         if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-browser-guide") is {} guideProbe)
             page.EnableBrowserGuideValidation(guideProbe);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments,"--validation-viewport-dips") is { } viewport)

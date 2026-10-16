@@ -5,6 +5,13 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
+if(args is ["--note-links-only"])
+{
+    var passed=0;var failed=0;
+    NoteLinkTests.Run((ok,name)=>{Console.WriteLine((ok?"PASS ":"FAIL ")+name);if(ok)passed++;else failed++;});
+    Console.WriteLine($"Note links: {passed} passed, {failed} failed");return failed==0?0:1;
+}
+
 if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));

@@ -302,6 +302,10 @@ public sealed partial class PobWidget : Widget
         var sets=A(State,field); if(sets.Length<2)return;
         rows.Add(UI.Select("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Disabled(pendingBefore is not null).Classes("pob-select"));
     }
-    private string[] GuideLinks()=>System.Text.RegularExpressions.Regex.Matches(S(State,"notes"),@"https://[^\s<>""\[\]]+",System.Text.RegularExpressions.RegexOptions.None,TimeSpan.FromMilliseconds(100)).Select(m=>m.Value.TrimEnd('.',',',')')).Where(s=>s.Length<=2048&&Uri.TryCreate(s,UriKind.Absolute,out var uri)&&uri.UserInfo.Length==0).Distinct().Take(12).ToArray();
+    public override ValueTask<bool> OnIntentCompletedAsync(WidgetIntentFeedback feedback,CancellationToken cancellationToken=default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(PobNoteLinks.UseFallback(feedback));
+    }
     private static string StatLabel(string key)=>key switch {"CombinedDPS"=>"Main skill DPS (combined)","FullDPS"=>"All included skills DPS","TotalDPS"=>"Main skill hit DPS","EnergyShield"=>"Energy shield","EffectiveHitPool"=>"Effective hit pool",_=>System.Text.RegularExpressions.Regex.Replace(key,"([a-z])([A-Z])","$1 $2")};
 }
