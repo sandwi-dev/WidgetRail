@@ -51,6 +51,14 @@
 
   --font-text: Segoe UI Variable Text, Segoe UI;
   --font-display: Segoe UI Variable Display, Segoe UI;
+  /* Categorical data ink; independent of status and focus meanings. */
+  --data-red: #ffc0d8;
+  --data-blue: #aad9ff;
+  --data-green: #a2e7c2;
+  --data-gold: #f5d493;
+  --data-purple: #dbb8ee;
+  --data-orange: #ffc79e;
+
 }
 
 /* One structural edge on the tray, leaving content panels and cards quiet. */

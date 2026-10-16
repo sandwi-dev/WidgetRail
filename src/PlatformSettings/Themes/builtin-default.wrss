@@ -36,6 +36,14 @@
   --scrim: var(--canvas-veil);
   --font-text: Segoe UI Variable Text, Segoe UI;
   --font-display: Segoe UI Variable Display, Segoe UI;
+  /* Categorical data ink; independent of status and focus meanings. */
+  --data-red: #e9afb0;
+  --data-blue: #b1cfdb;
+  --data-green: #b0d4bb;
+  --data-gold: #e4c28c;
+  --data-purple: #ccb7e5;
+  --data-orange: #e9b18a;
+
 }
 
 canvas {
@@ -1133,3 +1141,10 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 
 /* Keep an inset focus ring legible on an accent-filled primary action. */
 .wrail-icon-button--primary:focused { outline-color: var(--canvas); }
+/* Readable categorical ink, also projected to host-owned packaged pages. */
+.wrail-data-red { color: var(--data-red); }
+.wrail-data-blue { color: var(--data-blue); }
+.wrail-data-green { color: var(--data-green); }
+.wrail-data-gold { color: var(--data-gold); }
+.wrail-data-purple { color: var(--data-purple); }
+.wrail-data-orange { color: var(--data-orange); }

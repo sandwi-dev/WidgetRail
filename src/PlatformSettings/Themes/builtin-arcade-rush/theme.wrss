@@ -54,6 +54,14 @@
 
   --font-text: Segoe UI Variable Text, Segoe UI;
   --font-display: Segoe UI Variable Display, Segoe UI;
+  /* Categorical data ink; independent of status and focus meanings. */
+  --data-red: #ffb4a1;
+  --data-blue: #aad9ff;
+  --data-green: #a2e7c2;
+  --data-gold: #f5d493;
+  --data-purple: #ddbbff;
+  --data-orange: #ffc49d;
+
 }
 
 /* Soft control corners preserve the 44 DIP hit targets and focus geometry. */

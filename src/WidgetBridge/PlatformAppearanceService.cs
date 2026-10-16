@@ -283,6 +283,12 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             ("dialog-choice:focused", "dialog-choice", States(WrssPseudoState.Focused)),
             ("dialog-button", "dialog-button", EmptyStates()),
             ("dialog-button:focused", "dialog-button", States(WrssPseudoState.Focused)),
+            ("data-red", "text", EmptyStates()),
+            ("data-blue", "text", EmptyStates()),
+            ("data-green", "text", EmptyStates()),
+            ("data-gold", "text", EmptyStates()),
+            ("data-purple", "text", EmptyStates()),
+            ("data-orange", "text", EmptyStates()),
         };
         var result = new SortedDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>(StringComparer.Ordinal);
         var total = 0;
@@ -291,7 +297,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             var resolved = theme.Resolve(new WrssElement(
                 definition.Role,
                 $"shell.{definition.Key.Replace(':', '.')}",
-                definition.Key is "controller-glyph" or "tray-clock" or "tray-date" or "tray-status-icon"
+                definition.Key.StartsWith("data-", StringComparison.Ordinal) || definition.Key is "controller-glyph" or "tray-clock" or "tray-date" or "tray-status-icon"
                     ? new HashSet<string>(StringComparer.Ordinal) { "wrail-" + definition.Key }
                     : new HashSet<string>(StringComparer.Ordinal),
                 definition.States));

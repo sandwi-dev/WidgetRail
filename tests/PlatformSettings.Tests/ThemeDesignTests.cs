@@ -101,6 +101,12 @@ internal static class ThemeDesignTests
             var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, new([], []), entry.Package);
             Require(compiled.IsValid, entry.Descriptor.Id + " failed to compile");
             var theme = compiled.Theme!;
+            var dataColors = new[] { "red", "blue", "green", "gold", "purple", "orange" };
+            var dataRules = WrssParser.Parse(string.Join("\n", dataColors.Select(color =>
+                $".data-{color} {{ color: var(--data-{color}); }}")));
+            var dataTheme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
+                new([dataRules.Document], dataRules.Diagnostics), entry.Package);
+            Require(dataTheme.IsValid, entry.Descriptor.Id + " data palette failed to compile");
             var styles = new Dictionary<string, WrssResolvedStyle>
             {
                 ["canvas"] = Resolve(theme, "canvas"),
@@ -126,6 +132,8 @@ internal static class ThemeDesignTests
             };
             foreach (var status in new[] { "info", "success", "warning", "danger" })
                 styles[status] = Resolve(theme, "text", ["wrail-badge__label", "wrail-badge__label--" + status]);
+            foreach(var color in dataColors)
+                styles["data-"+color] = Resolve(dataTheme.Theme!, "text", ["data-"+color]);
 
             // Conservative bounds: each ordinary surface over black AND white,
             // at both ends of its shading ramp. Modals include the theme veil.
@@ -142,6 +150,7 @@ internal static class ThemeDesignTests
                 new("Secondary text", Ink("hint"), 4.5),
                 new("Accent text", Ink("accent"), 4.5),
                 new("Status text", new[] { "info", "success", "warning", "danger" }.Min(Ink), 4.5),
+                new("Categorical data text", dataColors.Select(color=>Ink("data-"+color)).Min(), 4.5),
                 new("Controller glyph", Ink("glyph"), 3),
                 new("Focus edge", new[] { "focused", "selected" }.Min(name => Own(name, "outline-color")), 3),
                 new("Primary button ink", Own("primary", "color"), 4.5),

@@ -342,6 +342,12 @@ static void Variables()
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
     Assert.Equal("#abcdef", compile.Theme!.Resolve(Element("text")).Get("color")!.Text);
     Assert.Equal("#010203", compile.Theme.Resolve(Element("button")).Get("outline-color")!.Text);
+    foreach(var color in new[]{"red","blue","green","gold","purple","orange"})
+    {
+        var fallback=Compile($":root {{ --text: #123456; }} text {{ color: var(--data-{color}); }}");
+        Assert.True(fallback.IsValid,Describe(fallback.Diagnostics));
+        Assert.Equal("#123456",fallback.Theme!.Resolve(Element("text")).Get("color")!.Text);
+    }
 }
 
 static void VariableCycles()

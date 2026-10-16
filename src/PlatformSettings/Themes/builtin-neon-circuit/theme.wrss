@@ -55,6 +55,14 @@
 
   --font-text: Segoe UI Variable Text, Segoe UI;
   --font-display: Segoe UI Variable Display, Segoe UI;
+  /* Categorical data ink; independent of status and focus meanings. */
+  --data-red: #ff9fb4;
+  --data-blue: #a3d6ff;
+  --data-green: #91e0b7;
+  --data-gold: #f2d18a;
+  --data-purple: #d4b3ff;
+  --data-orange: #ffbb91;
+
 }
 
 /* Geometry: tighter, more angular rounding than the soft default. Radius is

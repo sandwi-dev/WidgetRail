@@ -41,6 +41,14 @@
   --depth-lowlight: rgba(23, 46, 52, 0.16);
   --focus-width: 2px;
   --focus-offset: -2px;
+  /* Categorical data ink; independent of status and focus meanings. */
+  --data-red: #9b2e48;
+  --data-blue: #245b8c;
+  --data-green: #176340;
+  --data-gold: #744b08;
+  --data-purple: #713d86;
+  --data-orange: #91421a;
+
 }
 
 /* Three nested radius levels give containers and controls distinct roles. */

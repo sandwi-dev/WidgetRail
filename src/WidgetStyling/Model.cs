@@ -191,6 +191,13 @@ public sealed record WrssCompileOptions
             ["--surface-muted"] = "rgba(44, 49, 62, 0.92)",
             ["--text"] = "#f7f7fa",
             ["--text-muted"] = "#aeb5c3",
+            ["--data-red"] = "var(--text)",
+            ["--data-blue"] = "var(--text)",
+            ["--data-green"] = "var(--text)",
+            ["--data-gold"] = "var(--text)",
+            ["--data-purple"] = "var(--text)",
+            ["--data-orange"] = "var(--text)",
+
             ["--scrollbar-track"] = "#343946",
             ["--scrollbar-thumb"] = "#aeb5c3",
             ["--text-subdued"] = "#7f8796",

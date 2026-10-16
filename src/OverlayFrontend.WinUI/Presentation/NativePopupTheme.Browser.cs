@@ -12,7 +12,11 @@ internal sealed partial class NativePopupTheme
     internal static IDisposable? Browser(BrowserSurface browser)
     {
         var owner = Find(browser);
-        return owner?.Track(() => browser.ApplyTheme(owner.surface, owner.ink, owner.muted, owner.selected,
-            owner.focus, owner.fontSize, owner.fontWeight, owner.font, owner.cornerRadius));
+        return owner?.Track(() =>
+        {
+            browser.ApplyTheme(owner.surface, owner.ink, owner.muted, owner.selected,
+                owner.focus, owner.fontSize, owner.fontWeight, owner.font, owner.cornerRadius);
+            if (owner.palette is { } palette) browser.ApplyHostedTheme(palette, owner.styles, owner.appearance.TextScale);
+        });
     }
 }

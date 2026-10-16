@@ -24,12 +24,14 @@ internal static class ShellPaletteEndToEndScenario
                 var palette = await session.ReadShellStylesAsync(deadline.Token);
                 var expected = new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected", "tray-item:focused",
                     "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status", "tray-clock", "tray-date", "tray-status-icon",
-                    "dialog", "dialog-title", "dialog-description", "dialog-footer", "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused" };
+                    "dialog", "dialog-title", "dialog-description", "dialog-footer", "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused", "data-red", "data-blue", "data-green", "data-gold", "data-purple", "data-orange" };
                 if (!palette.Keys.OrderBy(value => value).SequenceEqual(expected.OrderBy(value => value)))
                     throw new InvalidOperationException("The complete real platform palette was not admitted.");
                 if (palette["controller-glyph"].Base["font-size"].Number != 24 || palette["tray-clock"].Base["font-size"].Number != 22 ||
                     palette["tray-date"].Base["font-size"].Number != 11 || palette["tray-status-icon"].Base["font-size"].Number != 16)
                     throw new InvalidOperationException("Class-based shell typography did not survive real theme resolution and transport.");
+                if(palette["data-red"].Base["color"].Text != "#ff9fb4" || palette["data-purple"].Base["color"].Text != "#d4b3ff")
+                    throw new InvalidOperationException("Categorical data colors did not survive the real theme projection.");
                 if (palette["tray-item:focused"].Base["outline-color"].Text != "#3fe0ff")
                     throw new InvalidOperationException("The selected built-in theme accent was lost.");
             }

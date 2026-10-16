@@ -40,4 +40,5 @@ internal sealed record BrowserDragEvent(string type, double x, double y, JsonEle
 [JsonSerializable(typeof(BrowserSelectedFiles))]
 [JsonSerializable(typeof(BrowserPinchGesture))]
 [JsonSerializable(typeof(BrowserDragEvent))]
+[JsonSerializable(typeof(HostedPagePalette))]
 internal sealed partial class BrowserJsonContext : JsonSerializerContext;

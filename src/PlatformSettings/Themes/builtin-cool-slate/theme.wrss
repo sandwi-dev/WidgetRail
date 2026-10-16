@@ -35,6 +35,14 @@
   --scrim: var(--canvas-veil);
   --font-text: Segoe UI Variable Text, Segoe UI;
   --font-display: Segoe UI Variable Display, Segoe UI;
+  /* Categorical data ink; independent of status and focus meanings. */
+  --data-red: #e8adb5;
+  --data-blue: #acc9df;
+  --data-green: #aad4bf;
+  --data-gold: #e4c58a;
+  --data-purple: #c4b4e4;
+  --data-orange: #e8b78f;
+
 }
 
 /* Widget modal: host-clamped geometry, theme-owned colors and typography. */

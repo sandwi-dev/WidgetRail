@@ -79,6 +79,22 @@ overrides those defaults, and an explicit widget-package definition overrides
 the global value. When a widget omits a token, its declarations inherit the
 selected theme or host default.
 
+### Categorical data colors
+
+Use `--data-red`, `--data-blue`, `--data-green`, `--data-gold`,
+`--data-purple`, and `--data-orange` for categories, chart series, and domain
+data. All built-in themes supply coordinated shades for their surfaces. These
+tokens are independent of `--accent`/`--focus` and status meanings such as
+`--danger` or `--warning`. Keep labels, patterns, or shapes alongside color.
+
+For example, a resource value can use `color: var(--data-red, var(--text));`.
+Do not define a fixed local palette when the user's theme should control it.
+Custom themes can override these tokens; existing themes remain loadable and
+inherit platform defaults. A standalone WRSS compilation without a platform
+theme falls back to `--text`. Theme authors should verify data colors on their
+normal, focused, and selected surfaces, including transparency and shading.
+High-contrast presentation may replace the colors to preserve legibility.
+
 ### Color transparency
 
 Every color property accepts `alpha(color, multiplier)`. It multiplies the
@@ -304,3 +320,11 @@ from label text. Flex stretching does not enlarge the ink beyond `font-size`.
 Ordinary box properties can decorate the surrounding space. Font family, weight,
 letter spacing, and line height never substitute or distort the private symbol
 font. Style the separate `.wrail-controller-hint__label` for action text.
+
+Host-owned packaged web-session pages also receive `--widgetrail-surface`,
+`--widgetrail-text`, `--widgetrail-muted`, `--widgetrail-focus`,
+`--widgetrail-data-*`, and `--widgetrail-text-scale` CSS properties.
+`data-widgetrail-contrast` identifies `high` or `standard` contrast, and
+`widgetrailthemechange` signals a refreshed projection. Remote websites are
+not modified. Packaged pages should use labels or shapes alongside categorical
+colors and honor text scale in their own CSS.

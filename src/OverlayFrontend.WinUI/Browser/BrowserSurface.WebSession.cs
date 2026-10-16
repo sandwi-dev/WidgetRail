@@ -94,9 +94,14 @@ internal sealed partial class BrowserSurface
     private async Task ConfigureHostedCoreAsync(CoreWebView2Environment env)
     {
         if (hostedDefinition is null) return;
-        core!.NavigationCompleted += (_, args) =>
+        core!.NavigationCompleted += (sender, args) =>
         {
-            if (args.IsSuccess) hostedNavigation.TrySetResult();
+            if (args.IsSuccess)
+            {
+                hostedThemeAppliedRevision=0;
+                _=ApplyHostedPageThemeAsync();
+                hostedNavigation.TrySetResult();
+            }
             else hostedNavigation.TrySetException(new InvalidOperationException("Hosted page failed to load."));
         };
         core.ProcessFailed += (_, args) =>
