@@ -61,11 +61,7 @@ public sealed partial class PobWidget : Widget
                 if (!File.Exists(selected)) return;
                 var id = File.ReadAllText(selected).Trim();
                 if (!Guid.TryParseExact(id, "N", out _)) return;
-                var xml = await BuildDocument.ReadAsync(Path.Combine(dataDirectory, id + ".xml"), game, token);
-                var loaded = await engine.ExecuteAsync(new { op = "load", xml, name = "Saved build" }, token);
-                BuildDocument.VerifySkillPreservation(xml, loaded.Xml);
-                lock (gate) { documentId = id; result = loaded; }
-                EnsureBuildName(loaded);
+                await OpenSavedWorkAsync(id, token);
             }, "Opening your saved build…");
         }
         return ValueTask.CompletedTask;
@@ -165,7 +161,7 @@ public sealed partial class PobWidget : Widget
                 children.Add(section is "Tree" or "Configuration" or "Notes" ? CompactHeadlines() : Headlines());
                 children.Add(Navigation());
                 if (pendingBefore is not null && !(section == "Tree" && detailKind == "node"))
-                    children.Add(UI.Row("pob.preview", Text("PREVIEW · not saved", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
+                    children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
                 children.Add(UI.Stack("pob.section.content",Workspace()).Classes("pob-workspace")
                     .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
             }
@@ -229,7 +225,7 @@ public sealed partial class PobWidget : Widget
         if (detailKind == "choose-slot")
         {
             if(pendingBefore is not null)return ItemComparisonContent();
-            rows.Add(Button("Back to equipment", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
+            rows.Add(Button("Discard item draft", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
             var slots = A(State, "slots"); rows.AddRange(slots.Select((slot,index)=>Button(S(slot,"name"),"replace-slot."+index)));return rows;
         }
         if (detailKind == "skill-options") return SkillOptionsContent();

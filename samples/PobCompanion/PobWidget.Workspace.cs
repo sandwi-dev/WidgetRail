@@ -227,10 +227,10 @@ public sealed partial class PobWidget
         }
         else details.Add(Text("Import a build to see its " + section.ToLowerInvariant() + ".", "detail.empty", "pob-muted"));
         var returnId=entries.Length>0?"pob."+kind+"."+detailId:"pob.tab."+(skills?2:3);
-        var action=skills?"skill-options":"item-paste";
+        var action=skills?"skill-options":pastedItem is null?"item-paste":"item-resume";
         var detailPanel=UI.Stack("pob.detail",
             Text(skills ? "Skill details" : "Item details", "detail.heading", "pob-eyebrow"),
-            UI.Button(skills?"Selected skill options":"Replace from clipboard",action,"pob."+action)
+            UI.Button(skills?"Selected skill options":pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action)
                 .FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),
             UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
             .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
@@ -294,7 +294,7 @@ public sealed partial class PobWidget
         {
             side.RemoveAt(0);
             sidebar=UI.Stack("pob.tree.side",
-                Text("PREVIEW · not saved","tree.preview.heading","pob-eyebrow pob-gold"),
+                Text("PREVIEW · not applied","tree.preview.heading","pob-eyebrow pob-gold"),
                 UI.Button("Apply change","apply","pob.apply").FocusDown("pob.cancel").FocusLeft("pob.map").Classes("pob-button"),
                 UI.Button("Discard","cancel","pob.cancel").FocusUp("pob.apply").FocusLeft("pob.map").Classes("pob-button"),
                 UI.VerticalScroll("pob.tree.preview-details",side.ToArray()).Classes("pob-scroll"))

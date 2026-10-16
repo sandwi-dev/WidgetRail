@@ -22,7 +22,8 @@ public sealed partial class PobWidget
                 var previous=pendingBefore!; var current=result!;
                 Work(async token=>
                 {
-                    token.ThrowIfCancellationRequested();Persist(current);
+                    token.ThrowIfCancellationRequested();
+                    SaveWork(current,new(current.Xml,undo.Prepend(previous.Xml).Take(12).ToArray(),[],ItemDraft:detailKind=="choose-slot"?null:pastedItem));
                     lock(gate)
                     {
                         PushHistory(undo,previous.Xml);redo.Clear();
@@ -40,20 +41,20 @@ public sealed partial class PobWidget
             else if(id=="cancel"&&pendingBefore is not null) Restore(pendingBefore.Xml,clearPreview:true);
             else if(id=="undo" && undo.Count>0) MoveHistory(true);
             else if(id=="redo" && redo.Count>0) MoveHistory(false);
-            else if(id is "paste" or "import" || parts[0]=="saved")
+            else if(parts[0]=="saved"&&parts.Length==2) Work(token=>OpenSavedWorkAsync(parts[1],token),"Opening saved work…");
+            else if(id is "paste" or "import")
             {
                 Work(async token=>
                 {
-                    var input=id=="paste"?readClipboard():parts[0]=="saved"?Path.Combine(dataDirectory,parts[1]+".xml"):action.CommittedText??"";
-                    if(parts[0]=="saved"&&!Guid.TryParseExact(parts[1],"N",out _))throw new IOException("Invalid saved build.");
+                    var input=id=="paste"?readClipboard():action.CommittedText??"";
                     var xml=await BuildDocument.ReadAsync(input,game,token);
                     var loaded=await engine.ExecuteAsync(new{op="load",xml,name="Imported build"},token);
                     var renamed=BuildDocument.VerifySkillPreservation(xml,loaded.Xml);
-                    var newId=parts[0]=="saved"?parts[1]:Guid.NewGuid().ToString("N");
-                    if(parts[0]!="saved")BuildDocument.SaveAtomic(Path.Combine(dataDirectory,newId+".original.xml"),xml);
-                    BuildDocument.SaveAtomic(Path.Combine(dataDirectory,newId+".xml"),loaded.Xml);
-                    BuildDocument.SaveAtomic(Path.Combine(dataDirectory,"selected.txt"),newId);
-                    lock(gate){documentId=newId;result=loaded;pendingBefore=null;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version. Your original export is retained.":"";}
+                    var newId=Guid.NewGuid().ToString("N");
+                    token.ThrowIfCancellationRequested();
+                    BuildDocument.SaveAtomic(Path.Combine(dataDirectory,newId+".original.xml"),xml);
+                    Persist(loaded,newId);
+                    lock(gate){documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version. Your original export is retained.":"";}
                     EnsureBuildName(loaded);
                     await RefreshMapAsync(token);
                 },"Loading and calculating build…");
@@ -62,7 +63,7 @@ public sealed partial class PobWidget
             {
                 var loaded=await engine.ExecuteAsync(new{op="new"},token);var newId=Guid.NewGuid().ToString("N");
                 token.ThrowIfCancellationRequested();Persist(loaded,newId);
-                lock(gate){documentId=newId;result=loaded;pendingBefore=null;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";}
+                lock(gate){documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";}
                 await RefreshMapAsync(token);
             },"Creating build…");
             else if(id=="rename" && documentId is not null) Work(_=>
@@ -84,7 +85,8 @@ public sealed partial class PobWidget
                 int.TryParse(parts[1],out var group)&&group==detailId&&group==inspectedSkillGroup&&int.TryParse(parts[3],out var optionValue))
                 Edit(new{op="skill-option",group,control=parts[2],value=optionValue});
             else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";}
-            else if(id=="back") { detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;pastedItem=null;if(section=="Tree")focusRequestSequence++; }
+            else if(id=="back"&&detailKind=="choose-slot"&&pastedItem is not null) DiscardItemDraft();
+            else if(id=="back") { detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;if(section=="Tree")focusRequestSequence++; }
             else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(Sections,section);section=Sections[(index+(id=="next-section"?1:Sections.Length-1))%Sections.Length];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++; }
             else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++;}
             else if(id=="search") {filter=action.CommittedText??"";passiveReturnKey=null;}
@@ -116,7 +118,8 @@ public sealed partial class PobWidget
                 else if(v.ValueKind==JsonValueKind.String&&action.CommittedText is not null)changed=action.CommittedText;
                 if(changed is not null)Edit(new{op="config",key=S(c,"id"),value=changed});
             }
-            else if(id=="item-paste") Work(_=>{var raw=readClipboard();if(raw.Length>32768)throw new IOException("Item text is too long.");lock(gate){pastedItem=raw;detailKind="choose-slot";}return Task.CompletedTask;},"Reading item…");
+            else if(id=="item-paste") SetItemDraft(null);
+            else if(id=="item-resume"&&pastedItem is not null) {section="Items";detailKind="choose-slot";}
             else if(parts[0]=="replace-slot"&&parts.Length==2&&int.TryParse(parts[1],out var slotIndex)&&slotIndex>=0&&slotIndex<A(State,"slots").Length&&pastedItem is not null)
             {previewSlot=S(A(State,"slots")[slotIndex],"name");Preview(new{op="item",raw=pastedItem,slot=previewSlot});}
             else if(id=="map") Work(OpenMapAsync,"Opening tree map…");
@@ -128,14 +131,24 @@ public sealed partial class PobWidget
     }
     private void Persist(PobResult current,string? targetId=null)
     {
-        targetId??=documentId;
-        if(targetId is null)throw new InvalidOperationException("No working build is selected.");
-        EnsureBuildName(current,targetId);
-        BuildDocument.SaveAtomic(Path.Combine(dataDirectory,targetId+".xml"),current.Xml);
-        BuildDocument.SaveAtomic(Path.Combine(dataDirectory,"selected.txt"),targetId);
+        SaveWork(current,new(current.Xml,[],[]),targetId);
     }
-    private void Preview(object command)=>Work(async token=>{var before=result!;var next=await engine.ExecuteAsync(command,token,result!.Xml);lock(gate){pendingBefore=before;result=next;focusRequestSequence++;}await RefreshMapAsync(token);},"Calculating comparison…");
-    private void Restore(string xml,bool clearPreview)=>Work(async token=>{var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);lock(gate){result=next;if(clearPreview){pendingBefore=null;focusRequestSequence++;}}if(detailKind=="skill-options")await RefreshSkillOptionsAsync(detailId,token);await RefreshMapAsync(token);},"Restoring build…");
+    private void Preview(object command)=>Work(async token=>
+    {
+        var before=result!;var next=await engine.ExecuteAsync(command,token,before.Xml);
+        var pending=new PobPendingChange(next.Xml,detailKind=="node"?"node":detailKind=="choose-slot"?"item":"character",detailId,previewSlot);
+        token.ThrowIfCancellationRequested();SaveWork(before,CurrentWork(before.Xml,pending,pastedItem),refreshXml:false);
+        lock(gate){pendingBefore=before;result=next;focusRequestSequence++;}
+        await RefreshCommittedMapAsync(token);
+    },"Calculating comparison…");
+    private void Restore(string xml,bool clearPreview)=>Work(async token=>
+    {
+        var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);
+        token.ThrowIfCancellationRequested();SaveWork(next,CurrentWork(next.Xml,draft:pastedItem),refreshXml:false);
+        lock(gate){result=next;if(clearPreview){pendingBefore=null;focusRequestSequence++;}}
+        if(detailKind=="skill-options")await RefreshSkillOptionsAsync(detailId,token);
+        await RefreshCommittedMapAsync(token);
+    },"Restoring build…");
 
     private WidgetWebSession? mapSession;
     private string? mapArtworkVersion;
@@ -178,7 +191,7 @@ public sealed partial class PobWidget
         mapSession=session;
         mapArtworkVersion=version;
         _=ReceiveMapAsync(session);
-        lock(gate)detailKind="map";
+        lock(gate)if(detailKind!="node")detailKind="map";
         Invalidate();
         // Page readiness is observed through its message loop before sending data.
     }

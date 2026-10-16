@@ -5,13 +5,20 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
-if(args.Length!=4){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4]!="--work-state-only"){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
 adapter=Environment.GetEnvironmentVariable("POB_ADAPTER")??adapter;
 var results=new List<object>();var failures=0;
 void Check(bool passed,string name){results.Add(new{name,passed});Console.WriteLine((passed?"PASS ":"FAIL ")+name);if(!passed)failures++;}
+if(args.Length==5)
+{
+    var fixture=Directory.EnumerateFiles(fixtures,"*.xml").OrderBy(path=>path,StringComparer.Ordinal).First();
+    var workXml=await BuildDocument.ReadAsync(fixture,game,default);
+    await WorkStateTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    Console.WriteLine(JsonSerializer.Serialize(new{game,passed=results.Count-failures,failed=failures,results}));return failures==0?0:1;
+}
 await BundleTests.RunAsync(Check);
 var tiny=$"<{(game==2?"PathOfBuilding2":"PathOfBuilding")}><Build level=\"1\"/></{(game==2?"PathOfBuilding2":"PathOfBuilding")}>";
 Check(BuildDocument.Decode(BuildDocument.Encode(tiny),game)==tiny,"Share code codec round trip");

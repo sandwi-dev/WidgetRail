@@ -18,11 +18,15 @@ public sealed partial class PobWidget
     {
         if(!Directory.Exists(dataDirectory))return;
         var entries=Directory.EnumerateFiles(dataDirectory,"*.xml")
-            .Where(file=>Guid.TryParseExact(Path.GetFileNameWithoutExtension(file),"N",out _))
-            .Select(file=>new FileInfo(file)).OrderByDescending(file=>file.LastWriteTimeUtc)
-            .Select(file=>
+            .Concat(Directory.EnumerateFiles(dataDirectory,"*.work.json"))
+            .Select(file=>(File:new FileInfo(file),Id:Path.GetFileName(file).Split('.')[0]))
+            .Where(entry=>Guid.TryParseExact(entry.Id,"N",out _))
+            .Where(entry=>entry.File.Name==entry.Id+".xml"||entry.File.Name==entry.Id+".work.json")
+            .GroupBy(entry=>entry.Id).Select(group=>group.OrderByDescending(entry=>entry.File.LastWriteTimeUtc).First())
+            .OrderByDescending(entry=>entry.File.LastWriteTimeUtc)
+            .Select(entry=>
             {
-                var id=Path.GetFileNameWithoutExtension(file.Name);
+                var file=entry.File;var id=entry.Id;
                 var path=Path.Combine(dataDirectory,id+".name.txt");
                 var label=File.Exists(path)&&new FileInfo(path).Length<=1024?File.ReadAllText(path).Trim():"";
                 return (Id:id,Name:label.Length>0?Limit(label,100):"Saved build · "+file.LastWriteTime.ToString("g"));
