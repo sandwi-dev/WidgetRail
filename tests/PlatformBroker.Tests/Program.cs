@@ -99,7 +99,9 @@ var allTests = new (string Name, Func<Task> Run)[]
 
 var runningRegistrationOnly =
     args.Contains("--running-registration-only", StringComparer.Ordinal);
-var tests = args.Contains("--activity-only", StringComparer.Ordinal)
+var tests = args.Contains("--web-sessions-only", StringComparer.Ordinal)
+    ? allTests.Where(test=>test.Name.StartsWith("Web session",StringComparison.Ordinal)).ToArray()
+    : args.Contains("--activity-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name.StartsWith("Widget activity", StringComparison.Ordinal) || test.Name.StartsWith("Widget notifications", StringComparison.Ordinal) || test.Run == CapabilityDomainAuthorityIsSingular || test.Run == CapabilityVocabularyIsClosed).ToArray()
     : args.Contains("--documents-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name.StartsWith("Restricted documents", StringComparison.Ordinal) || test.Name.StartsWith("Provider attribution", StringComparison.Ordinal)).ToArray()

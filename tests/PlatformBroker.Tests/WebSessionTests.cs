@@ -22,6 +22,13 @@ internal static class WebSessionTests
         registry.Publish(new(reference, [payload]));
         var messages = await first.ExecuteAsync(new(WebSessionOperation.ReadMessages) { Session = reference }, default);
         Check(messages.MessagesBase64.Single() == payload, "Messages preserve bounded UTF8 without broker string coercion.");
+        var large=Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("\""+new string('x',WebSessionContract.MaximumMessageBytes-2)+"\""));
+        registry.Publish(new(reference,[large,large]));
+        registry.Publish(new(reference,[large]));
+        var firstBatch=await first.ExecuteAsync(new(WebSessionOperation.ReadMessages){Session=reference},default);
+        var secondBatch=await first.ExecuteAsync(new(WebSessionOperation.ReadMessages){Session=reference},default);
+        Check(firstBatch.MessagesBase64.Count==2&&secondBatch.MessagesBase64.Count==1,"Large messages drain across bounded batches without loss.");
+        Check(JsonSerializer.SerializeToUtf8Bytes(firstBatch).Length<200*1024,"Largest reply reserves broker envelope space.");
         var pending = first.ExecuteAsync(new(WebSessionOperation.PostMessage) { Session = reference, MessageBase64 = payload }, default).AsTask();
         var messageWork = (await registry.TakeAsync(default)).Work.Single();
         first.Dispose();
@@ -53,6 +60,8 @@ internal static class WebSessionTests
             !WebSessionContract.IsNetworkOrigin("https://example.com/path") && WebSessionContract.IsNetworkOrigin("https://*.example.com"), "Network origin rules are bounded and explicit.");
         Check(WebSessionContract.IsLocalResource("http://127.0.0.1:23456/media") &&
             !WebSessionContract.IsLocalResource("http://localhost:23456/media") && !WebSessionContract.IsLocalResource("file:///secret"), "Local resources require an exact loopback URL.");
+        Check(WebSessionSource.Package("web/index.html", [new() { Path="web/index.html", ContentType="text/html" },
+            new() { Path="web/art.webp", ContentType="image/webp" }]).IsWellFormed(), "Transparent WebP artwork is supported in packaged sessions.");
         return Task.CompletedTask;
     }
 

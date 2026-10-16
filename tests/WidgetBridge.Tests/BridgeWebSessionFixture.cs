@@ -26,6 +26,7 @@ internal static class BridgeWebSessionFixture
                 return {sequence:value.sequence,receivedAt:performance.timeOrigin+performance.now()};
             });
             WidgetRailWebSession.handle('increment', value => ({count:count+=value.amount}));
+            WidgetRailWebSession.handle('echo', value => value);
             WidgetRailWebSession.handle('wait', async (_, {signal}) => {
                 await new Promise((resolve,reject)=>signal.addEventListener('abort',()=>{ window.wasCanceled=true; reject(new Error('cancel')); },{once:true}));
             });
@@ -60,7 +61,7 @@ internal sealed class HostedSessionFixtureWidget : Widget
     internal HostedSessionFixtureWidget() => status = CreateModel("closed");
     public override WidgetView Render() => new(UI.Stack("root",
         UI.Text(status.Value, "status"), UI.Row("commands",
-            UI.Button("Open", "open", "open"), UI.Button("Increment", "increment", "increment"),
+            UI.Button("Open", "open", "open"), UI.Button("Increment", "increment", "increment"), UI.Button("Large message", "large", "large"),
             UI.Button("Toggle view", "view", "view"), UI.Button("Cancel request", "cancel", "cancel"), UI.Button("Close", "close", "close"), UI.Button("Measure", "measure", "measure")),
         session is { } active && visible ? UI.WebView(active.Reference, "page") : UI.Text("Background session", "hidden")), "open");
     public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken token = default)
@@ -124,6 +125,12 @@ internal sealed class HostedSessionFixtureWidget : Widget
         {
             var reply = await page.RequestAsync<Counter, Counter>("increment", new(1,0), token);
             status.Update(_ => "count:" + reply.Count);
+        }
+        if (action.ActionId == "large" && session is { } large)
+        {
+            var content=new string('x',40000)+" 🎮";
+            var reply=await large.RequestAsync<string,string>("echo",content,token);
+            status.Update(_=>reply==content?"large-ok":"large-corrupt");
         }
         if (action.ActionId == "cancel" && session is { } waiting)
         {

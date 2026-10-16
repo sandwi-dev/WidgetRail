@@ -25,7 +25,7 @@ public sealed record WebSessionSource
             : WebSessionContract.IsAssetPath(Location) && Resources.Count is > 0 and <= 16 &&
               Resources.All(r => r is not null && WebSessionContract.IsAssetPath(r.Path) &&
                   r.ContentType is "text/html" or "text/javascript" or "application/javascript" or "text/css" or
-                      "application/json" or "image/png" or "image/jpeg" or "image/svg+xml" or "font/woff2") &&
+                      "application/json" or "image/png" or "image/jpeg" or "image/webp" or "image/svg+xml" or "font/woff2") &&
               Resources.Select(r => r.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() == Resources.Count &&
               Resources.Any(r => r.Path == Location && r.ContentType == "text/html") &&
               NetworkOrigins.Count <= 24 && NetworkOrigins.All(WebSessionContract.IsNetworkOrigin));
@@ -66,7 +66,10 @@ public sealed record WebSessionReply
 
 public static class WebSessionContract
 {
-    public const int MaximumMessageBytes = 16 * 1024;
+    public const int MaximumMessageBytes = 64 * 1024;
+    // Two base64 messages plus their envelopes fit the 256 KiB broker frame.
+    public const int MaximumMessagesPerBatch = 2;
+    // Preserve small-event burst tolerance; worst-case decoded storage is 4 MiB.
     public const int MaximumQueuedMessages = 64;
     public static bool IsKey(string? key) => key is { Length: > 0 and <= 64 } &&
         key.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_');

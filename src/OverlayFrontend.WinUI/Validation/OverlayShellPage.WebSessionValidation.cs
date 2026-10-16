@@ -21,6 +21,8 @@ internal sealed partial class OverlayShellPage
                 Check(browserOwner!.ResidentCount == 1, "Authenticated worker opens a packaged session without a view");
                 await Action("increment"); await Status("count:1");
                 Check(true, "Typed request/reply crosses worker, broker, bridge and real WebView");
+                await Action("large");await Status("large-ok");
+                Check(true,"40 KiB Unicode request/reply survives the complete worker-to-WebView path");
                 if (Environment.GetCommandLineArgs().Contains("--measure-session-latency"))
                 {
                     await Action("measure");

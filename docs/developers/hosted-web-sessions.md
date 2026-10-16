@@ -74,7 +74,19 @@ are discarded. Navigation invalidates pending requests. `PostMessageAsync` sends
 application data, handled through the ordinary `chrome.webview` message listener.
 Unsolicited page messages must be consumed; overflowing the 64-message queue faults
 the session rather than silently dropping application events. JSON is limited to
-16 KiB and depth 16. The `widgetRail` envelope namespace is reserved for the library.
+64 KiB of UTF-8 and depth 16. The `widgetRail` envelope namespace is reserved for the library.
+The host transfers at most two messages per broker batch. Each queue can hold at
+most 4 MiB of decoded JSON (plus encoding/object overhead); small-event burst
+tolerance is unchanged. Packaged image resources also support transparent WebP.
+
+For larger collections, use `WebSessionMessageBatcher.Create(items, chunk =>
+JsonSerializer.SerializeToElement(new { type = "items", items = chunk }))` and send
+each returned message with `PostMessageAsync`. The SDK measures the complete JSON
+envelope, including escaping and Unicode, preserves order, and rejects an oversized
+individual item. Use application revisions or begin/end markers when several
+messages must update a page atomically. This helper is explicit collection batching,
+not automatic fragmentation of arbitrary messages. Larger messages require an
+updated host and the matching packaged `WebSessionRuntime.js`.
 
 ## Controller zoom in packaged pages
 

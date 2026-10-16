@@ -119,7 +119,7 @@ public sealed class WidgetWebSession : IAsyncDisposable
             {
                 var reply = await client.InvokeAsync(WidgetWebSessionCapabilities.Command,
                     new(WebSessionOperation.ReadMessages) { Session = Reference }, lifetime.Token).ConfigureAwait(false);
-                if (reply?.MessagesBase64 is not { Count: <= 8 }) throw new WidgetCapabilityException("malformed_response", "Invalid web session messages.");
+                if (reply?.MessagesBase64 is not { Count: <= WebSessionContract.MaximumMessagesPerBatch }) throw new WidgetCapabilityException("malformed_response", "Invalid web session messages.");
                 foreach (var encoded in reply.MessagesBase64)
                 {
                     using var document = JsonDocument.Parse(WebSessionContract.DecodeMessage(encoded));

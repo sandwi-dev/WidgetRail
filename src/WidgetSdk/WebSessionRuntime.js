@@ -6,7 +6,7 @@
   const encoder = new TextEncoder();
   const send = value => {
     const json = JSON.stringify(value);
-    if (encoder.encode(json).length > 16384) throw new Error('Web session message exceeds its bound.');
+    if (encoder.encode(json).length > 65536) throw new Error('Web session message exceeds its bound.');
     chrome.webview.postMessage(value);
   };
   const api = Object.freeze({

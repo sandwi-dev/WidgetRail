@@ -120,7 +120,7 @@ internal sealed partial class BrowserOwner
             while (await surface.HostedMessages.WaitToReadAsync(lifetime.Token))
             {
                 var messages = new List<string>();
-                while (messages.Count < 8 && surface.HostedMessages.TryRead(out var message)) messages.Add(message);
+                while (messages.Count < WebSessionContract.MaximumMessagesPerBatch && surface.HostedMessages.TryRead(out var message)) messages.Add(message);
                 await session.PublishWebSessionMessagesAsync(new(reference, messages), lifetime.Token);
             }
         }

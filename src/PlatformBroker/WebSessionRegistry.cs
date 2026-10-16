@@ -115,7 +115,7 @@ public sealed class WebSessionRegistry
                 try { await session.Messages.Reader.WaitToReadAsync(timeout.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(); }
                 var result = new List<string>();
-                while (result.Count < 8 && session.Messages.Reader.TryRead(out var message)) result.Add(message);
+                while (result.Count < WebSessionContract.MaximumMessagesPerBatch && session.Messages.Reader.TryRead(out var message)) result.Add(message);
                 lock (gate) if (!sessions.ContainsKey(session.Reference.Id)) throw Failure("session_closed");
                 return new() { MessagesBase64 = result };
             }
@@ -182,7 +182,7 @@ public sealed class WebSessionRegistry
     }
     public void Publish(HostWebSessionMessages message)
     {
-        if (message.Session?.IsWellFormed() != true || message.MessagesBase64 is not { Count: <= 8 }) throw Failure("invalid_payload");
+        if (message.Session?.IsWellFormed() != true || message.MessagesBase64 is not { Count: <= WebSessionContract.MaximumMessagesPerBatch }) throw Failure("invalid_payload");
         foreach (var value in message.MessagesBase64)
             try { _ = WebSessionContract.DecodeMessage(value); } catch (ArgumentException) { throw Failure("invalid_payload"); }
         lock (gate)
