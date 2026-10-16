@@ -118,7 +118,7 @@ $required = @(
     'payload\PlayniteLibraryWidget.dll',
     'payload\WidgetApplicationRuntime.dll',
     # Shared host-service client protocol used by WidgetApplicationRuntime.
-    'payload\PlatformBroker.dll',
+    'payload\WidgetBrokerTransport.dll',
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
     'payload\Microsoft.Windows.SDK.NET.dll',
@@ -129,7 +129,7 @@ if ($missing.Count -ne 0) {
     throw "Staged Playnite Library application is incomplete: [$($missing -join ', ')]."
 }
 $forbidden = @($stagedFiles | Where-Object {
-    $_ -match '(^|\\)(WindowsAppLibraryProvider|PlatformSettings)\.dll$' -or
+    $_ -match '(^|\\)(WindowsAppLibraryProvider|PlatformSettings|PlatformBroker)\.dll$' -or
     $_ -match '\.(pdb|xml)$'
 })
 if ($forbidden.Count -ne 0) {
