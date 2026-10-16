@@ -8,6 +8,9 @@ text { color: var(--text); text-align: start; }
 .pob-eyebrow { color: var(--text-muted); font-size: 11px; font-weight: 600; }
 .pob-toolbar { gap: 8px; align: center; }
 .pob-buildtools { gap: 6px; }
+.pob-field { gap: 6px; }
+.pob-library-detail { gap: 14px; }
+.wrail-modal { width: 600px; height: 300px; }
 .pob-button.pob-history-button { min-height: 32px; padding: 5px 12px; }
 .pob-history-button:disabled { opacity: 0.45; }
 .pob-loadout { max-width: 280px; }

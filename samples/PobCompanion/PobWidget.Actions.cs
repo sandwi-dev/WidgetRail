@@ -15,6 +15,18 @@ public sealed partial class PobWidget
             if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
             var id=action.ActionId; var parts=id.Split('.');
+            if(pendingImport is {} importing)
+            {
+                if(id=="import-cancel"){pendingImport=null;Invalidate();}
+                else if(id=="import-confirm"){pendingImport=null;ReplaceImportedBuild(importing);}
+                return ValueTask.CompletedTask;
+            }
+            if(deleteBuildId is {} deleting)
+            {
+                if(id=="delete-cancel"){deleteBuildId=null;Invalidate();}
+                else if(id=="delete-confirm"){deleteBuildId=null;DeleteBuild(deleting);}
+                return ValueTask.CompletedTask;
+            }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
             if(id is not "undo" and not "redo")historyFocusRequested=false;
             if(id=="apply"&&pendingBefore is not null)
@@ -42,41 +54,26 @@ public sealed partial class PobWidget
             else if(id=="undo" && undo.Count>0) MoveHistory(true);
             else if(id=="redo" && redo.Count>0) MoveHistory(false);
             else if(parts[0]=="saved"&&parts.Length==2) Work(token=>OpenSavedWorkAsync(parts[1],token),"Opening saved work…");
-            else if(id is "paste" or "import")
-            {
-                Work(async token=>
-                {
-                    var input=id=="paste"?readClipboard():action.CommittedText??"";
-                    var xml=await BuildDocument.ReadAsync(input,game,token);
-                    var loaded=await engine.ExecuteAsync(new{op="load",xml,name="Imported build"},token);
-                    var renamed=BuildDocument.VerifySkillPreservation(xml,loaded.Xml);
-                    var newId=Guid.NewGuid().ToString("N");
-                    token.ThrowIfCancellationRequested();
-                    BuildDocument.SaveAtomic(Path.Combine(dataDirectory,newId+".original.xml"),xml);
-                    Persist(loaded,newId);
-                    lock(gate){documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version. Your original export is retained.":"";}
-                    EnsureBuildName(loaded);
-                    await RefreshMapAsync(token);
-                },"Loading and calculating build…");
-            }
+            else if(id is "paste" or "import") ImportBuild(id=="paste"?null:action.CommittedText??"");
+            else if(parts[0]=="import-mode"&&parts.Length==2&&parts[1] is "new" or "replace")replaceOnImport=parts[1]=="replace";
             else if(id=="new") Work(async token=>
             {
                 var loaded=await engine.ExecuteAsync(new{op="new"},token);var newId=Guid.NewGuid().ToString("N");
                 token.ThrowIfCancellationRequested();Persist(loaded,newId);
-                lock(gate){documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";}
+                lock(gate){documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;recoveryReadOnly=false;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";}
                 await RefreshMapAsync(token);
             },"Creating build…");
-            else if(id=="rename" && documentId is not null) Work(_=>
-            {
-                var name=(action.CommittedText??"").Trim();
-                if(name.Length is <1 or >100 || name.Any(char.IsControl))throw new IOException("Use a build name between 1 and 100 characters.");
-                BuildDocument.SaveAtomic(Path.Combine(dataDirectory,documentId+".name.txt"),name);
-                return Task.CompletedTask;
-            },"Renaming build…");
+            else if(id=="rename" && documentId is not null) RenameBuild(documentId,action.CommittedText??"");
+            else if(parts[0]=="library-select"&&parts.Length==2&&savedBuilds.Any(b=>b.Id==parts[1])){librarySelection=parts[1];}
+            else if(id=="library-search")librarySearch=action.CommittedText??"";
+            else if(parts[0]=="library-sort"&&parts.Length==2&&parts[1] is "recent" or "name")librarySort=parts[1];
+            else if(id=="library-rename"&&librarySelection is {} rename)RenameBuild(rename,action.CommittedText??"");
+            else if(id=="library-duplicate"&&librarySelection is {} copy)DuplicateBuild(copy);
+            else if(id=="library-delete"&&librarySelection is {} remove)deleteBuildId=remove;
             else if(id=="export") Work(_=>{ClipboardText.Write(BuildDocument.Encode(result!.Xml));return Task.CompletedTask;},"Copying build…");
             else if(id=="export-file") Work(_=>{BuildDocument.SaveAtomic(Path.Combine(dataDirectory,documentId+".export.xml"),result!.Xml);return Task.CompletedTask;},"Exporting build…");
             else if(id=="menu") { detailKind="menu"; }
-            else if(id=="library") { detailKind="library"; }
+            else if(id=="library") { detailKind="library";librarySelection=documentId; }
             else if(id=="custom") { detailKind="custom"; }
             else if(id=="skill-options" && detailKind=="skill") OpenSkillOptions();
             else if(parts[0]=="main-group"&&parts.Length==2&&int.TryParse(parts[1],out var mainGroup)&&A(State,"skills").Any(s=>I(s,"id")==mainGroup))

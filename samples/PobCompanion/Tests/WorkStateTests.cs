@@ -29,7 +29,7 @@ internal static class WorkStateTests
             WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().Build());
             await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);
             await Settled();
-            if(!Has("pob.section"))throw new IOException("Saved build did not open: "+string.Join(" ",Nodes(Snapshot().Root).Select(n=>n.Text)));
+            if(!Has("pob.section")&&!Has("pob.build-menu"))throw new IOException("Saved build did not open: "+string.Join(" ",Nodes(Snapshot().Root).Select(n=>n.Text)));
         }
         async Task Close()
         {
@@ -127,7 +127,7 @@ internal static class WorkStateTests
         finally {if(widget is not null)await WidgetTestHost.DestroyAsync(widget);if(engine is not null)await engine.DisposeAsync();}
     }
 
-    private static bool SameBuild(string first,string second)
+    internal static bool SameBuild(string first,string second)
     {
         // Lua table iteration changes XML map order between processes. Preserve
         // every value and ordered list (including gems, skills and loadouts),

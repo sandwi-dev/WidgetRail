@@ -18,7 +18,7 @@ internal static class PobWorkStore
         return Path.Combine(directory, id + ".work.json");
     }
 
-    internal static PobWorkState? Read(string directory, string id, int game)
+    private static Envelope? ReadEnvelope(string directory, string id, int game)
     {
         var path = PathFor(directory, id);
         if (!File.Exists(path)) return null;
@@ -27,6 +27,42 @@ internal static class PobWorkStore
         var envelope = JsonSerializer.Deserialize<Envelope>(stream);
         if (envelope is not { Version: 1 } || envelope.Game != game || envelope.Work is null)
             throw new IOException("This saved work format is not supported. Your saved work has been retained.");
+        return envelope;
+    }
+
+    internal static bool Exists(string directory, string id) => File.Exists(PathFor(directory,id));
+
+    internal static string? ReadCommitted(string directory, string id, int game)
+    {
+        var path=PathFor(directory,id);
+        if(!File.Exists(path))return null;
+        using var stream=File.OpenRead(path);
+        if(stream.Length>MaximumBytes)throw new IOException("Saved work is too large to reopen.");
+        using var document=JsonDocument.Parse(stream);
+        var root=document.RootElement;
+        // History and preview may have invalid shapes as well as invalid XML.
+        // Recover the committed property without deserializing those fields.
+        if(root.ValueKind!=JsonValueKind.Object ||
+            !root.TryGetProperty("Version",out var version)||version.ValueKind!=JsonValueKind.Number||!version.TryGetInt32(out var v)||v!=1||
+            !root.TryGetProperty("Game",out var savedGame)||savedGame.ValueKind!=JsonValueKind.Number||!savedGame.TryGetInt32(out var g)||g!=game||
+            !root.TryGetProperty("Work",out var work)||work.ValueKind!=JsonValueKind.Object||
+            !work.TryGetProperty("CommittedXml",out var committed)||committed.ValueKind!=JsonValueKind.String)
+            throw new IOException("No supported committed build in recovery record.");
+        return BuildDocument.Decode(committed.GetString()!,game);
+    }
+
+    internal static string PreserveRecovery(string directory, string id)
+    {
+        var source=PathFor(directory,id);
+        var preserved=Path.Combine(directory,id+".recovery."+DateTime.UtcNow.ToString("yyyyMMddTHHmmss")+"."+Guid.NewGuid().ToString("N")+".json");
+        File.Copy(source,preserved,overwrite:false);
+        return preserved;
+    }
+
+    internal static PobWorkState? Read(string directory, string id, int game)
+    {
+        var envelope=ReadEnvelope(directory,id,game);
+        if(envelope is null)return null;
         var work = envelope.Work;
         if (work.Undo is null || work.Redo is null || work.Undo.Length + work.Redo.Length > 12 ||
             work.ItemDraft?.Length > 32768 || work.Pending is { Kind: not ("node" or "item" or "character") } ||

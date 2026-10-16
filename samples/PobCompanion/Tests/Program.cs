@@ -5,7 +5,7 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4]!="--work-state-only"){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -16,7 +16,8 @@ if(args.Length==5)
 {
     var fixture=Directory.EnumerateFiles(fixtures,"*.xml").OrderBy(path=>path,StringComparer.Ordinal).First();
     var workXml=await BuildDocument.ReadAsync(fixture,game,default);
-    await WorkStateTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    if(args[4]=="--management-only")await ManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else await WorkStateTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     Console.WriteLine(JsonSerializer.Serialize(new{game,passed=results.Count-failures,failed=failures,results}));return failures==0?0:1;
 }
 await BundleTests.RunAsync(Check);
@@ -440,8 +441,8 @@ if(firstXml is not null)
     await Action("new");
     var newId=File.ReadAllText(Path.Combine(data,"selected.txt"));
     Check(newId!=id && File.ReadAllText(working)==previousWorking,"New build preserves the previous working file");
-    await Action("menu");
     Check(Nodes(Snapshot(widget,106).Root).Single(n=>n.Id=="pob.undo").IsDisabled==true && Nodes(Snapshot(widget,106).Root).Single(n=>n.Id=="pob.redo").IsDisabled==true,"New build does not inherit another build's undo history");
+    await Action("menu");
     await Action("import",working);
     var importedId=File.ReadAllText(Path.Combine(data,"selected.txt"));
     Check(XNode.DeepEquals(XDocument.Parse(previousWorking),XDocument.Parse(File.ReadAllText(Path.Combine(data,importedId+".original.xml")))),"Import retains the original separately from its working copy");

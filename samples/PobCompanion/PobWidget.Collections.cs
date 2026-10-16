@@ -5,7 +5,7 @@ namespace WidgetRail.Samples.PobCompanion;
 
 public sealed partial class PobWidget
 {
-    private sealed record ListEntry(string Key,string Label,string Action);
+    private sealed record ListEntry(string Key,string Label,string Action,bool Selected=false);
     private sealed record ListQuery(string Context,ListEntry[] Entries);
     private ListQuery passiveQuery=new("",[]),libraryQuery=new("",[]);
     private WidgetIndexedCollection<ListQuery,ListEntry>? passives,library;
@@ -21,7 +21,8 @@ public sealed partial class PobWidget
                 return ValueTask.FromResult<IReadOnlyList<ListEntry>>(query.Entries.Skip(start).Take(count).ToArray());
             },
             ItemKey=entry=>new(entry.Key),
-            RenderItem=(_,entry,context)=>UI.Button(entry.Label,"open",context.Id("entry")).Classes("pob-button"),
+            RenderItem=(_,entry,context)=>isPassive?UI.Button(entry.Label,"open",context.Id("entry")).Classes("pob-button"):
+                UI.Button(entry.Label,"open",context.Id("entry")).Selected(entry.Selected).FocusRight("pob.library.detail").Classes("pob-button"),
             OnAction=(query,entry,action,token)=>
             {
                 lock(gate)
@@ -53,17 +54,24 @@ public sealed partial class PobWidget
     private WidgetElement LibraryWorkspace()
     {
         library??=CreateList("pob.saved-source",false);
-        var entries=savedBuilds.Select(b=>new ListEntry(b.Id,b.Name+(b.Id==documentId?" · Current":""),"saved."+b.Id)).ToArray();
+        var builds=savedBuilds.Where(b=>b.Name.Contains(librarySearch,StringComparison.OrdinalIgnoreCase));
+        if(librarySort=="name")builds=builds.OrderBy(b=>b.Name,StringComparer.OrdinalIgnoreCase);
+        var visible=builds.ToArray();
+        if(!visible.Any(b=>b.Id==librarySelection))librarySelection=visible.FirstOrDefault().Id;
+        var entries=visible.Select(b=>new ListEntry(b.Id,b.Name+(b.Id==documentId?" · Current":"")+(b.Id==librarySelection?" · Selected":""),"library-select."+b.Id,b.Id==librarySelection)).ToArray();
         if(!libraryQuery.Entries.SequenceEqual(entries))
         {
             var same=libraryQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));
             libraryQuery=new("saved",entries);
             if(same)library.UpdateContent(libraryQuery);else library.PublishQuery(libraryQuery,entries.Length);
         }
-        return UI.Stack("pob.library.workspace",UI.Button("Back","back","pob.back").FocusDown("pob.saved-builds").Classes("pob-button"),
-            Text($"Saved builds · {entries.Length}","library.heading","pob-heading"),
-            UI.CollectionList("pob.saved-builds",library,64,"Saved builds").Classes("pob-scroll"))
-            .Classes("pob-workspace","pob-panel");
+        return UI.Stack("pob.library.workspace",ManagementHeader($"Saved builds · {entries.Length}"),
+            UI.Grid("pob.library.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
+                UI.TextEntry(librarySearch,"Search saved builds","library-search","pob.library.search").Classes("pob-input"),
+                UI.Select("Sort",[new("recent","Recent","library-sort.recent",librarySort=="recent"),new("name","Name","library-sort.name",librarySort=="name")],"pob.library.sort").Classes("pob-select").InGrid(column:1)).Spacing(0,12),
+            Split("library",UI.CollectionList("pob.saved-builds",library,64,"Saved builds").Classes("pob-scroll"),
+                UI.VerticalScroll("pob.library.detail.scroll",LibraryDetails()).Classes("pob-scroll"),1,1))
+            .Classes("pob-workspace");
     }
 
     private FocusGroupEntryRequest? ContentFocusRequest()

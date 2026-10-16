@@ -138,17 +138,21 @@ public sealed partial class PobWidget
         }
         var grid = UI.Grid("pob.statgrid", Enumerable.Range(0, (cards.Count + 1) / 2).Select(_ => GridTrack.Auto()).ToArray(), [GridTrack.Star(), GridTrack.Star()], cards.ToArray()).Spacing(12, 12);
         var notes = new List<WidgetElement> { Text(detailKind == "stat" ? StatLabel(statDetail) : "Calculation setup", "inspector.title", "pob-heading") };
-        var skills=A(State,"skills");
-        if(skills.Length>0)notes.Add(UI.Select("Main skill group",skills.Select(s=>new SelectOption("group"+I(s,"id"),S(s,"title"),"main-group."+I(s,"id"),B(s,"main"))).ToArray(),"pob.main-group")
-            .Disabled(pendingBefore is not null).Classes("pob-select"));
-        if(!string.IsNullOrWhiteSpace(S(State,"mainSkillDisabledReason")))
-            notes.Add(Text(S(State,"mainSkill")+": "+S(State,"mainSkillDisabledReason"),"main-skill.warning","pob-life"));
-        else if(S(State,"mainSkillDamageKind") is "buff" or "minion")
+        var showSkillContext=detailKind!="stat"||statDetail is "CombinedDPS" or "TotalDPS";
+        if(showSkillContext)
         {
-            notes.Add(Text(S(State,"mainSkillDamageKind")=="buff"?"This selection supplies a buff rather than direct damage. Select an attack or a damaging component to inspect its damage.":"This is a minion skill. Inspect the Minions statistics for its damage.","main-skill.explanation","pob-muted"));
-            if(S(State,"mainSkillDescription").Length>0)AddFormatted(notes,State,"mainSkillDescription","mainSkillDescriptionRuns","main-skill.description",emphasizeStats:true);
+            var skills=A(State,"skills");
+            if(skills.Length>0)notes.Add(UI.Select("Main skill group",skills.Select(s=>new SelectOption("group"+I(s,"id"),S(s,"title"),"main-group."+I(s,"id"),B(s,"main"))).ToArray(),"pob.main-group")
+                .Disabled(pendingBefore is not null).Classes("pob-select"));
+            if(!string.IsNullOrWhiteSpace(S(State,"mainSkillDisabledReason")))
+                notes.Add(Text(S(State,"mainSkill")+": "+S(State,"mainSkillDisabledReason"),"main-skill.warning","pob-life"));
+            else if(S(State,"mainSkillDamageKind") is "buff" or "minion")
+            {
+                notes.Add(Text(S(State,"mainSkillDamageKind")=="buff"?"This selection supplies a buff rather than direct damage. Select an attack or a damaging component to inspect its damage.":"This is a minion skill. Inspect the Minions statistics for its damage.","main-skill.explanation","pob-muted"));
+                if(S(State,"mainSkillDescription").Length>0)AddFormatted(notes,State,"mainSkillDescription","mainSkillDescriptionRuns","main-skill.description",emphasizeStats:true);
+            }
         }
-        if(I(State,"fullDpsIncludedGroups")==0)
+        if((detailKind!="stat"||statDetail=="FullDPS")&&I(State,"fullDpsIncludedGroups")==0)
             notes.Add(Text("Full DPS is not configured. Include groups from Skills to calculate their combined total.","full-dps.explanation","pob-muted"));
         if (detailKind == "stat")
         {

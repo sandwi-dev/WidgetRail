@@ -47,7 +47,7 @@ public sealed partial class PobWidget : Widget
     private static JsonElement[] A(JsonElement e, string key) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().ToArray() : [];
     private static string Limit(string text, int length = 3000) => text.Length <= length ? text : text[..length] + "…";
     private static WidgetElement Text(string text, string id, string css = "pob-text") => UI.Text(Limit(text), "pob." + id).Classes(css.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-    private static WidgetElement Button(string text, string action, string? id = null) => UI.Button(Limit(text, 180), action, "pob." + (id ?? action)).Classes("pob-button");
+    private static ButtonElement Button(string text, string action, string? id = null) => UI.Button(Limit(text, 180), action, "pob." + (id ?? action)).Classes("pob-button");
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
@@ -145,12 +145,17 @@ public sealed partial class PobWidget : Widget
             var children = new List<WidgetElement>();
             if (result is null && detailKind=="library")
                 children.Add(LibraryWorkspace());
+            else if(ManagementView&&result is not null)
+            {
+                if(pendingBefore is not null)children.Add(UI.Row("pob.preview",Text("PREVIEW · not applied","preview.label","pob-eyebrow pob-gold"),Button("Apply change","apply"),Button("Discard","cancel")).Classes("pob-preview"));
+                children.Add(detailKind=="library"?LibraryWorkspace():BuildMenu());
+            }
             else if (result is null)
             {
                 children.Add(Text($"PoE {game} Build Companion", "title", "pob-title"));
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
                 children.Add(Button("Paste build from clipboard", "paste"));
-                children.Add(UI.TextEntry("", "Build link or XML file path", "import", "pob.import").Classes("pob-input"));
+                children.Add(ImportField());
                 children.Add(Button("Create a new build", "new"));
                 children.Add(Text("Calculations run locally. Imported originals are kept separately from your working copies. Not affiliated with Grinding Gear Games.", "notice", "pob-muted"));
                 AddLibrary(children);
@@ -166,21 +171,22 @@ public sealed partial class PobWidget : Widget
                     .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
-            var initial = detailKind=="library" ? "pob.back" : result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
+            var initial = detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
             var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").RememberChildFocus(initial);
             if (busy) root = root.Shortcut(ControllerButton.B, "cancel-operation");
             else if(result is null&&detailKind=="library")root=root.Shortcut(ControllerButton.B,"back");
             if (result is not null)
             {
-                root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
+                if(!ManagementView)root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
                 if (!busy && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
             }
-            return new(WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
-                Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = section == "Tree" ? 1320 : 1180, PreferredHeight = section == "Tree" ? 900 : 820, MinimumWidth = 820, MinimumHeight = 600 })
+            var view=new WidgetView(WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
+                Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = ManagementView?(detailKind=="library"?1040:840):section == "Tree" ? 1320 : 1180, PreferredHeight = ManagementView?(detailKind=="library"&&savedBuilds.Length<=5?680:800):section == "Tree" ? 900 : 820, MinimumWidth = ManagementView?680:820, MinimumHeight = 600 })
             {
                 FocusGroupEntryRequest = ContentFocusRequest(),
             };
+            return WithBuildConfirmation(view);
         }
     }
 
@@ -203,24 +209,6 @@ public sealed partial class PobWidget : Widget
     private List<WidgetElement> Content()
     {
         var rows = new List<WidgetElement>();
-        if (detailKind == "menu")
-        {
-            rows.Add(Button("Back", "back"));
-            rows.Add(UI.TextEntry(BuildName(), "Build name", "rename", "pob.rename").Classes("pob-input"));
-            rows.Add(Button("Paste another build", "paste"));
-            rows.Add(UI.TextEntry("", "Build link or XML file path", "import", "pob.import").Classes("pob-input"));
-            rows.Add(Button("Copy PoB share code", "export"));
-            rows.Add(Button("Save XML beside working copy", "export-file"));
-            rows.Add(UI.TextEntry(S(State, "level"), "Character level", "level", "pob.level").Classes("pob-input"));
-            foreach (var field in new[] { "classes", "ascendancies" })
-            {
-                var kind = field == "classes" ? "class" : "ascendancy";
-                var options = A(State, field);
-                if (options.Length > 0) rows.Add(UI.Select(kind,
-                    options.Select(o => new SelectOption(kind + I(o,"id"), S(o,"title"), kind + "." + I(o,"id"), B(o,"active"))).ToArray(), "pob." + kind).Classes("pob-select"));
-            }
-            AddLibrary(rows); return rows;
-        }
         if (detailKind == "custom") { rows.Add(Button("Back to conditions", "back")); AddReading(rows, S(State, "customMods", "No custom modifiers in this configuration."), "custom"); return rows; }
         if (detailKind == "choose-slot")
         {
