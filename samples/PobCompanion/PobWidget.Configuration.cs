@@ -33,15 +33,22 @@ public sealed partial class PobWidget
         navigation.Add(Text("Search all sections","config.search-label","pob-field-label"));
         navigation.Add(UI.TextEntry(filter,"Name or description","search","pob.search",256).Classes("pob-input"));
         if(searching)navigation.Add(Button("Clear search","config-clear-search"));
-        navigation.Add(Text("Sections","config.sections","pob-heading"));
+        var categories=new List<WidgetElement>{Text("Sections","config.sections","pob-heading")};
         for(var i=0;i<sections.Length;i++)
         {
             var category=UI.Button(sections[i],"config-section."+i,"pob.config.category."+i)
                 .Selected(!searching&&sections[i]==configSection).Classes("pob-category");
             if(firstId is not null)category=category.FocusRight(controlsId);
-            navigation.Add(category);
+            categories.Add(category);
         }
-        navigation.Add(UI.Switch("Show explanations",configHelp,"config-help","pob.config.help").Classes("pob-toggle"));
+        var quick=NeedsQuickControls(sections.Length);
+        ContainerElement categoryList=UI.VerticalScroll("pob.config.categories",categories.ToArray()).Classes("pob-scroll");
+        if(sections.Length>0)categoryList=QuickControls(categoryList,"pob.config.category.0","pob.config.tools","Search / set",quick);
+        var sidebar=UI.Stack("pob.config.navigation",
+            QuickControls(UI.Stack("pob.config.tools",navigation.ToArray()).Classes("pob-buildtools"),"pob.search","pob.config.footer","Explanations",quick),
+            categoryList,
+            QuickControls(UI.Stack("pob.config.footer",UI.Switch("Show explanations",configHelp,"config-help","pob.config.help").Classes("pob-toggle")),
+                "pob.config.help","pob.config.categories","Sections",quick)).Classes("pob-panel","pob-tree-main");
         var controls=new List<WidgetElement>{Text(searching?"Search results":configSection,"config.title","pob-heading"),
             Text(searching?$"{matching.Length} matching settings across all sections":"Changes update the build immediately. Use Undo to reverse them.","config.summary","pob-muted")};
         string? previousGroup=null;
@@ -68,7 +75,7 @@ public sealed partial class PobWidget
         if(matching.Length==0)controls.Add(Text("No matching settings. Try another search.","config.empty","pob-muted"));
         var right=UI.VerticalScroll(controlsId,controls.ToArray()).Classes("pob-scroll","pob-panel");
         if(firstId is not null)right=right.RememberChildFocus(firstId);
-        return Split("configuration",Panel("config.navigation",navigation),right,1,2.6);
+        return Split("configuration",sidebar,right,1,2.6);
     }
 
     private WidgetElement NotesWorkspace()

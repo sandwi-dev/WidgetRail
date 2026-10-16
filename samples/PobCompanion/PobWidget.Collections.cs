@@ -66,10 +66,12 @@ public sealed partial class PobWidget
             if(same)library.UpdateContent(libraryQuery);else library.PublishQuery(libraryQuery,entries.Length);
         }
         return UI.Stack("pob.library.workspace",ManagementHeader($"Saved builds · {entries.Length}"),
-            UI.Grid("pob.library.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
+            QuickControls(UI.Grid("pob.library.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
                 UI.TextEntry(librarySearch,"Search saved builds","library-search","pob.library.search").Classes("pob-input"),
                 UI.Select("Sort",[new("recent","Recent","library-sort.recent",librarySort=="recent"),new("name","Name","library-sort.name",librarySort=="name")],"pob.library.sort").Classes("pob-select").InGrid(column:1)).Spacing(0,12),
-            Split("library",UI.CollectionList("pob.saved-builds",library,64,"Saved builds").Classes("pob-scroll"),
+                "pob.library.search","pob.library.results","Builds",NeedsQuickControls(entries.Length)),
+            Split("library",QuickControls(UI.Stack("pob.library.results",UI.CollectionList("pob.saved-builds",library,64,"Saved builds").Classes("pob-scroll")).Classes("pob-workspace"),
+                "pob.saved-builds","pob.library.tools","Search / sort",NeedsQuickControls(entries.Length)),
                 UI.VerticalScroll("pob.library.detail.scroll",LibraryDetails()).Classes("pob-scroll"),1,1))
             .Classes("pob-workspace");
     }
@@ -77,6 +79,7 @@ public sealed partial class PobWidget
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
         if(busy||focusRequestSequence==0)return null;
+        if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};
         if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.history"};
         if(detailKind.Length>0&&!InlineDetail)return null;
         if(section=="Tree"&&detailKind!="node"&&passiveReturnKey is not null&&passives is not null)

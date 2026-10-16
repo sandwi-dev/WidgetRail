@@ -29,6 +29,14 @@ public sealed partial class PobWidget
             }
             if (pendingBefore is not null && detailKind=="node" && id=="preview-nodes")
             { showChangedNodes=!showChangedNodes;Invalidate();return ValueTask.CompletedTask; }
+            quickControlTarget=null;
+            if(id.StartsWith("quick-controls.",StringComparison.Ordinal))
+            {
+                var target=id["quick-controls.".Length..];
+                var permitted=pendingBefore is null || target is "pob.tree.preview.actions" or "pob.tree.preview-details";
+                if(permitted&&quickControlTargets.Contains(target)){quickControlTarget=target;historyFocusRequested=false;focusRequestSequence++;Invalidate();}
+                return ValueTask.CompletedTask;
+            }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
             if(id is not "undo" and not "redo")historyFocusRequested=false;
             if(id=="apply"&&pendingBefore is not null)

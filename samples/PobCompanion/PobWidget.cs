@@ -129,6 +129,7 @@ public sealed partial class PobWidget : Widget
     {
         lock (gate)
         {
+            quickControlTargets.Clear();
             if (busy && result is null)
             {
                 var loading=UI.Stack("pob.root",

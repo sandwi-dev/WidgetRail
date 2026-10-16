@@ -217,8 +217,9 @@ public sealed partial class PobWidget
         var kind = skills ? "skill" : "item";
         if (entries.Length > 0 && (detailKind != kind || !entries.Any(e => I(e, "id") == detailId)))
         { detailKind = kind; detailId = selections.TryGetValue(kind, out var remembered) && entries.Any(e => I(e, "id") == remembered) ? remembered : I(entries[0], "id"); }
-        var list = new List<WidgetElement> { Text(skills ? "Skill groups" : "Equipped items", "list.heading", "pob-eyebrow") };
-        AddSet(list, skills ? "skillSets" : "itemSets", skills ? "skills" : "items");
+        var header = new List<WidgetElement> { Text(skills ? "Skill groups" : "Equipped items", "list.heading", "pob-eyebrow") };
+        AddSet(header, skills ? "skillSets" : "itemSets", skills ? "skills" : "items");
+        var list = new List<WidgetElement>();
         foreach (var entry in entries)
         {
             var id = I(entry, "id");
@@ -246,7 +247,32 @@ public sealed partial class PobWidget
                 .FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),
             UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
             .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
-        return Split("inventory", Panel("list", list), detailPanel, 1, 1.55);
+        if(skills&&entries.Length>0)
+        {
+            var gems=A(entries.First(e=>I(e,"id")==detailId),"gems");
+            // Gem cards contain two visual rows and three editable fields each.
+            // A full five/six-gem group is a long editor even with few item names.
+            if(NeedsQuickControls(gems.Length*2))
+                detailPanel=UI.Stack("pob.detail",
+                    QuickControls(UI.Stack("pob.skill.actions",new WidgetElement[]{
+                        Text("Skill details","detail.heading","pob-eyebrow"),
+                        UI.Button("Selected skill options",action,"pob."+action).FocusLeft(returnId).Classes("pob-button"),
+                        details[0],
+                        UI.Grid("pob.skill.group-actions",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star(),GridTrack.Star()],
+                            details.Skip(1).Take(3).Select((row,index)=>LinkLeft(row,returnId).InGrid(column:index)).ToArray()).Spacing(0,8)
+                        }).Classes("pob-buildtools"),
+                        "pob."+action,"pob.detail.scroll","Gems",true),
+                    QuickControls(UI.VerticalScroll("pob.detail.scroll",details.Skip(4).Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"),
+                        "pob.gem."+I(gems[0],"id")+"level","pob.skill.actions","Skill actions",true))
+                    .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
+        }
+        var sets=A(State,skills?"skillSets":"itemSets").Length>1;
+        var quick=sets&&NeedsQuickControls(entries.Length);
+        ContainerElement tools=UI.Stack("pob.inventory.tools",header.ToArray()).Classes("pob-buildtools");
+        ContainerElement rows=UI.VerticalScroll("pob.inventory.rows",list.ToArray()).Classes("pob-scroll");
+        if(sets)tools=QuickControls(tools,"pob.set."+(skills?"skills":"items"),"pob.inventory.rows",skills?"Skill groups":"Equipment",quick);
+        if(entries.Length>0)rows=QuickControls(rows,"pob."+kind+"."+I(entries[0],"id"),"pob.inventory.tools",skills?"Skill set":"Equipment set",quick);
+        return Split("inventory",UI.Stack("pob.list",tools,rows).Classes("pob-panel","pob-tree-main"), detailPanel, 1, 1.55);
     }
 
     private static WidgetElement LinkLeft(WidgetElement element,string target)=>element switch
@@ -293,11 +319,15 @@ public sealed partial class PobWidget
         }
         else
         {
-            side.Add(Text("Find a passive", "tree.searchtitle", "pob-eyebrow"));
-            side.Add(UI.TextEntry(filter, "Search passives", "search", "pob.search").Classes("pob-input"));
             var list=PassiveList();
+            var quick=NeedsQuickControls(passiveQuery.Entries.Length);
+            side.Add(QuickControls(UI.Stack("pob.tree.search-controls",
+                Text("Find a passive", "tree.searchtitle", "pob-eyebrow"),
+                UI.TextEntry(filter, "Search passives", "search", "pob.search").Classes("pob-input")).Classes("pob-buildtools"),
+                "pob.search","pob.tree.results","Passives",quick));
             side.Add(Text($"{passiveQuery.Entries.Length} passives","tree.count","pob-muted"));
-            side.Add(list);
+            side.Add(QuickControls(UI.Stack("pob.tree.results",list).Classes("pob-workspace"),
+                "pob.passives","pob.tree.search-controls","Search",quick));
         }
         var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
         var entry=detailKind=="node" ? node.ValueKind==JsonValueKind.Object && (B(node,"canAllocate")||B(node,"canRefund")) ? "pob.node-change" : "pob.back" : "pob.search";
@@ -305,11 +335,14 @@ public sealed partial class PobWidget
         if(pendingBefore is not null && detailKind=="node")
         {
             side.RemoveAt(0);
+            var quick=NeedsQuickControls(side.Count(row=>row.Id.StartsWith("pob.changed.",StringComparison.Ordinal)&&row.Id.EndsWith(".card",StringComparison.Ordinal)));
             sidebar=UI.Stack("pob.tree.side",
-                Text("PREVIEW · not applied","tree.preview.heading","pob-eyebrow pob-gold"),
+                QuickControls(UI.Stack("pob.tree.preview.actions",Text("PREVIEW · not applied","tree.preview.heading","pob-eyebrow pob-gold"),
                 UI.Button("Apply change","apply","pob.apply").FocusDown("pob.cancel").FocusLeft("pob.map").Classes("pob-button"),
-                UI.Button("Discard","cancel","pob.cancel").FocusUp("pob.apply").FocusLeft("pob.map").Classes("pob-button"),
-                UI.VerticalScroll("pob.tree.preview-details",side.ToArray()).Classes("pob-scroll"))
+                UI.Button("Discard","cancel","pob.cancel").FocusUp("pob.apply").FocusLeft("pob.map").Classes("pob-button")).Classes("pob-buildtools"),
+                    "pob.apply","pob.tree.preview-details","Changed nodes",quick,preview:true),
+                QuickControls(UI.VerticalScroll("pob.tree.preview-details",side.ToArray()).Classes("pob-scroll"),
+                    "pob.preview-nodes","pob.tree.preview.actions","Preview actions",quick,preview:true))
                 .RememberChildFocus("pob.apply").Classes("pob-panel","pob-tree-main");
         }
         else if(detailKind=="node")sidebar=UI.VerticalScroll("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-scroll","pob-panel");
