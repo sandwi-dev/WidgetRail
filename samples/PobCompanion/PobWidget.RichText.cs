@@ -7,7 +7,7 @@ namespace WidgetRail.Samples.PobCompanion;
 public sealed partial class PobWidget
 {
     internal sealed record FormattedRun(string Text,string Tone);
-    private static readonly Regex StatEmphasis=new(@"(?<![\p{L}\p{N}_])(?:Energy Shield|Physical damage|Fire damage|Cold damage|Lightning damage|Chaos damage|Critical Hit Chance|Critical Chance|Attack Speed|Cast Speed|Life|Mana|Spirit|Evasion|Armour|Strength|Dexterity|Intelligence|[-+]?\d+(?:[.,]\d+)*%?)(?![\p{L}\p{N}_])",
+    private static readonly Regex StatEmphasis=new(@"(?<![\p{L}\p{N}_])(?:Energy Shield|Physical damage|Fire damage|Cold damage|Lightning damage|Chaos damage|Critical Hit Chance|Critical Chance|Attack Speed|Cast Speed|Frenzy Charges?|Power Charges?|Endurance Charges?|Sustained Skills?|Empower(?:ing|ed)?|Repeatable|Ignit(?:e|ed|ing)|Chill(?:ed|ing)?|Freez(?:e|ing)|Frozen|Shock(?:ed|ing)?|Electrocut(?:e|ed|ing)|Poison(?:ed|ing)?|Bleed(?:ing)?|Life|Mana|Spirit|Evasion|Armour|Strength|Dexterity|Intelligence|[-+]?\d+(?:[.,]\d+)*%?)(?![\p{L}\p{N}_])",
         RegexOptions.IgnoreCase|RegexOptions.CultureInvariant,TimeSpan.FromMilliseconds(100));
 
     internal static IReadOnlyList<FormattedRun> ReadFormattedRuns(JsonElement source,string textField,string runsField,bool emphasizeStats=false)
@@ -27,9 +27,13 @@ public sealed partial class PobWidget
                 var tone=token switch
                 {
                     "life" or "strength"=>"warning",
-                    "mana" or "energy shield" or "intelligence" or "cold damage"=>"blue",
-                    "evasion" or "armour" or "dexterity"=>"green",
-                    "fire damage"=>"orange", "chaos damage"=>"violet", "physical damage"=>"emphasis",
+                    "mana" or "energy shield" or "intelligence" or "cold damage" or "power charge" or "power charges"
+                        or "chill" or "chilled" or "chilling" or "freeze" or "freezing" or "frozen"=>"blue",
+                    "evasion" or "armour" or "dexterity" or "frenzy charge" or "frenzy charges"
+                        or "poison" or "poisoned" or "poisoning"=>"green",
+                    "fire damage" or "ignite" or "ignited" or "igniting"=>"orange",
+                    "chaos damage"=>"violet", "physical damage"=>"emphasis",
+                    "endurance charge" or "endurance charges" or "bleed" or "bleeding"=>"warning",
                     _=>"gold",
                 };
                 result.Add(new(match.Value,tone));offset=match.Index+match.Length;

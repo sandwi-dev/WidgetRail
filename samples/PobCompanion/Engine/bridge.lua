@@ -85,7 +85,7 @@ local function snapshot()
   local types=active and active.skillTypes or {}
   result.mainSkillDamageKind=(flags.hit or flags.dot)and'damage'or active and active.minion and'minion'or types[SkillType.Buff]and'buff'or'unspecified'
   local description=active and active.activeEffect and active.activeEffect.grantedEffect.description or ''
-  result.mainSkillDescription=clean(description);result.mainSkillDescriptionRuns=textRuns(description)
+  result.mainSkillDescription=clean(description);result.mainSkillDescriptionRuns=textRuns(description,true)
   result.skillOptionsGroup=build.mainSocketGroup
   local calcsSkill=build.calcsTab.calcsEnv.player.mainSkill
   result.breakdownContext={skill=calcsSkill and calcsSkill.activeEffect.grantedEffect.name or '',

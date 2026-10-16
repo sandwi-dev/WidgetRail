@@ -24,6 +24,8 @@ Use **Build & import** to rename a build, open another saved build, import, expo
 
 Native passive descriptions and tree hover cards share theme-aware rich text, preserving upstream wording and colors and emphasizing values and recognizable stat terms in otherwise plain modifiers. The selected tree node has a screen-space frame and name label; Locate selected centers it at a readable minimum zoom. Buff-only main skills show **No direct damage** instead of a misleading zero DPS, while damaging skills retain PoB's calculated values and disabled-skill reasons.
 
+Description emphasis also covers charge types, ailments, and mechanics such as Empower and Repeatable. Main-skill descriptions recognize multiword skill references from the pinned engine's own granted-effect names, including hidden effects; single-word names remain neutral to avoid ambiguous matches in prose. Upstream warning colors always take precedence. This formatting adds no links or gameplay behaviour.
+
 Passive search results and saved builds use virtualized lists with stable row identities. Returning from a passive inspector restores the selected row. Notes, configuration sections and equipment-slot choices scroll continuously rather than using Next page actions.
 
 ## Scope and compatibility

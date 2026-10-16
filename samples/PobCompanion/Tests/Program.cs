@@ -34,6 +34,14 @@ var paragraphs=PobWidget.DescriptionParagraphs(plainNode);
 Check(string.Join("\n",paragraphs.Select(p=>string.Concat(p.Select(r=>r.Text))))==plainStat&&paragraphs.Count==2,"Passive paragraphs preserve the condition and its following modifier");
 var warning=JsonSerializer.SerializeToElement(new{text="25 Cold damage",runs=new[]{new{text="25 Cold damage",tone="warning"}}});
 Check(PobWidget.ReadFormattedRuns(warning,"text","runs",true).All(r=>r.Tone=="warning"),"Stat emphasis never overrides upstream warning colors");
+var mechanics="Empowering your next Repeatable Bow or Projectile Spear Attacks. Consume a Frenzy Charge or Power Charges. Cannot Empower Sustained Skills. Freeze, Ignite, Shock, Poison and Bleeding.";
+var mechanicRuns=PobWidget.ReadFormattedRuns(JsonSerializer.SerializeToElement(new{text=mechanics}),"text","runs",true);
+Check(string.Concat(mechanicRuns.Select(r=>r.Text))==mechanics && mechanicRuns.Any(r=>r.Text=="Empowering"&&r.Tone=="gold") &&
+    mechanicRuns.Any(r=>r.Text=="Frenzy Charge"&&r.Tone=="green") && mechanicRuns.Any(r=>r.Text=="Power Charges"&&r.Tone=="blue") &&
+    mechanicRuns.Any(r=>r.Text=="Sustained Skills"&&r.Tone=="gold") && mechanicRuns.Any(r=>r.Text=="Freeze"&&r.Tone=="blue") &&
+    mechanicRuns.Any(r=>r.Text=="Ignite"&&r.Tone=="orange"),"Mechanics, charges and ailments gain consistent theme roles without rewriting descriptions");
+var ordinary="Empowerment is not the same as empoweredness. Lifeform, Manacles, Poisonous.";
+Check(PobWidget.ReadFormattedRuns(JsonSerializer.SerializeToElement(new{text=ordinary}),"text","runs",true).All(r=>r.Tone=="text"),"Description emphasis matches complete terms rather than word fragments");
 var tooltip=PobWidget.CreateTooltip(plainNode,3);
 Check(tooltip.GetProperty("paragraphs").GetArrayLength()==paragraphs.Count&&tooltip.GetProperty("paragraphs")[0].EnumerateArray().Any(r=>r.GetProperty("tone").GetString()=="gold"),"Hover and native descriptions share the same formatted paragraphs");
 var hugeTooltip=PobWidget.CreateTooltip(JsonSerializer.SerializeToElement(new{id=2,name="Long node",kind="Normal",description=new string('界',12000)}),4);
