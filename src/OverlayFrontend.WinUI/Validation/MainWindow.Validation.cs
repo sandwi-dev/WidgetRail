@@ -239,6 +239,13 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments,"--validation-viewport-dips") is { } viewport)
+        {
+            var dimensions=viewport.Split('x');
+            if(dimensions.Length!=2 || !int.TryParse(dimensions[0],out var width) || !int.TryParse(dimensions[1],out var height) ||
+                width is <320 or >5000 || height is <320 or >5000) throw new ArgumentException("Use a bounded WIDTHxHEIGHT validation viewport.");
+            page.ValidationViewport=new(width,height);
+        }
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-hosted-session") is { } sessionResult)
             page.EnableHostedSessionValidation(sessionResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-navigation") is { } navigationResult)

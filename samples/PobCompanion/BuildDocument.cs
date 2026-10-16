@@ -1,0 +1,102 @@
+using System.IO.Compression;
+using System.Net;
+using System.Text;
+using System.Xml;
+using System.Xml.Linq;
+
+namespace WidgetRail.Samples.PobCompanion;
+
+public static class BuildDocument
+{
+    public const int MaximumBytes = 4 * 1024 * 1024;
+    public static string Decode(string text, int game)
+    {
+        text = text.Trim();
+        if (Encoding.UTF8.GetByteCount(text) > MaximumBytes) throw new IOException("This build exceeds the supported size.");
+        if (!text.StartsWith('<'))
+        {
+            var normalized = text.Replace('-', '+').Replace('_', '/');
+            normalized = normalized.PadRight(normalized.Length + (4 - normalized.Length % 4) % 4, '=');
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String(normalized); } catch (FormatException) { throw new IOException("Paste a PoB share code, a pobb.in link, or a build file path."); }
+            using var input = new MemoryStream(bytes);
+            using var inflate = new ZLibStream(input, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            var buffer = new byte[8192]; int count;
+            while ((count = inflate.Read(buffer)) != 0)
+            {
+                if (output.Length + count > MaximumBytes) throw new IOException("This build expands beyond the supported size.");
+                output.Write(buffer, 0, count);
+            }
+            text = Encoding.UTF8.GetString(output.ToArray());
+        }
+        using var reader = XmlReader.Create(new StringReader(text), new() { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaximumBytes });
+        XDocument document;
+        try { document = XDocument.Load(reader); } catch (XmlException) { throw new IOException("This is not a valid PoB build document."); }
+        var expected = game == 2 ? "PathOfBuilding2" : "PathOfBuilding";
+        if (document.Root?.Name != expected) throw new IOException($"Use the PoE {(game == 2 ? 1 : 2)} companion for this build, or choose a valid PoB export.");
+        return text;
+    }
+
+    public static string Encode(string xml)
+    {
+        using var output = new MemoryStream();
+        using (var zipper = new ZLibStream(output, CompressionLevel.Optimal, leaveOpen: true)) zipper.Write(Encoding.UTF8.GetBytes(xml));
+        return Convert.ToBase64String(output.ToArray()).Replace('+', '-').Replace('/', '_');
+    }
+
+    /// <summary>Reject silent loss of authored skill identities; display names may legitimately migrate upstream.</summary>
+    public static int VerifySkillPreservation(string original, string normalized)
+    {
+        var before = XDocument.Parse(original);
+        var after = XDocument.Parse(normalized);
+        static string Identity(XElement gem) => (string?)gem.Attribute("gemId") is { Length: > 0 } id ? id : (string?)gem.Attribute("nameSpec") ?? "";
+        var originals = before.Descendants("Gem").Where(g => Identity(g).Length > 0).GroupBy(Identity).ToDictionary(g => g.Key, g => g.Count());
+        var saved = after.Descendants("Gem").Where(g => Identity(g).Length > 0).GroupBy(Identity).ToDictionary(g => g.Key, g => g.Count());
+        if (originals.Any(g => !saved.TryGetValue(g.Key, out var count) || count < g.Value))
+            throw new IOException("This engine cannot preserve every skill in the build. Open it with the matching desktop PoB version; your original has not been replaced.");
+        var names = after.Descendants("Gem").GroupBy(Identity).ToDictionary(g => g.Key, g => g.Select(x => (string?)x.Attribute("nameSpec") ?? "").ToHashSet());
+        return before.Descendants("Gem").Count(g => Identity(g).Length > 0 && names.TryGetValue(Identity(g), out var list) && !list.Contains((string?)g.Attribute("nameSpec") ?? ""));
+    }
+
+    public static async Task<string> ReadAsync(string input, int game, CancellationToken token)
+    {
+        input = input.Trim();
+        if (Uri.TryCreate(input, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+        {
+            if (uri.Scheme != "https" || uri.Host != "pobb.in" || !uri.IsDefaultPort || uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0)
+                throw new IOException("Use a direct https://pobb.in/ build link or paste its share code.");
+            var id = uri.AbsolutePath.Trim('/');
+            if (id.Length is < 1 or > 64 || id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_')) throw new IOException("Invalid build link.");
+            using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(20) };
+            using var response = await client.GetAsync("https://pobb.in/pob/" + id, HttpCompletionOption.ResponseHeadersRead, token);
+            if (response.StatusCode != HttpStatusCode.OK) throw new IOException("This build could not be downloaded. Check the link or paste its share code.");
+            await using var stream = await response.Content.ReadAsStreamAsync(token);
+            input = await ReadBoundedAsync(stream, token);
+        }
+        else if (Path.IsPathFullyQualified(input) && input.IndexOfAny(Path.GetInvalidPathChars()) < 0)
+        {
+            if (input.StartsWith("\\\\", StringComparison.Ordinal) || input.StartsWith("//", StringComparison.Ordinal) || !File.Exists(input))
+                throw new IOException("Choose an existing build file on a local drive, or paste its share code.");
+            await using var stream = new FileStream(input, FileMode.Open, FileAccess.Read, FileShare.Read,8192,useAsync:true);
+            input = await ReadBoundedAsync(stream, token);
+        }
+        return Decode(input, game);
+    }
+
+    private static async Task<string> ReadBoundedAsync(Stream stream, CancellationToken token)
+    {
+        using var output = new MemoryStream(); var buffer = new byte[8192]; int count;
+        while ((count = await stream.ReadAsync(buffer, token)) != 0)
+        { if (output.Length + count > MaximumBytes) throw new IOException("Build is too large."); output.Write(buffer, 0, count); }
+        return Encoding.UTF8.GetString(output.ToArray());
+    }
+
+    public static void SaveAtomic(string path, string text)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try { File.WriteAllText(temporary, text, new UTF8Encoding(false)); File.Move(temporary, path, overwrite: true); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+}

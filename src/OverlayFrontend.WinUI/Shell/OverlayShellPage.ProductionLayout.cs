@@ -9,6 +9,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private SurfaceExtent shellViewport;
+#if ENABLE_WIDGET_VALIDATION
+    internal SurfaceExtent? ValidationViewport { get; set; }
+#endif
     private (SurfaceExtent Viewport, double InterfaceScale, double TextScale, OverlayPosition Position, bool Fullscreen)? sizingContext;
     private RailGeometry railGeometry;
     private ScrollViewer? trayScroll;
@@ -18,6 +21,9 @@ internal sealed partial class OverlayShellPage
 
     internal void ConfigureProductionViewport(SurfaceExtent viewport)
     {
+#if ENABLE_WIDGET_VALIDATION
+        viewport = ValidationViewport ?? viewport;
+#endif
         var context = (viewport, Appearance.InterfaceScale, Appearance.TextScale, Appearance.OverlayPosition, IsMediaFullscreen);
         var sameContext = sizingContext == context;
         sizingContext = context;

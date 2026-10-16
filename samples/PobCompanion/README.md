@@ -1,0 +1,39 @@
+# PoE Build Companion
+
+Two controller-first widgets share one implementation and run the unmodified Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ.
+
+## Using a build
+
+Paste a PoB share code or supported public build link, or enter the path to an exported XML file. The widget keeps the original import and a separate working copy. It reopens the selected working copy after restart.
+
+- **Calcs** groups headline statistics and detailed calculation breakdowns.
+- **Tree** shows the upstream passive-tree positions and rendered connections, with an adjacent node inspector. Main tree, ascendancy and selected-node framing keep navigation local.
+- **Skills** and **Items** keep the list beside the selected entry. Item descriptions use upstream tooltip formatting.
+- **Configuration** edits supported upstream conditions while retaining imported assumptions.
+- **Notes** displays imported notes and opens guide links through the host.
+
+Node allocation and refund changes are previews. **Apply** saves the working copy; **Discard** restores the previous tree and calculations. Refund previews include dependent nodes. **Undo** restores up to twelve committed changes during the current session. Switching active sets is saved immediately. Export uses the upstream engine's XML format and standard compressed share-code encoding.
+
+Use **Build & import** to rename a build, open another saved build, import, export or change character details. LB/RB switches sections. Controller focus and list navigation remain native; the optional tree visualization uses a host-owned packaged web session.
+
+## Scope and compatibility
+
+This is a companion for inspecting and comparing builds, not a replacement for every desktop PoB workflow. It does not implement trade searching, account/character import, the desktop item-crafting editor, advanced gem/socket-group authoring, every specialized tree choice, or every desktop calculation view. Unsupported allocation choices are rejected rather than guessed. Historical builds whose gems were removed by the pinned engine are rejected rather than silently losing them. Calculations are only as applicable as the selected engine version and the build's assumptions.
+
+The six categorical color roles follow the selected WidgetRail theme; labels and geometry also convey meaning. The tree consumes the host's packaged-page theme projection, including high contrast. Remote websites receive no theme injection.
+
+## Engine lifecycle and storage
+
+The Lua process starts on first calculation and does no periodic recalculation while idle. The widget unloads after 120 seconds of inactivity under the host residency policy. Calculation state and game data occupy hundreds of MiB; this is not a lightweight web page. Cancellation retires the calculation process, and the next command restores the displayed build before applying an edit.
+
+Default working copies live under `%LOCALAPPDATA%/WidgetRail/applications/pob1` and `pob2`. Immutable engine archives are extracted to a digest-keyed cache under `%LOCALAPPDATA%/WidgetRail/pob-engines`. Extraction is bounded, cancellation-aware and staged before publication. `WIDGETRAIL_POB1_DATA`, `WIDGETRAIL_POB2_DATA` and `WIDGETRAIL_POB_CACHE` allow isolated development profiles. `WIDGETRAIL_POB_DATA` remains a common data-directory override when no per-game override is set.
+
+## Rebuilding
+
+`engine-lock.json` pins the PoB releases, LuaJIT and lua-utf8 source commits. `Prepare-Engines.ps1` fetches those exact sources and builds the x64 runtime using Visual Studio C++ tools. It writes `paths.json` containing the prepared source/runtime directories. `Build-CommunityPackage.ps1` accepts `-Game 1` or `-Game 2`, those directories, and a current `wrail` CLI path, producing a validated `.wrwidget` package in a fresh output directory.
+
+Install each resulting `.wrwidget` through **Settings → Widgets → Install local widget**. The packages use the full-access application runtime to launch their local Lua engine.
+
+Engine upgrades are deliberate: update the lock, rebuild, run the real-engine fixture suite and inspect both widgets. The bridge adapter is the compatibility boundary; game calculations remain upstream. Do not silently replace an engine in a running build.
+
+Each package includes the applicable upstream PoB license, LuaJIT copyright and lua-utf8 license. Fixtures used during development are not bundled as sample builds. Path of Building Community and Path of Exile are separate projects; these widgets are not affiliated with their maintainers or Grinding Gear Games.

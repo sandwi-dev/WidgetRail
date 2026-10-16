@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../eng/CommunityPackage.props" />
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/WidgetSdk/WidgetSdk.csproj" /></ItemGroup>
+  <ItemGroup><Compile Remove="Applications/**/*.cs" /><Compile Remove="Tests/**/*.cs" /></ItemGroup>
+</Project>

@@ -1,0 +1,54 @@
+text { color: var(--text); }
+.pob-root { width: 100%; height: 100%; min-height: 0px; min-width: 0px; gap: 12px; padding: 20px; }
+.pob-title { font-size: 26px; font-weight: 600; color: var(--text); max-lines: 1; text-overflow: ellipsis; }
+.pob-heading { font-size: 18px; font-weight: 600; color: var(--text); }
+.pob-text { color: var(--text); font-size: 14px; }
+.pob-muted { color: var(--text-muted); font-size: 13px; }
+.pob-small { color: var(--text-muted); font-size: 12px; }
+.pob-eyebrow { color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.pob-toolbar { gap: 8px; align: center; }
+.pob-loadout { max-width: 280px; }
+.pob-button { min-height: 40px; padding: 9px 12px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 8px; color: var(--text); font-size: 14px; }
+.pob-button:focused { background: var(--surface); color: var(--text); border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: -2px; }
+.pob-scroll { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; gap: 10px; }
+.pob-workspace { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; }
+.pob-panel { padding: 16px; background: var(--surface-raised); corner-radius: 12px; gap: 12px; }
+.pob-card { padding: 14px; background: var(--surface-raised); corner-radius: 12px; gap: 7px; min-width: 0px; }
+.pob-context-card { padding: 12px; background: var(--surface); corner-radius: 8px; gap: 6px; }
+.pob-metric { padding: 12px 16px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; gap: 4px; min-width: 0px; }
+.pob-metric:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.pob-number { font-size: 29px; font-weight: 600; }
+.pob-stat-row { padding: 7px 4px; min-height: 38px; gap: 8px; justify: space-between; corner-radius: 5px; background: transparent; }
+.pob-stat-row:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.pob-stat-row:selected { background: var(--surface); }
+.pob-stat-label { color: var(--text-muted); font-size: 13px; min-width: 0px; flex-grow: 1; }
+.pob-stat-value { color: var(--text); font-size: 15px; font-weight: 600; }
+.pob-tabs { padding: 4px; background: var(--surface-raised); corner-radius: 10px; }
+.pob-tab { padding: 10px 8px; min-height: 40px; color: var(--text-muted); background: transparent; border-width: 1px; border-color: transparent; corner-radius: 7px; text-align: center; }
+.pob-tab:selected { background: var(--surface); color: var(--text); border-color: var(--border, var(--surface-muted)); }
+.pob-tab:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.pob-list-item { padding: 12px; min-height: 64px; gap: 6px; background: var(--surface); border-color: transparent; border-width: 1px; corner-radius: 8px; }
+.pob-list-item:selected { border-color: var(--accent); }
+.pob-list-item:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.wrail-tile__content { flex-grow: 1; min-width: 0px; gap: 5px; }
+.wrail-tile__title { color: var(--text); font-size: 15px; font-weight: 600; max-lines: 2; text-overflow: ellipsis; }
+.wrail-tile__subtitle { color: var(--text-muted); font-size: 12px; max-lines: 2; }
+.pob-tree-main { flex-grow: 1; min-height: 0px; gap: 10px; }
+.pob-map { flex-grow: 1; min-height: 0px; width: 100%; }
+.pob-preview { padding: 8px 12px; background: var(--surface-raised); corner-radius: 8px; gap: 12px; align: center; }
+.pob-footer { font-size: 11px; color: var(--text-muted); }
+/* Semantic accents follow the active palette; labels carry the meaning in high contrast. */
+.pob-life, .pob-inset.pob-life { color: var(--data-red, var(--text)); }
+.pob-blue, .pob-inset.pob-blue { color: var(--data-blue, var(--text)); }
+.pob-gold, .pob-inset.pob-gold { color: var(--data-gold, var(--text)); }
+.pob-violet, .pob-inset.pob-violet { color: var(--data-purple, var(--text)); }
+.pob-green, .pob-inset.pob-green { color: var(--data-green, var(--text)); }
+.pob-inset-muted { color: var(--text-muted); }
+.pob-list-title { color: var(--text); font-size: 15px; font-weight: 600; max-lines: 2; text-overflow: ellipsis; }
+.pob-stat-row { border-width: 0px; }
+.pob-compact-stats { gap: 24px; padding: 8px 12px; background: var(--surface-raised); corner-radius: 8px; }
+.pob-compact-value { font-size: 14px; font-weight: 600; }
+.pob-orange { color: var(--data-orange, var(--text)); }
+.pob-root { background: var(--surface); }
+
+.pob-tree-title { font-size:24px; font-weight:700; color:var(--text); max-lines:1; text-overflow:ellipsis; }
