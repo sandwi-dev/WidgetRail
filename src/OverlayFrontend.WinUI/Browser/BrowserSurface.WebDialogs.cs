@@ -61,7 +61,7 @@ internal sealed partial class BrowserSurface
         using var dismiss = token.Register(() => DispatcherQueue.TryEnqueue(() => dialog.Hide()));
         try
         {
-            await dialog.ShowAsync();
+            await dialog.ShowKeyboardAsync(this);
             token.ThrowIfCancellationRequested();
             return accepted ? dialog.TakeValue() : null;
         }

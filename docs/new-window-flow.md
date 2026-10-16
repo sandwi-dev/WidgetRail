@@ -9,7 +9,10 @@
   dialog. One scrollable list groups permissions, new-window placement choices,
   and profile/session actions. Permissions retain their explicit Ask/Allow/Block
   confirmation. New-window choices save directly without another submenu.
-- **Where should this page open?** offers pinned/in-widget placement. Remembered
+- **Open new window** offers **Open in pinned surface** / **Open over current page**
+  for website-triggered windows. **Remember for this website** saves the choice.
+  **Website settings → New windows** offers **Ask each time**, **Pinned surface**,
+  and **Over current page**. Remembered
   placement remains per widget, account and requesting website. Existing pages
   do not move when the preference changes.
 - A second additional page offers replacement, including requests originating
@@ -22,10 +25,14 @@
 
 ## Ownership and handoff
 
-Page actions combines native new-tab/new-window link entries into **Open in
-widget or pin…**. For hosted pages this is a host action: it captures WebView2's
+Page actions replaces native new-tab/new-window link entries with a **New window**
+section: **Open in pinned surface** and **Open over current page**. These direct
+actions skip placement selection, override the saved preference for that request,
+and never change it. When a page or pin must be replaced, one **Replace / Cancel**
+confirmation identifies all affected surfaces and the selected destination.
+For hosted pages this is a host action: it captures WebView2's
 link destination and source document epoch before showing the menu, completes
-the menu deferral, then dispatches directly into the shared placement pipeline.
+the menu deferral, then dispatches the explicit destination into the shared placement pipeline.
 It does not depend on a second native new-window event or replay a menu command
 against a potentially changed page. Hiding, navigation, account changes and
 retirement invalidate the captured request. Other menu commands still use
@@ -58,6 +65,26 @@ arrive while the controller is still parked. Returning an additional pinned page
 to the widget selects its parent widget even if another widget was open.
 
 ## Validation
+
+The direct-destination follow-up is validated in
+`artifacts/browser-extensions/direct-new-window02/result.json`: 179 native checks
+pass. Eight fixed-pointer Page actions cycles alternate destinations with the
+opposite saved preference, proving that direct actions skip placement selection
+and preserve the preference. Coverage includes native dialog teardown, captured
+link changes, requests from child pages, combined page/pin replacement, Cancel,
+preparation failures, automatic windows/Remember, settings, pin/keyboard lifecycle,
+profile isolation and shutdown. Dialog screenshots were reviewed. Long shared
+decision-button labels now wrap rather than truncate the destination name.
+
+Preference storage and widget SDK contracts are unchanged. No migration or
+website-specific detection is needed.
+
+Candidate10 uses the production frontend from `frontend-final07` and the complete
+unchanged runtime/packages from `publication05`. Verification passed for 15 widgets
+and 1,133 inventoried files, including published async cleanup. It was launched on
+the existing WidgetRail profile as PID 37420 and verified responsive after startup.
+Physical follow-up: try both direct Page actions, replacement Cancel/confirm, and
+a website-triggered pop-out with Ask each time and with a remembered preference.
 
 `scripts/Test-WinUiNewWindowFlow.ps1` accepts an existing synthetic
 `BridgeWebAppFixture` configuration, verifies its marker, and creates a fresh

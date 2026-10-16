@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$OutputDirectory, [switch]$HomeOnly)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -22,9 +22,11 @@ $config = Join-Path $output 'shell.json'
 @{ InstallationRoot = $installation; SettingsRoot = $profile; InstalledCatalogRoot = (Join-Path $profile 'widgets'); InitialWidgetId = 'source' } |
     ConvertTo-Json | Set-Content -LiteralPath $config
 $result = Join-Path $output 'result.json'
-$fixture = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden -PassThru -ArgumentList @(
+$fixtureArguments = @(
     '--shell-no-controller', '--validation-platform-activation', ('--shell-config="{0}"' -f $config),
     ('--validate-settings-navigation="{0}"' -f $result))
+if ($HomeOnly) { $fixtureArguments += '--settings-home-only' }
+$fixture = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden -PassThru -ArgumentList $fixtureArguments
 $fixture.Id | Set-Content (Join-Path $output 'pid.txt')
 try {
     $deadline = [DateTime]::UtcNow.AddSeconds(75)

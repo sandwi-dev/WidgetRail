@@ -22,7 +22,7 @@ internal sealed partial class OverlayShellPage
                 .Any(text => text.Text is "Permissions" or "Behavior" or "Data")),
             location + ": section headings are native group headers outside actionable rows");
         check(root.CloseButtonText == "Done" && Options(root).Items.Count == 9,
-            location + ": website settings shows seven permissions, one behavior row and clear data with Done");
+            location + ": website settings shows site controls without profile extension management");
         await CapturePopupDecisionAsync(root, "website-settings-" + location);
         var viewport = Descendants(Options(root)).OfType<ScrollViewer>().First();
         root.SampleScroll(0, -32767, 1000); root.SampleScroll(0, -32767, 1040);
@@ -70,6 +70,7 @@ internal sealed partial class OverlayShellPage
             FocusManager.GetFocusedElement(dialog.XamlRoot) is ListViewItem { Tag: string focused } && focused == id);
         async Task Select(HostChoiceDialog dialog, string id)
         {
+            await WebAppUntil(() => Options(dialog) is { IsLoaded: true });
             var list = Options(dialog);
             var item = list.Items.OfType<ListViewItem>().Single(value => (string?)value.Tag == id);
             list.ScrollIntoView(item); item.Focus(FocusState.Keyboard);

@@ -26,6 +26,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     private bool symbols;
     private bool completed;
     private bool needsInitialFocus = true;
+    private bool keyboardInputStarted;
     private int secretCaret;
     private readonly Input.TextEntryRepeat repeat = new();
     private Button? rememberedKey;
@@ -110,10 +111,10 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         ApplyPopupMetrics(1, 16, new() { Weight = 400 }, null);
         GettingFocus += (_, args) =>
         {
-            if (needsInitialFocus && !completed && args.TrySetNewFocusedElement(characters[10])) needsInitialFocus = false;
+            if (needsInitialFocus && !keyboardInputStarted && !completed) args.TrySetNewFocusedElement(characters[10]);
         };
-        if (IsLive) Opened += (_, _) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        { if (!completed && characters[10].IsLoaded) characters[10].Focus(FocusState.Keyboard); });
+        Opened += (_, _) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        { FocusInitialKey(); needsInitialFocus = false; });
         GotFocus += (_, _) =>
         {
             if (FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key))
@@ -132,7 +133,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         }), true);
         CharacterReceived += (_, args) =>
         {
-            // Space belongs to native Button activation while a key has focus.
+            // Space is handled once on key-down, never as virtual-key activation.
             if (!completed && args.Character > 32 && (IsLive || FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key)))
             { Insert(char.ConvertFromUtf32((int)args.Character)); args.Handled = true; }
         };
@@ -141,10 +142,12 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     internal bool HandleKeyboardKey(Windows.System.VirtualKey key, bool control = false, bool shift = false)
     {
         if (completed) return false;
+        keyboardInputStarted = true;
         repeat.Reset();
         if (key == Windows.System.VirtualKey.Escape) { Complete(false); return true; }
         if (HandleLiveKey(key, control, shift)) return true;
         var editorFocused = ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
+        if (key == Windows.System.VirtualKey.Space && !editorFocused) { Insert(" "); return true; }
         // The controller keyboard owns initial focus. A physical paste shortcut
         // should still reach the native editor, without reading or logging the
         // clipboard ourselves. Focused editors retain native paste/selection behavior.
@@ -155,7 +158,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             else password!.PasteFromClipboard();
             return true;
         }
-        // Focused virtual keys retain native Enter/Space activation, including
+        // Focused virtual keys retain native Enter activation, including
         // Cancel. The commit shortcut applies only within the native editor.
         if (key == Windows.System.VirtualKey.Enter && editorFocused && !multiline) { Complete(true); return true; }
         if (key == Windows.System.VirtualKey.Back && !editorFocused) { Backspace(); return true; }
@@ -175,9 +178,10 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     private void ConstrainWidth()
     {
         if (XamlRoot is not { } root) return;
-        body.Width = Math.Max(1, Math.Min(640 * interfaceScale, Math.Min(root.Size.Width, liveHostWidth) - (IsLive ? 28 : 120) * interfaceScale));
+        body.Width = IsFloating ? Math.Max(1, floatingWidth - (IsLive ? 28 : 52) * interfaceScale) :
+            Math.Max(1, Math.Min(640 * interfaceScale, root.Size.Width - (IsLive ? 28 : 120) * interfaceScale));
         foreach (var (key, _, _, _) in prompts)
-            ((TextBlock)((StackPanel)key.Content).Children[1]).Visibility = IsLive && liveHostWidth < 540 * interfaceScale
+            ((TextBlock)((StackPanel)key.Content).Children[1]).Visibility = IsFloating && floatingWidth < 540 * interfaceScale
                 ? Visibility.Collapsed : Visibility.Visible;
     }
     internal void ApplyPopupMetrics(double zoom, double size, Windows.UI.Text.FontWeight weight, FontFamily? family)
@@ -217,7 +221,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             else label.FontFamily = family;
         }
         ConstrainWidth();
-        if (IsLive && double.IsFinite(liveHostHeight)) ConstrainLiveHost(liveHostWidth, liveHostHeight);
+        if (IsFloating) { floatingWidth = 0; ArrangeKeyboard(); }
         ApplyCaretMetrics();
     }
     internal string TakeValue() => text?.Text ?? password?.Password ?? string.Empty;
@@ -241,9 +245,17 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         if (FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key)) key.Focus(FocusState.Keyboard);
         else characters[10].Focus(FocusState.Keyboard);
     }
+    private void FocusInitialKey()
+    {
+        // A late native opening callback must not undo navigation that the user
+        // already made while the entrance animation was finishing.
+        if (!completed && characters[10].IsLoaded && !keyboardInputStarted)
+            characters[10].Focus(FocusState.Keyboard);
+    }
     internal void MoveFocus(FocusNavigationDirection direction)
     {
         if (completed) return;
+        keyboardInputStarted = true;
         if (FocusManager.GetFocusedElement(XamlRoot) is not Button key || !commands.ContainsKey(key))
         { (rememberedKey ?? characters[10]).Focus(FocusState.Keyboard); return; }
         var row = Grid.GetRow(key);
@@ -266,6 +278,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     }
     internal void Activate()
     {
+        keyboardInputStarted = true;
         if (!completed && FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.TryGetValue(key, out var action)) action();
     }
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
@@ -295,10 +308,11 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     private Button AddKey(string label, string id, int row, int column, int span, Action action, ControllerPrompt? prompt = null)
     {
         var key = new Button { Content = label, Padding = new Thickness(4), MinWidth = 0, MinHeight = 36,
-            HorizontalAlignment = HorizontalAlignment.Stretch, XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled };
+            HorizontalAlignment = HorizontalAlignment.Stretch, UseSystemFocusVisuals = true,
+            XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled };
         AutomationProperties.SetAutomationId(key, "Widget.TextEntry." + id);
         if (!string.IsNullOrEmpty(label)) ToolTipService.SetToolTip(key, label);
-        key.Click += (_, _) => { if (!completed) action(); };
+        key.Click += (_, _) => { if (!completed) { keyboardInputStarted = true; action(); } };
         commands.Add(key, action);
         if (prompt is { } semantic)
         {

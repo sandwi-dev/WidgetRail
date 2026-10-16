@@ -34,6 +34,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private readonly HashSet<(string Widget, string Document)> retiringEntries = [];
     private readonly Dictionary<Task, string> retirements = [];
     internal Web.HostedWebViewEnvironment Runtime { get; }
+    internal Extensions.BrowserExtensionManager Extensions { get; }
     private Task? reconciliation;
     private bool dirty, retired;
     private readonly CancellationTokenSource lifetime = new();
@@ -42,7 +43,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
     internal Func<BrowserSurface, CancellationToken, Task<bool>>? PrepareScreenPicker { get; set; }
     internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
-    internal Func<BrowserSurface, BrowserSurface?, string?, CancellationToken, Task<BrowserPopupRequest?>>? ChoosePopupPlacement { get; set; }
+    internal Func<BrowserSurface, BrowserSurface?, string?, BrowserPopupPlacement?, CancellationToken, Task<BrowserPopupRequest?>>? ChoosePopupPlacement { get; set; }
     internal Func<BrowserSurface, string, CancellationToken, Task<BrowserPopupPlacement>>? ReadPopupPlacement { get; set; }
     internal Func<BrowserSurface, string, BrowserPopupPlacement, CancellationToken, Task>? WritePopupPlacement { get; set; }
     internal int ResidentCount => entries.Count;
@@ -53,11 +54,12 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal BrowserOwner(Session session, Grid parking, string settingsRoot, NotificationCenter? notifications = null)
     {
         this.session = session; this.parking = parking; profileRoot = Path.Combine(settingsRoot, "WebBrowser");
-        CoreWebView2EnvironmentOptions? environmentOptions = null;
+        CoreWebView2EnvironmentOptions environmentOptions = new() { AreBrowserExtensionsEnabled = true };
 #if ENABLE_WIDGET_VALIDATION
-        if (FixtureBrowserArguments is { } arguments) environmentOptions = new() { AdditionalBrowserArguments = arguments };
+        if (FixtureBrowserArguments is { } arguments) environmentOptions.AdditionalBrowserArguments = arguments;
 #endif
         Runtime = new(profileRoot, environmentOptions);
+        Extensions = new(Runtime, settingsRoot);
         ownsNotifications = notifications is null;
         NotificationCenter = notifications ?? new(settingsRoot);
         notificationPreferencesLoading = NotificationCenter.Ready;
@@ -257,6 +259,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
             Choose = (source, title, message, choices, token, focusFirstChoice, preference) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice, preference) ?? Task.FromResult<string?>(null),
             ChangeProfile = ChangeProfileAsync,
+            RegisterExtensionProfile = (source, token) => Extensions.RegisterAsync(source.ExtensionProfile with { Label = (session.GetState(widgetId)?.LastGood?.Descriptor.Name ?? widgetId) + " · " + document.Options.ProfileKey }, source.NativeProfile!, token),
             ReceiveNotification = ReceiveNotification,
             InvalidateNotifications = source => Notifications.InvalidateOwner(source),
             ChooseFiles = (source, request, token) => ChooseFiles?.Invoke(source, request, token) ?? Task.FromResult(Array.Empty<string>()),

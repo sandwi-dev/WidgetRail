@@ -27,7 +27,8 @@ internal sealed record SettingsPresentationState(
     SettingsHostFeatures? HostFeatures = null,
     bool DiagnosticDetails = false,
     string? SupportExportFile = null,
-    SettingsMarketplaceState? Marketplace = null, SettingsAppUpdateState? AppUpdates = null);
+    SettingsMarketplaceState? Marketplace = null, SettingsAppUpdateState? AppUpdates = null,
+    SettingsExtensionsState? Extensions = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static partial class SettingsPresentation
@@ -36,7 +37,7 @@ internal static partial class SettingsPresentation
     {
         ArgumentNullException.ThrowIfNull(state);
         var header = Header(state);
-        if (state.Loading && state.Page != SettingsPage.Root)
+        if (state.Loading && state.Page is not (SettingsPage.Root or SettingsPage.Extensions or SettingsPage.ExtensionDetails))
         {
             view = View(header, PageScope("settings.loading.section",
                 UI.LoadingIndicator("settings.loading.indicator", "Loading settings"),
@@ -47,6 +48,7 @@ internal static partial class SettingsPresentation
         }
         view = state.Page switch
         {
+            SettingsPage.Extensions or SettingsPage.ExtensionDetails => RenderExtensions(header, state),
             SettingsPage.Marketplace or SettingsPage.MarketplaceDetails => RenderMarketplace(header, state),
             SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy, state.Loading,
                 state.HostFeatures ?? new()),
@@ -212,6 +214,7 @@ internal static partial class SettingsPresentation
                 Card("Controllers", hostFeatures.ExclusiveControllerControl ? "Input, shortcuts, and exclusive control" : "Controller shortcuts",
                     "open.controllers", "category.controllers", "controllers", WidgetGlyph.Connection),
                 Card("Widgets", "Install, update, and permissions", "open.installed-widgets", "category.installed-widgets", "widgets", WidgetGlyph.Settings),
+                Card("Extensions", "Install once and choose where extensions run", "open.extensions", "category.extensions", "widgets", WidgetGlyph.Connection),
                 Card("About & troubleshooting", "App information, diagnostics, and recovery", "open.about", "category.diagnostics", "diagnostics", WidgetGlyph.Connection))
                 .Classes("category-grid")).Classes("root-category-list");
         var utilities = UI.ResponsiveGrid("settings.home.utilities", 120, 4,
@@ -658,6 +661,7 @@ internal static class SettingsNavigationPolicy
         SettingsPage packageCapabilitiesReturnPage) => page switch
         {
             SettingsPage.ControllerHelp => SettingsPage.Controllers,
+            SettingsPage.ExtensionDetails => SettingsPage.Extensions,
             SettingsPage.Marketplace => SettingsPage.InstalledWidgets,
             SettingsPage.MarketplaceDetails => SettingsPage.Marketplace,
             SettingsPage.InstalledWidgetTechnical => SettingsPage.InstalledWidgetDetails,

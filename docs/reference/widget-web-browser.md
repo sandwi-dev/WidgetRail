@@ -185,7 +185,18 @@ Host choices, bookmarks/history, address entry and website prompt keyboards use
 shared dialog theming and placement. They center over the requesting widget or
 pin and stay inside the native window, including left/right overlay placement.
 A keyboard can be wider than a small main widget rather than shrinking its keys.
-The live browser-field keyboard keeps its in-place layout below the page.
+Live and buffered entry use the same keyboard control in a native floating popup.
+For live editing its anchor comes from the exact rendered editable field, including
+supported iframe and open-shadow-root targets, and is mapped through browser zoom
+and XAML scaling into screen placement. It prefers below, otherwise above or beside
+the field, and can extend outside the widget or pin. Width remains responsive with
+a usable minimum; height fits all rows. Keys do not require internal scrolling.
+Placement stays within the monitor work area where feasible and does not resize
+the WebView. Geometry is sampled sequentially every 150 ms only while editing; small
+movements and unchanged sizing do not trigger layout updates. Invalid fields or
+frame navigation close the keyboard. Non-axis-aligned frame transforms remain
+unsupported rather than using approximate hit geometry. Buffered editors retain
+their commit/cancel semantics and share keys, focus, repeat, theming and input logic.
 Windows-owned file pickers and WebView-native screen sharing retain their own
 presentation paths.
 
@@ -365,8 +376,9 @@ remain unsupported. Closing, stopping, clearing a profile or retiring the root
 drains child initialization and native resources. When revealed, narrow toolbars keep address
 and Close visible with a controller-scrollable command row.
 
-For widgets that support full-widget pinning, **Where should this page open?**
-offers **Open pinned / Open in widget / Cancel**. The host defers the native request
+For website-triggered windows in widgets that support full-widget pinning,
+**Open new window** offers **Open in pinned surface / Open over current page / Cancel**.
+The host defers the native request
 until the choice is made and places the existing child directly at its destination.
 It does not flash the child in the parent before pinning. Both placements use
 on-demand controls. The optional Remember checkbox stores the choice per widget,
@@ -375,9 +387,17 @@ its embedded frames). This makes the choice manageable from that website's own
 controls. It applies to hosted popup windows
 generally, including authentication windows; the host does not infer their purpose.
 Unknown requesting origins do not offer Remember. **Website settings → New windows**
-lists Ask each time / Open in widget / Open pinned directly. Cancel never saves
+lists Ask each time / Pinned surface / Over current page directly. Cancel never saves
 a choice. Preferences survive restarts; a remembered pin preference still asks
-before replacing an existing pin, with a direct **Replace pin** action.
+before replacing an existing pin.
+
+Host Page actions instead exposes both destinations directly under **New window**.
+The captured request carries an explicit placement through the shared pipeline,
+bypassing preference lookup and the placement chooser without changing saved
+preferences. If that destination replaces a page, a pin, or both, one confirmation
+names the affected surfaces and offers Replace / Cancel. Non-hosted configurations
+retain their native command behavior; website-created windows retain their native
+opener and existing remembered-placement flow.
 
 Replacing an existing additional page always requires confirmation and retains
 its current placement unless the user chooses the alternative. If pinning also

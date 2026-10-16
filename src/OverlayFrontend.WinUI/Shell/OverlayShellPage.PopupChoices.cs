@@ -7,14 +7,16 @@ internal sealed partial class OverlayShellPage
     private BrowserPopupPreferences? popupPreferences;
     private BrowserPopupPreferences PopupPreferences => popupPreferences ??= new(Path.Combine(options.SettingsRoot, "webapp-popup-placement.json"));
 
-    private async Task<BrowserPopupRequest?> ChooseBrowserPopupPlacementAsync(BrowserSurface source, BrowserSurface? replacing, string? origin, CancellationToken token)
+    private async Task<BrowserPopupRequest?> ChooseBrowserPopupPlacementAsync(BrowserSurface source, BrowserSurface? replacing, string? origin, BrowserPopupPlacement? requestedPlacement, CancellationToken token)
     {
         if (retired || !visible || !source.CanCompleteSiteDecision) return null;
         var expected = pinned;
         var replacingPin = replacing is not null && ReferenceEquals(expected?.Popup?.Child, replacing);
         var canPin = source.RequestPopupPin is not null;
-        var placement = replacing is not null ? (replacingPin ? BrowserPopupPlacement.Pinned : BrowserPopupPlacement.InWidget) :
-            origin is null ? BrowserPopupPlacement.Ask : await ReadBrowserPopupPlacementAsync(source, origin, token);
+        if ((requestedPlacement is not null && requestedPlacement is not (BrowserPopupPlacement.Pinned or BrowserPopupPlacement.InWidget)) ||
+            requestedPlacement == BrowserPopupPlacement.Pinned && !canPin) return null;
+        var placement = requestedPlacement ?? (replacing is not null ? (replacingPin ? BrowserPopupPlacement.Pinned : BrowserPopupPlacement.InWidget) :
+            origin is null ? BrowserPopupPlacement.Ask : await ReadBrowserPopupPlacementAsync(source, origin, token));
         if (!canPin) placement = BrowserPopupPlacement.InWidget;
         if (replacing is not null || placement == BrowserPopupPlacement.Ask || placement == BrowserPopupPlacement.Pinned && expected is not null)
         {
@@ -26,17 +28,21 @@ internal sealed partial class OverlayShellPage
                 var title = string.IsNullOrWhiteSpace(replacing.CurrentTitle) ? "the existing additional page" : replacing.CurrentTitle;
                 message += $"\n\nReplace {title[..Math.Min(title.Length, 160)]}? This closes that page and ends its activity.";
             }
-            if (pinnedName is not null && !replacingPin && canPin)
-                message += $"\n\nChoosing pinned also replaces the current pin: {pinnedName}.";
+            if (pinnedName is not null && !replacingPin && canPin && requestedPlacement != BrowserPopupPlacement.InWidget)
+                message += requestedPlacement == BrowserPopupPlacement.Pinned ? $"\n\nThis also replaces the current pin: {pinnedName}." :
+                    $"\n\nChoosing pinned also replaces the current pin: {pinnedName}.";
             HostChoiceDialog? dialog = null;
-            HostDialogChoice pinChoice = new("pin", replacingPin ? "Replace pinned page" : expected is null ? (replacing is null ? "Open pinned" : "Replace and pin") : "Replace pin");
-            HostDialogChoice widgetChoice = new("widget", replacing is null ? "Open in widget" : replacingPin ? "Replace in widget" : "Replace page");
-            HostDialogChoice[] choices = !canPin ? [widgetChoice] : replacing is not null && !replacingPin ? [widgetChoice, pinChoice] : [pinChoice, widgetChoice];
-            var selection = await ShowBrowserChoiceCoreAsync(source, replacing is null ? "Where should this page open?" : "Replace existing page?", message,
+            HostDialogChoice pinChoice = new("pin", replacing is null && expected is null ? "Open in pinned surface" : "Replace in pinned surface");
+            HostDialogChoice widgetChoice = new("widget", replacing is null ? "Open over current page" : "Replace over current page");
+            HostDialogChoice[] choices = requestedPlacement is not null
+                ? [new(requestedPlacement == BrowserPopupPlacement.Pinned ? "pin" : "widget", "Replace")]
+                : !canPin ? [widgetChoice] : replacing is not null && !replacingPin ? [widgetChoice, pinChoice] : [pinChoice, widgetChoice];
+            if (requestedPlacement is not null) message += placement == BrowserPopupPlacement.Pinned ? "\n\nThe new window will open in the pinned surface." : "\n\nThe new window will open over the current page.";
+            var selection = await ShowBrowserChoiceCoreAsync(source, replacing is not null ? "Replace existing page?" : requestedPlacement is not null ? "Replace pin?" : "Open new window", message,
                 choices, token, configure: choice =>
                 {
                     dialog = choice;
-                    if (replacing is null && origin is not null && canPin) choice.AddRememberChoice("Remember for this website in this account");
+                    if (requestedPlacement is null && replacing is null && origin is not null && canPin) choice.AddRememberChoice("Remember for this website");
                 }, directDecisionButtons: choices.Length == 2);
             if (selection is not ("pin" or "widget")) return null;
             placement = selection == "pin" ? BrowserPopupPlacement.Pinned : BrowserPopupPlacement.InWidget;

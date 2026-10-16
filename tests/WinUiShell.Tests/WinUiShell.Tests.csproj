@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionTypes.cs" Link="ExtensionTypes.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionPackage.cs" Link="ExtensionPackage.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionStore.cs" Link="ExtensionStore.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\WidgetStatus.cs" Link="WidgetStatus.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserSpatialGeometry.cs" Link="BrowserSpatialGeometry.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserPopupPreferences.cs" Link="BrowserPopupPreferences.cs" />

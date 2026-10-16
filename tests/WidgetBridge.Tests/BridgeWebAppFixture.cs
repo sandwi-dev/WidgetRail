@@ -8,6 +8,7 @@ internal static class BridgeWebAppFixture
 {
     internal static async Task ServeAsync(string pipe, string settingsRoot)
     {
+        var extensions = File.Exists(Path.Combine(AppContext.BaseDirectory, "extensions-settings-fixture.marker"));
         var paths = new PlatformSettingsPaths(Path.GetFullPath(settingsRoot));
         var store = new PlatformSettingsStore(paths);
         await using var appearance = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));
@@ -23,7 +24,10 @@ internal static class BridgeWebAppFixture
         }).Append(new ConfiguredWidget
         {
             Id = "settings", PackageId = "fixture.settings", PublisherId = "fixture.webapp", Name = "Settings fixture",
-            InstanceId = "settings.fixture", WorkerExecutable = Environment.ProcessPath!,
+            InstanceId = extensions ? "settings-navigation.fixture" : "settings.fixture", WorkerExecutable = Environment.ProcessPath!,
+            WorkerArguments = extensions ? ["--settings-fixture-root", settingsRoot] : [],
+            StylePackage = extensions ? SettingsNavigationFixture.SettingsStyle() : new([], []),
+            DeclaredPackageIconAssetIds = extensions ? new HashSet<string>(["settings.appearance", "settings.accessibility", "settings.overlay", "settings.controllers", "settings.widgets", "settings.diagnostics"], StringComparer.Ordinal) : new HashSet<string>(),
             WorkerFingerprint = new string('f', 64), CatalogFingerprint = new string('f', 64),
             Intents = new() { Requests = [WidgetIntentContracts.AppUpdates], Handles = [new(WidgetIntentContracts.AppUpdates)] },
         }).ToArray());

@@ -7,7 +7,8 @@ internal static partial class SettingsPresentation
 {
     private static ContainerElement ArrangeSettingsRows(ContainerElement page)
     {
-        var form = page.Id is "appearance.page" or "overlay.page" or "accessibility.page" or "controllers.page" or "controllers.exclusive.page";
+        var form = page.Id is "appearance.page" or "overlay.page" or "accessibility.page" or "controllers.page" or "controllers.exclusive.page"
+            or "extensions.library" or "extensions.details";
         var children = new List<WidgetElement>();
         for (var index = 0; index < page.Children.Count; index++)
         {
@@ -53,7 +54,7 @@ internal static partial class SettingsPresentation
         }
         // Link rows, not individual buttons: a stepper is one vertical stop and
         // keeps the selected minus/plus column when moving to another stepper.
-        var groups = children.Select(Focusable).Where(group => group.Count != 0).ToArray();
+        var groups = children.SelectMany(FocusRows).Where(group => group.Count != 0).ToArray();
         var links = new Dictionary<string, (string? Up, string? Down)>();
         for (var row = 0; row < groups.Length; row++)
             for (var column = 0; column < groups[row].Count; column++)
@@ -62,6 +63,9 @@ internal static partial class SettingsPresentation
                     row + 1 == groups.Length ? null : groups[row + 1][Math.Min(column, groups[row + 1].Count - 1)]);
         WidgetElement Link(WidgetElement element)
         {
+            // Responsive action grids own their internal spatial navigation;
+            // fixed cross-row links would skip buttons after a one-column reflow.
+            if (element is GridElement && !element.StyleClasses.Contains("wrail-setting-row")) return element;
             if (links.TryGetValue(element.Id, out var link))
             {
                 if (element is ButtonElement button) return button with { FocusNeighbors = (button.FocusNeighbors ?? new()) with { Up = link.Up, Down = link.Down } };
@@ -72,6 +76,15 @@ internal static partial class SettingsPresentation
             return element;
         }
         return page with { Children = children.Select(Link).ToArray() };
+    }
+
+    private static IEnumerable<List<string>> FocusRows(WidgetElement element)
+    {
+        if (element is GridElement field && field.StyleClasses.Contains("wrail-setting-row"))
+            return field.Children.OfType<StackElement>().Where(child => child.StyleClasses.Contains("wrail-setting-row__control"))
+                .SelectMany(FocusRows);
+        if (element is StackElement stack) return stack.Children.SelectMany(FocusRows);
+        return [Focusable(element)];
     }
 
     private static List<string> Focusable(WidgetElement element) => element switch

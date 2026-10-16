@@ -25,7 +25,8 @@ internal sealed partial class BrowserSurface
     {
         if (!(hostInvoked ? CanCompleteSiteDecision : CanRequestSiteDecision) || HasDialog || siteControlsPending || choose is null || core is not { } current) return;
         var origin = BrowserSiteIdentity.Origin(sessionStopped ? document.Url : current.Source, requireHttps: false);
-        if (origin is null) { ShowStatus("Open a website to manage its settings."); return; }
+        // Profile controls remain useful on the browser start page.
+        origin ??= "Browser profile";
         siteControlsPending = true;
         var token = (siteDecisions ??= CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token)).Token;
         try
@@ -43,7 +44,7 @@ internal sealed partial class BrowserSurface
                         Value: PermissionSettingLabel(saved.GetValueOrDefault(p.Kind, CoreWebView2PermissionState.Default)))));
                 }
                 var placement = BrowserPopupPlacement.Ask;
-                if (ReadPopupPlacement is { } read && WritePopupPlacement is not null && RequestPopupPin is not null && document.Options.Popups == WidgetProtocol.BrowserPopupMode.Hosted)
+                if (BrowserSiteIdentity.Origin(origin, requireHttps: false) is not null && ReadPopupPlacement is { } read && WritePopupPlacement is not null && RequestPopupPin is not null && document.Options.Popups == WidgetProtocol.BrowserPopupMode.Hosted)
                 {
                     placement = await read(this, origin, token);
                     choices.Add(new("windows", "New windows", Group: "Behavior", Value: PopupPlacementLabel(placement)));
@@ -59,8 +60,8 @@ internal sealed partial class BrowserSurface
                 if (selection == "downloads") { await ManageDownloadsAsync(token); continue; }
                 if (selection == "windows")
                 {
-                    var selected = await choose(this, "New windows", "Choose where this website opens additional pages.",
-                        (HostDialogChoice[])[new("ask", "Ask each time"), new("widget", "Open in widget"), new("pin", "Open pinned")], token,
+                    var selected = await choose(this, "New windows", "Choose where windows opened by this website appear.",
+                        (HostDialogChoice[])[new("ask", "Ask each time"), new("pin", "Pinned surface"), new("widget", "Over current page")], token,
                         preference: new(placement switch { BrowserPopupPlacement.Pinned => "pin", BrowserPopupPlacement.InWidget => "widget", _ => "ask" }));
                     token.ThrowIfCancellationRequested();
                     if (!CanCompleteSiteDecision || !ReferenceEquals(core, current)) return;
@@ -111,7 +112,7 @@ internal sealed partial class BrowserSurface
         (CoreWebView2PermissionKind.MultipleAutomaticDownloads, "Multiple downloads"),
     ];
     private static string PopupPlacementLabel(BrowserPopupPlacement placement) => placement switch
-    { BrowserPopupPlacement.Pinned => "Open pinned", BrowserPopupPlacement.InWidget => "Open in widget", _ => "Ask each time" };
+    { BrowserPopupPlacement.Pinned => "Pinned surface", BrowserPopupPlacement.InWidget => "Over current page", _ => "Ask each time" };
 
     private static string PermissionSettingLabel(CoreWebView2PermissionState state) => state switch
     { CoreWebView2PermissionState.Allow => "Allow", CoreWebView2PermissionState.Deny => "Block", _ => "Ask" };

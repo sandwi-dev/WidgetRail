@@ -7,7 +7,8 @@ internal sealed partial class BrowserSurface
 {
     private sealed record AutomaticFieldClick(CoreWebView2 Core, long Gesture, long PointerEpoch,
         long PageEpoch, long EditGeneration, double RatioX, double RatioY, double X, double Y);
-    private sealed record AutomaticFieldTarget(AutomaticFieldClick Click, string ObjectId, string? SessionId);
+    private sealed record FieldFrame(string ObjectId, string? SessionId);
+    private sealed record AutomaticFieldTarget(AutomaticFieldClick Click, string ObjectId, string? SessionId, FieldFrame[] Frames);
 
     // Only host-generated numeric coordinates enter this fixed script. A click
     // elsewhere must not reopen a previously focused field. Open shadow roots
@@ -40,6 +41,7 @@ internal sealed partial class BrowserSurface
         if (!IsCurrentClick(click)) { TracePointer($"edit-rejected loading={loading} dialog={HasDialog} epoch={pageEpoch}/{click.PageEpoch} edit={editGeneration}/{click.EditGeneration}"); return; }
         var references = new List<(string? Session, string Object)>();
         var sessions = new List<string>();
+        var frames = new List<FieldFrame>();
         string? targetSession = null;
         int? contextId = null;
         var point = new BrowserHitPoint(click.X, click.Y);
@@ -72,6 +74,7 @@ internal sealed partial class BrowserSurface
                     JsonSerializer.Serialize(new BrowserObject(objectId), BrowserJsonContext.Default.BrowserObject)));
                 if (node.RootElement.GetProperty("node").GetProperty("nodeName").GetString() == "IFRAME")
                 {
+                    frames.Add(new(objectId, targetSession));
                     var frameId = node.RootElement.GetProperty("node").GetProperty("frameId").GetString()!;
                     using var mapped = JsonDocument.Parse(await Call(targetSession, "Runtime.callFunctionOn",
                         JsonSerializer.Serialize(new BrowserFieldCall(objectId, FramePoint, [new(pointJson)]), BrowserJsonContext.Default.BrowserFieldCall)));
@@ -93,7 +96,7 @@ internal sealed partial class BrowserSurface
                     continue;
                 }
                 handedToEditor = true;
-                await EditLiveFieldAsync(new(click, objectId, targetSession));
+                await EditLiveFieldAsync(new(click, objectId, targetSession, frames.ToArray()));
                 return;
             }
         }

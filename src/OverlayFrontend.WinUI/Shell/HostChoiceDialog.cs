@@ -45,6 +45,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     // Confirmations retain the constructor's safe Cancel policy.
     internal void ConfigurePreferenceList(string? currentChoiceId = null, string closeLabel = "Back")
     {
+        UseActionList();
         FocusFirstOptionOnOpen = true;
         initialChoiceId = currentChoiceId;
         CloseButtonText = closeLabel;
@@ -340,12 +341,19 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         if (panelAnchor is not null) PositionPendingPanel();
         // Theme application can replace the button after Opened. Keep the ID
         // on the current template instance rather than the discarded control.
-        if (GetTemplateChild("PrimaryButton") is Control primary)
-            AutomationProperties.SetAutomationId(primary, "Host.Choice.Primary");
-        if (GetTemplateChild("SecondaryButton") is Control secondary)
-            AutomationProperties.SetAutomationId(secondary, "Host.Choice.Secondary");
-        if (GetTemplateChild("CloseButton") is Control close)
-            AutomationProperties.SetAutomationId(close, "Host.Choice.Close");
+        foreach (var (part, id, property) in new[] {
+            ("PrimaryButton", "Primary", nameof(PrimaryButtonText)),
+            ("SecondaryButton", "Secondary", nameof(SecondaryButtonText)),
+            ("CloseButton", "Close", nameof(CloseButtonText)) })
+        {
+            if (GetTemplateChild(part) is not Button button) continue;
+            AutomationProperties.SetAutomationId(button, "Host.Choice." + id);
+            // Destination/action labels must remain readable in narrow dialogs.
+            // Keep native buttons and their focus/automation/activation behavior.
+            var label = new TextBlock { TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+            label.SetBinding(TextBlock.TextProperty, new Binding { Source = this, Path = new PropertyPath(property), Mode = BindingMode.OneWay });
+            button.Content = label;
+        }
         if (opened) QueueInitialFocus();
     }
 

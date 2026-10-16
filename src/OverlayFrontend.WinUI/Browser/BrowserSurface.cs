@@ -26,7 +26,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Collapsed };
     private readonly List<Button> buttons = [];
     private readonly Func<Task<CoreWebView2Environment>> environment;
-    private readonly string profile;
+    private string profile;
     private readonly string widgetId;
     internal string WidgetId => widgetId;
     // XAML Parent can be null while an unloaded ancestor still owns its child collection.
@@ -340,6 +340,12 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             ControllerInitializationMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(controllerStarted).TotalMilliseconds;
             if (retired) return;
             core = web.CoreWebView2;
+            if (ExtensionsEligible && !isPopup && RegisterExtensionProfile is { } register)
+            {
+                try { await register(this, lifetime.Token); }
+                catch (Exception error) when (error is not OperationCanceledException) { Diagnostics.FrontendFailureLog.Current.Write("extension-profile-register", error); }
+            }
+            if (retired) return;
             audio?.Dispose(); audio = new(core, () => ActivityChanged?.Invoke());
             browserProcessId = core.BrowserProcessId;
             InitializeDrag();
@@ -352,16 +358,23 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             settings.IsPinchZoomEnabled = true;
             core.NavigationStarting += (_, args) =>
             {
+                if (extensionOptionsId is not null && !IsAuthorizedExtensionUrl(args.Uri))
+                {
+                    args.Cancel = true;
+                    if (args.IsUserInitiated && input && WebBrowserDocument.IsWebUrl(args.Uri) && OpenExternal is { } openExtensionLink)
+                        Run(async () => { await openExtensionLink(new Uri(args.Uri), lifetime.Token); });
+                    return;
+                }
                 if (IsProviderContent && args.Uri != document.Url)
                 { args.Cancel = true; if (args.IsUserInitiated && input) Run(() => OpenProviderLinkAsync(args.Uri)); return; }
-                if (!IsProviderContent && !IsHostedPackage && args.IsUserInitiated && !args.IsRedirected && BrowserNavigationPolicy.OpenExternally(document, args.Uri))
+                if (!IsProviderContent && !IsHostedPackage && !IsAuthorizedExtensionUrl(args.Uri) && args.IsUserInitiated && !args.IsRedirected && BrowserNavigationPolicy.OpenExternally(document, args.Uri))
                 {
                     args.Cancel = true;
                     var destination = new Uri(args.Uri);
                     if (input && OpenExternal is { } open) Run(async () => { await open(destination, lifetime.Token); });
                     return;
                 }
-                if (args.Uri != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(args.Uri)) { args.Cancel = true; ShowStatus("This link cannot open inside WidgetRail."); return; }
+                if (args.Uri != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(args.Uri) && !IsAuthorizedExtensionUrl(args.Uri)) { args.Cancel = true; ShowStatus("This link cannot open inside WidgetRail."); return; }
                 CancelSiteDecisions();
                 InvalidateNotifications?.Invoke(this);
                 navigationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -438,7 +451,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (retired || faulted || core is null || !Uri.TryCreate(core.Source, UriKind.Absolute, out var uri)) return;
         var title = core.DocumentTitle ?? "";
         welcome.Visibility = core.Source == WebBrowserDocument.StartPage ? Visibility.Visible : Visibility.Collapsed;
-        address.Text = isPopup ? (BrowserSiteIdentity.Origin(core.Source) ?? (core.Source == WebBrowserDocument.StartPage ? "New window" : "Untrusted origin")) : core.Source == WebBrowserDocument.StartPage ? "Search Google or enter a URL" : uri.IdnHost + (title.Length == 0 ? "" : " · " + title[..Math.Min(180, title.Length)]);
+        address.Text = IsAuthorizedExtensionUrl(core.Source) ? "Extension options" : isPopup ? (BrowserSiteIdentity.Origin(core.Source) ?? (core.Source == WebBrowserDocument.StartPage ? "New window" : "Untrusted origin")) : core.Source == WebBrowserDocument.StartPage ? "Search Google or enter a URL" : uri.IdnHost + (title.Length == 0 ? "" : " · " + title[..Math.Min(180, title.Length)]);
         AutomationProperties.SetName(address, address.Text);
         UpdateBookmark();
     }

@@ -82,10 +82,20 @@ internal sealed partial class OverlayShellPage
         check(ReferenceEquals(pin.Popup!.Slot.Surface, child), "View enters the same pinned live pop-out through shared controller routing");
         if (Environment.GetCommandLineArgs().Contains("--webapp-pin-dialog-lifecycle")) await VerifyPinnedDialogExitAsync(child, check);
         await VerifySpatialRoutingAsync(child, "pinned pop-out", check);
+        var previousBounds = pin.Window.Bounds;
+        pin.Window.Place(new(previousBounds.X, previousBounds.Y, 320, 220));
+        await Task.Delay(200);
+        var viewportHeight = child.CompositionRoot.ActualHeight;
         await child.EvaluateFixtureAsync("window.editor=document.createElement('input');editor.id='popup-editor';editor.style='position:fixed;left:10px;top:10px;width:200px;height:50px';document.body.append(editor)");
         await child.ClickFieldForValidationAsync("popup-editor");
         await WebAppUntil(() => child.ControllerTextEntry is { IsLoaded: true });
         var keyboard = child.ControllerTextEntry!;
+        await WebAppUntil(() => keyboard.IsFloating && keyboard.ActualHeight > 0);
+        await Task.Delay(300);
+        var keysPanel = Presentation.NativeDialogPresentation.FindPart<FrameworkElement>(keyboard, "BackgroundElement")!;
+        check(keyboard.ActualWidth > child.XamlRoot.Size.Width && keysPanel.ActualHeight > child.XamlRoot.Size.Height &&
+            keyboard.AllKeysVisibleForValidation && keyboard.Content is ScrollViewer { ScrollableHeight: 0 } && Math.Abs(child.CompositionRoot.ActualHeight - viewportHeight) < 1,
+            "A full keyboard extends outside a small pin without scrolling keys or resizing its WebView");
         check(ReferenceEquals(ActiveControllerKeyboard, keyboard), "Pinned pop-out keyboard joins the shared controller keyboard owner");
         FindControl<Button>(keyboard, "Widget.TextEntry.Key.10")!.Focus(FocusState.Keyboard);
         await Press(ControllerButton.A);
@@ -94,6 +104,7 @@ internal sealed partial class OverlayShellPage
         await Press(ControllerButton.B);
         await WebAppUntil(() => child.ControllerTextEntry is null && PinnedInputActive && child.IsBrowsing);
         check(await child.EvaluateFixtureAsync("editor.value==='q'") == "true", "Closing the pinned keyboard preserves the edit and returns input to the same pop-out");
+        pin.Window.Place(previousBounds);
         if (Environment.GetCommandLineArgs().Contains("--webapp-notifications")) await VerifyPinnedNotificationAsync(child, check);
         await Press(ControllerButton.B);
         await WebAppUntil(() => foreground && !PinnedInputActive);
@@ -121,6 +132,38 @@ internal sealed partial class OverlayShellPage
         await ExecutePinChoiceAsync(descriptor.Id, choice);
         await WebAppUntil(() => pinned?.Popup is { IsCurrent: true });
         check(true, "The tray pin choice uses the same live pop-out path as its toolbar");
+        var originalPin = pinned!;
+        await PinAsync("webapp-b", WidgetPinnedProjection.FullWidgetLayoutId, originalPin);
+        check(pinned?.WidgetId == "webapp-b" && child.IsReady && ReferenceEquals(parent.ActiveSurface, child),
+            "A different widget replacing the pin returns the live additional page to its original widget");
+        await UnpinAsync(save: true);
+        await PinBrowserPopupAsync(parent.WidgetId, expectedChild: child);
+        await WebAppUntil(() => pinned?.Popup is { IsCurrent: true } && foreground);
+        originalPin = pinned!;
+        await PinAsync(parent.WidgetId, "missing-layout", originalPin);
+        check(ReferenceEquals(pinned, originalPin) && child.IsReady && parent.HasPopup,
+            "Failed layout preparation leaves the pinned additional page alive");
+        var replacement = ReplacePinAsync(descriptor, originalPin);
+        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
+        check(ReferenceEquals(pinned, originalPin) && child.IsReady,
+            "Replacing a single available layout still asks before closing the additional page");
+        Receive(new ControllerFrame { Connected = 1 }); await Press(ControllerButton.B); await replacement.WaitAsync(TimeSpan.FromSeconds(5));
+        check(ReferenceEquals(pinned, originalPin) && child.IsReady,
+            "Cancelling full-widget replacement keeps the original pinned page");
+        replacement = ReplacePinAsync(descriptor, originalPin);
+        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
+        FindControl<Button>(hostChoiceDialog!, "Host.Choice.Primary")!.Focus(FocusState.Keyboard);
+        Receive(new ControllerFrame { Connected = 1 }); await Press(ControllerButton.A); await replacement.WaitAsync(TimeSpan.FromSeconds(5));
+        await WebAppUntil(() => pinned?.Selection is not null && !parent.HasPopup && !child.IsReady);
+        check(ReferenceEquals(parent.ActiveSurface, parent),
+            "Confirmed own-page replacement closes the additional page and pins the actual main widget");
+        await UnpinAsync(save: true);
+        await SelectAsync(parent.WidgetId, enterWidget: true);
+        await WebAppUntil(() => parent.IsBrowsing && foreground);
+        await parent.EvaluateGestureFixtureAsync("window.child=window.open('https://shell.fixture.invalid/popup')");
+        await WebAppUntil(() => parent.PinnablePopup is { IsReady: true, IsNavigationInProgress: false });
+        child = parent.PinnablePopup!;
+        await PinBrowserPopupAsync(parent.WidgetId, expectedChild: child);
         await browserOwner!.StopWidgetSessionsAsync("webapp-a");
         await WebAppUntil(() => pinned is null && parent.SessionStopped && !parent.HasPopup && !child.IsReady);
         check(true, "Stopping the parent session closes its live pinned pop-out and removes the shared pin without deadlock");

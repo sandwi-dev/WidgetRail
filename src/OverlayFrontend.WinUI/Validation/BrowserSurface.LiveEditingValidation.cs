@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal sealed partial class BrowserSurface
 {
     private AutomaticFieldTarget? fixtureLiveTarget;
+    internal void ZoomForEditingValidation(double delta) => ChangeZoom(delta);
     internal async Task<string> ReadLiveFrameForValidationAsync()
     {
         if (FixturePage is null || fixtureLiveTarget is not { } target) throw new InvalidOperationException("Synthetic live frame required.");
@@ -63,7 +64,7 @@ internal sealed partial class BrowserSurface
         // the synthetic page has had two real animation frames to settle.
         await core!.CallDevToolsProtocolMethodAsync("Runtime.evaluate", "{\"expression\":\"new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))\",\"awaitPromise\":true}");
         await EvaluateFixtureAsync("window.__fixturePointer=[];for(const type of ['mousedown','mouseup','click'])document.addEventListener(type,e=>__fixturePointer.push({type,target:e.target.id,x:e.clientX,y:e.clientY,trusted:e.isTrusted}),{once:true,capture:true})");
-        using var point = JsonDocument.Parse(await EvaluateFixtureAsync("(()=>{const e=document.getElementById(" + JsonSerializer.Serialize(id) + ");e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:(r.left+r.width/2)/visualViewport.width,y:(r.top+r.height/2)/visualViewport.height};})()"));
+        using var point = JsonDocument.Parse(await EvaluateFixtureAsync("(()=>{const host=document.getElementById(" + JsonSerializer.Serialize(id) + ");const e=host.shadowRoot?.querySelector('input')??host;e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:(r.left+r.width/2)/visualViewport.width,y:(r.top+r.height/2)/visualViewport.height};})()"));
         cursorX = point.RootElement.GetProperty("x").GetDouble(); cursorY = point.RootElement.GetProperty("y").GetDouble();
         HandleButton(ControllerButton.A, ControllerEventPhase.Pressed);
         await Task.Delay(80);

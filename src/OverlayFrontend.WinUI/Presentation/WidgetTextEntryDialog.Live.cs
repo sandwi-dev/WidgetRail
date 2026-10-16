@@ -11,21 +11,17 @@ internal sealed partial class WidgetTextEntryDialog
     private bool finishingLive;
     private bool liveFailed;
     private string? overflowHeading;
-    private double liveHostWidth = double.PositiveInfinity;
-    private double liveHostHeight = double.PositiveInfinity;
     internal bool IsLive => liveEdit is not null;
+    // Window-relative rendered field bounds; editing and navigation remain shared.
+    private Windows.Foundation.Rect? fieldAnchor;
+    internal event Action? FieldAnchorChanged;
+    internal Windows.Foundation.Rect? FieldAnchor
+    {
+        get => fieldAnchor;
+        set { if (fieldAnchor == value) return; fieldAnchor = value; FieldAnchorChanged?.Invoke(); }
+    }
     internal string DismissLabel => IsLive ? "Close" : "Cancel";
     internal Task WaitForLiveInputAsync() => liveDrain ?? Task.CompletedTask;
-    internal void ConstrainLiveHost(double width, double height)
-    {
-        if (!IsLive || completed || width <= 0 || height <= 0) return;
-        liveHostWidth = width; liveHostHeight = height;
-        MaxHeight = Math.Max(1, height * .68);
-        if (Content is ScrollViewer scroll) scroll.MaxHeight = Math.Max(1, MaxHeight - 28 * interfaceScale);
-        Resources["ContentDialogMaxWidth"] = width;
-        Resources["ContentDialogMinWidth"] = Math.Min(320 * interfaceScale, width);
-        ConstrainWidth();
-    }
 
     private void SendLive(KeyboardEdit edit)
     {

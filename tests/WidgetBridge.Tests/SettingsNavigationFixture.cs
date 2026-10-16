@@ -118,7 +118,7 @@ internal static class SettingsNavigationFixture
         File.WriteAllBytes(Path.Combine(bundled, "manifest.json"), ManifestJson.Serialize(manifest with
             { Id = "widgetrail.firstparty.audio-mixer", Publisher = "widgetrail.firstparty", Name = "Synthetic built-in Audio" }));
     }
-    private static WrssPackageResult SettingsStyle()
+    internal static WrssPackageResult SettingsStyle()
     {
         var parsed = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixture", "settings-default.wrss")), "settings-default.wrss");
         Check(parsed.IsValid, "Settings fixture theme could not parse");

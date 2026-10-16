@@ -57,16 +57,19 @@ internal sealed partial class WidgetViewPresenter
         }
         if (indexed?.MoveFocus(direction) == true) return true;
         FrameworkElement? exitedViewport = null;
+        string? exitedScrollOwner = null;
         if (indexed is not null)
             foreach (var (owner, viewport) in scrollOwners.Where(pair => ReferenceEquals(pair.Owner, origin)))
             {
                 var wasScrolling = ReferenceEquals(directionalScroll?.Viewport, viewport);
                 if (TryDirectionalScroll(owner, viewport, origin, direction, isRepeat)) return true;
-                if (wasScrolling) exitedViewport = viewport;
+                if (wasScrolling) { exitedViewport = viewport; exitedScrollOwner = owner.Identity.Id; }
             }
 
         var nativeOrigin = indexed?.FocusedNavigationElement ?? origin.Element;
-        if (NavigationBounds(exitedViewport ?? nativeOrigin) is not { } originBounds) return true;
+        if (NavigationBounds(nativeOrigin) is not { } originBounds) return true;
+        if (exitedViewport is not null && NavigationBounds(exitedViewport) is { } exitedBounds)
+            originBounds = ExitBounds(exitedBounds);
         var policyDirection = direction switch
         {
             FocusNavigationDirection.Up => FocusDirection.Up, FocusNavigationDirection.Down => FocusDirection.Down,
@@ -110,17 +113,29 @@ internal sealed partial class WidgetViewPresenter
                 // The retained control may now be far outside the viewport. At
                 // this boundary rank outer targets from the container, otherwise
                 // a fixed header can incorrectly appear below an offscreen anchor.
-                if (wasScrolling && NavigationBounds(viewport) is { } boundary) originBounds = boundary;
+                if (wasScrolling && NavigationBounds(viewport) is { } boundary)
+                {
+                    originBounds = ExitBounds(boundary);
+                    exitedScrollOwner = owner.Identity.Id;
+                }
             }
         }
         if (deferredExit is not null) { Commit(deferredExit); return true; }
         if (Choose(null) is { } outside) { Commit(outside); return true; }
         return false;
 
+        FocusRectangle ExitBounds(FocusRectangle viewport) => direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down
+            ? new(originBounds.X, viewport.Y, originBounds.Width, viewport.Height)
+            : new(viewport.X, originBounds.Y, viewport.Width, originBounds.Height);
+
         Binding? Choose(string? owner)
         {
             var selected = DirectionalFocusPolicy.Choose(originBounds, policyDirection.Value, candidates
                 .Where(pair => owner is null || IsDescendant(pair.Key, owner))
+                // Once ranking from an exhausted viewport, only its exits are
+                // eligible. Its own earlier controls can lie beyond the viewport
+                // centre even though they are behind the actual focused control.
+                .Where(pair => exitedScrollOwner is null || !IsDescendant(pair.Value.Target.Identity.Id, exitedScrollOwner))
                 .Select(pair => new FocusCandidate(pair.Key, pair.Value.Bounds)));
             return selected is null ? null : candidates[selected].Target;
         }

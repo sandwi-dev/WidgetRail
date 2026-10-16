@@ -5,6 +5,7 @@ using WidgetRail.FirstPartyWidgets.Settings;
 using WidgetRail.PlatformBroker;
 using WidgetRail.PlatformDiagnostics;
 using WidgetRail.PlatformSettings;
+using WidgetRail.PlatformSettings.BrowserExtensions;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
@@ -45,6 +46,7 @@ if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Extensions use dedicated pages with shared policy and host-owned mutations", ExtensionPages),
     ("App updates use explicit review and preserve busy focus", AppUpdateScenarios.ControllerFlow),
     ("Marketplace download review is controller-native and full access requires confirmation", MarketplaceScenarios.ControllerFlow),
     ("Diagnostics export stays focusable and retains its saved location", DiagnosticsExportScenarios.ExportRetainsFocusAndResult),
@@ -203,6 +205,34 @@ static async Task HostSelectedSettingsProfile()
     }
 }
 
+static async Task ExtensionPages()
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    var entry = new ExtensionEntry(Guid.NewGuid().ToString("N"), "fixture", new("Fixture", "1", 3, null, "options.html", [], []), "v1", true,
+        new() { ["persistent-second"] = ExtensionOverride.Off }, new());
+    var catalog = new ExtensionCatalog([new("persistent-first", "first", "First · default", false), new("persistent-second", "second", "Second · default", false)], [entry]);
+    var path = BrowserExtensionCatalogFile.PathFor(temp.Path);
+    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(catalog, ExtensionJsonContext.Default.ExtensionCatalog));
+    await Action(widget, "open.extensions");
+    var view = Snapshot(widget);
+    Assert.Equal("extensions.library", view.ActiveInputScopeId); Assert.Valid(view);
+    Assert.True(Nodes(view.Root).Any(n => n.ActionId == "extensions.open." + entry.Slot), "Library entry missing");
+    await Action(widget, "extensions.open." + entry.Slot);
+    view = Snapshot(widget); Assert.Equal("extensions.details", view.ActiveInputScopeId); Assert.Valid(view);
+    Assert.Equal("extensions.default", view.InitialFocusId);
+    Assert.True(Nodes(view.Root).Any(n => n.Id == "extensions.override.persistent-second"), "Profile override missing");
+    Assert.True(!Nodes(view.Root).Any(n => n.ActionId?.StartsWith("host.extensions.options.", StringComparison.Ordinal) == true), "Settings must not offer cross-widget extension options");
+    var prior = await File.ReadAllTextAsync(path);
+    await Action(widget, "host.extensions.default." + entry.Slot + ".off");
+    Assert.True(Nodes(Snapshot(widget).Root).Any(n => n.Id == "extensions.progress"), "Native change should show busy state");
+    Assert.Equal(prior, await File.ReadAllTextAsync(path));
+    await Action(widget, "extensions.refresh");
+    Assert.True(!Nodes(Snapshot(widget).Root).Any(n => n.Id == "extensions.progress"), "Refresh should clear busy state");
+    await Action(widget, "back"); Assert.Equal("extensions.library", Snapshot(widget).ActiveInputScopeId);
+}
+
 static Task RootCategories()
 {
     using var temp = new TemporaryDirectory();
@@ -211,7 +241,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.overlay", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.overlay", "category.appearance", "category.accessibility", "category.controllers", "category.installed-widgets", "category.diagnostics"],
+        ["category.overlay", "category.appearance", "category.accessibility", "category.controllers", "category.installed-widgets", "category.extensions", "category.diagnostics"],
         Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface).Select(node => node.Id));
     Assert.SequenceEqual(["settings.restart", "settings.quit"],
         Buttons(snapshot.Root).Select(button => button.Id));
@@ -263,7 +293,7 @@ static async Task LoadingBeforeReady()
     var loading = Snapshot(widget);
     Assert.True(!Nodes(loading.Root).Any(node => node.Id == "settings.loading.indicator"), "Home should not wait behind initialization.");
     Assert.Equal("settings-root", loading.ActiveInputScopeId);
-    Assert.True(Nodes(loading.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface && node.IsBusy != true) == 6, "Home categories must remain usable while loading.");
+    Assert.True(Nodes(loading.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface && node.IsBusy != true) == 7, "Home categories must remain usable while loading.");
     Assert.True(!Nodes(loading.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.toast"), "Loading home should have neither a subtitle nor a duplicate loading toast.");
     Assert.SequenceEqual(["settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
     Assert.True(Buttons(loading.Root).All(node => node.IsBusy != true), "Application controls must remain usable during loading.");

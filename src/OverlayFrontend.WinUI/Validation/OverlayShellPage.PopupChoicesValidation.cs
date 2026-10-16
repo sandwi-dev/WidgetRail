@@ -16,6 +16,13 @@ internal sealed partial class OverlayShellPage
         await PopupPreferences.SetAsync(parent.WidgetId, parent.ProfileName, origin, BrowserPopupPlacement.Ask, lifetime.Token);
         var pending = Open();
         await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
+        check(hostChoiceDialog!.Title.ToString() == "Open new window" && hostChoiceDialog.PrimaryButtonText == "Open in pinned surface" &&
+            hostChoiceDialog.SecondaryButtonText == "Open over current page" &&
+            FindControl<CheckBox>(hostChoiceDialog, "Host.Choice.Remember")?.Content?.ToString() == "Remember for this website",
+            "Automatic placement and Remember use the same destination terms as direct Page actions");
+        check(FindControl<Button>(hostChoiceDialog, "Host.Choice.Primary")?.Content is TextBlock { TextWrapping: TextWrapping.Wrap } &&
+            FindControl<Button>(hostChoiceDialog, "Host.Choice.Secondary")?.Content is TextBlock { TextWrapping: TextWrapping.Wrap },
+            "Long native decision labels wrap instead of truncating their destinations");
         check(parent.PinnablePopup is null && ReferenceEquals(parent.ActiveSurface, parent), "Placement dialog appears before a popup takes over the parent");
         FindControl<CheckBox>(hostChoiceDialog!, "Host.Choice.Remember")!.Focus(FocusState.Keyboard);
         await Press(ControllerButton.A);
@@ -85,7 +92,7 @@ internal sealed partial class OverlayShellPage
         var previousPin = pinned;
         pending = Open();
         await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        check(ReferenceEquals(pinned, previousPin) && hostChoiceDialog!.Title.ToString() == "Where should this page open?",
+        check(ReferenceEquals(pinned, previousPin) && hostChoiceDialog!.Title.ToString() == "Open new window",
             "Remembered pin placement still asks before replacing an existing pin");
         await CapturePopupDecisionAsync(hostChoiceDialog!, "popup-replace");
         await Press(ControllerButton.B); await pending;

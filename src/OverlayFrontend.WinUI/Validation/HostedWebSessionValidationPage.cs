@@ -18,7 +18,8 @@ internal sealed partial class HostedWebSessionValidationPage : Page, IAsyncDispo
     private readonly List<string> checks = [];
     private BrowserSurface? first, second;
     private Task? running;
-    private readonly Web.HostedWebViewEnvironment runtime = new(Path.Combine(Path.GetTempPath(), "WidgetRail-validation", "sessions-" + Guid.NewGuid().ToString("N")));
+    private readonly Web.HostedWebViewEnvironment runtime = new(Path.Combine(Path.GetTempPath(), "WidgetRail-validation", "sessions-" + Guid.NewGuid().ToString("N")),
+        new() { AreBrowserExtensionsEnabled = true });
     private const string PageUrl = "https://session-fixture.widgetrail.internal/index.html";
     internal HostedWebSessionValidationPage()
     {
@@ -52,6 +53,7 @@ internal sealed partial class HostedWebSessionValidationPage : Page, IAsyncDispo
             first = Create("first", definition, resources); second = Create("second", definition, resources);
             parking.Children.Add(first); parking.Children.Add(second);
             await first.StartHostedSessionAsync(lifetime.Token);
+            Check(first.ProfileName.StartsWith("pkg-", StringComparison.Ordinal), "Packaged sessions use an extension-ineligible profile namespace");
             first.PostHostedMessage(Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"start\":true}")));
             using var ready = JsonDocument.Parse(WebSessionContract.DecodeMessage(await first.HostedMessages.ReadAsync(lifetime.Token)));
             Check(ready.RootElement.GetProperty("playing").GetBoolean(), "Packaged audio starts while the surface is hidden: " + ready.RootElement.GetRawText());

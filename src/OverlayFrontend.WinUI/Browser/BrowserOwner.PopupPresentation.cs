@@ -74,14 +74,14 @@ internal sealed partial class BrowserOwner
         }
     }
 
-    internal async Task ReleasePopupPresentationAsync(BrowserPopupPresentation lease)
+    internal async Task ReleasePopupPresentationAsync(BrowserPopupPresentation lease, bool closePage = false)
     {
         await popupPlacement.WaitAsync();
-        try { await ReturnPopupCoreAsync(lease); }
+        try { await ReturnPopupCoreAsync(lease, closePage); }
         finally { popupPlacement.Release(); }
     }
 
-    private async Task ReturnPopupCoreAsync(BrowserPopupPresentation lease)
+    private async Task ReturnPopupCoreAsync(BrowserPopupPresentation lease, bool closePage = false)
     {
         if (lease.Released) return;
         lease.Released = true;
@@ -90,7 +90,9 @@ internal sealed partial class BrowserOwner
         lease.Slot.PlacementChanged = null;
         lease.Slot.SetSurface(null);
         lease.Child.SetPresentation(false, false);
-        if (retired || !lease.Parent.IsDetachedPopup(lease.Child) || !lease.Child.IsReady) return;
+        if (retired || !lease.Parent.IsDetachedPopup(lease.Child)) return;
+        if (closePage) { await lease.Parent.ClosePopupAsync(); return; }
+        if (!lease.Child.IsReady) return;
         try
         {
             await MoveAsync(lease.Child, lease.Origin, () => lease.Parent.IsDetachedPopup(lease.Child) && lease.Child.IsReady);

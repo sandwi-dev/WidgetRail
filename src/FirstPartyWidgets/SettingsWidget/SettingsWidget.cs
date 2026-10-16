@@ -44,6 +44,8 @@ public enum SettingsPage
     MarketplaceDetails,
     AppUpdates,
     IntentDestination,
+    Extensions,
+    ExtensionDetails,
 }
 
 public sealed partial class SettingsWidget : Widget
@@ -179,10 +181,12 @@ public sealed partial class SettingsWidget : Widget
         string? themePickerFocusId;
         string? selectedAuthorityRecoveryId;
         string status;
+        SettingsExtensionsState extensions;
         StartupRegistrationStatus startupStatus;
         OverlayDisplayContext display;
         lock (_stateLock)
         {
+            extensions = _extensions;
             startupStatus = _startupStatus;
             display = _display;
             settings = _settings;
@@ -219,7 +223,7 @@ public sealed partial class SettingsWidget : Widget
             error,
             selectedTheme,
             themePickerFocusId, startupStatus, display, loading, _hostFeatures,
-            diagnosticDetails, supportExportFile, marketplace, appUpdates);
+            diagnosticDetails, supportExportFile, marketplace, appUpdates, extensions);
         if (page == SettingsPage.IntentDestination) return RenderIntentDestination(presentation);
         if (SettingsPresentation.TryRender(presentation, out var view))
             return SettingsPresentation.AnimatePage(view, page, loading, navigation);
@@ -381,6 +385,7 @@ public sealed partial class SettingsWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (await HandleExtensionActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (action.ActionId is "installed.filter.all" or "installed.filter.builtin" or "installed.filter.community")
         {
             ChangeInstalledFilter(action.ActionId switch

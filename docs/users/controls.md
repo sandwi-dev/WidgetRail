@@ -44,13 +44,18 @@ of a password back to controller editing starts the controller caret at the end;
 use LB/RB to position it. Ordinary text retains its native selection.
 
 Physical keyboard paste remains available, including Ctrl+V and Shift+Insert.
-When a virtual key has focus, physical Left/Right move the text caret; Enter and
-Space activate the selected key. Enter submits when the text editor has focus.
+Both keyboard modes open with Q visibly focused. When a virtual key has focus,
+physical Left/Right move the text caret and Enter activates the selected key.
+Physical Space always types a space. Enter submits when the text editor has focus.
+The keyboard sizes responsively while keeping every key and action visible without
+scrolling. It can extend outside a small widget or pin.
 Hiding the overlay or leaving the widget cancels an unsubmitted widget-field draft.
 
 Browser and webapp fields work differently: point at a field and click A to open
 the keyboard, including a field that already has focus. These edits reach the page
-as you type. B or Done closes the keyboard and keeps the edits; **Send Enter** is
+as you type. The keyboard floats beside the rendered field without shrinking the
+webpage, preferring below the field and using the space above or beside it when needed.
+B or Done closes the keyboard and keeps the edits; **Send Enter** is
 the explicit action for sending an Enter key to the website. Existing password text
 is represented only by masks. Widget fields, browser addresses and website text
 prompts keep the draft/confirm behavior described above.
@@ -69,17 +74,27 @@ for canvas controls or elements a page does not expose as interactive.
 LS opens Website controls; its actions have direct labels. Website permissions can
 also be changed from the widget's tray menu, including restoring a blocked microphone.
 
-Opening a hosted pop-out in a pinnable widget asks **Open pinned**, **Open in
-widget**, or **Cancel**. The optional Remember checkbox saves the choice for that
-website in the current widget/account. Reset it through **Website controls →
-Pop-out placement → Ask each time**. If a pin already exists, **Replace pin**
-requires an explicit choice even with a remembered pin preference.
+On a link, **Page actions → New window** offers **Open in pinned surface** and
+**Open over current page** directly. The latter keeps the current page alive
+underneath; B returns to it. These actions do not change your saved preference.
+
+Website-triggered windows show **Open new window**, with **Open in pinned surface**,
+**Open over current page**, and **Cancel**. **Remember for this website** saves the
+choice for the current widget/account. Change it through **Website settings →
+New windows → Ask each time / Pinned surface / Over current page**.
+Replacing an existing page or pin still requires confirmation; a direct action
+uses one **Replace / Cancel** confirmation without asking for placement again.
 
 Pop-outs have no permanent toolbar, in either placement; press **LS** to reveal
 their controls. An existing pop-out also offers **Pin pop-out** there and in the tray. This keeps
 the existing live page pinned while its parent remains usable. View switches to the
 pin; B returns to the overlay. **Return pop-out to widget** moves it back. Stopping
 the parent session also closes its pop-out.
+
+Replacing a pin always asks for confirmation. Replacing an additional page with
+its own full widget closes that additional page; use **Return page to widget**
+instead to keep it. Replacing it with a different widget returns the live page to
+its original widget.
 
 After granting a website notification permission, select **Notification preferences**
 in its widget tray menu to choose Banner + list, List only, or Off. Quiet banners

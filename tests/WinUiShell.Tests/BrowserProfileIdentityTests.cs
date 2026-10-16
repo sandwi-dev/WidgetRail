@@ -7,6 +7,14 @@ namespace WidgetRail.WinUiShell.Tests;
 [TestClass]
 public sealed class BrowserProfileIdentityTests
 {
+    [TestMethod]
+    public void BuiltInBrowserRetainsLibraryWhenSwitchingToPersistentStorage()
+    {
+        var persistent = App();
+        var previous = persistent with { Options = persistent.Options with { Storage = BrowserStorage.Private } };
+        Assert.AreEqual(BrowserProfileIdentity.LibraryFileName("widgetrail.samples.browser", previous),
+            BrowserProfileIdentity.LibraryFileName("widgetrail.samples.browser", persistent));
+    }
     private static WebBrowserDocument App(string key = "default") => new("app", 1, "https://example.com", "Example")
     {
         InteractionMode = BrowserInteractionMode.InteractOnFocus,

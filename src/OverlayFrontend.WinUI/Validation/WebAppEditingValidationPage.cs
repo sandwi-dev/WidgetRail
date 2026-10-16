@@ -60,6 +60,8 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
                     var deadline = Environment.TickCount64 + 10_000;
                     while (await browser.EvaluateFixtureAsync("frameReady") != "true")
                     { if (Environment.TickCount64 > deadline) throw new TimeoutException("Synthetic frame did not load."); await Task.Delay(30); }
+                    if (Environment.GetCommandLineArgs().Contains("--webapp-frame-scaled"))
+                        await browser.EvaluateFixtureAsync("frame.style.transform='scale(.8)';frame.style.transformOrigin='top left';frame.style.border='4px solid white'");
                     if (Environment.GetCommandLineArgs().Contains("--webapp-frame-editing"))
                     {
                         await browser.ClickFrameFieldForValidationAsync();
@@ -95,7 +97,36 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
                     await DisposeAsync();
                     return;
                 }
+                var viewportBefore = browser.CompositionRoot.ActualHeight;
                 var dialog = await Open("plain");
+                await Task.Delay(250);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-keyboard-native-probe"))
+                {
+                    await Task.Delay(500);
+                    var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(dialog.XamlRoot) as Control;
+                    var q = FindElement(dialog, "Widget.TextEntry.Key.10") as Button;
+                    var panel = NativeDialogPresentation.FindPart<FrameworkElement>(dialog, "BackgroundElement");
+                    await File.WriteAllTextAsync(result, JsonSerializer.Serialize(new { ready = true, focused = focused?.GetType().Name,
+                        focusId = focused is null ? null : AutomationProperties.GetAutomationId(focused), qFocus = q?.FocusState.ToString(),
+                        dialog.IsFloating, panelWidth = panel?.ActualWidth, panelHeight = panel?.ActualHeight,
+                        dialogWidth = dialog.ActualWidth, dialogHeight = dialog.ActualHeight }));
+                    return;
+                }
+                Check(Math.Abs(browser.CompositionRoot.ActualHeight - viewportBefore) < 1,
+                    "Floating live keyboard preserves the rendered WebView height");
+                Check(dialog.AllKeysVisibleForValidation && dialog.Content is ScrollViewer { ScrollableHeight: 0 },
+                    "Every key and action is visible without scrolling the keyboard");
+                Check(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(dialog.XamlRoot) is Button { FocusState: FocusState.Keyboard, UseSystemFocusVisuals: true } focusedKey &&
+                    AutomationProperties.GetAutomationId(focusedKey) == "Widget.TextEntry.Key.10",
+                    "Live keyboard starts with keyboard-visible focus on Q");
+                var initialAnchor = dialog.FieldAnchor!.Value;
+                await browser.EvaluateFixtureAsync("document.getElementById('plain').style.marginLeft='100px'");
+                await Task.Delay(400);
+                Check(dialog.FieldAnchor!.Value.X > initialAnchor.X + 30, "Floating keyboard follows rendered field movement");
+                await browser.EvaluateFixtureAsync("document.getElementById('plain').style.marginLeft='12px'");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.Space);
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('plain').value==='original '"), "Physical Space inserts one space while Q has focus");
                 if (Environment.GetCommandLineArgs().Contains("--webapp-live-layout-review"))
                 {
                     await Task.Delay(200);
@@ -151,6 +182,11 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
                 Check(await Eval("document.getElementById('rich').innerText.includes('added') && document.getElementById('bold')===originalBold && document.getElementById('mention')===originalMention"), "Live rich insertion preserves existing formatting and mention nodes");
                 await Close(dialog);
                 dialog = await Open("plain");
+                await browser.EvaluateFixtureAsync("document.getElementById('plain').remove()");
+                await Until(() => browser.FixtureEditor is null);
+                Check(true, "Removing the edited field automatically closes its keyboard");
+                await browser.EvaluateFixtureAsync("document.body.insertAdjacentHTML('afterbegin','<input id=plain value=changed>')");
+                dialog = await Open("plain");
                 dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter);
                 await dialog.WaitForLiveInputAsync();
                 Check(await Eval("window.enters===1"), "An explicit Enter reaches the website");
@@ -163,12 +199,26 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
                 browser.NavigateForValidation("https://editor.fixture.invalid/next");
                 await Until(() => browser.FixtureEditor is null);
                 Check(true, "Navigation retires the keyboard and its exact-field input destination");
+                await Until(() => !browser.IsNavigationInProgress && browser.IsReady);
+                browser.Enter();
+                await browser.EvaluateFixtureAsync("window.shadow=document.createElement('div');shadow.id='shadow';document.body.prepend(shadow);shadow.attachShadow({mode:'open'}).innerHTML='<input value=shadow style=height:40px>'");
+                dialog = await Open("shadow");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true);
+                dialog.InsertForValidation("shadow edit"); await dialog.WaitForLiveInputAsync();
+                Check(await Eval("shadow.shadowRoot.querySelector('input').value==='shadow edit'"), "Floating keyboard edits the exact field in an open shadow root");
+                await Close(dialog);
+                browser.ZoomForEditingValidation(.5);
+                await Until(() => browser.FixtureZoomIdle);
+                dialog = await Open("plain");
+                await Task.Delay(250);
+                Check(dialog.FieldAnchor is { Width: > 0, Height: > 0 }, "Zoomed webpage retains a rendered field anchor");
+                await Close(dialog);
 
                 async Task<WidgetTextEntryDialog> Open(string id)
                 {
                     browser.Enter();
                     await browser.ClickFieldForValidationAsync(id);
-                    await Until(() => browser.FixtureEditor is { IsLoaded: true });
+                    await Until(() => browser.FixtureEditor is { IsLoaded: true, InitialFocusForValidation: true });
                     return browser.FixtureEditor!;
                 }
                 async Task Close(WidgetTextEntryDialog editor)

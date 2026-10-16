@@ -30,7 +30,7 @@ internal sealed partial class BrowserSurface
     internal Func<BrowserSurface, Task>? RequestPopupPin { get; set; }
     internal Func<BrowserSurface, bool>? PopupIsPinned { get; set; }
     internal Func<BrowserSurface, Grid, bool, CancellationToken, Task<CoreWebView2>>? PreparePopup { get; set; }
-    internal Func<BrowserSurface, BrowserSurface?, string?, CancellationToken, Task<BrowserPopupRequest?>>? ChoosePopupPlacement { get; set; }
+    internal Func<BrowserSurface, BrowserSurface?, string?, BrowserPopupPlacement?, CancellationToken, Task<BrowserPopupRequest?>>? ChoosePopupPlacement { get; set; }
     internal Func<BrowserSurface, string, CancellationToken, Task<BrowserPopupPlacement>>? ReadPopupPlacement { get; set; }
     internal Func<BrowserSurface, string, BrowserPopupPlacement, CancellationToken, Task>? WritePopupPlacement { get; set; }
     internal bool HasPopup => popup is not null || openingPopup;
@@ -81,8 +81,10 @@ internal sealed partial class BrowserSurface
         private Windows.Foundation.Deferral? deferral;
         internal NewWindowRequest(CoreWebView2NewWindowRequestedEventArgs args)
         { native = args; args.Handled = true; Url = args.Uri; IsUserInitiated = args.IsUserInitiated; }
-        internal NewWindowRequest(string url, CancellationToken token)
-        { Url = url; IsUserInitiated = true; HostLink = true; Token = token; }
+        internal NewWindowRequest(string url, CancellationToken token, string? extensionId = null, BrowserPopupPlacement? placement = null)
+        { Url = url; IsUserInitiated = true; HostLink = true; Token = token; ExtensionId = extensionId; Placement = placement; }
+        internal BrowserPopupPlacement? Placement { get; }
+        internal string? ExtensionId { get; }
         internal string Url { get; }
         internal bool IsUserInitiated { get; }
         internal bool HostLink { get; }
@@ -114,9 +116,9 @@ internal sealed partial class BrowserSurface
             { if (source.IsHostedDocument(url)) source.Run(() => source.NavigateRequestedAsync(url)); return; }
             if (source.IsProviderContent)
             { if (WebBrowserDocument.IsWebUrl(url)) source.Run(() => source.OpenProviderLinkAsync(url)); return; }
-            if (url != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(url))
+            if (window.ExtensionId is null && url != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(url))
             { source.ShowStatus("This new window cannot open inside WidgetRail."); return; }
-            if (document.Options.Popups != BrowserPopupMode.Hosted)
+            if (window.ExtensionId is null && document.Options.Popups != BrowserPopupMode.Hosted)
             {
                 if (!WebBrowserDocument.IsWebUrl(url)) return;
                 if (document.Options.Popups == BrowserPopupMode.SystemBrowser)
@@ -164,7 +166,8 @@ internal sealed partial class BrowserSurface
                     if (!source.CanCompleteSiteDecision || sourcePage != source.pageEpoch) return;
                     BrowserPopupRequest? request = new(BrowserPopupPlacement.InWidget);
                     TraceNewWindow("placement-requested");
-                    if (ChoosePopupPlacement is { } choose) request = await choose(source, previous, origin, promptCancellation.Token);
+                    if (ChoosePopupPlacement is { } choose && (window.ExtensionId is null || previous is not null))
+                        request = await choose(source, previous, window.ExtensionId is null ? origin : null, window.Placement, promptCancellation.Token);
                     else if (previous is not null)
                     {
                         var answer = source.Choose is { } confirm ? await confirm(source, "Replace existing page?",
@@ -173,17 +176,19 @@ internal sealed partial class BrowserSurface
                     }
                     if (request is null || !Current()) { TraceNewWindow("placement-declined-or-stale"); return; }
                     var name = document.AccessibleName[..Math.Min(document.AccessibleName.Length, 240)] + " additional page";
-                    child = new BrowserSurface(widgetId, new("popup." + Guid.NewGuid().ToString("N"), 1, url, name)
+                    child = new BrowserSurface(widgetId, new("popup." + Guid.NewGuid().ToString("N"), 1, window.ExtensionId is null ? url : WebBrowserDocument.StartPage, name)
                     {
                         InteractionMode = BrowserInteractionMode.InteractOnFocus,
                         Options = document.Options with { Chrome = BrowserChrome.OnDemand, ExternalLinks = BrowserExternalLinkMode.InWidget, Background = BrowserBackgroundMode.Automatic },
                     }, environment, library: library, popup: true)
                     {
                         popupParent = this,
+                        extensionOptionsId = window.ExtensionId,
                         OpenExternal = OpenExternal, Choose = Choose, ChooseFiles = ChooseFiles, ChangeProfile = ChangeProfile, PrepareScreenPicker = PrepareScreenPicker,
+                        RegisterExtensionProfile = RegisterExtensionProfile,
                         ReceiveNotification = ReceiveNotification, InvalidateNotifications = InvalidateNotifications,
                         ReadPopupPlacement = ReadPopupPlacement, WritePopupPlacement = WritePopupPlacement,
-                        RequestPopupPin = RequestPopupPin, PopupIsPinned = PopupIsPinned,
+                        RequestPopupPin = window.ExtensionId is null ? RequestPopupPin : null, PopupIsPinned = PopupIsPinned,
                         IsInteractionFocused = () => IsInteractionFocused?.Invoke() == true,
                         FocusInteraction = () => FocusInteraction?.Invoke(),
                         ExitInteraction = () => Run(ClosePopupAsync),

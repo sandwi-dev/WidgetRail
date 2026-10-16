@@ -35,7 +35,7 @@ internal sealed partial class BrowserSurface
             dialog.GuideChanged = () => InteractionChanged?.Invoke();
             dialog.ThemeLease = NativePopupTheme.Dialog(dialog, this);
             editDialog = dialog; editPending = false;
-            await dialog.ShowAsync();
+            await dialog.ShowKeyboardAsync(this);
             if (!accepted || !Current()) return;
             var entered = dialog.TakeValue();
             if (string.IsNullOrWhiteSpace(entered)) return;
@@ -64,8 +64,8 @@ internal sealed partial class BrowserSurface
     {
         ++editGeneration; editPending = false;
         if (editDialog is not { } dialog) return;
-        // Retain the dialog boundary until ShowAsync/finally has removed its
-        // in-place row. A new click must not use geometry from a closing editor.
+        // Retain the dialog boundary until ShowAsync/finally retires the popup.
+        // A new click must not start an overlapping edit session.
         dialog.Erase(); dialog.Hide();
     }
 }

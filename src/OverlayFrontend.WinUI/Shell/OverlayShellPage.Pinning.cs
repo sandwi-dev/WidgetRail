@@ -136,9 +136,10 @@ internal sealed partial class OverlayShellPage
         if (!Current()) return;
         var choices = GetPinChoices(descriptor);
         if (choices.Count == 0) return;
-        var selected = choices[0].AutomationId;
-        if (choices.Count > 1)
-            selected = await ShowHostChoiceAsync("Replace pin", $"Choose a pin layout for {descriptor.Name}.",
+        var closesOwnPage = expected.Popup is not null && expected.WidgetId == descriptor.Id;
+        var selected = await ShowHostChoiceAsync("Replace pin", closesOwnPage
+                ? $"Pinning the full {descriptor.Name} widget will close its pinned additional page. To keep that page, cancel and choose Return page to widget."
+                : $"Replace the current pin with {descriptor.Name}. Choose a pin layout.",
                 choices.Select(choice => new HostDialogChoice(choice.AutomationId, choice.Label)).ToArray(),
                 lifetime.Token, primaryButtonText: "Replace pin");
         if (selected is null || !Current()) return;
@@ -164,7 +165,10 @@ internal sealed partial class OverlayShellPage
                 var projection = owner.Session.ResolvePinnedProjection(frame, layoutId);
                 // Resolve first so a withdrawn layout cannot discard the current pin.
                 if (expected is not null && !ReferenceEquals(pinned, expected)) return;
-                await RemovePinnedCoreAsync();
+                // Additional pages remain intact while the new layout/window is prepared.
+                // Ordinary layout selections still require retiring the old selection first.
+                var outgoingPage = pinned?.Popup is not null ? pinned : null;
+                if (outgoingPage is null) await RemovePinnedCoreAsync();
                 if (retired || intent != pinIntent) return;
                 var selection = await owner.Session.SelectPinnedLayoutAsync(projection, cancellationToken: lifetime.Token);
                 // Selection can synchronously publish its demanded content. Use
@@ -213,6 +217,14 @@ internal sealed partial class OverlayShellPage
                     window.SetOpacity(saved?.OpacityPercent ?? 100);
                     surface.LogicalPlacement = PinnedPlacementPolicy.Capture(placement.Bounds, placement.Monitor, limits, layoutId, window.OpacityPercent);
                     presenter.ApplyPinned(selection, projection);
+                    if (outgoingPage is not null)
+                    {
+                        if (retired || intent != pinIntent || !selection.IsCurrent || !ReferenceEquals(pinned, outgoingPage))
+                            throw new WidgetPresentationSessionException("pinned_input_stale", "Pinned replacement owner retired.");
+                        await RemovePinnedCoreAsync(closePage: outgoingPage.WidgetId == widgetId && layoutId == WidgetPinnedProjection.FullWidgetLayoutId);
+                        if (retired || intent != pinIntent || !selection.IsCurrent)
+                            throw new WidgetPresentationSessionException("pinned_input_stale", "Pinned replacement owner retired.");
+                    }
                     pinned = surface;
                     ApplyPinnedAppearance(surface);
                     window.Show();
@@ -431,7 +443,7 @@ internal sealed partial class OverlayShellPage
         catch (Exception error) { ReportOperationFailure(error, failureCurrent); }
     }
 
-    private async Task RemovePinnedCoreAsync()
+    private async Task RemovePinnedCoreAsync(bool closePage = false)
     {
         if (pinned is not { } current) return;
         if (ReferenceEquals(hostChoicePin, current)) hostChoiceDialog?.Hide();
@@ -443,7 +455,7 @@ internal sealed partial class OverlayShellPage
         pinned = null;
         try
         {
-            if (current.Popup is { } popup && browserOwner is not null) await browserOwner.ReleasePopupPresentationAsync(popup);
+            if (current.Popup is { } popup && browserOwner is not null) await browserOwner.ReleasePopupPresentationAsync(popup, closePage);
             if (current.Media is not null && mediaOwner is not null) await mediaOwner.ReleaseCompactAsync();
             current.Window.Hide();
             if (current.Presenter is { } presenter) await presenter.DisposeAsync();

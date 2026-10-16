@@ -53,9 +53,8 @@ internal sealed class NativeDialogPresentation : IDisposable
     private void Update()
     {
         if (disposed || updating || !dialog.IsLoaded || dialog.XamlRoot is not { } root || !origin.IsLoaded || !ReferenceEquals(origin.XamlRoot, root)) return;
-        // Live editing reserves a row inside its browser. Notification inboxes
-        // have an intentional bell anchor and retain their own placement.
-        if (dialog is WidgetTextEntryDialog { IsLive: true } || dialog is Shell.HostChoiceDialog { HasCustomPlacement: true }) return;
+        // Floating keyboards and notification inboxes own their native placement.
+        if (dialog is WidgetTextEntryDialog { IsFloating: true } || dialog is Shell.HostChoiceDialog { HasCustomPlacement: true }) return;
         panel ??= FindPart<FrameworkElement>(dialog, "BackgroundElement");
         if (panel is null || root.Size.Width <= 0 || root.Size.Height <= 0) return;
         updating = true;
@@ -66,12 +65,12 @@ internal sealed class NativeDialogPresentation : IDisposable
             // Keep normal native sizing; only restrict it to the current window.
             var maxWidth = dialog.Resources.TryGetValue("ContentDialogMaxWidth", out var limit) && limit is double width ? width : 548;
             panel.MaxWidth = Math.Min(maxWidth, availableWidth);
-            panel.MaxHeight = availableHeight;
-            panel.MinWidth = Math.Min(320, availableWidth);
+            panel.MinWidth = Math.Min(320, panel.MaxWidth);
             panel.MinHeight = 0;
             var bounds = origin.TransformToVisual(root.Content).TransformBounds(new(0, 0, origin.ActualWidth, origin.ActualHeight));
+            panel.MaxHeight = availableHeight;
             var w = Math.Min(panel.ActualWidth, availableWidth);
-            var h = Math.Min(panel.ActualHeight, availableHeight);
+            var h = Math.Min(panel.ActualHeight, panel.MaxHeight);
             var x = Math.Clamp(bounds.X + (bounds.Width - w) / 2, 16, Math.Max(16, root.Size.Width - w - 16));
             var y = Math.Clamp(bounds.Y + (bounds.Height - h) / 2, 16, Math.Max(16, root.Size.Height - h - 16));
             panel.HorizontalAlignment = HorizontalAlignment.Left;

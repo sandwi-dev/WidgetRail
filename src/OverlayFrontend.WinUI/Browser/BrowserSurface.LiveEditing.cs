@@ -49,7 +49,8 @@ internal sealed partial class BrowserSurface
         CancelPointer();
         editPending = true; interacting = browsing = true;
         WidgetTextEntryDialog? dialog = null;
-        void ResizeKeyboard(object sender, SizeChangedEventArgs args) => dialog?.ConstrainLiveHost(args.NewSize.Width, args.NewSize.Height);
+        using var placementLifetime = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        Task? placement = null;
         try
         {
             var initial = await Read();
@@ -66,19 +67,13 @@ internal sealed partial class BrowserSurface
             dialog.BindRoot(XamlRoot);
             dialog.GuideChanged = () => InteractionChanged?.Invoke();
             dialog.ThemeLease = NativePopupTheme.Dialog(dialog, this);
-            dialog.ConstrainLiveHost(ActualWidth, ActualHeight);
-            SizeChanged += ResizeKeyboard;
-            // In-place presentation reserves space in this browser instead of
-            // covering the live editor with a centered overlay. No second page
-            // or WebView is created, and ordinary buffered dialogs are unchanged.
-            RowDefinitions.Add(new() { Height = GridLength.Auto });
-            SetRow(dialog, RowDefinitions.Count - 1);
-            dialog.HorizontalAlignment = HorizontalAlignment.Stretch;
-            dialog.VerticalAlignment = VerticalAlignment.Bottom;
-            Children.Add(dialog);
+            await PositionLiveKeyboardAsync(target, dialog, Current, placementLifetime.Token);
+            if (!Current()) return;
             editDialog = dialog; editPending = false;
             DrawCursor(); InteractionChanged?.Invoke();
-            await dialog.ShowAsync(ContentDialogPlacement.InPlace);
+            var shown = dialog.ShowKeyboardAsync(this);
+            placement = TrackLiveKeyboardAsync(target, dialog, Current, placementLifetime.Token);
+            await shown;
             await dialog.WaitForLiveInputAsync();
         }
         catch (OperationCanceledException) { }
@@ -88,9 +83,9 @@ internal sealed partial class BrowserSurface
             if (ReferenceEquals(fixtureLiveTarget, target)) fixtureLiveTarget = null;
 #endif
             if (ReferenceEquals(editDialog, dialog)) editDialog = null;
+            placementLifetime.Cancel();
+            if (placement is not null) await placement;
             dialog?.Erase();
-            SizeChanged -= ResizeKeyboard;
-            if (dialog is not null && Children.Remove(dialog)) RowDefinitions.RemoveAt(RowDefinitions.Count - 1);
             if (generation == editGeneration) editPending = false;
             if (input && !retired && !HasDialog) FocusInteraction?.Invoke();
             DrawCursor(); InteractionChanged?.Invoke();

@@ -215,6 +215,8 @@ internal sealed partial class OverlayShellPage
             var preferencesGroup = Group("Preferences", "Preferences");
             if (browserOwner?.PermissionTargets(descriptor.Id).Length > 0)
                 Add("Website settings", "Browser.Permissions", () => ManageBrowserPermissionsAsync(descriptor), group: preferencesGroup);
+            if (ExtensionTargets(descriptor.Id).Length > 0)
+                Add("Extensions", "Browser.Extensions", () => ManageWidgetExtensionsAsync(descriptor.Id), group: preferencesGroup);
             if (notificationCenter is not null)
                 Add("Notification preferences", "Notification.Preferences", () => ShowNotificationPreferencesAsync(descriptor), group: preferencesGroup);
             if (preferencesGroup.Items.Count == 0) menu.Flyout.Items.Remove(preferencesGroup);

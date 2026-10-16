@@ -48,7 +48,7 @@ internal sealed partial class WidgetViewPresenter
         try
         {
             if (previous is not null) await previous;
-            if (ReferenceEquals(textEntryPopup, popup) && TextEntryIsCurrent(popup)) await popup.Dialog.ShowAsync();
+            if (ReferenceEquals(textEntryPopup, popup) && TextEntryIsCurrent(popup)) await popup.Dialog.ShowKeyboardAsync(this);
         }
         catch (Exception) { ReportFailure(new InvalidOperationException("Text entry could not be opened."), TextEntryIsCurrent(popup)); }
         finally

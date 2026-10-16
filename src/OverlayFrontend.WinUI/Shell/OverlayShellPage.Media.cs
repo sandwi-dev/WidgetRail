@@ -142,6 +142,7 @@ internal sealed partial class OverlayShellPage
     private void ShowPresentationStatus(string widgetName)
     {
         showingStoppedWidget = false;
+        WidgetSurface.Visibility = Visibility.Visible;
         Retry.Content = "Retry";
         if (retired) return;
         var code = activeWidget is { } id ? mediaOwner?.GetFailure(id) : null;
@@ -168,6 +169,9 @@ internal sealed partial class OverlayShellPage
     private void ShowRecovery(string message, bool canRetry, bool stopped = false)
     {
         showingStoppedWidget = stopped;
+        // The stopped card is the whole presentation. There is no widget
+        // content behind it to justify a second, larger themed panel.
+        WidgetSurface.Visibility = stopped ? Visibility.Collapsed : Visibility.Visible;
         Retry.Content = stopped ? "Reload" : "Retry";
         CompleteStartupPresentation(failed: !stopped);
         var changed = !RecoveryVisible || Status.Text != message;

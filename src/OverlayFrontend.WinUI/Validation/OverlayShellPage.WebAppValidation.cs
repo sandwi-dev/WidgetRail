@@ -35,6 +35,13 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                if (Environment.GetCommandLineArgs().Contains("--extensions-ui-only"))
+                {
+                    step = "extension management";
+                    await VerifyExtensionManagementAsync(first, Check);
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
                 if (Environment.GetCommandLineArgs().Contains("--webapp-notifications-only"))
                 {
                     step = "notification integration";
@@ -85,10 +92,13 @@ internal sealed partial class OverlayShellPage
                         "Stopping one webapp preserves its neighbor's live page and state");
                     await SelectAsync("webapp-a");
                     Check(surface is null && browserOwner!.PermissionTargets("webapp-a").Length == 0, "Selecting a stopped webapp creates no WebView");
+                    Check(WidgetSurface.Visibility == Visibility.Collapsed, "Stopped presentation has no empty widget background panel");
+                    await CapturePopupDecisionAsync(ProductionRoot, "stopped-widget");
                     await Press(ControllerButton.X);
                     var restarted = await CurrentBrowser();
                     Check(!ReferenceEquals(first, restarted) && await restarted.EvaluateFixtureAsync("localStorage.getItem('widget-stop-fixture')==='preserved'") == "true",
                         "Explicit Reload creates a fresh webapp while preserving its saved profile data");
+                    Check(WidgetSurface.Visibility == Visibility.Visible, "Reload restores the live widget background panel");
                     await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
                     return;
                 }

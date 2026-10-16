@@ -164,6 +164,7 @@ public sealed partial class MainWindow
         { AppWindow.Resize(new(1600, 1100)); RootFrame.Content = new Validation.ProductionShellValidationPage(); }
         else if (arguments.Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();
         else if (arguments.Contains("--validate-web-sessions")) RootFrame.Content = new Validation.HostedWebSessionValidationPage();
+        else if (arguments.Contains("--validate-extensions")) RootFrame.Content = new Validation.BrowserExtensionValidationPage();
         else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage(crossRootMediaProbe);
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
         else if (validateShellSizing) RootFrame.Content = new Validation.ShellSizingValidationPage();

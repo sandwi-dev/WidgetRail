@@ -700,6 +700,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     RequestApplicationControl(owner.Session.ResolveApplicationControl(request.Displayed, request.Action));
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
                     await InstallLocalWidgetAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ManageBrowserExtensionsAction)
+                {
+                    owner.Session.ValidateBrowserExtensionManagement(request.Displayed, request.Action);
+                    if (browserOwner is { } browsers) await browsers.Extensions.InitializeAsync(lifetime.Token);
+                    await owner.Session.SendActionAsync(request.Displayed, request.Action, lifetime.Token);
+                }
+                else if (WidgetRail.WidgetPresentationSession.WidgetPresentationSession.IsBrowserExtensionCommand(request.Action.ActionId))
+                    await HandleExtensionCommandAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
                 {
                     if (pinned is { Media: not null } mediaPin && mediaPin.WidgetId == request.Authority.WidgetId)

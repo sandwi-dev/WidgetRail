@@ -13,7 +13,7 @@ public sealed class BrowserWidget : Widget
 
     private static WebBrowserDocument NewDocument(long revision, string url) =>
         new("browser.primary", revision, url, "Web browser")
-        { Options = new() { Popups = BrowserPopupMode.Hosted } };
+        { Options = new() { Popups = BrowserPopupMode.Hosted, Storage = BrowserStorage.Persistent } };
 
     public override WidgetView Render()
     {

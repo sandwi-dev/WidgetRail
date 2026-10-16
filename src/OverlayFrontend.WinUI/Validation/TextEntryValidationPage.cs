@@ -205,9 +205,8 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
         {
             var key = (Button)FindDialog("Widget.TextEntry." + id)!;
             Check(key.Focus(FocusState.Keyboard), "native keyboard focus reaches " + id);
-            Check(!dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter) &&
-                !dialog.HandleKeyboardKey(Windows.System.VirtualKey.Space) && actions.Count == count,
-                "dialog preserves native Enter and Space activation for " + id);
+            Check(!dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter) && actions.Count == count,
+                "dialog preserves native Enter activation for " + id);
             ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new ButtonAutomationPeer(key)
                 .GetPattern(PatternInterface.Invoke)).Invoke();
             await Task.Delay(100);
@@ -218,6 +217,9 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
         Check(editor.Text == "q" && presenter.HasTransientControl, "native character activation inserts its label without committing");
         await InvokeKey("Space");
         Check(editor.Text == "q " && presenter.HasTransientControl, "native Space key activation inserts one space");
+        ((Button)FindDialog("Widget.TextEntry.Key.10")!).Focus(FocusState.Keyboard);
+        Check(dialog.HandleKeyboardKey(Windows.System.VirtualKey.Space) && editor.Text == "q  " && presenter.HasTransientControl,
+            "physical Space inserts a space instead of activating focused Q");
         await InvokeKey("Cancel"); await Closed();
         Check(actions.Count == count && editor.Text.Length == 0, "native Cancel activation clears edits without committing");
 

@@ -23,6 +23,7 @@ internal sealed partial class BrowserSurface
     {
         if (initializing is not null || core is not null) throw new InvalidOperationException("Session must be configured before creating its browser.");
         hostedDefinition = definition;
+        if (IsHostedPackage) profile = "pkg-" + profile;
         hostedResources = resources;
         UpdateChrome();
     }

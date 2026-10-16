@@ -22,6 +22,34 @@ public sealed class LocalWidgetInstallTests
     private static string PackagePath => Path.Combine(Path.GetTempPath(), "fixture.wrwidget");
 
     [TestMethod]
+    public async Task ExtensionManagementRequiresCurrentSettingsCommand()
+    {
+        var action = new WidgetActionEvent(WidgetPresentationSession.ManageBrowserExtensionsAction, "category.extensions", InputScopeId: "settings-root");
+        await Run(_ => Task.CompletedTask, (session, frame) =>
+        {
+            session.ValidateBrowserExtensionManagement(frame, action);
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateBrowserExtensionManagement(frame, action with { SourceElementId = "forged" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateBrowserExtensionManagement(frame, action with { Phase = ControllerEventPhase.Repeated }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateBrowserExtensionManagement(frame with { Authority = frame.Authority with { WidgetId = "community" } }, action));
+            return Task.CompletedTask;
+        }, action);
+    }
+
+    [TestMethod]
+    public async Task ExtensionPolicyRequiresDeclaredSettingsScopeAndTarget()
+    {
+        var action = new WidgetActionEvent("host.extensions.default.fixture.on", "extensions.default", InputScopeId: "extensions.details");
+        await Run(_ => Task.CompletedTask, (session, frame) =>
+        {
+            session.ValidateBrowserExtensionManagement(frame, action);
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateBrowserExtensionManagement(frame, action with { ActionId = "host.extensions.default.other.on" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateBrowserExtensionManagement(frame, action with { InputScopeId = "settings-root" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateBrowserExtensionManagement(frame, action with { CommittedText = "forged" }));
+            return Task.CompletedTask;
+        }, action);
+    }
+
+    [TestMethod]
     [DataRow(false)][DataRow(true)]
     public async Task ApplicationControlsValidateCurrentSettingsFrameWithoutWorkerRoundtrip(bool restart)
     {

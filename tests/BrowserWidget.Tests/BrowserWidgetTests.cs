@@ -18,7 +18,7 @@ public sealed class BrowserWidgetTests
             await WidgetTestHost.InitializeAsync(widget);
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
             Assert.AreEqual(WebBrowserDocument.StartPage, Browser(widget.RenderSnapshot("browser.test", 1))!.Url);
-            Assert.AreEqual(ProtocolConstants.CurrentVersion, widget.RenderSnapshot("browser.test", 1).ProtocolVersion);
+            Assert.AreEqual(ProtocolConstants.WebAppVersion, widget.RenderSnapshot("browser.test", 1).ProtocolVersion);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(widget.RenderSnapshot("browser.test", 1)).Count);
             var request = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
                 JsonSerializer.SerializeToElement(new { url = "https://example.com/guide" }));
@@ -27,7 +27,7 @@ public sealed class BrowserWidgetTests
             Assert.AreEqual("https://example.com/guide", first.Url);
             Assert.AreEqual(BrowserInteractionMode.InteractOnFocus, first.InteractionMode);
             Assert.AreEqual(BrowserPopupMode.Hosted, first.Options.Popups);
-            Assert.AreEqual(BrowserStorage.Private, first.Options.Storage);
+            Assert.AreEqual(BrowserStorage.Persistent, first.Options.Storage);
             Assert.IsFalse(Walk(widget.RenderSnapshot("browser.test", 2).Root).Any(node => node.Kind == ViewNodeKind.TextEntry));
             Assert.AreEqual(first, Browser(widget.RenderSnapshot("browser.test", 3)));
             Assert.AreEqual(WidgetIntentResult.Accepted, await widget.OnIntentAsync(request));

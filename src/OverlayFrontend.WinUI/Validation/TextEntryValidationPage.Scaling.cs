@@ -31,9 +31,11 @@ internal sealed partial class TextEntryValidationPage
             Check(Near(key.FontSize, 16 * zoom) && Near(editor.FontSize, key.FontSize) &&
                 Near(title.FontSize, 20 * zoom) && Near(key.MinHeight, 36 * zoom) && Near(keys.ColumnSpacing, 4 * zoom),
                 "native keyboard, editor and heading use interface scale once at " + zoom);
-            var expectedWidth = Math.Max(1, Math.Min(640 * zoom, XamlRoot.Size.Width - 120 * zoom));
+            var expectedWidth = dialog.ActualWidth - 52 * zoom;
             Check(Near(body.ActualWidth, expectedWidth) && Near(body.Spacing, 12 * zoom),
-                "native keyboard width and spacing follow the bounded popup viewport at " + zoom);
+                "native keyboard width and spacing follow the responsive floating popup at " + zoom);
+            Check(dialog.AllKeysVisibleForValidation && ((ScrollViewer)dialog.Content).ScrollableHeight == 0,
+                "all keyboard rows fit without internal scrolling at " + zoom);
             var prompt = (StackPanel)commit.Content;
             Check(Near(((FontIcon)prompt.Children[0]).FontSize, 18 * zoom) &&
                 Near(((TextBlock)prompt.Children[1]).FontSize, key.FontSize),

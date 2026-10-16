@@ -31,6 +31,14 @@ internal sealed partial class OverlayShellPage
             try
             {
                 if (startup is not null) await startup;
+                if (Environment.GetCommandLineArgs().Contains("--settings-home-only"))
+                {
+                    await SelectAsync("settings", true);
+                    await Until(() => surface?.CurrentBinding?.Frame.Snapshot.ActiveInputScopeId == "settings-root" && MainFocusEnabled);
+                    await VerifySettingsHomeDownAsync(Check);
+                    await File.WriteAllTextAsync(resultPath, JsonSerializer.Serialize(new { passed = true, checks }));
+                    return;
+                }
                 await Until(() => activeWidget == "source" && !switching && foreground);
                 for (var cycle = 0; cycle < 2; cycle++)
                 {

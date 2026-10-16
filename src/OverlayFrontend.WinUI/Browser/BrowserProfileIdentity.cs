@@ -25,7 +25,7 @@ internal static class BrowserProfileIdentity
     internal static string LibraryFileName(string widgetId, WebBrowserDocument document) =>
         // Keep the existing default browser's bookmarks/history available.
         // All newly named accounts and persistent profiles get distinct files.
-        document.Options.Storage == BrowserStorage.Private && document.Options.ProfileKey == "default" && document.ProviderDocument is null
+        (document.Options.Storage == BrowserStorage.Private || widgetId is "browser" or "widgetrail.samples.browser") && document.Options.ProfileKey == "default" && document.ProviderDocument is null
             ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(widgetId))) + ".json"
             : Name(widgetId, document) + ".json";
 }

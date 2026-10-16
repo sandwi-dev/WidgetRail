@@ -246,6 +246,7 @@
 
 .marketplace-preview { width: 100%; height: 220px; corner-radius: 8px; background: var(--surface-raised); }
 .marketplace-review-actions { gap: 8px; align: center; }
+.extension-profile-controls { gap: 8px; }
 
 /* Author-owned action styles must not mask unavailable controls. */
 .category-card:disabled,
