@@ -204,7 +204,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             bindings = nextBindings;
             frame = next;
             presentation = nextPresentation;
-            if (!sameOwner || oldScope != nextPresentation.Scope) directionalScroll = null;
+            if (!sameOwner || oldScope != nextPresentation.Scope) { scrollGesture=null;directionalScroll = null; }
             if (presentationActive && !presentationOnly) WindowPreviews?.Apply(next);
             UpdateResponsiveVisibility();
             // Scope memory survives transient/loading declarations. It is
@@ -230,6 +230,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             UpdateModalGeometry();
             if (motionStage is not null) { motionStage.SetCurrent(currentRoot); motionStage.SetModal(currentModal); Content = motionStage; }
             else Content = bindings[root.Id].LayoutElement;
+            RefreshReadingFocus();
             needsEntry = needsEntry || !sameOwner || oldScope != nextPresentation.Scope
                 || focused?.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false }
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
@@ -339,7 +340,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     // Busy is an action-admission state, not removal of the user's focus target.
     private bool Eligible(Binding binding) => Navigable(binding) && declarations[binding.Identity.Id].Node.IsBusy != true;
     private bool Navigable(Binding binding) => presentationActive && presentation?.IsCurrent == true && frame is not null && binding.Identity.Scope == activeScope
-        && (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView)
+        && (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView ||
+            binding.Element is ScrollViewer { IsTabStop: true })
         && declarations[binding.Identity.Id].Node.IsDisabled != true
         && IsMemoryVisible(binding.Element);
 
@@ -441,7 +443,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 break;
             case ViewNodeKind.Scroll:
                 children = new StackPanel { Spacing = 12 };
-                element = new ScrollViewer { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                var readingScroll = new ScrollViewer { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                readingScrolls.Add(readingScroll,new(readingScroll,QueueReadingFocusRefresh));
+                element=readingScroll;
                 break;
             case ViewNodeKind.ActionSurface:
                 children = node.ActionSurfacePresentation == ActionSurfacePresentation.Poster
@@ -520,7 +524,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             // Selection is authored state, not a ToggleButton command. Preserve
             // native Invoke semantics while announcing both selection and work.
             AutomationProperties.SetItemStatus(control, WidgetAccessibleState.ItemStatus(node));
-            control.IsTabStop = element is not WidgetIndexedCollectionView && node.IsFocusable && binding.Identity.Scope == activeScope;
+            if (control is not ScrollViewer)
+                control.IsTabStop = element is not WidgetIndexedCollectionView && node.IsFocusable && binding.Identity.Scope == activeScope;
             control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview or WidgetLineGraph) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);

@@ -8,8 +8,8 @@ internal sealed partial class WidgetViewPresenter
     // The same policy applies to the ordinary tree and root-level overlay portals.
     internal IDisposable AttachPresentationInput(UIElement root)
     {
-        RoutedEventHandler focused = (_, _) => { RememberFocus(); NotifyControllerGuideChanged(); };
-        PointerEventHandler pressed = (_, _) => { CancelGroupEntry(); CancelScrollReveal(); };
+        RoutedEventHandler focused = (_, _) => { RememberFocus(); RefreshScrollFocusOutline(); NotifyControllerGuideChanged(); };
+        PointerEventHandler pressed = (_, _) => { CancelGroupEntry(); CancelScrollReveal(); scrollGesture=null;directionalScroll=null;RefreshScrollFocusOutline(); };
         PointerEventHandler wheel = (_, _) => CancelScrollReveal();
         KeyEventHandler key = (_, args) =>
         {

@@ -63,7 +63,7 @@ internal sealed partial class WidgetViewPresenter
         if (nativeStyles.TryGetValue(binding, out var previous) && !ReferenceEquals(previous.Target, target))
         { previous.Dispose(); nativeStyles.Remove(binding); }
         if (!nativeStyles.TryGetValue(binding, out var adapter))
-            nativeStyles.Add(binding, adapter = new(target, node.IsFocusable));
+            nativeStyles.Add(binding, adapter = new(target, node.IsFocusable || target is ScrollViewer or ListViewBase));
         adapter.ContextHintButton = WidgetContextIndicator.Resolve(node);
         adapter.ContextHintAdmitted = () => !disposed && presentationActive && presentationInputEnabled && ContextOwnerAvailable(binding);
         if (binding.Element is WidgetIndexedCollectionView indexed)
@@ -76,7 +76,8 @@ internal sealed partial class WidgetViewPresenter
             ? button.Content switch { TextBlock label => label, Grid panel => panel.Children.OfType<TextBlock>().SingleOrDefault(), _ => null } : null;
         adapter.Update(presentation?.RenderStyles.GetValueOrDefault(node.Id),
             typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId || binding.Element is HyperlinkButton,
-            interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction : null);
+            interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction :
+                ReferenceEquals(binding,scrollFocusOutline)?(true,false):binding.Element is WidgetIndexedCollectionView?(false,false):null);
         if (binding.Identity.Scope != activeScope) adapter.SetControllerPressed(false);
     }
 

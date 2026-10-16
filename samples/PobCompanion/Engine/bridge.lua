@@ -116,6 +116,20 @@ local function snapshot()
     local lines,columns,rows={},{},{}
     if type(detail)=='table' then
       for _,line in ipairs(detail)do if type(line)=='string' then lines[#lines+1]=line end end
+      -- Some upstream resource passes replace the base line but append the same
+      -- multiplier/result sequence again. Collapse only exact complete repeats;
+      -- never deduplicate individual modifiers, source rows, or distinct steps.
+      if (key=='Life' or key=='Mana' or key=='Spirit') and #lines>=5 and
+        clean(lines[1]):find('(base)',1,true) and clean(lines[#lines]):match('^= ') then
+        local count=#lines-1
+        for width=2,math.floor(count/2)do
+          if count%width==0 then
+            local repeated=true
+            for i=width+2,#lines do if lines[i]~=lines[2+(i-2)%width]then repeated=false;break end end
+            if repeated then for i=#lines,width+2,-1 do lines[i]=nil end;break end
+          end
+        end
+      end
       if detail.slots then for name,value in pairs(detail.slots)do if type(value)=='number' or type(value)=='string'then lines[#lines+1]=name..': '..value end end end
       if detail.rowList and detail.colList then
         for _,column in ipairs(detail.colList)do columns[#columns+1]=clean(column.label or column.key)end

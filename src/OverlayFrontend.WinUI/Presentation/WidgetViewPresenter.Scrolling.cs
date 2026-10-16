@@ -9,7 +9,21 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private sealed record ScrollGesture(ScrollViewer Viewport, Binding Owner, string Scope);
-    private ScrollGesture? scrollGesture;
+    private ScrollGesture? currentScrollGesture;
+    private ScrollGesture? scrollGesture
+    {
+        get=>currentScrollGesture;
+        set
+        {
+            if(!ReferenceEquals(currentScrollGesture?.Viewport,value?.Viewport))
+            {
+                if(currentScrollGesture is {} old)old.Viewport.ViewChanged-=ScrollFocusViewChanged;
+                if(value is {} next)next.Viewport.ViewChanged+=ScrollFocusViewChanged;
+            }
+            currentScrollGesture=value;RefreshScrollFocusOutline();
+        }
+    }
+    private void ScrollFocusViewChanged(object? sender,ScrollViewerViewChangedEventArgs args)=>RefreshScrollFocusOutline();
 
     /// <summary>
     /// Applies one normalized DIP movement to the active native scroll owner.
@@ -73,16 +87,15 @@ internal sealed partial class WidgetViewPresenter
         var width = scroll.ViewportWidth;
         var height = scroll.ViewportHeight;
         if (width <= 0 || height <= 0) return false;
-        // Reading-only viewports (notes, preview details) have no row to receive
-        // focus. Keep the existing action focused and let navigation resume.
+        // Reading-only viewports (notes, preview details) own focus themselves.
         // Indexed collections may still be realizing rows, so retain their wait.
         if (owner.Element is not WidgetIndexedCollectionView &&
-            !bindings.Values.Any(binding => Navigable(binding) && binding.Element is Control &&
+            !bindings.Values.Any(binding => !ReferenceEquals(binding, owner) && Navigable(binding) && binding.Element is Control &&
                 IsDescendant(binding.Identity.Id, owner.Identity.Id)))
-        { scrollGesture = null; return true; }
+        { return FocusReadingRegion(); }
         var controls = owner.Element is WidgetIndexedCollectionView collection
             ? collection.ScrollFocusCandidates()
-            : bindings.Values.Where(binding => Navigable(binding) && binding.Element is Control &&
+            : bindings.Values.Where(binding => !ReferenceEquals(binding, owner) && Navigable(binding) && binding.Element is Control &&
                 IsDescendant(binding.Identity.Id, owner.Identity.Id))
                 .Select(binding => (Control)binding.Element);
         var candidates = controls.Where(control => control.IsLoaded && control.IsEnabled &&
@@ -102,7 +115,7 @@ internal sealed partial class WidgetViewPresenter
                 item.Bounds.Right <= width + .5 && item.Bounds.Bottom <= height + .5)
             .ThenBy(item => horizontal ? item.Bounds.X : item.Bounds.Y)
             .ThenBy(item => horizontal ? item.Bounds.Y : item.Bounds.X).FirstOrDefault().Control;
-        if (target is null) return false;
+        if (target is null) return owner.Element is not WidgetIndexedCollectionView && FocusReadingRegion();
         // An oversized row may only partially fit. Focus must not undo the user's
         // scroll offset through WinUI's automatic BringIntoView request.
         scroll.BringIntoViewRequested += SuppressBringIntoView;
@@ -113,6 +126,18 @@ internal sealed partial class WidgetViewPresenter
             return true;
         }
         finally { scroll.BringIntoViewRequested -= SuppressBringIntoView; }
+
+        bool FocusReadingRegion()
+        {
+            if(!scroll.IsTabStop)return false;
+            scroll.BringIntoViewRequested+=SuppressBringIntoView;
+            try
+            {
+                if(!scroll.Focus(FocusState.Keyboard))return false;
+                scrollGesture=null;return true;
+            }
+            finally{scroll.BringIntoViewRequested-=SuppressBringIntoView;}
+        }
 
         static void SuppressBringIntoView(UIElement sender, BringIntoViewRequestedEventArgs args) => args.Handled = true;
         static bool IsWithin(DependencyObject? child, DependencyObject ancestor)

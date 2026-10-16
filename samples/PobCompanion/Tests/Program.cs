@@ -91,7 +91,7 @@ foreach(var file in Directory.EnumerateFiles(fixtures,"*.xml").Take(8))
             .SelectMany(item=>item.GetProperty("details").EnumerateArray())
             .SelectMany(group=>group.GetProperty("lines").EnumerateArray())
             .Select(line=>line.GetProperty("text").GetString()??"").ToArray();
-        Check(itemLines.Length>0 && !itemLines.Any(line=>line.Contains("could not be formatted",StringComparison.Ordinal)),Path.GetFileName(file)+" uses upstream item tooltip formatting");
+        Check((loaded.State.GetProperty("items").GetArrayLength()==0||itemLines.Length>0) && !itemLines.Any(line=>line.Contains("could not be formatted",StringComparison.Ordinal)),Path.GetFileName(file)+" formats equipped items or has no items to describe");
         Check(!itemLines.Any(line=>line.StartsWith("Prefix:",StringComparison.Ordinal)||line.StartsWith("Suffix:",StringComparison.Ordinal)||line.Contains("{range:",StringComparison.Ordinal)),"Item details hide serialization metadata");
     }
     Check(before.Root!.Element("Notes")?.Value==after.Root!.Element("Notes")?.Value,Path.GetFileName(file)+" preserves notes");
@@ -316,6 +316,8 @@ if(firstXml is not null)
     await Action("section.1");
     await Action("node."+allocationNode.GetProperty("id").GetInt32());await Action("node-change");
     var previewView=Snapshot(widget,1000);
+    var allocatedPreview=await engine.ExecuteAsync(new{op="load",xml=PobWorkStore.Read(data,id,game)!.Pending!.Xml,name="verify allocation preview"},default);
+    CheckPassiveDescriptions(widgetBaseline.State,allocatedPreview.State,previewView,Check);
     var previewPanel=Nodes(previewView.Root).Single(n=>n.Id=="pob.tree.side");
     Check(previewView.FocusGroupEntryRequest?.GroupId=="pob.tree.side" &&
         Nodes(previewPanel).Any(n=>n.Id=="pob.apply") && Nodes(previewPanel).Any(n=>n.Id=="pob.cancel"),
@@ -336,7 +338,10 @@ if(firstXml is not null)
     var undoneResult=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="verify undo"},default);
     Check(Allocated(undoneResult.State).SetEquals(Allocated(widgetBaseline.State))&&SameStats(undoneResult.State,widgetBaseline.State),"Widget Undo persists original allocations and totals");
     var refundNode=widgetBaseline.State.GetProperty("nodes").EnumerateArray().First(n=>n.GetProperty("canRefund").GetBoolean()&&n.GetProperty("refundCount").GetInt32() is >=2 and <=5);
-    await Action("node."+refundNode.GetProperty("id").GetInt32());await Action("node-change");await Action("apply");
+    await Action("node."+refundNode.GetProperty("id").GetInt32());await Action("node-change");
+    var refundedPreview=await engine.ExecuteAsync(new{op="load",xml=PobWorkStore.Read(data,id,game)!.Pending!.Xml,name="verify refund preview"},default);
+    CheckPassiveDescriptions(widgetBaseline.State,refundedPreview.State,Snapshot(widget,1002),Check);
+    await Action("apply");
     var refundedFile=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="verify refund"},default);
     Check(Allocated(widgetBaseline.State).Except(Allocated(refundedFile.State)).Count()==refundNode.GetProperty("refundCount").GetInt32(),"Widget refund Apply persists all dependent removals");
     await Action("undo");
@@ -508,6 +513,23 @@ static void CheckMap(JsonElement state,JsonElement before,string change,int expe
     check(state.GetProperty("nodes").EnumerateArray().All(n=>labels[n.GetProperty("id").GetInt32()]==(n.GetProperty("name").GetString(),n.GetProperty("kind").GetString())),"Incremental map preserves dynamic node names and shapes");
     check(delta.All(m=>m.GetProperty("revision").GetInt64()==42)&&delta.All(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length<=16384),"Incremental transaction has bounded messages and one revision");
     check(delta.Sum(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length)<messages.Sum(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length)/10,"Preview transfers less than one tenth of a full tree");
+}
+
+static void CheckPassiveDescriptions(JsonElement before,JsonElement after,ViewSnapshot view,Action<bool,string> check)
+{
+    var oldIds=Allocated(before);var newIds=Allocated(after);
+    var added=newIds.Except(oldIds).ToHashSet();var removed=oldIds.Except(newIds).ToHashSet();
+    var cards=Nodes(view.Root).Where(n=>n.Id.StartsWith("pob.changed.")&&n.Id.EndsWith(".card")).ToArray();
+    check(cards.Length==added.Count+removed.Count,"Preview includes every changed passive without truncating the list");
+    foreach(var (source,ids) in new[]{(after,added),(before,removed)})
+        foreach(var node in source.GetProperty("nodes").EnumerateArray().Where(n=>ids.Contains(n.GetProperty("id").GetInt32())))
+        {
+            var prefix="pob.changed."+node.GetProperty("id").GetInt32()+".description";
+            var text=string.Concat(Nodes(view.Root).Where(n=>n.Kind==ViewNodeKind.Text&&n.Id.StartsWith(prefix)).Select(n=>n.Text));
+            static string Normalize(string s)=>string.Concat(s.Where(c=>!char.IsWhiteSpace(c)));
+            check(Normalize(text)==Normalize(node.GetProperty("description").GetString()??""),
+                (ids==removed?"Refunded":"Allocated")+" passive description preserves upstream modifier values for "+node.GetProperty("id"));
+        }
 }
 
 static ViewSnapshot Snapshot(PobWidget widget,int sequence)

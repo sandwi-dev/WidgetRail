@@ -27,6 +27,7 @@ internal sealed partial class WidgetViewPresenter
             }
             RefreshRichText();
             UpdateModalGeometry();
+            RefreshReadingFocus();
             UpdateNativeNeighbors();
         }
         finally { applying = false; }

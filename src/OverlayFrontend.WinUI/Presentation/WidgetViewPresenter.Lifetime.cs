@@ -23,6 +23,7 @@ internal sealed partial class WidgetViewPresenter
         if (active && !suspension.IsCompletedSuccessfully) throw new InvalidOperationException("Presentation suspension failed.", suspension.Exception);
         if (!active) RememberFocus();
         presentationActive = active;
+        RefreshReadingFocus();
         RefreshMediaPlayers();
         RefreshContextIndicators();
         IsHitTestVisible = active && presentationInputEnabled;
@@ -33,6 +34,7 @@ internal sealed partial class WidgetViewPresenter
         if (!active)
         {
             CancelScrollReveal();
+            scrollGesture = null;
             directionalScroll = null;
             foreach (var reveal in artworkReveals.Values) reveal.Cancel();
             SettleWidgetResize();

@@ -37,6 +37,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void Retire(Binding binding)
     {
+        if (binding.Element is ScrollViewer scroll && readingScrolls.Remove(scroll,out var reading)) reading.Dispose();
         RetireInlineLink(binding);
         if (binding.Element is WidgetRichTextView rich) rich.DetachExcept(_ => false);
         RetireSlider(binding);
@@ -209,6 +210,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        scrollGesture = null;
         CancelScrollReveal();
         directionalScroll = null;
         ResetSliderValues();

@@ -143,8 +143,7 @@ public sealed partial class PobWidget : Widget
                     Surface:new(){Mode=WidgetSurfaceMode.Standard,PreferredWidth=760,PreferredHeight=440,MinimumWidth=620,MinimumHeight=360});
             }
             var children = new List<WidgetElement>();
-            if(OnlineImportView)children.Add(OnlineImportPage());
-            else if (result is null && detailKind=="library")
+            if (result is null && detailKind=="library")
                 children.Add(LibraryWorkspace());
             else if(ManagementView&&result is not null)
             {
@@ -155,7 +154,7 @@ public sealed partial class PobWidget : Widget
             {
                 children.Add(Text($"PoE {game} Build Companion", "title", "pob-title"));
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
-                children.Add(UI.Row("pob.start.import-actions",Button("Open pob.cool","open-online-import"),Button("Paste build from clipboard", "paste")).Classes("pob-toolbar"));
+                children.Add(UI.Row("pob.start.import-actions",OnlineImportButton(),Button("Paste build from clipboard", "paste")).Classes("pob-toolbar"));
                 children.Add(Text(OnlineImportHelp,"import.online-help","pob-small pob-muted"));
                 children.Add(ImportField());
                 children.Add(Button("Create a new build", "new"));
@@ -173,15 +172,15 @@ public sealed partial class PobWidget : Widget
                     .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
-            var initial = OnlineImportView?"pob.online-import.browser":detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
+            var initial = detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
             var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").RememberChildFocus(initial);
             if (busy) root = root.Shortcut(ControllerButton.B, "cancel-operation");
-            else if(OnlineImportView||result is null&&detailKind=="library")root=root.Shortcut(ControllerButton.B,"back");
+            else if(result is null&&detailKind=="library")root=root.Shortcut(ControllerButton.B,"back");
             if (result is not null)
             {
-                if(!ManagementView&&!OnlineImportView)root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
-                if (!busy && !OnlineImportView && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
+                if(!ManagementView)root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
+                if (!busy && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
             }
             var view=new WidgetView(WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = ManagementView?(detailKind=="library"?1040:840):section == "Tree" ? 1320 : 1180, PreferredHeight = ManagementView?(detailKind=="library"&&savedBuilds.Length<=5?680:800):section == "Tree" ? 900 : 820, MinimumWidth = ManagementView?680:820, MinimumHeight = 600 })
@@ -242,6 +241,11 @@ public sealed partial class PobWidget : Widget
     private List<WidgetElement> NodeDetails()
     {
         var n=A(State,"nodes").First(n=>I(n,"id")==detailId);
+        if(pendingBefore is not null&&!B(n,"allocated"))
+        {
+            var original=A(pendingBefore.State,"nodes").FirstOrDefault(node=>I(node,"id")==detailId);
+            if(B(original,"allocated"))n=original;
+        }
         var rows = new List<WidgetElement> { Button("Back to tree","back"), Text(S(n,"name"),"node.name","pob-heading") };
         AddNodeDescription(rows,n,"node.description");
         if (pendingBefore is not null)
@@ -251,9 +255,17 @@ public sealed partial class PobWidget : Widget
             var added=current.Except(previous).ToHashSet();var removed=previous.Except(current).ToHashSet();
             rows.Add(Text($"Preview: +{added.Count} allocated, -{removed.Count} refunded", "node.preview", "pob-heading"));
             rows.Add(Text($"Passive points: {S(pendingBefore.State,"passivePoints")} to {S(State,"passivePoints")}\nAscendancy points: {S(pendingBefore.State,"ascendancyPoints")} to {S(State,"ascendancyPoints")}", "node.points"));
+            if(I(pendingBefore.State,"level")!=I(State,"level"))
+                rows.Add(Text($"{(B(State,"autoLevel")?"Automatic character level":"Character level")}: {S(pendingBefore.State,"level")} to {S(State,"level")}","node.level","pob-muted"));
             AddComparison(rows,pendingBefore.State,State,"node.comparison");
-            foreach(var changed in A(State,"nodes").Where(x=>added.Contains(I(x,"id")) || removed.Contains(I(x,"id"))).Take(30))
-                rows.Add(Text((added.Contains(I(changed,"id"))?"+ ":"- ")+S(changed,"name"),"changed."+I(changed,"id"),added.Contains(I(changed,"id"))?"pob-green":"pob-life"));
+            foreach(var (source,ids,allocated) in new[]{(State,added,true),(pendingBefore.State,removed,false)})
+                foreach(var changed in A(source,"nodes").Where(x=>ids.Contains(I(x,"id"))))
+                {
+                    var id="changed."+I(changed,"id");
+                    var description=new List<WidgetElement>{Text((allocated?"Allocated · ":"Refunded · ")+S(changed,"name"),id,allocated?"pob-heading pob-green":"pob-heading pob-life")};
+                    AddNodeDescription(description,changed,id+".description");
+                    rows.Add(UI.Stack("pob."+id+".card",description.ToArray()).Classes("pob-context-card"));
+                }
             rows.Add(Text("Apply saves this preview. Discard restores the previous tree and totals.","node.preview.help","pob-muted"));
         }
         else

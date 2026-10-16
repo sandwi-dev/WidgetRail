@@ -40,7 +40,8 @@ internal sealed partial class WidgetViewPresenter
 
         bool Available(Binding binding) => binding.Identity.Scope == activeScope &&
             declarations[binding.Identity.Id].Node.IsDisabled != true &&
-            (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView) &&
+            (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView ||
+                binding.Element is ScrollViewer { IsTabStop: true }) &&
             IsMemoryVisible(binding.Element);
     }
 

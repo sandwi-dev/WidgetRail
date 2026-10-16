@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
+    internal string? ScrollFocusOutlineForValidation=>scrollFocusOutline?.Identity.Id;
     internal object ScrollRevealDiagnostics() => new
     {
         lastScrollRevealRequest, pending = pendingScrollReveal?.Request, activeScope, presentationActive, presentationOnly, HasTransientControl,

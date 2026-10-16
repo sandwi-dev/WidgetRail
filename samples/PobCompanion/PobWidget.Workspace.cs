@@ -173,8 +173,16 @@ public sealed partial class PobWidget
                 // PoB's Calcs tab can select a different skill and buff mode from
                 // the sidebar. Never present its breakdown as the headline total.
                 var context=State.GetProperty("breakdownContext");
-                notes.Add(Text("Saved desktop Calcs context", "breakdown.context.heading", "pob-eyebrow pob-gold"));
-                notes.Add(Text(S(context,"skill")+" · "+S(context,"mode"),"breakdown.context", "pob-muted"));
+                var overview=A(State,"stats").FirstOrDefault(s=>S(s,"name")==statDetail);
+                var different=breakdown.TryGetProperty("value",out var detailValue)&&detailValue.TryGetDouble(out var calculated)&&
+                    overview.ValueKind==JsonValueKind.Object&&overview.TryGetProperty("value",out var overviewValue)&&overviewValue.TryGetDouble(out var total)&&Math.Abs(calculated-total)>1e-6;
+                if(showSkillContext||statDetail.StartsWith("Minion",StringComparison.Ordinal)||different)
+                {
+                    notes.Add(Text("Calculation settings", "breakdown.context.heading", "pob-small"));
+                    var mode=System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(S(context,"mode").ToLowerInvariant());
+                    notes.Add(Text("Skill: "+S(context,"skill")+(mode.Length>0?" · Mode: "+mode:""),"breakdown.context", "pob-muted"));
+                    if(different)notes.Add(Text("This breakdown uses different calculation settings from the overview, so its total differs.","breakdown.context.difference","pob-muted"));
+                }
                 if(breakdown.TryGetProperty("value",out var value)&&value.TryGetDouble(out var number))
                     notes.Add(Text(StatLabel(statDetail)+": "+StatValue(statDetail,number),"breakdown.value"));
                 if(S(breakdown,"text").Length>0)AddFormatted(notes,breakdown,"text","runs","inspector.breakdown",emphasizeStats:true);
@@ -196,9 +204,9 @@ public sealed partial class PobWidget
             }
         }
         if (compatibilityNotice.Length > 0) notes.Add(Text(compatibilityNotice, "compatibility", "pob-muted"));
-        var warnings = A(State, "warnings");
-        if (warnings.Length > 0) notes.Add(Text("Check this build", "warnings.heading", "pob-eyebrow pob-gold"));
-        foreach (var (warning, index) in warnings.Select((w, i) => (w, i))) notes.Add(Text(warning.GetString()!, "warning." + index, "pob-muted"));
+        var warnings = A(State, "warnings").Select(w=>w.GetString()).Where(w=>!string.IsNullOrWhiteSpace(w)).Distinct().ToArray();
+        if (warnings.Length > 0) notes.Add(UI.Stack("pob.warnings",new[]{Text("Build warnings", "warnings.heading", "pob-heading pob-gold")}
+            .Concat(warnings.Select((warning,index)=>Text(warning!,"warning."+index,"pob-muted"))).ToArray()).Classes("pob-context-card"));
         return Split("overview", UI.VerticalScroll("pob.scroll", grid).Classes("pob-scroll"), Panel("inspector", notes), 2, 1);
     }
 

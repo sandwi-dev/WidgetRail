@@ -51,6 +51,19 @@ D-pad and left-stick navigation move focus and reveal the target control.
 Right-stick scrolling moves the viewport; focus settles after scrolling stops
 instead of jumping with every arriving page.
 
+An overflowing scroll container becomes a reading focus target when it has no
+usable interactive control in its visible viewport, even if controls exist
+farther down. It shows the theme's focus outline. If scrolling moves a focused
+control offscreen, the outline marks the viewport until focus settles onto a
+visible control, or onto the reading container when none is available. Settlement
+preserves the scroll position; virtualized collections still wait for their rows
+to become ready. Content that fits without scrolling adds no extra focus stop.
+
+From a focused reading container, D-pad/left-stick input scrolls along its axis;
+ordinary navigation resumes when an option becomes visible. Moving across that
+axis can leave the container. Holding a direction at the scroll boundary does
+not unexpectedly escape the panel; release and press again to navigate out.
+
 When there is no further focusable control in the requested direction but the
 current container has more content, D-pad/left-stick navigation scrolls that
 content. Reversing scrolls back toward the remembered control. Editors, menus,

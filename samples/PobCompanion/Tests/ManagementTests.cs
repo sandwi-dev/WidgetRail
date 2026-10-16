@@ -37,12 +37,9 @@ internal static class ManagementTests
             check(widget.Render().Surface!.PreferredWidth<treeWidth&&!Has("pob.navigation")&&Has("pob.field.label.name")&&Has("pob.field.label.level"),"Build menu has its own compact size and persistent field labels");
             check(Has("pob.manage.character")&&Has("pob.manage.import")&&Has("pob.manage.export")&&Has("pob.new"),"Build menu groups character, import, export and new-build actions");
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import").TextEntryMaximumLength==2048&&Has("pob.import.example.link")&&Has("pob.import.example.file"),"Import field supports long paths and provides nearby link and file examples");
-            await Action("open-online-import");
-            var browser=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.online-import.browser").WebBrowser!;
-            check(browser.Url==$"https://pob.cool/poe{game}"&&browser.Options.Storage==BrowserStorage.Persistent&&browser.Options.Popups==BrowserPopupMode.Hosted&&
-                browser.Options.Background==BrowserBackgroundMode.Automatic,"Online import opens the correct game with a persistent profile and hosted popups without keep-alive");
-            check(Has("pob.online-import.help")&&!Has("pob.navigation")&&File.ReadAllText(checkpoint)==validRecord,"Online import retains work and keeps the return instructions visible");
-            await Action("back");check(Has("pob.manage.import")&&Has("pob.paste"),"Returning from pob.cool restores the import menu and its Paste action");
+            var online=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.open-online-import").Intent!;
+            check(online.Routing==WidgetIntentRouting.Windows&&online.Payload.GetProperty("url").GetString()==$"https://pob.cool/poe{game}","Online import explicitly uses the Windows browser for the correct game");
+            check(Has("pob.import.online-help")&&Has("pob.paste")&&!Nodes(Snapshot().Root).Any(n=>n.Kind==ViewNodeKind.WebBrowser),"Browser handoff leaves clear return-and-paste instructions without an embedded page");
             var importSource=Path.Combine(directory,"replacement-source.xml");File.WriteAllText(importSource,xml);
             var previousName=File.ReadAllText(Path.Combine(directory,id+".name.txt"));
             await Action("import-mode.replace");await Action("import",importSource);
@@ -115,9 +112,8 @@ internal static class ManagementTests
             await Close();File.WriteAllText(checkpoint,validRecord);File.WriteAllText(working,committed);await Open();
             await Action("library");await Action("library-delete");await Action("delete-confirm");
             check(Has("pob.library.workspace")&&!File.Exists(checkpoint)&&!File.Exists(Path.Combine(directory,"selected.txt")),"Deleting the current build returns to the library and clears its startup selection");
-            await Action("back");await Action("open-online-import");
-            check(Has("pob.online-import.browser"),"Online import is also available before a build is loaded");
-            await Action("back");check(Has("pob.paste")&&Has("pob.new")&&!Has("pob.online-import.browser"),"Returning from the online welcome flow restores the initial import screen");
+            await Action("back");
+            check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.open-online-import").Intent?.Routing==WidgetIntentRouting.Windows&&Has("pob.paste"),"Windows browser import is also available before a build is loaded");
         }
         finally{if(widget is not null)await WidgetTestHost.DestroyAsync(widget);if(engine is not null)await engine.DisposeAsync();}
     }

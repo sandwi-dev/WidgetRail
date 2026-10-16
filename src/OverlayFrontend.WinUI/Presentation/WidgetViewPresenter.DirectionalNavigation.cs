@@ -45,6 +45,9 @@ internal sealed partial class WidgetViewPresenter
         if (explicitId is not null && bindings.TryGetValue(explicitId, out var authored) && !ReferenceEquals(authored, origin))
         {
             var target = NavigationTarget(authored) ? authored : GroupTarget(authored);
+            if(target is not null)target=ViewportEntryTarget(target,origin);
+            if(target is null&&!NavigationTarget(authored))target=bindings.Values.FirstOrDefault(candidate=>
+                IsDescendant(candidate.Identity.Id,authored.Identity.Id)&&NavigationTarget(candidate)&&VisibleNavigationTarget(candidate));
             if (target is not null && NavigationTarget(target))
             {
                 // Cross-container links are exits. Reveal remaining content first;
@@ -80,7 +83,11 @@ internal sealed partial class WidgetViewPresenter
         var candidates = new Dictionary<string, (Binding Target, FocusRectangle Bounds)>(StringComparer.Ordinal);
         foreach (var candidate in bindings.Values)
         {
-            if (ReferenceEquals(candidate, origin) || !NavigationTarget(candidate)) continue;
+            if (ReferenceEquals(candidate, origin) || !NavigationTarget(candidate) ||
+                !(VisibleNavigationTarget(candidate)||SameScrollControlNavigation(origin,candidate))) continue;
+            // Scrolling may reveal the viewport as a fallback focus stop, but
+            // an ongoing directional gesture keeps its existing child anchor.
+            if(candidate.Element is ScrollViewer&&IsDescendant(origin.Identity.Id,candidate.Identity.Id))continue;
             var owner = candidate;
             // Enter an external remembered group as one region, then resolve its
             // current child. Internal moves still compare individual controls.
@@ -92,6 +99,8 @@ internal sealed partial class WidgetViewPresenter
                     owner = bindings[ancestor.Node.Id];
             }
             var target = ReferenceEquals(owner, candidate) ? candidate : GroupTarget(owner);
+            if(target is not null)target=ViewportEntryTarget(target,origin);
+            if(target is null&&!ReferenceEquals(owner,candidate)&&VisibleNavigationTarget(candidate))target=candidate;
             if (target is not null && NavigationTarget(target) && NavigationBounds(owner.Element) is { } bounds)
                 candidates.TryAdd(owner.Identity.Id, (target, bounds));
         }

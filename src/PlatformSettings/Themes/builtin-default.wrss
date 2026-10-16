@@ -1077,7 +1077,7 @@ slider:focused {
    Selection owns its persistent background, including while it is focused.
    This also preserves transparent controls and authored primary/brand fills.
    Accessibility can strengthen this edge. */
-button:focused, select:focused, slider:focused,
+button:focused, select:focused, slider:focused, scroll:focused,
 .wrail-action-surface:focused, .wrail-choice-row:focused,
 .wrail-tile:focused, .wrail-poster-tile:focused {
   outline-color: var(--focus);
