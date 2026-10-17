@@ -82,6 +82,20 @@ The chunk budget also reserves space for the current document URL. Page actions
 and ordinary messages use the same `MaximumMessageDepth` (16) and 64 KiB wire
 limit; JSON transport preserves UTF-8 rather than expanding Unicode into escapes.
 
+An adapted session can also use the existing SDK `RequestAsync` request/cancel
+protocol. Register `host.onRequest(async (method, payload, operation) => ...)`
+inside the sealed adapter. `operation.signal` supports cancellation and
+`operation.progress(value)` delivers a bounded `kind: "progress"` event with the
+request ID through `ReadMessagesAsync`. Return an ordinary JSON value, or
+`host.batchResult(context, items)` for the same bounded collection format above.
+The SDK assembles response batches before completing the request; incomplete,
+expired, cancelled, and navigated requests cannot complete with partial data.
+There are at most 16 requests per session and a 30-second request deadline.
+Closing/hiding the page aborts active adapter work. Request messages go only to
+the declared origin's isolated adapter, never to the website's main JavaScript
+world. Plain remote sessions without an adapter still reject messaging. This
+does not expose a network-fetch API or bypass the site's normal loading flow.
+
 Adapted sessions also emit `page-location` with `url` when the top-level location
 changes within a declared origin. This includes same-document navigation. A widget
 that persists return destinations must allowlist appropriate public paths and

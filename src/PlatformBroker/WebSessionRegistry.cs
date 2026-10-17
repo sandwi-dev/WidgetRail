@@ -81,7 +81,7 @@ public sealed class WebSessionRegistry
                     !sessions.TryGetValue(command.Session.Id, out session!) || !ReferenceEquals(session.Owner, owner)) throw Failure("session_closed");
                 if (command.Operation == WebSessionOperation.PostMessage)
                 {
-                    if (session.Definition.Source.Kind != WebSessionSourceKind.Package || command.ResourceUrl is not null) throw Failure("messaging_unavailable");
+                    if (session.Definition.Source.Kind != WebSessionSourceKind.Package && session.Definition.PageAdapter is null || command.ResourceUrl is not null) throw Failure("messaging_unavailable");
                     try { _ = WebSessionContract.DecodeMessage(command.MessageBase64!); }
                     catch (ArgumentException) { throw Failure("invalid_payload"); }
                 }

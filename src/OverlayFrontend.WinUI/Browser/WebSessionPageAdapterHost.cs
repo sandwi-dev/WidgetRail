@@ -7,12 +7,13 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 /// <summary>One top-level document's isolated adapter; no page credentials or arbitrary CDP are exposed.</summary>
-internal sealed class WebSessionPageAdapterHost : IDisposable
+internal sealed partial class WebSessionPageAdapterHost : IDisposable
 {
     private readonly CoreWebView2 core;
     private readonly WebSessionPageAdapter definition;
     private readonly string script;
     private readonly Func<bool> canInvoke;
+    private readonly Func<bool> canRequest;
     private readonly Action<string> publish;
     private readonly List<(CoreWebView2DevToolsProtocolEventReceiver Receiver, Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2DevToolsProtocolEventReceivedEventArgs> Handler)> receivers = [];
     private readonly Dictionary<string, (long Epoch, string Url, int Limit)> responses = [];
@@ -39,8 +40,8 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     }
 
     internal WebSessionPageAdapterHost(CoreWebView2 core, WebSessionPageAdapter definition, string script,
-        Func<bool> canInvoke, Action<string> publish)
-    { this.core=core;this.definition=definition;this.script=script;this.canInvoke=canInvoke;this.publish=publish; }
+        Func<bool> canInvoke, Action<string> publish, Func<bool>? canRequest=null)
+    { this.core=core;this.definition=definition;this.script=script;this.canInvoke=canInvoke;this.publish=publish;this.canRequest=canRequest??canInvoke; }
 
     internal async Task StartAsync()
     {
@@ -67,6 +68,7 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     private void Starting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args)
     {
         if(args.Cancel)return;
+        RetireRequests();
         epoch++;context=null;loader=frame=null;responses.Clear();reportedFailure=false;
     }
     private void LocationChanged(CoreWebView2 sender,CoreWebView2SourceChangedEventArgs args)
@@ -89,7 +91,7 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
             context=world.RootElement.GetProperty("executionContextId").GetInt32();
             await Call("Runtime.addBinding",new(){["name"]=binding,["executionContextId"]=context.Value});
             if(!Current(current))return;
-            var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding)+"];delete globalThis["+JsonSerializer.Serialize(binding)+"];"+Prelude+"\n"+script+"\n})()";
+            var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding)+"];delete globalThis["+JsonSerializer.Serialize(binding)+"];"+Prelude+"\n"+RequestsPrelude+"\n"+script+"\n})()";
             await Evaluate(source,current);
             await RefreshStyleAsync(current);
         }
@@ -98,13 +100,15 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     private void Bound(JsonElement value)
     {
         LastAction="received";
-        if(context is null||!canInvoke()||!Current(epoch)||value.GetProperty("name").GetString()!=binding||
+        if(context is null||!Current(epoch)||value.GetProperty("name").GetString()!=binding||
             value.GetProperty("executionContextId").GetInt32()!=context){LastAction="not-current-or-interactive";return;}
         var text=value.GetProperty("payload").GetString();
         if(text is null||Encoding.UTF8.GetByteCount(text)>WebSessionContract.MaximumMessageBytes-2048){Report("result_too_large");return;}
         // A bounded action may wrap already-validated response metadata in a
         // batch envelope. Match the ordinary web-session JSON depth budget.
         using var data=JsonDocument.Parse(text,new(){MaxDepth=WebSessionContract.MaximumMessageDepth});
+        if(data.RootElement.TryGetProperty("widgetRail",out _)){ReceiveReply(data.RootElement);return;}
+        if(!canInvoke()){LastAction="not-interactive";return;}
         var action=data.RootElement.GetProperty("action").GetString();
         if(!WebSessionContract.IsKey(action)){Report("invalid_page_action");return;}
         var envelope=new JsonObject { ["kind"]="page-action",["action"]=action,["document"]=core.Source,
@@ -169,7 +173,7 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     }
     public void Dispose()
     {
-        if(disposed)return;disposed=true;epoch++;responses.Clear();
+        if(disposed)return;RetireRequests();disposed=true;epoch++;responses.Clear();
         core.NavigationStarting-=Starting;core.ContentLoading-=Loading;
         core.SourceChanged-=LocationChanged;
         foreach(var (receiver,handler) in receivers)receiver.DevToolsProtocolEventReceived-=handler;
@@ -197,6 +201,8 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
         const baseStyle='display:block;margin:8px 0;padding:10px 14px;border:2px solid currentColor;border-radius:6px;background:Canvas;color:CanvasText;font:600 14px system-ui;cursor:pointer;';
         globalThis.__widgetRailStyle=css=>{actionStyle=css;for(const b of document.querySelectorAll('button[data-widgetrail-action]'))b.style.cssText=baseStyle+css;};
         const host=Object.freeze({
+          onRequest(callback){requestHandler=callback;},
+          batchResult(context,items){return{[batchResultKey]:true,context,items};},
           onResponse(callback){receive=callback;},
           addBatchAction(parent,key,label,getPayload){return host.addAction(parent,key,label,getPayload,true);},
           addAction(parent,key,label,getPayload,batch=false){

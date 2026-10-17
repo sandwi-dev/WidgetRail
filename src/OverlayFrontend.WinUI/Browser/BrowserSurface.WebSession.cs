@@ -44,6 +44,11 @@ internal sealed partial class BrowserSurface
     internal void ApplyHostedView(WebBrowserDocument view) =>
         document = document with { InteractionMode = view.InteractionMode, AccessibleName = view.AccessibleName };
 
+    internal async Task PostHostedMessageAsync(string encoded)
+    {
+        if(pageAdapter is not null){await pageAdapter.PostMessageAsync(Encoding.UTF8.GetString(WebSessionContract.DecodeMessage(encoded)));return;}
+        PostHostedMessage(encoded);
+    }
     internal void PostHostedMessage(string encoded)
     {
         if (!IsHostedPackage || !IsReady || !IsHostedDocument(core!.Source) || loading) throw new InvalidOperationException("Session page is unavailable.");
@@ -129,7 +134,7 @@ internal sealed partial class BrowserSurface
                 try {WebSessionContract.DecodeMessage(encoded);}
                 catch(ArgumentException){FailHostedSession("Page adapter result exceeds its bound.");return;}
                 if(!hostedMessages.Writer.TryWrite(encoded))FailHostedSession("Page adapter message queue exceeded its bound.");
-            });
+            },()=>!retired&&!faulted&&visible&&!loading);
             if(pageActionStyle is not null)pageAdapter.SetStyle(pageActionStyle);
             await pageAdapter.StartAsync();
         }

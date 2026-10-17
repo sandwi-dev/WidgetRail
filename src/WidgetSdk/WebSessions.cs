@@ -37,6 +37,7 @@ public sealed class WidgetWebSession : IAsyncDisposable
     private readonly Channel<JsonElement> messages = Channel.CreateBounded<JsonElement>(new BoundedChannelOptions(WebSessionContract.MaximumQueuedMessages)
         { SingleWriter = true, FullMode = BoundedChannelFullMode.Wait, AllowSynchronousContinuations = false });
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> pending = new();
+    private readonly ConcurrentDictionary<string,WebSessionPageActionBatchReader> responseBatches=new();
     private readonly SemaphoreSlim requestCapacity = new(16, 16);
     private readonly Task receiver;
     private int disposed;
@@ -93,7 +94,7 @@ public sealed class WidgetWebSession : IAsyncDisposable
             }
             throw;
         }
-        finally { pending.TryRemove(id, out _); requestCapacity.Release(); }
+        finally { pending.TryRemove(id, out _); responseBatches.TryRemove(id,out _); requestCapacity.Release(); }
     }
 
     public async ValueTask AuthorizeLocalResourceAsync(Uri resource, CancellationToken cancellationToken = default)
@@ -132,6 +133,22 @@ public sealed class WidgetWebSession : IAsyncDisposable
                             if (pending.TryRemove(pair.Key, out var request)) request.TrySetException(new WidgetCapabilityException("page_navigated", "The page navigated before completing the request."));
                         continue;
                     }
+                    if(value.ValueKind==JsonValueKind.Object&&value.TryGetProperty("widgetRail",out var batchVersion)&&batchVersion.ValueKind==JsonValueKind.Number&&batchVersion.TryGetInt32(out var batchV)&&batchV==1&&
+                        value.TryGetProperty("kind",out var batchKind)&&batchKind.ValueKind==JsonValueKind.String&&batchKind.GetString()=="response-batch"&&value.TryGetProperty("id",out var batchId)&&batchId.ValueKind==JsonValueKind.String)
+                    {
+                        var key=batchId.GetString()!;
+                        if(!pending.TryGetValue(key,out var request))continue;
+                        try
+                        {
+                            if(responseBatches.GetOrAdd(key,_=>new()).TryRead(value.GetProperty("payload"),out var context,out var items))
+                            {pending.TryRemove(key,out _);responseBatches.TryRemove(key,out _);request.TrySetResult(JsonSerializer.SerializeToElement(new{context,items}));}
+                        }
+                        catch(Exception error)when(error is IOException or InvalidOperationException or KeyNotFoundException)
+                        {pending.TryRemove(key,out _);responseBatches.TryRemove(key,out _);request.TrySetException(new WidgetCapabilityException("malformed_response","The page returned an incomplete response batch."));}
+                        continue;
+                    }
+                    if(value.ValueKind==JsonValueKind.Object&&value.TryGetProperty("kind",out var progressKind)&&progressKind.ValueKind==JsonValueKind.String&&progressKind.GetString()=="progress"&&
+                        value.TryGetProperty("id",out var progressId)&&progressId.ValueKind==JsonValueKind.String&&!pending.ContainsKey(progressId.GetString()!))continue;
                     if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("widgetRail", out var version) && version.ValueKind == JsonValueKind.Number && version.GetInt32() == 1 &&
                         value.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "response" && value.TryGetProperty("id", out var identifier) &&
                         identifier.ValueKind == JsonValueKind.String)

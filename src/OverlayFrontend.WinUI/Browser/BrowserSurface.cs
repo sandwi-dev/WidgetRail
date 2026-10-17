@@ -156,6 +156,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (acceptsInput) passivePinnedPresentation = false;
         presentationInputRequested = acceptsInput;
         visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && AttachedPopup is null;
+        if(!visible)pageAdapter?.CancelRequests();
         AttachedPopup?.SetPresentation(isVisible, acceptsInput, passivePinnedPresentation);
         if (!visible) CancelSiteDecisions();
         if (!input) { editorOwnedButtons.Clear(); chromeOwnedA = false; }

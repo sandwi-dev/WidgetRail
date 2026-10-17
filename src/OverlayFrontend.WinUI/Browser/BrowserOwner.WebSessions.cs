@@ -90,7 +90,7 @@ internal sealed partial class BrowserOwner
             else
             {
                 if (!entries.TryGetValue(key, out var entry) || entry.Hosted != request.Session) throw new InvalidOperationException("Hosted session retired.");
-                if (request.Command.Operation == WebSessionOperation.PostMessage) entry.Surface.PostHostedMessage(request.Command.MessageBase64!);
+                if (request.Command.Operation == WebSessionOperation.PostMessage) await entry.Surface.PostHostedMessageAsync(request.Command.MessageBase64!);
                 else if (request.Command.Operation == WebSessionOperation.AuthorizeResource) entry.Surface.AuthorizeHostedResource(request.Command.ResourceUrl!);
                 else if (request.Command.Operation == WebSessionOperation.Navigate) await entry.Surface.NavigateHostedAsync(request.Command.Destination!, lifetime.Token);
                 else throw new InvalidOperationException("Invalid hosted session operation.");

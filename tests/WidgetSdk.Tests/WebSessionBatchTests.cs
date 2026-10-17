@@ -4,7 +4,7 @@ using WidgetRail.WidgetSdk;
 
 internal static class WebSessionBatchTests
 {
-    internal static Task Run()
+    internal static async Task Run()
     {
         var values=Enumerable.Range(0,600).Select(i=>new {id=i,text=new string('界',64)+"\"\\🎮"}).ToArray();
         var batches=WebSessionMessageBatcher.Create(values,items=>JsonSerializer.SerializeToElement(new{kind="batch",revision=12,items}));
@@ -20,6 +20,42 @@ internal static class WebSessionBatchTests
         string Nested(int depth)=>new string('[',depth)+"0"+new string(']',depth);
         WebSessionContract.DecodeMessage(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Nested(WebSessionContract.MaximumMessageDepth))));
         try{WebSessionContract.DecodeMessage(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Nested(WebSessionContract.MaximumMessageDepth+1))));throw new Exception("Over-depth result accepted");}catch(ArgumentException){}
-        return Task.CompletedTask;
+        await Requests();
+    }
+    private static async Task Requests()
+    {
+        var messages=new System.Collections.Concurrent.ConcurrentQueue<string>();var cancels=0;
+        var widget=WidgetTestHost.Attach(new Probe(),new WidgetTestHostServicesBuilder().WithHandler(WidgetWebSessionCapabilities.Command,async(command,token)=>
+        {
+            if(command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted)return new(){Session=new(new string('a',32))};
+            if(command.Operation==WebSessionOperation.ReadMessages){await Task.Delay(5,token);return new(){MessagesBase64=messages.TryDequeue(out var message)?[message]:[]};}
+            if(command.Operation==WebSessionOperation.PostMessage)
+            {
+                using var parsed=JsonDocument.Parse(Convert.FromBase64String(command.MessageBase64!));var request=parsed.RootElement;
+                if(request.GetProperty("kind").GetString()=="cancel")cancels++;
+                else
+                {
+                    var id=request.GetProperty("id").GetString();var method=request.GetProperty("method").GetString();var batchId=Guid.NewGuid().ToString();
+                    if(method!="wait")for(var index=method=="broken"?1:0;index<4;index++)messages.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{widgetRail=1,kind="response-batch",id,payload=new{batchId,index,total=4,context=new{source="fixture"},items=Enumerable.Range(index*25,25).Select(i=>new{id=i,text=new string('x',1000)}).ToArray()}})));
+                }
+            }
+            return new();
+        }).Build());
+        await using var session=await widget.Open();
+        var result=await session.RequestAsync<object,JsonElement>("bulk",new{});
+        if(result.GetProperty("items").GetArrayLength()!=100||result.GetProperty("items")[99].GetProperty("id").GetInt32()!=99)throw new Exception("RPC batch lost order or items");
+        try{await session.RequestAsync<object,JsonElement>("broken",new{});throw new Exception("Incomplete RPC batch accepted");}
+        catch(WidgetCapabilityException error)when(error.ErrorCode=="malformed_response"){}
+        using var cancel=new CancellationTokenSource(50);
+        try{await session.RequestAsync<object,JsonElement>("wait",new{},cancel.Token);throw new Exception("Cancelled RPC returned success");}catch(OperationCanceledException){}
+        if(cancels!=1)throw new Exception("RPC cancellation not delivered");
+        result=await session.RequestAsync<object,JsonElement>("bulk",new{});
+        if(result.GetProperty("items").GetArrayLength()!=100)throw new Exception("Failed request poisoned next batch");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+    private sealed class Probe:Widget
+    {
+        public override WidgetView Render()=>new(UI.Text("Session test","test"));
+        internal ValueTask<WidgetWebSession> Open()=>HostServices.WebSessions.OpenAsync(new("test","Test",WebSessionSource.Remote("https://example.com")){PageAdapter=new(){ScriptAsset="web/actions.js",Origins=["https://example.com"]}});
     }
 }

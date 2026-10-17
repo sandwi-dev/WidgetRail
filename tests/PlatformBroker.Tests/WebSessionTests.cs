@@ -88,7 +88,14 @@ internal static class WebSessionTests
         var open=owner.ExecuteAsync(new(WebSessionOperation.OpenAdapted){Definition=definition},default).AsTask();
         var work=(await registry.TakeAsync(default)).Work.Single();registry.Complete(new(work.RequestId));
         var session=(await open).Session!;
-        await Reject(()=>owner.ExecuteAsync(new(WebSessionOperation.PostMessage){Session=session,MessageBase64="e30="},default).AsTask(),"messaging_unavailable");
+        var message=owner.ExecuteAsync(new(WebSessionOperation.PostMessage){Session=session,MessageBase64="e30="},default).AsTask();
+        var delivery=(await registry.TakeAsync(default)).Work.Single();
+        Check(delivery.Command.Operation==WebSessionOperation.PostMessage,"Adapted session routes messages to its isolated adapter");
+        registry.Complete(new(delivery.RequestId));await message;
+        var remote=owner.ExecuteAsync(new(WebSessionOperation.Open){Definition=new("plain","Plain website",WebSessionSource.Remote("https://example.com"))},default).AsTask();
+        delivery=(await registry.TakeAsync(default)).Work.Single();registry.Complete(new(delivery.RequestId));
+        var remoteSession=(await remote).Session;
+        await Reject(()=>owner.ExecuteAsync(new(WebSessionOperation.PostMessage){Session=remoteSession,MessageBase64="e30="},default).AsTask(),"messaging_unavailable");
         owner.Dispose();
         await Reject(()=>owner.ExecuteAsync(new(WebSessionOperation.ReadMessages){Session=session},default).AsTask(),"session_closed");
     }
