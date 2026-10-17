@@ -9,6 +9,7 @@ public sealed partial class PobWidget : Widget
 {
     private readonly object gate = new();
     private readonly int game;
+    private string WidgetName => game == 2 ? "PoE2 Path of Building (Beta)" : "PoE1 Path of Building";
     private readonly string dataDirectory;
     private readonly PobEngine engine;
     private readonly string? artworkDirectory;
@@ -140,7 +141,7 @@ public sealed partial class PobWidget : Widget
             if (busy && result is null)
             {
                 var loading=UI.Stack("pob.root",
-                    Text($"PoE{game} Path of Building","title","pob-title"),
+                    Text(WidgetName,"title","pob-title"),
                     UI.Stack("pob.loading.panel",
                         UI.LoadingIndicator("pob.loading",status,LoadingIndicatorSize.Large),
                         Text(status,"loading.status","pob-heading"),
@@ -161,7 +162,7 @@ public sealed partial class PobWidget : Widget
             }
             else if (result is null)
             {
-                children.Add(Text($"PoE{game} Path of Building", "title", "pob-title"));
+                children.Add(Text(WidgetName, "title", "pob-title"));
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
                 children.Add(OnlineBuildLinks());
                 children.Add(Text(OnlineImportHelp,"import.online-help","pob-small pob-muted"));

@@ -30,7 +30,7 @@ public sealed partial class PobWidget
         var history=UI.Row("pob.history",historyControls.ToArray())
             .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
-        if (section != "Tree") heading.Add(Text($"PoE{game} Path of Building", "eyebrow", "pob-eyebrow"));
+        if (section != "Tree") heading.Add(Text(WidgetName, "eyebrow", "pob-eyebrow"));
         heading.Add(Text(BuildName(), "title", section == "Tree" ? "pob-tree-title" : "pob-title"));
         heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}", "context", "pob-muted"));
         var tools=UI.Stack("pob.buildtools",UI.Row("pob.buildcontrols", controls.ToArray()).Classes("pob-toolbar"),history)

@@ -2,6 +2,8 @@
 
 Two controller-first widgets share one implementation and run pinned Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ. Calculation rules remain upstream; the adapter translates editor actions and presentation.
 
+The widgets are named **PoE1 Path of Building** and **PoE2 Path of Building (Beta)**. The beta label identifies PoE2's pinned upstream beta engine; PoE1 uses an upstream release.
+
 ## Screenshots
 
 Native WidgetRail captures from 17 October 2026 in Velvet Dusk. The PoE2 planning example uses the late-game setup from [Ghost Activity's Martial Artist guide](https://pobb.in/ttCJAV3WX9bn). These are workflow examples, not current-league build recommendations. See the [screenshot index](screenshots/README.md) for captions, capture details and marketplace reuse, and [credits](#credits) for the upstream projects and artwork.
