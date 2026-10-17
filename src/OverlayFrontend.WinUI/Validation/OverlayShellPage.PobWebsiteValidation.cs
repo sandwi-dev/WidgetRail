@@ -11,7 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
-    internal void EnablePobWebsiteValidation(string path)
+    internal void EnablePobWebsiteValidation(string path,Func<Task> hideAndReopen)
     {
         Loaded += async (_,_) =>
         {
@@ -42,6 +42,35 @@ internal sealed partial class OverlayShellPage
                 var browserDocument=new WebBrowserDocument("browser",1,"https://example.com","Browser"){InteractionMode=BrowserInteractionMode.InteractOnFocus,Options=new(){Storage=BrowserStorage.Persistent}};
                 Check(profile!=BrowserProfileIdentity.Name("widgetrail.samples.browser",browserDocument),"PoB profile is isolated from Browser widget storage");
                 await page.EvaluateFixtureAsync("localStorage.setItem('pob-modal-test','saved'); document.cookie='pob-modal-test=saved;Max-Age=3600;SameSite=Lax;Secure'; window.sessionTest=42; true");
+                for(var cycle=0;cycle<3;cycle++)
+                {
+                    await hideAndReopen();
+                    await Until(()=>visible&&foreground&&interactive&&!switching&&ReferenceEquals(Page(),page));
+                    await Task.Delay(300);
+                    dialog=Walk(XamlRoot.Content).OfType<FrameworkElement>().Single(e=>AutomationProperties.GetAutomationId(e)=="Widget.pob-website");
+                    var bounds=dialog.TransformToVisual(surface).TransformBounds(new(0,0,dialog.ActualWidth,dialog.ActualHeight));
+                    var webBounds=page.TransformToVisual(surface).TransformBounds(new(0,0,page.ActualWidth,page.ActualHeight));
+                    File.WriteAllText(path+".geometry",JsonSerializer.Serialize(new{cycle,bounds,webBounds,widgetWidth=surface!.ActualWidth,widgetHeight=surface.ActualHeight}));
+                    Check(bounds.X>=-1&&bounds.Y>=-1&&bounds.Right<=surface!.ActualWidth+1&&bounds.Bottom<=surface.ActualHeight+1&&
+                        webBounds.X>=bounds.X-1&&webBounds.Y>=bounds.Y-1&&webBounds.Right<=bounds.Right+1&&webBounds.Bottom<=bounds.Bottom+1,
+                        "Hide/reopen "+cycle+" keeps modal and WebView within the widget");
+                    Check(await page.EvaluateFixtureAsync("window.sessionTest")=="42","Hide/reopen "+cycle+" retains the same live session");
+                }
+                var originalWidth=surface!.Width;var originalHeight=surface.Height;
+                try
+                {
+                    foreach(var size in new[]{(Width:720d,Height:640d),(Width:1040d,Height:880d)})
+                    {
+                        surface.Width=size.Width;surface.Height=size.Height;
+                        await Task.Delay(400);
+                        var bounds=dialog.TransformToVisual(surface).TransformBounds(new(0,0,dialog.ActualWidth,dialog.ActualHeight));
+                        var webBounds=page.TransformToVisual(surface).TransformBounds(new(0,0,page.ActualWidth,page.ActualHeight));
+                        Check(bounds.X>=-1&&bounds.Y>=-1&&bounds.Right<=surface.ActualWidth+1&&bounds.Bottom<=surface.ActualHeight+1&&
+                            webBounds.X>=bounds.X-1&&webBounds.Y>=bounds.Y-1&&webBounds.Right<=bounds.Right+1&&webBounds.Bottom<=bounds.Bottom+1,
+                            $"Resize to {size.Width}x{size.Height} keeps modal and WebView bounded");
+                    }
+                }
+                finally {surface.Width=originalWidth;surface.Height=originalHeight;}
                 await RouteButtonAsync(ControllerButton.B,ControllerEventPhase.Pressed);
                 await RouteButtonAsync(ControllerButton.B,ControllerEventPhase.Released);
                 await Until(()=>surface!.CurrentBinding!.Frame.Snapshot.Root.Kind!=ViewNodeKind.ModalLayer);

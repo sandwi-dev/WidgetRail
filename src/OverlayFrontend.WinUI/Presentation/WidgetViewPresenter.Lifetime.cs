@@ -64,6 +64,11 @@ internal sealed partial class WidgetViewPresenter
         }
         if (active)
         {
+            // Update reapplies authored dimensions to each retained layout host.
+            // Restore the modal's viewport constraints after that pass, just as
+            // snapshot, appearance and responsive updates do. The viewport may
+            // be unchanged on resume, so SizeChanged cannot repair this later.
+            UpdateModalGeometry();
             foreach (var icon in buttonIcons.Values) icon.RetryTransientFailure();
             foreach (var binding in bindings.Values)
                 if (binding.Element is WidgetPackageIconView icon) icon.RetryTransientFailure();
