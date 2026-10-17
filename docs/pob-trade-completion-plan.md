@@ -134,3 +134,48 @@ Local commits are allowed; merge, push, and release are not authorized by this w
   must be compared separately; seller gem groups never replace the user's skills during comparison.
 - Exact listing scroll state is retained only while the session lives. After idle unloading,
   comparison work and listing context restore, and the search can be reopened with its saved login.
+
+## Follow-up: repeated listing comparison and purchase context
+
+The user rejected the draft/choose-slot detour and requested a complete browsing workflow,
+two-column presentation, useful recovery after unloading, and reachable item actions.
+
+- Compare now calculates immediately and opens a native comparison panel beside the retained
+  website. A slot selector handles interchangeable equipment. Comparing another listing always
+  starts from committed equipment, never from the preceding candidate. Only Equip in build
+  commits; it does not purchase or change the game character. Manual item drafts remain protected.
+- The last eight compared item copies, listing identities and chosen slots persist per build.
+  Recent comparisons recalculate against the current committed build. Expand comparison shows
+  item descriptions beside the complete upstream impact output, with controls above both scroll
+  areas. Long areas have L3 access to comparison controls. Older saved previews are preserved;
+  an explicit continuation action retains their item before enabling repeated browsing.
+- Saved return actions narrow the official search by seller and base, following desktop PoB's
+  account-filter approach. A widget adapter fragment locates the exact saved ID among results
+  the website normally loads. No extra authenticated fetches, stored purchase tokens, automatic
+  whispers, or purchase actions. If a listing disappears, its saved description remains available;
+  a filtered search is not a guarantee of availability.
+- Search defaults to Instant buyout, with all five upstream trade modes selectable and persisted.
+  Browse trade is available without generating an equipment-upgrade query. Live inspection found
+  that `method=psapi` also occurs on instant-buyout listings: it is no longer used to infer in-person
+  trade. The adapter carries only a boolean derived from hideout-action availability, never the
+  token itself. Old records without that evidence say to check purchase options on the site.
+- Item tools use a 2x2 grid. Explicit sibling links fix Left from Item settings skipping Replace
+  from clipboard. Native keyboard navigation confirmed the clipboard button is enabled and gets
+  focus; disabled controls remain visibly dimmed.
+
+Evidence: `artifacts/pob/trade-review-final{1,2}.txt` (43/44 checks),
+`trade-review-recovery{1,2}.txt` (36 each). Native live PoE2 flow passes six checks in
+`trade-review-native05/live-result.json`, including two actual listing selections, revisiting the
+first candidate, expanded layout, and finding the exact saved listing through a narrowed search.
+Visual captures under `trade-review-native04/evidence` cover sidebar, expanded and independently
+scrolled columns; `trade-review-native05/evidence/found-listing.png` shows the located listing,
+matching item identity, price, instant-buyout label, and gold fee. UI tests used copied build data.
+Live PoE1 sign-in and actual purchase/controller acceptance remain unverified; no purchases or
+seller messages were performed.
+
+Legacy recovery was additionally exercised with a copy of the user's existing pre-change work
+record. `trade-review-legacy/result.json` confirms that the exact draft and pending preview survive,
+the base/name are recovered from PoB, and the continuation action keeps the item in recent comparisons.
+`trade-review-legacy/evidence/restored.png` shows the matching saved listing after session recreation.
+Final candidate: `artifacts/pob/trade-review-host03`, `trade-review-final-catalogd`, original
+`guide-workflow` data/settings and persistent logins, with controller input enabled.

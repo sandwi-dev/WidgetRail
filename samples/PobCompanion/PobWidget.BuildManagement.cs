@@ -140,6 +140,8 @@ public sealed partial class PobWidget
 
     private void AcceptImport(string id,PobResult loaded,int renamed)
     {
+        if(documentId!=id)tradeCandidates.Clear();
+        tradeListing=null;tradeBrowsing=false;websiteReview=false;
         documentId=id;result=loaded;pendingImport=null;replaceOnImport=false;pendingBefore=null;pastedItem=null;previewSlot=null;
         recoveryReadOnly=false;selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;
         compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version.":"";

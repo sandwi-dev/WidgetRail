@@ -5,7 +5,10 @@ namespace WidgetRail.Samples.PobCompanion;
 
 internal sealed record PobPendingChange(string Xml, string Kind, int NodeId = 0, string? Slot = null);
 internal sealed record PobWorkState(string CommittedXml, string[] Undo, string[] Redo,
-    PobPendingChange? Pending = null, string? ItemDraft = null, PobTradeListing? TradeListing = null);
+    PobPendingChange? Pending = null, string? ItemDraft = null, PobTradeListing? TradeListing = null,
+    bool TradeBrowse = false, PobTradeCandidate[]? TradeCandidates = null);
+
+internal sealed record PobTradeCandidate(string Raw, PobTradeListing Listing, string Slot);
 
 /// <summary>One atomic document owns committed work, pending work and its history.</summary>
 internal static class PobWorkStore
@@ -72,6 +75,8 @@ internal static class PobWorkStore
         string Decode(string value) => value is null ? throw new IOException("Saved work is incomplete.") : BuildDocument.Decode(value, game);
         return work with
         {
+            TradeBrowse=work.TradeBrowse&&work.ItemDraft is not null&&work.TradeListing?.IsValid(game)==true,
+            TradeCandidates=(work.TradeCandidates??[]).Take(8).Where(c=>c is not null&&c.Raw is {Length:>0 and <=32768}&&c.Listing?.IsValid(game)==true&&c.Slot is {Length:>0 and <=128}).ToArray(),
             TradeListing=work.ItemDraft is not null&&work.TradeListing?.IsValid(game)==true?work.TradeListing:null,
             CommittedXml = Decode(work.CommittedXml),
             Undo = work.Undo.Select(Decode).ToArray(), Redo = work.Redo.Select(Decode).ToArray(),

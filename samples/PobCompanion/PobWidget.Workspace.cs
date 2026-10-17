@@ -106,6 +106,7 @@ public sealed partial class PobWidget
 
     private WidgetElement Workspace()
     {
+        if(detailKind=="choose-slot"&&pendingBefore is not null)return EquipmentComparisonWorkspace();
         if(detailKind=="game-export")return GameExportWorkspace();
         if(detailKind=="trade")return TradeWorkspace();
         if(detailKind=="inventory")return StoredInventoryWorkspace();
@@ -268,8 +269,12 @@ public sealed partial class PobWidget
         var action=skills?"skill-options":pastedItem is null?"item-paste":"item-resume";
         var detailPanel=UI.Stack("pob.detail",
             Text(skills ? "Skill details" : "Item details", "detail.heading", "pob-eyebrow"),
-            skills?UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId),Button("Manage group","group-manage").FocusLeft(returnId)).Classes("pob-toolbar"):
-                UI.Row("pob.item.tools",UI.Button(pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action).FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),Button("Item settings","item-manage").FocusLeft(returnId).Disabled(entries.Length==0),Button("Find upgrades","trade").FocusLeft(returnId).Disabled(entries.Length==0)).Classes("pob-toolbar"),
+            skills?UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId).FocusRight("pob.group-manage"),Button("Manage group","group-manage").FocusLeft("pob."+action)).Classes("pob-toolbar"):
+                UI.Grid("pob.item.tools",[GridTrack.Auto(),GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star()],
+                    Button(pastedItem is null?"Replace from clipboard":"Continue comparison",action).FocusLeft(returnId).FocusRight("pob.item-manage").FocusDown("pob.trade").Disabled(pendingBefore is not null),
+                    Button("Item settings","item-manage").FocusLeft("pob."+action).FocusDown("pob.trade-browse").Disabled(entries.Length==0).InGrid(column:1),
+                    Button("Find upgrades","trade").FocusLeft(returnId).FocusRight("pob.trade-browse").FocusUp("pob."+action).Disabled(entries.Length==0).InGrid(row:1),
+                    BrowseTradeButton().FocusLeft("pob.trade").FocusUp("pob.item-manage").InGrid(row:1,column:1)).Spacing(8,8),
             UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
             .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
         if(skills&&entries.Length==0)
@@ -284,7 +289,7 @@ public sealed partial class PobWidget
                 detailPanel=UI.Stack("pob.detail",
                     QuickControls(UI.Stack("pob.skill.actions",new WidgetElement[]{
                         Text("Skill details","detail.heading","pob-eyebrow"),
-                        UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId),Button("Manage group","group-manage").FocusLeft(returnId)).Classes("pob-toolbar"),
+                        UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId).FocusRight("pob.group-manage"),Button("Manage group","group-manage").FocusLeft("pob."+action)).Classes("pob-toolbar"),
                         details[0],
                         UI.Grid("pob.skill.group-actions",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star(),GridTrack.Star()],
                             details.Skip(1).Take(3).Select((row,index)=>LinkLeft(row,returnId).InGrid(column:index)).ToArray()).Spacing(0,8)
@@ -313,17 +318,17 @@ public sealed partial class PobWidget
         _=>element,
     };
 
-    private List<WidgetElement> ItemDetails(JsonElement item)
+    private List<WidgetElement> ItemDetails(JsonElement item,string prefix="item")
     {
         var rarity = S(item,"rarity");
         var css = rarity is "UNIQUE" or "RELIC" ? "pob-orange" : rarity == "RARE" ? "pob-gold" : rarity == "MAGIC" ? "pob-blue" : "pob-text";
-        var rows = new List<WidgetElement> { Text(S(item, "slot").ToUpperInvariant(), "item.slot", "pob-eyebrow"), Text(S(item, "name"), "item.name", "pob-heading " + css) };
+        var rows = new List<WidgetElement> { Text(S(item, "slot").ToUpperInvariant(), prefix+".slot", "pob-eyebrow"), Text(S(item, "name"), prefix+".name", "pob-heading " + css) };
         foreach (var (block, index) in A(item,"details").Select((b,i)=>(b,i)))
         {
             var lines=new List<WidgetElement>();
             foreach(var (line,i) in A(block,"lines").Select((line,i)=>(line,i)))
-                AddFormatted(lines,line,"text","runs","item.copy."+index+"."+i);
-            rows.Add(UI.Stack("pob.item.block."+index,lines.ToArray()).Classes("pob-context-card"));
+                AddFormatted(lines,line,"text","runs",prefix+".copy."+index+"."+i);
+            rows.Add(UI.Stack("pob."+prefix+".block."+index,lines.ToArray()).Classes("pob-context-card"));
         }
         return rows;
     }

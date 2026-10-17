@@ -83,6 +83,7 @@ public sealed partial class PobWidget
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
         if(busy||focusRequestSequence==0)return null;
+        if(CanReplaceTradeComparison&&pendingBefore is not null)return new(){RequestId=focusRequestSequence,GroupId="pob.item.compare.controls"};
         if(detailKind=="library"&&libraryOpenFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.library.open-action"};
         if(modifierFocusRequested&&section=="Configuration"&&configSection=="Custom modifiers"&&string.IsNullOrWhiteSpace(filter))return new(){RequestId=focusRequestSequence,GroupId="pob.custom.edit-tools"};
         if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};

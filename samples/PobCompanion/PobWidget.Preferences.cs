@@ -31,11 +31,15 @@ public sealed partial class PobWidget
     private bool HandleWebsiteAction(WidgetActionEvent action)
     {
         if(action.ActionId=="website-close"){websiteVisible=false;Invalidate();return true;}
-        if(websiteVisible)return true;
-        if(action.ActionId=="website-resume"&&websiteSession is not null)
+        if(websiteVisible&&!action.ActionId.StartsWith("trade-review-",StringComparison.Ordinal))return true;
+        if(action.ActionId=="website-resume")
         {
-            if(websiteSession.Completion.IsCompleted&&websiteUrl is {} retry)Work(token=>OpenWebsiteAsync(retry,token),"Reopening website…");
-            else{websiteVisible=true;Invalidate();}
+            if(websiteSession is null||websiteSession.Completion.IsCompleted)
+            {
+                var retry=tradeListing?.FindUrl(game)??websiteUrl;
+                if(retry is not null)Work(token=>OpenWebsiteAsync(retry,token),"Finding saved listing…");
+            }
+            else{websiteVisible=true;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;Invalidate();}
             return true;
         }
         if(overlayWebsites&&websiteActions.TryGetValue(action.ActionId,out var url))
@@ -60,10 +64,25 @@ public sealed partial class PobWidget
         }
         else if(websiteUrl!=url)await session.NavigateAsync(url,token);
         token.ThrowIfCancellationRequested();
-        lock(gate){websiteUrl=url;websiteVisible=true;}
+        lock(gate){websiteUrl=url;websiteVisible=true;if(CanReplaceTradeComparison&&pendingBefore is not null)websiteReview=true;}
     }
 
-    private WidgetView WithWebsiteModal(WidgetView view)=>websiteVisible&&websiteSession is {} session
-        ?view.WithModal(new("pob-website","Website",UI.WebView(session.Reference,"pob.website",interactionMode:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"),
-            "pob.website","website-close"){ScrollContent=false}):view;
+    private WidgetView WithWebsiteModal(WidgetView view)
+    {
+        if(!websiteVisible||websiteSession is not {} session)return view;
+        var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"))
+            .RememberChildFocus("pob.website").Classes("pob-workspace");
+        var reviewing=websiteReview&&CanReplaceTradeComparison&&pendingBefore is not null;
+        WidgetElement body=reviewing?Split("website",web,TradeReviewPanel(),3,2):web;
+        var modal=view.WithModal(new("pob-website","Website",WithFeedback(body,null),"pob.website","website-close")
+        {
+            ScrollContent=false,
+            HeaderActions=UI.Row("pob.website.header-actions",
+                Button(reviewing?"Comparison controls":"Show comparison",reviewing?"trade-review-focus":"trade-review-show","website.review-shortcut").Disabled(!CanReplaceTradeComparison),
+                Button("Close","website-close","website.close")).Classes("pob-toolbar")
+        });
+        if(!busy&&websiteFocusSequence>0)
+            modal=modal with{FocusGroupEntryRequest=new(){RequestId=websiteFocusSequence,GroupId=reviewing?websiteFocus:"pob.website.browser"}};
+        return modal;
+    }
 }

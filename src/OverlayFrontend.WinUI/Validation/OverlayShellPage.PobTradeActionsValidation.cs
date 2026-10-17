@@ -29,24 +29,34 @@ internal sealed partial class OverlayShellPage
                 await WebAppUntil(()=>interactive&&foreground&&!switching&&surface?.CurrentBinding is not null);
                 if(live)
                 {
-                    await Action("section.3");await Action("item.29");await Action("trade");await Action("websites.overlay");await Action("trade-open");
+                    await Action("section.3");await Action("item.1");await Action("trade");await Action("websites.overlay");await Action("trade-open");
                     await WebAppUntil(()=>Page() is {IsReady:true,IsNavigationInProgress:false});
                     var livePage=Page()!;
-                    await WebAppUntilScript(livePage,"!!document.querySelector('[data-widgetrail-action]')");
-                    Check(true,"Live official listing receives Compare in PoB");
-                    await livePage.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action]').scrollIntoView({block:'center'});true");
-                    await Task.Delay(500);
-                    await File.WriteAllTextAsync(path+".listing",await livePage.EvaluateFixtureAsync("(()=>{const b=document.querySelector('[data-widgetrail-action]'),r=b.closest('[data-id]');return {id:r.getAttribute('data-id'),name:r.querySelector('.item-popup__header')?.innerText,action:b.innerText}})()"));
-                    await livePage.ClickPageActionFixtureAsync();
-                    await Task.Delay(300);
-                    await File.WriteAllTextAsync(path+".diagnostics",JsonSerializer.Serialize(new{host=livePage.PageActionDiagnostics(),dom=await livePage.EvaluateFixtureAsync("(()=>{const b=document.querySelector('[data-widgetrail-action]'),r=b.getBoundingClientRect();return {height:innerHeight,width:innerWidth,x:r.x,y:r.y,w:r.width,h:r.height,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,500),scroll:document.scrollingElement.scrollTop}})()")}));
-                    await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.slot.heading"));
-                    var slot=Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).First(n=>n.Text=="Helmet"&&n.ActionId?.StartsWith("replace-slot.")==true);
-                    await Action(slot.ActionId!);
-                    await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.item.compare.heading"));
-                    Check(true,"Live selected helmet reaches calculated equipment comparison");
-                    await Action("website-resume");await WebAppUntil(()=>ReferenceEquals(Page(),livePage));
-                    Check(await livePage.EvaluateFixtureAsync("!!document.querySelector('[data-widgetrail-action]')")=="true","Live comparison returns to retained official listing");
+                    await WebAppUntilScript(livePage,"document.querySelectorAll('[data-widgetrail-action]').length>1");
+                    Check(await livePage.EvaluateFixtureAsync("document.body.innerText.includes('Instant Buyout')")=="true","Search uses Instant Buyout on the official site");
+                    var listingIds=new List<string>();
+                    for(var index=0;index<2;index++)
+                    {
+                        if(index>0)await Action("trade-review-browse");
+                        var listing=await livePage.EvaluateFixtureAsync("document.querySelectorAll('[data-widgetrail-action]')["+index+"].closest('[data-id]').getAttribute('data-id')");
+                        listingIds.Add(JsonSerializer.Deserialize<string>(listing)!);
+                        await livePage.ClickPageActionFixtureAsync(index);
+                        await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.title")&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation")&&
+                            (index==0||Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.recent"&&n.SelectOptions.Any(o=>o.Id==listingIds[index]&&o.IsSelected))));
+                        Check(ReferenceEquals(Page(),livePage),"Comparison "+index+" keeps the website attached");
+                        await File.WriteAllTextAsync(path+".comparison"+index,JsonSerializer.Serialize(surface!.CurrentBinding!.Frame.Snapshot));
+                    }
+                    var recent="trade-review-recent."+listingIds[0];
+                    await Action(recent);
+                    await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.recent"&&n.SelectOptions.Any(o=>o.ActionId==recent&&o.IsSelected))&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
+                    Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.recent"&&n.SelectOptions.Any(o=>o.ActionId==recent&&o.IsSelected)),"Recent listing can be revisited without leaving the website");
+                    await Action("trade-review-expand");
+                    Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.workspace.equipment-comparison"),"Expanded comparison uses two columns");
+                    await Action("website-resume");await Action("trade-review-find");
+                    await WebAppUntil(()=>Page() is {IsReady:true,IsNavigationInProgress:false});
+                    await WebAppUntilScript(livePage,"!!document.querySelector('[data-id=\""+listingIds[0]+"\"] [data-widgetrail-action]')");
+                    Check(await livePage.EvaluateFixtureAsync("document.body.innerText.includes('Compare saved item in PoB')")=="true","Seller and base search locates the exact saved item without scanning all original results");
+                    await File.WriteAllTextAsync(path+".final",JsonSerializer.Serialize(surface!.CurrentBinding!.Frame.Snapshot));
                     return;
                 }
                 await Action("menu");await Action("websites.overlay");await Action("open-poe-ninja");
@@ -61,12 +71,12 @@ internal sealed partial class OverlayShellPage
                 await page.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action]').click();true");await Task.Delay(350);
                 Check(surface!.CurrentBinding!.Frame.Snapshot.Root.Kind==ViewNodeKind.ModalLayer,"Synthetic website click cannot invoke a widget action");
                 await page.ClickPageActionFixtureAsync();
-                await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.slot.heading"));
+                await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.title"));
                 Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Text=="2 × Chaos Orb · Fixture seller"),"Trusted action delivers exact selected item and price to a recoverable draft");
                 await Action("website-resume");await WebAppUntil(()=>ReferenceEquals(Page(),page));
                 Check(await page.EvaluateFixtureAsync("!!document.querySelector('[data-widgetrail-action]')")=="true","Returning retains the same document and listing action");
-                await Action("website-close");await Action("back");
-                Check(!Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.slot.heading"),"Discard draft returns to build without equipping");
+                await Action("website-close");await Action("trade-review-close");
+                Check(!Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.title"),"Discard draft returns to build without equipping");
                 await Action("website-resume");await WebAppUntil(()=>ReferenceEquals(Page(),page));
                 page.NavigateForValidation("https://outside.example/fixture");
                 await WebAppUntilScript(page,"location.hostname==='outside.example'");await Task.Delay(900);
@@ -81,7 +91,7 @@ internal sealed partial class OverlayShellPage
             {
                 await WebAppUntil(()=>surface?.CurrentBinding is {} binding&&!Nodes(binding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation")&&
                     Nodes(binding.Frame.Snapshot.Root).Any(n=>n.ActionId==id||n.SelectOptions.Any(o=>o.ActionId==id)));
-                var frame=surface!.CurrentBinding!.Frame;var node=Nodes(frame.Snapshot.Root).First(n=>n.ActionId==id||n.SelectOptions.Any(o=>o.ActionId==id));
+                var frame=surface!.CurrentBinding!.Frame;var node=Nodes(frame.Snapshot.Root).Last(n=>n.ActionId==id||n.SelectOptions.Any(o=>o.ActionId==id));
                 await InvokeAsync(new(frame,new(id,node.Id,ControllerButton.A,InputScopeId:frame.Snapshot.ActiveInputScopeId)));
                 await RouteButtonAsync(ControllerButton.A,ControllerEventPhase.Released);
                 await WebAppUntil(()=>surface?.CurrentBinding?.Frame.Snapshot.Sequence>frame.Snapshot.Sequence);

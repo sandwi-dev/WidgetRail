@@ -15,7 +15,7 @@ function M.generate(req)
   assert(type(req.budget)=='number'and req.budget>=0 and req.budget<=1000000000,'Enter a valid budget')
   assert(req.currency=='divine'or req.currency=='chaos'or req.currency=='exalted','Choose a currency')
   local generator=create('TradeQueryGenerator',build.itemsTab.tradeQuery)
-  generator.tradeTypeIndex=4 -- online listings, without requesting account authorization
+  generator.tradeTypeIndex=assert(({securable=1,available=2,onlineleague=3,online=4,any=5})[req.mode or 'securable'],'Choose a supported trade method')
   local query,queryError
   generator.requesterContext={}
   generator.requesterCallback=function(_,result,err)query=result;queryError=err end

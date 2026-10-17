@@ -56,6 +56,7 @@ public sealed partial class PobWidget : Widget
         if (!activated)
         {
             activated = true;
+            ReadTradePreferences();
             Work(async token =>
             {
                 RefreshLibrary();
@@ -109,7 +110,7 @@ public sealed partial class PobWidget : Widget
         });
     }
 
-    private WidgetElement WithFeedback(WidgetElement body,string scope)
+    private WidgetElement WithFeedback(WidgetElement body,string? scope)
     {
         // Both layers occupy the full widget bounds; a toast never takes height
         // away from the content or changes its input scope or initial focus.
@@ -123,7 +124,8 @@ public sealed partial class PobWidget : Widget
                 .Classes("wrail-toast","wrail-toast--info","pob-operation-toast","pob-feedback-toast").InGrid(row:1,column:1));
         else if(feedback is not null)layers.Add(feedback.Classes("pob-feedback-toast").InGrid(row:1,column:1));
         var layer=UI.Grid("pob.feedback.layer",[GridTrack.Star(),GridTrack.Auto()],
-            [GridTrack.Star(),GridTrack.Star(2),GridTrack.Star()],layers.ToArray()).InputScope(scope).Classes("pob-feedback-layer");
+            [GridTrack.Star(),GridTrack.Star(2),GridTrack.Star()],layers.ToArray()).Classes("pob-feedback-layer");
+        if(scope is not null)layer=layer.InputScope(scope);
         return busy?layer.Shortcut(ControllerButton.B,"cancel-operation"):layer;
     }
 
@@ -173,7 +175,7 @@ public sealed partial class PobWidget : Widget
                 children.Add(BuildHeader());
                 children.Add(section=="Calcs" ? Headlines() : CompactHeadlines());
                 children.Add(Navigation());
-                if (pendingBefore is not null && !(section == "Tree" && detailKind == "node"))
+                if (pendingBefore is not null && !CanReplaceTradeComparison && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
                 children.Add(UI.Stack("pob.section.content",Workspace()).Classes("pob-workspace")
                     .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
@@ -181,6 +183,7 @@ public sealed partial class PobWidget : Widget
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
             var initial = detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
+            if(CanReplaceTradeComparison&&pendingBefore is not null)initial="pob.item.compare.browse";
             if(result is not null && !ManagementView)
             {
                 var body=UI.Stack("pob.body",children.Skip(1).ToArray()).RememberChildFocus(initial).Classes("pob-body");
@@ -197,9 +200,10 @@ public sealed partial class PobWidget : Widget
             if (result is not null)
             {
                 if(!ManagementView)root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
-                if (!busy && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
+                if (!busy && !CanReplaceTradeComparison && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
+                if(!busy&&CanReplaceTradeComparison)root=root.Shortcut(ControllerButton.B,"website-resume","Listings");
             }
-            var view=new WidgetView(WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
+            var view=new WidgetView(websiteVisible?root.InputScope(scope):WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = ManagementView?(detailKind=="library"?1040:840):section == "Tree" ? 1320 : 1180, PreferredHeight = ManagementView?(detailKind=="library"&&savedBuilds.Length<=5?680:800):section == "Tree" ? 900 : 820, MinimumWidth = ManagementView?680:820, MinimumHeight = 600 })
             {
                 FocusGroupEntryRequest = ContentFocusRequest(),
@@ -233,6 +237,7 @@ public sealed partial class PobWidget : Widget
         {
             if(pendingBefore is not null)return ItemComparisonContent();
             AddTradeListing(rows);
+            if(pastedItem is not null)AddReading(rows,pastedItem,"draft.description");
             rows.Add(Button("Discard item draft", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
             rows.Add(UI.Row("pob.draft.actions",Button("Edit item","draft-edit"),Button("Save to inventory","draft-store")).Classes("pob-toolbar"));
             var slots = A(State, "slots"); rows.AddRange(slots.Select((slot,index)=>(slot,index))

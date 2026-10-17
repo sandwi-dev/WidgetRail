@@ -54,8 +54,8 @@ public sealed partial class PobWidget
         var response=await engine.ExecuteAsync(command,token,result!.Xml);
         var next=response.State.GetProperty("authoring");var raw=S(next,"raw");
         var slots=await ItemSlotsAsync(raw,result.Xml,token);
-        token.ThrowIfCancellationRequested();SaveWork(result,CurrentWork(result.Xml,draft:raw),refreshXml:false);
-        lock(gate){pastedItem=raw;itemDraftSlots=slots;authoredItem=next;authoringId=0;featurePicker=null;detailKind="item-author";}
+        token.ThrowIfCancellationRequested();SaveWork(result,CurrentWork(result.Xml,draft:raw) with{TradeBrowse=false},refreshXml:false);
+        lock(gate){tradeBrowsing=false;pastedItem=raw;itemDraftSlots=slots;authoredItem=next;authoringId=0;featurePicker=null;detailKind="item-author";}
     },"Updating item draft…");
 
     private object AuthorCommand(string mode,int slot=0,string? modId=null,int value=0,int id=0,string? text=null,string? control=null)=>

@@ -12,7 +12,7 @@ internal static class TradeWorkflowTests
         Directory.CreateDirectory(directory);var id=Guid.NewGuid().ToString("N");
         File.WriteAllText(Path.Combine(directory,id+".xml"),xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);
         await using var engine=new PobEngine(root,runtime,adapter);
-        var widget=new PobWidget(game,engine,directory){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
+        var widget=new PobWidget(game,engine,directory,()=>"Rarity: NORMAL\nGold Ring\nImplicits: 1\n15% increased Rarity of Items found"){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
         var opened=new List<WebSessionDefinition>();var closed=0;var navigated=0;
         var incoming=new System.Collections.Concurrent.ConcurrentQueue<string>();
         WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().WithHandler(WidgetWebSessionCapabilities.Command,async(command,token)=>
@@ -25,7 +25,7 @@ internal static class TradeWorkflowTests
             return new WebSessionReply();
         }).Build());var sequence=0;
         IEnumerable<ViewNode> Nodes(ViewNode n)=>new[]{n}.Concat((n.Children??[]).SelectMany(Nodes));
-        ViewSnapshot View()=>widget.Render().CreateSnapshot("trade-workflow",++sequence);
+        ViewSnapshot View(){try{return widget.Render().CreateSnapshot("trade-workflow",++sequence);}catch(ProtocolValidationException e){throw new InvalidOperationException(JsonSerializer.Serialize(e.Errors),e);}}
         async Task Idle(){var deadline=DateTime.UtcNow.AddSeconds(65);while(Nodes(View().Root).Any(n=>n.Id=="pob.cancel-operation")){if(DateTime.UtcNow>deadline)throw new TimeoutException();await Task.Delay(20);}}
         async Task Action(string action,string? value=null){await widget.OnActionAsync(new(action,"trade-workflow"){CommittedText=value});await Idle();}
         try
@@ -33,10 +33,14 @@ internal static class TradeWorkflowTests
             await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);await Idle();
             var baseline=await engine.ExecuteAsync(new{op="snapshot"},default);
             var helmet=baseline.State.GetProperty("items").EnumerateArray().First(i=>i.GetProperty("slot").GetString()=="Helmet").GetProperty("id").GetInt32();
-            await Action("section.3");await Action("item."+helmet);await Action("trade");
+            await Action("section.3");await Action("item."+helmet);
+            var itemActions=Nodes(View().Root).ToArray();
+            check(itemActions.Single(n=>n.Id=="pob.item-paste").IsDisabled!=true&&itemActions.Single(n=>n.Id=="pob.item-manage").Focus?.Left=="pob.item-paste"&&itemActions.Single(n=>n.Id=="pob.item.tools").Kind==ViewNodeKind.Grid,"Enabled clipboard action is linked from Item settings and actions fit a two-column grid");
+            await Action("trade");
             var search=Nodes(View().Root).Single(n=>n.Id=="pob.trade-open");
             var pasteHelp=Nodes(View().Root).Single(n=>n.Id=="pob.trade.paste-help").Text!;
             check(pasteHelp.Contains("Ctrl+C")&&(game==2?pasteHelp.Contains("no built-in Copy item button"):pasteHelp.Contains("On the trade site, use Copy item")),"Item-copy instructions distinguish PoE2 website limitations from PoE1");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.trade-mode").SelectOptions.Any(o=>o.Id=="securable"&&o.IsSelected),"Trade defaults to Instant buyout with explicit alternatives");
             check(search.IsDisabled!=true&&search.Intent?.PreparationKey?.StartsWith("pob.trade-search.",StringComparison.Ordinal)==true&&!Nodes(View().Root).Any(n=>n.Id=="pob.trade-build"),"Trade offers one enabled Search action that prepares its URL on invocation");
             check(search.Intent!.Routing==WidgetIntentRouting.Windows&&search.Intent.Version==2,"Search respects the default browser and declares support for long generated URLs");
             await Action("trade-priority.life");await Action("trade-budget","not a price");
@@ -78,22 +82,50 @@ internal static class TradeWorkflowTests
             try{await engine.ExecuteAsync(new{op="trade-item",entry=unsupported},default,baseline.Xml);}
             catch(PobCommandException failure){rejected=failure.Message.Contains("unrevealed modifiers",StringComparison.Ordinal);}
             check(rejected&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved,"Unrevealed modifiers produce a clear refusal without changing saved work");
+            check(new PobTradeListing(new string('b',64),$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test","2 × Chaos Orb","Test seller","psapi",null,BaseType:"Gold Ring").FindUrl(game).Contains("#widgetrail-listing="),"Saved listing search carries its exact identity without purchase tokens");
             var eventJson=JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="compare-item",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test",entry}});
             incoming.Enqueue(Convert.ToBase64String(eventJson));
-            var deadline=DateTime.UtcNow.AddSeconds(10);
-            while(!Nodes(View().Root).Any(n=>n.Id=="pob.slot.heading"))
-            {if(DateTime.UtcNow>deadline)throw new TimeoutException("Trade item did not become a draft: "+string.Join(" | ",Nodes(View().Root).Select(n=>n.Text)));await Task.Delay(30);}
-            await Idle();
+            async Task WaitComparison(string expectedId)
+            {
+                var until=DateTime.UtcNow.AddSeconds(30);
+                while(PobWorkStore.Read(directory,id,game)?.TradeListing?.Id!=expectedId||!Nodes(View().Root).Any(n=>n.Id=="pob.website.review.title"))
+                {if(DateTime.UtcNow>until)throw new TimeoutException("Trade comparison did not appear: "+string.Join(" | ",Nodes(View().Root).Select(n=>n.Text)));await Task.Delay(30);}
+                await Idle();
+            }
+            await WaitComparison(entry.id);
             var work=PobWorkStore.Read(directory,id,game)!;
-            check(work.ItemDraft?.Contains("Gold Ring")==true&&work.TradeListing?.Price=="2 × Chaos Orb"&&work.Pending is null&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved,"Selected listing becomes a recoverable draft without equipping or changing committed XML");
-            var slot=Nodes(View().Root).First(n=>n.ActionId?.StartsWith("replace-slot.")==true).ActionId!;
-            await Action(slot);
-            check(PobWorkStore.Read(directory,id,game) is {Pending.Kind:"item",TradeListing.Id:not null}&&Nodes(View().Root).Any(n=>n.Text=="Return to listing"),"Equipment comparison preserves listing context and return action");
-            await Action("website-resume");incoming.Enqueue(Convert.ToBase64String(eventJson));await Task.Delay(150);await Idle();
-            check(PobWorkStore.Read(directory,id,game)?.Pending is not null&&Nodes(View().Root).Any(n=>n.Text=="Finish current work"),"Another listing cannot overwrite an unapplied comparison");
-            await Action("cancel");
-            check(File.ReadAllText(Path.Combine(directory,id+".xml"))==saved&&PobWorkStore.Read(directory,id,game)?.Pending is null,"Discarding the comparison preserves committed build and recoverable item draft");
+            check(work.ItemDraft?.Contains("Gold Ring")==true&&work.TradeListing?.Price=="2 × Chaos Orb"&&work.Pending?.Slot=="Ring 1"&&work.TradeBrowse&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved,"Compare calculates immediately against an explicit slot and persists recovery without equipping");
+            check(View().Root.Kind==ViewNodeKind.ModalLayer&&Nodes(View().Root).Any(n=>n.Id=="pob.website")&&ViewSnapshotValidator.Validate(View()).Count==0,"Comparison remains beside the same browser in a valid modal snapshot");
+            var originalComparison=work.Pending!.Xml;
+            await Action("trade-review-slot.1");
+            originalComparison=PobWorkStore.Read(directory,id,game)!.Pending!.Xml;
+            check(PobWorkStore.Read(directory,id,game)?.Pending?.Slot=="Ring 2","Slot dropdown recalculates without a separate selection page");
+            var second=JsonSerializer.SerializeToNode(entry)!;second["id"]=new string('c',64);second["item"]!["implicitMods"]![0]!["description"]="20% increased Rarity of Items found";second["listing"]!["price"]!["amount"]=3;
+            incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="compare-item",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test",entry=second}})));
+            await WaitComparison(new string('c',64));
+            work=PobWorkStore.Read(directory,id,game)!;
+            check(work.TradeCandidates?.Length==2&&work.ItemDraft!.Contains("20% increased")&&WorkStateTests.SameBuild(work.CommittedXml,baseline.Xml),"Second listing replaces only the browsing preview and uses the same committed baseline");
+            await Action("trade-review-recent."+entry.id);
+            check(PobWorkStore.Read(directory,id,game)?.TradeListing?.Id==entry.id&&WorkStateTests.SameBuild(PobWorkStore.Read(directory,id,game)!.Pending!.Xml,originalComparison),"Recent comparison recalculates the original item against its original slot, not the previous candidate");
+            check(Nodes(View().Root).Any(n=>n.Text=="2 × Chaos Orb · Test seller")&&!Nodes(View().Root).Any(n=>n.Text=="3 × Chaos Orb · Test seller"),"Displayed seller and price follow the selected comparison");
+            var preserved=File.ReadAllText(Path.Combine(directory,id+".work.json"));
+            incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="compare-item",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test",entry=unsupported}})));
+            await Task.Delay(300);await Idle();
+            check(File.ReadAllText(Path.Combine(directory,id+".work.json"))==preserved,"Rejected next listing preserves the previous comparison and history");
+            await Action("trade-review-expand");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.workspace.equipment-comparison")&&Nodes(View().Root).Any(n=>n.Id=="pob.item.name"),"Expanded comparison shows item details beside impact");
+            await Action("website-resume");await Action("trade-review-browse");
+            check(View().FocusGroupEntryRequest?.GroupId=="pob.website.browser"&&opened.Count==1&&navigated==0,"Browsing restores focus to the retained page without navigation or discard");
             await Action("website-close");
+            var recoverySnapshot=PobWorkStore.Read(directory,id,game)!;
+            await Action("trade-review-close");await Action("item-paste");
+            var manualDraft=PobWorkStore.Read(directory,id,game)!.ItemDraft;
+            await Action("website-resume");incoming.Enqueue(Convert.ToBase64String(eventJson));
+            var blockedUntil=DateTime.UtcNow.AddSeconds(5);
+            while(!Nodes(View().Root).Any(n=>n.Text=="Finish current work"))
+            {if(DateTime.UtcNow>blockedUntil)throw new TimeoutException("Existing draft was not protected.");await Task.Delay(30);}
+            check(PobWorkStore.Read(directory,id,game)!.ItemDraft==manualDraft&&!PobWorkStore.Read(directory,id,game)!.TradeBrowse,"Website browsing cannot replace a manually pasted or edited draft");
+            PobWorkStore.Save(directory,id,game,recoverySnapshot);
             await WidgetTestHost.DestroyAsync(widget);
             check(closed==1,"Widget destruction closes its retained website session");
             await using var reopenedEngine=new PobEngine(root,runtime,adapter);
@@ -106,7 +138,14 @@ internal static class TradeWorkflowTests
                 while(Nodes(reopened.Render().CreateSnapshot("reopened",++sequence).Root).Any(n=>n.Id=="pob.cancel-operation"))
                 {if(DateTime.UtcNow>until)throw new TimeoutException("Reopening trade draft timed out.");await Task.Delay(30);}
                 var restored=Nodes(reopened.Render().CreateSnapshot("reopened",++sequence).Root).ToArray();
-                check(restored.Any(n=>n.Text=="2 × Chaos Orb · Test seller")&&restored.Any(n=>n.Text=="Reopen trade search"),"Restart restores trade draft and listing context without retaining an expired session handle");
+                check(restored.Any(n=>n.Text=="2 × Chaos Orb · Test seller")&&restored.Any(n=>n.Text=="Find saved listing"),"Restart restores calculated comparison, item descriptions, recent candidates and listing context");
+                check(restored.Any(n=>n.Id=="pob.item.name")&&PobWorkStore.Read(directory,id,game)?.TradeCandidates?.Length==2,"Item identity and recent comparisons survive unloading");
+                await reopened.OnActionAsync(new("trade-review-equip","reopened"));
+                until=DateTime.UtcNow.AddSeconds(20);
+                while(Nodes(reopened.Render().CreateSnapshot("reopened",++sequence).Root).Any(n=>n.Id=="pob.cancel-operation"))
+                {if(DateTime.UtcNow>until)throw new TimeoutException();await Task.Delay(30);}
+                var applied=PobWorkStore.Read(directory,id,game)!;
+                check(applied.Pending is null&&applied.ItemDraft is null&&applied.Undo.Length==1&&WorkStateTests.SameBuild(applied.CommittedXml,originalComparison),"Only explicit Equip commits the comparison, with undo history");
             }
             finally{await WidgetTestHost.DestroyAsync(reopened);}
         }

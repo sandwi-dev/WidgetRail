@@ -12,11 +12,13 @@ public sealed partial class PobWidget
         return A(response.State,"slots").Select(s=>S(s,"name")).ToArray();
     }
     private PobWorkState CurrentWork(string committedXml, PobPendingChange? pending = null, string? draft = null) =>
-        new(committedXml, undo.ToArray(), redo.ToArray(), pending, draft, draft is null ? null : tradeListing);
+        new(committedXml, undo.ToArray(), redo.ToArray(), pending, draft, draft is null ? null : tradeListing,
+            draft is not null&&tradeBrowsing,tradeCandidates.ToArray());
 
     private void SaveWork(PobResult committed, PobWorkState work, string? targetId = null, bool refreshXml = true)
     {
         targetId ??= documentId;
+        if(targetId==documentId&&work.TradeCandidates is null)work=work with{TradeCandidates=tradeCandidates.ToArray()};
         if (targetId is null) throw new InvalidOperationException("No working build is selected.");
         if(recoveryReadOnly&&targetId==documentId)
             throw new IOException("This recovered build is read-only because its recovery data could not be preserved. Duplicate the build to continue editing.");
@@ -92,6 +94,14 @@ public sealed partial class PobWidget
             foreach (var entry in (work?.Redo ?? []).Reverse()) redo.Push(entry);
             pastedItem = work?.ItemDraft; previewSlot = work?.Pending?.Slot; itemDraftSlots=draftSlots;
             tradeListing=work?.TradeListing;
+            if(tradeListing is {} legacy&&string.IsNullOrWhiteSpace(legacy.BaseType)&&work?.Pending is {Kind:"item",Slot:{} savedSlot})
+            {
+                var item=A(shown.State,"items").FirstOrDefault(i=>S(i,"slot")==savedSlot);
+                if(item.ValueKind==System.Text.Json.JsonValueKind.Object)
+                    tradeListing=legacy with{BaseType=S(item,"base"),ItemName=S(item,"name")};
+            }
+            tradeBrowsing=work?.TradeBrowse==true;
+            tradeCandidates.Clear();tradeCandidates.AddRange(work?.TradeCandidates??[]);
             selections.Clear(); detailId = 0; section = "Calcs"; detailKind = ""; filter = "";
             passiveReturnKey = null; nodeReturnToMap = false; historyFocusRequested = false; compatibilityNotice = "";
             // Restore only the context needed to finish the user's pending work.
@@ -121,13 +131,13 @@ public sealed partial class PobWidget
         if (text.Length > 32768 || string.IsNullOrWhiteSpace(text)) throw new IOException("Copy an item description first (up to 32,768 characters).");
         var slots=await ItemSlotsAsync(text,result!.Xml,token);
         SaveWork(result!, new(result!.Xml,undo.ToArray(),redo.ToArray(),ItemDraft:text), refreshXml: false);
-        lock (gate) { tradeListing=null;pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; section = "Items"; }
+        lock (gate) { tradeBrowsing=false;tradeListing=null;pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; section = "Items"; }
     }, "Reading item…");
 
     private void DiscardItemDraft() => Work(_ =>
     {
         SaveWork(result!, CurrentWork(result!.Xml), refreshXml: false);
-        lock (gate) { tradeListing=null;pastedItem = null; previewSlot = null; detailKind = ""; }
+        lock (gate) { tradeBrowsing=false;tradeListing=null;pastedItem = null; previewSlot = null; detailKind = ""; }
         return Task.CompletedTask;
     }, "Discarding item draft…");
 }

@@ -15,6 +15,7 @@ public sealed partial class PobWidget
             if (action.ActionId == "cancel-operation") { if(tradePreparation is not null)tradePreparation.Cancel();else Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
             if(HandleWebsiteAction(action))return ValueTask.CompletedTask;
+            if(HandleTradeReviewAction(action)){Invalidate();return ValueTask.CompletedTask;}
             var id=action.ActionId; var parts=id.Split('.');
             modifierFocusRequested=false;
             if(featureReading is not null||featureRemoval is not null){HandlePlanningAction(action);Invalidate();return ValueTask.CompletedTask;}
@@ -86,7 +87,7 @@ public sealed partial class PobWidget
             {
                 var loaded=await engine.ExecuteAsync(new{op="new"},token);var newId=Guid.NewGuid().ToString("N");
                 token.ThrowIfCancellationRequested();Persist(loaded,newId);
-                lock(gate){documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;recoveryReadOnly=false;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";}
+                lock(gate){tradeCandidates.Clear();tradeListing=null;tradeBrowsing=false;websiteReview=false;documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;recoveryReadOnly=false;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";}
                 await RefreshMapAsync(token);
             },"Creating build…");
             else if(id=="rename" && documentId is not null) RenameBuild(documentId,action.CommittedText??"");

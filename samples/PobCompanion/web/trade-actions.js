@@ -3,6 +3,20 @@
 const listings = new Map();
 const buttons = new WeakMap();
 let queued = false;
+let located = '';
+let requestedListing = /^#widgetrail-listing=([a-fA-F0-9]{16,128})$/.exec(window.location.hash)?.[1];
+function locateSavedListing() {
+  if (!requestedListing || located === requestedListing) return;
+  const row = document.querySelector('.resultset .row[data-id="' + requestedListing + '"]');
+  if (!row) return;
+  const action = buttons.get(row)?.button;
+  if (!action) return;
+  located = requestedListing;
+  row.scrollIntoView({ block: 'center' });
+  action.firstChild.textContent = 'Compare saved item in PoB';
+  action.setAttribute('aria-label', 'WidgetRail: Compare saved item in PoB');
+  action.focus({ preventScroll: true });
+}
 function refresh() {
   queued = false;
   for (const row of document.querySelectorAll('.resultset .row[data-id]')) {
@@ -20,6 +34,7 @@ function refresh() {
     location.prepend(button);
     buttons.set(row, { id, button });
   }
+  locateSavedListing();
 }
 function locationUrl() { return window.location.href; }
 function queueRefresh() { if (!queued) { queued = true; queueMicrotask(refresh); } }
@@ -30,7 +45,7 @@ host.onResponse(({ url, body }) => {
     const { price, method, indexed, account, fee } = entry.listing;
     // Exclude whisper/purchase tokens and all unrelated account information.
     const safe = { id: entry.id, item: entry.item, listing: {
-      price, method, indexed, fee,
+      price, method, indexed, fee, instantBuyout: typeof entry.listing.hideout_token === 'string' && entry.listing.hideout_token.length > 0,
       account: account && { name: account.name, online: account.online, lastCharacterName: account.lastCharacterName }
     }};
     if (JSON.stringify(safe).length > 48000) continue;
@@ -41,3 +56,7 @@ host.onResponse(({ url, body }) => {
 });
 new MutationObserver(queueRefresh).observe(document, { childList: true, subtree: true });
 queueRefresh();
+window.addEventListener('hashchange', () => {
+  const requested = /^#widgetrail-listing=([a-fA-F0-9]{16,128})$/.exec(window.location.hash)?.[1];
+  if (requested) { requestedListing = requested; located = ''; queueRefresh(); }
+});
