@@ -29,8 +29,8 @@ internal static class QuickControlsTests
             {
                 Set("section",section);Set("detailKind","");
                 var view=View();var nodes=Nodes(view.Root).ToArray();
-                check(nodes.Any(n=>n.Id=="pob.headline.0")== (section=="Calcs"),section+" uses large statistic cards only in Calcs");
-                check(nodes.Any(n=>n.Id=="pob.compact.CombinedDPS")== (section!="Calcs"),section+" has exactly the intended summary layout");
+                check(!nodes.Any(n=>n.Id=="pob.headline.0"),section+" avoids large statistic cards above navigation");
+                check(nodes.Any(n=>n.Id=="pob.compact.CombinedDPS"),section+" has exactly the intended summary layout");
                 check(nodes.Single(n=>n.Id=="pob.root").Shortcuts!.Any(s=>s.Button==ControllerButton.RightStick&&s.ActionId=="quick-controls.pob.buildtools"),section+" exposes R3 Build controls");
                 check(nodes.Single(n=>n.Id=="pob.buildtools").Shortcuts!.Any(s=>s.Button==ControllerButton.RightStick&&s.ActionId=="quick-controls.pob.body"),section+" header overrides R3 with Return to content");
                 check(nodes.Single(n=>n.Id=="pob.body").InitialChildFocusId is not null,"Body remembers the last content focus in "+section);

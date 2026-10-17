@@ -60,13 +60,6 @@ public sealed partial class PobWidget
             tabs.ToArray()).Spacing(0, 5).Classes("pob-tabs");
     }
 
-    private WidgetElement Headlines()
-    {
-        string[] keys = ["CombinedDPS", "Life", "EnergyShield", "Mana"];
-        return UI.Grid("pob.headlines", [GridTrack.Auto()], keys.Select(_ => GridTrack.Star()).ToArray(),
-            keys.Select((key, i) => StatCard(key, i).InGrid(column: i)).ToArray()).Spacing(0, 10);
-    }
-
     private WidgetElement CompactHeadlines()
     {
         var values = new List<WidgetElement>();
@@ -79,31 +72,6 @@ public sealed partial class PobWidget
         }
         values.Add(Text($"Passives {S(State,"passivePoints")}  |  Ascendancy {S(State,"ascendancyPoints")}","compact.points","pob-muted"));
         return UI.Row("pob.headlines",values.ToArray()).Classes("pob-compact-stats");
-    }
-
-    private WidgetElement StatCard(string key, int index)
-    {
-        var value = A(State, "stats").FirstOrDefault(s => S(s, "name") == key);
-        var caption = key == "CombinedDPS" ? (B(State,"mainSkillShowsAverage")?"Main skill average damage":"Main skill DPS") : StatLabel(key);
-        var number = value.ValueKind == JsonValueKind.Object ? DisplayStatValue(key, value.GetProperty("value").GetDouble()) : "—";
-        return UI.ActionSurface("stat." + key, "pob.headline." + index, caption + " " + number, ActionSurfaceOrientation.Vertical,
-            Text(caption, "headline.label." + index, "pob-eyebrow pob-inset-muted"),
-            Text(number, "headline.value." + index, "pob-number pob-inset " + StatColor(key)),
-            Text(Delta(key), "headline.delta." + index, "pob-small pob-inset-muted"))
-            .Classes("pob-metric");
-    }
-
-    private string Delta(string key)
-    {
-        if (pendingBefore is null) return key == "CombinedDPS" ? S(State,"mainSkill","No main skill")+(B(State,"mainSkillDisabled")?" · Skill disabled":S(State,"mainSkillDamageKind")=="buff"?" · No direct damage":S(State,"mainSkillDamageKind")=="minion"?" · Minion skill":"") : "Current loadout";
-        if(key=="CombinedDPS"&&(B(State,"mainSkillDisabled")||B(pendingBefore.State,"mainSkillDisabled")))
-            return B(State,"mainSkillDisabled")?"Skill disabled · see calculation setup":"Skill is now usable";
-        var before = A(pendingBefore.State, "stats").FirstOrDefault(s => S(s, "name") == key);
-        var after = A(State, "stats").FirstOrDefault(s => S(s, "name") == key);
-        if (before.ValueKind != JsonValueKind.Object || after.ValueKind != JsonValueKind.Object) return "Not available";
-        var old = before.GetProperty("value").GetDouble(); var next = after.GetProperty("value").GetDouble();
-        var change = next - old;
-        return Math.Abs(change) < .01 ? "Unchanged" : $"{StatValue(key, old)} → {StatValue(key, next)} ({(change > 0 ? "+" : "")}{StatValue(key, change)})";
     }
 
     private WidgetElement Workspace()

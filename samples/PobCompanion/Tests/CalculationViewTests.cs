@@ -81,21 +81,16 @@ internal static class CalculationViewTests
             var explanations=physicalDetail.GetProperty("sections").EnumerateArray().Where(s=>s.GetProperty("lines").GetArrayLength()>0).ToArray();
             await Action("calculation-section."+physicalSection.GetProperty("id").GetString());
             await Action("calculation-cell."+physical.GetProperty("id").GetString());
-            var blocks=Nodes(View().Root).Single(n=>n.Id=="pob.calculation.source-list").IndexedCollection!;
-            var narrativeText=new List<string>();var narrativeBlocks=0;
-            for(var start=0;start<blocks.Count;start++)
-            {
-                using var lease=await host.AcquireAsync("pob.calculation.source-list",start,1);
-                var row=lease.Range.Items.Single().Root;
-                check(WinUiPresentationContract.ValidateSubtree(row).Count==0,"Calculation block satisfies native presentation contract: "+start);
-                if(row.StyleClasses?.Contains("pob-calculation-explanation")==true)
-                {
-                    narrativeBlocks++;narrativeText.Add(string.Concat(Nodes(row).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text)));
-                    check(Nodes(row).Any(n=>n.Kind==ViewNodeKind.RichText)&&Nodes(row).Count(n=>n.ActionId=="read")==1,"Formula block uses inline rich text with one action for the complete explanation");
-                }
-            }
-            check(explanations.Length>0&&narrativeBlocks>=explanations.Length&&explanations.SelectMany(s=>s.GetProperty("lines").EnumerateArray()).All(l=>narrativeText.Any(t=>t.Contains(l.GetProperty("text").GetString()!,StringComparison.Ordinal))),"Grouped formula retains every upstream explanatory line");
+            var narrative=Nodes(View().Root).Single(n=>n.Id=="pob.calculation.explanation");
+            var narrativeText=string.Concat(Nodes(narrative).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text));
+            check(explanations.Length>0&&explanations.SelectMany(s=>s.GetProperty("lines").EnumerateArray()).All(l=>narrativeText.Contains(l.GetProperty("text").GetString()!,StringComparison.Ordinal)),"Inline formula retains every upstream explanatory line");
+            check(narrative.Kind==ViewNodeKind.Scroll&&!Nodes(narrative).Any(n=>n.ActionId is not null),"Formula is readable and scrollable without a duplicate popup action");
             check(!Nodes(View().Root).Single(n=>n.Id=="pob.calculation.sources-count").Text!.Contains("source rows"),"Formula view does not mislabel table row count as the complete explanation");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.calculation.group").SelectOptions.Single(o=>o.IsSelected).Id=="follow","Detailed calculations default to following the main skill");
+            await Action("calculation-mode.UNBUFFED");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.calculation.mode").SelectOptions.Single(o=>o.IsSelected).Id=="UNBUFFED","Calculation buff mode can be inspected independently");
+            check(WorkStateTests.SameBuild(many.Xml,File.ReadAllText(Path.Combine(directory,buildId+".xml"))),"Inspection controls do not rewrite the authored build");
+
         }
         finally{await WidgetTestHost.DestroyAsync(widget);}
     }

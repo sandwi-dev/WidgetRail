@@ -12,7 +12,7 @@ if(args is ["--note-links-only"])
     Console.WriteLine($"Note links: {passed} passed, {failed} failed");return failed==0?0:1;
 }
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only" or "--trade-improvements-only" or "--trade-menu-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only" or "--trade-improvements-only" or "--trade-menu-only" or "--calculation-context-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -53,6 +53,7 @@ if(args.Length==5)
     else if(args[4]=="--skill-edits-only")await SkillEditTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--quick-controls-only")await QuickControlsTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--passive-choices-only")await PassiveChoiceTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--calculation-context-only")await CalculationContextTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--calculation-views-only")await CalculationViewTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--tree-only")await TreePresentationTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--comparison-only")await ComparisonTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
@@ -250,11 +251,11 @@ if(firstXml is not null)
     var calculationView=Snapshot(widget,280);
     var auditState=await engine.ExecuteAsync(new{op="load",xml=firstXml,name="presentation audit"},default);
     if(auditState.State.GetProperty("mainSkillDisabled").GetBoolean())
-        Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.headline.value.0"&&n.Text=="—") &&
+        Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.stat.value.CombinedDPS"&&n.Text=="—") &&
             Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.warning"&&n.Text!.Contains(auditState.State.GetProperty("mainSkillDisabledReason").GetString()!)),
             "Disabled main skill shows unavailable DPS and the actual upstream reason together");
     if(auditState.State.GetProperty("mainSkillDamageKind").GetString()=="buff")
-        Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.headline.value.0"&&n.Text=="—")&&Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.explanation")&&!Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.warning"),"Buff-only main skill explains no direct damage without inventing an error");
+        Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.stat.value.CombinedDPS"&&n.Text=="—")&&Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.explanation")&&!Nodes(calculationView.Root).Any(n=>n.Id=="pob.main-skill.warning"),"Buff-only main skill explains no direct damage without inventing an error");
     if(auditState.State.GetProperty("fullDpsIncludedGroups").GetInt32()==0)
         Check(Nodes(calculationView.Root).Any(n=>n.Id=="pob.stat.value.FullDPS"&&n.Text=="—")&&Nodes(calculationView.Root).Any(n=>n.Id=="pob.full-dps.explanation"),"Unconfigured Full DPS is distinguished from a legitimate zero");
     await Action("menu");await Action("library");

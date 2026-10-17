@@ -36,6 +36,7 @@ internal static class EngineUpdateTests
         await SkillEditTests.RunAsync(game,root,runtime,adapter,xml,check);
         await SkillOptionTests.RunAsync(game,root,runtime,adapter,check);
         await PassiveChoiceTests.RunAsync(game,root,runtime,adapter,xml,check);
+        await CalculationContextTests.RunAsync(game,root,runtime,adapter,xml,check);
         await CalculationViewTests.RunAsync(game,root,runtime,adapter,xml,check);
         await TradeSearchTests.RunAsync(game,root,runtime,adapter,xml,check);
         await TradeMenuTests.RunAsync(game,root,runtime,adapter,xml,check);

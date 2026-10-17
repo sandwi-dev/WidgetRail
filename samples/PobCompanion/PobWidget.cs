@@ -175,7 +175,7 @@ public sealed partial class PobWidget : Widget
             else
             {
                 children.Add(BuildHeader());
-                children.Add(section=="Calcs" ? Headlines() : CompactHeadlines());
+                children.Add(CompactHeadlines());
                 children.Add(Navigation());
                 if (pendingBefore is not null && !CanReplaceTradeComparison && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
@@ -216,7 +216,7 @@ public sealed partial class PobWidget : Widget
 
     private string SectionEntry() => section switch
     {
-        "Calcs" => "pob.headline.0",
+        "Calcs" => "pob.stat.CombinedDPS",
         "Tree" => detailKind=="node" ? A(State,"nodes").Any(n=>I(n,"id")==detailId && (B(n,"canAllocate")||B(n,"canRefund"))) ? "pob.node-change" : "pob.back" : "pob.search",
         "Skills" when A(State,"skills").Length>0 => "pob.skill."+detailId,
         "Skills" => "pob.group-create",

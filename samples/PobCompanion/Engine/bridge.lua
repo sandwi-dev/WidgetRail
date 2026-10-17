@@ -333,8 +333,7 @@ local function command(req)
   if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean)},xml=build:SaveDB('code')}end
   if op=='item-unique-draft' then return{state={authoring=itemAuthoring.uniqueDraft(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='passive-choices'then return{state={choices=passiveChoices.choices(req,clean)},xml=build:SaveDB('code')}end
-  if op=='calculation-catalog'then return{state=calculationViews.catalog(clean,textRuns),xml=build:SaveDB('code')}end
-  if op=='calculation-detail'then return{state=calculationViews.detail(req,clean,textRuns),xml=build:SaveDB('code')}end
+  if op=='calculation-catalog'or op=='calculation-detail'then return calculationViews.read(req,clean,textRuns,recalc,loadBuildFromXML)end
   if op=='item-draft' then assert(not req.itemId,'Draft edits cannot modify saved items');return{state={authoring=itemAuthoring.draft(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='inventory-list'then return{state={inventory=itemAuthoring.inventory(clean)},xml=build:SaveDB('code')}end
   if op=='inventory-inspect'then return{state={authoring=itemAuthoring.inspect(req,clean,textRuns)},xml=build:SaveDB('code')}end
