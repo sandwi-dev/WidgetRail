@@ -165,7 +165,6 @@ public sealed partial class PobWidget : Widget
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
                 children.Add(OnlineBuildLinks());
                 children.Add(Text(OnlineImportHelp,"import.online-help","pob-small pob-muted"));
-                children.Add(WebsitePreference());
                 children.Add(Button("Paste build from clipboard", "paste"));
                 children.Add(ImportField());
                 children.Add(Button("Create a new build", "new"));

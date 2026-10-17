@@ -28,8 +28,8 @@ public sealed partial class PobWidget
         };
     }
     private WidgetElement WebsitePreference()=>UI.Stack("pob.website-preference",
-        UI.Select("Open general links in",[new("windows","Windows default browser","websites.windows",!overlayWebsites),new("overlay","Overlay browser","websites.overlay",overlayWebsites)],"pob.websites").Classes("pob-select"),
-        Text("Shared by PoE1 and PoE2. Trade always opens in the overlay for item comparisons. Each widget keeps its own website logins.","websites.help","pob-small pob-muted")).Classes("pob-field");
+        UI.Select("Open websites in",[new("windows","Windows default browser","websites.windows",!overlayWebsites),new("overlay","Overlay browser","websites.overlay",overlayWebsites)],"pob.websites").Classes("pob-select"),
+        Text("Shared by PoE1 and PoE2. Trade always opens in the overlay for comparisons.","websites.help","pob-small pob-muted")).Classes("pob-field");
 
     private bool HandleWebsitePreference(WidgetActionEvent action)
     {

@@ -10,14 +10,16 @@ public sealed partial class PobWidget
     private bool replaceOnImport;
     private sealed record BuildImport(string TargetId,string OriginalXml,PobResult Loaded,int Renamed);
     private BuildImport? pendingImport;
-    private const string OnlineImportHelp="Use pob.cool to import your character, or find a build on poe.ninja. Copy its PoB code, then return here and choose Paste build from clipboard.";
+    private const string OnlineImportHelp="Find a build on poe.ninja, or use pob.cool to import your character. Copy its PoB code, then return here and choose Paste build from clipboard.";
     private bool ManagementView=>detailKind is "menu" or "library" or "game-export" or "sets";
 
-    private ButtonElement OnlineImportButton()=>WebsiteButton("Open pob.cool","open-online-import",$"https://pob.cool/poe{game}");
-
-    private WidgetElement OnlineBuildLinks()=>UI.Row("pob.import.browser-links",OnlineImportButton(),
-        WebsiteButton("Open poe.ninja","open-poe-ninja",$"https://poe.ninja/poe{game}/builds"))
-        .Classes("pob-toolbar");
+    private WidgetElement OnlineBuildLinks()=>UI.Stack("pob.import.websites",
+        WebsitePreference(),
+        UI.Row("pob.import.browser-links",
+            WebsiteButton("Open poe.ninja","open-poe-ninja",$"https://poe.ninja/poe{game}/builds"),
+            WebsiteButton("Open pob.cool","open-online-import",$"https://pob.cool/poe{game}")).Classes("pob-toolbar"),
+        Text("pob.cool: Controller not supported. Use a mouse and keyboard.","import.controller-warning","pob-small pob-controller-warning"))
+        .Classes("pob-field");
 
     private static WidgetElement Field(string label,WidgetElement input,string id)=>
         UI.Stack("pob.field."+id,Text(label,"field.label."+id,"pob-small"),input).Classes("pob-field");
@@ -69,8 +71,7 @@ public sealed partial class PobWidget
                     ImportField()),
                 ManagementSection("Export","export",UI.Row("pob.manage.export.actions",
                     (game==2?new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file"),Button("Export to PoE2…","game-export")}:
-                        new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")),
-                ManagementSection("Preferences","preferences",WebsitePreference()))
+                        new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")))
                 .Classes("pob-scroll")).Classes("pob-workspace");
     }
 

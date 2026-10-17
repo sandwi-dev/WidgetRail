@@ -51,6 +51,7 @@ text { color: var(--text); text-align: start; }
 .pob-preview { padding: 8px 12px; background: var(--surface-raised); corner-radius: 8px; gap: 12px; align: center; }
 /* Semantic accents follow the active palette; labels carry the meaning in high contrast. */
 .pob-life, .pob-inset.pob-life, .pob-inline.pob-life { color: var(--data-red, var(--text)); }
+.pob-controller-warning { color: var(--data-red, var(--text)); }
 .pob-blue, .pob-inset.pob-blue, .pob-inline.pob-blue { color: var(--data-blue, var(--text)); }
 .pob-gold, .pob-inset.pob-gold, .pob-inline.pob-gold { color: var(--data-gold, var(--text)); }
 .pob-violet, .pob-inset.pob-violet, .pob-inline.pob-violet { color: var(--data-purple, var(--text)); }
