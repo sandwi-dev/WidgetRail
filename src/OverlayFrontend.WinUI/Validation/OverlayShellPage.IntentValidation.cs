@@ -48,7 +48,6 @@ internal sealed partial class OverlayShellPage
                     Check(preparedUrls.SequenceEqual(new[] { "https://example.com/calculated" }), "One click prepares and opens the calculated URL exactly once");
                 }
                 finally { OpenExternalWebPageRequested = originalPreparedLauncher; }
-                await VerifyNotificationBrowserAsync(Check);
                 source = surface!.CurrentBinding!.Frame;
                 await InvokeAsync(new(source, new("open", "open", ControllerButton.A, InputScopeId: "root")));
                 await Until(() => activeWidget == "intent-target" && surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/guide");

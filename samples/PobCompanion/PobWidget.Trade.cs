@@ -35,6 +35,12 @@ public sealed partial class PobWidget
             RefreshTradeLeagues();return true;
         }
         if(detailKind!="trade")return false;
+        if(id=="trade-open"&&overlayWebsites&&result is {} current)
+        {
+            var slot=tradeSlot;var priority=tradePriority;var league=tradeLeague;var price=tradeBudget;var currency=tradeCurrency;
+            Work(async token=>await OpenWebsiteAsync(await CalculateTradeUrlAsync(current.Xml,slot,priority,league,price,currency,token),token),"Calculating upgrade search…");
+            return true;
+        }
         if(id=="back"){detailKind="item";focusRequestSequence++;return true;}
         if(id=="trade-refresh"){RefreshTradeLeagues();return true;}
         if(id=="trade-budget")tradeBudget=action.CommittedText??"";
@@ -58,11 +64,7 @@ public sealed partial class PobWidget
         Invalidate();
         try
         {
-            var budget=0d;
-            if(price.Length>0&&(!double.TryParse(price,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out budget)||!double.IsFinite(budget)||budget<0))throw new IOException("Enter a positive budget, or leave it empty for no price limit.");
-            var query=await engine.ExecuteAsync(new{op="trade-search",slot,priority,budget,currency},preparation.Token,xml);
-            preparation.Token.ThrowIfCancellationRequested();
-            return JsonSerializer.SerializeToElement(new{url=PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query"))});
+            return JsonSerializer.SerializeToElement(new{url=await CalculateTradeUrlAsync(xml,slot,priority,league,price,currency,preparation.Token)});
         }
         catch(OperationCanceledException)
         {
@@ -80,9 +82,17 @@ public sealed partial class PobWidget
 
     private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open")with
     {
-        Intent=PobPreferences.Web(game==2?"https://www.pathofexile.com/trade2":"https://www.pathofexile.com/trade",overlayWebsites,extended:true)
+        Intent=overlayWebsites?null:PobPreferences.Web(game==2?"https://www.pathofexile.com/trade2":"https://www.pathofexile.com/trade",extended:true)
             with{PreparationKey=TradeIntentKey()}
     };
+    private async Task<string> CalculateTradeUrlAsync(string xml,string slot,string priority,string league,string price,string currency,CancellationToken token)
+    {
+        var budget=0d;
+        if(price.Length>0&&(!double.TryParse(price,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out budget)||!double.IsFinite(budget)||budget<0))throw new IOException("Enter a positive budget, or leave it empty for no price limit.");
+        var query=await engine.ExecuteAsync(new{op="trade-search",slot,priority,budget,currency},token,xml);
+        token.ThrowIfCancellationRequested();
+        return PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query"));
+    }
     private void ReadTradePreferences()
     {
         try
@@ -113,7 +123,7 @@ public sealed partial class PobWidget
             Text(TradePriorities.Single(p=>p.Key==tradePriority).Help,"trade.priority-help","pob-small pob-muted"),
             UI.Row("pob.trade.price",Field("Maximum price (optional)",UI.TextEntry(tradeBudget,"No price limit","trade-budget","pob.trade-budget",20).Classes("pob-input"),"trade-budget"),
                 UI.Select("Currency",new[]{"divine","chaos","exalted"}.Select(c=>new SelectOption(c,char.ToUpperInvariant(c[0])+c[1..]+" Orb","trade-currency."+c,c==tradeCurrency)).ToArray(),"pob.trade-currency").Classes("pob-select")).Classes("pob-toolbar","pob-price-fields"),
-            UI.Row("pob.trade.actions",TradeSearchButton()).Classes("pob-toolbar"),
+            UI.Row("pob.trade.actions",(websiteSession is not null?new[]{TradeSearchButton(),Button("Return to website","website-resume")}:new[]{TradeSearchButton()}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar"),
             Text("Weights estimate an upgrade; they do not guarantee it. Compare an item before applying it.","trade.caution","pob-small pob-muted"),
             UI.Row("pob.trade.return",Button("Paste item to compare","item-paste"),Button("Refresh leagues","trade-refresh")).Classes("pob-toolbar"),
             Text(game==2

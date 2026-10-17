@@ -24,7 +24,7 @@ public static class ProtocolConstants
     public const int BaselineVersion = 1;
     public const int CurrentVersion = 85;
     public const int IntentPreparationVersion = 85;
-    public const int OverlayBrowserRoutingVersion = 84;
+    public const int ExtendedWebLinksVersion = 84;
     public const int WebSessionVersion = 83;
     public const int CatalogIconVersion = 82;
     public const int WebAppVersion = 81;

@@ -12,7 +12,15 @@ internal static class TradeWorkflowTests
         File.WriteAllText(Path.Combine(directory,id+".xml"),xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);
         await using var engine=new PobEngine(root,runtime,adapter);
         var widget=new PobWidget(game,engine,directory){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
-        WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().Build());var sequence=0;
+        var opened=new List<WebSessionDefinition>();var closed=0;var navigated=0;
+        WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().WithHandler(WidgetWebSessionCapabilities.Command,async(command,token)=>
+        {
+            if(command.Operation==WebSessionOperation.Open){opened.Add(command.Definition!);return new WebSessionReply{Session=new(new string('a',32))};}
+            if(command.Operation==WebSessionOperation.ReadMessages)await Task.Delay(50,token);
+            if(command.Operation==WebSessionOperation.Close)closed++;
+            if(command.Operation==WebSessionOperation.Navigate)navigated++;
+            return new WebSessionReply();
+        }).Build());var sequence=0;
         IEnumerable<ViewNode> Nodes(ViewNode n)=>new[]{n}.Concat((n.Children??[]).SelectMany(Nodes));
         ViewSnapshot View()=>widget.Render().CreateSnapshot("trade-workflow",++sequence);
         async Task Idle(){var deadline=DateTime.UtcNow.AddSeconds(65);while(Nodes(View().Root).Any(n=>n.Id=="pob.cancel-operation")){if(DateTime.UtcNow>deadline)throw new TimeoutException();await Task.Delay(20);}}
@@ -43,8 +51,18 @@ internal static class TradeWorkflowTests
             check(payload is {} value&&value.GetProperty("url").GetString()!.StartsWith($"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard",StringComparison.Ordinal),"One search invocation returns the calculated official-site URL");
             check(File.ReadAllText(Path.Combine(directory,id+".xml"))==saved&&!Nodes(View().Root).Any(n=>n.Id=="pob.cancel-operation"),"Search leaves saved build contents unchanged and clears progress");
             await Action("websites.overlay");
-            var overlay=Nodes(View().Root).Single(n=>n.Id=="pob.trade-open").Intent!;
-            check(overlay.Routing==WidgetIntentRouting.OverlayBrowser&&overlay.OverlayBrowserStorage==BrowserStorage.Persistent,"The same Search action can use the persistent overlay browser");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.trade-open").Intent is null,"Overlay trade is a widget action without an intent handoff");
+            await Action("trade-open");
+            var modal=View();var web=Nodes(modal.Root).Single(n=>n.Id=="pob.website");
+            check(modal.Root.Kind==ViewNodeKind.ModalLayer&&web.WebBrowser?.HostedSession?.Id==new string('a',32)&&ViewSnapshotValidator.Validate(modal).Count==0,"Calculated search attaches the existing web session to a valid widget modal");
+            check(opened.Count==1&&opened[0].Browser.Storage==BrowserStorage.Persistent&&opened[0].Browser.ProfileKey=="websites"&&opened[0].Browser.Background==BrowserBackgroundMode.Automatic,"Website uses a stable widget-specific persistent profile and automatic background behavior");
+            await Action("website-close");
+            check(View().Root.Kind!=ViewNodeKind.ModalLayer&&closed==0,"Closing the modal retains the web session and returns to the build");
+            await Action("website-resume");
+            check(View().Root.Kind==ViewNodeKind.ModalLayer&&opened.Count==1&&navigated==0,"Reopening reuses the same session without navigating away from the selected listing");
+            await Action("website-close");
+            await WidgetTestHost.DestroyAsync(widget);
+            check(closed==1,"Widget destruction closes its retained website session");
         }
         finally {await WidgetTestHost.DestroyAsync(widget);Directory.Delete(directory,true);}
     }

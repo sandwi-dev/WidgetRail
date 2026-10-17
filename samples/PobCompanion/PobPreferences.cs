@@ -22,7 +22,6 @@ internal sealed class PobPreferences(string directory)
         set=>BuildDocument.SaveAtomic(PathName,JsonSerializer.Serialize(new{version=1,websites=value?"overlay":"windows"}));
     }
 
-    internal static WidgetIntentRequest Web(string url,bool overlay,bool extended=false)=>WidgetIntentRequest.Create(extended?WidgetIntentContracts.WebV2:WidgetIntentContracts.ForWebUrl(url),
-        JsonSerializer.SerializeToElement(new{url}),overlay?WidgetIntentRouting.OverlayBrowser:WidgetIntentRouting.Windows)
-        with { OverlayBrowserStorage=overlay?BrowserStorage.Persistent:null };
+    internal static WidgetIntentRequest Web(string url,bool extended=false)=>WidgetIntentRequest.Create(extended?WidgetIntentContracts.WebV2:WidgetIntentContracts.ForWebUrl(url),
+        JsonSerializer.SerializeToElement(new{url}),WidgetIntentRouting.Windows);
 }

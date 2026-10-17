@@ -10,14 +10,14 @@ internal static partial class BridgeIntentScenarios
         Check(!WidgetRail.WidgetRuntime.RuntimeJson.ToElement(new WidgetRail.WidgetRuntime.IntentDeliveryPayload(1,legacy)).TryGetProperty("prepare",out _));
         Check(!BridgeJson.ToElement(new WidgetIntentPreparation("source",null,WidgetIntentLaunchKind.Rejected,[])).TryGetProperty("preparationFailed",out _));
         var url="https://example.com/placeholder";
-        await using var fixture=Fixture([Source()],()=>url,routing:WidgetIntentRouting.OverlayBrowser,preparationKey:"search");
+        await using var fixture=Fixture([Source()],()=>url,routing:WidgetIntentRouting.Windows,preparationKey:"search");
         var request=(await PrepareSource(fixture)) with{PreparationId=Guid.NewGuid().ToString("N")};
         var client=fixture.Clients.Single();
         client.PreparationHandler=(intent,_)=>Task.FromResult<WidgetIntentRequest?>(intent with{PreparationKey=null,Payload=JsonSerializer.SerializeToElement(new{url="https://example.com/calculated"})});
         var prepared=await fixture.Registry.PrepareIntentAsync(request,default);
-        Check(prepared.Kind==WidgetIntentLaunchKind.OverlayBrowser);
+        Check(prepared.Kind==WidgetIntentLaunchKind.ExternalBrowser);
         var committed=await fixture.Registry.CommitIntentAsync(new("source",prepared.TicketId!),default);
-        Check(committed.Accepted&&committed.OverlayUrl=="https://example.com/calculated"&&committed.OverlayStorage==BrowserStorage.Private);
+        Check(committed.Accepted&&committed.ExternalUrl=="https://example.com/calculated");
         Check(!(await fixture.Registry.CommitIntentAsync(new("source",prepared.TicketId!),default)).Accepted);
         Check((await fixture.Registry.PrepareIntentAsync(request,default)).PreparationFailed);
         Check((await fixture.Registry.PrepareIntentAsync(request,default)).PreparationFailed);
@@ -25,7 +25,7 @@ internal static partial class BridgeIntentScenarios
         {
             client.PreparationHandler=(intent,_)=>Task.FromResult<WidgetIntentRequest?>(mode switch
             {
-                "route"=>intent with{PreparationKey=null,Routing=WidgetIntentRouting.Windows},
+                "route"=>intent with{PreparationKey=null,Routing=WidgetIntentRouting.WidgetPreferred},
                 "contract"=>intent with{PreparationKey=null,Version=2},
                 "schema"=>intent with{PreparationKey=null,Payload=JsonSerializer.SerializeToElement(new{url="https://example.com",extra=true})},
                 _=>intent

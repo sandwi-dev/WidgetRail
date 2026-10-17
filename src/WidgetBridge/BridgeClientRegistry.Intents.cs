@@ -136,7 +136,7 @@ internal sealed partial class BridgeClientRegistry
             if (!IntentActionCurrent(ticket)) return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             if (_intentTickets.Count + _activeIntentDeliveries.Count >= 16 && _intentTickets.Values.All(item => IntentFresh(item.CreatedAt, IntentNow())))
                 return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
-            candidates = intent.Routing is WidgetIntentRouting.Windows or WidgetIntentRouting.OverlayBrowser ? [] : _catalog.IntentWidgets
+            candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets
                 .Where(widget => !widget.IsStopped && (!ticket.HostSettings || widget.Id == "settings")).SelectMany(widget =>
                 (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version)
                 .Select(handler => (new IntentHandlerCandidate(widget.Id, _catalogRevision + 1, CompiledWidgetIntentContract.Create(handler),
@@ -179,7 +179,6 @@ internal sealed partial class BridgeClientRegistry
                 IntentResolutionKind.Widget => WidgetIntentLaunchKind.Widget,
                 IntentResolutionKind.ChooseHandler => WidgetIntentLaunchKind.ChooseHandler,
                 IntentResolutionKind.ExternalBrowser => WidgetIntentLaunchKind.ExternalBrowser,
-                IntentResolutionKind.OverlayBrowser => WidgetIntentLaunchKind.OverlayBrowser,
                 IntentResolutionKind.Unavailable => WidgetIntentLaunchKind.Unavailable,
                 _ => WidgetIntentLaunchKind.Rejected,
             };
@@ -264,9 +263,6 @@ internal sealed partial class BridgeClientRegistry
             if (ticket.Kind == WidgetIntentLaunchKind.ExternalBrowser)
                 return request.TargetWidgetId is null && request.TargetWorkerRun is null && request.PinnedTarget is null
                     ? new(true, ticket.Request.Payload.GetProperty("url").GetString()) : new(false);
-            if (ticket.Kind == WidgetIntentLaunchKind.OverlayBrowser)
-                return request.TargetWidgetId is null && request.TargetWorkerRun is null && request.PinnedTarget is null
-                    ? new(true, OverlayUrl: ticket.Request.Payload.GetProperty("url").GetString(), OverlayStorage: ticket.Request.OverlayBrowserStorage ?? BrowserStorage.Private) : new(false);
             if (request.TargetWidgetId is null || request.TargetWorkerRun is null ||
                 !ticket.Targets.TryGetValue(request.TargetWidgetId, out var fingerprint) ||
                 !_clients.TryGetValue(request.TargetWidgetId, out target!) || !IsCurrentLocked(target) ||

@@ -29,9 +29,9 @@ internal static class NoteLinkTests
         foreach(var status in Enum.GetValues<WidgetIntentStatus>())
             check(PobNoteLinks.UseFallback(new("test",links[0].Intent,status))==(status is WidgetIntentStatus.Unavailable or WidgetIntentStatus.Rejected),"Fallback policy for "+status);
         check(!PobNoteLinks.UseFallback(new("test",links[1].Intent,WidgetIntentStatus.Unavailable)),"Ordinary web links do not recursively fall back");
-        var overlayLinks=PobNoteLinks.Read("https://example.org/build https://youtu.be/"+id,true);
-        check(overlayLinks[0].Intent.Routing==WidgetIntentRouting.OverlayBrowser&&overlayLinks[0].Intent.OverlayBrowserStorage==BrowserStorage.Persistent,"Ordinary links request the persistent host browser explicitly");
-        check(overlayLinks[1].Intent.ContractId==WidgetIntentContracts.OpenVideo&&overlayLinks[1].Intent.Fallback!.Routing==WidgetIntentRouting.OverlayBrowser,"YouTube retains the video intent and honors website preference on fallback");
+        var webLinks=PobNoteLinks.Read("https://example.org/build https://youtu.be/"+id);
+        check(webLinks[0].Intent.Routing==WidgetIntentRouting.Windows,"External links use ordinary Windows intents; overlay handling belongs to the widget");
+        check(webLinks[1].Intent.ContractId==WidgetIntentContracts.OpenVideo&&webLinks[1].Intent.Fallback!.Routing==WidgetIntentRouting.Windows,"Video links retain their existing receiver and external fallback");
         var prefsDirectory=Path.Combine(Path.GetTempPath(),"pob-preferences-"+Guid.NewGuid().ToString("N"));
         try
         {

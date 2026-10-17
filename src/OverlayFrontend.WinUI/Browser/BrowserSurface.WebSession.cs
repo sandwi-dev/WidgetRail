@@ -33,7 +33,10 @@ internal sealed partial class BrowserSurface
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token);
         await PrepareCoreAsync(linked.Token);
         if (appliedNavigation == 0) { appliedNavigation = document.NavigationId; core!.Navigate(document.Url); }
-        await hostedNavigation.Task.WaitAsync(TimeSpan.FromSeconds(25), linked.Token);
+        // Remote navigation may require visible login/challenge interaction or
+        // display a recoverable network error. Return the initialized session so
+        // its author can attach a view; only packaged RPC pages require readiness.
+        if(IsHostedPackage)await hostedNavigation.Task.WaitAsync(TimeSpan.FromSeconds(25), linked.Token);
     }
 
     internal void ApplyHostedView(WebBrowserDocument view) =>
@@ -65,6 +68,7 @@ internal sealed partial class BrowserSurface
         if (core is null || hostedDefinition is null) throw new InvalidOperationException("Session page is unavailable.");
         var url = IsHostedPackage ? new Uri(new Uri(document.Url).GetLeftPart(UriPartial.Authority) + "/" + destination).AbsoluteUri : destination;
         if (IsHostedPackage ? !IsHostedDocument(url) : !WebBrowserDocument.IsWebUrl(url)) throw new InvalidOperationException("Invalid session destination.");
+        if(!IsHostedPackage){token.ThrowIfCancellationRequested();core.Navigate(url);return;}
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var browser = core;
         ulong? navigationId = null;
@@ -102,7 +106,7 @@ internal sealed partial class BrowserSurface
                 _=ApplyHostedPageThemeAsync();
                 hostedNavigation.TrySetResult();
             }
-            else hostedNavigation.TrySetException(new InvalidOperationException("Hosted page failed to load."));
+            else if(IsHostedPackage)hostedNavigation.TrySetException(new InvalidOperationException("Hosted page failed to load."));
         };
         core.ProcessFailed += (_, args) =>
         {

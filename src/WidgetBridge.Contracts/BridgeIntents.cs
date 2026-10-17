@@ -5,7 +5,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.WidgetBridge;
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentLaunchKind>))]
-public enum WidgetIntentLaunchKind { Widget, ChooseHandler, ExternalBrowser, Unavailable, Rejected, OverlayBrowser }
+public enum WidgetIntentLaunchKind { Widget, ChooseHandler, ExternalBrowser, Unavailable, Rejected }
 
 public sealed record WidgetIntentDestination(string WidgetId, string Name, bool SupportsPassiveDelivery = false);
 public sealed record WidgetIntentPreparation(string SourceWidgetId, string? TicketId,
@@ -13,8 +13,7 @@ public sealed record WidgetIntentPreparation(string SourceWidgetId, string? Tick
     WidgetIntentPresentation Presentation = WidgetIntentPresentation.PreferExistingSurface,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool PreparationFailed = false);
 public sealed record WidgetIntentCompletion(bool Accepted, string? ExternalUrl = null, string? BrowserFallbackUrl = null,
-    bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null,
-    string? OverlayUrl = null, BrowserStorage? OverlayStorage = null);
+    bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null);
 
 internal sealed record BridgeIntentPrepareRequest(string WidgetId, long SnapshotSequence,
     BridgeWorkerRun WorkerRun, WidgetActionEvent Action, string? PinnedLayoutId = null,

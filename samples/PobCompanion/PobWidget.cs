@@ -72,6 +72,7 @@ public sealed partial class PobWidget : Widget
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
         if (mapSession is not null) await mapSession.DisposeAsync();
+        if (websiteSession is not null) await websiteSession.DisposeAsync();
         await engine.DisposeAsync();
     }
 
@@ -203,7 +204,7 @@ public sealed partial class PobWidget : Widget
             {
                 FocusGroupEntryRequest = ContentFocusRequest(),
             };
-            return WithPlanningModal(WithSkillConfirmation(WithBuildConfirmation(view)));
+            return WithWebsiteModal(WithPlanningModal(WithSkillConfirmation(WithBuildConfirmation(view))));
         }
     }
 
@@ -344,6 +345,12 @@ public sealed partial class PobWidget : Widget
     public override ValueTask<bool> OnIntentCompletedAsync(WidgetIntentFeedback feedback,CancellationToken cancellationToken=default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if(overlayWebsites&&PobNoteLinks.UseFallback(feedback))
+        {
+            var url=feedback.Request.Fallback!.Payload.GetProperty("url").GetString()!;
+            lock(gate)Work(token=>OpenWebsiteAsync(url,token),"Opening website…");
+            return ValueTask.FromResult(false);
+        }
         return ValueTask.FromResult(PobNoteLinks.UseFallback(feedback));
     }
     private string StatLabel(string key)=>key switch {"CombinedDPS"=>B(State,"mainSkillShowsAverage")?"Main skill average damage":"Main skill DPS (combined)","FullDPS"=>"All included skills DPS","TotalDPS"=>"Main skill hit DPS","EnergyShield"=>"Energy shield","EffectiveHitPool"=>"Effective hit pool",_=>System.Text.RegularExpressions.Regex.Replace(key,"([a-z])([A-Z])","$1 $2")};

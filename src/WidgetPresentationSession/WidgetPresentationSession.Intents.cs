@@ -57,7 +57,7 @@ public sealed partial class WidgetPresentationSession
                 : !Guid.TryParseExact(result.TicketId, "N", out _)) ||
             result.Kind == WidgetIntentLaunchKind.Widget && result.Destinations.Count != 1 ||
             result.Kind == WidgetIntentLaunchKind.ChooseHandler && result.Destinations.Count < 2 ||
-            result.Kind is WidgetIntentLaunchKind.ExternalBrowser or WidgetIntentLaunchKind.OverlayBrowser && result.Destinations.Count != 0)
+            result.Kind == WidgetIntentLaunchKind.ExternalBrowser && result.Destinations.Count != 0)
             throw new BridgeProtocolException("Invalid intent preparation response.");
     }
 
@@ -146,12 +146,6 @@ public sealed partial class WidgetPresentationSession
                 throw new BridgeProtocolException("Invalid external intent result.");
             if (result.Accepted && prepared.Kind == WidgetIntentLaunchKind.ExternalBrowser && result.ExternalUrl is null)
                 throw new BridgeProtocolException("External intent result is missing its URL.");
-            if (result.OverlayUrl is { } overlayUrl && (!result.Accepted || prepared.Kind != WidgetIntentLaunchKind.OverlayBrowser ||
-                result.ExternalUrl is not null || !WebBrowserDocument.IsWebUrl(overlayUrl) || result.OverlayStorage is not { } storage || !Enum.IsDefined(storage)))
-                throw new BridgeProtocolException("Invalid overlay browser intent result.");
-            if (result.OverlayStorage is not null && result.OverlayUrl is null) throw new BridgeProtocolException("Unexpected overlay storage policy.");
-            if (result.Accepted && prepared.Kind == WidgetIntentLaunchKind.OverlayBrowser && result.OverlayUrl is null)
-                throw new BridgeProtocolException("Overlay browser intent result is missing its URL.");
             if (result.BrowserFallbackUrl is { } fallback && (result.Accepted || result.ExternalUrl is not null ||
                 prepared.Kind is not (WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler) ||
                 fallback.Length > WebBrowserDocument.MaximumUrlLength || fallback.Any(char.IsControl) || !Uri.TryCreate(fallback, UriKind.Absolute, out var fallbackUri) ||

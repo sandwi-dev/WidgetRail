@@ -294,8 +294,7 @@ internal sealed class IntentBridgeProbeWidget : Widget
         {
             Retention=WidgetNotificationRetention.Pending,
             Interaction=WidgetNotificationInteraction.OpenWidget,
-            OpenIntent=WidgetIntentRequest.Create(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url="https://example.com/notification-reference"}),WidgetIntentRouting.OverlayBrowser)
-                with{OverlayBrowserStorage=BrowserStorage.Private},
+            OpenIntent=WidgetIntentRequest.Create(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url="https://example.com/notification-reference"}),WidgetIntentRouting.Windows),
         },cancellationToken);
     }
     public override async ValueTask<JsonElement?> OnPrepareIntentAsync(string key,WidgetIntentRequest request,CancellationToken cancellationToken=default)

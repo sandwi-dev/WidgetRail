@@ -149,12 +149,6 @@ internal sealed partial class OverlayShellPage
                     if (!await open(new Uri(external), lifetime.Token) && !retired && visible && foreground)
                         await ShowHostChoiceAsync("Could not open browser", "Windows could not open this page. Please try again.", [], lifetime.Token);
                 }
-                if (completion.Accepted && completion.OverlayUrl is { } overlayUrl)
-                {
-                    var authority = request?.Authority ?? surface?.CurrentBinding?.Frame.Authority;
-                    return authority is { } sourceAuthority && await OpenTemporaryWebPageAsync(overlayUrl,
-                        completion.OverlayStorage!.Value, sourceAuthority, cancellation.Token, sourcePin);
-                }
                 return completion.Accepted;
             }
         }

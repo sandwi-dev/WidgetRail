@@ -487,14 +487,6 @@ public sealed record ButtonElement : WidgetElement
     public ButtonElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
         WidgetIntentRouting routing, WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
         this with { Intent = WidgetIntentRequest.Create(contract, payload, routing, presentation) };
-    /// <summary>Open a host-owned page over this widget; Back closes it and restores the caller. No Browser widget is required.</summary>
-    public ButtonElement OpenOverlayBrowser(string url, BrowserStorage storage = BrowserStorage.Private)
-    {
-        if (!Enum.IsDefined(storage)) throw new ArgumentOutOfRangeException(nameof(storage));
-        return this with { Intent = WidgetIntentRequest.Create(WidgetIntentContracts.ForWebUrl(url),
-            System.Text.Json.JsonSerializer.SerializeToElement(new { url }), WidgetIntentRouting.OverlayBrowser)
-            with { OverlayBrowserStorage = storage } };
-    }
     public string ActionId { get; init; }
     public string? AccessibilityLabel { get; init; }
     public WidgetGlyph? Glyph { get; init; }

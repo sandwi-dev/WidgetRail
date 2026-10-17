@@ -45,6 +45,51 @@ backing. Authors must not use DOM visibility as a signal that their widget has i
 focus. A background session can keep page timers/rendering active; dispose it when
 its work is finished. This does not change ordinary declarative browser parking.
 
+## Remote websites in widget modals
+
+Use the same session API for a website that should open above the widget and
+return to it when dismissed. No cross-widget intent is needed:
+
+```csharp
+website = await HostServices.WebSessions.OpenAsync(
+    new("websites", "Reference website", WebSessionSource.Remote(url))
+    {
+        Browser = new()
+        {
+            Storage = BrowserStorage.Persistent,
+            ProfileKey = "websites",
+            Background = BrowserBackgroundMode.Automatic,
+            Chrome = BrowserChrome.Toolbar,
+            Popups = BrowserPopupMode.Hosted,
+        },
+    }, cancellationToken);
+
+// Render the ordinary view underneath. Set websiteVisible=false on website-close.
+return websiteVisible
+    ? view.WithModal(new("website-modal", "Website",
+        UI.WebView(website.Reference, "website-view",
+            interactionMode: BrowserInteractionMode.InteractOnFocus)
+            .Classes("website-view"),
+        "website-view", "website-close") { ScrollContent = false })
+    : view;
+```
+
+Give the modal a generous preferred size with an ID selector and give the
+WebView `flex-grow: 1; min-height: 0px; min-width: 0px;`. The shared modal clamps
+its size to the widget viewport. The browser supplies its own page scrolling.
+Normal modal dismissal restores focus in the underlying widget.
+
+Retain `website` to reopen the same page without reloading. Dispose it when done
+and during widget destruction; the host also retires sessions with their worker.
+The profile's cookies and website storage survive session disposal and overlay
+restart. Profile keys are widget-specific: matching keys in different widgets
+do not share logins. This does not use the Browser widget's profile.
+
+Remote open/navigation completes when navigation has been started, not when the
+website finishes loading. Present the view to show loading, sign-in, challenges,
+or recoverable network errors. Packaged sessions still wait for page readiness
+before opening their message channel.
+
 ## Messages
 
 Only sealed packaged pages receive the channel; remote HTTP(S) sessions can navigate

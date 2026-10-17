@@ -11,14 +11,14 @@ internal sealed partial class BrowserOwner
 
     private async Task<bool> ChangeProfileAsync(BrowserSurface source, BrowserProfileChange change, CancellationToken token)
     {
-        var root = ProfileRoots.FirstOrDefault(page => page.Owns(source));
+        var root = entries.Values.Select(entry => entry.Surface).FirstOrDefault(page => page.Owns(source));
         // A child closes while this operation parks the profile. Its Profile
         // wrapper becomes invalid with that controller, even though the same
         // account remains alive in its parent. Use the surviving root wrapper.
         if (retired || !source.CanCompleteSiteDecision || root?.NativeProfile is not { } profile ||
             root.ProfileName != source.ProfileName || !changingProfiles.Add(source.ProfileName)) return false;
         token = lifetime.Token;
-        var parked = ProfileRoots.Where(surface => surface.ProfileName == source.ProfileName)
+        var parked = entries.Values.Select(entry => entry.Surface).Where(surface => surface.ProfileName == source.ProfileName)
             .Select(surface => (Surface: surface, Url: surface.CurrentUrl)).ToArray();
         try
         {

@@ -9,7 +9,7 @@ namespace WidgetRail.WidgetProtocol;
 public enum WidgetIntentPresentation { PreferExistingSurface, OpenWidget }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentRouting>))]
-public enum WidgetIntentRouting { WidgetPreferred, Windows, OverlayBrowser }
+public enum WidgetIntentRouting { WidgetPreferred, Windows }
 
 /// <summary>InteractionRequired accepts the request once and asks the host to show its stored state.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentResult>))]
@@ -28,9 +28,6 @@ public sealed record WidgetIntentRequest(string ContractId, int Version, string 
     public WidgetIntentPresentation Presentation { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public WidgetIntentRouting Routing { get; init; }
-    /// <summary>Storage for a host-owned overlay browser page. Omission means a fresh private session.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public BrowserStorage? OverlayBrowserStorage { get; init; }
     /// <summary>Resolve the payload after the user invokes this action. Routing and contract remain fixed.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PreparationKey { get; init; }
@@ -58,7 +55,6 @@ public sealed record WidgetIntentRequest(string ContractId, int Version, string 
     public bool IsWellFormed()
     {
         if (PreparationKey is { } key && (key.Length is < 1 or > 128 || key.Any(char.IsControl) || Fallback is not null)) return false;
-        if (OverlayBrowserStorage is { } storage && (Routing != WidgetIntentRouting.OverlayBrowser || !Enum.IsDefined(storage))) return false;
         if (Fallback is { } fallback && (!ReportsResult || fallback.Fallback is not null || fallback.PreparationKey is not null || !fallback.IsWellFormed())) return false;
         if (!Enum.IsDefined(Presentation) || !Enum.IsDefined(Routing) || !WidgetIntentContracts.IsValidId(ContractId) || Version is < 1 or > 65535 ||
             SchemaDigest is not { Length: 64 } || !SchemaDigest.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f') ||
@@ -68,7 +64,7 @@ public sealed record WidgetIntentRequest(string ContractId, int Version, string 
     }
 
     public bool Matches(WidgetIntentRequest? other) => other is not null &&
-        ContractId == other.ContractId && Version == other.Version && SchemaDigest == other.SchemaDigest && Presentation == other.Presentation && Routing == other.Routing && OverlayBrowserStorage == other.OverlayBrowserStorage && PreparationKey == other.PreparationKey && ReportsResult == other.ReportsResult &&
+        ContractId == other.ContractId && Version == other.Version && SchemaDigest == other.SchemaDigest && Presentation == other.Presentation && Routing == other.Routing && PreparationKey == other.PreparationKey && ReportsResult == other.ReportsResult &&
         (Fallback is null ? other.Fallback is null : Fallback.Matches(other.Fallback)) &&
         IsWellFormed() && other.IsWellFormed() && Fingerprint(Payload) == Fingerprint(other.Payload);
 

@@ -23,15 +23,6 @@ internal static partial class BridgeIntentScenarios
 
     internal static async Task FallbackTickets()
     {
-        await using (var overlay = Fixture([Source()], routing: WidgetIntentRouting.OverlayBrowser))
-        {
-            var preparation = await overlay.Registry.PrepareIntentAsync(await PrepareSource(overlay), default);
-            Check(preparation.Kind == WidgetIntentLaunchKind.OverlayBrowser && preparation.Destinations.Count == 0);
-            var completion = await overlay.Registry.CommitIntentAsync(new("source", preparation.TicketId!), default);
-            Check(completion.Accepted && completion.OverlayUrl == "https://example.com/guide" && completion.ExternalUrl is null && completion.OverlayStorage == BrowserStorage.Private);
-            Check(overlay.Clients.Count == 1);
-            Check(!(await overlay.Registry.CommitIntentAsync(new("source", preparation.TicketId!), default)).Accepted);
-        }
         await using (var windows = Fixture([Source(), Target("browser")], routing: WidgetIntentRouting.Windows))
         {
             var preparation = await windows.Registry.PrepareIntentAsync(await PrepareSource(windows), default);

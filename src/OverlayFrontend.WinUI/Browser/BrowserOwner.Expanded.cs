@@ -11,7 +11,6 @@ internal sealed partial class BrowserOwner
     internal async Task<bool> ExpandAsync(BrowserSurface source, BrowserSlot destination)
     {
         if (retired || expandedSlot is not null || expandedPopupSlot is not null || destination.Retired) return false;
-        if (ReferenceEquals(temporaryPage, source)) return await ExpandTemporaryAsync(source, destination);
         if (popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Child, source))
             return await ExpandPopupAsync(popup, destination);
         var pair = entries.FirstOrDefault(pair => pair.Value.Surface.Owns(source));
@@ -29,7 +28,6 @@ internal sealed partial class BrowserOwner
 
     internal void Collapse(BrowserSlot destination)
     {
-        if (ReferenceEquals(temporarySlot, destination)) { _ = CloseTemporaryAsync(); return; }
         if (ReferenceEquals(expandedPopupSlot, destination))
         {
             if (popupReconciliation is not { IsCompleted: false }) popupReconciliation = CollapsePopupAsync(destination);

@@ -426,7 +426,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             ConfigureProviderDocument(env);
             await ConfigureHostedCoreAsync(env);
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
-            if (!IsProviderContent && hostedDefinition is null && FixturePage is not null)
+            if (!IsProviderContent && hostedDefinition?.Source.Kind != WebSessionSourceKind.Package && FixturePage is not null)
             {
                 // Include requests initiated by out-of-process iframe reloads.
                 // The deprecated two-argument filter misses those documents.

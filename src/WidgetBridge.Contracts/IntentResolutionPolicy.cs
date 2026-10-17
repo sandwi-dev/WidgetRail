@@ -11,7 +11,6 @@ internal enum IntentResolutionKind
     Widget,
     ChooseHandler,
     ExternalBrowser,
-    OverlayBrowser,
     Unavailable,
     InvalidPayload,
     SchemaConflict,
@@ -41,9 +40,6 @@ internal static class IntentResolutionPolicy
         if (routing == WidgetIntentRouting.Windows)
             return Result(!standardWeb ? IntentResolutionKind.Unavailable : IsWebUrl(payload)
                 ? IntentResolutionKind.ExternalBrowser : IntentResolutionKind.InvalidPayload);
-        if (routing == WidgetIntentRouting.OverlayBrowser)
-            return Result(!standardWeb ? IntentResolutionKind.Unavailable : IsWebUrl(payload)
-                ? IntentResolutionKind.OverlayBrowser : IntentResolutionKind.InvalidPayload);
         if (catalog.Count > MaximumCandidates) return Result(IntentResolutionKind.InvalidCatalog);
         if (requested.Id == WidgetIntentContracts.OpenWebPage && !IsWebUrl(payload))
             return Result(IntentResolutionKind.InvalidPayload);

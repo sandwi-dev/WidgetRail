@@ -80,6 +80,8 @@ text { color: var(--text); text-align: start; }
 .pob-reading { gap:12px; max-width:900px; width:100%; }
 .pob-loading-panel { flex-grow:1; min-height:160px; padding:24px; gap:16px; align:center; justify:center; background:var(--surface-raised); corner-radius:12px; }
 .pob-feedback-layer { width:100%; height:100%; min-height:0px; min-width:0px; }
+#pob-website { width: 1320px; height: 900px; }
+.pob-website-view { flex-grow:1; min-width:0px; min-height:0px; }
 .pob-feedback-toast { margin:16px; shadow-color:var(--depth-shadow,transparent); shadow-blur:8px; shadow-offset-y:2px; }
 .pob-operation-toast { gap:12px; align:center; }
 .pob-operation-copy { flex-grow:1; min-width:0px; gap:4px; }

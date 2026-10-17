@@ -258,6 +258,8 @@ public sealed partial class MainWindow
         }
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-hosted-session") is { } sessionResult)
             page.EnableHostedSessionValidation(sessionResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pob-website") is { } pobWebsiteResult)
+            page.EnablePobWebsiteValidation(pobWebsiteResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-navigation") is { } navigationResult)
             page.EnableSettingsNavigationValidation(navigationResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-webapp-shell") is { } webappResult)
@@ -266,8 +268,6 @@ public sealed partial class MainWindow
             page.EnableGameHelpValidation(helpResult, ShowOverlay, () => !AppWindow.IsVisible && taskHandoff is null);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-browser") is { } browserResult)
             page.EnableBrowserValidation(browserResult);
-        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-temporary-browser") is { } temporaryBrowserResult)
-            page.EnableTemporaryBrowserValidation(temporaryBrowserResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-browser-desktop") is { } desktopResult)
             page.EnableBrowserDesktopValidation(desktopResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-intents") is { } intentResult)

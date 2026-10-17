@@ -83,8 +83,10 @@ public sealed partial class PobWidget
     private WidgetElement NotesWorkspace()
     {
         var rows=new List<WidgetElement>{Text("Build notes","notes.heading","pob-heading")};
-        foreach(var (link,index) in PobNoteLinks.Read(S(State,"notes"),overlayWebsites).Select((link,index)=>(link,index)))
-            rows.Add((UI.Button(link.Label,"note-link."+index,"pob.note-link."+index) with {Intent=link.Intent}).Classes("pob-button"));
+        foreach(var (link,index) in PobNoteLinks.Read(S(State,"notes")).Select((link,index)=>(link,index)))
+            rows.Add(link.Intent.ContractId==WidgetIntentContracts.OpenVideo
+                ?(UI.Button(link.Label,"note-link."+index,"pob.note-link."+index) with {Intent=link.Intent}).Classes("pob-button")
+                :WebsiteButton(link.Label,"note-link."+index,link.Url));
         AddFormatted(rows,State,"notes","notesRuns","notes","pob-prose");
         var scroll=UI.VerticalScroll("pob.notes.scroll",UI.Stack("pob.notes.document",rows.ToArray()).Classes("pob-reading")).Classes("pob-scroll","pob-panel");
         if(!busy&&pendingBefore is null)
