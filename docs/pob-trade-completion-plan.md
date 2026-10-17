@@ -339,3 +339,13 @@ Limits: evaluation uses data already loaded by ordinary website browsing, up to 
 limit; it does not claim to rank the entire market. Cross-currency price-aware ranking is withheld
 without reliable exchange rates. Purchase actions remain on the official website. Exact web page
 scroll restoration is not promised. No merge or release is part of this delivery.
+
+2026-10-17 presentation follow-up: skipped-list errors omit Lua source paths and line numbers,
+including previously saved entries, while preserving the item name and readable reason. Website
+modals name the opened site (PoE1/PoE2 Trade, poe.ninja, pob.cool or hostname); existing supported
+location events refresh the heading without navigating or replacing the web session.
+`artifacts/pob/site-labels-final-workflow1.txt` and `site-labels-final-workflow2.txt` pass 74/75
+checks. Native visual evidence: `site-labels-modal.png` and `site-labels-skipped.png`.
+An intermittent Guide activation report recovered without a restart; the captured
+`guide-recovery-20261017.log` shows legacy Guide polling enabling immediately before accepted
+Guide events. The underlying detection cause is unconfirmed; no controller behavior was changed.

@@ -9,9 +9,24 @@ public sealed partial class PobWidget
     private bool overlayWebsites;
     private WidgetWebSession? websiteSession;
     private string? websiteUrl;
+    private string websiteHeading="Website";
     private string? websiteBuild;
     private bool websiteVisible;
     private readonly Dictionary<string,string> websiteActions=new(StringComparer.Ordinal);
+    internal static string WebsiteHeading(string? url)
+    {
+        if(!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.Scheme is not("http"or"https"))return "Website";
+        var host=uri.IdnHost.ToLowerInvariant();
+        if(host.StartsWith("www.",StringComparison.Ordinal))host=host[4..];
+        return host switch
+        {
+            "pathofexile.com" when uri.AbsolutePath.StartsWith("/trade2/",StringComparison.Ordinal)||uri.AbsolutePath=="/trade2"=>"PoE2 Trade",
+            "pathofexile.com" when uri.AbsolutePath.StartsWith("/trade/",StringComparison.Ordinal)||uri.AbsolutePath=="/trade"=>"PoE1 Trade",
+            "pathofexile.com"=>"Path of Exile",
+            "pathofexile2.com"=>"Path of Exile 2",
+            _=>host
+        };
+    }
     private WidgetElement WebsitePreference()=>UI.Stack("pob.website-preference",
         UI.Select("Open general links in",[new("windows","Windows default browser","websites.windows",!overlayWebsites),new("overlay","Overlay browser","websites.overlay",overlayWebsites)],"pob.websites").Classes("pob-select"),
         Text("Shared by PoE1 and PoE2. Trade always opens in the overlay for item comparisons. Each widget keeps its own website logins.","websites.help","pob-small pob-muted")).Classes("pob-field");
@@ -65,7 +80,7 @@ public sealed partial class PobWidget
         }
         else if(websiteUrl!=url)await session.NavigateAsync(url,token);
         token.ThrowIfCancellationRequested();
-        lock(gate){websiteUrl=url;websiteBuild=documentId;SaveTradeReturn(url);websiteVisible=true;if(CanReplaceTradeComparison&&pendingBefore is not null)websiteReview=true;}
+        lock(gate){websiteUrl=url;websiteHeading=WebsiteHeading(url);websiteBuild=documentId;SaveTradeReturn(url);websiteVisible=true;if(CanReplaceTradeComparison&&pendingBefore is not null)websiteReview=true;}
     }
 
     private WidgetView WithWebsiteModal(WidgetView view)
@@ -78,7 +93,7 @@ public sealed partial class PobWidget
         if(!reviewing&&!ranking&&HasRanking)web=web.Shortcut(ControllerButton.RightStick,"trade-rank-show","Ranked results");
         else if(!reviewing&&!ranking&&CanReplaceTradeComparison)web=web.Shortcut(ControllerButton.RightStick,"trade-review-show","Show comparison");
         WidgetElement body=ranking?Split("website",web,TradeRankingPanel(),3,2):reviewing?Split("website",web,TradeReviewPanel(),3,2):web;
-        var modal=view.WithModal(new("pob-website","Website",WithFeedback(body,null),"pob.website","website-close")
+        var modal=view.WithModal(new("pob-website",websiteHeading,WithFeedback(body,null),"pob.website","website-close")
         {
             ScrollContent=false,
             HeaderActions=UI.Row("pob.website.header-actions",

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -24,6 +25,19 @@ public sealed partial class PobWidget
     private sealed record RankQuery(string Context,RankEntry[] Entries);
     private WidgetIndexedCollection<RankQuery,RankEntry>? rankingCollection;
     private RankQuery rankingQuery=new("",[]);
+    private static readonly Regex LuaErrorLocation=new("^(?:[^\\r\\n]*?\\.lua|\\[string \"[^\\r\\n]*?\"\\]):[0-9]+:\\s*",RegexOptions.CultureInvariant|RegexOptions.NonBacktracking);
+    internal static string RankingError(string error)
+    {
+        // Lua can wrap an upstream error in more than one source location.
+        // Strip those prefixes, retaining meaningful colons in the actual reason.
+        while(LuaErrorLocation.Match(error) is {Success:true} match)error=error[match.Length..];
+        return error;
+    }
+    internal static string SavedRankingError(string text)
+    {
+        var separator=text.IndexOf(": ",StringComparison.Ordinal);
+        return separator<0?RankingError(text):text[..(separator+2)]+RankingError(text[(separator+2)..]);
+    }
     private static string XmlHash(string xml)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(xml)));
     private string RankingWeightKey()=>JsonSerializer.Serialize(new{tradePriority,weights=TradeWeights()});
     private bool RankingStale=>rankingBuild!=documentId||rankingBaseline!=XmlHash((pendingBefore??result)!.Xml)||rankingWeights!=RankingWeightKey();
@@ -64,7 +78,7 @@ public sealed partial class PobWidget
                 lock(gate)status=$"Evaluating {i+1} of {inputs.Length} listings…";Invalidate();
                 var request=input.Raw is null?(object)new{op="trade-rank-item",entry=input.Entry}:new{op="trade-rank-item",raw=input.Raw};
                 var response=(await engine.ExecuteAsync(request,token,before.Xml)).State;
-                var error=S(response,"error");
+                var error=RankingError(S(response,"error"));
                 if(error.Length>0){skipped.Add(TradeItemName(input.Listing)+": "+error);continue;}
                 var evaluation=JsonSerializer.SerializeToElement(response.EnumerateObject().Where(p=>p.Name!="raw").ToDictionary(p=>p.Name,p=>p.Value));
                 evaluated.Add(new(I(response,"index"),new(S(response,"raw"),input.Listing,slot),evaluation));
@@ -100,7 +114,7 @@ public sealed partial class PobWidget
             if(saved is null||saved.Rows is not{Length:<=100}||saved.Slot is not{Length:>0 and <=128}||saved.Weights is not{Length:<=16384}||saved.Baseline is not{Length:64})return;
             if(saved.Rows.Select(r=>r.Index).Distinct().Count()!=saved.Rows.Length||saved.Rows.Any(r=>r.Index is <1 or >100||r.Candidate.Raw is not{Length:>0 and <=32768}||r.Candidate.Slot!=saved.Slot||!r.Candidate.Listing.IsValid(game)||!ValidRankingEvaluation(r.Evaluation)))return;
             if(saved.Rows.Select(r=>r.Candidate.Listing.Id).Distinct().Count()!=saved.Rows.Length)return;
-            rankedItems=saved.Rows;rankingSlot=saved.Slot;rankingBaseline=saved.Baseline;rankingWeights=saved.Weights;rankingSkipped=(saved.Skipped??[]).Take(100).Select(s=>Limit(s??"",600)).ToArray();
+            rankedItems=saved.Rows;rankingSlot=saved.Slot;rankingBaseline=saved.Baseline;rankingWeights=saved.Weights;rankingSkipped=(saved.Skipped??[]).Take(100).Select(s=>Limit(SavedRankingError(s??""),600)).ToArray();
             rankingInputs.AddRange(rankedItems.Select(r=>new RankingInput(r.Candidate.Listing,r.Candidate.Raw,default)));
             rankingSummary=$"{rankedItems.Length} saved results · check current website availability";
         }

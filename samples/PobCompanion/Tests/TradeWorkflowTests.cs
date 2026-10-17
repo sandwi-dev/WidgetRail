@@ -8,6 +8,12 @@ internal static class TradeWorkflowTests
 {
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string xml,Action<bool,string> check)
     {
+        const string reason="This item does not fit the comparison slot";
+        const string luaError=@"...es.poe2-companion\0.1.0\payload\Engine\trade-ranking.lua:23: ";
+        check(PobWidget.RankingError(luaError+reason)==reason&&PobWidget.RankingError("C:\\PoB\\trade-ranking.lua:28: Modules/Trade.lua:42: Cannot calculate: unsupported modifier")=="Cannot calculate: unsupported modifier","Skipped errors remove nested Lua paths and preserve useful colons");
+        check(PobWidget.RankingError("Cannot calculate: unsupported modifier")=="Cannot calculate: unsupported modifier"&&PobWidget.SavedRankingError("Brood Weaver, Galvanic Wand: "+luaError+reason)=="Brood Weaver, Galvanic Wand: "+reason,"Old saved skipped errors retain item identity without Lua source locations");
+        foreach(var (url,title) in new[]{("https://www.pathofexile.com/trade2/search/poe2/Standard/a?q=private","PoE2 Trade"),("https://www.pathofexile.com/trade/search/Standard/a","PoE1 Trade"),("https://poe.ninja/poe2/builds","poe.ninja"),("https://pob.cool/","pob.cool"),("https://www.example.com/long/path?query=value","example.com"),("invalid","Website")})
+            check(PobWidget.WebsiteHeading(url)==title,"Website heading identifies site without path or query: "+title);
         await TradeItemTests.RunAsync(game,root,runtime,adapter,xml,check);
         var directory=Path.Combine(Path.GetTempPath(),"widgetrail-trade-workflow-"+Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);var id=Guid.NewGuid().ToString("N");
@@ -76,8 +82,14 @@ internal static class TradeWorkflowTests
             check(opened.Count==1&&opened[0].Source.Location.StartsWith($"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard",StringComparison.Ordinal),"Search opens the calculated URL in the overlay even with Windows browser preference");
             check(File.ReadAllText(Path.Combine(directory,id+".xml"))==saved&&!Nodes(View().Root).Any(n=>n.Id=="pob.cancel-operation"),"Search leaves saved build contents unchanged and clears progress");
             var modal=View();var web=Nodes(modal.Root).Single(n=>n.Id=="pob.website");
+            check(Nodes(modal.Root).Any(n=>n.Text==$"PoE{game} Trade"),"Trade modal renders its site-specific heading");
             check(modal.Root.Kind==ViewNodeKind.ModalLayer&&web.WebBrowser?.HostedSession?.Id==new string('a',32)&&ViewSnapshotValidator.Validate(modal).Count==0,"Calculated search attaches the existing web session to a valid widget modal");
             check(opened.Count==1&&opened[0].Browser.Storage==BrowserStorage.Persistent&&opened[0].Browser.ProfileKey=="websites"&&opened[0].Browser.Background==BrowserBackgroundMode.Automatic,"Website uses a stable widget-specific persistent profile and automatic background behavior");
+            incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-location",url="https://www.pathofexile.com/login"})));
+            var headingDeadline=DateTime.UtcNow.AddSeconds(5);
+            while(!Nodes(View().Root).Any(n=>n.Text=="Path of Exile"))
+            {if(DateTime.UtcNow>headingDeadline)throw new TimeoutException("Website heading did not follow location event.");await Task.Delay(30);}
+            check(opened.Count==1&&navigated==0,"Location events refresh heading without navigating or replacing the session");
             await Action("website-close");
             check(View().Root.Kind!=ViewNodeKind.ModalLayer&&closed==0,"Closing the modal retains the web session and returns to the build");
             await Action("websites.overlay");await Action("trade-open");
@@ -147,6 +159,7 @@ internal static class TradeWorkflowTests
             while(!Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text?.Contains("ranked")==true))
             {if(DateTime.UtcNow>rankDeadline)throw new TimeoutException("Batch ranking did not finish: "+string.Join(" | ",Nodes(View().Root).Select(n=>n.Text)));await Task.Delay(30);}
             await Idle();
+            check(Nodes(View().Root).Where(n=>n.Id.StartsWith("pob.rank.skipped.",StringComparison.Ordinal)&&n.Id!="pob.rank.skipped.title").Any(n=>n.Text=="Gold Ring: "+reason),"Incompatible listings display item name and readable reason without Lua locations");
             var target=Nodes(View().Root).Single(n=>n.Id=="pob.rank.slot").SelectOptions.Single(o=>o.Label.StartsWith("Ring 2 —",StringComparison.Ordinal));
             await Action(target.ActionId);await Action("trade-rank-evaluate");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("2 ranked"))&&ViewSnapshotValidator.Validate(View()).Count==0,"Received batch ranks both listings for an explicit equipment target in a valid native panel");

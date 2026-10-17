@@ -46,7 +46,12 @@ public sealed partial class PobWidget
                 {
                     if(!ReferenceEquals(websiteSession,session))return;
                     if(S(message,"kind")=="page-location")
-                    {try{if(websiteBuild==documentId)SaveTradeReturn(S(message,"url"));}catch(IOException){ShowFeedback("Could not remember trade page","The current website remains open.",ToastTone.Warning);}continue;}
+                    {
+                        var location=S(message,"url");var heading=WebsiteHeading(location);
+                        if(websiteHeading!=heading){websiteHeading=heading;Invalidate();}
+                        try{if(websiteBuild==documentId)SaveTradeReturn(location);}catch(IOException){ShowFeedback("Could not remember trade page","The current website remains open.",ToastTone.Warning);}
+                        continue;
+                    }
                     if(S(message,"kind")=="page-action-error")
                     {ShowFeedback("Website comparison unavailable","Reload the results or use Paste item to compare.",ToastTone.Warning);Invalidate();continue;}
                     if(S(message,"kind")!="page-action")continue;
