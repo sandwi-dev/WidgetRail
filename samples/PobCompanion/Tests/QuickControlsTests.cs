@@ -22,6 +22,9 @@ internal static class QuickControlsTests
         try
         {
             Set("result",baseline);
+            var order=new[]{"Calcs","Skills","Items","Configuration","Tree","Notes"};
+            var nav=Nodes(View().Root).Single(n=>n.Id=="pob.navigation");
+            check(Nodes(nav).Where(n=>n.ActionId?.StartsWith("section.")==true).Select(n=>n.Text).SequenceEqual(order),"Tree is immediately before Notes in the navigation rail");
             foreach(var section in new[]{"Calcs","Tree","Skills","Items","Configuration","Notes"})
             {
                 Set("section",section);Set("detailKind","");

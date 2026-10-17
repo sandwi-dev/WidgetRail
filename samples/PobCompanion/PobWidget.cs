@@ -32,7 +32,9 @@ public sealed partial class PobWidget : Widget
     internal static readonly TimeSpan ErrorFeedbackDuration=TimeSpan.FromSeconds(8);
     private readonly Dictionary<string,int> selections = new();
     private long focusRequestSequence;
+    // Stable section action/focus IDs are independent of display order.
     private static readonly string[] Sections = ["Calcs", "Tree", "Skills", "Items", "Configuration", "Notes"];
+    private static readonly string[] NavigationSections = ["Calcs", "Skills", "Items", "Configuration", "Tree", "Notes"];
     public PobWidget(int game, string payloadDirectory, string? dataDirectory = null)
     {
         this.game = game;
@@ -178,7 +180,7 @@ public sealed partial class PobWidget : Widget
                 if (pendingBefore is not null && !CanReplaceTradeComparison && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
                 children.Add(UI.Stack("pob.section.content",Workspace()).Classes("pob-workspace")
-                    .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(Sections,section)));
+                    .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(NavigationSections,section)));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
             var initial = detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();

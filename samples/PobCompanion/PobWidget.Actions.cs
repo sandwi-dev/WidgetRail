@@ -117,7 +117,7 @@ public sealed partial class PobWidget
             else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";}
             else if(id=="back"&&detailKind=="choose-slot"&&pastedItem is not null) DiscardItemDraft();
             else if(id=="back") { detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;if(section=="Tree")focusRequestSequence++; }
-            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(Sections,section);section=Sections[(index+(id=="next-section"?1:Sections.Length-1))%Sections.Length];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++; }
+            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(NavigationSections,section);section=NavigationSections[(index+(id=="next-section"?1:NavigationSections.Length-1))%NavigationSections.Length];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++; }
             else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++;}
             else if(id=="search") {filter=action.CommittedText??"";passiveReturnKey=null;}
             else if(parts[0]=="config-section"&&parts.Length==2&&int.TryParse(parts[1],out var category)&&category>=0&&category<ConfigurationSections().Length)

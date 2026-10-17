@@ -43,19 +43,20 @@ public sealed partial class PobWidget
 
     private WidgetElement Navigation()
     {
-        var tabs = Sections.Select((s, i) =>
+        var tabs = NavigationSections.Select((s, position) =>
         {
+            var i=Array.IndexOf(Sections,s);
             WidgetElement tab=UI.Button(s,"section."+i,i==0?"pob.section":"pob.tab."+i)
                 .Selected(section==s).Disabled(pendingBefore is not null).Classes("pob-tab");
             if(s=="Notes")tab=UI.Stack("pob.notes.tab-target",tab).RememberChildFocus("pob.tab."+i);
-            return tab.InGrid(column:i+1);
+            return tab.InGrid(column:position+1);
         }).ToList();
         tabs.Insert(0, UI.ControllerGlyph(ControllerButton.LeftBumper, "pob.navigation.previous", "Previous section")
             .Classes("pob-section-hint").InGrid(column: 0));
         tabs.Add(UI.ControllerGlyph(ControllerButton.RightBumper, "pob.navigation.next", "Next section")
-            .Classes("pob-section-hint").InGrid(column: Sections.Length + 1));
+            .Classes("pob-section-hint").InGrid(column: NavigationSections.Length + 1));
         return UI.Grid("pob.navigation", [GridTrack.Auto()],
-            [GridTrack.Auto(), .. Sections.Select(s => GridTrack.Star(s == "Configuration" ? 1.5 : 1)), GridTrack.Auto()],
+            [GridTrack.Auto(), .. NavigationSections.Select(s => GridTrack.Star(s == "Configuration" ? 1.5 : 1)), GridTrack.Auto()],
             tabs.ToArray()).Spacing(0, 5).Classes("pob-tabs");
     }
 
