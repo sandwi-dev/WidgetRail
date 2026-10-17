@@ -5,6 +5,7 @@ local adapterDirectory=assert(arg[0]:match('^(.*[/\\])'),'Adapter requires an ab
 local treeGeometry=dofile(adapterDirectory..'tree-geometry.lua')
 local treePresentation=dofile(adapterDirectory..'tree-presentation.lua')
 local skillManagement=dofile(adapterDirectory..'skill-management.lua')
+local planningFeatures=dofile(adapterDirectory..'planning-features.lua')
 io.stdout:setvbuf('no')
 print = function(...) -- Keep the protocol channel independent of upstream diagnostics.
   local parts = {}; for i=1,select('#',...) do parts[i]=tostring(select(i,...)) end
@@ -16,6 +17,7 @@ io.read = function() error('PoB startup requested an interactive error prompt') 
 dofile('HeadlessWrapper.lua')
 io.read = originalRead
 assert(build, 'PoB initialization failed')
+dofile(adapterDirectory..'beta-compatibility.lua')
 collectgarbage('setpause', 120)
 collectgarbage('setstepmul', 200)
 local function clean(s) return tostring(s or ''):gsub('%^x%x%x%x%x%x%x',''):gsub('%^%d','') end
@@ -75,6 +77,7 @@ local function itemDetails(item,slot)
   -- Reuse upstream presentation formatting, including rolled ranges and
   -- variant filtering. Never expose serialization-only prefix/suffix codes.
   local tooltip=new('Tooltip')
+  if common.classes.Tooltip.Tooltip then tooltip:Tooltip() end
   local previous=build.itemsTab.showStatDifferences
   build.itemsTab.showStatDifferences=false
   local ok=pcall(build.itemsTab.AddItemTooltip,build.itemsTab,tooltip,item,slot,false,600)
@@ -98,7 +101,7 @@ local function itemDetails(item,slot)
   flush();return groups
 end
 local function snapshot()
-  local result={name=clean(build.buildName),level=build.characterLevel,treeVersion=build.spec.treeVersion,
+  local result={name=clean(build.buildName),level=build.characterLevel,treeVersion=build.spec.treeVersion,engineVersion=launch.versionNumber,
     class=build.spec.curClassName,ascendancy=build.spec.curAscendClassName,autoLevel=build.characterLevelAutoMode==true,stats={},trees={},skills={},items={},conditions={},
     notes=clean(build.notesTab.controls.edit.buf),notesRuns=textRuns(build.notesTab.controls.edit.buf),warnings={},loadouts={},nodes={},links={},classes={},ascendancies={},slots={},skillOptions={},breakdowns={}}
   local active=build.calcsTab.mainEnv.player.mainSkill
@@ -106,7 +109,8 @@ local function snapshot()
   result.mainSkillShowsAverage=active and active.skillData and not not active.skillData.showAverage or false
   result.canCreateLoadout=type(build.CustomLoadout)=='function'
   result.skillSlots={}
-  for _,slot in ipairs(build.skillsTab.controls.groupSlot.list)do result.skillSlots[#result.skillSlots+1]={name=slot.slotName or '',label=clean(slot.label or slot.slotName or 'None')}end
+  for _,slot in ipairs(build.skillsTab.controls.groupSlot and build.skillsTab.controls.groupSlot.list or {})do result.skillSlots[#result.skillSlots+1]={name=slot.slotName or '',label=clean(slot.label or slot.slotName or 'None')}end
+  result.skillWeaponSets=build.skillsTab.controls.set1Enabled~=nil
   result.mainSkillGroup=build.mainSocketGroup
   result.mainSkillDisabled=active and (active.disableReason~=nil or active.skillFlags and active.skillFlags.disable==true) or false
   result.mainSkillDisabledReason=active and clean(active.disableReason) or ''
@@ -210,6 +214,16 @@ local function snapshot()
     end
     result.skills[#result.skills+1]={id=i,title=clean(g.label~='' and g.label or (gems[1] and gems[1].name) or 'Group'),gems=gems,enabled=g.enabled~=false,main=i==build.mainSocketGroup,fullDps=g.includeInFullDPS==true,
       generated=g.source~=nil,label=clean(g.label),groupCount=g.groupCount or 1,sourceName=clean(sourceName),sourceKind=g.sourceItem and 'item' or g.sourceNode and 'passive' or g.source and 'automatic' or '',slot=clean(g.slot)}
+    if result.skillWeaponSets then
+      local group=result.skills[#result.skills]
+      group.weaponSets={}
+      local locked=build.skillsTab:IsSocketGroupWeaponSetLocked(g)
+      for set=1,2 do
+        local valid=build.skillsTab:IsSocketGroupWeaponSetValid(g,set)
+        group.weaponSets[set]={id=set,enabled=g['set'..set]~=false,editable=not locked and not g.forcedBoth and valid,
+          reason=g.forcedBoth and 'Reserves Spirit in both weapon sets.' or locked and 'Controlled by the equipment that grants this skill.' or not valid and 'Cannot be used with this weapon set.' or ''}
+      end
+    end
     if g.enabled~=false and g.includeInFullDPS then result.fullDpsIncludedGroups=result.fullDpsIncludedGroups+1 end
   end
   for slotIndex,slot in ipairs(build.itemsTab.orderedSlots) do
@@ -239,6 +253,7 @@ local function snapshot()
     end
   end
   if build.configTab.input.customMods then result.customMods=clean(build.configTab.input.customMods) end
+  planningFeatures.snapshot(result,textRuns,clean)
   local passivePoints,ascendancyPoints=build.spec:CountAllocNodes()
   result.passivePoints=passivePoints;result.ascendancyPoints=ascendancyPoints
   for id,n in pairs(build.spec.nodes) do
@@ -249,7 +264,7 @@ local function snapshot()
       if path and build.spec.GetEffectiveAllocationPath then path=build.spec:GetEffectiveAllocationPath(n) end
       local canAllocate=display.interactive and not n.alloc and not display.granted and path~=nil and not requiresChoice
       result.nodes[#result.nodes+1]={id=id,x=n.x,y=n.y,name=clean(n.dn),allocated=n.alloc==true,kind=n.type,
-        description=clean(table.concat(n.sd or {},'\n')),descriptionRuns=textRuns(table.concat(n.sd or {},'\n')),icon=display.icon,distance=n.pathDist or 0,
+        description=clean(table.concat(n.sd or {},'\n')),descriptionRuns=textRuns(table.concat(n.sd or {},'\n')),note=build.spec.nodeNotes and build.spec.nodeNotes[id]or '',icon=display.icon,distance=n.pathDist or 0,
         visible=display.visible,interactive=display.interactive,decoration=display.decoration,landmark=display.landmark,granted=display.granted,radius=display.radius,
         socketedItem=clean(display.socketedItem),dimmed=display.dimmed,
         ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and display.interactive,requiresChoice=requiresChoice==true and display.interactive,
@@ -288,6 +303,8 @@ local function command(req)
   local op=req.op
   if op=='gem-catalog' then return {state={gemCatalog=skillManagement.catalog(req)},xml=build:SaveDB('code')}end
   if op=='skill-copy' then return {state={groupClipboard=skillManagement.copy(req)},xml=build:SaveDB('code')}end
+  if op=='inspect-item' then return {state={itemEditor=planningFeatures.inspectItem(req,textRuns,clean)},xml=build:SaveDB('code')}end
+  if op=='gem-quality' then return {state={lines=planningFeatures.quality(req,textRuns,clean)},xml=build:SaveDB('code')}end
   if op=='item-slots' then
     assert(type(req.raw)=='string' and #req.raw<=32768,'Invalid item text')
     build.itemsTab:CreateDisplayItemFromRaw(req.raw)
@@ -404,6 +421,7 @@ local function command(req)
     assert(control and control:IsShown(),'Skill option no longer applies')
     validIndex(req.value,control.list);control:SetSel(req.value)
     build.mainSocketGroup=mainGroup
+  elseif planningFeatures.edit(req) then
   elseif op=='config' then
     assert(type(req.key)=='string','Unknown condition')
     local definition;for _,d in ipairs(configDefinitions)do if d.var==req.key then definition=d;break end end

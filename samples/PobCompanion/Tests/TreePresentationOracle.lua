@@ -1,11 +1,12 @@
 -- Compare the adapter's presentation facts with pinned desktop tree metadata.
 -- Run separately from bridge.lua so its snapshot cannot define the expectation.
 local stdout=io.stdout
+local inputPath,importedPath=arg[2],arg[3]
 print=function(...)io.stderr:write(tostring((...))..'\n')end
 local json=require('dkjson')
 local presentation=dofile(arg[1])
 dofile('HeadlessWrapper.lua')
-local file=assert(io.open(arg[2],'rb'));local xml=file:read('*a');file:close()
+local file=assert(io.open(inputPath,'rb'));local xml=file:read('*a');file:close()
 loadBuildFromXML(xml,'Tree audit');runCallback('OnFrame')
 local counts={nodes=0,decorations=0,hidden=0,masteries=0,sockets=0,granted=0,proxies=0}
 local function check(node)
@@ -72,8 +73,8 @@ for _,node in pairs(build.spec.tree.nodes)do
     counts.proxies=counts.proxies+1
   end
 end
-if arg[3]then
-  local file=assert(io.open(arg[3],'rb'));local oldXml=file:read('*a');file:close()
+if importedPath then
+  local file=assert(io.open(importedPath,'rb'));local oldXml=file:read('*a');file:close()
   loadBuildFromXML(oldXml,'Imported tree audit');runCallback('OnFrame')
   local count=0
   for _,node in pairs(build.spec.nodes)do

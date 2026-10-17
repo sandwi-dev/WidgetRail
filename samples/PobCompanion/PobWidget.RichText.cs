@@ -128,6 +128,7 @@ public sealed partial class PobWidget
         AddRuns(rows,ReadFormattedRuns(source,textField,runsField,emphasizeStats),id,css);
     }
 
+    private static string ToneClass(string tone)=>tone switch{"warning"=>"pob-life","blue"=>"pob-blue","gold"=>"pob-gold","orange"=>"pob-orange","green"=>"pob-green","violet"=>"pob-violet","muted"=>"pob-muted","emphasis"=>"pob-emphasis",_=>"pob-text"};
     private static void AddRuns(List<WidgetElement> rows,IReadOnlyList<FormattedRun> runs,string id,string css)
     {
         var spans=new List<WidgetElement>();var paragraph=0;var length=0;var serial=0;
@@ -140,7 +141,7 @@ public sealed partial class PobWidget
         foreach(var run in runs)
         {
             var text=run.Text;var tone=run.Tone;
-            var accent=tone switch{"warning"=>"pob-life","blue"=>"pob-blue","gold"=>"pob-gold","orange"=>"pob-orange","green"=>"pob-green","violet"=>"pob-violet","muted"=>"pob-muted","emphasis"=>"pob-emphasis",_=>"pob-text"};
+            var accent=ToneClass(tone);
             for(var offset=0;offset<text.Length;)
             {
                 if(length>=2400||spans.Count>=128)Flush();

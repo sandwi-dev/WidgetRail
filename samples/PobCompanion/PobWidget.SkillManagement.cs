@@ -8,10 +8,11 @@ public sealed partial class PobWidget
 {
     private JsonElement[] gemCatalog=[];
     private string gemSearch="",gemType="all";
+    private string gemSort="name";
     private int pickerGem;
     private bool skillOrderFocusRequested;
     private (int Group,int Gem,string Name)? skillRemoval;
-    private sealed record GemEntry(string Key,string Name,string Action);
+    private sealed record GemEntry(string Key,string Name,string Action,string Description="");
     private sealed record GemQuery(GemEntry[] Entries);
     private GemQuery gemQuery=new([]);
     private WidgetIndexedCollection<GemQuery,GemEntry>? gemCollection;
@@ -40,6 +41,16 @@ public sealed partial class PobWidget
         if(detailKind=="gem-picker")
         {
             if(id=="gem-search"){gemSearch=action.CommittedText??"";return true;}
+            if(parts is ["gem-sort",var metric]&&(metric=="name"||A(State,"gemSortMetrics").Any(m=>S(m,"id")==metric)))
+            {
+                var targetGroup=detailId;var targetGem=pickerGem;
+                Work(async token=>
+                {
+                    var count=A(A(State,"skills").First(g=>I(g,"id")==targetGroup),"gems").Length;
+                    var sorted=await engine.ExecuteAsync(new{op="gem-catalog",group=targetGroup,gem=targetGem==0?count+1:targetGem,sort=metric},token,result!.Xml);
+                    lock(gate){gemCatalog=A(sorted.State,"gemCatalog");gemSort=metric;}
+                },"Comparing gems with PoB…");return true;
+            }
             if(parts is ["gem-type",var type]&&type is "all" or "active" or "support"){gemType=type;return true;}
             if(parts is ["gem-pick",var choice]&&int.TryParse(choice,out var option)&&option>=0&&option<gemCatalog.Length)
             {Edit(new{op="gem-manage",mode=pickerGem==0?"add":"replace",group=detailId,gem=pickerGem,gemId=S(gemCatalog[option],"id")},skillDestination:"skill-manage");return true;}
@@ -51,6 +62,8 @@ public sealed partial class PobWidget
         if(id=="group-count"&&double.TryParse(action.CommittedText,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out var count))
         {Edit(new{op="skill-group",mode="count",group=detailId,value=count},skillDestination:"skill-manage");return true;}
         if(id=="group-duplicate"){Edit(new{op="skill-group",mode="duplicate",group=detailId},skillDestination:"skill-manage");return true;}
+        if(parts is ["group-weapon-set",var setValue]&&int.TryParse(setValue,out var weaponSet)&&weaponSet is 1 or 2)
+        {Edit(new{op="skill-group",mode="weapon-set",group=detailId,set=weaponSet},skillDestination:"skill-manage");return true;}
         if(id=="group-copy")
         {
             var target=detailId;
@@ -77,7 +90,7 @@ public sealed partial class PobWidget
         var group=detailId;
         var count=A(A(State,"skills").First(g=>I(g,"id")==group),"gems").Length;
         var response=await engine.ExecuteAsync(new{op="gem-catalog",group,gem=gem==0?count+1:gem},token,result!.Xml);
-        lock(gate){gemCatalog=A(response.State,"gemCatalog");gemSearch="";gemType=count==0?"active":"all";pickerGem=gem;detailKind="gem-picker";focusRequestSequence++;}
+        lock(gate){gemCatalog=A(response.State,"gemCatalog");gemSearch="";gemType=count==0?"active":"all";gemSort="name";pickerGem=gem;detailKind="gem-picker";focusRequestSequence++;}
     },"Loading gems…");
 
     private WidgetElement SkillManagementWorkspace()
@@ -94,7 +107,14 @@ public sealed partial class PobWidget
             properties.Add(Text("Granted by "+(S(group,"sourceName").Length>0?S(group,"sourceName"):"this build's effects")+(S(group,"slot").Length>0?" · "+S(group,"slot"):"")+". Its source controls the skill and level.","group-source","pob-muted"));
             properties.Add(Field("Group count (Full DPS)",UI.TextEntry(S(group,"groupCount"),"Count","group-count","pob.group-count",12).Classes("pob-input"),"group-count"));
         }
-        else properties.Add(UI.Select("Socketed in",A(State,"skillSlots").Select((s,i)=>new SelectOption("slot"+i,S(s,"label"),"group-slot."+i,S(s,"name")==S(group,"slot"))).ToArray(),"pob.group-slot").Classes("pob-select"));
+        else if(A(State,"skillSlots").Length>0)properties.Add(UI.Select("Socketed in",A(State,"skillSlots").Select((s,i)=>new SelectOption("slot"+i,S(s,"label"),"group-slot."+i,S(s,"name")==S(group,"slot"))).ToArray(),"pob.group-slot").Classes("pob-select"));
+        foreach(var set in A(group,"weaponSets"))
+        {
+            var setId=I(set,"id");
+            properties.Add(UI.Switch("Weapon set "+setId,B(set,"enabled"),"group-weapon-set."+setId,"pob.group-weapon-set."+setId).Disabled(!B(set,"editable")).Classes("pob-toggle"));
+        }
+        foreach(var reason in A(group,"weaponSets").Select(s=>S(s,"reason")).Where(s=>s.Length>0).Distinct())
+            properties.Add(Text(reason,"group-weapon-reason."+properties.Count,"pob-small pob-muted"));
         properties.Add(Text($"Order · {position+1} of {groups.Length}","group-order","pob-field-label"));
         properties.Add(UI.Row("pob.group-order.actions",Button("Move up","group-up").Disabled(position==0),Button("Move down","group-down").Disabled(position==groups.Length-1))
             .RememberChildFocus(position==0?"pob.group-down":"pob.group-up").Classes("pob-toolbar"));
@@ -150,7 +170,8 @@ public sealed partial class PobWidget
             {lock(gate){if(!ReferenceEquals(query,gemQuery)||detailKind!="gem-picker"||busy||action.ActionId!="choose")return ValueTask.CompletedTask;return OnActionAsync(action with{ActionId=entry.Action},token);}},
         });
         var entries=gemCatalog.Select((gem,i)=>(gem,i)).Where(x=>(gemType=="all"||B(x.gem,"support")== (gemType=="support"))&&S(x.gem,"name").Contains(gemSearch,StringComparison.OrdinalIgnoreCase))
-            .Select(x=>new GemEntry(WidgetIds.Scope("gem").KeyedId("entry",S(x.gem,"id")),S(x.gem,"name")+(B(x.gem,"support")?" · Support":" · Active skill"),"gem-pick."+x.i)).ToArray();
+            .Select(x=>new GemEntry(WidgetIds.Scope("gem").KeyedId("entry",S(x.gem,"id")),S(x.gem,"name")+(B(x.gem,"support")?" · Support":" · Active skill")+
+                (gemSort!="name"&&x.gem.TryGetProperty("comparison",out var value)?" · "+value.GetDouble().ToString("N0",System.Globalization.CultureInfo.InvariantCulture):""),"gem-pick."+x.i)).ToArray();
         if(!gemQuery.Entries.SequenceEqual(entries)){gemQuery=new(entries);gemCollection.PublishQuery(gemQuery,entries.Length);}
         ContainerElement results=UI.Stack("pob.gem-picker.results",entries.Length==0?Text("No matching gems.","gem-picker.empty","pob-muted"):
             UI.CollectionList("pob.gems",gemCollection,64,"Available gems").Classes("pob-scroll")).Classes("pob-workspace");
@@ -160,7 +181,8 @@ public sealed partial class PobWidget
                 UI.Grid("pob.gem-picker.search-row",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
                     Field("Search gems",UI.TextEntry(gemSearch,"Gem name","gem-search","pob.gem-search",100).Classes("pob-input"),"gem-search"),
                     UI.Select("Type",new[]{("all","All gems"),("active","Active skills"),("support","Support gems")}.Select(x=>new SelectOption(x.Item1,x.Item2,"gem-type."+x.Item1,x.Item1==gemType)).ToArray(),"pob.gem-type").Classes("pob-select").InGrid(column:1)).Spacing(0,12),
-                Text($"{entries.Length} gems · Defaults and compatibility follow the current PoB engine.","gem-picker.count","pob-muted")),"pob.gem-search","pob.gem-picker.results","Gems",NeedsQuickControls(entries.Length)),
+                UI.Select("Sort",new[]{new SelectOption("name","Name","gem-sort.name",gemSort=="name")}.Concat(A(State,"gemSortMetrics").Select(m=>new SelectOption(S(m,"id"),S(m,"title"),"gem-sort."+S(m,"id"),gemSort==S(m,"id")))).ToArray(),"pob.gem-sort").Classes("pob-select"),
+                Text(gemSort=="name"?$"{entries.Length} gems · Defaults and compatibility follow the current PoB engine.":$"{entries.Length} gems · PoB ranks supports first, then the chosen total. Main skill: {S(State,"mainSkill")}. This is a comparison, not a recommendation.","gem-picker.count","pob-muted")),"pob.gem-search","pob.gem-picker.results","Gems",NeedsQuickControls(entries.Length)),
             results).Classes("pob-workspace");
     }
 

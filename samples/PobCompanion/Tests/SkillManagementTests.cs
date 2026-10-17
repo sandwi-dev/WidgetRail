@@ -33,6 +33,15 @@ internal static class SkillManagementTests
             check(Main()==main,"Creating a group preserves the main calculation skill");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.group-name")&&Nodes(View().Root).Any(n=>n.Id=="pob.gem-add"),"New group immediately offers label and Add gem controls");
             await Action("group-name","Controller group");check(Group().GetProperty("title").GetString()=="Controller group","Rename applies the authored label");
+            if(Result().State.GetProperty("skillWeaponSets").GetBoolean())
+            {
+                check(!Nodes(View().Root).Any(n=>n.Id=="pob.group-slot")&&Nodes(View().Root).Count(n=>n.Id.StartsWith("pob.group-weapon-set."))==2,"Beta exposes weapon sets instead of removed equipment slot control");
+                await Action("group-weapon-set.1");
+                check(!Group().GetProperty("weaponSets")[0].GetProperty("enabled").GetBoolean()&&Group().GetProperty("weaponSets")[1].GetProperty("enabled").GetBoolean(),"Weapon set toggle uses upstream callback");
+                await Action("group-weapon-set.2");
+                check(Group().GetProperty("weaponSets")[1].GetProperty("enabled").GetBoolean(),"Upstream prevents disabling both weapon sets");
+                await Action("undo");await Action("group-weapon-set.1");
+            }
             var slots=Result().State.GetProperty("skillSlots").EnumerateArray().ToArray();
             var equipmentSlot=Array.FindIndex(slots,s=>s.GetProperty("name").GetString()=="Weapon 1");
             if(equipmentSlot>=0){await Action("group-slot."+equipmentSlot);check(Group().GetProperty("slot").GetString()=="Weapon 1","Equipment assignment uses the upstream slot selector");}

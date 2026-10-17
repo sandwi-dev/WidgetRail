@@ -46,6 +46,7 @@ public sealed partial class PobWidget
             if(A(State,field).Length>0)choices.Add(UI.Select(title,A(State,field).Select(o=>new SelectOption(kind+I(o,"id"),S(o,"title"),kind+"."+I(o,"id"),B(o,"active"))).ToArray(),"pob."+kind).Classes("pob-select").InGrid(column:choices.Count));
         if(choices.Count>0)character.Add(UI.Grid("pob.manage.class",[GridTrack.Auto()],choices.Select(_=>GridTrack.Star()).ToArray(),choices.ToArray()).Spacing(0,12));
         if(recoveryReadOnly)character.Insert(0,Text("Recovered build is read-only. Duplicate it from Saved builds to continue editing.","recovery.readonly","pob-muted"));
+        character.Add(Text("PoB engine · "+S(State,"engineVersion","Unknown"),"engine-version","pob-small pob-muted"));
         if(B(State,"canCreateLoadout"))
         {
             character.Add(Field("Save current setup as a new loadout",UI.TextEntry("","Loadout name, e.g. Midgame","loadout-create","pob.loadout-create",60).Classes("pob-input"),"loadout-create"));

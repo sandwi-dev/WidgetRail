@@ -8,21 +8,47 @@ local function display(group)
   build.skillsTab:SetDisplayGroup(group)
   build.skillsTab:UpdateGemSlots()
 end
-local function catalog(group,gemIndex)
+local function catalog(group,gemIndex,sort)
   display(group)
   local tab=build.skillsTab
   local picker=tab.gemSlots[gemIndex].nameSpec
   picker:PopulateGemList()
-  local result,seen={},{}
-  for _,gem in pairs(picker.gems)do
+  local result,seen,keys={},{},{}
+  for key,gem in pairs(picker.gems)do
     if not seen[gem.id] and not gem.grantedEffect.hideFromGemList and not gem.grantedEffect.hideFromSideBar and
       (not picker.FilterSupport or picker:FilterSupport(gem.id,gem)) then
       seen[gem.id]=true
+      keys[gem.id]=key
       result[#result+1]={id=gem.id,name=gem.name,support=gem.grantedEffect.support==true,
         description=type(gem.grantedEffect.description)=='string' and gem.grantedEffect.description or ''}
     end
   end
   table.sort(result,function(a,b)return a.name==b.name and a.id<b.id or a.name<b.name end)
+  if sort and sort~='name' then
+    assert(picker.DPSBuilder,'This engine does not expose lazy gem comparisons')
+    local allowed=false
+    for _,choice in ipairs(tab.controls.sortGemsByDPSFieldControl.list)do if choice.type==sort then allowed=true end end
+    assert(allowed,'Unknown comparison statistic')
+    local oldSort,oldField=tab.sortGemsByDPS,tab.sortGemsByDPSField
+    tab.sortGemsByDPS=true;tab.sortGemsByDPSField=sort
+    local ok,err=pcall(function()
+      picker:UpdateSortCache()
+      picker:BuildList('')
+      local worker=coroutine.create(function()picker:DPSBuilder()end)
+      while coroutine.status(worker)~='dead'do local success,message=coroutine.resume(worker);assert(success,message)end
+      for _,gem in ipairs(result)do
+        gem.comparison=picker.sortCache.dps[keys[gem.id]] or 0
+        gem.canSupport=picker.sortCache.canSupport[keys[gem.id]]==true
+      end
+      table.sort(result,function(a,b)
+        if a.canSupport~=b.canSupport then return a.canSupport end
+        if a.comparison~=b.comparison then return a.comparison>b.comparison end
+        return a.name==b.name and a.id<b.id or a.name<b.name
+      end)
+    end)
+    tab.sortGemsByDPS=oldSort;tab.sortGemsByDPSField=oldField
+    assert(ok,err)
+  end
   return result
 end
 return {
@@ -42,7 +68,7 @@ return {
     local group=groups[index(req.group,groups)]
     assert(not group.source,'Granted skills cannot have their gems replaced')
     assert(type(req.gem)=='number' and req.gem%1==0 and req.gem>=1 and req.gem<=#group.gemList+1,'Invalid gem slot')
-    return catalog(group,req.gem)
+    return catalog(group,req.gem,req.sort)
   end,
   edit=function(req)
     local tab=build.skillsTab
@@ -65,7 +91,7 @@ return {
         group=groups[#groups]
         local expected=0
         for line in req.text:gmatch('[^\r\n]+')do
-          if line:match('%S') and not line:match('^Label: ') and not line:match('^Slot: ')then expected=expected+1 end
+          if line:match('%S') and not line:match('^Label: ') and not line:match('^Slot: ') and not line:match('^Weapon Set: ')then expected=expected+1 end
         end
         assert(#group.gemList==expected and expected<=64,'Some clipboard gems could not be imported. Paste a full build export instead.')
         for _,gem in ipairs(group.gemList)do assert(not gem.errMsg and (gem.gemData or gem.grantedEffect),'A clipboard gem is unavailable in this engine')end
@@ -98,12 +124,19 @@ return {
         group.groupCount=req.value
       elseif req.mode=='slot' then
         assert(group and not group.source,'A granted skill uses its source equipment slot')
+        assert(tab.controls.groupSlot,'This engine uses per-skill weapon sets')
         display(group)
         local matched=false
         for i,choice in ipairs(tab.controls.groupSlot.list)do
           if (choice.slotName or '')==req.slot then tab.controls.groupSlot:SetSel(i);matched=true;break end
         end
         assert(matched,'Invalid equipment slot')
+      elseif req.mode=='weapon-set' then
+        assert(group and (req.set==1 or req.set==2),'Invalid weapon set')
+        display(group)
+        local control=tab.controls['set'..req.set..'Enabled']
+        assert(control and control:IsEnabled(),'This weapon set is controlled by the skill or its equipment')
+        control.changeFunc(not group['set'..req.set])
       else error('Unknown skill group operation')end
     elseif req.op=='gem-manage' then
       assert(group,'Missing skill group');display(group)

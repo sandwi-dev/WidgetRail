@@ -54,7 +54,9 @@ public sealed partial class PobWidget
     private WidgetElement LibraryWorkspace()
     {
         library??=CreateList("pob.saved-source",false);
-        var builds=savedBuilds.Where(b=>b.Name.Contains(librarySearch,StringComparison.OrdinalIgnoreCase));
+        if(libraryClass.Length>0&&!LibraryClasses().Contains(libraryClass))libraryClass="";
+        var builds=savedBuilds.Where(b=>(b.Name+" "+libraryMetadata.GetValueOrDefault(b.Id).Class+" "+libraryMetadata.GetValueOrDefault(b.Id).Ascendancy).Contains(librarySearch,StringComparison.OrdinalIgnoreCase)&&
+            (libraryClass.Length==0||libraryMetadata.GetValueOrDefault(b.Id).Class==libraryClass));
         if(librarySort=="name")builds=builds.OrderBy(b=>b.Name,StringComparer.OrdinalIgnoreCase);
         var visible=builds.ToArray();
         if(!visible.Any(b=>b.Id==librarySelection))librarySelection=visible.FirstOrDefault().Id;
@@ -66,9 +68,10 @@ public sealed partial class PobWidget
             if(same)library.UpdateContent(libraryQuery);else library.PublishQuery(libraryQuery,entries.Length);
         }
         return UI.Stack("pob.library.workspace",ManagementHeader($"Saved builds · {entries.Length}"),
-            QuickControls(UI.Grid("pob.library.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
+            QuickControls(UI.Grid("pob.library.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto(),GridTrack.Auto()],
                 UI.TextEntry(librarySearch,"Search saved builds","library-search","pob.library.search").Classes("pob-input"),
-                UI.Select("Sort",[new("recent","Recent","library-sort.recent",librarySort=="recent"),new("name","Name","library-sort.name",librarySort=="name")],"pob.library.sort").Classes("pob-select").InGrid(column:1)).Spacing(0,12),
+                UI.Select("Sort",[new("recent","Recent","library-sort.recent",librarySort=="recent"),new("name","Name","library-sort.name",librarySort=="name")],"pob.library.sort").Classes("pob-select").InGrid(column:1),
+                UI.Select("Class",new[]{new SelectOption("all","All classes","library-class.all",libraryClass.Length==0)}.Concat(LibraryClasses().Select((name,i)=>new SelectOption("class"+i,name,"library-class."+i,name==libraryClass))).ToArray(),"pob.library.class").Classes("pob-select").InGrid(column:2)).Spacing(0,12),
                 "pob.library.search","pob.library.results","Builds",NeedsQuickControls(entries.Length)),
             Split("library",QuickControls(UI.Stack("pob.library.results",UI.CollectionList("pob.saved-builds",library,64,"Saved builds").Classes("pob-scroll")).Classes("pob-workspace"),
                 "pob.saved-builds","pob.library.tools","Search / sort",NeedsQuickControls(entries.Length)),
@@ -79,10 +82,12 @@ public sealed partial class PobWidget
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
         if(busy||focusRequestSequence==0)return null;
+        if(modifierFocusRequested&&section=="Configuration"&&configSection=="Custom modifiers"&&string.IsNullOrWhiteSpace(filter))return new(){RequestId=focusRequestSequence,GroupId="pob.custom.edit-tools"};
         if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};
         if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.history"};
         if(detailKind=="skill-manage"&&skillOrderFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.group-order.actions"};
         if(detailKind is "skill-manage" or "gem-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="gem-picker"?"pob.gem-picker.tools":"pob.skill-manage.tools"};
+        if(detailKind is "item-manage" or "feature-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="feature-picker"?"pob.choice-tools":"pob.item-edit.controls"};
         if(detailKind.Length>0&&!InlineDetail)return null;
         if(section=="Tree"&&detailKind!="node"&&passiveReturnKey is not null&&passives is not null)
         {

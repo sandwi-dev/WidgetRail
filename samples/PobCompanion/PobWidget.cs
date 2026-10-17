@@ -199,7 +199,7 @@ public sealed partial class PobWidget : Widget
             {
                 FocusGroupEntryRequest = ContentFocusRequest(),
             };
-            return WithSkillConfirmation(WithBuildConfirmation(view));
+            return WithPlanningModal(WithSkillConfirmation(WithBuildConfirmation(view)));
         }
     }
 
@@ -242,7 +242,7 @@ public sealed partial class PobWidget : Widget
         var title=InlineLabel(S(c,"title"),S(c,"id"));
         var categoryTarget="pob.config.category."+Math.Max(0,Array.IndexOf(ConfigurationSections(),configSection));
         if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            return UI.Switch(title,value.GetBoolean(),"condition."+key,"pob.condition."+key).FocusLeft(categoryTarget).Classes("pob-toggle");
+            return UI.Switch(title,value.GetBoolean(),"condition."+key,"pob.condition."+key).FocusLeft(categoryTarget).Shortcut(ControllerButton.X,"Compare toggle",actionId:"config-compare."+key).Classes("pob-toggle");
         var options=A(c,"options");
         if (options.Length>0)
         {
@@ -290,6 +290,7 @@ public sealed partial class PobWidget : Widget
         {
             rows.Add(Text(B(n,"allocated")?$"Allocated. Refunding affects {I(n,"refundCount")} node(s).":B(n,"granted")?"Granted by an item; no passive points spent.":B(n,"canAllocate")?$"Allocation path: {I(n,"pathCount")} node(s).":B(n,"requiresChoice")?"This node needs a choice in desktop PoB before importing.":"No available allocation path for this build.","node.state","pob-muted"));
             if(B(n,"canAllocate") || B(n,"canRefund")) rows.Add(Button(B(n,"allocated")?"Preview refund":"Preview allocation path","node-change"));
+            if(B(State,"canEditNodeNotes")&&B(n,"allocated"))rows.Add(Field("Node note",UI.TextEntry(S(n,"note"),"Add a note for this passive","node-note","pob.node-note",1024).Classes("pob-input"),"node-note"));
         }
         return rows;
     }
@@ -309,6 +310,7 @@ public sealed partial class PobWidget : Widget
                 .InGrid(column:index)).ToArray();
             var card=new List<WidgetElement>{Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue"),
                 UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],fields.Select(_=>GridTrack.Star()).ToArray(),controls).Spacing(0,8)};
+            card.Add(Button("Quality effects","gem-quality."+id));
             if(B(gem,"levelReadOnly"))
             {
                 var source=S(skill,"sourceName");var slot=S(skill,"slot");

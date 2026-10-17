@@ -45,6 +45,10 @@ def build_atlas(metadata, destination, category, tile, columns, directory, quali
             if layers:
                 if not 1 <= rect['layer'] <= len(layers): raise ValueError('Invalid DDS layer')
                 image=layers[rect['layer']-1]
+                if 'x' in rect:
+                    x,y,w,h=(rect[k] for k in ('x','y','w','h'))
+                    if min(x,y)<0 or min(w,h)<=0 or x+w>image.width or y+h>image.height: raise ValueError('Sprite outside DDS layer')
+                    image=image.crop((x,y,x+w,y+h))
             else:
                 x,y,w,h=(rect[k] for k in ('x','y','w','h'))
                 if min(x,y)<0 or min(w,h)<=0 or x+w>sheet.width or y+h>sheet.height: raise ValueError('Sprite outside atlas')

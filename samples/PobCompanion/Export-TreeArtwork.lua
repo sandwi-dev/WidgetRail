@@ -23,7 +23,10 @@ for _,kind in ipairs(kinds)do
 end
 for file,entries in pairs(tree.ddsCoords or {})do
   if not file:match('^skills%-disabled')then
-    for name,layer in pairs(entries)do out[name]={file=file,layer=layer}end
+    for name,coords in pairs(entries)do
+      out[name]=type(coords)=='table' and {file=file,x=coords[1],y=coords[2],w=coords[3],h=coords[4],layer=coords[5]}
+        or {file=file,layer=coords}
+    end
   end
 end
 local used,decorations={},{}

@@ -104,6 +104,8 @@ public sealed partial class PobWidget
 
     private WidgetElement Workspace()
     {
+        if(detailKind=="item-manage")return ItemManagementWorkspace();
+        if(detailKind=="feature-picker")return FeaturePickerWorkspace();
         if(detailKind=="library")return LibraryWorkspace();
         if(detailKind=="skill-manage")return SkillManagementWorkspace();
         if(detailKind=="gem-picker")return GemPickerWorkspace();
@@ -228,6 +230,7 @@ public sealed partial class PobWidget
         { detailKind = kind; detailId = selections.TryGetValue(kind, out var remembered) && entries.Any(e => I(e, "id") == remembered) ? remembered : I(entries[0], "id"); }
         var header = new List<WidgetElement> { Text(skills ? "Skill groups" : "Equipped items", "list.heading", "pob-eyebrow") };
         AddSet(header, skills ? "skillSets" : "itemSets", skills ? "skills" : "items");
+        if(!skills)foreach(var (rune,i) in A(State,"characterRunes").Select((r,i)=>(r,i)))header.Add(Button(S(rune,"title")+" "+Plain(S(A(rune,"options").FirstOrDefault(o=>B(o,"active")),"title","Choose rune")),"character-rune."+i));
         if(skills)header.Add(UI.Row("pob.group-create.actions",Button("New group","group-create"),Button("Paste group","group-paste")).Classes("pob-toolbar"));
         var list = new List<WidgetElement>();
         foreach (var entry in entries)
@@ -255,7 +258,7 @@ public sealed partial class PobWidget
         var detailPanel=UI.Stack("pob.detail",
             Text(skills ? "Skill details" : "Item details", "detail.heading", "pob-eyebrow"),
             skills?UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId),Button("Manage group","group-manage").FocusLeft(returnId)).Classes("pob-toolbar"):
-                UI.Button(pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action).FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),
+                UI.Row("pob.item.tools",UI.Button(pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action).FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),Button("Item settings","item-manage").FocusLeft(returnId).Disabled(entries.Length==0)).Classes("pob-toolbar"),
             UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
             .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
         if(skills&&entries.Length==0)

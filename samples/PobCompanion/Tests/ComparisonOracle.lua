@@ -19,6 +19,7 @@ end
 load(beforePath);local before=copyTable(build.calcsTab.mainOutput,true)
 load(afterPath)
 local tooltip=new('Tooltip')
+if common.classes.Tooltip.Tooltip then tooltip:Tooltip() end
 build:AddStatComparesToTooltip(tooltip,before,build.calcsTab.mainOutput,'')
 local lines={}
 for _,line in ipairs(tooltip.lines)do

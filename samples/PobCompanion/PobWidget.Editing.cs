@@ -20,6 +20,7 @@ public sealed partial class PobWidget
         var before=result!;
         var next=await engine.ExecuteAsync(command is Func<object> create?create():command,token,before.Xml);
         var options=await ReadVisibleSkillOptionsAsync(next,token);
+        await RefreshItemEditorAsync(next,token);
         // Cancellation or calculation failure before this boundary never saves
         // a partial edit or changes history. Publication follows atomic file save.
         token.ThrowIfCancellationRequested();
@@ -44,6 +45,7 @@ public sealed partial class PobWidget
         var before=result!;var xml=source.Peek();
         var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);
         var options=await ReadVisibleSkillOptionsAsync(next,token);
+        await RefreshItemEditorAsync(next,token);
         BuildDocument.VerifySkillPreservation(xml,next.Xml);
         token.ThrowIfCancellationRequested();
         var remaining=source.Skip(1).ToArray();var moved=destination.Prepend(before.Xml).Take(12).ToArray();

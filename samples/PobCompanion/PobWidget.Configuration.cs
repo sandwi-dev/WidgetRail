@@ -9,7 +9,7 @@ public sealed partial class PobWidget
 {
     private string configSection = "";
     private bool configHelp;
-    private string[] ConfigurationSections() => A(State,"conditions").Select(c=>S(c,"section","General")).Distinct().ToArray();
+    private string[] ConfigurationSections() => A(State,"conditions").Select(c=>S(c,"section","General")).Concat(A(State,"customModGroups").Length>0?["Custom modifiers"]:Array.Empty<string>()).Distinct().ToArray();
     private static string InlineLabel(string value,string fallback="Value")
     {
         var label=Regex.Replace(value,@"\s+"," ").Trim();
@@ -25,7 +25,7 @@ public sealed partial class PobWidget
         var matching=all.Where(c=>searching
             ? (S(c,"title")+" "+S(c,"section")+" "+S(c,"description")).Contains(filter,StringComparison.OrdinalIgnoreCase)
             : S(c,"section","General")==configSection).ToArray();
-        var editable=matching.FirstOrDefault(c=>S(c,"id")!="customMods" && S(c,"value").Length<=2048);
+        var editable=matching.FirstOrDefault(c=>S(c,"id")!="customMods" && S(c,"kind")!="customMods" && S(c,"value").Length<=2048);
         var firstId=editable.ValueKind==JsonValueKind.Object?"pob.condition."+Array.FindIndex(all,c=>S(c,"id")==S(editable,"id")):null;
         var controlsId="pob.config.controls."+(searching?"search":Array.IndexOf(sections,configSection).ToString());
         var navigation=new List<WidgetElement> {Text("Configuration set","config.set-label","pob-field-label")};
@@ -59,7 +59,7 @@ public sealed partial class PobWidget
             if(searching&&group!=previousGroup)controls.Add(Text(group,"config.group."+index,"pob-heading"));
             previousGroup=group;
             var rows=new List<WidgetElement>();
-            if(S(condition,"id")=="customMods" || S(condition,"value").Length>2048)
+            if(S(condition,"id")=="customMods" || S(condition,"kind")=="customMods" || S(condition,"value").Length>2048)
             {
                 rows.Add(Text(S(condition,"id")=="customMods"?"Custom modifiers":InlineLabel(S(condition,"title")),"config.readonly."+index,"pob-field-label"));
                 var value=S(condition,"value");
@@ -72,10 +72,12 @@ public sealed partial class PobWidget
                 AddFormatted(rows,condition,"description","descriptionRuns","config.description."+index,"pob-help",emphasizeStats:true);
             controls.Add(UI.Stack("pob.config.row."+index,rows.ToArray()).Classes("pob-setting"));
         }
-        if(matching.Length==0)controls.Add(Text("No matching settings. Try another search.","config.empty","pob-muted"));
+        var customMatches=searching?A(State,"customModGroups").Where(g=>(S(g,"title")+" "+S(g,"text")).Contains(filter,StringComparison.OrdinalIgnoreCase)).ToArray():[];
+        foreach(var group in customMatches)controls.Add(Button("Custom modifiers · "+S(group,"title"),"custom-open."+I(group,"id")));
+        if(matching.Length==0&&customMatches.Length==0)controls.Add(Text("No matching settings. Try another search.","config.empty","pob-muted"));
         var right=UI.VerticalScroll(controlsId,controls.ToArray()).Classes("pob-scroll","pob-panel");
         if(firstId is not null)right=right.RememberChildFocus(firstId);
-        return Split("configuration",sidebar,right,1,2.6);
+        return Split("configuration",sidebar,!searching&&configSection=="Custom modifiers"?CustomModsPanel():right,1,2.6);
     }
 
     private WidgetElement NotesWorkspace()

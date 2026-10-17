@@ -11,7 +11,7 @@ public sealed partial class PobWidget
     private readonly HashSet<string> quickControlTargets = new(StringComparer.Ordinal);
     private string? quickControlTarget;
     private bool BuildControlsAvailable => result is not null && !ManagementView && !busy &&
-        pendingBefore is null && pendingImport is null && deleteBuildId is null && skillRemoval is null;
+        pendingBefore is null && pendingImport is null && deleteBuildId is null && skillRemoval is null && featureReading is null && featureRemoval is null;
 
     private ContainerElement QuickControls(ContainerElement group, string initial, string destination,
         string label, bool enabled, bool preview = false)

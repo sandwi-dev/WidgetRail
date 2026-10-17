@@ -2,6 +2,22 @@ namespace WidgetRail.Samples.PobCompanion;
 
 public sealed partial class PobWidget
 {
+    private readonly Dictionary<string,(DateTime Stamp,string Class,string Ascendancy)> libraryMetadata=new();
+    private string libraryClass="";
+    private string[] LibraryClasses()=>savedBuilds.Select(b=>libraryMetadata.GetValueOrDefault(b.Id).Class??"").Where(c=>c.Length>0).Distinct().Order(StringComparer.Ordinal).ToArray();
+    private void RefreshBuildMetadata(string id)
+    {
+        var file=new FileInfo(Path.Combine(dataDirectory,id+".xml"));
+        if(!file.Exists||libraryMetadata.TryGetValue(id,out var cached)&&cached.Stamp==file.LastWriteTimeUtc)return;
+        try
+        {
+            using var reader=System.Xml.XmlReader.Create(file.FullName,new(){DtdProcessing=System.Xml.DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=BuildDocument.MaximumBytes});
+            reader.MoveToContent();
+            if(reader.ReadToDescendant("Build"))libraryMetadata[id]=(file.LastWriteTimeUtc,reader.GetAttribute("className")??"",reader.GetAttribute("ascendClassName")??"");
+        }
+        catch(Exception error)when(error is IOException or System.Xml.XmlException or UnauthorizedAccessException)
+        {libraryMetadata[id]=(file.LastWriteTimeUtc,"","");}
+    }
     private string BuildName() => savedBuilds.FirstOrDefault(item=>item.Id==documentId).Name ?? S(State,"mainSkill","New build");
     private void EnsureBuildName(PobResult build,string? targetId=null)
     {
@@ -31,6 +47,6 @@ public sealed partial class PobWidget
                 var label=File.Exists(path)&&new FileInfo(path).Length<=1024?File.ReadAllText(path).Trim():"";
                 return (Id:id,Name:label.Length>0?Limit(label,100):"Saved build · "+file.LastWriteTime.ToString("g"));
             }).ToArray();
-        lock(gate)savedBuilds=entries;
+        lock(gate){foreach(var entry in entries)RefreshBuildMetadata(entry.Id);savedBuilds=entries;}
     }
 }

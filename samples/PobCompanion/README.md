@@ -1,6 +1,6 @@
 # PoE Build Companion
 
-Two controller-first widgets share one implementation and run the unmodified Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ.
+Two controller-first widgets share one implementation and run pinned Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ. Calculation rules remain upstream; the adapter translates editor actions and presentation.
 
 ## Screenshots
 
@@ -14,6 +14,32 @@ Native WidgetRail captures in Velvet Dusk, using midgame and late-game setups fr
 ## Using a build
 
 Paste a PoB share code or supported public build link, or enter the path to an exported XML file. The widget keeps the original import and a separate working copy. It reopens the selected working copy after restart.
+
+Standard PoB codes copied from poe.ninja or pob.cool use the same import path and require no site-specific sign-in or integration. Direct URL downloading currently supports pobb.in only; a poe.ninja profile URL is not itself a PoB code. Older codes can be migrated by newer engines, but reverse compatibility is not guaranteed. A beta export may contain fields an older engine does not understand, and different engine versions can calculate different totals. Import validation preserves authored gems, including supports attached to item-granted skills, while allowing upstream to merge duplicate generated base-skill groups.
+
+## PoE 2 beta feature audit
+
+The PoE 2 package is pinned to upstream's **2026-10-16 beta**, manifest version `0.23.1-bb52d6b36`, commit `84a11f1295f67a25f434329197444438514983f1`. This is the upstream `beta` branch snapshot, not a new stable release. The engine includes the 0.5.5 data update; `Tree 0.5` names the tree family rather than a patch or engine release. Build & import shows the running engine version.
+
+| Beta change | Companion handling |
+| --- | --- |
+| Game data, new uniques/runes, conversion, critical chance, mana cost, support-level and other calculation fixes | Inherited from the pinned engine; calculations are not reimplemented. |
+| Per-skill weapon sets | Manage group exposes both sets and upstream restrictions for weapon-granted and Spirit-reserving skills. At least one set must remain enabled. |
+| Grouped custom modifiers | Configuration → Custom modifiers supports group creation, renaming, enabling, deletion, clipboard replacement, and individual line editing. Unsupported lines remain visible. Long lists are virtualized. Edits use the normal durable Undo/Redo history. |
+| Configuration comparisons | X on a boolean setting previews its toggle effect. Custom modifier groups also offer Compare toggle. These read-only comparisons do not save a change. |
+| Martial Artist character rune slots | Items exposes the additional slots when Runic Meridians grants them. Searchable selectors use upstream eligibility and callbacks. |
+| Item modifier toggles, new unique variants and jewel catalysts | Item settings exposes applicable upstream controls and individual modifier switches. Rune/variant choices use a searchable virtualized picker; X shows full rune details. Edits affect the underlying item shared by any sets that equip it, and support Undo/Redo. |
+| Lazy gem ranking | The gem picker can rank by the upstream statistic choices, including Full DPS. Name sorting remains immediate; comparison sorting runs on demand with Cancel. Rankings follow PoB's support-first order and identify the main calculation skill. |
+| Gem quality explanations | Quality effects opens the selected gem's upstream tooltip, preserving its descriptions and reference-quality labels. |
+| Per-node author notes | Allocated nodes expose a saved note field. Notes survive XML export/import and normal idle unloading. |
+| Named weapon-set point warnings and sidebar breakdowns | Existing warning and calculation-inspector projections receive the updated upstream content. |
+| Build-list class filtering | Saved builds can filter by class and search class/ascendancy metadata as well as names. The managed library is flat, so recursive desktop folders do not apply. |
+| Item filtering by loadout | The companion's equipped-items view follows the chosen item set; it does not expose the desktop inventory/stash browser. |
+| Tree texture offsets | Artwork generation handles both legacy DDS array layers and cropped DDS coordinates. |
+
+Trade search, OAuth/account integration and in-game `.build` export remain outside this build-planning update. Existing larger desktop gaps also remain: the full affix-crafting editor, independent set management, specialized gem controls and some special passive choices. The audit distinguishes these from capabilities inherited through the engine; it is not a claim of complete desktop parity.
+
+The beta also changes headless startup and class constructors. Its `copyTableSafe` can write into the original object while copying new parent proxies, causing repeated attribute-node restoration to consume gigabytes. `Engine/beta-compatibility.lua` provides a narrowly scoped deep-copy correction for the new constructor API: copy raw fields first, preserve class identity, and reconnect cloned parent proxies. Upstream source files and calculation modules remain unchanged. `Tests/BetaCopyRegression.lua` verifies source isolation and proxy ownership; reconsider this compatibility helper when upgrading the engine pin.
 
 For engines with linked loadouts, **Build & import → Save current setup as a new loadout** creates independent tree, item, skill and configuration sets. Existing loadouts remain accessible even when they previously shared a single set. Switching sets retains the main skill by its identity when there is one unambiguous match; otherwise it selects the first group instead of retaining an unrelated row number.
 
@@ -35,7 +61,7 @@ Group and gem management also saves immediately and participates in the same Und
 
 Copy group and Paste skill group use desktop PoB's clipboard format and parser. If that parser cannot recognize every pasted gem, the paste is rejected without saving a partial group. Delete all editable groups affects the current skill set and keeps automatically granted groups. These operations also participate in Undo/Redo.
 
-The core group workflows above follow desktop PoB. Desktop features still outside this editor include skill-set creation/deletion, gem catalog sorting by calculated DPS, and the full set of specialized gem controls (such as corruption, alternate variants and global-effect toggles). This is not a claim of complete Skills-tab parity.
+The core group workflows above follow desktop PoB. Desktop features still outside this editor include skill-set creation/deletion and the full set of specialized gem controls (such as corruption, alternate variants and global-effect toggles). This is not a claim of complete Skills-tab parity.
 
 Node allocation/refunds, equipment replacements and structural class/ascendancy changes retain a comparison preview. Previews are saved automatically as pending work, without applying them. **Apply** commits the proposal; **Discard** restores the previous calculations without consuming Undo or Redo history. Both decisions persist. Refund previews include dependent nodes. Pasted items awaiting a slot also survive unloading; **Discard item draft** explicitly removes them. Export uses the upstream engine's XML format and standard compressed share-code encoding. Unlike desktop PoB's separate Save action, the companion continues to save its working copy automatically.
 

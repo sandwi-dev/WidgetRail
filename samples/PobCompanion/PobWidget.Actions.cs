@@ -15,6 +15,8 @@ public sealed partial class PobWidget
             if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
             var id=action.ActionId; var parts=id.Split('.');
+            modifierFocusRequested=false;
+            if(featureReading is not null||featureRemoval is not null){HandlePlanningAction(action);Invalidate();return ValueTask.CompletedTask;}
             if(id is not "group-up" and not "group-down")skillOrderFocusRequested=false;
             if(pendingImport is {} importing)
             {
@@ -40,6 +42,7 @@ public sealed partial class PobWidget
                 return ValueTask.CompletedTask;
             }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
+            if(HandlePlanningAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(id is not "undo" and not "redo")historyFocusRequested=false;
             if(HandleSkillManagementAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(id=="apply"&&pendingBefore is not null)
