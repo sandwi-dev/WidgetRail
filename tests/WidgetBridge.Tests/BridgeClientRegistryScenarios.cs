@@ -2757,6 +2757,12 @@ internal sealed class RegistryTestClient(
     }
     internal List<WidgetIntentRequest> Intents { get; } = [];
     internal Func<WidgetIntentRequest, CancellationToken, Task<WidgetIntentResult>>? IntentHandler { get; set; }
+    internal Func<WidgetIntentRequest, CancellationToken, Task<WidgetIntentRequest?>>? PreparationHandler { get; set; }
+    public Task<WidgetIntentRequest?> PrepareOutgoingIntentAsync(WidgetIntentRequest intent,int expectedStartOrdinal,CancellationToken cancellationToken)
+    {
+        if(!IsRunning||Starts!=expectedStartOrdinal)throw new WidgetInputWorkerRetiredException();
+        return PreparationHandler?.Invoke(intent,cancellationToken)??Task.FromResult<WidgetIntentRequest?>(null);
+    }
     public Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

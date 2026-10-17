@@ -9,7 +9,7 @@ internal static class BrowserAddressInput
     internal static string? Resolve(string input)
     {
         var value = input.Trim();
-        if (value.Length == 0 || value.Length > 2048 || value.Any(char.IsControl)) return null;
+        if (value.Length == 0 || value.Length > WebBrowserDocument.MaximumUrlLength || value.Any(char.IsControl)) return null;
         if (WebBrowserDocument.IsWebUrl(value)) return value;
 
         // Recognize bare domains, IP addresses and localhost without mistaking

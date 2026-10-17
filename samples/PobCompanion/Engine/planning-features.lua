@@ -11,6 +11,7 @@ local function controlOptions(control)
   return choices
 end
 local itemControls={
+  {'displayItemQualityEdit','Quality'},{'displayItemInfluence','Influence'},{'displayItemInfluence2','Second influence'},
   {'displayItemVersion','Item version'},{'displayItemBaseVariant','Base variant'},
   {'displayItemVariant','Variant'},{'displayItemAltVariant','Variant 2'},{'displayItemAltVariant2','Variant 3'},
   {'displayItemAltVariant3','Variant 4'},{'displayItemAltVariant4','Variant 5'},{'displayItemAltVariant5','Variant 6'},
@@ -32,18 +33,32 @@ local function modLines()
   end
   return lines
 end
-function M.inspectItem(req,textRuns,clean)
-  local value=item(req);local result={controls={},mods={}}
+function M.inspectDisplayItem(textRuns,clean)
+  local result={controls={},mods={}}
   for _,entry in ipairs(itemControls)do
     local c=build.itemsTab.controls[entry[1]]
     if c and c:IsShown()then
-      result.controls[#result.controls+1]={id=entry[1],title=entry[2],value=c.buf,options=controlOptions(c),enabled=c:IsEnabled()}
+      local options=controlOptions(c)
+      if (entry[1]=='displayItemInfluence'or entry[1]=='displayItemInfluence2')and options[1]then options[1].title='None'end
+      result.controls[#result.controls+1]={id=entry[1],title=entry[2],value=c.buf,options=options,enabled=c:IsEnabled()}
     end
   end
   if build.itemsTab.ToggleDisplayItemModLine then
     for i,line in ipairs(modLines())do result.mods[#result.mods+1]={id=i,text=clean(line.text),runs=textRuns(line.text),enabled=not line.mod.disabled}end
   end
   return result
+end
+function M.inspectItem(req,textRuns,clean)
+  item(req);return M.inspectDisplayItem(textRuns,clean)
+end
+function M.applyDisplayControl(req)
+  local allowed=false;for _,entry in ipairs(itemControls)do if entry[1]==req.control then allowed=true end end
+  local c=allowed and build.itemsTab.controls[req.control]
+  assert(c and c:IsShown()and c:IsEnabled(),'This item setting is not available')
+  if req.control=='displayItemCatalystQualityEdit'or req.control=='displayItemQualityEdit'then
+    assert(type(req.value)=='number'and req.value%1==0 and req.value>=0 and req.value<=99,'Quality must be between 0 and 99')
+    c:SetText(tostring(req.value),true)
+  else index(req.value,c.list);c:SetSel(req.value)end
 end
 function M.snapshot(result,textRuns,clean)
   local tab=build.configTab
@@ -103,12 +118,7 @@ function M.edit(req)
       assert(build.itemsTab.ToggleDisplayItemModLine,'This engine cannot toggle item modifiers')
       build.itemsTab:ToggleDisplayItemModLine(index(req.id,modLines()).mod)
     else
-      local allowed=false;for _,entry in ipairs(itemControls)do if entry[1]==req.control then allowed=true end end
-      local c=allowed and build.itemsTab.controls[req.control]
-      assert(c and c:IsShown()and c:IsEnabled(),'This item setting is not available')
-      if req.control=='displayItemCatalystQualityEdit' then
-        assert(type(req.value)=='number'and req.value%1==0 and req.value>=0 and req.value<=99,'Quality must be between 0 and 99');c.changeFunc(tostring(req.value))
-      else index(req.value,c.list);c:SetSel(req.value)end
+      M.applyDisplayControl(req)
     end
     build.itemsTab:PopulateSlots();build.itemsTab:AddUndoState();build.buildFlag=true
   elseif req.op=='node-note' then

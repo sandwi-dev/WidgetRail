@@ -6,6 +6,13 @@ local treeGeometry=dofile(adapterDirectory..'tree-geometry.lua')
 local treePresentation=dofile(adapterDirectory..'tree-presentation.lua')
 local skillManagement=dofile(adapterDirectory..'skill-management.lua')
 local planningFeatures=dofile(adapterDirectory..'planning-features.lua')
+local gameExport=dofile(adapterDirectory..'build-export.lua')
+local setManagement=dofile(adapterDirectory..'set-management.lua')
+local tradeSearch=dofile(adapterDirectory..'trade-search.lua')
+local itemAuthoring=dofile(adapterDirectory..'item-authoring.lua')
+itemAuthoring.configure(planningFeatures)
+local passiveChoices=dofile(adapterDirectory..'passive-choices.lua')
+local calculationViews=dofile(adapterDirectory..'calculation-views.lua')
 io.stdout:setvbuf('no')
 print = function(...) -- Keep the protocol channel independent of upstream diagnostics.
   local parts = {}; for i=1,select('#',...) do parts[i]=tostring(select(i,...)) end
@@ -25,6 +32,7 @@ local textRuns=dofile(adapterDirectory..'text-runs.lua')
 local function finite(v) return type(v)=='number' and v==v and v~=math.huge and v~=-math.huge end
 local configDefinitions=LoadModule('Modules/ConfigOptions')
 local skillControlNames={'mainSkill','statSet','mainSkillPart','mainSkillMinion','mainSkillMinionSkill','mainSkillMinionSkillStatSet'}
+local skillNumberControls={mainSkillStageCount='Stages',mainSkillMineCount='Active mines'}
 local function configValue(d)
   local value=build.configTab.input[d.var]
   if value~=nil then return value end
@@ -131,6 +139,12 @@ local function snapshot()
       result.skillOptions[#result.skillOptions+1]={id=name,options=options}
     end
   end
+  for _,name in ipairs({'mainSkillStageCount','mainSkillMineCount'})do
+    local control=build.controls[name]
+    if control and control:IsShown()then
+      result.skillOptions[#result.skillOptions+1]={id=name,title=skillNumberControls[name],kind='number',value=control.buf or ''}
+    end
+  end
   for id,c in pairs(build.spec.tree.classes) do result.classes[#result.classes+1]={id=id,title=clean(c.name),active=id==build.spec.curClassId} end
   table.sort(result.classes,function(a,b)return a.id<b.id end)
   for id,c in pairs(build.spec.curClass.classes) do result.ascendancies[#result.ascendancies+1]={id=id,title=clean(c.name),active=id==build.spec.curAscendClassId} end
@@ -167,7 +181,8 @@ local function snapshot()
       if detail.rowList and detail.colList then
         for _,column in ipairs(detail.colList)do columns[#columns+1]=clean(column.label or column.key)end
         for i,row in ipairs(detail.rowList)do
-          if i>100 then break end
+          -- Compact overview excerpt; calculation-detail returns every source.
+          if i>5 then break end
           local cells={};for _,column in ipairs(detail.colList)do
             local value=row[column.key];local text=(type(value)=='string'or type(value)=='number')and tostring(value)or'—'
             cells[#cells+1]={text=clean(text),runs=textRuns(text)}
@@ -259,7 +274,8 @@ local function snapshot()
   for id,n in pairs(build.spec.nodes) do
     if finite(n.x) and finite(n.y) then
       local display=treePresentation(build,n)
-      local requiresChoice=n.type=='Mastery' or n.isMultipleChoiceOption or n.isSwitchable
+      local choiceKind=passiveChoices.kind(n)
+      local requiresChoice=choiceKind~=''
       local path=n.path
       if path and build.spec.GetEffectiveAllocationPath then path=build.spec:GetEffectiveAllocationPath(n) end
       local canAllocate=display.interactive and not n.alloc and not display.granted and path~=nil and not requiresChoice
@@ -268,6 +284,7 @@ local function snapshot()
         visible=display.visible,interactive=display.interactive,decoration=display.decoration,landmark=display.landmark,granted=display.granted,radius=display.radius,
         socketedItem=clean(display.socketedItem),dimmed=display.dimmed,
         ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and display.interactive,requiresChoice=requiresChoice==true and display.interactive,
+        choiceKind=choiceKind,canChoose=requiresChoice and display.interactive and not display.granted and(n.alloc==true or path~=nil),
         pathCount=path and #path or 0,refundCount=n.depends and #n.depends or 0}
     end
   end
@@ -301,7 +318,19 @@ end
 local function command(req)
   local compareBase=req.compare==true and copyTable(build.calcsTab.mainOutput,true)or nil
   local op=req.op
+  if op=='game-export' then return {state={files=gameExport.export(req)},xml=build:SaveDB('code')}end
+  if op=='trade-search' then return {state={query=tradeSearch.generate(req)},xml=build:SaveDB('code')}end
+  if op=='item-bases' then return{state={choices=itemAuthoring.bases(clean)},xml=build:SaveDB('code')}end
+  if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean)},xml=build:SaveDB('code')}end
+  if op=='item-unique-draft' then return{state={authoring=itemAuthoring.uniqueDraft(req,clean,textRuns)},xml=build:SaveDB('code')}end
+  if op=='passive-choices'then return{state={choices=passiveChoices.choices(req,clean)},xml=build:SaveDB('code')}end
+  if op=='calculation-catalog'then return{state=calculationViews.catalog(clean,textRuns),xml=build:SaveDB('code')}end
+  if op=='calculation-detail'then return{state=calculationViews.detail(req,clean,textRuns),xml=build:SaveDB('code')}end
+  if op=='item-draft' then assert(not req.itemId,'Draft edits cannot modify saved items');return{state={authoring=itemAuthoring.draft(req,clean,textRuns)},xml=build:SaveDB('code')}end
+  if op=='inventory-list'then return{state={inventory=itemAuthoring.inventory(clean)},xml=build:SaveDB('code')}end
+  if op=='inventory-inspect'then return{state={authoring=itemAuthoring.inspect(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='gem-catalog' then return {state={gemCatalog=skillManagement.catalog(req)},xml=build:SaveDB('code')}end
+  if op=='gem-controls'then return{state=skillManagement.gemControls(req,clean),xml=build:SaveDB('code')}end
   if op=='skill-copy' then return {state={groupClipboard=skillManagement.copy(req)},xml=build:SaveDB('code')}end
   if op=='inspect-item' then return {state={itemEditor=planningFeatures.inspectItem(req,textRuns,clean)},xml=build:SaveDB('code')}end
   if op=='gem-quality' then return {state={lines=planningFeatures.quality(req,textRuns,clean)},xml=build:SaveDB('code')}end
@@ -319,6 +348,8 @@ local function command(req)
   local previousMain=build.skillsTab.socketGroupList[build.mainSocketGroup or 1]
   local previousSkillSet=build.skillsTab.activeSkillSetId
   local editedGroup
+  local editedSet
+  local editedInventory
   if op=='load' then
     assert(type(req.xml)=='string' and #req.xml<4*1024*1024,'Invalid build')
     launch.promptMsg=nil
@@ -359,12 +390,16 @@ local function command(req)
     end
     build:CustomLoadout(specId,itemId,skillId,configId,name)
     build:SyncLoadouts()
+  elseif op=='inventory-edit'then editedInventory=itemAuthoring.edit(req)
+  elseif op=='item-author'then assert(req.itemId,'Choose an item');itemAuthoring.draft(req,clean,textRuns);editedInventory=req.itemId
+  elseif op=='set-manage' then editedSet=setManagement.edit(req)
   elseif op=='set' then
     if req.kind=='tree' then build.treeTab:SetActiveSpec(validIndex(req.id,build.treeTab.specList))
     elseif req.kind=='items' then build.itemsTab:SetActiveItemSet(validIndex(req.id,build.itemsTab.itemSets))
     elseif req.kind=='skills' then build.skillsTab:SetActiveSkillSet(validIndex(req.id,build.skillsTab.skillSets))
     elseif req.kind=='config' then build.configTab:SetActiveConfigSet(validIndex(req.id,build.configTab.configSets))
     else error('Invalid set type') end
+  elseif op=='node-choice'then passiveChoices.edit(req)
   elseif op=='node' then
     local n=build.spec.nodes[validIndex(req.id,build.spec.nodes)]
     assert(treePresentation(build,n).interactive,'This entry is not an interactive passive')
@@ -378,12 +413,11 @@ local function command(req)
       assert(not n.alloc,'This passive is already allocated')
       assert(not treePresentation(build,n).granted,'This passive is already granted by an item')
       assert(n.path,'There is no allocation path from this build')
-      assert(n.type~='Mastery' and not n.isMultipleChoiceOption and not n.isSwitchable,
-        'This passive requires an additional choice. Set it in desktop PoB before importing.')
+      assert(passiveChoices.kind(n)=='','Choose this passive\'s effect before allocating it')
       build.spec:AllocNode(n)
       assert(n.alloc,'PoB could not allocate this path in the selected tree mode')
     end
-  elseif op=='skill-group' or op=='gem-manage' then
+  elseif op=='skill-group' or op=='gem-manage' or op=='gem-control' then
     editedGroup=skillManagement.edit(req)
   elseif op=='skill' then
     local g=build.skillsTab.socketGroupList[validIndex(req.id,build.skillsTab.socketGroupList)]
@@ -412,6 +446,16 @@ local function command(req)
     -- temporary calculation context, then restore the exact authored build.
     loadBuildFromXML(saved,'Working build');recalc()
     return {state=inspected,xml=saved}
+  elseif op=='skill-number'then
+    local group=validIndex(req.group,build.skillsTab.socketGroupList)
+    assert(skillNumberControls[req.control],'Invalid numeric skill option')
+    assert(type(req.value)=='string'and #req.value<=9 and not req.value:find('%D'),'Enter a non-negative whole number, or clear the field to use PoB defaults')
+    local mainGroup=build.mainSocketGroup
+    build.mainSocketGroup=group;recalc()
+    local control=build.controls[req.control]
+    assert(control and control:IsShown(),'This numeric option does not apply to the selected skill')
+    control:SetText(req.value,true)
+    build.mainSocketGroup=mainGroup
   elseif op=='skill-option' then
     local group=validIndex(req.group,build.skillsTab.socketGroupList)
     local mainGroup=build.mainSocketGroup
@@ -462,6 +506,8 @@ local function command(req)
   end
   recalc()
   local state=snapshot()
+  if editedSet then state.editedSetId=editedSet end
+  if editedInventory then state.editedInventoryId=editedInventory end
   if op=='skill-group' or op=='gem-manage' then
     state.editedSkillGroup=0
     for i,g in ipairs(build.skillsTab.socketGroupList)do if g==editedGroup then state.editedSkillGroup=i;break end end

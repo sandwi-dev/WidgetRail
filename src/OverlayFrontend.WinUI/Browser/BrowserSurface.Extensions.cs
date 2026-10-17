@@ -4,7 +4,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 internal sealed partial class BrowserSurface
 {
-    internal bool ExtensionsEligible => !IsProviderContent && !IsHostedPackage;
+    internal bool ExtensionsEligible => !IsProviderContent && !IsHostedPackage && document.Options.Storage == BrowserStorage.Persistent;
     internal ExtensionProfile ExtensionProfile => new(profile, widgetId,
         document.AccessibleName + " · " + document.Options.ProfileKey, document.Options.Storage == BrowserStorage.Private);
     internal Func<BrowserSurface, CancellationToken, Task>? RegisterExtensionProfile { get; set; }

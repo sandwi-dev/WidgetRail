@@ -11,8 +11,10 @@ internal sealed partial class WidgetMotionValidationPage : Page, IAsyncDisposabl
     private readonly CancellationTokenSource lifetime = new();
     private Task? running;
 
-    internal WidgetMotionValidationPage()
+    private readonly string? resultPath;
+    internal WidgetMotionValidationPage(string? resultPath = null)
     {
+        this.resultPath = resultPath;
         AutomationProperties.SetAutomationId(status, "Motion.Result");
         stage.Children.Add(status); Content = stage;
         Loaded += (_, _) => running ??= RunAsync();
@@ -24,9 +26,14 @@ internal sealed partial class WidgetMotionValidationPage : Page, IAsyncDisposabl
         {
             var checks = await WidgetMotionValidation.RunAsync(stage, lifetime.Token);
             status.Text = $"Passed {checks.Count} native motion checks";
+            if(resultPath is not null)await File.WriteAllTextAsync(resultPath,System.Text.Json.JsonSerializer.Serialize(new{passed=true,checks}));
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (Exception error) { status.Text = "Failed: " + error; }
+        catch (Exception error)
+        {
+            status.Text = "Failed: " + error;
+            if(resultPath is not null)await File.WriteAllTextAsync(resultPath,System.Text.Json.JsonSerializer.Serialize(new{passed=false,error=error.ToString()}));
+        }
     }
 
     public async ValueTask DisposeAsync()

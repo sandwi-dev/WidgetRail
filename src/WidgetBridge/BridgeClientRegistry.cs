@@ -284,6 +284,7 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         WidgetActionEvent action,
         CancellationToken cancellationToken, int? expectedStartOrdinal = null);
     Task<bool> QueryIntentAsync(WidgetIntentRequest intent, WidgetIntentFeedback? feedback, int? expectedStartOrdinal, CancellationToken cancellationToken) => Task.FromResult(false);
+    Task<WidgetIntentRequest?> PrepareOutgoingIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) => Task.FromResult<WidgetIntentRequest?>(null);
     Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) =>
         Task.FromResult(WidgetIntentResult.Rejected);
     Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
@@ -370,6 +371,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         client.AdmitActionForWorkerAsync(action, cancellationToken, expectedStartOrdinal);
     public Task<bool> QueryIntentAsync(WidgetIntentRequest intent, WidgetIntentFeedback? feedback, int? expectedStartOrdinal, CancellationToken cancellationToken) =>
         client.QueryIntentAsync(intent, feedback, expectedStartOrdinal, cancellationToken);
+    public Task<WidgetIntentRequest?> PrepareOutgoingIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        client.PrepareOutgoingIntentAsync(intent, expectedStartOrdinal, cancellationToken);
     public Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) =>
         client.DeliverIntentAsync(intent, expectedStartOrdinal, cancellationToken);
     public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>

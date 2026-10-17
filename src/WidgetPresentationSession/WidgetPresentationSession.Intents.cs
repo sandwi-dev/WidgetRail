@@ -29,17 +29,26 @@ public sealed partial class WidgetPresentationSession
     private async Task<WidgetIntentPreparation> PrepareIntentCoreAsync(WidgetPresentationFrame displayed,
         WidgetActionEvent action, string? pinnedLayout, IndexedCollectionItemReference? indexedItem, CancellationToken cancellationToken)
     {
-        var response = await RequestAsync(BridgeMessageTypes.PrepareIntent,
-            new BridgeIntentPrepareRequest(displayed.Authority.WidgetId, displayed.Authority.SnapshotSequence,
-                displayed.Authority.WorkerRun!, action, pinnedLayout, indexedItem), BridgeMessageTypes.IntentPrepared, cancellationToken).ConfigureAwait(false);
-        var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
-        ValidateIntentPreparation(result, displayed.Authority.WidgetId);
-        return result;
+        var preparationId = Guid.NewGuid().ToString("N");
+        try
+        {
+            var response = await RequestAsync(BridgeMessageTypes.PrepareIntent,
+                new BridgeIntentPrepareRequest(displayed.Authority.WidgetId, displayed.Authority.SnapshotSequence,
+                    displayed.Authority.WorkerRun!, action, pinnedLayout, indexedItem, preparationId), BridgeMessageTypes.IntentPrepared, cancellationToken).ConfigureAwait(false);
+            var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
+            ValidateIntentPreparation(result, displayed.Authority.WidgetId);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            await CancelIntentAsync(new(displayed.Authority.WidgetId, preparationId, WidgetIntentLaunchKind.Rejected, [])).ConfigureAwait(false);
+            throw;
+        }
     }
 
     private static void ValidateIntentPreparation(WidgetIntentPreparation result, string sourceId)
     {
-        if (result.SourceWidgetId != sourceId || !Enum.IsDefined(result.Kind) || !Enum.IsDefined(result.Presentation) || result.Destinations is null ||
+        if (result.SourceWidgetId != sourceId || !Enum.IsDefined(result.Kind) || !Enum.IsDefined(result.Presentation) || result.PreparationFailed && result.Kind != WidgetIntentLaunchKind.Rejected || result.Destinations is null ||
             result.Destinations.Count > 256 || result.Destinations.Any(item => item is null || !Safe(item.WidgetId) ||
                 string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 256) ||
             result.Destinations.Select(item => item.WidgetId).Distinct(StringComparer.Ordinal).Count() != result.Destinations.Count ||
@@ -48,7 +57,7 @@ public sealed partial class WidgetPresentationSession
                 : !Guid.TryParseExact(result.TicketId, "N", out _)) ||
             result.Kind == WidgetIntentLaunchKind.Widget && result.Destinations.Count != 1 ||
             result.Kind == WidgetIntentLaunchKind.ChooseHandler && result.Destinations.Count < 2 ||
-            result.Kind == WidgetIntentLaunchKind.ExternalBrowser && result.Destinations.Count != 0)
+            result.Kind is WidgetIntentLaunchKind.ExternalBrowser or WidgetIntentLaunchKind.OverlayBrowser && result.Destinations.Count != 0)
             throw new BridgeProtocolException("Invalid intent preparation response.");
     }
 
@@ -132,14 +141,20 @@ public sealed partial class WidgetPresentationSession
             if (result.RequiresInteraction && (!result.Accepted || prepared.Kind is not (WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler)))
                 throw new BridgeProtocolException("Invalid intent interaction request.");
             if (result.ExternalUrl is { } url && (!result.Accepted || prepared.Kind != WidgetIntentLaunchKind.ExternalBrowser ||
-                url.Length > 2048 || url.Any(char.IsControl) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                url.Length > WebBrowserDocument.MaximumUrlLength || url.Any(char.IsControl) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
                 uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo)))
                 throw new BridgeProtocolException("Invalid external intent result.");
             if (result.Accepted && prepared.Kind == WidgetIntentLaunchKind.ExternalBrowser && result.ExternalUrl is null)
                 throw new BridgeProtocolException("External intent result is missing its URL.");
+            if (result.OverlayUrl is { } overlayUrl && (!result.Accepted || prepared.Kind != WidgetIntentLaunchKind.OverlayBrowser ||
+                result.ExternalUrl is not null || !WebBrowserDocument.IsWebUrl(overlayUrl) || result.OverlayStorage is not { } storage || !Enum.IsDefined(storage)))
+                throw new BridgeProtocolException("Invalid overlay browser intent result.");
+            if (result.OverlayStorage is not null && result.OverlayUrl is null) throw new BridgeProtocolException("Unexpected overlay storage policy.");
+            if (result.Accepted && prepared.Kind == WidgetIntentLaunchKind.OverlayBrowser && result.OverlayUrl is null)
+                throw new BridgeProtocolException("Overlay browser intent result is missing its URL.");
             if (result.BrowserFallbackUrl is { } fallback && (result.Accepted || result.ExternalUrl is not null ||
                 prepared.Kind is not (WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler) ||
-                fallback.Length > 2048 || fallback.Any(char.IsControl) || !Uri.TryCreate(fallback, UriKind.Absolute, out var fallbackUri) ||
+                fallback.Length > WebBrowserDocument.MaximumUrlLength || fallback.Any(char.IsControl) || !Uri.TryCreate(fallback, UriKind.Absolute, out var fallbackUri) ||
                 fallbackUri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(fallbackUri.UserInfo)))
                 throw new BridgeProtocolException("Invalid browser fallback offer.");
             return result;

@@ -24,6 +24,17 @@ internal static class ComparisonTests
         }
         var unchanged=await engine.ExecuteAsync(new{op="snapshot"},default,baseline.Xml,compare:true);
         check(Lines(unchanged).Length==0,"An unchanged build produces no invented comparison stats");
+        var equipped=baseline.State.GetProperty("items").EnumerateArray().First(i=>i.GetProperty("slot").GetString()=="Helmet");
+        var originalRaw=equipped.GetProperty("raw").GetString()!;
+        var strengthened=await engine.ExecuteAsync(new{op="item-draft",mode="custom-add",raw=originalRaw,text="+37 to maximum Life"},default,baseline.Xml);
+        var raw=strengthened.State.GetProperty("authoring").GetProperty("raw").GetString()!;
+        var upgrade=await engine.ExecuteAsync(new{op="item",slot="Helmet",raw},default,baseline.Xml,compare:true);
+        double Life(PobResult result)=>result.State.GetProperty("stats").EnumerateArray().Single(s=>s.GetProperty("name").GetString()=="Life").GetProperty("value").GetDouble();
+        check(Life(upgrade)>Life(baseline)&&Lines(upgrade).Length>0,"Item comparison exercises an actual increase in calculated life");
+        check(Lines(upgrade).SequenceEqual(await Oracle(baseline.Xml,upgrade.Xml)),"Item upgrade summary matches every desktop PoB comparison line");
+        var downgrade=await engine.ExecuteAsync(new{op="item",slot="Helmet",raw=originalRaw},default,upgrade.Xml,compare:true);
+        check(Life(downgrade)<Life(upgrade)&&Lines(downgrade).SequenceEqual(await Oracle(upgrade.Xml,downgrade.Xml)),
+            "Weaker item replacement preserves desktop comparison losses and percentage formatting");
         var poe2=xml.Contains("<PathOfBuilding2",StringComparison.Ordinal);
         var gem="RaiseZombie";
         var skill=poe2?"RaiseZombiePlayer":"RaiseZombie";

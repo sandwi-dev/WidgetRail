@@ -24,6 +24,30 @@ internal sealed partial class OverlayShellPage
                 await Until(() => activeWidget == "intent-source" && !switching && foreground);
                 Check(surface?.CurrentBinding is not null, "Source presentation is live");
                 var source = surface!.CurrentBinding!.Frame;
+                var originalPreparedLauncher = OpenExternalWebPageRequested;
+                var preparedUrls = new List<string>();
+                OpenExternalWebPageRequested = (uri, _) => { preparedUrls.Add(uri.AbsoluteUri); return Task.FromResult(true); };
+                try
+                {
+                    var pending = InvokeIntentAsync(new(source, new("prepare-wait", "prepare-wait", ControllerButton.A, InputScopeId: "root")));
+                    await Until(() => preparingIntent);
+                    await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
+                    await pending;
+                    await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
+                    await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
+                    Check(preparedUrls.Count == 0 && !HostChoiceActive && activeWidget == "intent-source" && interactive,
+                        "Back cancels preparation without opening a browser or leaving the source");
+                    await InvokeIntentAsync(new(surface!.CurrentBinding!.Frame, new("prepare-fail", "prepare-fail", ControllerButton.A, InputScopeId: "root")));
+                    await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
+                    Check(preparedUrls.Count == 0 && !HostChoiceActive, "Failed preparation opens no destination or misleading handler dialog");
+                    var successful = InvokeIntentAsync(new(surface!.CurrentBinding!.Frame, new("prepare", "prepare", ControllerButton.A, InputScopeId: "root")));
+                    await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
+                    await successful;
+                    Check(preparedUrls.SequenceEqual(new[] { "https://example.com/calculated" }), "One click prepares and opens the calculated URL exactly once");
+                }
+                finally { OpenExternalWebPageRequested = originalPreparedLauncher; }
+                await VerifyNotificationBrowserAsync(Check);
+                source = surface!.CurrentBinding!.Frame;
                 await InvokeAsync(new(source, new("open", "open", ControllerButton.A, InputScopeId: "root")));
                 await Until(() => activeWidget == "intent-target" && surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/guide");
                 Check(interactive && !switching, "Intent opens its destination through normal widget selection");
@@ -131,8 +155,8 @@ internal sealed partial class OverlayShellPage
                 Check(actualMenu.Items[4].Icon is FontIcon && AutomationProperties.GetHelpText(actualMenu.Items[4]).Contains("Tray shortcut:"),
                     "Interact exposes its controller shortcut and accessible help");
                 Check(actualMenu.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Reorder").Icon is FontIcon &&
-                    actualMenu.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Restart") is { Icon: FontIcon, KeyboardAcceleratorTextOverride: "Hold" },
-                    "Reorder and restart show controller glyphs with an explicit hold hint");
+                    actualMenu.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Restart") is { Icon: null, KeyboardAcceleratorTextOverride: "" },
+                    "Reorder exposes its shortcut and Restart has no nonexistent hold shortcut");
                 CloseTrayMenu(true);
                 Check(PinCommands(sourceDescriptor with { PinningSupported = false, FullWidgetPinningSupported = false })
                     .All(command => command.Id != "Pin.Replace"), "A nonpinnable widget offers no replacement");
@@ -157,15 +181,23 @@ internal sealed partial class OverlayShellPage
                 await replacing;
                 Check(pinned is { WidgetId: "intent-source", LayoutId: "links-pin", IsCurrent: true } && !oldPin.IsCurrent,
                     "Choosing an authored layout replaces and revokes the old pin");
-                Check(PinCommands(sourceDescriptor).All(command => command.Id != "Pin.Replace"),
-                    "The already pinned widget does not offer Replace pin");
+                Check(PinCommands(sourceDescriptor).Any(command => command.Id == "Pin.Replace"),
+                    "An authored pin can be replaced by the same widget's full layout");
                 var replacement = pinned;
                 await PinAsync("intent-target", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId, oldPin);
                 Check(ReferenceEquals(pinned, replacement), "A stale replacement cannot remove a newer pin");
                 await SelectAsync("intent-target", enterWidget: false);
-                await PinCommands(surface!.CurrentBinding!.Frame.Descriptor)[0].Action();
+                var singleReplacement = PinCommands(surface!.CurrentBinding!.Frame.Descriptor)[0].Action();
+                await Until(() => hostChoiceDialog is { IsLoaded: true });
+                Check(hostChoiceDialog!.PrimaryButtonText == "Replace pin", "A single replacement layout still asks before replacing the live pin");
+                var confirmReplacement = Walk(hostChoiceDialog).OfType<Button>().Single(button =>
+                    AutomationProperties.GetAutomationId(button) == "Host.Choice.Primary");
+                confirmReplacement.Focus(FocusState.Keyboard);
+                hostChoiceDialog.ControllerArmed = true;
+                hostChoiceDialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+                await singleReplacement;
                 Check(pinned is { WidgetId: "intent-target", IsCurrent: true } && !HostChoiceActive && !replacement!.IsCurrent,
-                    "A single available layout replaces directly without a chooser");
+                    "Confirming the single layout replaces the live pin");
                 await UnpinAsync(save: true);
                 if (verifyWebHandoff is not null) checks.AddRange(await verifyWebHandoff());
 
@@ -188,7 +220,7 @@ internal sealed partial class OverlayShellPage
                     var neutral = new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1 };
                     Receive(neutral);
                     Check(hostChoiceDialog.ControllerArmed, "Neutral controller frame arms a pinned host dialog");
-                    var allow = Walk(hostChoiceDialog).OfType<Button>().Single(b => b.Content is "Allow");
+                    var allow = Walk(hostChoiceDialog).OfType<Button>().Single(b => AutomationProperties.GetAutomationId(b) == "Host.Choice.Primary");
                     allow.Focus(FocusState.Keyboard);
                     var accept = neutral; accept.State.Buttons = accept.PressedButtons = 0x1000;
                     Receive(accept);

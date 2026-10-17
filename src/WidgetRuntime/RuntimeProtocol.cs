@@ -108,9 +108,10 @@ internal sealed record ControllerActionFailurePayload(
     string Message);
 internal sealed record ErrorPayload(string Code, string Message);
 internal sealed record ControllerInputResultPayload(bool Handled);
-internal sealed record IntentDeliveryPayload(long DeliveryId, WidgetIntentRequest Intent, bool Control = false, WidgetIntentFeedback? Feedback = null);
+internal sealed record IntentDeliveryPayload(long DeliveryId, WidgetIntentRequest Intent, bool Control = false, WidgetIntentFeedback? Feedback = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Prepare = false);
 internal sealed record IntentCancellationPayload(long DeliveryId);
-internal sealed record IntentDeliveryResultPayload([property: JsonRequired] WidgetIntentResult Result, bool ControlResult = false);
+internal sealed record IntentDeliveryResultPayload([property: JsonRequired] WidgetIntentResult Result, bool ControlResult = false, WidgetIntentRequest? PreparedIntent = null);
 // Null means rejected before invoking any widget handler, never unhandled.
 internal sealed record RevalidatedControllerInputPayload(ControllerInputEvent Input, string? ActionId);
 internal sealed record RevalidatedControllerInputResultPayload(bool? Handled);

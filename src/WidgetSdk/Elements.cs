@@ -463,6 +463,14 @@ public sealed record ButtonElement : WidgetElement
 
     public string Label { get; init; }
     public WidgetIntentRequest? Intent { get; init; }
+    /// <summary>Ask the widget to calculate this intent's payload after invocation, before host routing.</summary>
+    public ButtonElement PrepareIntent(string key)
+    {
+        if (Intent is null) throw new InvalidOperationException("Declare an intent first.");
+        var intent = Intent with { PreparationKey = key };
+        if (!intent.IsWellFormed()) throw new ArgumentException("Invalid intent preparation key or fallback.", nameof(key));
+        return this with { Intent = intent };
+    }
     /// <summary>Observe terminal routing feedback and optionally declare one sender-selected alternative.</summary>
     public ButtonElement WithIntentFeedback(WidgetIntentRequest? fallback = null)
     {
@@ -479,6 +487,14 @@ public sealed record ButtonElement : WidgetElement
     public ButtonElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
         WidgetIntentRouting routing, WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
         this with { Intent = WidgetIntentRequest.Create(contract, payload, routing, presentation) };
+    /// <summary>Open a host-owned page over this widget; Back closes it and restores the caller. No Browser widget is required.</summary>
+    public ButtonElement OpenOverlayBrowser(string url, BrowserStorage storage = BrowserStorage.Private)
+    {
+        if (!Enum.IsDefined(storage)) throw new ArgumentOutOfRangeException(nameof(storage));
+        return this with { Intent = WidgetIntentRequest.Create(WidgetIntentContracts.ForWebUrl(url),
+            System.Text.Json.JsonSerializer.SerializeToElement(new { url }), WidgetIntentRouting.OverlayBrowser)
+            with { OverlayBrowserStorage = storage } };
+    }
     public string ActionId { get; init; }
     public string? AccessibilityLabel { get; init; }
     public WidgetGlyph? Glyph { get; init; }

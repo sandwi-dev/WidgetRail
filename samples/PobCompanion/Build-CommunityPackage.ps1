@@ -5,11 +5,12 @@ param(
     [Parameter(Mandatory)][string]$RuntimeDirectory,
     [Parameter(Mandatory)][string]$Cli,
     [string]$OutputDirectory,
+    [string]$EngineLockPath = (Join-Path $PSScriptRoot 'engine-lock.json'),
     [string]$Python = 'python'
 )
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$locks=Get-Content (Join-Path $PSScriptRoot 'engine-lock.json') -Raw | ConvertFrom-Json
+$locks=Get-Content -LiteralPath $EngineLockPath -Raw | ConvertFrom-Json
 $engineLock=$locks."poe$Game"
 $actual=(& git -C $EngineCheckout rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $actual -ne $engineLock.commit){throw 'Engine checkout does not match engine-lock.json.'}
@@ -54,10 +55,10 @@ try {
 Copy-Item (Join-Path $EngineCheckout 'LICENSE.md') (Join-Path $payload 'licenses/PoB-LICENSE.md')
 foreach($name in @('luajit.exe','lua51.dll','lua-utf8.dll')){Copy-Item (Join-Path $RuntimeDirectory $name) (Join-Path $payload 'runtime')}
 foreach($name in @('LuaJIT-COPYRIGHT','LuaUTF8-LICENSE')){Copy-Item (Join-Path $RuntimeDirectory $name) (Join-Path $payload 'licenses')}
-Copy-Item (Join-Path $PSScriptRoot 'engine-lock.json') $payload
+Copy-Item -LiteralPath $EngineLockPath -Destination (Join-Path $payload 'engine-lock.json')
 $id="widgetrail.samples.poe$Game-companion"
 $manifest=[ordered]@{
-    manifestVersion=1;id=$id;publisher='widgetrail.samples';name="PoE $Game Build Companion";version='0.1.0'
+    manifestVersion=1;id=$id;publisher='widgetrail.samples';name="PoE$Game Path of Building";version='0.1.0'
     hostApi=@{minimum='1.0';maximumMajor=1}
     entrypoint=@{runtime='full-trust-application-v1';executable="payload/Poe${Game}Companion.exe"}
     presentation=@{icon='connection';packageIcon=@{assetId='companion.mark';colorMode='themeTint'}}
@@ -65,6 +66,7 @@ $manifest=[ordered]@{
     permissions=@();optionalPermissions=@()
     intents=@{requests=@(
         @{id='widgetrail.web.open';version=1;payloadSchema=@{type='object';additionalProperties=$false;properties=@{url=@{type='string';minLength=1;maxLength=2048}};required=@('url')}},
+        @{id='widgetrail.web.open';version=2;payloadSchema=@{type='object';additionalProperties=$false;properties=@{url=@{type='string';minLength=1;maxLength=8192}};required=@('url')}},
         @{id='widgetrail.video.open';version=1;payloadSchema=@{type='object';additionalProperties=$false;properties=@{provider=@{type='string';minLength=1;maxLength=64};videoId=@{type='string';minLength=1;maxLength=256};startTimeSeconds=@{type='number';minimum=0;maximum=604800}};required=@('provider','videoId')}}
     )}
     residencyPolicy=@{schemaVersion=1;mode='unload-after-idle';idleSeconds=120}

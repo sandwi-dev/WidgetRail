@@ -14,7 +14,7 @@ internal static class PobNoteLinks
     private static readonly Regex Titles=new("\\[(?<title>[^\\]\\r\\n]{1,200})\\]\\(\\s*(?<url>https?://[^\\s<>\"\\[\\]]+)",RegexOptions.IgnoreCase|RegexOptions.CultureInvariant,Timeout);
     private static readonly Regex Time=new("^(?:(?<h>[0-9]{1,2})h)?(?:(?<m>[0-9]{1,4})m)?(?:(?<s>[0-9]{1,5})s)?$",RegexOptions.IgnoreCase|RegexOptions.CultureInvariant,Timeout);
 
-    internal static IReadOnlyList<PobNoteLink> Read(string notes)
+    internal static IReadOnlyList<PobNoteLink> Read(string notes,bool overlay=false)
     {
         var titles=new Dictionary<string,string>(StringComparer.Ordinal);
         foreach(Match match in Titles.Matches(notes))titles.TryAdd(Trim(match.Groups["url"].Value),Clean(match.Groups["title"].Value));
@@ -23,7 +23,7 @@ internal static class PobNoteLinks
         {
             var url=Trim(match.Value);
             if(url.Length>2048||!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.UserInfo.Length>0||!seen.Add(url))continue;
-            var web=WidgetIntentRequest.Create(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url}));
+            var web=PobPreferences.Web(url,overlay);
             var video=TryVideo(uri,out var id,out var seconds);
             var destination=video ? "youtu.be/"+id+(seconds.HasValue?" · "+seconds.Value.ToString("0.###",CultureInfo.InvariantCulture)+"s":"")
                 : Clean(Uri.UnescapeDataString(uri.Authority+uri.PathAndQuery)).TrimEnd('/');

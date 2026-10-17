@@ -5,18 +5,20 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.WidgetBridge;
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentLaunchKind>))]
-public enum WidgetIntentLaunchKind { Widget, ChooseHandler, ExternalBrowser, Unavailable, Rejected }
+public enum WidgetIntentLaunchKind { Widget, ChooseHandler, ExternalBrowser, Unavailable, Rejected, OverlayBrowser }
 
 public sealed record WidgetIntentDestination(string WidgetId, string Name, bool SupportsPassiveDelivery = false);
 public sealed record WidgetIntentPreparation(string SourceWidgetId, string? TicketId,
     WidgetIntentLaunchKind Kind, IReadOnlyList<WidgetIntentDestination> Destinations,
-    WidgetIntentPresentation Presentation = WidgetIntentPresentation.PreferExistingSurface);
+    WidgetIntentPresentation Presentation = WidgetIntentPresentation.PreferExistingSurface,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool PreparationFailed = false);
 public sealed record WidgetIntentCompletion(bool Accepted, string? ExternalUrl = null, string? BrowserFallbackUrl = null,
-    bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null);
+    bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null,
+    string? OverlayUrl = null, BrowserStorage? OverlayStorage = null);
 
 internal sealed record BridgeIntentPrepareRequest(string WidgetId, long SnapshotSequence,
     BridgeWorkerRun WorkerRun, WidgetActionEvent Action, string? PinnedLayoutId = null,
-    IndexedCollectionItemReference? IndexedItem = null);
+    IndexedCollectionItemReference? IndexedItem = null, string? PreparationId = null);
 internal sealed record BridgeIntentCommitRequest(string WidgetId, string TicketId,
     string? TargetWidgetId = null, BridgeWorkerRun? TargetWorkerRun = null, BridgeIntentPinnedTarget? PinnedTarget = null);
 internal sealed record BridgeIntentPinnedTarget(string LayoutId, long SnapshotSequence, string? MediaSessionId = null);

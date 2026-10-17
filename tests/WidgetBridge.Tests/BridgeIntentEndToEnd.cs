@@ -7,6 +7,38 @@ using WidgetRail.PlatformSettings;
 
 internal static class BridgeIntentEndToEnd
 {
+    internal static async Task PreparationThroughBothPipes()
+    {
+        var pipe="intent-prepare-"+Guid.NewGuid().ToString("N");
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        await using var server=new WidgetBridgeServer(pipe,Catalog());
+        var serving=server.RunAsync(TimeSpan.FromSeconds(3),deadline.Token);
+        await using var session=await WidgetPresentationSession.ConnectAsync(pipe,cancellationToken:deadline.Token);
+        _=await session.ListWidgetsAsync(deadline.Token);
+        async Task<WidgetPresentationFrame> Source()=>await session.EstablishPresentationAsync(session.GetTarget("intent-source"),WidgetLifecycleState.Interactive,deadline.Token);
+        var source=await Source();var ordinal=source.Authority.WorkerRun;
+        var action=new WidgetActionEvent("prepare","prepare",ControllerButton.A,InputScopeId:"root");
+        var prepared=await session.PrepareIntentAsync(source,action,deadline.Token);
+        Check(prepared.Kind==WidgetIntentLaunchKind.ExternalBrowser);
+        var result=await session.CommitIntentAsync(prepared,cancellationToken:deadline.Token);
+        Check(result.Accepted&&result.ExternalUrl=="https://example.com/calculated");
+        source=await Source();
+        var failed=await session.PrepareIntentAsync(source,new("prepare-fail","prepare-fail",ControllerButton.A,InputScopeId:"root"),deadline.Token);
+        Check(failed.PreparationFailed&&failed.TicketId is null);
+        source=await Source();
+        using(var cancel=new CancellationTokenSource(TimeSpan.FromMilliseconds(250)))
+        {
+            var cancelled=false;
+            try{await session.PrepareIntentAsync(source,new("prepare-wait","prepare-wait",ControllerButton.A,InputScopeId:"root"),cancel.Token);}
+            catch(OperationCanceledException){cancelled=true;}
+            Check(cancelled);
+        }
+        source=await Source();
+        var next=await session.PrepareIntentAsync(source,action,deadline.Token);
+        Check(next.Kind==WidgetIntentLaunchKind.ExternalBrowser&&source.Authority.WorkerRun==ordinal);
+        await session.CancelIntentAsync(next);
+        await session.DisposeAsync();await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
     internal static async Task ThroughBothPipes()
     {
         var pipe = "intent-e2e-" + Guid.NewGuid().ToString("N");
@@ -158,7 +190,9 @@ internal static class BridgeIntentEndToEnd
         var store = new PlatformSettingsStore(paths);
         await using var appearance = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));
         await appearance.StartAsync();
-        await using var server = new WidgetBridgeServer(pipe, Catalog(), appearance: appearance);
+        await using var server = new WidgetBridgeServer(pipe, Catalog(), appearance: appearance,
+            consentStore: new WidgetRail.PlatformBroker.ConsentStore(Path.Combine(settingsRoot,"fixture-consent")),
+            platformBackend: new WidgetRail.PlatformBroker.SimulatedPlatformBrokerBackend());
         await server.RunAsync(TimeSpan.FromSeconds(30), default);
     }
 
@@ -214,12 +248,33 @@ internal sealed class IntentBridgeProbeWidget : Widget
             UI.Text(feedback, "feedback"), UI.Button("Search", "search", "search").OpenIntent(WidgetIntentContracts.VideoSearch,
                 JsonSerializer.SerializeToElement(new { provider = "youtube", query = "boss guide" }))
                 .WithIntentFeedback(WidgetIntentRequest.Create(WidgetIntentContracts.Web,
-                    JsonSerializer.SerializeToElement(new { url = "https://example.com/search-fallback" })) with { ReportsResult = true })), "open")
+                    JsonSerializer.SerializeToElement(new { url = "https://example.com/search-fallback" })) with { ReportsResult = true }),
+            Link("prepare","Calculate and open","placeholder").OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url="https://example.com/placeholder"}),WidgetIntentRouting.Windows).PrepareIntent("calculate"),
+            Link("prepare-wait","Cancel preparation","placeholder").PrepareIntent("wait"),
+            Link("prepare-fail","Failed preparation","placeholder").PrepareIntent("fail"),
+            UI.Button("Publish browser notification","notify-browser","notify-browser")), "open")
         { PinnedLayouts = [WidgetView.PinnedLayout("links-pin", "Pinned links", new(),
             UI.Stack("pin-root", Link("pin-open", "Pinned guide", "pinned"), UI.CollectionList("pin-links", links, 52, "Pinned links")).InputScope("pin-scope"),
             initialFocusId: "pin-open", activeInputScopeId: "pin-scope")] };
     private static ButtonElement Link(string id, string label, string path) => UI.Button(label, id, id)
         .OpenIntent(WidgetIntentContracts.Web, JsonSerializer.SerializeToElement(new { url = "https://example.com/" + path }));
+    public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
+    {
+        if(target||action.ActionId!="notify-browser")return;
+        await HostServices.Notifications.ShowAsync(new("browser-link","Open temporary reference")
+        {
+            Retention=WidgetNotificationRetention.Pending,
+            Interaction=WidgetNotificationInteraction.OpenWidget,
+            OpenIntent=WidgetIntentRequest.Create(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url="https://example.com/notification-reference"}),WidgetIntentRouting.OverlayBrowser)
+                with{OverlayBrowserStorage=BrowserStorage.Private},
+        },cancellationToken);
+    }
+    public override async ValueTask<JsonElement?> OnPrepareIntentAsync(string key,WidgetIntentRequest request,CancellationToken cancellationToken=default)
+    {
+        if(target||key=="fail")return null;
+        await Task.Delay(key=="wait"?Timeout.Infinite:3000,cancellationToken);
+        return JsonSerializer.SerializeToElement(new{url="https://example.com/calculated"});
+    }
     public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
         if (!target) return WidgetIntentResult.Rejected;

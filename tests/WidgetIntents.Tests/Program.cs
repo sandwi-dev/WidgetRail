@@ -6,6 +6,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("Prepared intents retain action identity and require protocol 85", PreparedIntents),
     ("Search and one declared fallback preserve authority and require protocol 72", SearchFeedback),
     ("Custom contracts require no host intent enumeration", CustomContract),
     ("Schema object and set ordering do not change identity", SchemaIdentity),
@@ -38,6 +39,19 @@ foreach (var (name, run) in tests)
 }
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} tests passed.");
 return failures == 0 ? 0 : 1;
+
+static void PreparedIntents()
+{
+    var button=UI.Button("Search","search","search").OpenIntent(WidgetIntentContracts.Web,Json("""{"url":"https://example.com/search"}"""),WidgetIntentRouting.Windows).PrepareIntent("search");
+    var snapshot=new WidgetView(button).CreateSnapshot("prepared",1);
+    Check(snapshot.ProtocolVersion==85&&ViewSnapshotValidator.Validate(snapshot).Count==0);
+    Check(ViewSnapshotValidator.Validate(snapshot with{ProtocolVersion=84}).Count>0);
+    Check(!button.Intent!.Matches(button.Intent with{PreparationKey=null}));
+    Check(!button.Intent.Matches(button.Intent with{PreparationKey="different"}));
+    Throws(()=>button.PrepareIntent(""));
+    Throws(()=>button.WithIntentFeedback(button.Intent with{PreparationKey=null}));
+    Check(!(button.Intent with{PreparationKey=null,ReportsResult=true,Fallback=button.Intent}).IsWellFormed());
+}
 
 static void SearchFeedback()
 {
@@ -256,6 +270,23 @@ static void WindowsRouting()
     var candidates = new[] { new IntentHandlerCandidate("browser", 1, web, true, true) };
     Check(IntentResolutionPolicy.Resolve(web, payload, candidates).Kind == IntentResolutionKind.Widget);
     Check(IntentResolutionPolicy.Resolve(web, payload, candidates, routing: WidgetIntentRouting.Windows).Kind == IntentResolutionKind.ExternalBrowser);
+    Check(IntentResolutionPolicy.Resolve(web, payload, [], routing: WidgetIntentRouting.OverlayBrowser).Kind == IntentResolutionKind.OverlayBrowser);
+    Check(IntentResolutionPolicy.Resolve(web, payload, candidates, routing: WidgetIntentRouting.OverlayBrowser).Kind == IntentResolutionKind.OverlayBrowser);
+    Check(IntentResolutionPolicy.Resolve(Custom(), Json("""{"topic":"boss"}"""), [], routing: WidgetIntentRouting.OverlayBrowser).Kind == IntentResolutionKind.Unavailable);
+    Check(IntentResolutionPolicy.Resolve(web, Json("""{"url":"file:///C:/test.exe"}"""), [], routing: WidgetIntentRouting.OverlayBrowser).Kind == IntentResolutionKind.InvalidPayload);
+    var privatePage = UI.Button("Open", "open", "open").OpenOverlayBrowser("https://example.com");
+    var persistentPage = privatePage.OpenOverlayBrowser("https://example.com", BrowserStorage.Persistent);
+    Check(privatePage.Intent!.OverlayBrowserStorage == BrowserStorage.Private && !privatePage.Intent.Matches(persistentPage.Intent));
+    var overlaySnapshot = new WidgetView(persistentPage).CreateSnapshot("overlay-fixture", 1);
+    Check(overlaySnapshot.ProtocolVersion == ProtocolConstants.OverlayBrowserRoutingVersion && ViewSnapshotValidator.Validate(overlaySnapshot).Count == 0);
+    Check(!(persistentPage.Intent! with { Routing = WidgetIntentRouting.Windows }).IsWellFormed());
+    var longUrl = "https://example.com/search?q=" + new string('a', 3000);
+    var extended = UI.Button("Search", "search", "search").OpenOverlayBrowser(longUrl, BrowserStorage.Persistent);
+    Check(extended.Intent!.Version == 2 && !CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web).Accepts(extended.Intent.Payload));
+    Check(CompiledWidgetIntentContract.Create(WidgetIntentContracts.WebV2).Accepts(extended.Intent.Payload));
+    Check(IntentResolutionPolicy.Resolve(CompiledWidgetIntentContract.Create(WidgetIntentContracts.WebV2), extended.Intent.Payload, [], routing: WidgetIntentRouting.OverlayBrowser).Kind == IntentResolutionKind.OverlayBrowser);
+    Check(IntentResolutionPolicy.Resolve(CompiledWidgetIntentContract.Create(WidgetIntentContracts.WebV2), extended.Intent.Payload, [], routing: WidgetIntentRouting.Windows).Kind == IntentResolutionKind.ExternalBrowser);
+    Check(new WidgetView(extended).CreateSnapshot("extended-links", 1).ProtocolVersion == 84);
     Check(IntentResolutionPolicy.Resolve(Custom(), Json("""{"topic":"boss"}"""), [], routing: WidgetIntentRouting.Windows).Kind == IntentResolutionKind.Unavailable);
     Check(IntentResolutionPolicy.Resolve(web, Json("""{"url":"file:///C:/test.exe"}"""), [], routing: WidgetIntentRouting.Windows).Kind == IntentResolutionKind.InvalidPayload);
     var automatic = WidgetIntentRequest.Create(WidgetIntentContracts.Web, payload);

@@ -15,6 +15,8 @@ public sealed partial class PobWidget
     private (string Title,WidgetElement[] Rows)? featureReading;
     private (string Title,object Command)? featureRemoval;
     private (string Title,string Prefix,JsonElement[] Choices,string ReturnTo)? featurePicker;
+    private (int Node,string? Build,JsonElement[] Choices)? attributeChoices;
+    private (int Node,JsonElement[] Choices)? passiveChoicePopup;
     private string choiceSearch="";
     private GemQuery choiceQuery=new([]);
     private WidgetIndexedCollection<GemQuery,GemEntry>? choiceCollection;
@@ -23,7 +25,46 @@ public sealed partial class PobWidget
     private ModifierQuery modifierQuery=new(0,[]);
     private WidgetIndexedCollection<ModifierQuery,ModifierEntry>? modifierCollection;
     private static string Plain(string text)=>Regex.Replace(text,@"\^x[0-9a-fA-F]{6}|\^\d","");
+    // Short choices belong beside the item. Keep search and full descriptions
+    // for catalogs rather than forcing every setting through another page.
+    internal static bool UsesCompactChoice(JsonElement[] choices)=>choices.Length is >0 and <=12 &&
+        choices.All(c=>Plain(S(c,"title")).Trim().Length is >0 and <=80 &&
+            !S(c,"title").Contains('\n') && (S(c,"description").Length==0 || Plain(S(c,"description"))==Plain(S(c,"title"))));
+    private WidgetElement ItemChoiceControl(JsonElement control,string action,string optionPrefix)
+    {
+        var options=A(control,"options");var title=InlineLabel(Plain(S(control,"title")));
+        if(!UsesCompactChoice(options))return Button(title+": "+Plain(S(options.FirstOrDefault(o=>B(o,"active")),"title","Choose…")),action).Disabled(!B(control,"enabled"));
+        var selected=Array.FindIndex(options,o=>B(o,"active"));
+        var entries=options.Select((o,i)=>new SelectOption("choice"+I(o,"id"),InlineLabel(Plain(S(o,"title"))),optionPrefix+I(o,"id"),i==selected)).ToList();
+        if(selected<0)entries.Insert(0,new("current","Choose…","noop",true,IsDisabled:true));
+        return UI.Select(title,entries,"pob."+action).Disabled(!B(control,"enabled")).Classes("pob-select");
+    }
     private string ItemSlot=>S(A(State,"items").FirstOrDefault(i=>I(i,"id")==detailId),"slot");
+
+    private void ReadAttributeChoices(int nodeId)
+    {
+        attributeChoices=null;
+        var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==nodeId);
+        if(!B(node,"canChoose")||S(node,"choiceKind")!="attribute")return;
+        var buildId=documentId;var xml=result!.Xml;
+        Work(async token=>
+        {
+            var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId},token,xml);
+            lock(gate)if(documentId==buildId&&detailId==nodeId)attributeChoices=(nodeId,buildId,A(response.State,"choices"));
+        },"Reading attribute choices…");
+    }
+
+    private WidgetElement PassiveChoiceControl(JsonElement node)
+    {
+        if(S(node,"choiceKind")=="attribute"&&attributeChoices is {} data&&data.Node==detailId&&data.Build==documentId&&data.Choices.Length>0)
+        {
+            var selected=Array.FindIndex(data.Choices,c=>S(c,"title")==S(node,"name"));
+            var choices=data.Choices.Select((c,i)=>new SelectOption("effect"+I(c,"id"),InlineLabel(Plain(S(c,"title"))),$"passive-choice.{detailId}.{I(c,"id")}",i==selected)).ToList();
+            if(selected<0)choices.Insert(0,new("current","Choose…","noop",true,IsDisabled:true));
+            return UI.Select("Attribute",choices,"pob.node-choices").Classes("pob-select");
+        }
+        return Button(B(node,"allocated")?"Change effect…":"Choose effect…","node-choices");
+    }
 
     private async Task RefreshItemEditorAsync(PobResult next,CancellationToken token)
     {
@@ -36,6 +77,8 @@ public sealed partial class PobWidget
     private bool HandlePlanningAction(WidgetActionEvent action)
     {
         var id=action.ActionId;var parts=id.Split('.');
+        if(id=="passive-choice-close"){passiveChoicePopup=null;return true;}
+        if(passiveChoicePopup is not null&&parts[0]!="passive-choice")return true;
         if(featureReading is not null){if(id=="feature-close")featureReading=null;return true;}
         if(featureRemoval is {} removal)
         {
@@ -46,6 +89,26 @@ public sealed partial class PobWidget
         if(parts is ["library-class",var selectedClass])
         {if(selectedClass=="all")libraryClass="";else if(int.TryParse(selectedClass,out var classIndex)&&classIndex>=0&&classIndex<LibraryClasses().Length)libraryClass=LibraryClasses()[classIndex];return true;}
         if(result is null)return false;
+        if(id=="node-choices"&&detailKind=="node")
+        {
+            var nodeId=detailId;
+            Work(async token=>
+            {
+                var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId},token,result.Xml);
+                var choices=A(response.State,"choices");
+                lock(gate)
+                {
+                    if(choices.Length==0)ShowFeedback("No available effects","The available effects may already be allocated at another mastery.",ToastTone.Info);
+                    else passiveChoicePopup=(nodeId,choices);
+                }
+            },"Reading passive choices…");return true;
+        }
+        if(detailKind=="node"&&parts is ["passive-choice",var passiveId,var choiceId]&&int.TryParse(passiveId,out var node)&&node==detailId&&int.TryParse(choiceId,out var chosen)&&
+            ((passiveChoicePopup is {} popup&&popup.Node==node&&popup.Choices.Any(c=>I(c,"id")==chosen))||
+             (attributeChoices is {} attributes&&attributes.Node==node&&attributes.Build==documentId&&attributes.Choices.Any(c=>I(c,"id")==chosen))))
+        {
+            passiveChoicePopup=null;detailKind="node";Preview(new{op="node-choice",id=node,choice=chosen});return true;
+        }
         if(id=="back"&&detailKind=="feature-picker"&&featurePicker is {} picker){detailKind=picker.ReturnTo;featurePicker=null;return true;}
         if(id=="choice-search"){choiceSearch=action.CommittedText??"";return true;}
         if(id=="item-manage")
@@ -66,6 +129,9 @@ public sealed partial class PobWidget
         }
         if(parts is ["item-choice",var controlNumber,var choice]&&int.TryParse(controlNumber,out ci)&&ci>=0&&ci<A(itemEditor,"controls").Length&&int.TryParse(choice,out var option))
         {
+            var control=A(itemEditor,"controls")[ci];
+            if(!B(control,"enabled")||!A(control,"options").Any(o=>I(o,"id")==option)||
+                !(detailKind=="item-manage"||featurePicker?.Prefix=="item-choice."+ci+"."))return true;
             featurePicker=null;detailKind="item-manage";
             Edit(new{op="item-edit",mode="control",slot=ItemSlot,control=S(A(itemEditor,"controls")[ci],"id"),value=option});return true;
         }
@@ -153,9 +219,12 @@ public sealed partial class PobWidget
         var entries=picker.Choices.Where(c=>Plain(S(c,"title")+" "+S(c,"description")).Contains(choiceSearch,StringComparison.OrdinalIgnoreCase))
             .Select(c=>new GemEntry("choice"+I(c,"id"),Plain(S(c,"title"))+(B(c,"active")?" · Selected":""),picker.Prefix+I(c,"id"),S(c,"description")==S(c,"title")?"":Plain(S(c,"description")))).ToArray();
         if(!choiceQuery.Entries.SequenceEqual(entries)){choiceQuery=new(entries);choiceCollection.PublishQuery(choiceQuery,entries.Length);}
+        var toolRows=new List<WidgetElement>{UI.Row("pob.choice.header",Button("Back","back"),Text(picker.Title,"choice.title","pob-heading")).Classes("pob-toolbar")};
+        if(picker.Prefix=="craft-base.")toolRows.Add(UI.Select("Rarity",new[]{"NORMAL","MAGIC","RARE"}.Select(r=>new SelectOption(r,char.ToUpperInvariant(r[0])+r[1..].ToLowerInvariant(),"craft-rarity."+r,r==craftRarity)).ToArray(),"pob.craft-rarity").Classes("pob-select"));
+        toolRows.Add(UI.TextEntry(choiceSearch,picker.Prefix=="unique-item."?"Search unique names or bases":"Search options","choice-search","pob.choice-search",100).Classes("pob-input"));
+        toolRows.Add(Text($"{entries.Length} {(picker.Prefix=="unique-item."?"unique items":"options")}","choice.count","pob-muted"));
         return UI.Stack("pob.choice-picker",
-            QuickControls(UI.Stack("pob.choice-tools",UI.Row("pob.choice.header",Button("Back","back"),Text(picker.Title,"choice.title","pob-heading")).Classes("pob-toolbar"),
-                UI.TextEntry(choiceSearch,"Search options","choice-search","pob.choice-search",100).Classes("pob-input"),Text($"{entries.Length} options","choice.count","pob-muted")),"pob.choice-search","pob.choice-results","Options",NeedsQuickControls(entries.Length)),
+            QuickControls(UI.Stack("pob.choice-tools",toolRows.ToArray()),"pob.choice-search","pob.choice-results","Options",NeedsQuickControls(entries.Length)),
             entries.Length==0?UI.Stack("pob.choice-results",Text("No matching options.","choice.empty")).Classes("pob-workspace"):
             QuickControls(UI.Stack("pob.choice-results",UI.CollectionList("pob.choices",choiceCollection,entries.Any(e=>e.Description.Length>0)?112:56,picker.Title).Classes("pob-scroll")).Classes("pob-workspace"),"pob.choices","pob.choice-tools","Search",NeedsQuickControls(entries.Length))).Classes("pob-workspace");
     }
@@ -163,10 +232,11 @@ public sealed partial class PobWidget
     private WidgetElement ItemManagementWorkspace()
     {
         var controls=new List<WidgetElement>{Button("Back to items","back"),Text(S(A(State,"items").FirstOrDefault(i=>I(i,"id")==detailId),"name","Item settings"),"item-edit.title","pob-heading"),Text("Changes save immediately. Undo restores them. Shared items change in every set that uses that item.","item-edit.help","pob-muted")};
+        controls.Add(Button("Edit affixes and modifiers","equipped-author"));
         foreach(var (control,i) in A(itemEditor,"controls").Select((c,i)=>(c,i)))
         {
             var options=A(control,"options");
-            if(options.Length>0)controls.Add(Button(Plain(S(control,"title"))+": "+Plain(S(options.FirstOrDefault(o=>B(o,"active")),"title","Choose…")),"item-control."+i).Disabled(!B(control,"enabled")));
+            if(options.Length>0)controls.Add(ItemChoiceControl(control,"item-control."+i,"item-choice."+i+"."));
             else controls.Add(Field(S(control,"title"),UI.TextEntry(S(control,"value"),S(control,"title"),"item-control."+i,"pob.item-control."+i,2).Classes("pob-input"),"item-control."+i));
         }
         var mods=new List<WidgetElement>{Text("Item modifiers","item-edit.mods-title","pob-heading")};
@@ -182,6 +252,7 @@ public sealed partial class PobWidget
         WidgetElement LinkRight(WidgetElement element)=>element switch
         {
             ButtonElement button=>button.FocusRight("pob.item-mod."+I(A(itemEditor,"mods")[0],"id")),TextEntryElement input=>input.FocusRight("pob.item-mod."+I(A(itemEditor,"mods")[0],"id")),
+            SelectElement select=>select.FocusRight("pob.item-mod."+I(A(itemEditor,"mods")[0],"id")),
             ContainerElement container=>container with{Children=container.Children.Select(LinkRight).ToArray()},_=>element,
         };
         return Split("item-edit",UI.VerticalScroll("pob.item-edit.controls",(A(itemEditor,"mods").Length>0?controls.Select(LinkRight):controls).ToArray()).RememberChildFocus("pob.back").Classes("pob-scroll","pob-panel"),modList,1,1.6);
@@ -234,10 +305,24 @@ public sealed partial class PobWidget
 
     private WidgetView WithPlanningModal(WidgetView view)
     {
+        if(passiveChoicePopup is {} passive)
+        {
+            var options=passive.Choices.Select(c=>
+            {
+                var id=I(c,"id");var rows=new List<WidgetElement>();
+                if(B(c,"active"))rows.Add(Text("Current effect","passive-current."+id,"pob-small pob-gold"));
+                AddFormatted(rows,JsonSerializer.SerializeToElement(new{text=Plain(S(c,"title"))}),"text","runs","passive-option."+id,emphasizeStats:true);
+                return (WidgetElement)UI.ActionSurface($"passive-choice.{passive.Node}.{id}","pob.passive-choice."+id,Plain(S(c,"title")),ActionSurfaceOrientation.Vertical,rows.ToArray())
+                    .Selected(B(c,"active")).Classes("pob-list-item");
+            }).ToArray();
+            var selected=Array.FindIndex(passive.Choices,c=>B(c,"active"));
+            return view.WithModal(new("pob-passive-choices","Choose passive effect",
+                UI.Stack("pob.passive-choices.body",options).Classes("pob-card"),options[Math.Max(0,selected)].Id,"passive-choice-close"));
+        }
         if(featureReading is {} reading)return view.WithModal(new("pob.feature-reading",reading.Title,
-            UI.Stack("pob.feature-reading.body",reading.Rows).Classes("pob-card"),"pob.feature-reading.close","feature-close"));
+            UI.VerticalScroll("pob.feature-reading.body",reading.Rows).Classes("pob-scroll","pob-card"),"pob.feature-reading.close","feature-close"));
         if(featureRemoval is {} removal)return view.WithModal(new("pob.feature-removal",removal.Title,
-            UI.Stack("pob.feature-removal.body",Text("Undo can restore this group.","feature-removal.help"),UI.Row("pob.feature-removal.actions",Button("Cancel","feature-close"),Button("Delete group","feature-confirm"))).Classes("pob-card"),"pob.feature-close","feature-close"));
+            UI.Stack("pob.feature-removal.body",Text("Undo can restore this deletion.","feature-removal.help"),UI.Row("pob.feature-removal.actions",Button("Cancel","feature-close"),Button("Delete","feature-confirm"))).Classes("pob-card"),"pob.feature-close","feature-close"));
         return view;
     }
 }

@@ -40,6 +40,12 @@ public sealed partial class PobWidget
         {rows.Add(Text("Open this skill's options again to refresh them.","no-options","pob-muted"));return rows;}
         foreach(var option in inspectedSkillOptions.EnumerateArray())
         {
+            if(S(option,"kind")=="number")
+            {
+                var control=S(option,"id");
+                rows.Add(Field(S(option,"title"),UI.TextEntry(S(option,"value"),"PoB default",$"skill-number.{detailId}.{control}","pob.option."+control,9).Classes("pob-input"),"skill-number."+control));
+                continue;
+            }
             var choices=A(option,"options");if(choices.Length==0)continue;
             var key=S(option,"id");
             var title=key switch{"mainSkill"=>"Skill in group","statSet"=>"Stat set","mainSkillPart"=>"Skill part", "mainSkillMinion"=>"Minion", "mainSkillMinionSkill"=>"Minion skill", "mainSkillMinionSkillStatSet"=>"Minion stat set",_=>StatLabel(key)};

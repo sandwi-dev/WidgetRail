@@ -15,8 +15,12 @@ public sealed partial class WidgetProcessClient
         int? expectedStartOrdinal, CancellationToken cancellationToken) =>
         (await InvokeIntentAsync(intent, expectedStartOrdinal, true, feedback, cancellationToken).ConfigureAwait(false)).ControlResult;
 
+    internal async Task<WidgetIntentRequest?> PrepareOutgoingIntentAsync(WidgetIntentRequest intent,
+        int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        (await InvokeIntentAsync(intent, expectedStartOrdinal, true, null, cancellationToken, prepare: true).ConfigureAwait(false)).PreparedIntent;
+
     private async Task<IntentDeliveryResultPayload> InvokeIntentAsync(WidgetIntentRequest intent,
-        int? expectedStartOrdinal, bool control, WidgetIntentFeedback? feedback, CancellationToken cancellationToken)
+        int? expectedStartOrdinal, bool control, WidgetIntentFeedback? feedback, CancellationToken cancellationToken, bool prepare = false)
     {
         ArgumentNullException.ThrowIfNull(intent);
         if (!intent.IsWellFormed()) throw new ArgumentException("Invalid intent request.", nameof(intent));
@@ -37,13 +41,13 @@ public sealed partial class WidgetProcessClient
                 {
                     // User cancellation cannot interrupt a partially written frame.
                     await session.WriteAsync(new RuntimeEnvelope { Type = control ? MessageTypes.IntentControl : MessageTypes.DeliverIntent,
-                        RequestId = pending.RequestId, Payload = RuntimeJson.ToElement(new IntentDeliveryPayload(deliveryId, intent, control, feedback)) },
+                        RequestId = pending.RequestId, Payload = RuntimeJson.ToElement(new IntentDeliveryPayload(deliveryId, intent, control, feedback, prepare)) },
                         writeDeadline.Token).ConfigureAwait(false);
                 }
                 catch { session.Terminate(); throw; }
             }
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, session.CancellationToken);
-            deadline.CancelAfter(_options.RequestTimeout);
+            deadline.CancelAfter(prepare ? TimeSpan.FromSeconds(65) : _options.RequestTimeout);
             try
             {
                 var response = await pending.Response.WaitAsync(deadline.Token).ConfigureAwait(false);
@@ -54,6 +58,8 @@ public sealed partial class WidgetProcessClient
                     throw new WidgetProtocolViolationException("Expected an intent delivery result.");
                 var result = RuntimeJson.FromElement<IntentDeliveryResultPayload>(response.Payload);
                 if (!Enum.IsDefined(result.Result)) throw new WidgetProtocolViolationException("Invalid intent delivery result.");
+                if (result.PreparedIntent is { } prepared && (!prepare || !prepared.IsWellFormed() || prepared.PreparationKey is not null))
+                    throw new WidgetProtocolViolationException("Invalid prepared intent result.");
                 return result;
             }
             catch (OperationCanceledException)

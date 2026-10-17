@@ -18,7 +18,7 @@ public static class BuildDocument
             var normalized = text.Replace('-', '+').Replace('_', '/');
             normalized = normalized.PadRight(normalized.Length + (4 - normalized.Length % 4) % 4, '=');
             byte[] bytes;
-            try { bytes = Convert.FromBase64String(normalized); } catch (FormatException) { throw new IOException("Paste a PoB share code, a pobb.in link, or a build file path."); }
+            try { bytes = Convert.FromBase64String(normalized); } catch (FormatException) { throw new IOException("Paste a PoB code, a pobb.in or poe.ninja link, or a build file path."); }
             using var input = new MemoryStream(bytes);
             using var inflate = new ZLibStream(input, CompressionMode.Decompress);
             using var output = new MemoryStream();
@@ -71,12 +71,10 @@ public static class BuildDocument
         input = input.Trim();
         if (Uri.TryCreate(input, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
         {
-            if (uri.Scheme != "https" || uri.Host != "pobb.in" || !uri.IsDefaultPort || uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0)
-                throw new IOException("Use a direct https://pobb.in/ build link or paste its share code.");
-            var id = uri.AbsolutePath.Trim('/');
-            if (id.Length is < 1 or > 64 || id.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_')) throw new IOException("Invalid build link.");
+            var download = BuildLinks.DownloadUri(uri, game);
             using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(20) };
-            using var response = await client.GetAsync("https://pobb.in/pob/" + id, HttpCompletionOption.ResponseHeadersRead, token);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("WidgetRail-PoB/0.1");
+            using var response = await client.GetAsync(download, HttpCompletionOption.ResponseHeadersRead, token);
             if (response.StatusCode != HttpStatusCode.OK) throw new IOException("This build could not be downloaded. Check the link or paste its share code.");
             await using var stream = await response.Content.ReadAsStreamAsync(token);
             input = await ReadBoundedAsync(stream, token);

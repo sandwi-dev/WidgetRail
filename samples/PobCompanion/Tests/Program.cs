@@ -12,7 +12,7 @@ if(args is ["--note-links-only"])
     Console.WriteLine($"Note links: {passed} passed, {failed} failed");return failed==0?0:1;
 }
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -21,6 +21,11 @@ var results=new List<object>();var failures=0;
 void Check(bool passed,string name){results.Add(new{name,passed});Console.WriteLine((passed?"PASS ":"FAIL ")+name);if(!passed)failures++;}
 if(args.Length==5)
 {
+    if(args[4]=="--engine-update-only")
+    {
+        await EngineUpdateTests.RunAsync(game,engineRoot,runtime,adapter,fixtures,Check);
+        Console.WriteLine(JsonSerializer.Serialize(new{game,passed=results.Count-failures,failed=failures,results}));return failures==0?0:1;
+    }
     var fixture=Directory.EnumerateFiles(fixtures,"*.xml").OrderBy(path=>path,StringComparer.Ordinal).First();
     var workXml=await BuildDocument.ReadAsync(fixture,game,default);
     if(args[4]=="--guide-workflow-only")
@@ -28,12 +33,25 @@ if(args.Length==5)
         await GuideWorkflowTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
         await EngineCompatibilityTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
     }
+    else if(args[4]=="--items-only")
+    {
+        await ItemAuthoringTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+        await ItemWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    }
+    else if(args[4]=="--engine-failure-only")await EngineFailureTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--trade-workflow-only")await TradeWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--trade-only")await TradeSearchTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--sets-only")await SetManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--import-export-only")await ImportExportTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--import-only")await EngineImportTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--planning-features-only")await PlanningFeatureTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--loadouts-only")await LoadoutTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--skill-management-only")await SkillManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--skill-options-only")await SkillOptionTests.RunAsync(game,engineRoot,runtime,adapter,Check);
     else if(args[4]=="--skill-edits-only")await SkillEditTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--quick-controls-only")await QuickControlsTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--passive-choices-only")await PassiveChoiceTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--calculation-views-only")await CalculationViewTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--tree-only")await TreePresentationTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--comparison-only")await ComparisonTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--management-only")await ManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);

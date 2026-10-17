@@ -193,7 +193,7 @@ public sealed partial class MainWindow
         }
         else if (validateGlyphs) RootFrame.Content = new Validation.GlyphValidationPage();
         else if (validateModals) RootFrame.Content = new Validation.ModalValidationPage();
-        else if (validateMotion) RootFrame.Content = new Validation.WidgetMotionValidationPage();
+        else if (validateMotion) RootFrame.Content = new Validation.WidgetMotionValidationPage(Shell.FrontendArguments.Value(arguments,"--motion-result"));
         else if (validateSelect) RootFrame.Content = new Validation.SelectControlValidationPage();
         else if (validateSurfaces) RootFrame.Content = new Validation.PresentationSurfaceValidationPage();
         else if (validateGrouped || validateGroupedFlat || validateGroupedAdapted)
@@ -266,6 +266,8 @@ public sealed partial class MainWindow
             page.EnableGameHelpValidation(helpResult, ShowOverlay, () => !AppWindow.IsVisible && taskHandoff is null);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-browser") is { } browserResult)
             page.EnableBrowserValidation(browserResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-temporary-browser") is { } temporaryBrowserResult)
+            page.EnableTemporaryBrowserValidation(temporaryBrowserResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-browser-desktop") is { } desktopResult)
             page.EnableBrowserDesktopValidation(desktopResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-intents") is { } intentResult)

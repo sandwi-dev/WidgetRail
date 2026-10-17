@@ -88,6 +88,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal async Task ReleaseSlotsAsync(IReadOnlyList<BrowserSlot> released)
     {
         if (released.Count == 0 || retired) return;
+        if (temporaryClosing is { } closing) await closing;
         if (popupReconciliation is { } popupTransfer)
         {
             try { await popupTransfer; }
@@ -168,7 +169,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                         if (chosen.Document.HostedSession is not null) { chosen.Slot.SetMessage("This web session is unavailable. Reopen it from the widget."); continue; }
                         if (retiringEntries.Contains(group.Key)) continue;
                         if (changingProfiles.Contains(BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document))) continue;
-                        if (entries.Count + retiringEntries.Count >= 4)
+                        if (entries.Count + retiringEntries.Count + (temporaryPage is null ? 0 : 1) >= 4)
                         {
                             var oldest = entries.Where(pair => !pair.Value.Retained && !pair.Value.Surface.BackgroundFaulted && pair.Value.Slot?.CanDisplay != true &&
                                 !(popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Parent, pair.Value.Surface))).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
@@ -263,7 +264,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             SaveWebAppIcon = (id, url, bytes) => SaveWebAppIcon?.Invoke(id, url, bytes) ?? Task.CompletedTask,
             AddWebApp = (url, title) => AddWebApp?.Invoke(url, title) ?? Task.CompletedTask,
             ChangeProfile = ChangeProfileAsync,
-            RegisterExtensionProfile = (source, token) => Extensions.RegisterAsync(source.ExtensionProfile with { Label = (session.GetState(widgetId)?.LastGood?.Descriptor.Name ?? widgetId) + " · " + document.Options.ProfileKey }, source.NativeProfile!, token),
+            RegisterExtensionProfile = (source, token) => Extensions.RegisterAsync(source.ExtensionProfile with { Label = (session.GetState(widgetId)?.LastGood?.Descriptor.Name ?? (widgetId == SharedBrowserWidgetId ? "Browser" : widgetId)) + " · " + document.Options.ProfileKey }, source.NativeProfile!, token),
             ReceiveNotification = ReceiveNotification,
             InvalidateNotifications = source => Notifications.InvalidateOwner(source),
             ChooseFiles = (source, request, token) => ChooseFiles?.Invoke(source, request, token) ?? Task.FromResult(Array.Empty<string>()),
@@ -401,6 +402,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         BeginShutdown();
+        await CloseTemporaryAsync();
         try { await notificationPreferencesLoading; } catch (OperationCanceledException) { }
         if (ownsNotifications) NotificationCenter.Dispose();
         foreach (var slot in slots.Keys) { slot.PlacementChanged = null; slot.SetSurface(null); } slots.Clear();

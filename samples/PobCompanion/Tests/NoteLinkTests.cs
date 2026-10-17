@@ -29,5 +29,18 @@ internal static class NoteLinkTests
         foreach(var status in Enum.GetValues<WidgetIntentStatus>())
             check(PobNoteLinks.UseFallback(new("test",links[0].Intent,status))==(status is WidgetIntentStatus.Unavailable or WidgetIntentStatus.Rejected),"Fallback policy for "+status);
         check(!PobNoteLinks.UseFallback(new("test",links[1].Intent,WidgetIntentStatus.Unavailable)),"Ordinary web links do not recursively fall back");
+        var overlayLinks=PobNoteLinks.Read("https://example.org/build https://youtu.be/"+id,true);
+        check(overlayLinks[0].Intent.Routing==WidgetIntentRouting.OverlayBrowser&&overlayLinks[0].Intent.OverlayBrowserStorage==BrowserStorage.Persistent,"Ordinary links request the persistent host browser explicitly");
+        check(overlayLinks[1].Intent.ContractId==WidgetIntentContracts.OpenVideo&&overlayLinks[1].Intent.Fallback!.Routing==WidgetIntentRouting.OverlayBrowser,"YouTube retains the video intent and honors website preference on fallback");
+        var prefsDirectory=Path.Combine(Path.GetTempPath(),"pob-preferences-"+Guid.NewGuid().ToString("N"));
+        try
+        {
+            var first=new PobPreferences(prefsDirectory);var second=new PobPreferences(prefsDirectory);
+            check(!first.OverlayBrowser,"Websites default to Windows");
+            first.OverlayBrowser=true;check(second.OverlayBrowser&&new PobPreferences(prefsDirectory).OverlayBrowser,"Both widgets and a restarted reader observe the shared preference");
+            second.OverlayBrowser=false;check(!first.OverlayBrowser,"Changing preference in the second widget updates the first");
+            File.WriteAllText(Path.Combine(prefsDirectory,"preferences.json"),"invalid");check(!first.OverlayBrowser,"Malformed preference falls back to Windows without failing widget startup");
+        }
+        finally{if(Directory.Exists(prefsDirectory))Directory.Delete(prefsDirectory,true);}
     }
 }

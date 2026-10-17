@@ -120,7 +120,7 @@ public sealed partial class PobWidget
             }
             content.Add(UI.Stack("pob.breakdown.row."+row,fields.ToArray()).Classes("pob-context-card"));
         }
-        if(I(breakdown,"rowCount")>rows.Length)content.Add(Text($"Showing {rows.Length} of {I(breakdown,"rowCount")} sources. Full breakdown available in desktop PoB.","breakdown.remaining","pob-muted"));
+        if(I(breakdown,"rowCount")>rows.Length)content.Add(Text($"Overview shows {rows.Length} of {I(breakdown,"rowCount")} sources. Open Detailed calculations and sources for the complete list.","breakdown.remaining","pob-muted"));
     }
 
     internal static void AddFormatted(List<WidgetElement> rows,JsonElement source,string textField,string runsField,string id,string css="pob-text",bool emphasizeStats=false)

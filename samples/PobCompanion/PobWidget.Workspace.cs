@@ -17,7 +17,7 @@ public sealed partial class PobWidget
         var controls = new List<WidgetElement>();
         if (loadouts.Length > 0)
         {
-            var choices = loadouts.Select((l, i) => new SelectOption("loadout" + i, S(l, "title"), "loadout." + i, B(l, "active"))).ToList();
+            var choices = loadouts.Select((l, i) => new SelectOption("loadout" + i, InlineLabel(S(l, "title"),"Loadout "+(i+1)), "loadout." + i, B(l, "active"))).ToList();
             if (!choices.Any(c => c.IsSelected)) choices.Insert(0, new("custom", "Independent sets", "noop", true));
             controls.Add(UI.Select("Loadout", choices, "pob.loadout").Disabled(pendingBefore is not null).Classes("pob-select", "pob-loadout"));
         }
@@ -27,9 +27,9 @@ public sealed partial class PobWidget
             UI.Button("Redo","redo","pob.redo").Disabled(redo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"))
             .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
-        if (section != "Tree") heading.Add(Text($"POE {game}  /  BUILD COMPANION", "eyebrow", "pob-eyebrow"));
+        if (section != "Tree") heading.Add(Text($"PoE{game} Path of Building", "eyebrow", "pob-eyebrow"));
         heading.Add(Text(BuildName(), "title", section == "Tree" ? "pob-tree-title" : "pob-title"));
-        heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}  ·  Tree {S(State, "treeVersion").Replace('_', '.')}", "context", "pob-muted"));
+        heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}", "context", "pob-muted"));
         var tools=UI.Stack("pob.buildtools",UI.Row("pob.buildcontrols", controls.ToArray()).Classes("pob-toolbar"),history)
             .RememberChildFocus(loadouts.Length>0?"pob.loadout":"pob.menu").Classes("pob-buildtools");
         if(BuildControlsAvailable)tools=tools.Shortcut(ControllerButton.RightStick,"quick-controls.pob.body","Return to content");
@@ -104,6 +104,12 @@ public sealed partial class PobWidget
 
     private WidgetElement Workspace()
     {
+        if(detailKind=="game-export")return GameExportWorkspace();
+        if(detailKind=="trade")return TradeWorkspace();
+        if(detailKind=="inventory")return StoredInventoryWorkspace();
+        if(detailKind=="item-author")return ItemAuthoringWorkspace();
+        if(detailKind=="calculations")return CalculationsWorkspace();
+        if(detailKind=="gem-options")return GemOptionsWorkspace();
         if(detailKind=="item-manage")return ItemManagementWorkspace();
         if(detailKind=="feature-picker")return FeaturePickerWorkspace();
         if(detailKind=="library")return LibraryWorkspace();
@@ -149,11 +155,12 @@ public sealed partial class PobWidget
         }
         var grid = UI.Grid("pob.statgrid", Enumerable.Range(0, (cards.Count + 1) / 2).Select(_ => GridTrack.Auto()).ToArray(), [GridTrack.Star(), GridTrack.Star()], cards.ToArray()).Spacing(12, 12);
         var notes = new List<WidgetElement> { Text(detailKind == "stat" ? StatLabel(statDetail) : "Calculation setup", "inspector.title", "pob-heading") };
+        notes.Add(Button("Detailed calculations and sources","calculations"));
         var showSkillContext=detailKind!="stat"||statDetail is "CombinedDPS" or "TotalDPS";
         if(showSkillContext)
         {
             var skills=A(State,"skills");
-            if(skills.Length>0)notes.Add(UI.Select("Main skill group",skills.Select(s=>new SelectOption("group"+I(s,"id"),S(s,"title"),"main-group."+I(s,"id"),B(s,"main"))).ToArray(),"pob.main-group")
+            if(skills.Length>0)notes.Add(UI.Select("Main skill group",skills.Select(s=>new SelectOption("group"+I(s,"id"),InlineLabel(S(s,"title"),"Group "+I(s,"id")),"main-group."+I(s,"id"),B(s,"main"))).ToArray(),"pob.main-group")
                 .Disabled(pendingBefore is not null).Classes("pob-select"));
             if(!string.IsNullOrWhiteSpace(S(State,"mainSkillDisabledReason")))
                 notes.Add(Text(S(State,"mainSkill")+": "+S(State,"mainSkillDisabledReason"),"main-skill.warning","pob-life"));
@@ -232,11 +239,13 @@ public sealed partial class PobWidget
         AddSet(header, skills ? "skillSets" : "itemSets", skills ? "skills" : "items");
         if(!skills)foreach(var (rune,i) in A(State,"characterRunes").Select((r,i)=>(r,i)))header.Add(Button(S(rune,"title")+" "+Plain(S(A(rune,"options").FirstOrDefault(o=>B(o,"active")),"title","Choose rune")),"character-rune."+i));
         if(skills)header.Add(UI.Row("pob.group-create.actions",Button("New group","group-create"),Button("Paste group","group-paste")).Classes("pob-toolbar"));
+        else header.Add(UI.Row("pob.inventory.actions",Button("Item inventory","inventory"),Button(pastedItem is null?"Craft item":"Continue item draft","item-create"),Button("Unique library","item-uniques").Disabled(pastedItem is not null)).Classes("pob-toolbar"));
         var list = new List<WidgetElement>();
         foreach (var entry in entries)
         {
             var id = I(entry, "id");
             var title = skills ? S(entry, "title") : S(entry, "name", S(entry, "base"));
+            if(skills && string.IsNullOrWhiteSpace(title))title="Unnamed group";
             var subtitle = skills ? $"{A(entry, "gems").Length} gems" + (B(entry, "main") ? " · Main skill" : "") + (B(entry,"fullDps")?" · Full DPS":"") + (B(entry, "enabled") ? "" : " · Disabled") : S(entry, "slot");
             if(skills&&B(entry,"generated"))subtitle="Granted skill"+(S(entry,"slot").Length>0?" · "+S(entry,"slot"):"")+(B(entry,"main")?" · Main skill":"")+(B(entry,"fullDps")?" · Full DPS":"")+(B(entry,"enabled")?"":" · Disabled");
             if(id==detailId)subtitle+=" · Inspecting";
@@ -258,7 +267,7 @@ public sealed partial class PobWidget
         var detailPanel=UI.Stack("pob.detail",
             Text(skills ? "Skill details" : "Item details", "detail.heading", "pob-eyebrow"),
             skills?UI.Row("pob.skill.tools",Button("Selected skill options",action).FocusLeft(returnId),Button("Manage group","group-manage").FocusLeft(returnId)).Classes("pob-toolbar"):
-                UI.Row("pob.item.tools",UI.Button(pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action).FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),Button("Item settings","item-manage").FocusLeft(returnId).Disabled(entries.Length==0)).Classes("pob-toolbar"),
+                UI.Row("pob.item.tools",UI.Button(pastedItem is null?"Replace from clipboard":"Continue item comparison",action,"pob."+action).FocusLeft(returnId).Disabled(pendingBefore is not null).Classes("pob-button"),Button("Item settings","item-manage").FocusLeft(returnId).Disabled(entries.Length==0),Button("Find upgrades","trade").FocusLeft(returnId).Disabled(entries.Length==0)).Classes("pob-toolbar"),
             UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
             .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
         if(skills&&entries.Length==0)
@@ -354,13 +363,15 @@ public sealed partial class PobWidget
         {
             side.RemoveAt(0);
             var quick=NeedsQuickControls(side.Count(row=>row.Id.StartsWith("pob.changed.",StringComparison.Ordinal)&&row.Id.EndsWith(".card",StringComparison.Ordinal)));
+            ContainerElement previewDetails=UI.VerticalScroll("pob.tree.preview-details",side.ToArray()).Classes("pob-scroll");
+            if(side.Any(row=>row.Id=="pob.preview-nodes"))
+                previewDetails=QuickControls(previewDetails,"pob.preview-nodes","pob.tree.preview.actions","Preview actions",quick,preview:true);
             sidebar=UI.Stack("pob.tree.side",
                 QuickControls(UI.Stack("pob.tree.preview.actions",Text("PREVIEW · not applied","tree.preview.heading","pob-eyebrow pob-gold"),
                 UI.Button("Apply change","apply","pob.apply").FocusDown("pob.cancel").FocusLeft("pob.map").Classes("pob-button"),
                 UI.Button("Discard","cancel","pob.cancel").FocusUp("pob.apply").FocusLeft("pob.map").Classes("pob-button")).Classes("pob-buildtools"),
                     "pob.apply","pob.tree.preview-details","Changed nodes",quick,preview:true),
-                QuickControls(UI.VerticalScroll("pob.tree.preview-details",side.ToArray()).Classes("pob-scroll"),
-                    "pob.preview-nodes","pob.tree.preview.actions","Preview actions",quick,preview:true))
+                previewDetails)
                 .RememberChildFocus("pob.apply").Classes("pob-panel","pob-tree-main");
         }
         else if(detailKind=="node")sidebar=UI.VerticalScroll("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-scroll","pob-panel");

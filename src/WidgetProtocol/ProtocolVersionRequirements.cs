@@ -156,12 +156,21 @@ internal sealed class ProtocolVersionRequirements
             if (node.WebBrowser?.Url == WebBrowserDocument.StartPage)
                 Add("browser-start-page", ProtocolConstants.BrowserStartPageVersion, $"{path}.webBrowser",
                     "Browser start pages require protocol version 73 or later.");
+            if (node.WebBrowser?.Url.Length > 2048 || node.Intent is { ContractId: WidgetIntentContracts.OpenWebPage, Version: 2 } ||
+                node.Intent?.Fallback is { ContractId: WidgetIntentContracts.OpenWebPage, Version: 2 })
+                Add("extended-web-links", ProtocolConstants.OverlayBrowserRoutingVersion, path, "Extended web links require protocol version 84 or later.");
             if (node.Intent is not null)
                 Add("widget-intent", ProtocolConstants.WidgetIntentVersion, $"{path}.intent",
                     "Declarative widget intents require protocol version 65 or later.");
+            if (node.Intent?.PreparationKey is not null || node.Intent?.Fallback?.PreparationKey is not null)
+                Add("intent-preparation", ProtocolConstants.IntentPreparationVersion, $"{path}.intent.preparationKey",
+                    "Asynchronous intent preparation requires protocol version 85 or later.");
             if (node.Intent?.Routing == WidgetIntentRouting.Windows)
                 Add("windows-intent-routing", ProtocolConstants.WindowsIntentRoutingVersion, $"{path}.intent.routing",
                     "Windows intent routing requires protocol version 71 or later.");
+            if (node.Intent?.Routing == WidgetIntentRouting.OverlayBrowser || node.Intent?.Fallback?.Routing == WidgetIntentRouting.OverlayBrowser)
+                Add("overlay-browser-routing", ProtocolConstants.OverlayBrowserRoutingVersion, $"{path}.intent.routing",
+                    "Host-owned overlay browser pages require protocol version 84 or later.");
             if (node.Intent is { ReportsResult: true } or { ContractId: WidgetIntentContracts.SearchVideo })
                 Add("intent-feedback", ProtocolConstants.IntentFeedbackVersion, $"{path}.intent",
                     "Intent feedback and search require protocol version 72 or later.");

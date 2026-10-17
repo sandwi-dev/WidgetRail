@@ -34,6 +34,27 @@ internal static class WidgetMotionValidation
         var options = WidgetMotionOptions.From(AppearanceSettings.Default with { WidgetAnimationSpeed = 2 }, true);
         try
         {
+            foreach(var focus in new[]{WidgetFocusAnimation.Fade,WidgetFocusAnimation.Settle})
+            {
+                var owner=new Button{Content="Loading control",Width=200,Height=60};host.Children.Add(owner);host.UpdateLayout();
+                await UntilAsync(()=>owner.IsLoaded&&owner.ActualWidth>0,"focus test layout");
+                using var ring=WidgetFocusDecoration.Create(owner)??throw new InvalidOperationException("Focus decoration was not created");
+                var policy=options with{Focus=focus,Reduced=false};
+                ring.Apply(Microsoft.UI.Colors.CornflowerBlue,2,8,-2,false,policy);
+                ring.Apply(Microsoft.UI.Colors.CornflowerBlue,2,8,-2,true,policy);
+                var entering=ring.Playback??throw new InvalidOperationException("Focus animation did not start");
+                Check(await entering.WaitAsync(TimeSpan.FromSeconds(5),token)==WidgetMotionOutcome.Completed,
+                    focus+" native focus outline completes");
+                ring.Apply(Microsoft.UI.Colors.CornflowerBlue,2,8,-2,false,policy);
+                var leaving=ring.Playback!;
+                // Loading controls can disappear before their focus exit finishes.
+                host.Children.Remove(owner);ring.Dispose();
+                Check(await leaving.WaitAsync(TimeSpan.FromSeconds(5),token) is WidgetMotionOutcome.Disposed or WidgetMotionOutcome.Completed,
+                    focus+" focused control retirement completes its animation task");
+                var sentinel=WidgetMotionPolicy.Dialog(options,true);
+                Check(await motion.PlayAsync((WidgetMotionPlayback[])[new(incomingTarget,sentinel)],token).WaitAsync(TimeSpan.FromSeconds(5),token)==WidgetMotionOutcome.Completed,
+                    focus+" retirement leaves unrelated composition responsive");
+            }
             foreach (var section in Enum.GetValues<WidgetSectionAnimation>())
             {
                 var plan = WidgetMotionPolicy.Section(options with { Section = section }, size, 1);

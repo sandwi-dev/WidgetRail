@@ -29,6 +29,36 @@ internal sealed partial class BrowserSurface
     private Button? closePopupButton;
     private Button? pinPopupButton;
     private bool compactHeader;
+    private TextBlock? temporaryStorageLabel;
+
+    internal void AddTemporaryPageChrome(WidgetProtocol.BrowserStorage storage)
+    {
+        // Ordinary browser chrome starts with ten columns. Allocate the return
+        // button's column before the first wide layout (which may not reflow).
+        header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        closePopupButton = Add("Close page and return to widget", "Browser.ClosePage", Symbol.Cancel, 10, () => CloseRequested?.Invoke());
+        if (storage == WidgetProtocol.BrowserStorage.Private)
+        {
+            temporaryStorageLabel = new() { Text = "Private", VerticalAlignment = VerticalAlignment.Center, Margin = new(4, 0, 4, 0) };
+            PlaceTemporaryStorageLabel();
+        }
+    }
+    private void PlaceTemporaryStorageLabel()
+    {
+        if (temporaryStorageLabel is not { } label) return;
+        if (compactHeader)
+        {
+            header.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            SetRow(label, 2); SetColumn(label, 0); SetColumnSpan(label, 2);
+        }
+        else
+        {
+            var column = header.ColumnDefinitions.Count;
+            header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            SetRow(label, 0); SetColumn(label, column); SetColumnSpan(label, 1);
+        }
+        header.Children.Add(label);
+    }
 
     private void CreateChrome()
     {
@@ -160,6 +190,7 @@ internal sealed partial class BrowserSurface
                 SetRow(buttons[i], 0); SetColumn(buttons[i], i); header.Children.Add(buttons[i]);
             }
         }
+        PlaceTemporaryStorageLabel();
         if (focused is not null && buttons.Contains(focused)) focused.Focus(FocusState.Keyboard);
     }
     private void UpdateBookmark()

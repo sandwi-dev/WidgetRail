@@ -9,6 +9,27 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
+    private async Task<bool> OpenTemporaryWebPageAsync(string url, BrowserStorage storage, WidgetRail.WidgetPresentationSession.WidgetPresentationAuthority authority, CancellationToken token, PinnedSurface? originPin = null)
+    {
+        if (retired || !visible || browserOwner is null || fullscreenLayer.IsOpen) return false;
+        var previous = FocusManager.GetFocusedElement(XamlRoot) as Control;
+        var original = surface;
+        var memory = original?.CapturePresentationState();
+        var page = await browserOwner.OpenTemporaryAsync(url, storage, authority, token);
+        try
+        {
+            return await ExpandBrowserAsync(page, token, () =>
+            {
+                if (originPin is { IsCurrent: true, Window.IsVisible: true } && ReferenceEquals(pinned, originPin))
+                { _ = EnterPinnedAsync(); return; }
+                if (!ReferenceEquals(surface, original)) { QueueEntryFocus(); return; }
+                if (memory is not null) original?.RestorePresentationState(memory);
+                if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard);
+                else original?.Enter(restoreNativeFocus: true);
+            });
+        }
+        finally { if (expandedBrowser?.Surface != page) await browserOwner.CloseTemporaryAsync(); }
+    }
     private BrowserSlot? expandedBrowser;
 #if ENABLE_WIDGET_VALIDATION
     private readonly List<string> expansionFocusTrace = [];
@@ -70,9 +91,9 @@ internal sealed partial class OverlayShellPage
         finally { if (!ready) RestoreBrowserPickerPlacement(); }
     }
 
-    private async Task<bool> ExpandBrowserAsync(BrowserSurface browser, CancellationToken token)
+    private async Task<bool> ExpandBrowserAsync(BrowserSurface browser, CancellationToken token, Action? restoreSource = null)
     {
-        if (retired || !visible || browserOwner is null || !browser.CanCompleteSiteDecision) return false;
+        if (retired || !visible || browserOwner is null || !(browser.CanCompleteSiteDecision || browserOwner.IsTemporary(browser))) return false;
         if (expandedBrowser is { } existing)
             return !fullscreenLayer.IsTransitioning && existing.Surface?.Owns(browser) == true;
         if (fullscreenLayer.IsOpen) return false;
@@ -103,7 +124,8 @@ internal sealed partial class OverlayShellPage
                 },
                 () =>
                 {
-                    if (originPin is not null && ReferenceEquals(pinned, originPin)) _ = EnterPinnedAsync();
+                    if (restoreSource is not null) restoreSource();
+                    else if (originPin is not null && ReferenceEquals(pinned, originPin)) _ = EnterPinnedAsync();
                     else if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard);
                     else QueueEntryFocus();
                 },

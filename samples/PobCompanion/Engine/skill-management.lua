@@ -8,6 +8,24 @@ local function display(group)
   build.skillsTab:SetDisplayGroup(group)
   build.skillsTab:UpdateGemSlots()
 end
+local extraGemControls={{'enabled','Gem enabled'},{'corruptLevel','Corruption'},{'enableGlobal1'},{'enableGlobal2'}}
+local function gemControls(req,clean)
+  local group=build.skillsTab.socketGroupList[index(req.group,build.skillsTab.socketGroupList)]
+  local gem=group.gemList[index(req.gem,group.gemList)];display(group)
+  local slot=build.skillsTab.gemSlots[req.gem];local result={name=clean(gem.nameSpec or''),controls={}}
+  for _,entry in ipairs(extraGemControls)do
+    local control=slot[entry[1]]
+    if control and control:IsShown()then
+      local item={id=entry[1],title=clean(entry[2]or control:GetProperty('label')),enabled=control:IsEnabled()==true}
+      if control.list then
+        item.options={}
+        for i,option in ipairs(control.list)do item.options[#item.options+1]={id=i,title=clean(type(option)=='table'and(option.label or option.name)or option),active=i==control.selIndex}end
+      else item.value=control.state==true end
+      result.controls[#result.controls+1]=item
+    end
+  end
+  return result
+end
 local function catalog(group,gemIndex,sort)
   display(group)
   local tab=build.skillsTab
@@ -52,6 +70,7 @@ local function catalog(group,gemIndex,sort)
   return result
 end
 return {
+  gemControls=gemControls,
   copy=function(req)
     local groups=build.skillsTab.socketGroupList
     local group=groups[index(req.group,groups)]
@@ -138,6 +157,15 @@ return {
         assert(control and control:IsEnabled(),'This weapon set is controlled by the skill or its equipment')
         control.changeFunc(not group['set'..req.set])
       else error('Unknown skill group operation')end
+    elseif req.op=='gem-control'then
+      assert(group,'Missing skill group');index(req.gem,group.gemList);display(group)
+      local allowed=false;for _,entry in ipairs(extraGemControls)do if entry[1]==req.control then allowed=true end end
+      assert(allowed,'Unknown gem control')
+      local control=tab.gemSlots[req.gem][req.control]
+      assert(control and control:IsShown()and control:IsEnabled(),'This gem option is unavailable or controlled by its source')
+      if control.list then control:SetSel(index(req.value,control.list))
+      else assert(type(req.value)=='boolean','Choose enabled or disabled');control.changeFunc(req.value)end
+      tab:ProcessSocketGroup(group)
     elseif req.op=='gem-manage' then
       assert(group,'Missing skill group');display(group)
       if req.mode=='add' or req.mode=='replace' then

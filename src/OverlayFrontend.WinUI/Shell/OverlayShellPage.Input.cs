@@ -187,6 +187,11 @@ internal sealed partial class OverlayShellPage
             return;
         }
         if (retired || !visible) return;
+        if (preparingIntent && button == ControllerButton.B)
+        {
+            if (phase == ControllerEventPhase.Pressed) { shellOwnedReleases.Add(button); intentCancellation?.Cancel(); }
+            return;
+        }
         if (webAppEditor is { } editor) { editor.Handle(button, phase); return; }
         if (SystemFilePickerOpen) return;
         if (nativeBrowserPickerActive) return;

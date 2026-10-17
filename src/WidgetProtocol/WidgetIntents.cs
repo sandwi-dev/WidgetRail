@@ -67,6 +67,13 @@ public static class WidgetIntentContracts
           "url":{"type":"string","minLength":1,"maxLength":2048}
         },"required":["url"]}
         """));
+    /// <summary>Version 2 preserves long generated links such as weighted trade searches. Version 1 remains unchanged.</summary>
+    public static WidgetIntentContract WebV2 { get; } = new(OpenWebPage, 2, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "url":{"type":"string","minLength":1,"maxLength":8192}
+        },"required":["url"]}
+        """));
+    public static WidgetIntentContract ForWebUrl(string url) => url.Length > 2048 ? WebV2 : Web;
 
     public static WidgetIntentContract Video { get; } = new(OpenVideo, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{
@@ -113,7 +120,7 @@ public static class WidgetIntentContracts
                     if (contracts.TryGetValue(key, out var digest) && digest != compiled.SchemaDigest)
                         add(path, "conflicting_intent", "The same intent version has conflicting schemas.");
                     contracts[key] = compiled.SchemaDigest;
-                    var standard = compiled.Id switch { OpenWebPage => Web, OpenVideo => Video, SearchVideo => VideoSearch,
+                    var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenVideo => Video, SearchVideo => VideoSearch,
                         OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||

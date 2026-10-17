@@ -6,6 +6,6 @@ internal sealed partial class BrowserOwner
     // resources separately. Reserve before asynchronous controller creation.
     private readonly HashSet<BrowserSurface> popupOwners = [];
     private bool ReservePopup(BrowserSurface parent) => !retired &&
-        entries.Values.Any(entry => ReferenceEquals(entry.Surface, parent)) &&
+        ProfileRoots.Any(root => ReferenceEquals(root, parent)) &&
         popupOwners.Count < 2 && popupOwners.Add(parent);
 }

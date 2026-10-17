@@ -86,7 +86,7 @@
     const w = map.clientWidth, h = map.clientHeight, dpr = devicePixelRatio || 1;
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const colors = { base: cssColor('lines'), active: cssColor('nodes'), added: cssColor('added'), removed: cssColor('removed'), selected: cssColor('selected') };
+    const colors = { base: cssColor('lines'), active: cssColor('nodes'), added: cssColor('added'), removed: cssColor('removed'), changed: cssColor('selected'), selected: cssColor('selected') };
     const active=n=>n.allocated||n.granted;
     const visible = nodes.map(n => ({ n, p: point(n) })).filter(({ n,p }) => p[0] > -Math.max(30,(n.radius||50)*scale) && p[0] < w+Math.max(30,(n.radius||50)*scale) && p[1] > -Math.max(30,(n.radius||50)*scale) && p[1] < h+Math.max(30,(n.radius||50)*scale));
     for(const {n,p:[x,y]}of visible)if(n.decoration)icon(n,x,y,(n.radius||190)*scale);

@@ -12,7 +12,7 @@ public sealed partial class PobWidget
         cancellationToken.ThrowIfCancellationRequested();
         lock (gate)
         {
-            if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
+            if (action.ActionId == "cancel-operation") { if(tradePreparation is not null)tradePreparation.Cancel();else Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
             var id=action.ActionId; var parts=id.Split('.');
             modifierFocusRequested=false;
@@ -42,6 +42,13 @@ public sealed partial class PobWidget
                 return ValueTask.CompletedTask;
             }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
+            if(HandleGameExportAction(action)){Invalidate();return ValueTask.CompletedTask;}
+            if(HandleWebsitePreference(action)){Invalidate();return ValueTask.CompletedTask;}
+            if(HandleSetAction(action)){Invalidate();return ValueTask.CompletedTask;}
+            if(HandleTradeAction(action)){Invalidate();return ValueTask.CompletedTask;}
+            if(HandleItemAuthoringAction(action)){Invalidate();return ValueTask.CompletedTask;}
+            if(HandleCalculationAction(action)){Invalidate();return ValueTask.CompletedTask;}
+            if(HandleGemOptionsAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandlePlanningAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(id is not "undo" and not "redo")historyFocusRequested=false;
             if(HandleSkillManagementAction(action)){Invalidate();return ValueTask.CompletedTask;}
@@ -98,6 +105,10 @@ public sealed partial class PobWidget
             else if(parts[0]=="skill-option"&&parts.Length==4&&detailKind=="skill-options"&&
                 int.TryParse(parts[1],out var group)&&group==detailId&&group==inspectedSkillGroup&&int.TryParse(parts[3],out var optionValue))
                 Edit(new{op="skill-option",group,control=parts[2],value=optionValue});
+            else if(parts is ["skill-number",var numberGroup,var numberControl]&&detailKind=="skill-options"&&
+                int.TryParse(numberGroup,out var numericGroup)&&numericGroup==detailId&&numericGroup==inspectedSkillGroup&&
+                inspectedSkillOptions.EnumerateArray().Any(o=>S(o,"id")==numberControl&&S(o,"kind")=="number"))
+                Edit(new{op="skill-number",group=numericGroup,control=numberControl,value=action.CommittedText??""});
             else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";}
             else if(id=="back"&&detailKind=="choose-slot"&&pastedItem is not null) DiscardItemDraft();
             else if(id=="back") { detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;if(section=="Tree")focusRequestSequence++; }
@@ -109,7 +120,7 @@ public sealed partial class PobWidget
             else if(id=="config-help")configHelp=!configHelp;
             else if(id=="config-clear-search"){filter="";passiveReturnKey=null;}
             else if(parts[0] is "node" or "skill" or "item" && parts.Length==2 && int.TryParse(parts[1],out var detail))
-            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail&&(parts[0]!="node"||B(x,"interactive")))){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);}}}
+            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail&&(parts[0]!="node"||B(x,"interactive")))){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);ReadAttributeChoices(detail);}}}
             else if(id=="node-change")
             {
                 var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
@@ -236,7 +247,7 @@ public sealed partial class PobWidget
                 }
                 else if(S(message,"type")=="select")
                 {
-                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&A(State,"nodes").Any(n=>I(n,"id")==id&&B(n,"interactive"))){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;passiveReturnKey=null;}}
+                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&passiveChoicePopup is null&&A(State,"nodes").Any(n=>I(n,"id")==id&&B(n,"interactive"))){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;passiveReturnKey=null;ReadAttributeChoices(id);}}
                     Invalidate();
                 }
             }

@@ -15,11 +15,14 @@ text { color: var(--text); text-align: start; }
 .pob-choice-description { max-lines: 3; text-overflow: ellipsis; }
 .pob-library-detail { gap: 14px; }
 .wrail-modal { width: 600px; height: 300px; }
+#pob-passive-choices { height: 450px; }
 .pob-button.pob-history-button { min-height: 32px; padding: 5px 12px; }
 .pob-history-button:disabled { opacity: 0.45; }
 .pob-loadout { max-width: 280px; }
 .pob-button { min-height: 44px; padding: 10px 12px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 8px; color: var(--text); font-size: 14px; text-align: start; }
 .pob-button:focused { background: var(--surface); color: var(--text); border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: -2px; }
+.pob-button:disabled, .pob-select:disabled, .pob-input:disabled, .pob-toggle:disabled { opacity: 0.45; color: var(--text-muted); }
+.pob-price-fields { align: end; }
 .pob-scroll { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; gap: 10px; }
 .pob-workspace { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; }
 .pob-panel { padding: 16px; background: var(--surface-raised); corner-radius: 12px; gap: 12px; }

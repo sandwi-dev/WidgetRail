@@ -88,6 +88,9 @@ public sealed partial class PobWidget
         if(detailKind=="skill-manage"&&skillOrderFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.group-order.actions"};
         if(detailKind is "skill-manage" or "gem-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="gem-picker"?"pob.gem-picker.tools":"pob.skill-manage.tools"};
         if(detailKind is "item-manage" or "feature-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="feature-picker"?"pob.choice-tools":"pob.item-edit.controls"};
+        if(detailKind is "inventory" or "item-author")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="inventory"?"pob.stored.tools":"pob.author.controls"};
+        if(detailKind=="calculations")return new(){RequestId=focusRequestSequence,GroupId="pob.calculation.tools"};
+        if(detailKind=="gem-options")return new(){RequestId=focusRequestSequence,GroupId="pob.gem-options.page"};
         if(detailKind.Length>0&&!InlineDetail)return null;
         if(section=="Tree"&&detailKind!="node"&&passiveReturnKey is not null&&passives is not null)
         {

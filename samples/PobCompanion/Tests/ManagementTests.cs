@@ -39,6 +39,10 @@ internal static class ManagementTests
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import").TextEntryMaximumLength==2048&&Has("pob.import.example.link")&&Has("pob.import.example.file"),"Import field supports long paths and provides nearby link and file examples");
             var online=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.open-online-import").Intent!;
             check(online.Routing==WidgetIntentRouting.Windows&&online.Payload.GetProperty("url").GetString()==$"https://pob.cool/poe{game}","Online import explicitly uses the Windows browser for the correct game");
+            var browserLinks=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import.browser-links");
+            var ninja=Nodes(browserLinks).Single(n=>n.Id=="pob.open-poe-ninja").Intent!;
+            check(ninja.Routing==WidgetIntentRouting.Windows&&ninja.Payload.GetProperty("url").GetString()==$"https://poe.ninja/poe{game}/builds","poe.ninja opens the correct game's builds in the Windows browser");
+            check(Nodes(browserLinks).Any(n=>n.Id=="pob.open-online-import")&&!Nodes(browserLinks).Any(n=>n.Id=="pob.paste"),"External sites share their own row, separate from import controls");
             check(Has("pob.import.online-help")&&Has("pob.paste")&&!Nodes(Snapshot().Root).Any(n=>n.Kind==ViewNodeKind.WebBrowser),"Browser handoff leaves clear return-and-paste instructions without an embedded page");
             var importSource=Path.Combine(directory,"replacement-source.xml");File.WriteAllText(importSource,xml);
             var previousName=File.ReadAllText(Path.Combine(directory,id+".name.txt"));

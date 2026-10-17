@@ -20,7 +20,11 @@ public sealed partial class PobWidget
         var before=result!;
         var next=await engine.ExecuteAsync(command is Func<object> create?create():command,token,before.Xml);
         var options=await ReadVisibleSkillOptionsAsync(next,token);
+        var gem=await ReadVisibleGemOptionsAsync(next,token);
         await RefreshItemEditorAsync(next,token);
+        var inventory=detailKind=="inventory"||detailKind=="item-author"&&authoringId>0
+            ?await ReadInventoryAsync(next.Xml,I(next.State,"editedInventoryId")>0?I(next.State,"editedInventoryId"):inventoryId,token):null;
+        var calculations=detailKind=="calculations"?await ReadCalculationsAsync(next.Xml,token):null;
         // Cancellation or calculation failure before this boundary never saves
         // a partial edit or changes history. Publication follows atomic file save.
         token.ThrowIfCancellationRequested();
@@ -28,6 +32,10 @@ public sealed partial class PobWidget
         lock(gate)
         {
             PushHistory(undo,before.Xml);redo.Clear();result=next;
+            if(gem is {} gemValue)gemOptions=gemValue;else if(detailKind=="gem-options")detailKind="skill";
+            if(inventory is not null)PublishInventory(inventory);
+            if(calculations is not null)PublishCalculations(calculations);
+            if(detailKind=="sets" && I(next.State,"editedSetId")>0){managedSetId=I(next.State,"editedSetId");newSetName="";}
             if(skillDestination is not null)
             {
                 detailId=I(next.State,"editedSkillGroup");selections["skill"]=detailId;
@@ -45,7 +53,11 @@ public sealed partial class PobWidget
         var before=result!;var xml=source.Peek();
         var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);
         var options=await ReadVisibleSkillOptionsAsync(next,token);
+        var gem=await ReadVisibleGemOptionsAsync(next,token);
         await RefreshItemEditorAsync(next,token);
+        var inventory=detailKind=="inventory"||detailKind=="item-author"&&authoringId>0
+            ?await ReadInventoryAsync(next.Xml,detailKind=="item-author"?authoringId:inventoryId,token):null;
+        var calculations=detailKind=="calculations"?await ReadCalculationsAsync(next.Xml,token):null;
         BuildDocument.VerifySkillPreservation(xml,next.Xml);
         token.ThrowIfCancellationRequested();
         var remaining=source.Skip(1).ToArray();var moved=destination.Prepend(before.Xml).Take(12).ToArray();
@@ -53,6 +65,9 @@ public sealed partial class PobWidget
         lock(gate)
         {
             source.Pop();PushHistory(destination,before.Xml);result=next;
+            if(gem is {} gemValue)gemOptions=gemValue;else if(detailKind=="gem-options")detailKind="skill";
+            if(inventory is not null)PublishInventory(inventory);
+            if(calculations is not null)PublishCalculations(calculations);
             PublishVisibleSkillOptions(options);
             historyFocusRequested=true;focusRequestSequence++;
         }

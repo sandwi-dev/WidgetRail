@@ -12,6 +12,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private CancellationTokenSource? intentCancellation;
+    private bool preparingIntent;
     private PinnedSurface? intentPinnedTarget;
     private TaskCompletionSource? intentForegroundAcquired;
     private bool browserExternalPending;
@@ -45,11 +46,14 @@ internal sealed partial class OverlayShellPage
         if (prepareNotification is null) shellOwnedReleases.Add(ControllerButton.A);
         try
         {
+            preparingIntent = true;
             prepared = prepareNotification is not null ? await prepareNotification(cancellation.Token) : request!.IndexedLease is { } lease && request.IndexedItemKey is { } key
                 ? await session.PrepareIndexedIntentAsync(lease, request.Displayed, key, cancellation.Token)
                 : request.PinnedSelection is { } sourceSelection && request.PinnedProjection is { } sourceProjection
                     ? await session.PreparePinnedIntentAsync(sourceSelection, sourceProjection, request.Action, cancellation.Token)
                     : await session.PrepareIntentAsync(request.Displayed, request.Action, cancellation.Token);
+            preparingIntent = false;
+            if (prepared.PreparationFailed) return false;
             var sourcePin = request?.PinnedSelection is not null ? pinned : null;
             if (request?.PinnedSelection is not null && (sourcePin is null || !sourcePin.IsCurrent || !sourcePin.HasForeground ||
                 !ReferenceEquals(sourcePin.Selection, request.PinnedSelection))) return false;
@@ -145,6 +149,12 @@ internal sealed partial class OverlayShellPage
                     if (!await open(new Uri(external), lifetime.Token) && !retired && visible && foreground)
                         await ShowHostChoiceAsync("Could not open browser", "Windows could not open this page. Please try again.", [], lifetime.Token);
                 }
+                if (completion.Accepted && completion.OverlayUrl is { } overlayUrl)
+                {
+                    var authority = request?.Authority ?? surface?.CurrentBinding?.Frame.Authority;
+                    return authority is { } sourceAuthority && await OpenTemporaryWebPageAsync(overlayUrl,
+                        completion.OverlayStorage!.Value, sourceAuthority, cancellation.Token, sourcePin);
+                }
                 return completion.Accepted;
             }
         }
@@ -157,6 +167,7 @@ internal sealed partial class OverlayShellPage
         }
         finally
         {
+            preparingIntent = false;
             if (prepared?.TicketId is not null) await session.CancelIntentAsync(prepared);
             if (ReferenceEquals(intentCancellation, cancellation))
             { intentCancellation = null; intentPinnedTarget = null; }

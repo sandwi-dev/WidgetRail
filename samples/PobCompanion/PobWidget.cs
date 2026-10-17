@@ -37,10 +37,11 @@ public sealed partial class PobWidget : Widget
     {
         this.game = game;
         this.dataDirectory = dataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "applications", "pob" + game);
+        preferences=new(Environment.GetEnvironmentVariable("WIDGETRAIL_POB_PREFERENCES")??Path.Combine(Path.GetDirectoryName(Path.GetFullPath(this.dataDirectory))!,"pob-preferences"));
         engine = new(Path.Combine(payloadDirectory, "pob-engine"), Path.Combine(payloadDirectory, "runtime"), Path.Combine(payloadDirectory, "Engine", "bridge.lua"));
         artworkDirectory=Path.Combine(payloadDirectory,"web","art");
     }
-    public PobWidget(int game, PobEngine engine, string dataDirectory, Func<string>? readClipboard = null) { this.game = game; this.engine = engine; this.dataDirectory = dataDirectory; this.readClipboard = readClipboard ?? ClipboardText.Read; }
+    public PobWidget(int game, PobEngine engine, string dataDirectory, Func<string>? readClipboard = null, string? preferencesDirectory=null) { this.game = game; this.engine = engine; this.dataDirectory = dataDirectory; this.readClipboard = readClipboard ?? ClipboardText.Read; preferences=new(preferencesDirectory??Path.Combine(dataDirectory,"preferences")); }
     private JsonElement State => result?.State ?? default;
     private static string S(JsonElement e, string key, string fallback = "") => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.ValueKind != JsonValueKind.Null ? v.ValueKind == JsonValueKind.String ? v.GetString()! : v.ToString() : fallback;
     private static int I(JsonElement e, string key) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
@@ -130,10 +131,11 @@ public sealed partial class PobWidget : Widget
         lock (gate)
         {
             quickControlTargets.Clear();
+            overlayWebsites=preferences.OverlayBrowser;
             if (busy && result is null)
             {
                 var loading=UI.Stack("pob.root",
-                    Text($"PoE {game} Build Companion","title","pob-title"),
+                    Text($"PoE{game} Path of Building","title","pob-title"),
                     UI.Stack("pob.loading.panel",
                         UI.LoadingIndicator("pob.loading",status,LoadingIndicatorSize.Large),
                         Text(status,"loading.status","pob-heading"),
@@ -150,14 +152,16 @@ public sealed partial class PobWidget : Widget
             else if(ManagementView&&result is not null)
             {
                 if(pendingBefore is not null)children.Add(UI.Row("pob.preview",Text("PREVIEW · not applied","preview.label","pob-eyebrow pob-gold"),Button("Apply change","apply"),Button("Discard","cancel")).Classes("pob-preview"));
-                children.Add(detailKind=="library"?LibraryWorkspace():BuildMenu());
+                children.Add(detailKind=="library"?LibraryWorkspace():detailKind=="game-export"?GameExportWorkspace():detailKind=="sets"?SetsWorkspace():BuildMenu());
             }
             else if (result is null)
             {
-                children.Add(Text($"PoE {game} Build Companion", "title", "pob-title"));
+                children.Add(Text($"PoE{game} Path of Building", "title", "pob-title"));
                 children.Add(Text("Bring your Path of Building build into the overlay.", "intro"));
-                children.Add(UI.Row("pob.start.import-actions",OnlineImportButton(),Button("Paste build from clipboard", "paste")).Classes("pob-toolbar"));
+                children.Add(OnlineBuildLinks());
                 children.Add(Text(OnlineImportHelp,"import.online-help","pob-small pob-muted"));
+                children.Add(WebsitePreference());
+                children.Add(Button("Paste build from clipboard", "paste"));
                 children.Add(ImportField());
                 children.Add(Button("Create a new build", "new"));
                 children.Add(Text("Calculations run locally. Imported originals are kept separately from your working copies. Not affiliated with Grinding Gear Games.", "notice", "pob-muted"));
@@ -228,6 +232,7 @@ public sealed partial class PobWidget : Widget
         {
             if(pendingBefore is not null)return ItemComparisonContent();
             rows.Add(Button("Discard item draft", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
+            rows.Add(UI.Row("pob.draft.actions",Button("Edit item","draft-edit"),Button("Save to inventory","draft-store")).Classes("pob-toolbar"));
             var slots = A(State, "slots"); rows.AddRange(slots.Select((slot,index)=>(slot,index))
                 .Where(x=>itemDraftSlots.Contains(S(x.slot,"name"))).Select(x=>Button(S(x.slot,"name"),"replace-slot."+x.index)));
             if(itemDraftSlots.Length==0)rows.Add(Text("No compatible slots are available in this setup.","slot.empty","pob-muted"));
@@ -270,12 +275,21 @@ public sealed partial class PobWidget : Widget
             var previous = A(pendingBefore.State,"nodes").Where(x=>B(x,"allocated")).Select(x=>I(x,"id")).ToHashSet();
             var current = A(State,"nodes").Where(x=>B(x,"allocated")).Select(x=>I(x,"id")).ToHashSet();
             var added=current.Except(previous).ToHashSet();var removed=previous.Except(current).ToHashSet();
-            rows.Add(Text(string.Join(" · ",new[]{added.Count>0?$"{added.Count} allocated":null,removed.Count>0?$"{removed.Count} refunded":null}.Where(s=>s is not null)), "node.preview", "pob-heading"));
+            var oldNodes=A(pendingBefore.State,"nodes").ToDictionary(x=>I(x,"id"));
+            var modified=A(State,"nodes").Where(x=>B(x,"allocated")&&oldNodes.TryGetValue(I(x,"id"),out var old)&&B(old,"allocated")&&S(x,"description")!=S(old,"description")).ToArray();
+            rows.Add(Text(string.Join(" · ",new[]{added.Count>0?$"{added.Count} allocated":null,removed.Count>0?$"{removed.Count} refunded":null,modified.Length>0?$"{modified.Length} effect(s) changed":null}.Where(s=>s is not null)), "node.preview", "pob-heading"));
+            foreach(var changed in modified)
+            {
+                var id=I(changed,"id");
+                rows.Add(Text("Previous effect","effect.before."+id,"pob-eyebrow pob-muted"));AddNodeDescription(rows,oldNodes[id],"effect.old."+id);
+                rows.Add(Text("Proposed effect","effect.after."+id,"pob-eyebrow pob-gold"));AddNodeDescription(rows,changed,"effect.new."+id);
+            }
             rows.Add(Text($"Passive points: {S(pendingBefore.State,"passivePoints")} to {S(State,"passivePoints")}\nAscendancy points: {S(pendingBefore.State,"ascendancyPoints")} to {S(State,"ascendancyPoints")}", "node.points"));
             if(I(pendingBefore.State,"level")!=I(State,"level"))
                 rows.Add(Text($"{(B(State,"autoLevel")?"Automatic character level":"Character level")}: {S(pendingBefore.State,"level")} to {S(State,"level")}","node.level","pob-muted"));
             AddComparison(rows,pendingBefore.State,State,"node.comparison");
-            rows.Add(Button($"{(showChangedNodes?"Hide":"Show")} changed nodes ({added.Count+removed.Count})","preview-nodes").Selected(showChangedNodes));
+            if(added.Count+removed.Count>0)
+                rows.Add(Button($"{(showChangedNodes?"Hide":"Show")} changed nodes ({added.Count+removed.Count})","preview-nodes").Selected(showChangedNodes));
             if(showChangedNodes)foreach(var (source,ids,allocated) in new[]{(State,added,true),(pendingBefore.State,removed,false)})
                 foreach(var changed in A(source,"nodes").Where(x=>ids.Contains(I(x,"id"))))
                 {
@@ -288,7 +302,8 @@ public sealed partial class PobWidget : Widget
         }
         else
         {
-            rows.Add(Text(B(n,"allocated")?$"Allocated. Refunding affects {I(n,"refundCount")} node(s).":B(n,"granted")?"Granted by an item; no passive points spent.":B(n,"canAllocate")?$"Allocation path: {I(n,"pathCount")} node(s).":B(n,"requiresChoice")?"This node needs a choice in desktop PoB before importing.":"No available allocation path for this build.","node.state","pob-muted"));
+            rows.Add(Text(B(n,"allocated")?$"Allocated. Refunding affects {I(n,"refundCount")} node(s).":B(n,"granted")?"Granted by an item; no passive points spent.":B(n,"canChoose")?"Choose an effect to preview its allocation path and calculation changes.":B(n,"canAllocate")?$"Allocation path: {I(n,"pathCount")} node(s).":"No available allocation path for this build.","node.state","pob-muted"));
+            if(B(n,"canChoose"))rows.Add(PassiveChoiceControl(n));
             if(B(n,"canAllocate") || B(n,"canRefund")) rows.Add(Button(B(n,"allocated")?"Preview refund":"Preview allocation path","node-change"));
             if(B(State,"canEditNodeNotes")&&B(n,"allocated"))rows.Add(Field("Node note",UI.TextEntry(S(n,"note"),"Add a note for this passive","node-note","pob.node-note",1024).Classes("pob-input"),"node-note"));
         }
@@ -310,7 +325,7 @@ public sealed partial class PobWidget : Widget
                 .InGrid(column:index)).ToArray();
             var card=new List<WidgetElement>{Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue"),
                 UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],fields.Select(_=>GridTrack.Star()).ToArray(),controls).Spacing(0,8)};
-            card.Add(Button("Quality effects","gem-quality."+id));
+            card.Add(UI.Row("pob.gem.actions."+id,Button("Quality effects","gem-quality."+id),Button("Gem options","gem-options."+id)).Classes("pob-toolbar"));
             if(B(gem,"levelReadOnly"))
             {
                 var source=S(skill,"sourceName");var slot=S(skill,"slot");

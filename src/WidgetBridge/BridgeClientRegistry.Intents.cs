@@ -12,10 +12,46 @@ internal sealed partial class BridgeClientRegistry
     private readonly Dictionary<string, IntentTicket> _intentTickets = new(StringComparer.Ordinal);
     private sealed record ActiveIntentDelivery(string SourceId, CancellationTokenSource Cancellation);
     private readonly Dictionary<string, ActiveIntentDelivery> _activeIntentDeliveries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string Source, long Time)> _cancelledIntentPreparations = new(StringComparer.Ordinal);
     internal Func<long> IntentNow { get; init; } = () => Environment.TickCount64;
     private static bool IntentFresh(long created, long now) => now >= created && now - created <= 60_000;
 
     internal async Task<WidgetIntentPreparation> PrepareIntentAsync(BridgeIntentPrepareRequest request, CancellationToken cancellationToken)
+    {
+        if (request.PreparationId is null) return await PrepareIntentCoreAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!Guid.TryParseExact(request.PreparationId, "N", out _)) return new(request.WidgetId, null, WidgetIntentLaunchKind.Rejected, []);
+        using var preparation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        preparation.CancelAfter(TimeSpan.FromSeconds(65));
+        lock (_gate)
+        {
+            DemandNotDisposed();
+            if (_cancelledIntentPreparations.TryGetValue(request.PreparationId, out var cancelled) && IntentFresh(cancelled.Time, IntentNow()))
+                return new(request.WidgetId, null, WidgetIntentLaunchKind.Rejected, [], PreparationFailed: true);
+            if (_activeIntentDeliveries.Count >= 16 || !_activeIntentDeliveries.TryAdd(request.PreparationId, new(request.WidgetId, preparation)))
+                return new(request.WidgetId, null, WidgetIntentLaunchKind.Rejected, []);
+        }
+        try { return await PrepareIntentCoreAsync(request, preparation.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (preparation.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        { return new(request.WidgetId, null, WidgetIntentLaunchKind.Rejected, [], PreparationFailed: true); }
+        finally
+        {
+            lock (_gate)
+            {
+                _activeIntentDeliveries.Remove(request.PreparationId);
+                RememberIntentPreparation(request.PreparationId, request.WidgetId);
+            }
+        }
+    }
+
+    private void RememberIntentPreparation(string id, string source)
+    {
+        foreach (var key in _cancelledIntentPreparations.Where(p => !IntentFresh(p.Value.Time, IntentNow())).Select(p => p.Key).ToArray())
+            _cancelledIntentPreparations.Remove(key);
+        if (_cancelledIntentPreparations.Count >= 64) _cancelledIntentPreparations.Remove(_cancelledIntentPreparations.MinBy(p => p.Value.Time).Key);
+        _cancelledIntentPreparations[id] = (source, IntentNow());
+    }
+
+    private async Task<WidgetIntentPreparation> PrepareIntentCoreAsync(BridgeIntentPrepareRequest request, CancellationToken cancellationToken)
     {
         ClientRegistration source;
         IntentTicket ticket;
@@ -42,7 +78,26 @@ internal sealed partial class BridgeClientRegistry
         }
         finally { source.OperationGate.Release(); }
         // No source operation gate is held across another worker's readiness callback.
-        try { return await ResolveIntentAsync(ticket, cancellationToken).ConfigureAwait(false); }
+        try
+        {
+            if (ticket.Request.PreparationKey is not null)
+            {
+                if (request.PreparationId is null) return Rejected();
+                // Author code runs on its bounded async lane, without holding
+                // the source operation gate needed by cancellation/lifecycle.
+                var resolved = await ExecuteClientOperationAsync(source, (client, ct) => client.PrepareOutgoingIntentAsync(
+                    ticket.Request, request.WorkerRun!.StartOrdinal, ct), cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (resolved is null) return new(request.WidgetId, null, WidgetIntentLaunchKind.Rejected, [], PreparationFailed: true);
+                lock (_gate)
+                {
+                    var expected = ticket.Request with { Payload = resolved.Payload, PreparationKey = null };
+                    if (!IntentActionCurrent(ticket) || !expected.Matches(resolved) || !Declared(source, resolved)) return Rejected();
+                    ticket = ticket with { Request = resolved, CreatedAt = IntentNow() };
+                }
+            }
+            return await ResolveIntentAsync(ticket, cancellationToken).ConfigureAwait(false);
+        }
         catch (Exception error) when (error is OperationCanceledException or BridgeWidgetRequestException or BridgeStaleControllerInputAuthorityException)
         {
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -74,13 +129,14 @@ internal sealed partial class BridgeClientRegistry
     private async Task<WidgetIntentPreparation> ResolveIntentAsync(IntentTicket ticket, CancellationToken token)
     {
         var intent = ticket.Request;
+        if (intent.PreparationKey is not null) return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
         List<(IntentHandlerCandidate Candidate, string Fingerprint, bool Dynamic)> candidates;
         lock (_gate)
         {
             if (!IntentActionCurrent(ticket)) return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             if (_intentTickets.Count + _activeIntentDeliveries.Count >= 16 && _intentTickets.Values.All(item => IntentFresh(item.CreatedAt, IntentNow())))
                 return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
-            candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets
+            candidates = intent.Routing is WidgetIntentRouting.Windows or WidgetIntentRouting.OverlayBrowser ? [] : _catalog.IntentWidgets
                 .Where(widget => !widget.IsStopped && (!ticket.HostSettings || widget.Id == "settings")).SelectMany(widget =>
                 (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version)
                 .Select(handler => (new IntentHandlerCandidate(widget.Id, _catalogRevision + 1, CompiledWidgetIntentContract.Create(handler),
@@ -123,6 +179,7 @@ internal sealed partial class BridgeClientRegistry
                 IntentResolutionKind.Widget => WidgetIntentLaunchKind.Widget,
                 IntentResolutionKind.ChooseHandler => WidgetIntentLaunchKind.ChooseHandler,
                 IntentResolutionKind.ExternalBrowser => WidgetIntentLaunchKind.ExternalBrowser,
+                IntentResolutionKind.OverlayBrowser => WidgetIntentLaunchKind.OverlayBrowser,
                 IntentResolutionKind.Unavailable => WidgetIntentLaunchKind.Unavailable,
                 _ => WidgetIntentLaunchKind.Rejected,
             };
@@ -207,6 +264,9 @@ internal sealed partial class BridgeClientRegistry
             if (ticket.Kind == WidgetIntentLaunchKind.ExternalBrowser)
                 return request.TargetWidgetId is null && request.TargetWorkerRun is null && request.PinnedTarget is null
                     ? new(true, ticket.Request.Payload.GetProperty("url").GetString()) : new(false);
+            if (ticket.Kind == WidgetIntentLaunchKind.OverlayBrowser)
+                return request.TargetWidgetId is null && request.TargetWorkerRun is null && request.PinnedTarget is null
+                    ? new(true, OverlayUrl: ticket.Request.Payload.GetProperty("url").GetString(), OverlayStorage: ticket.Request.OverlayBrowserStorage ?? BrowserStorage.Private) : new(false);
             if (request.TargetWidgetId is null || request.TargetWorkerRun is null ||
                 !ticket.Targets.TryGetValue(request.TargetWidgetId, out var fingerprint) ||
                 !_clients.TryGetValue(request.TargetWidgetId, out target!) || !IsCurrentLocked(target) ||
@@ -273,6 +333,10 @@ internal sealed partial class BridgeClientRegistry
             // addresses only one admitted operation; cancellation cannot redirect it.
             if (_activeIntentDeliveries.TryGetValue(request.TicketId, out var active) && active.SourceId == request.WidgetId)
                 cancellation = active.Cancellation.CancelAsync();
+            else if (cancelled is null && Guid.TryParseExact(request.TicketId, "N", out _))
+            {
+                RememberIntentPreparation(request.TicketId, request.WidgetId);
+            }
         }
         await cancellation.ConfigureAwait(false);
         if (cancelled is not null)
@@ -360,6 +424,6 @@ internal sealed partial class BridgeClientRegistry
     // An offer for explicit user confirmation, never permission to auto-launch
     // a second handler after an uncertain or unsuccessful delivery.
     private static string? BrowserFallback(WidgetIntentRequest request) =>
-        request.ContractId == WidgetIntentContracts.OpenWebPage && request.Version == 1
+        request.ContractId == WidgetIntentContracts.OpenWebPage && request.Version is 1 or 2
             ? request.Payload.GetProperty("url").GetString() : null;
 }

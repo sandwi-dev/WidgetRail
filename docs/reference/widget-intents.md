@@ -58,6 +58,81 @@ own key/account configuration but must not activate a window or perform the acti
 No availability cache is used. Existing handlers without the opt-in remain static.
 YouTube opts in for search only; known-video playback needs no search API key.
 
+## Calculate an intent payload after a click
+
+Protocol 85 adds optional preparation for destinations that require asynchronous
+work, such as calculating a build-aware search URL. Existing intents are unchanged.
+
+```csharp
+UI.Button("Search", "search", "search")
+    .OpenIntent(WidgetIntentContracts.WebV2,
+        JsonSerializer.SerializeToElement(new { url = "https://example.com/search" }),
+        routing: WidgetIntentRouting.Windows)
+    .PrepareIntent("calculate-search");
+
+public override async ValueTask<JsonElement?> OnPrepareIntentAsync(
+    string key, WidgetIntentRequest request, CancellationToken token)
+{
+    if (key != "calculate-search") return null;
+    var url = await CalculateSearchUrlAsync(token);
+    return JsonSerializer.SerializeToElement(new { url });
+}
+```
+
+The declared initial payload must already match the declared schema. It is an
+action identity, not a destination the host opens before preparation. Include
+relevant context in that payload or preparation key if changing the displayed
+selection should invalidate an outstanding click. During progress, keep the
+original action and input scope stable if the request should remain valid; do not
+replace it with a different destination or disable its ancestors.
+
+Preparation runs only after host admission of the user's action, on the bounded
+intent lane. The widget may show cancellable progress and must honor its token.
+The host enforces a 65-second bound and rechecks the original displayed action,
+worker, declared schema, route, presentation and storage policy before routing.
+Only the payload may change. A preparation cannot add another preparation or a
+fallback. Returning null means preparation failed or was declined; show useful
+feedback in the widget. Back, hiding the overlay, or leaving the source cancels
+pending preparation. A cancelled or stale result must not open a destination.
+
+## Temporary overlay browser pages
+
+Protocol 84 adds `WidgetIntentRouting.OverlayBrowser`. A host-owned page opens
+over the source widget; Back closes it and returns to the source, including a
+source pinned surface. It does not navigate the Browser widget's existing page
+and does not require that widget to be installed or enabled.
+
+```csharp
+// A fresh private session is the SDK default.
+UI.Button("Open reference", "reference", "reference")
+    .OpenOverlayBrowser("https://example.com/reference");
+
+// Use persistent Browser storage when the user expects sign-in to survive.
+UI.Button("Open account", "account", "account")
+    .OpenOverlayBrowser("https://example.com/account", BrowserStorage.Persistent);
+```
+
+Persistent pages share the Browser profile's cookies, website storage and enabled
+extensions. Private pages use a fresh native InPrivate profile, do not inherit
+that storage or extensions, and do not retain their session for the next opening.
+Choose storage explicitly when presenting a persistent sign-in workflow. The
+host owns navigation and focus restoration; widgets receive no access to remote
+page scripts, cookies or credentials through this intent.
+
+Declare `WidgetIntentContracts.Web` in `intents.requests` for ordinary links.
+The helper selects `WebV2` for URLs longer than 2,048 characters; declare that
+version too if such links are possible. Version 2 allows up to 8,192 characters,
+while version 1 retains its existing limit. Both accept only valid HTTP(S) URLs
+through the host's web routing. Requests remain bound to the displayed action;
+storage mode is part of that identity. For `ComponentAction` or action sheets,
+create the equivalent request with `OverlayBrowser` routing and set
+`OverlayBrowserStorage` to the chosen `BrowserStorage` value.
+
+Only one temporary page can be open at a time, and it counts toward the host's
+browser capacity. Failure or cancellation must leave the source usable. This
+route is for website viewing; use a packaged web session when the widget needs
+to exchange messages with its own page.
+
 ## Package declarations
 
 ### Settings destinations

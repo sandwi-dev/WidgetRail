@@ -704,6 +704,27 @@ public abstract partial class Widget
         CancellationToken cancellationToken = default) => ValueTask.FromResult(WidgetIntentResult.Rejected);
 
     private readonly object _intentGate = new();
+    /// <summary>Calculate a payload for a user-invoked outgoing intent. Return null after reporting a preparation failure.
+    /// The host revalidates the original action and declared schema; this cannot change its route or contract.</summary>
+    public virtual ValueTask<System.Text.Json.JsonElement?> OnPrepareIntentAsync(string key, WidgetIntentRequest request,
+        CancellationToken cancellationToken = default) => ValueTask.FromResult<System.Text.Json.JsonElement?>(null);
+
+    internal async ValueTask<WidgetIntentRequest?> ApplyIntentPreparationAsync(long deliveryId, WidgetIntentRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (deliveryId <= 0 || !request.IsWellFormed() || request.PreparationKey is null)
+            throw new ArgumentException("Invalid intent preparation.");
+        lock (_intentGate)
+        {
+            if (LifecycleState != WidgetLifecycleState.Interactive || deliveryId <= _lastIntentDelivery) return null;
+            _lastIntentDelivery = deliveryId;
+        }
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ActiveCancellationToken);
+        lifetime.Token.ThrowIfCancellationRequested();
+        var payload = await OnPrepareIntentAsync(request.PreparationKey, request with { Payload = request.Payload.Clone() }, lifetime.Token).ConfigureAwait(false);
+        lifetime.Token.ThrowIfCancellationRequested();
+        return payload is { } value ? request with { Payload = value.Clone(), PreparationKey = null } : null;
+    }
     /// <summary>Read-only readiness for an opted-in handler. May run while the widget is in Background.</summary>
     public virtual ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request,
         CancellationToken cancellationToken = default) => ValueTask.FromResult(true);

@@ -16,6 +16,7 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
     private string unread = "";
     private Decoder decoder = Encoding.UTF8.GetDecoder();
     private string? lastXml;
+    internal TimeSpan CommandTimeout { get; init; } = TimeSpan.FromSeconds(60);
     public int? ProcessId => process is { HasExited: false } p ? p.Id : null;
     public long WorkingSet { get { if (process is not { HasExited: false } p) return 0; p.Refresh(); return p.WorkingSet64; } }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -24,20 +25,35 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
     {
         await serial.WaitAsync(token);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        deadline.CancelAfter(CommandTimeout);
         try
         {
-            await EnsureStartedAsync(deadline.Token);
+            var started = await EnsureStartedAsync(deadline.Token);
             // A rejected import or interrupted save must not make the next edit
             // operate on a different build from the one visible in the widget.
-            if (expectedState is not null && expectedState != lastXml)
-                await ExchangeAsync(new { op = "load", xml = expectedState, name = "Working build" }, deadline.Token);
+            var restore = expectedState ?? (started ? lastXml : null);
+            if (restore is not null && (started || restore != lastXml))
+            {
+                try { await ExchangeAsync(new { op = "load", xml = restore, name = "Working build" }, deadline.Token); }
+                catch (PobCommandException error) when (started)
+                {
+                    // Do not keep retrying a failed cached session ahead of a
+                    // caller's explicit saved-build recovery attempt.
+                    lastXml = null; Retire();
+                    throw new IOException("The previous engine session could not be restored. Reopen the saved build to continue.", error);
+                }
+            }
             if (compare)
             {
                 var request = JsonSerializer.SerializeToNode(command, Json)!.AsObject();
                 request["compare"] = true; command = request;
             }
             return await ExchangeAsync(command, deadline.Token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            Retire();
+            throw new IOException("The build engine did not respond in time. Retry the action; completed changes remain saved.");
         }
         catch (PobCommandException) { throw; }
         catch { Retire(); throw; }
@@ -58,9 +74,9 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
         return new(result.GetProperty("state").Clone(), lastXml);
     }
 
-    private async Task EnsureStartedAsync(CancellationToken token)
+    private async Task<bool> EnsureStartedAsync(CancellationToken token)
     {
-        if (process is { HasExited: false }) return;
+        if (process is { HasExited: false }) return false;
         Retire();
         var start = new ProcessStartInfo(Path.Combine(runtimeDirectory, "luajit.exe"))
         {
@@ -86,13 +102,7 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
         });
         using var hello = JsonDocument.Parse(await ReadLineAsync(process.StandardOutput, token));
         if (!hello.RootElement.TryGetProperty("ready", out var ready) || !ready.GetBoolean()) throw new IOException("Build engine initialization failed.");
-        if (lastXml is not null)
-        {
-            await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { op = "load", xml = lastXml, name = "Working build" }, Json).AsMemory(), token);
-            await process.StandardInput.FlushAsync(token);
-            using var restored = JsonDocument.Parse(await ReadLineAsync(process.StandardOutput, token));
-            if (!restored.RootElement.GetProperty("ok").GetBoolean()) throw new IOException("The saved engine session could not be restored.");
-        }
+        return true;
     }
 
     private async Task<string> ReadLineAsync(StreamReader reader, CancellationToken token)

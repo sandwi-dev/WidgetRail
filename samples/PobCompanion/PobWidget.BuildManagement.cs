@@ -10,18 +10,21 @@ public sealed partial class PobWidget
     private bool replaceOnImport;
     private sealed record BuildImport(string TargetId,string OriginalXml,PobResult Loaded,int Renamed);
     private BuildImport? pendingImport;
-    private const string OnlineImportHelp="Open pob.cool in your default browser, import your character and copy its PoB export code. Return to WidgetRail and choose Paste build from clipboard.";
-    private bool ManagementView=>detailKind is "menu" or "library";
+    private const string OnlineImportHelp="Use pob.cool to import your character, or find a build on poe.ninja. Copy its PoB code, then return here and choose Paste build from clipboard.";
+    private bool ManagementView=>detailKind is "menu" or "library" or "game-export" or "sets";
 
-    private ButtonElement OnlineImportButton()=>Button("Open pob.cool","open-online-import")
-        .OpenIntent(WidgetIntentContracts.Web,System.Text.Json.JsonSerializer.SerializeToElement(new{url=$"https://pob.cool/poe{game}"}),WidgetIntentRouting.Windows);
+    private ButtonElement OnlineImportButton()=>WebsiteButton("Open pob.cool","open-online-import",$"https://pob.cool/poe{game}");
+
+    private WidgetElement OnlineBuildLinks()=>UI.Row("pob.import.browser-links",OnlineImportButton(),
+        WebsiteButton("Open poe.ninja","open-poe-ninja",$"https://poe.ninja/poe{game}/builds"))
+        .Classes("pob-toolbar");
 
     private static WidgetElement Field(string label,WidgetElement input,string id)=>
         UI.Stack("pob.field."+id,Text(label,"field.label."+id,"pob-small"),input).Classes("pob-field");
-    private static WidgetElement ImportField()=>Field("Build link or XML file path",
+    private WidgetElement ImportField()=>Field("Build link or XML file path",
         UI.Stack("pob.import.field",
             UI.TextEntry("","Build link or XML file path","import","pob.import",2048).Classes("pob-input"),
-            Text("Use a pobb.in share link from PoB’s Import/Export Build tab, such as https://pobb.in/your-build-code","import.example.link","pob-small pob-muted"),
+            Text($"PoB share link: https://pobb.in/your-build-code · poe.ninja profile: https://poe.ninja/poe{game}/profile/account-name-1234/standard/character/MyCharacter","import.example.link","pob-small pob-muted"),
             Text(@"For an exported XML build, enter its full Windows path, such as C:\Users\YourName\Documents\PoB\MyBuild.xml","import.example.file","pob-small pob-muted")).Classes("pob-field"),"import");
     private static WidgetElement ManagementSection(string title,string id,params WidgetElement[] content)=>
         UI.Stack("pob.manage."+id,new[]{Text(title,"manage.heading."+id,"pob-heading")}.Concat(content).ToArray()).Classes("pob-card");
@@ -55,15 +58,19 @@ public sealed partial class PobWidget
         return UI.Stack("pob.build-menu",ManagementHeader("Build & import"),
             UI.VerticalScroll("pob.manage.scroll",
                 ManagementSection("Your builds","library",UI.Row("pob.manage.library.actions",
-                    Button($"Saved builds ({savedBuilds.Length})","library"),Button("New build","new")).Classes("pob-toolbar")),
+                    Button($"Saved builds ({savedBuilds.Length})","library"),Button("New build","new"),Button("Manage sets…","sets")).Classes("pob-toolbar")),
                 ManagementSection("Current build","character",character.ToArray()),
                 ManagementSection("Import a build","import",
-                    UI.Row("pob.manage.paste",OnlineImportButton(),Button("Paste build from clipboard","paste"),
+                    OnlineBuildLinks(),
+                    Text(OnlineImportHelp,"import.online-help","pob-small pob-muted"),
+                    UI.Row("pob.manage.paste",Button("Paste build from clipboard","paste"),
                         UI.Select("Destination",[new("new","New build","import-mode.new",!replaceOnImport),new("replace","Replace current build","import-mode.replace",replaceOnImport)],"pob.import-mode").Classes("pob-select")).Classes("pob-toolbar"),
                     Text(replaceOnImport?"Review the confirmation before replacing this build. Undo restores its previous contents.":"Imports create a separate saved build.","import.help","pob-muted"),
-                    Text(OnlineImportHelp,"import.online-help","pob-small pob-muted"),
                     ImportField()),
-                ManagementSection("Export","export",UI.Row("pob.manage.export.actions",Button("Copy PoB import code","export"),Button("Save XML","export-file")).Classes("pob-toolbar")))
+                ManagementSection("Export","export",UI.Row("pob.manage.export.actions",
+                    (game==2?new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file"),Button("Export to PoE2…","game-export")}:
+                        new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")),
+                ManagementSection("Preferences","preferences",WebsitePreference()))
                 .Classes("pob-scroll")).Classes("pob-workspace");
     }
 

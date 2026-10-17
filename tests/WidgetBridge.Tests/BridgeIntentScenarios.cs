@@ -23,6 +23,15 @@ internal static partial class BridgeIntentScenarios
 
     internal static async Task FallbackTickets()
     {
+        await using (var overlay = Fixture([Source()], routing: WidgetIntentRouting.OverlayBrowser))
+        {
+            var preparation = await overlay.Registry.PrepareIntentAsync(await PrepareSource(overlay), default);
+            Check(preparation.Kind == WidgetIntentLaunchKind.OverlayBrowser && preparation.Destinations.Count == 0);
+            var completion = await overlay.Registry.CommitIntentAsync(new("source", preparation.TicketId!), default);
+            Check(completion.Accepted && completion.OverlayUrl == "https://example.com/guide" && completion.ExternalUrl is null && completion.OverlayStorage == BrowserStorage.Private);
+            Check(overlay.Clients.Count == 1);
+            Check(!(await overlay.Registry.CommitIntentAsync(new("source", preparation.TicketId!), default)).Accepted);
+        }
         await using (var windows = Fixture([Source(), Target("browser")], routing: WidgetIntentRouting.Windows))
         {
             var preparation = await windows.Registry.PrepareIntentAsync(await PrepareSource(windows), default);
@@ -204,11 +213,11 @@ internal static partial class BridgeIntentScenarios
     }
     private static WidgetActionEvent Action() => new("guide", "guide", ControllerButton.A, InputScopeId: "root");
     private static RegistryFixture Fixture(ConfiguredWidget[] widgets, Func<string>? url = null, Func<long>? now = null,
-        WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface, WidgetIntentRouting routing = WidgetIntentRouting.WidgetPreferred) =>
+        WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface, WidgetIntentRouting routing = WidgetIntentRouting.WidgetPreferred, string? preparationKey = null) =>
         new(new(widgets), configure: (configured, client) => client.SnapshotFactory = sequence =>
             new WidgetView(UI.Stack("root", configured.Id == "source"
-                ? UI.Button("Guide", "guide", "guide").OpenIntent(WidgetIntentContracts.Web,
-                    JsonSerializer.SerializeToElement(new { url = url?.Invoke() ?? "https://example.com/guide" }), routing, presentation)
+                ? UI.Button("Guide", "guide", "guide") with { Intent = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
+                        JsonSerializer.SerializeToElement(new { url = url?.Invoke() ?? "https://example.com/guide" }), routing, presentation) with { PreparationKey = preparationKey } }
                 : UI.Button("Target", "target", "target"))).CreateSnapshot(configured.InstanceId, sequence), intentNow: now);
     private static ConfiguredWidget Source() => Target("source") with { Intents = new() { Requests = [WidgetIntentContracts.Web] } };
     private static ConfiguredWidget Target(string id) => new()
