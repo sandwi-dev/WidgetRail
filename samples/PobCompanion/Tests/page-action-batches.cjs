@@ -1,0 +1,23 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync('src/OverlayFrontend.WinUI/Browser/WebSessionPageAdapterHost.cs','utf8');
+const prelude=source.split('private const string Prelude="""')[1].split('""";')[0];
+const messages=[];
+function element(){return{style:{},dataset:{},children:[],setAttribute(){},append(child){this.children.push(child);},addEventListener(_,callback){this.click=callback;}};}
+const context={TextEncoder,crypto:require('node:crypto').webcrypto,document:{createElement:element,querySelectorAll:()=>[]},deliver:text=>messages.push(JSON.parse(text))};
+vm.createContext(context);vm.runInContext(prelude+'\nglobalThis.testHost=host;',context);
+const parent=element();
+const button=context.testHost.addBatchAction(parent,'evaluate','Evaluate',()=>({context:{url:'https://example.com/results'},items:Array.from({length:100},(_,id)=>({id,data:'x'.repeat(1000)}))}));
+const event=isTrusted=>({isTrusted,preventDefault(){},stopPropagation(){}});
+button.click(event(false));assert.equal(messages.length,0);
+button.click(event(true));assert.ok(messages.length>1&&messages.length<=48);
+assert.equal(messages.flatMap(m=>m.payload.items).length,100);
+messages.forEach((m,i)=>{assert.equal(m.payload.index,i);assert.equal(m.payload.total,messages.length);assert.ok(Buffer.byteLength(JSON.stringify(m))<64*1024-2048);});
+messages.length=0;
+context.location={href:'https://example.com/?q='+'x'.repeat(25000)};
+context.testHost.addBatchAction(parent,'unicode','Unicode',()=>({items:Array.from({length:100},(_,id)=>({id,data:'界🎮'.repeat(400)}))})).click(event(true));
+assert.equal(messages.flatMap(m=>m.payload.items).length,100);
+assert.ok(messages.every(m=>Buffer.byteLength(JSON.stringify({...m,kind:'page-action',document:context.location.href}))<64*1024));
+messages.length=0;context.location={href:'https://example.com'};
+context.testHost.addBatchAction(parent,'large','Large',()=>({items:[{data:'x'.repeat(49000)}]})).click(event(true));assert.equal(messages.length,0);
+context.testHost.addBatchAction(parent,'many','Many',()=>({items:Array.from({length:101},(_,id)=>({id}))})).click(event(true));assert.equal(messages.length,0);
+console.log('PASS trusted batching, ignored synthetic clicks, ordered 100-item delivery, byte bounds, atomic rejection of oversized items and counts');

@@ -68,6 +68,26 @@ Read results through `session.ReadMessagesAsync()`. An action event has `kind:
 selection identity before changing widget state. Keep site selectors/converters
 in the adapter and widget, rather than the host.
 
+For a user-selected collection, `host.addBatchAction(parentElement, actionKey,
+label, getPayload)` accepts `{ context, items }`. It requires the same trusted
+click and visible-session authority as `addAction`. The host validates the complete
+payload before delivery, then sends ordered `page-action` chunks with `batchId`,
+`index`, `total`, `context`, and `items`. Limits are 100 items, 2 MiB of item data,
+48 chunks, and 48,000 bytes per chunk before the message envelope. An oversized
+item or batch is rejected without sending partial results. Feature-detect this
+optional API when supporting older hosts. `WebSessionPageActionBatchReader` in the
+SDK assembles a complete ordered batch with a 30-second deadline; use one reader
+per session and validate the resulting website-specific records before use.
+The chunk budget also reserves space for the current document URL. Page actions
+and ordinary messages use the same `MaximumMessageDepth` (16) and 64 KiB wire
+limit; JSON transport preserves UTF-8 rather than expanding Unicode into escapes.
+
+Adapted sessions also emit `page-location` with `url` when the top-level location
+changes within a declared origin. This includes same-document navigation. A widget
+that persists return destinations must allowlist appropriate public paths and
+query parameters; do not save sign-in redirects or action tokens. This observation
+does not permit the website to invoke widget actions.
+
 Scripts are capped at 64 KiB. Responses default to 256 KiB and may declare up to
 1 MiB; the host bounds network buffering and concurrent body reads. Results use
 the existing 64 KiB message bound. Navigation retires the document context and

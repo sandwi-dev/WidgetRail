@@ -22,6 +22,9 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     private string? loader, frame;
     private bool disposed, reportedFailure;
     private int reading;
+    // Events are JSON transport, never HTML or executable script. Preserve UTF-8
+    // so a bounded Unicode payload does not expand past its wire budget.
+    private static readonly JsonSerializerOptions EventJson=new(){Encoder=System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping};
     internal string LastAction { get; private set; }="none";
     private string buttonStyle="background:Canvas;color:CanvasText;";
     internal void SetStyle(string style)
@@ -43,6 +46,7 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     {
         core.NavigationStarting += Starting;
         core.ContentLoading += Loading;
+        core.SourceChanged += LocationChanged;
         Listen("Runtime.bindingCalled", Bound);
         Listen("Network.responseReceived", Response);
         Listen("Network.loadingFinished", Finished);
@@ -64,6 +68,11 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     {
         if(args.Cancel)return;
         epoch++;context=null;loader=frame=null;responses.Clear();reportedFailure=false;
+    }
+    private void LocationChanged(CoreWebView2 sender,CoreWebView2SourceChangedEventArgs args)
+    {
+        if(disposed||!definition.AllowsPage(core.Source)||Encoding.UTF8.GetByteCount(core.Source)>48000)return;
+        publish(new JsonObject{["kind"]="page-location",["url"]=core.Source}.ToJsonString());
     }
     private async void Loading(CoreWebView2 sender, CoreWebView2ContentLoadingEventArgs args)
     {
@@ -93,11 +102,15 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
             value.GetProperty("executionContextId").GetInt32()!=context){LastAction="not-current-or-interactive";return;}
         var text=value.GetProperty("payload").GetString();
         if(text is null||Encoding.UTF8.GetByteCount(text)>WebSessionContract.MaximumMessageBytes-2048){Report("result_too_large");return;}
-        using var data=JsonDocument.Parse(text,new(){MaxDepth=14});
+        // A bounded action may wrap already-validated response metadata in a
+        // batch envelope. Match the ordinary web-session JSON depth budget.
+        using var data=JsonDocument.Parse(text,new(){MaxDepth=WebSessionContract.MaximumMessageDepth});
         var action=data.RootElement.GetProperty("action").GetString();
         if(!WebSessionContract.IsKey(action)){Report("invalid_page_action");return;}
-        publish(new JsonObject { ["kind"]="page-action",["action"]=action,["document"]=core.Source,
-            ["payload"]=JsonNode.Parse(data.RootElement.GetProperty("payload").GetRawText()) }.ToJsonString());
+        var envelope=new JsonObject { ["kind"]="page-action",["action"]=action,["document"]=core.Source,
+            ["payload"]=JsonNode.Parse(data.RootElement.GetProperty("payload").GetRawText()) }.ToJsonString(EventJson);
+        if(Encoding.UTF8.GetByteCount(envelope)>WebSessionContract.MaximumMessageBytes){Report("result_too_large");return;}
+        publish(envelope);
         LastAction="delivered";
     }
     private void Response(JsonElement value)
@@ -149,6 +162,7 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     private Task<string> Call(string method,JsonObject arguments)=>core.CallDevToolsProtocolMethodAsync(method,arguments.ToJsonString()).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
     private void Report(string code)
     {
+        LastAction=code;
         if(disposed||reportedFailure)return;
         reportedFailure=true;
         publish(new JsonObject{["kind"]="page-action-error",["error"]=code}.ToJsonString());
@@ -157,17 +171,35 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
     {
         if(disposed)return;disposed=true;epoch++;responses.Clear();
         core.NavigationStarting-=Starting;core.ContentLoading-=Loading;
+        core.SourceChanged-=LocationChanged;
         foreach(var (receiver,handler) in receivers)receiver.DevToolsProtocolEventReceived-=handler;
         receivers.Clear();
     }
     private const string Prelude="""
         let receive=()=>{};
         let actionStyle='';
+        function batchPayloads(value) {
+          if (!value || !Array.isArray(value.items) || value.items.length < 1 || value.items.length > 100) throw new Error('Invalid batch');
+          const context=value.context??{};
+          const size=x=>new TextEncoder().encode(JSON.stringify(x)).length;
+          const limit=Math.min(48000,60000-size(globalThis.location?.href??''));
+          const chunks=[];let current=[];let bytes=0;
+          for (const item of value.items) {
+            if(size({context,items:[item]})>limit)throw new Error('Item too large');
+            if(size({context,items:[...current,item]})>limit){chunks.push(current);current=[];}
+            current.push(item);bytes+=size(item);
+          }
+          if(current.length)chunks.push(current);
+          if(chunks.length>48||bytes>2*1024*1024)throw new Error('Batch too large');
+          const batchId=crypto.randomUUID();
+          return chunks.map((items,index)=>({batchId,index,total:chunks.length,context,items}));
+        }
         const baseStyle='display:block;margin:8px 0;padding:10px 14px;border:2px solid currentColor;border-radius:6px;background:Canvas;color:CanvasText;font:600 14px system-ui;cursor:pointer;';
         globalThis.__widgetRailStyle=css=>{actionStyle=css;for(const b of document.querySelectorAll('button[data-widgetrail-action]'))b.style.cssText=baseStyle+css;};
         const host=Object.freeze({
           onResponse(callback){receive=callback;},
-          addAction(parent,key,label,getPayload){
+          addBatchAction(parent,key,label,getPayload){return host.addAction(parent,key,label,getPayload,true);},
+          addAction(parent,key,label,getPayload,batch=false){
             const button=document.createElement('button');
             button.type='button';button.textContent=label;button.setAttribute('aria-label','WidgetRail: '+label);
             const brand=document.createElement('span');brand.textContent='WidgetRail';brand.style.cssText='display:block;font:10px system-ui;opacity:.8';button.append(brand);
@@ -176,8 +208,11 @@ internal sealed class WebSessionPageAdapterHost : IDisposable
             button.addEventListener('click',event=>{
               if(!event.isTrusted)return;
               event.preventDefault();event.stopPropagation();
-              try {deliver(JSON.stringify({action:key,payload:getPayload()}));}
-              catch {button.textContent='Item unavailable — reload results';}
+              try {
+                const value=getPayload();
+                for(const payload of batch?batchPayloads(value):[value])deliver(JSON.stringify({action:key,payload}));
+              }
+              catch {button.textContent='Action unavailable — reload results';}
             });
             parent.append(button);return button;
           }

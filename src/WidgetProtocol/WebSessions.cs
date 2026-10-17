@@ -69,6 +69,7 @@ public sealed record WebSessionReply
 public static class WebSessionContract
 {
     public const int MaximumMessageBytes = 64 * 1024;
+    public const int MaximumMessageDepth = 16;
     // Two base64 messages plus their envelopes fit the 256 KiB broker frame.
     public const int MaximumMessagesPerBatch = 2;
     // Preserve small-event burst tolerance; worst-case decoded storage is 4 MiB.
@@ -100,7 +101,7 @@ public static class WebSessionContract
         try { bytes = Convert.FromBase64String(value); }
         catch (FormatException error) { throw new ArgumentException("Invalid web session message.", error); }
         if (bytes.Length is 0 or > MaximumMessageBytes) throw new ArgumentException("Invalid web session message size.");
-        try { using var document = JsonDocument.Parse(bytes, new() { MaxDepth = 16 }); }
+        try { using var document = JsonDocument.Parse(bytes, new() { MaxDepth = MaximumMessageDepth }); }
         catch (JsonException error) { throw new ArgumentException("Invalid web session JSON.", error); }
         return bytes;
     }

@@ -17,6 +17,9 @@ internal static class WebSessionBatchTests
         var exact=System.Text.Encoding.UTF8.GetBytes("\""+new string('x',WebSessionContract.MaximumMessageBytes-2)+"\"");
         if(WebSessionContract.DecodeMessage(Convert.ToBase64String(exact)).Length!=WebSessionContract.MaximumMessageBytes)throw new Exception("Exact size rejected");
         try{WebSessionContract.DecodeMessage(Convert.ToBase64String([..exact,(byte)' ']));throw new Exception("Over limit accepted");}catch(ArgumentException){}
+        string Nested(int depth)=>new string('[',depth)+"0"+new string(']',depth);
+        WebSessionContract.DecodeMessage(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Nested(WebSessionContract.MaximumMessageDepth))));
+        try{WebSessionContract.DecodeMessage(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Nested(WebSessionContract.MaximumMessageDepth+1))));throw new Exception("Over-depth result accepted");}catch(ArgumentException){}
         return Task.CompletedTask;
     }
 }
