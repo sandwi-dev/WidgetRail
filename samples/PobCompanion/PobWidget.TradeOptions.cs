@@ -8,6 +8,9 @@ public sealed partial class PobWidget
 {
     private JsonElement tradeCatalog;
     private string tradeBase="";
+    private bool TradeCatalogReady=>tradeCatalog.ValueKind==JsonValueKind.Object;
+    private bool TradeSlotAvailable=>A(tradeCatalog,"slots").Any(s=>S(s,"name")==tradeSlot);
+    private void ResetTradeCatalog(){tradeCatalog=default;tradeBase="";}
     private bool tradeAdvanced;
     private int tradeBatchLimit=20;
     private readonly Dictionary<int,double> tradeWeights=[];
@@ -30,11 +33,18 @@ public sealed partial class PobWidget
     private async Task ReadTradeCatalogAsync(CancellationToken token)
     {
         var before=pendingBefore??result!;
-        var catalog=(await engine.ExecuteAsync(new{op="trade-catalog",slot=tradeSlot},token,before.Xml)).State;
-        if(!A(catalog,"slots").Any(s=>S(s,"name")==tradeSlot)&&A(catalog,"slots").Length>0)
-        {tradeSlot=S(A(catalog,"slots")[0],"name");catalog=(await engine.ExecuteAsync(new{op="trade-catalog",slot=tradeSlot},token,before.Xml)).State;}
-        lock(gate){tradeCatalog=catalog;var bases=A(catalog,"bases");if(!bases.Any(b=>S(b,"base")==tradeBase))tradeBase=bases.Length==1?S(bases[0],"base"):"";}
+        var slot=tradeSlot;
+        var catalog=(await engine.ExecuteAsync(new{op="trade-catalog",slot},token,before.Xml)).State;
+        token.ThrowIfCancellationRequested();
+        lock(gate)
+        {
+            if(tradeSlot!=slot)return;
+            tradeCatalog=catalog;
+            var bases=A(catalog,"bases");
+            if(!bases.Any(b=>S(b,"base")==tradeBase))tradeBase=bases.Length==1?S(bases[0],"base"):"";
+        }
     }
+
     private bool HandleTradeOptions(WidgetActionEvent action)
     {
         var id=action.ActionId;var parts=id.Split('.');
@@ -48,7 +58,7 @@ public sealed partial class PobWidget
         if(id=="trade-add-weight")
         {OpenFeaturePicker("Choose a ranking statistic","trade-stat.",A(tradeCatalog,"stats").Where(s=>!tradeWeights.ContainsKey(I(s,"id"))).ToArray());return true;}
         if(parts is ["trade-slot",var slot]&&int.TryParse(slot,out var index)&&index>=0&&index<A(tradeCatalog,"slots").Length)
-        {tradeSlot=S(A(tradeCatalog,"slots")[index],"name");Work(ReadTradeCatalogAsync,"Reading equipment categories…");return true;}
+        {tradeSlot=S(A(tradeCatalog,"slots")[index],"name");ResetTradeCatalog();Work(ReadTradeCatalogAsync,"Reading equipment categories…");return true;}
         if(parts is ["trade-base",var basis]&&int.TryParse(basis,out var bi)&&bi>=0&&bi<A(tradeCatalog,"bases").Length)
         {tradeBase=S(A(tradeCatalog,"bases")[bi],"base");return true;}
         if(parts is ["trade-batch",var count]&&int.TryParse(count,out var limit)&&limit is 20 or 50 or 100)tradeBatchLimit=limit;
@@ -70,15 +80,21 @@ public sealed partial class PobWidget
         else return false;
         Work(_=>{SaveTradePreferences();return Task.CompletedTask;},"Saving search preferences…");return true;
     }
-    private WidgetElement TradeSlotControl()=>A(tradeCatalog,"slots").Length==0?Text(tradeSlot,"trade.slot","pob-heading"):
-        UI.Select("Compare against",A(tradeCatalog,"slots").Select((s,i)=>new SelectOption("slot"+i,S(s,"title"),"trade-slot."+i,S(s,"name")==tradeSlot)).ToArray(),"pob.trade-slot").Classes("pob-select");
+    private WidgetElement TradeSlotControl()
+    {
+        var options=A(tradeCatalog,"slots").Select((s,i)=>new SelectOption("slot"+i,S(s,"title"),"trade-slot."+i,S(s,"name")==tradeSlot)).ToList();
+        // Keep the requested target explicit, including inactive weapon swaps.
+        // Never substitute the first active slot or render a select with no selection.
+        if(!TradeSlotAvailable)options.Insert(0,new SelectOption("requested",ComparisonSlotLabel(tradeSlot),"noop",true));
+        return UI.Select("Compare against",options,"pob.trade-slot").Disabled(!TradeCatalogReady).Classes("pob-select");
+    }
     private WidgetElement TradeOptionControls()
     {
         var controls=new List<WidgetElement>();
         var bases=A(tradeCatalog,"bases");
         if(bases.Length>1)controls.Add(UI.Select("Empty-slot item category",bases.Select((b,i)=>new SelectOption("base"+i,S(b,"title"),"trade-base."+i,S(b,"base")==tradeBase)).Prepend(new SelectOption("choose","Choose category","noop",tradeBase.Length==0)).ToArray(),"pob.trade-base").Classes("pob-select"));
         controls.Add(UI.Select("Evaluation limit",new[]{20,50,100}.Select(n=>new SelectOption("limit"+n,n+" listings","trade-batch."+n,n==tradeBatchLimit)).ToArray(),"pob.trade-batch").Classes("pob-select"));
-        controls.Add(Text("On the website, choose Evaluate loaded results. Scroll to load more listings first if needed. Ranking covers the evaluated items, not the whole market.","trade.batch-help","pob-small pob-muted"));
+        controls.Add(Text("On the website, choose Load and evaluate results. More listings load automatically up to your evaluation limit. Ranking covers the evaluated items, not the whole market.","trade.batch-help","pob-small pob-muted"));
         if(tradePriority=="custom")
         {
             foreach(var (id,value) in tradeWeights)

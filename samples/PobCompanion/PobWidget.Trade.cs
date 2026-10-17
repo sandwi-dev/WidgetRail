@@ -26,13 +26,13 @@ public sealed partial class PobWidget
         if(HandleTradeOptions(action))return true;
         if(id=="trade")
         {
-            tradeSlot=ItemSlot;detailKind="trade";focusRequestSequence++;ReadTradePreferences();
+            tradeSlot=ItemSlot;ResetTradeCatalog();detailKind="trade";focusRequestSequence++;ReadTradePreferences();
             RefreshTradeLeagues();return true;
         }
         if(id=="trade-browse")
         {if(detailKind!="trade")tradeSlot=ItemSlot;ReadTradePreferences();Work(token=>OpenWebsiteAsync(BrowseTradeUrl(),token),"Opening trade website…");return true;}
         if(detailKind!="trade")return false;
-        if(id=="trade-open"&&result is {} current)
+        if(id=="trade-open"&&TradeCatalogReady&&TradeSlotAvailable&&result is {} current)
         {
             var slot=tradeSlot;var priority=tradePriority;var league=tradeLeague;var price=tradeBudget;var currency=tradeCurrency;var mode=tradeMode;
             Work(async token=>await OpenWebsiteAsync(await CalculateTradeUrlAsync(current.Xml,slot,priority,league,price,currency,mode,token),token),"Calculating upgrade search…");
@@ -52,7 +52,7 @@ public sealed partial class PobWidget
     private string BrowseTradeUrl()=>PobTradeSearch.SearchUrl(game,tradeLeague,
         game==2?JsonSerializer.SerializeToElement(new{status=new{option=tradeMode}}):JsonSerializer.SerializeToElement(new{query=new{status=new{option=tradeMode}}}));
     private ButtonElement BrowseTradeButton()=>Button("Browse trade website","trade-browse");
-    private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open");
+    private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open").Disabled(!TradeCatalogReady||!TradeSlotAvailable);
     private async Task<string> CalculateTradeUrlAsync(string xml,string slot,string priority,string league,string price,string currency,string mode,CancellationToken token)
     {
         var budget=0d;
@@ -95,9 +95,12 @@ public sealed partial class PobWidget
     },"Loading trade leagues…");
 
     private WidgetElement TradeWorkspace()=>UI.Stack("pob.trade.page",ManagementHeader("Find equipment upgrades"),
-        QuickControls(UI.Row("pob.trade.actions",new WidgetElement[]{TradeSearchButton(),BrowseTradeButton()}.Concat(websiteSession is not null||savedTradeUrl is not null?new[]{Button("Return to listings","website-resume")}:Array.Empty<WidgetElement>()).ToArray()).Classes("pob-toolbar"),"pob.trade-open","pob.trade.scroll","Search options",true),
+        QuickControls(UI.Row("pob.trade.actions",new WidgetElement[]{TradeSearchButton(),BrowseTradeButton()}.Concat(websiteSession is not null||savedTradeUrl is not null?new[]{Button("Return to listings","website-resume")}:Array.Empty<WidgetElement>()).ToArray()).Classes("pob-toolbar"),TradeCatalogReady&&TradeSlotAvailable?"pob.trade-open":"pob.trade-browse","pob.trade.scroll","Search options",true),
         QuickControls(UI.VerticalScroll("pob.trade.scroll",
             TradeSlotControl(),
+            Text(!TradeCatalogReady?"Equipment options are not ready. Wait for loading to finish, or choose Refresh leagues to retry.":!TradeSlotAvailable
+                ?"This equipment slot is inactive in the current calculation. Choose an active slot above; Search trade will not substitute another item."
+                :"","trade.slot-status","pob-small pob-muted"),
             Text("Search for non-unique equipment that may improve this build. PoB calculates the filters; listings and trading stay on the official website.","trade.help","pob-muted"),
             Text("Trade opens in the overlay so you can compare listings beside your build. Sign in once; this widget remembers your login.","trade.website-help","pob-small pob-muted"),
             UI.Select("League",tradeLeagues.Select((l,i)=>new SelectOption("league"+i,l,"trade-league."+i,l==tradeLeague)).ToArray(),"pob.trade-league").Classes("pob-select"),
@@ -113,5 +116,5 @@ public sealed partial class PobWidget
             Text(game==2
                 ?"In the overlay browser, use Compare in PoB beside a listing. For clipboard import, hover over an item in game and press Ctrl+C. The PoE2 website has no built-in Copy item button in an external browser."
                 :"In the overlay browser, use Compare in PoB beside a listing. On the trade site, use Copy item for clipboard import. In game, hover over an item and press Ctrl+C, then paste here.","trade.paste-help","pob-small pob-muted"))
-            .Classes("pob-scroll","pob-panel"),A(tradeCatalog,"slots").Length>0?"pob.trade-slot":"pob.trade-league","pob.trade.actions","Search controls",true)).Classes("pob-workspace");
+            .Classes("pob-scroll","pob-panel"),TradeCatalogReady?"pob.trade-slot":"pob.trade-league","pob.trade.actions","Search controls",true)).Classes("pob-workspace");
 }

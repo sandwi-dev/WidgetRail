@@ -6,11 +6,16 @@ internal static class ImportExportTests
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string xml,Action<bool,string> check)
     {
         Uri Download(string url,int selectedGame)=>BuildLinks.DownloadUri(new(url),selectedGame);
-        check(Download("https://poe.ninja/poe2/profile/ulvicho04-8377/standard/character/ulvicho",2).AbsoluteUri=="https://poe.ninja/poe2/pob/raw/profile/code/ulvicho04-8377/standard/ulvicho","Public character profile maps to its PoB export");
-        check(Download("https://poe.ninja/poe1/pob/abc123",1).AbsoluteUri=="https://poe.ninja/poe1/pob/raw/abc123","PoE1 share links use the PoE1 export");
-        check(Download("https://poe.ninja/pob/abc123",1).AbsoluteUri=="https://poe.ninja/poe1/pob/raw/abc123","Legacy PoE1 share links remain usable");
+        foreach(var url in new[]{"https://poe.ninja/poe2/profile/account/standard/character/character", "https://poe.ninja/poe1/profile/account/standard/character/character", "https://poe.ninja/poe1/pob/abc123", "https://poe.ninja/poe2/pob/abc123", "https://poe.ninja/pob/abc123"})
+        {
+            var rejected=false;
+            try{await BuildDocument.ReadAsync(url,game,default);}
+            catch(IOException error){rejected=error.Message.Contains("copy the build's PoB code")&&error.Message.Contains("Paste build from clipboard");}
+            check(rejected,"Internal poe.ninja URL is rejected with clipboard instructions: "+url);
+        }
+        check(BuildDocument.Decode(BuildDocument.Encode(xml),game)==xml,"Copied PoB codes remain importable without a website API");
         foreach(var url in new[]{"http://poe.ninja/poe2/pob/abc","https://poe.ninja.evil.test/poe2/pob/abc","https://user@poe.ninja/poe2/pob/abc","https://poe.ninja:444/poe2/pob/abc","https://poe.ninja/poe1/pob/abc","https://poe.ninja/poe2/profile/a%2Fb/standard/character/test","https://poe.ninja/poe2/builds","https://poe.ninja/poe2/pob/abc?url=https://example.com"})
-        {var rejected=false;try{Download(url,2);}catch(IOException){rejected=true;}check(rejected,"Reject invalid, wrong-game or ambiguous import URL: "+url);}
+        {var rejected=false;try{Download(url,2);}catch(IOException){rejected=true;}check(rejected,"Reject unsupported import URL: "+url);}
         check(Download("https://pobb.in/abc_DEF-123",game).AbsoluteUri=="https://pobb.in/pob/abc_DEF-123","Existing pobb.in downloads are preserved");
         if(game!=2)return;
         await using var engine=new PobEngine(root,runtime,adapter);

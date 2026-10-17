@@ -24,7 +24,7 @@ public sealed partial class PobWidget
     private WidgetElement ImportField()=>Field("Build link or XML file path",
         UI.Stack("pob.import.field",
             UI.TextEntry("","Build link or XML file path","import","pob.import",2048).Classes("pob-input"),
-            Text($"PoB share link: https://pobb.in/your-build-code · poe.ninja profile: https://poe.ninja/poe{game}/profile/account-name-1234/standard/character/MyCharacter","import.example.link","pob-small pob-muted"),
+            Text("PoB share link: https://pobb.in/your-build-code. For poe.ninja, copy its PoB code and choose Paste build from clipboard.","import.example.link","pob-small pob-muted"),
             Text(@"For an exported XML build, enter its full Windows path, such as C:\Users\YourName\Documents\PoB\MyBuild.xml","import.example.file","pob-small pob-muted")).Classes("pob-field"),"import");
     private static WidgetElement ManagementSection(string title,string id,params WidgetElement[] content)=>
         UI.Stack("pob.manage."+id,new[]{Text(title,"manage.heading."+id,"pob-heading")}.Concat(content).ToArray()).Classes("pob-card");

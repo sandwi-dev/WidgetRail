@@ -18,7 +18,7 @@ public static class BuildDocument
             var normalized = text.Replace('-', '+').Replace('_', '/');
             normalized = normalized.PadRight(normalized.Length + (4 - normalized.Length % 4) % 4, '=');
             byte[] bytes;
-            try { bytes = Convert.FromBase64String(normalized); } catch (FormatException) { throw new IOException("Paste a PoB code, a pobb.in or poe.ninja link, or a build file path."); }
+            try { bytes = Convert.FromBase64String(normalized); } catch (FormatException) { throw new IOException("Paste a PoB code, a pobb.in share link, or a build file path."); }
             using var input = new MemoryStream(bytes);
             using var inflate = new ZLibStream(input, CompressionMode.Decompress);
             using var output = new MemoryStream();

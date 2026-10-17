@@ -37,6 +37,8 @@ internal static class ManagementTests
             check(widget.Render().Surface!.PreferredWidth<treeWidth&&!Has("pob.navigation")&&Has("pob.field.label.name")&&Has("pob.field.label.level"),"Build menu has its own compact size and persistent field labels");
             check(Has("pob.manage.character")&&Has("pob.manage.import")&&Has("pob.manage.export")&&Has("pob.new"),"Build menu groups character, import, export and new-build actions");
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import").TextEntryMaximumLength==2048&&Has("pob.import.example.link")&&Has("pob.import.example.file"),"Import field supports long paths and provides nearby link and file examples");
+            var linkHelp=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import.example.link").Text!;
+            check(linkHelp.Contains("https://pobb.in/")&&linkHelp.Contains("copy its PoB code")&&!linkHelp.Contains("/profile/"),"Import guidance offers supported share links and manual poe.ninja codes");
             var online=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.open-online-import").Intent!;
             check(online.Routing==WidgetIntentRouting.Windows&&online.Payload.GetProperty("url").GetString()==$"https://pob.cool/poe{game}","Online import explicitly uses the Windows browser for the correct game");
             var browserLinks=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import.browser-links");
