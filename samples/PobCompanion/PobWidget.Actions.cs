@@ -15,6 +15,7 @@ public sealed partial class PobWidget
             if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
             var id=action.ActionId; var parts=id.Split('.');
+            if(id is not "group-up" and not "group-down")skillOrderFocusRequested=false;
             if(pendingImport is {} importing)
             {
                 if(id=="import-cancel"){pendingImport=null;Invalidate();}

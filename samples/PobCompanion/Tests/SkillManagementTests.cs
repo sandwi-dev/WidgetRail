@@ -66,7 +66,21 @@ internal static class SkillManagementTests
             await Action("gem-remove.2");await Action("skill-remove-cancel");check(Group().GetProperty("gems").GetArrayLength()==2,"Cancelling gem removal preserves the group");
             await Action("gem-remove.2");await Action("skill-remove-confirm");check(Group().GetProperty("gems").GetArrayLength()==1,"Confirmed gem removal saves immediately");
             await Action("group-duplicate");check(Groups().Length==count+2&&Group().GetProperty("title").GetString()=="Controller group (copy)","Duplicate copies gems and selects the new group");
+            var copyIndex=Array.FindIndex(Groups(),g=>g.GetProperty("title").GetString()=="Controller group (copy)");
+            var aboveCopy=Groups()[copyIndex-1].GetProperty("title").GetString();
             await Action("group-up");check(Main()==main&&Group().GetProperty("title").GetString()=="Controller group (copy)","Reordering preserves selected group and main calculation skill");
+            var orderView=View();var orderNodes=Nodes(orderView.Root).ToArray();
+            check(orderNodes.Single(n=>n.Id=="pob.group-order").Text==$"Order · {copyIndex} of {count+2}"&&
+                orderNodes.Single(n=>n.Id=="pob.group-below").Text=="Below: "+aboveCopy,"Move up immediately reports its new position and former neighbor below");
+            check(orderView.FocusGroupEntryRequest?.GroupId=="pob.group-order.actions","Reordering keeps focus in the move controls");
+            await Action("group-down");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.group-order").Text==$"Order · {copyIndex+1} of {count+2}"&&
+                Nodes(View().Root).Single(n=>n.Id=="pob.group-above").Text=="Above: "+aboveCopy,"Move down restores the position and neighbor labels");
+            await Action("skill.1");await Action("group-manage");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.group-up").IsDisabled==true&&Nodes(View().Root).Single(n=>n.Id=="pob.group-above").Text=="Above: None — first group","First group explains its boundary and disables Move up");
+            await Action("skill."+Groups().Last().GetProperty("id").GetInt32());await Action("group-manage");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.group-down").IsDisabled==true&&Nodes(View().Root).Single(n=>n.Id=="pob.group-below").Text=="Below: None — last group","Last group explains its boundary and disables Move down");
+            await Action("skill."+Groups().Single(g=>g.GetProperty("title").GetString()=="Controller group (copy)").GetProperty("id").GetInt32());await Action("group-manage");
             await Action("group-delete");await Action("skill-remove-confirm");check(Groups().Length==count+1&&Main()==main,"Deleting a group preserves other groups and the main skill");
             var saved=Result();await Action("undo");check(Groups().Length==count+2,"Undo restores deleted group");await Action("redo");check(Groups().Length==count+1,"Redo removes the restored group");
             var reloaded=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(Path.Combine(directory,id+".xml")),name="Reload management"},default);

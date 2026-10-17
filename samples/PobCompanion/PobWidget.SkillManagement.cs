@@ -9,6 +9,7 @@ public sealed partial class PobWidget
     private JsonElement[] gemCatalog=[];
     private string gemSearch="",gemType="all";
     private int pickerGem;
+    private bool skillOrderFocusRequested;
     private (int Group,int Gem,string Name)? skillRemoval;
     private sealed record GemEntry(string Key,string Name,string Action);
     private sealed record GemQuery(GemEntry[] Entries);
@@ -58,7 +59,7 @@ public sealed partial class PobWidget
         }
         if(id=="group-delete"){if(!B(group,"generated"))skillRemoval=(detailId,0,S(group,"title"));return true;}
         if(id is "group-up" or "group-down")
-        {Edit(new{op="skill-group",mode="move",group=detailId,direction=id=="group-up"?-1:1},skillDestination:"skill-manage");return true;}
+        {skillOrderFocusRequested=true;Edit(new{op="skill-group",mode="move",group=detailId,direction=id=="group-up"?-1:1},skillDestination:"skill-manage");return true;}
         if(parts is ["group-slot",var slotValue]&&int.TryParse(slotValue,out var slot)&&slot>=0&&slot<A(State,"skillSlots").Length)
         {Edit(new{op="skill-group",mode="slot",group=detailId,slot=S(A(State,"skillSlots")[slot],"name")},skillDestination:"skill-manage");return true;}
         if(id=="gem-add"){OpenGemPicker(0);return true;}
@@ -81,7 +82,9 @@ public sealed partial class PobWidget
 
     private WidgetElement SkillManagementWorkspace()
     {
-        var group=A(State,"skills").FirstOrDefault(g=>I(g,"id")==detailId);
+        var groups=A(State,"skills");
+        var position=Array.FindIndex(groups,g=>I(g,"id")==detailId);
+        var group=position>=0?groups[position]:default;
         if(group.ValueKind!=JsonValueKind.Object)return UI.Stack("pob.skill-manage.tools",Button("Back to skills","back"),Text("This group is no longer available.","skill-manage.missing"));
         var generated=B(group,"generated");var gems=A(group,"gems");
         var properties=new List<WidgetElement>{Button("Back to skills","back"),Text("Manage skill group","skill-manage.title","pob-heading"),
@@ -92,8 +95,12 @@ public sealed partial class PobWidget
             properties.Add(Field("Group count (Full DPS)",UI.TextEntry(S(group,"groupCount"),"Count","group-count","pob.group-count",12).Classes("pob-input"),"group-count"));
         }
         else properties.Add(UI.Select("Socketed in",A(State,"skillSlots").Select((s,i)=>new SelectOption("slot"+i,S(s,"label"),"group-slot."+i,S(s,"name")==S(group,"slot"))).ToArray(),"pob.group-slot").Classes("pob-select"));
-        properties.Add(Text("Order","group-order","pob-field-label"));
-        properties.Add(UI.Row("pob.group-order.actions",Button("Move up","group-up").Disabled(detailId<=1),Button("Move down","group-down").Disabled(detailId>=A(State,"skills").Length)).Classes("pob-toolbar"));
+        properties.Add(Text($"Order · {position+1} of {groups.Length}","group-order","pob-field-label"));
+        properties.Add(UI.Row("pob.group-order.actions",Button("Move up","group-up").Disabled(position==0),Button("Move down","group-down").Disabled(position==groups.Length-1))
+            .RememberChildFocus(position==0?"pob.group-down":"pob.group-up").Classes("pob-toolbar"));
+        properties.Add(UI.Stack("pob.group-order.context",
+            Text("Above: "+(position>0?S(groups[position-1],"title"):"None — first group"),"group-above","pob-small pob-order-neighbor"),
+            Text("Below: "+(position+1<groups.Length?S(groups[position+1],"title"):"None — last group"),"group-below","pob-small pob-order-neighbor")).Classes("pob-order-context"));
         if(!generated)
         {
             properties.Add(UI.Row("pob.group-management.copy",Button("Duplicate","group-duplicate"),Button("Copy group","group-copy").Disabled(gems.Length==0)).Classes("pob-toolbar"));

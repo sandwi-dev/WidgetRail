@@ -10,6 +10,8 @@ text { color: var(--text); text-align: start; }
 .pob-toolbar { gap: 8px; align: center; }
 .pob-buildtools { gap: 6px; }
 .pob-field { gap: 6px; }
+.pob-order-context { gap: 2px; }
+.pob-order-neighbor { max-lines: 1; text-overflow: ellipsis; }
 .pob-library-detail { gap: 14px; }
 .wrail-modal { width: 600px; height: 300px; }
 .pob-button.pob-history-button { min-height: 32px; padding: 5px 12px; }
