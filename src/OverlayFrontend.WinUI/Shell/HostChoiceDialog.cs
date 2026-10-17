@@ -155,7 +155,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         {
             // WinUI can report the owned item's content (for example its Grid),
             // rather than the explicitly supplied ListViewItem container.
-            var item = choiceItems.FirstOrDefault(item => ReferenceEquals(item, args.ClickedItem) || ReferenceEquals(item.Content, args.ClickedItem));
+            var item = Presentation.DialogChoiceNavigation.ClickedItem(choices, args.ClickedItem);
             if (item?.Tag is string id)
                 DispatcherQueue.TryEnqueue(() =>
                 {

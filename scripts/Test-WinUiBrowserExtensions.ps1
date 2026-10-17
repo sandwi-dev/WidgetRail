@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory, [Parameter(Mandatory)][string]$ExtensionFolder)
+param([Parameter(Mandatory)][string]$OutputDirectory, [Parameter(Mandatory)][string]$ExtensionFolder, [switch]$PointerInput)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -23,13 +23,28 @@ $config = Join-Path $output 'shell.json'
 @{ InstallationRoot = $installation; SettingsRoot = $profile; InstalledCatalogRoot = (Join-Path $profile 'widgets'); InitialWidgetId = 'webapp-a' } |
     ConvertTo-Json | Set-Content -LiteralPath $config
 $result = Join-Path $output 'result.json'
-$fixture = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden -PassThru -ArgumentList @(
+$fixtureArguments = @(
     '--shell-no-controller', '--validation-platform-activation', ('--shell-config="{0}"' -f $config),
     ('--validate-webapp-shell="{0}"' -f $result), '--extensions-ui-only', ('--extension-folder="{0}"' -f ([IO.Path]::GetFullPath($ExtensionFolder))))
+if ($PointerInput) { $fixtureArguments += '--extensions-pointer-input' }
+$fixture = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -WindowStyle Hidden -PassThru -ArgumentList $fixtureArguments
 $fixture.Id | Set-Content (Join-Path $output 'pid.txt')
 try {
     $deadline = [DateTime]::UtcNow.AddSeconds(110)
-    while (!(Test-Path -LiteralPath $result) -and !$fixture.HasExited -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 200 }
+    $lastPointerSequence = 0
+    while (!(Test-Path -LiteralPath $result) -and !$fixture.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+        if ($PointerInput -and (Test-Path -LiteralPath ($result + '.pointer.json'))) {
+            # A request can be observed mid-write. Retry on the next poll.
+            $request = $null
+            try { $request = Get-Content -LiteralPath ($result + '.pointer.json') -Raw | ConvertFrom-Json } catch { }
+            if ($request -and $request.sequence -gt $lastPointerSequence) {
+                & winapp ui click $request.target -a $fixture.Id --json | Out-File (Join-Path $output ('pointer-' + $request.sequence + '.json'))
+                if ($LASTEXITCODE -ne 0) { throw "Mouse input failed for $($request.target)." }
+                $lastPointerSequence = $request.sequence
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }
     if (!(Test-Path -LiteralPath $result)) { throw 'Native extension management did not produce a completed result.' }
     $summary = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
     $summary | Select-Object passed, @{n='checks';e={$_.checks.Count}}, commits, error

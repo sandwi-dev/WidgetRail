@@ -11,6 +11,7 @@ internal sealed partial class OverlayShellPage
 {
     private async Task VerifyExtensionManagementAsync(BrowserSurface page, Action<bool, string> check)
     {
+        var pointerSequence = 0;
         var package = FrontendArguments.Value(Environment.GetCommandLineArgs(), "--extension-folder")!;
         var manager = browserOwner!.Extensions;
         await SelectAsync("webapp-b", enterWidget: true);
@@ -172,13 +173,27 @@ internal sealed partial class OverlayShellPage
             await WebAppUntil(() => FindControl<ListView>(dialog, "Host.Choice.Options") is { IsLoaded: true } ||
                 (!string.IsNullOrEmpty(dialog.PrimaryButtonText) && FindControl<Button>(dialog, "Host.Choice.Primary") is { IsLoaded: true }));
             var list = FindControl<ListView>(dialog, "Host.Choice.Options");
+            Control target;
             if (list is not null)
             {
                 var item = list.Items.OfType<ListViewItem>().Single(i => (string?)i.Tag == id);
                 list.ScrollIntoView(item); item.Focus(FocusState.Keyboard);
+                target = item;
             }
-            else FindControl<Button>(dialog, "Host.Choice.Primary")!.Focus(FocusState.Keyboard);
-            await Press(ControllerButton.A); await WebAppUntil(() => !ReferenceEquals(hostChoiceDialog, dialog));
+            else { target = FindControl<Button>(dialog, "Host.Choice.Primary")!; target.Focus(FocusState.Keyboard); }
+            if (Environment.GetCommandLineArgs().Contains("--extensions-pointer-input"))
+            {
+                await Task.Delay(400); // Finish the native popup entrance before physical input.
+                var resultPath = FrontendArguments.Value(Environment.GetCommandLineArgs(), "--validate-webapp-shell")!;
+                await File.WriteAllTextAsync(resultPath + ".pointer.json", System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    sequence = ++pointerSequence,
+                    target = Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(target),
+                }));
+                await WebAppUntil(() => !ReferenceEquals(hostChoiceDialog, dialog));
+                check(dialog.SelectedId == id, "Mouse selects the exact extension dialog option: " + id);
+            }
+            else { await Press(ControllerButton.A); await WebAppUntil(() => !ReferenceEquals(hostChoiceDialog, dialog)); }
         }
     }
 }
