@@ -11,7 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
-    internal void EnablePobWebsiteValidation(string path,Func<Task> hideAndReopen)
+    internal void EnablePobWebsiteValidation(string path,Func<Action,Task> hideAndReopen)
     {
         Loaded += async (_,_) =>
         {
@@ -46,8 +46,9 @@ internal sealed partial class OverlayShellPage
                 for(var cycle=0;cycle<3;cycle++)
                 {
                     ApplyOverlayMotionValidationAppearance(originalAppearance with
-                    {Motion=cycle==1?WidgetRail.PlatformSettings.MotionPreference.Reduced:WidgetRail.PlatformSettings.MotionPreference.Full});
-                    await hideAndReopen();
+                    {Motion=cycle==1?WidgetRail.PlatformSettings.MotionPreference.Reduced:WidgetRail.PlatformSettings.MotionPreference.Full,
+                     DisplayScales=new Dictionary<string,WidgetRail.PlatformSettings.DisplayScaleSettings>(),InterfaceScale=new[]{.75,1,1.25}[cycle],TextScale=cycle==2?1.25:1});
+                    await hideAndReopen(()=>Check(!page.HasInputForValidation&&!page.HasVisiblePresentationForValidation,"Hidden modal revokes WebView input on cycle "+cycle));
                     await Until(()=>visible&&foreground&&interactive&&!switching&&ReferenceEquals(Page(),page));
                     await Task.Delay(300);
                     dialog=Walk(XamlRoot.Content).OfType<FrameworkElement>().Single(e=>AutomationProperties.GetAutomationId(e)=="Widget.pob-website");
@@ -58,6 +59,10 @@ internal sealed partial class OverlayShellPage
                         webBounds.X>=bounds.X-1&&webBounds.Y>=bounds.Y-1&&webBounds.Right<=bounds.Right+1&&webBounds.Bottom<=bounds.Bottom+1,
                         "Hide/reopen "+cycle+" keeps modal and WebView within the widget");
                     Check(await page.EvaluateFixtureAsync("window.sessionTest")=="42","Hide/reopen "+cycle+" retains the same live session");
+                    Check(page.HasInputForValidation&&page.HasVisiblePresentationForValidation,"Reopened modal restores WebView input on cycle "+cycle);
+                    var presented=surface!.TransformToVisual(XamlRoot.Content).TransformBounds(new(0,0,surface.ActualWidth,surface.ActualHeight));
+                    Check(Math.Abs(presented.Width/surface.ActualWidth-Appearance.InterfaceScale)<.01,
+                        $"Native modal verified at interface scale {Appearance.InterfaceScale} and display scale {XamlRoot.RasterizationScale}");
                 }
                 var originalWidth=surface!.Width;var originalHeight=surface.Height;
                 try

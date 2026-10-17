@@ -39,7 +39,7 @@ Local commits are allowed; merge, push, and release are not authorized by this w
   omit modifiers or pretend an estimated website ranking is a full PoB calculation.
 - No YouTube integration, bulk listing evaluation, or new OAuth integration in this work.
 
-## Current evidence and limitations
+## Starting evidence (superseded by verification below)
 
 - Local commit 92d2678a removes the special temporary-page route and uses existing web sessions
   in PoB modals. Native open/close/focus/persistence checks passed (9 checks), along with 28 PoB
@@ -67,9 +67,11 @@ Local commits are allowed; merge, push, and release are not authorized by this w
    Native validation passes 17 checks including three reopen cycles, 720x640 and 1040x880 resize,
    live session preservation, Back/focus return, and worker-restart storage/cookie persistence.
    Evidence: artifacts/pob/session-modal-native/reopen-red.json and reopen-resize-02.json.
-   Final native rerun also covers Full and Reduced motion at the current 125% display scale:
-   artifacts/pob/session-modal-native/modal-final-10.json. This does not establish physical
-   controller or multiple display-DPI acceptance.
+   Expanded native validation passes 26 checks at 75%, 100%, and 125% interface scale, at the
+   current 125% Windows display scale, with Full/Reduced motion and text scaling. It checks
+   WebView input revocation while hidden and restoration after reopening, in addition to
+   placement and retained session identity: artifacts/pob/session-modal-native/modal-scale-01.json.
+   Physical controller and multiple Windows display-DPI acceptance remain unverified.
 2. **Live extraction proof — PoE2 verified; PoE1 sign-in pending.** Observe only declared trade-item response bodies in the
    authenticated WebView, without reading cookies/auth headers. Match displayed listing IDs.
    Verify both games' schema and upstream conversion on representative supported items. Record
@@ -79,6 +81,17 @@ Local commits are allowed; merge, push, and release are not authorized by this w
    upstream omits. Live native comparison of Brood Corona, Soaring Mask passed and returned to
    the same official listing. Evidence: artifacts/pob/live-trade-validation/result-09.json,
    return-listing.png, comparison.png. The test used a copy of the user's build.
+   Further upstream audit found the trade-text converter flattens PoE1 socket groups and omits
+   influence and some PoE2 metadata. Conversion now invokes upstream ImportTab.ImportItem with
+   a detached item destination, never the user's inventory or skill groups. API-shape normalization
+   stays in the adapter; PoB still owns parsing, item rules, raw serialization, and calculations.
+   Regression cases cover socket links, influence, crafted/fractured flags, corrupted unique weapons,
+   rune/Bonded modifiers, Runic Ward, granted skill levels, and jewels. Two independently authored
+   item-text comparisons produce identical stats and comparison output. Duplicate descriptions
+   cannot conceal an omitted modifier. The actual captured helmet responses also pass the richer
+   importer (nine accepted, one correctly rejected for unrevealed modifiers).
+   Latest live native proof and visual inspection: artifacts/pob/live-trade-metadata/result.json,
+   listing.png and comparison.png. The live test again uses a disposable copy of the user's build.
 3. **Shared session page actions — implemented, native tests passing.** Define a minimal reusable contract, sealed adapter
    resources, exact origin/data boundaries, bounds, stale-document protection, user invocation,
    cancellation, cleanup, and renderer/controller integration. Pick concrete limits from payload
@@ -92,10 +105,10 @@ Local commits are allowed; merge, push, and release are not authorized by this w
 4. **PoB integration — implemented, functional tests passing.** In-page Compare in PoB, exact selected-item conversion, listing
    context, existing equipment comparison, explicit apply/discard, and return to retained listing.
    No build mutation on browsing, conversion failure, or cancellation.
-   Both engines pass 22 workflow checks, including malformed response handling, draft/preview preservation, refusal to overwrite
+   PoE1 passes 32 and PoE2 passes 33 conversion/workflow checks, including malformed response handling, draft/preview preservation, refusal to overwrite
    pending work, explicit discard, and restart restoring listing context with a fresh-session link.
    Shared broker checks (4) and managed/native protocol parity pass. Results live under
-   artifacts/pob/trade-workflow-reviewed{1,2}.txt. Button colors/text sizing follow the host palette.
+   artifacts/pob/trade-metadata-verified{1,2}.txt. Button colors/text sizing follow the host palette.
    Both engines also pass 36 existing persistence checks (work-state-final{1,2}.txt).
 5. **End-to-end acceptance — PoE2 live workflow and native visual inspection complete;
    live PoE1 authentication and physical controller acceptance remain.** Exercise search/select/compare/apply/discard/return,
@@ -103,17 +116,21 @@ Local commits are allowed; merge, push, and release are not authorized by this w
    representative special modifiers. Use actual native UI and visual inspection. Report any
    live-auth coverage gaps accurately. Finish with one normal candidate and evidence paths.
    Native action regression passes 8 checks on the final host: session-modal-native/actions-final-10.json.
-   The final candidate is artifacts/pob/page-adapter-candidate-reviewed, with trade-adapter-installation04 and
-   trade-adapter-catalog-reviewed. User profiles/logins are preserved. No purchase or seller message
+   The current candidate is artifacts/pob/modal-scale-metadata-01, with trade-adapter-installation04 and
+   trade-metadata-catalog. User profiles/logins are preserved. No purchase or seller message
    was sent. Marketplace screenshots have not been published; captures remain local evidence.
    Final comparison layout was visually inspected after restart (final-comparison.png): price,
    seller, trade method, return action, and pending Apply/Discard precede calculation details.
    Review corrected the adapter button background to the opaque composed theme surface, since
    a transparent item brush cannot safely be flattened over an unrelated website background.
 
-## Unresolved engineering details
+## Remaining acceptance and explicit limitations
 
-Exact SDK API shape, adapter execution isolation, response/result limits and retention, schemas,
-and native placement correction remain engineering decisions, not previously approved designs.
-Choose the smallest shared mechanism supported by evidence, without adding a generic automation
-framework. Update this plan with implemented versus verified status as work proceeds.
+- Live PoE1 trade verification needs the separate widget profile to be signed in. Authentication
+  has been requested; no credentials, cookies or login tokens are requested in chat.
+- Physical controller testing and another Windows display-DPI configuration remain unverified.
+  Normalized controller routing, input ownership, native focus return and interface scales are tested.
+- Items with unrevealed/unrecognized modifiers are refused. Listings containing socketed jewels
+  must be compared separately; seller gem groups never replace the user's skills during comparison.
+- Exact listing scroll state is retained only while the session lives. After idle unloading,
+  comparison work and listing context restore, and the search can be reopened with its saved login.

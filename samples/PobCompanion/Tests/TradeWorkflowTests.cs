@@ -7,6 +7,7 @@ internal static class TradeWorkflowTests
 {
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string xml,Action<bool,string> check)
     {
+        await TradeItemTests.RunAsync(game,root,runtime,adapter,xml,check);
         var directory=Path.Combine(Path.GetTempPath(),"widgetrail-trade-workflow-"+Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);var id=Guid.NewGuid().ToString("N");
         File.WriteAllText(Path.Combine(directory,id+".xml"),xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);

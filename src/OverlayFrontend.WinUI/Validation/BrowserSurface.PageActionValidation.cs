@@ -4,6 +4,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 internal sealed partial class BrowserSurface
 {
+    internal bool HasInputForValidation=>input;
+    internal bool HasVisiblePresentationForValidation=>visible;
     internal object PageActionDiagnostics()=>new{visible,input,loading,lastAction=pageAdapter?.LastAction};
     internal async Task ClickPageActionFixtureAsync()
     {

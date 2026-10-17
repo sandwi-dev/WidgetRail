@@ -259,8 +259,8 @@ public sealed partial class MainWindow
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-hosted-session") is { } sessionResult)
             page.EnableHostedSessionValidation(sessionResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pob-website") is { } pobWebsiteResult)
-            page.EnablePobWebsiteValidation(pobWebsiteResult,async()=>
-            { HideOverlay(); await Task.Delay(600); ShowOverlay(); await Task.Delay(700); });
+            page.EnablePobWebsiteValidation(pobWebsiteResult,async verifyHidden=>
+            { HideOverlay(); await Task.Delay(600); verifyHidden(); ShowOverlay(); await Task.Delay(700); });
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pob-trade-actions") is { } tradeActionsResult)
             page.EnablePobTradeActionsValidation(tradeActionsResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-navigation") is { } navigationResult)
