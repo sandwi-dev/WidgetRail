@@ -319,8 +319,12 @@ composition: the complete tile is the sole focus,
 pointer, pressed, and A-action target, while generated artwork/copy children are
 presentation only. `TileArtwork` accepts one semantic glyph, credential-free
 HTTPS image, or bounded inline PNG. Custom rich actions may use
-`UI.ActionSurface`, but its subtree is limited to 8 direct children, 32 total
-descendants, and four relative levels and cannot contain actions, focus,
+`UI.ActionSurface`, but its subtree is limited to 8 direct children, 32 layout
+descendants, and four relative layout levels. Protocol v87 separately allows up to
+512 plain `Text` spans inside `RichText` per action surface; those spans do not
+consume the layout count or layout depth. The whole-view node and payload limits
+still apply. Expanded rich text requires v87 and is rejected on older hosts.
+The surface cannot contain actions, focus,
 scopes, shortcuts, scrolling, interaction state, Buttons, Sliders, or another
 ActionSurface. Preserve generated `id.artwork`, `id.content`, `id.title`,
 `id.subtitle`, `id.metadata`, and `id.state` suffixes and `wrail-action-surface`/

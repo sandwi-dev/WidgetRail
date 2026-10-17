@@ -10,6 +10,7 @@
 
 namespace widgetrail::protocol_contract {
 
+inline constexpr std::int32_t ActionSurfaceRichTextBudgetVersion = 87;
 inline constexpr std::int32_t ActionSurfaceVersion = 7;
 inline constexpr std::int32_t AnchoredSelectVersion = 41;
 inline constexpr std::int32_t AtomicPresentationUpdateVersion = 18;
@@ -32,7 +33,7 @@ inline constexpr std::int32_t ControllerGlyphVersion = 54;
 inline constexpr std::int32_t ControllerShortcutLabelVersion = 43;
 inline constexpr std::int32_t CurrentHostApiMajor = 1;
 inline constexpr std::int32_t CurrentManifestVersion = 1;
-inline constexpr std::int32_t CurrentVersion = 86;
+inline constexpr std::int32_t CurrentVersion = 87;
 inline constexpr std::int32_t CursorCollectionVersion = 14;
 inline constexpr std::int32_t CursorRetentionVersion = 57;
 inline constexpr std::int32_t DashboardGestureAuthorityVersion = 4;
@@ -67,6 +68,7 @@ inline constexpr std::int32_t LoadingIndicatorVersion = 5;
 inline constexpr std::int32_t MaximumActionSurfaceDescendants = 32;
 inline constexpr std::int32_t MaximumActionSurfaceDirectChildren = 8;
 inline constexpr std::int32_t MaximumActionSurfaceRelativeDepth = 4;
+inline constexpr std::int32_t MaximumActionSurfaceRichTextSpans = 512;
 inline constexpr std::int32_t MaximumCapabilityIdLength = 128;
 inline constexpr std::int32_t MaximumContextActionCount = 8;
 inline constexpr std::int32_t MaximumCursorCollectionItems = 256;

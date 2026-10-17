@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 86;
+    public const int CurrentVersion = 87;
+    public const int ActionSurfaceRichTextBudgetVersion = 87;
     public const int WebSessionPageAdapterVersion = 86;
     public const int IntentPreparationVersion = 85;
     public const int ExtendedWebLinksVersion = 84;
@@ -177,7 +178,9 @@ public static class ProtocolConstants
     public const int MaximumContextActionCount = 8;
     public const int MaximumSelectOptionCount = 128;
     public const int MaximumActionSurfaceDirectChildren = 8;
+    // Layout descendants and inline text runs have separate rendering costs.
     public const int MaximumActionSurfaceDescendants = 32;
+    public const int MaximumActionSurfaceRichTextSpans = 512;
     public const int MaximumActionSurfaceRelativeDepth = 4;
     public const double MinimumGridColumnWidth = 44;
     public const double MaximumGridColumnWidth = 1_600;

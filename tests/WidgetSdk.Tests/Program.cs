@@ -113,6 +113,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Background surfaces paint one bounded image behind one semantic foreground", BackgroundSurfaceTests.Run),
     ("Focus-associated presentation is bounded versioned and input-inert", FocusPresentationTests.Run),
     ("Action surfaces expose bounded versioned context actions", TileComponentTests.ContextActionsAreBoundedAndVersioned),
+    ("Action surfaces budget rich-text spans separately from layout", ActionSurfaceRichTextTests.Run),
     ("Action surfaces fail closed and route one activation", TileComponentTests.ActionSurfacesValidateAndRoute),
     ("Responsive grids round-trip typed column semantics", GridComponentTests.RoundTripsTypedSemantics),
     ("Responsive grids validate bounds and preserve old protocols", GridComponentTests.ValidatesBoundsAndCompatibility),

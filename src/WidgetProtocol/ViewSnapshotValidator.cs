@@ -1613,10 +1613,10 @@ public static class ViewSnapshotValidator
                 if (children.Count > ProtocolConstants.MaximumActionSurfaceDirectChildren)
                     Add($"{path}.children", "too_many_action_surface_children",
                         $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDirectChildren} direct children.");
-                var descendantCount = 0;
+                var contentBudget = new ActionSurfaceContentBudget();
                 for (var index = 0; index < children.Count; index++)
                     ValidateActionSurfaceContent(
-                        children[index], $"{path}.children[{index}]", 1, ref descendantCount);
+                        children[index], $"{path}.children[{index}]", 1, null, ref contentBudget);
             }
 
             if (node.Kind is ViewNodeKind.ModalLayer)
@@ -1745,13 +1745,17 @@ public static class ViewSnapshotValidator
             ViewNode? child,
             string path,
             int relativeDepth,
-            ref int descendantCount)
+            ViewNodeKind? parentKind,
+            ref ActionSurfaceContentBudget contentBudget)
         {
             if (child is null) return;
-            descendantCount++;
-            if (descendantCount == ProtocolConstants.MaximumActionSurfaceDescendants + 1)
+            contentBudget.Add(child, parentKind);
+            if (contentBudget.LayoutNodes == ProtocolConstants.MaximumActionSurfaceDescendants + 1)
                 Add(path, "action_surface_too_large",
-                    $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDescendants} descendants.");
+                    $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDescendants} layout descendants.");
+            if (contentBudget.RichTextSpans == ProtocolConstants.MaximumActionSurfaceRichTextSpans + 1)
+                Add(path, "action_surface_too_many_rich_text_spans",
+                    $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceRichTextSpans} rich-text spans.");
             if (relativeDepth > ProtocolConstants.MaximumActionSurfaceRelativeDepth)
                 Add(path, "action_surface_too_deep",
                     $"Action-surface content may be at most {ProtocolConstants.MaximumActionSurfaceRelativeDepth} levels deep relative to its surface.");
@@ -1768,8 +1772,8 @@ public static class ViewSnapshotValidator
             }
             foreach (var (descendant, index) in (child.Children ?? []).Select((item, index) => (item, index)))
                 ValidateActionSurfaceContent(
-                    descendant, $"{path}.children[{index}]", relativeDepth + 1,
-                    ref descendantCount);
+                    descendant, $"{path}.children[{index}]", relativeDepth + (descendant is not null && ActionSurfaceContentBudget.IsInlineSpan(descendant, child.Kind) ? 0 : 1),
+                    child.Kind, ref contentBudget);
         }
 
         void ValidateFocusPresentationContent(ViewNode root, string path)

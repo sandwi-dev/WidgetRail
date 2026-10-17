@@ -132,10 +132,10 @@ public sealed record ActionSurfaceElement : WidgetElement
                 nameof(children));
         if (children.Any(child => child is null))
             throw new ArgumentException("Action-surface children cannot contain null values.", nameof(children));
-        var descendantCount = 0;
+        var contentBudget = new ActionSurfaceContentBudget();
         foreach (var child in children)
             ValidatePresentationalNode(
-                child.ToProtocolNode(), nameof(children), 1, ref descendantCount);
+                child.ToProtocolNode(), nameof(children), 1, null, ref contentBudget);
 
         ActionId = actionId;
         AccessibilityLabel = accessibilityLabel;
@@ -282,12 +282,17 @@ public sealed record ActionSurfaceElement : WidgetElement
         ViewNode node,
         string parameterName,
         int relativeDepth,
-        ref int descendantCount)
+        ViewNodeKind? parentKind,
+        ref ActionSurfaceContentBudget contentBudget)
     {
-        descendantCount++;
-        if (descendantCount > ProtocolConstants.MaximumActionSurfaceDescendants)
+        contentBudget.Add(node, parentKind);
+        if (contentBudget.LayoutNodes > ProtocolConstants.MaximumActionSurfaceDescendants)
             throw new ArgumentException(
-                $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDescendants} descendants.",
+                $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDescendants} layout descendants.",
+                parameterName);
+        if (contentBudget.RichTextSpans > ProtocolConstants.MaximumActionSurfaceRichTextSpans)
+            throw new ArgumentException(
+                $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceRichTextSpans} rich-text spans.",
                 parameterName);
         if (relativeDepth > ProtocolConstants.MaximumActionSurfaceRelativeDepth)
             throw new ArgumentException(
@@ -304,7 +309,7 @@ public sealed record ActionSurfaceElement : WidgetElement
                 parameterName);
         foreach (var child in node.Children)
             ValidatePresentationalNode(
-                child, parameterName, relativeDepth + 1, ref descendantCount);
+                child, parameterName, relativeDepth + (ActionSurfaceContentBudget.IsInlineSpan(child, node.Kind) ? 0 : 1), node.Kind, ref contentBudget);
     }
 }
 
