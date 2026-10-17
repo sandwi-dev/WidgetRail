@@ -12,7 +12,8 @@ internal static class TradeWorkflowTests
         Directory.CreateDirectory(directory);var id=Guid.NewGuid().ToString("N");
         File.WriteAllText(Path.Combine(directory,id+".xml"),xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);
         await using var engine=new PobEngine(root,runtime,adapter);
-        var widget=new PobWidget(game,engine,directory,()=>"Rarity: NORMAL\nGold Ring\nImplicits: 1\n15% increased Rarity of Items found"){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
+        string clipboard="Rarity: NORMAL\nGold Ring\nImplicits: 1\n15% increased Rarity of Items found"; IOException? clipboardFailure=null;
+        var widget=new PobWidget(game,engine,directory,()=>clipboardFailure is {} failure?throw failure:clipboard){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
         var opened=new List<WebSessionDefinition>();var closed=0;var navigated=0;
         var incoming=new System.Collections.Concurrent.ConcurrentQueue<string>();
         WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().WithHandler(WidgetWebSessionCapabilities.Command,async(command,token)=>
@@ -36,6 +37,17 @@ internal static class TradeWorkflowTests
             await Action("section.3");await Action("item."+helmet);
             var itemActions=Nodes(View().Root).ToArray();
             check(itemActions.Single(n=>n.Id=="pob.item-paste").IsDisabled!=true&&itemActions.Single(n=>n.Id=="pob.item-manage").Focus?.Left=="pob.item-paste"&&itemActions.Single(n=>n.Id=="pob.item.tools").Kind==ViewNodeKind.Grid,"Enabled clipboard action is linked from Item settings and actions fit a two-column grid");
+            foreach(var sample in new[]{("", "The clipboard has no item text."),("https://pobb.in/example", "PoB could not recognize an item"),(new string('x',32769),"The copied text is too long")})
+            {
+                clipboard=sample.Item1;await Action("item-paste");
+                check(Nodes(View().Root).Any(n=>n.Text?.StartsWith(sample.Item2,StringComparison.Ordinal)==true)&&PobWorkStore.Read(directory,id,game)?.ItemDraft is null,"Clipboard rejection explains the actual cause: "+sample.Item2);
+            }
+            foreach(var failure in new IOException[]{new ClipboardTextUnavailableException(),new IOException("Clipboard is busy. Try Paste again.")})
+            {
+                clipboardFailure=failure;await Action("item-paste");
+                check(Nodes(View().Root).Any(n=>n.Text?.StartsWith(failure is ClipboardTextUnavailableException?"The clipboard has no item text.":"Clipboard is busy.",StringComparison.Ordinal)==true),"Clipboard access errors retain accurate context: "+failure.GetType().Name);
+            }
+            clipboardFailure=null;clipboard="Rarity: NORMAL\nGold Ring\nImplicits: 1\n15% increased Rarity of Items found";
             await Action("trade");
             var search=Nodes(View().Root).Single(n=>n.Id=="pob.trade-open");
             var pasteHelp=Nodes(View().Root).Single(n=>n.Id=="pob.trade.paste-help").Text!;
@@ -96,6 +108,13 @@ internal static class TradeWorkflowTests
             var work=PobWorkStore.Read(directory,id,game)!;
             check(work.ItemDraft?.Contains("Gold Ring")==true&&work.TradeListing?.Price=="2 × Chaos Orb"&&work.Pending?.Slot=="Ring 1"&&work.TradeBrowse&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved,"Compare calculates immediately against an explicit slot and persists recovery without equipping");
             check(View().Root.Kind==ViewNodeKind.ModalLayer&&Nodes(View().Root).Any(n=>n.Id=="pob.website")&&ViewSnapshotValidator.Validate(View()).Count==0,"Comparison remains beside the same browser in a valid modal snapshot");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.website").WebBrowser?.InteractionMode==BrowserInteractionMode.ActivateToInteract,"Split website requires A to enter and supports B to leave interaction");
+            check(View().ScrollRevealRequest is {ScrollId:"pob.website.review.details",TargetId:"pob.website.review.skill"},"A newly compared item starts at its impact instead of retaining the previous item's scroll position");
+            var details=Nodes(View().Root).Single(n=>n.Id=="pob.website.review.details");var ordered=Nodes(details).ToArray();
+            check(Array.FindIndex(ordered,n=>n.Id=="pob.website.review.stats.heading")<Array.FindIndex(ordered,n=>n.Id=="pob.website.review.item.heading")&&Array.FindIndex(ordered,n=>n.Id=="pob.website.review.item.heading")<Array.FindIndex(ordered,n=>n.Id=="pob.website.review.purchase.heading"),"Comparison reading order is impact, item description, then purchase details");
+            await Action("trade-review-hide");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.website").WebBrowser?.InteractionMode==BrowserInteractionMode.InteractOnFocus&&opened.Count==1,"Hiding the comparison restores automatic browsing on the same session");
+            await Action("trade-review-show");
             var originalComparison=work.Pending!.Xml;
             await Action("trade-review-slot.1");
             originalComparison=PobWorkStore.Read(directory,id,game)!.Pending!.Xml;

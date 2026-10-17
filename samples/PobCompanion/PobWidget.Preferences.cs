@@ -70,9 +70,9 @@ public sealed partial class PobWidget
     private WidgetView WithWebsiteModal(WidgetView view)
     {
         if(!websiteVisible||websiteSession is not {} session)return view;
-        var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"))
-            .RememberChildFocus("pob.website").Classes("pob-workspace");
         var reviewing=websiteReview&&CanReplaceTradeComparison&&pendingBefore is not null;
+        var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:reviewing?BrowserInteractionMode.ActivateToInteract:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"))
+            .RememberChildFocus("pob.website").Classes("pob-workspace");
         WidgetElement body=reviewing?Split("website",web,TradeReviewPanel(),3,2):web;
         var modal=view.WithModal(new("pob-website","Website",WithFeedback(body,null),"pob.website","website-close")
         {
@@ -83,6 +83,8 @@ public sealed partial class PobWidget
         });
         if(!busy&&websiteFocusSequence>0)
             modal=modal with{FocusGroupEntryRequest=new(){RequestId=websiteFocusSequence,GroupId=reviewing?websiteFocus:"pob.website.browser"}};
+        if(!busy&&reviewing&&websiteReviewRevealSequence>0)
+            modal=modal with{ScrollRevealRequest=new(websiteReviewRevealSequence,"pob.website.review.details","pob.website.review.skill")};
         return modal;
     }
 }

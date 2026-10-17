@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Browser;
 using WidgetRail.WidgetProtocol;
@@ -37,7 +38,13 @@ internal sealed partial class OverlayShellPage
                     var listingIds=new List<string>();
                     for(var index=0;index<2;index++)
                     {
-                        if(index>0)await Action("trade-review-browse");
+                        if(index>0)
+                        {
+                            await Action("trade-review-browse");
+                            await WebAppUntil(()=>!livePage.IsInteracting);
+                            await Press(ControllerButton.A);
+                            await WebAppUntil(()=>livePage.IsInteracting);
+                        }
                         var listing=await livePage.EvaluateFixtureAsync("document.querySelectorAll('[data-widgetrail-action]')["+index+"].closest('[data-id]').getAttribute('data-id')");
                         listingIds.Add(JsonSerializer.Deserialize<string>(listing)!);
                         await livePage.ClickPageActionFixtureAsync(index);
@@ -46,6 +53,22 @@ internal sealed partial class OverlayShellPage
                         Check(ReferenceEquals(Page(),livePage),"Comparison "+index+" keeps the website attached");
                         await File.WriteAllTextAsync(path+".comparison"+index,JsonSerializer.Serialize(surface!.CurrentBinding!.Frame.Snapshot));
                     }
+                    await Action("trade-review-browse");
+                    await WebAppUntil(()=>!livePage.IsInteracting);
+                    Check(livePage.RequiresActivation,"Comparison appearance dynamically changes the retained browser to activation mode");
+                    await Press(ControllerButton.A);await WebAppUntil(()=>livePage.IsInteracting);
+                    await Press(ControllerButton.B);await WebAppUntil(()=>!livePage.IsInteracting);
+                    Check(Page()==livePage&&surface!.CurrentBinding!.Frame.Snapshot.Root.Kind==ViewNodeKind.ModalLayer,"B leaves website interaction without closing the comparison modal");
+                    surface!.MoveFocus(FocusNavigationDirection.Right);
+                    await Task.Delay(150);
+                    var focused=FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+                    var inReview=false;
+                    for(var current=focused;current is not null;current=VisualTreeHelper.GetParent(current))
+                        if(AutomationProperties.GetAutomationId(current)=="Widget.pob.website.review")inReview=true;
+                    Check(inReview,"Right after B reaches the comparison panel through native directional navigation");
+                    await Action("trade-review-hide");await WebAppUntil(()=>!livePage.RequiresActivation&&livePage.IsInteracting);
+                    await Action("trade-review-show");await WebAppUntil(()=>livePage.RequiresActivation&&!livePage.IsInteracting);
+                    Check(Page()==livePage,"Hiding and showing comparison changes interaction policy without recreating the website");
                     var recent="trade-review-recent."+listingIds[0];
                     await Action(recent);
                     await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.recent"&&n.SelectOptions.Any(o=>o.ActionId==recent&&o.IsSelected))&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
@@ -87,6 +110,8 @@ internal sealed partial class OverlayShellPage
             finally{BrowserSurface.FixturePage=old;BrowserSurface.FixtureContentType=oldType;await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new{passed=error is null,checks,error}));}
             void Check(bool value,string label){if(!value)throw new InvalidOperationException(label);checks.Add(label);File.WriteAllText(path+".progress",string.Join('\n',checks));}
             BrowserSurface? Page()=>Walk(XamlRoot.Content).OfType<BrowserSlot>().FirstOrDefault(s=>AutomationProperties.GetAutomationId(s)=="Widget.pob.website")?.Surface;
+            async Task Press(ControllerButton button)
+            {await RouteButtonAsync(button,ControllerEventPhase.Pressed);await RouteButtonAsync(button,ControllerEventPhase.Released);}
             async Task Action(string id)
             {
                 await WebAppUntil(()=>surface?.CurrentBinding is {} binding&&!Nodes(binding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation")&&

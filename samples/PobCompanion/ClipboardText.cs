@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 
 namespace WidgetRail.Samples.PobCompanion;
 
+internal sealed class ClipboardTextUnavailableException() : IOException("The clipboard does not contain text.");
+
 /// <summary>Clipboard access occurs only in response to the user's Paste/Copy actions.</summary>
 internal static partial class ClipboardText
 {
@@ -12,7 +14,7 @@ internal static partial class ClipboardText
         try
         {
             var data = GetClipboardData(13);
-            if (data == 0) throw new IOException("Copy a PoB share code, build link, or item first.");
+            if (data == 0) throw new ClipboardTextUnavailableException();
             var size = GlobalSize(data);
             if (size > BuildDocument.MaximumBytes * 2u) throw new IOException("Clipboard text is too large.");
             var pointer = GlobalLock(data);

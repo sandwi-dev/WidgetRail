@@ -179,3 +179,25 @@ the base/name are recovered from PoB, and the continuation action keeps the item
 `trade-review-legacy/evidence/restored.png` shows the matching saved listing after session recreation.
 Final candidate: `artifacts/pob/trade-review-host03`, `trade-review-final-catalogd`, original
 `guide-workflow` data/settings and persistent logins, with controller input enabled.
+
+### Controller escape and reading-order correction
+
+The side-by-side browser now uses ActivateToInteract while its comparison is visible, and
+InteractOnFocus when it is alone. Native validation exercises A enter, B leave without closing
+the modal, Right into the comparison, and hiding/showing the panel on the same session. All ten
+live checks pass in `artifacts/pob/trade-order-native/live-result.json`; this is routed controller
+input validation, not physical-gamepad acceptance.
+
+The sidebar presents item/name, price/slot, essential controls, and main-skill impact first.
+Complete PoB comparison lines and their formatting are preserved. Item descriptions and grouped
+purchase details follow; secondary controls no longer occupy the initial reading area. X jumps
+to item details, L3 returns to controls, and each new comparison reveals the top of its impact.
+The expanded view retains independent columns. Visually inspected `current.png`, `details.png`,
+and `expanded.png` under `trade-order-native/evidence`.
+
+Replace from clipboard now distinguishes absent/non-text content, excessive length, unrecognized
+item text, and recognized items without a compatible slot. Access failures keep their real
+clipboard-busy/read errors instead of being mislabeled as invalid item data. Regression checks
+cover non-text, empty, link, oversized, busy, valid, and protected-draft paths in both engines
+(`trade-order-tests1.txt`: 52 checks; `trade-order-tests2.txt`: 53 checks).
+Candidate uses `trade-order-host` and `trade-order-catalogb` with the original user profile.

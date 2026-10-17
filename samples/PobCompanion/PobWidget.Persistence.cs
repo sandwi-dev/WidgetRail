@@ -127,9 +127,16 @@ public sealed partial class PobWidget
 
     private void SetItemDraft(string? raw) => Work(async token =>
     {
-        var text = raw ?? readClipboard();
-        if (text.Length > 32768 || string.IsNullOrWhiteSpace(text)) throw new IOException("Copy an item description first (up to 32,768 characters).");
-        var slots=await ItemSlotsAsync(text,result!.Xml,token);
+        string text;
+        try{text=raw??readClipboard();}
+        catch(ClipboardTextUnavailableException){throw new IOException("The clipboard has no item text. Hover over an item in game and press Ctrl+C, then try Replace from clipboard again.");}
+        if(string.IsNullOrWhiteSpace(text))throw new IOException("The clipboard has no item text. Hover over an item in game and press Ctrl+C, then try Replace from clipboard again.");
+        if(text.Length>32768)throw new IOException("The copied text is too long for one item (maximum 32,768 characters). Copy a single item description.");
+        string[] slots;
+        try{slots=await ItemSlotsAsync(text,result!.Xml,token);}
+        catch(PobCommandException error)when(error.Message.Contains("Item was not recognized",StringComparison.Ordinal))
+        {throw new IOException("PoB could not recognize an item in the copied text. Copy the complete item description, not a build code or website link.");}
+        if(slots.Length==0)throw new IOException("PoB recognized the item, but it has no compatible equipment slot in this build’s current setup.");
         SaveWork(result!, new(result!.Xml,undo.ToArray(),redo.ToArray(),ItemDraft:text), refreshXml: false);
         lock (gate) { tradeBrowsing=false;tradeListing=null;pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; section = "Items"; }
     }, "Reading item…");
