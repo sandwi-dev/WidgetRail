@@ -62,7 +62,7 @@ public sealed partial class PobWidget
         if(key==cachedTradeKey&&cachedTradeUrl is not null)return cachedTradeUrl;
         var query=await engine.ExecuteAsync(request,token,xml);
         token.ThrowIfCancellationRequested();
-        var url=PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query"));
+        var url=PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query"),weighted:true);
         cachedTradeKey=key;cachedTradeUrl=url;return url;
     }
     private void ReadTradePreferences()

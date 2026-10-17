@@ -4,7 +4,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.Samples.PobCompanion;
 
-internal sealed record PobTradeListing(string Id,string Url,string Price,string Seller,string Method,string? Fee,string? Availability=null,string? Character=null,string? ItemName=null,string? BaseType=null,bool? InstantBuyout=null)
+internal sealed record PobTradeListing(string Id,string Url,string Price,string Seller,string Method,string? Fee,string? Availability=null,string? Character=null,string? ItemName=null,string? BaseType=null,bool? InstantBuyout=null,double? PriceAmount=null,string? PriceCurrency=null)
 {
     // Like desktop PoB's purchase handoff, narrow by account instead of keeping
     // an expiring travel token. The fragment lets our adapter locate the exact
@@ -23,6 +23,7 @@ internal sealed record PobTradeListing(string Id,string Url,string Price,string 
     internal bool IsValid(int game)=>Id is {Length:>=16 and <=128}&&Id.All(char.IsAsciiHexDigit)&&
         Url is {Length:<=8192}&&Uri.TryCreate(Url,UriKind.Absolute,out var uri)&&uri.UserInfo.Length==0&&
         uri.GetLeftPart(UriPartial.Authority)=="https://www.pathofexile.com"&&uri.AbsolutePath.StartsWith(game==2?"/trade2/":"/trade/",StringComparison.Ordinal)&&
+        (PriceAmount is null||double.IsFinite(PriceAmount.Value)&&PriceAmount>0)&&(PriceCurrency is null||PriceCurrency.Length is >0 and <=100&&PriceCurrency.All(c=>char.IsAsciiLetterOrDigit(c)||c=='-'))&&
         Price is {Length:<=100}&&Seller is {Length:<=100}&&Method is {Length:<=60}&&(Fee is null||Fee.Length<=120)&&
         (Availability is null||Availability.Length<=80)&&(Character is null||Character.Length<=100)&&
         (ItemName is null||ItemName.Length<=200)&&(BaseType is null||BaseType.Length<=200)&&
@@ -128,7 +129,9 @@ public sealed partial class PobWidget
             account.TryGetProperty("online",out var online)&&online.ValueKind==JsonValueKind.Object
                 ?S(online,"status")=="afk"?"Seller was away when results loaded":"Seller was online when results loaded":null,Limit(S(account,"lastCharacterName"),100),
             Limit(S(item,"name"),200),Limit(S(item,"typeLine"),200),
-            listing.TryGetProperty("instantBuyout",out var instant)&&instant.ValueKind is JsonValueKind.True or JsonValueKind.False?instant.GetBoolean():null);
+            listing.TryGetProperty("instantBuyout",out var instant)&&instant.ValueKind is JsonValueKind.True or JsonValueKind.False?instant.GetBoolean():null,
+            p.ValueKind==JsonValueKind.Object&&p.TryGetProperty("amount",out var amount)&&amount.ValueKind==JsonValueKind.Number&&amount.TryGetDouble(out var number)&&double.IsFinite(number)&&number>0?number:null,
+            p.ValueKind==JsonValueKind.Object&&S(p,"currency").Length>0?S(p,"currency"):null);
         if(!context.IsValid(game))throw new IOException("The listing details are incomplete. Reload the search.");
         return context;
     }

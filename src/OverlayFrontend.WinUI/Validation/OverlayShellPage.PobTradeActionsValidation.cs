@@ -38,6 +38,9 @@ internal sealed partial class OverlayShellPage
                     var livePage=Page()!;
                     await WebAppUntilScript(livePage,"document.querySelectorAll('[data-widgetrail-action=\"compare-item\"]').length>1");
                     Check(await livePage.EvaluateFixtureAsync("document.body.innerText.includes('Instant Buyout')")=="true","Search uses Instant Buyout on the official site");
+                    await WebAppUntilScript(livePage,"!!document.querySelector('.resultset .s[data-field=\"statgroup.0\"].sorted-desc')");
+                    await WebAppUntilScript(livePage,"document.querySelector('[data-widgetrail-action=\"evaluate-request\"]')?.disabled===false");
+                    Check(true,"Generated PoE2 search settles on descending weighted sum before evaluation");
                     var listingIds=new List<string>();
                     for(var index=0;index<2;index++)
                     {
@@ -94,6 +97,11 @@ internal sealed partial class OverlayShellPage
                     await File.WriteAllTextAsync(path+".batch-diagnostics",JsonSerializer.Serialize(new{page=livePage.PageActionDiagnostics(),button=await livePage.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action=\"evaluate-request\"]')?.textContent"),frame=surface!.CurrentBinding!.Frame.Snapshot}));
                     await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.Contains("ranked"))&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
                     Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.results"),"Live website batch produces a virtualized ranked shortlist");
+                    await Action("trade-rank-sort.value");
+                    await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.order"&&n.SelectOptions.Any(o=>o.IsSelected&&o.Id=="value")));
+                    Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.order"&&n.SelectOptions.Any(o=>o.IsSelected&&o.Id=="value")),"Live ranking uses PoB price-adjusted order with public GGG rates");
+                    await Action("trade-rank-sort.strength");
+                    await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.order"&&n.SelectOptions.Any(o=>o.IsSelected&&o.Id=="strength")));
                     await File.WriteAllTextAsync(path+".ranking",JsonSerializer.Serialize(surface!.CurrentBinding!.Frame.Snapshot));
                     await WebAppUntil(()=>Walk(XamlRoot.Content).OfType<WidgetIndexedCollectionView>().Any(c=>AutomationProperties.GetAutomationId(c)=="Widget.pob.rank.results"));
                     var liveRanks=Walk(XamlRoot.Content).OfType<WidgetIndexedCollectionView>().Single(c=>AutomationProperties.GetAutomationId(c)=="Widget.pob.rank.results");

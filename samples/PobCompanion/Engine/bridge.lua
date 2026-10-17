@@ -10,10 +10,13 @@ local gameExport=dofile(adapterDirectory..'build-export.lua')
 local setManagement=dofile(adapterDirectory..'set-management.lua')
 local tradeSearch=dofile(adapterDirectory..'trade-search.lua')
 local tradeRanking=dofile(adapterDirectory..'trade-ranking.lua')
+local currencyRates=dofile(adapterDirectory..'currency-rates.lua')
 local tradeItem=dofile(adapterDirectory..'trade-item.lua')
 local itemAuthoring=dofile(adapterDirectory..'item-authoring.lua')
 itemAuthoring.configure(planningFeatures)
 local passiveChoices=dofile(adapterDirectory..'passive-choices.lua')
+local treeEditing=dofile(adapterDirectory..'tree-editing.lua')
+local timelessTools=dofile(adapterDirectory..'timeless-tools.lua')
 local calculationViews=dofile(adapterDirectory..'calculation-views.lua')
 io.stdout:setvbuf('no')
 print = function(...) -- Keep the protocol channel independent of upstream diagnostics.
@@ -24,6 +27,7 @@ local json = require('dkjson')
 local originalRead = io.read
 io.read = function() error('PoB startup requested an interactive error prompt') end
 dofile('HeadlessWrapper.lua')
+dofile(adapterDirectory..'headless-compression.lua')
 io.read = originalRead
 assert(build, 'PoB initialization failed')
 dofile(adapterDirectory..'beta-compatibility.lua')
@@ -273,6 +277,18 @@ local function snapshot()
   planningFeatures.snapshot(result,textRuns,clean)
   local passivePoints,ascendancyPoints=build.spec:CountAllocNodes()
   result.passivePoints=passivePoints;result.ascendancyPoints=ascendancyPoints
+  result.weaponTreeModes=build.spec.GetEffectiveAllocationPath~=nil
+  if result.weaponTreeModes then
+    -- Project the desktop display after OnFrame; PoB owns point accounting.
+    local budgets={}
+    for used,maximum in clean(build.controls.pointDisplay.str):gmatch('(%d+)%s*/%s*(%d+)')do
+      budgets[#budgets+1]={used=tonumber(used),maximum=tonumber(maximum)}
+    end
+    assert(#budgets==4,'PoB passive point display has changed')
+    result.passiveBudgets=budgets;result.passivePoints=budgets[1].used
+  end
+  result.timelessFinder=timelessTools.available()
+  result.allocationMode=build.spec.allocMode or 0
   for id,n in pairs(build.spec.nodes) do
     if finite(n.x) and finite(n.y) then
       local display=treePresentation(build,n)
@@ -284,7 +300,7 @@ local function snapshot()
       result.nodes[#result.nodes+1]={id=id,x=n.x,y=n.y,name=clean(n.dn),allocated=n.alloc==true,kind=n.type,
         description=clean(table.concat(n.sd or {},'\n')),descriptionRuns=textRuns(table.concat(n.sd or {},'\n')),note=build.spec.nodeNotes and build.spec.nodeNotes[id]or '',icon=display.icon,distance=n.pathDist or 0,
         visible=display.visible,interactive=display.interactive,decoration=display.decoration,landmark=display.landmark,granted=display.granted,radius=display.radius,
-        socketedItem=clean(display.socketedItem),dimmed=display.dimmed,
+        socketedItem=clean(display.socketedItem),dimmed=display.dimmed,allocationMode=n.allocMode or 0,canTattoo=treeEditing.canTattoo(n)==true,isTattoo=n.isTattoo==true,
         ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and display.interactive,requiresChoice=requiresChoice==true and display.interactive,
         choiceKind=choiceKind,canChoose=requiresChoice and display.interactive and not display.granted and(n.alloc==true or path~=nil),
         pathCount=path and #path or 0,refundCount=n.depends and #n.depends or 0}
@@ -320,6 +336,13 @@ end
 local function command(req)
   local compareBase=req.compare==true and copyTable(build.calcsTab.mainOutput,true)or nil
   local op=req.op
+  local editedTimeless
+  if req.allocationMode~=nil then treeEditing.mode(req.allocationMode)end
+  if op=='tree-mode'then treeEditing.mode(req.value);return {state=snapshot(),xml=build:SaveDB('code')}end
+  if op=='tattoo-choices'then return {state=treeEditing.tattoo(req,clean,textRuns),xml=build:SaveDB('code')}end
+  if op=='timeless-detail'then return {state=timelessTools.inspect(req,clean,textRuns),xml=build:SaveDB('code')}end
+  if op=='timeless-range'then return {state=timelessTools.range(req,clean),xml=build:SaveDB('code')}end
+  if op=='timeless-catalog'then local saved=build:SaveDB('code');local state=timelessTools.run(req,clean,textRuns);loadBuildFromXML(saved,'Working build');recalc();return {state=state,xml=saved}end
   if op=='game-export' then return {state={files=gameExport.export(req)},xml=build:SaveDB('code')}end
   if op=='trade-search' then return {state={query=tradeSearch.generate(req)},xml=build:SaveDB('code')}end
   if op=='trade-catalog' then return {state=tradeSearch.catalog(req,clean),xml=build:SaveDB('code')}end
@@ -327,6 +350,8 @@ local function command(req)
   if op=='trade-rank-item' then return {state=tradeRanking.item(req,tradeItem.convert,tradeSearch,clean),xml=build:SaveDB('code')}end
   if op=='trade-rank-items' then return {state=tradeRanking.items(req,tradeItem.convert,tradeSearch,clean),xml=build:SaveDB('code')}end
   if op=='trade-rank-finish' then return {state=tradeRanking.finish(),xml=build:SaveDB('code')}end
+  if op=='currency-rates' then return {state=currencyRates.read(req),xml=build:SaveDB('code')}end
+  if op=='trade-rank-sort' then return {state=currencyRates.sort(req),xml=build:SaveDB('code')}end
   if op=='trade-item' then return {state={raw=tradeItem.convert(req.entry)},xml=build:SaveDB('code')}end
   if op=='item-bases' then return{state={choices=itemAuthoring.bases(clean)},xml=build:SaveDB('code')}end
   if op=='item-modifiers' then return{state=itemAuthoring.modifiers(req,clean),xml=build:SaveDB('code')}end
@@ -407,6 +432,8 @@ local function command(req)
     elseif req.kind=='skills' then build.skillsTab:SetActiveSkillSet(validIndex(req.id,build.skillsTab.skillSets))
     elseif req.kind=='config' then build.configTab:SetActiveConfigSet(validIndex(req.id,build.configTab.configSets))
     else error('Invalid set type') end
+  elseif op=='timeless-edit'then editedTimeless=timelessTools.run(req,clean,textRuns)
+  elseif op=='tattoo-edit'then treeEditing.tattoo(req,clean,textRuns)
   elseif op=='node-choice'then passiveChoices.edit(req)
   elseif op=='node' then
     local n=build.spec.nodes[validIndex(req.id,build.spec.nodes)]
@@ -514,6 +541,7 @@ local function command(req)
   end
   recalc()
   local state=snapshot()
+  if editedTimeless then state.timeless=editedTimeless;state.timelessAddedSeed=req.addSeed end
   if editedSet then state.editedSetId=editedSet end
   if editedInventory then state.editedInventoryId=editedInventory end
   if op=='skill-group' or op=='gem-manage' then

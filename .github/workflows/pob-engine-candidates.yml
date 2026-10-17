@@ -32,7 +32,7 @@ jobs:
       - name: Validate page loading and bounded messaging
         shell: pwsh
         run: |
-          foreach($test in 'page-action-batches','page-adapter-requests','trade-loading') {
+          foreach($test in 'page-action-batches','page-adapter-requests','trade-loading','trade-ordering') {
             node "samples/PobCompanion/Tests/$test.cjs"
             if($LASTEXITCODE -ne 0){throw "Page adapter regression failed: $test"}
           }

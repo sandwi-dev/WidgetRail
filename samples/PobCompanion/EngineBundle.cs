@@ -9,7 +9,7 @@ internal static class EngineBundle
     {
         token.ThrowIfCancellationRequested();
         if (Directory.Exists(location)) return location; // Explicit developer checkout/probe.
-        await using var archiveStream = File.OpenRead(location + ".zip");
+        await using var archiveStream = EngineArchiveStream.Open(location);
         var digest = Convert.ToHexString(await SHA256.HashDataAsync(archiveStream, token));
         archiveStream.Position = 0;
         var cache = Path.GetFullPath(Environment.GetEnvironmentVariable("WIDGETRAIL_POB_CACHE") ??

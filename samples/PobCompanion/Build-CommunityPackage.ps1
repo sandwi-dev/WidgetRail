@@ -14,7 +14,7 @@ $locks=Get-Content -LiteralPath $EngineLockPath -Raw | ConvertFrom-Json
 $engineLock=$locks."poe$Game"
 $actual=(& git -C $EngineCheckout rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $actual -ne $engineLock.commit){throw 'Engine checkout does not match engine-lock.json.'}
-& git -C $EngineCheckout diff --quiet HEAD -- src runtime/lua manifest.xml LICENSE.md
+& git -C $EngineCheckout diff --quiet HEAD -- src runtime/lua runtime/zlib1.dll manifest.xml LICENSE.md
 if($LASTEXITCODE -ne 0){throw 'Engine sources have tracked changes; use the unmodified pinned checkout.'}
 if(-not $OutputDirectory){$OutputDirectory=Join-Path $root ('artifacts/pob/package-'+$Game+'-'+[Guid]::NewGuid().ToString('N'))}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -31,10 +31,11 @@ Copy-Item (Join-Path $PSScriptRoot 'styles/default.wrss') (Join-Path $stage 'sty
 Copy-Item (Join-Path $PSScriptRoot 'assets/companion.svg') (Join-Path $stage 'assets/icons/companion.svg')
 $engineTarget=Join-Path $out 'engine-source';New-Item -ItemType Directory -Force -Path $engineTarget,(Join-Path $payload 'runtime'),(Join-Path $payload 'licenses') | Out-Null
 # Preserve upstream code and data. Drawing-only assets and exporter tooling are not needed by headless calculations.
-$tracked = & git -C $EngineCheckout ls-files -- src runtime/lua
+$tracked = & git -C $EngineCheckout ls-files -- src runtime/lua runtime/zlib1.dll
 if($LASTEXITCODE -ne 0){throw 'Could not enumerate pinned engine sources.'}
 foreach($relative in $tracked){
-    if([IO.Path]::GetExtension($relative) -notin @('.lua','.bin','.jsonc') -or $relative -like 'src/Export/*'){continue}
+    $jewelData=$relative -like 'src/Data/TimelessJewelData/*.zip' -or $relative -like 'src/Data/TimelessJewelData/*.zip.part*'
+    if(([IO.Path]::GetExtension($relative) -notin @('.lua','.bin','.jsonc') -and -not $jewelData -and $relative -ne 'runtime/zlib1.dll') -or $relative -like 'src/Export/*'){continue}
     $destination=Join-Path $engineTarget $relative
     New-Item -ItemType Directory -Force -Path (Split-Path $destination) | Out-Null
     Copy-Item -LiteralPath (Join-Path $EngineCheckout $relative) -Destination $destination
@@ -52,7 +53,9 @@ try {
         try {$inputStream.CopyTo($entryStream)}finally{$entryStream.Dispose();$inputStream.Dispose()}
     }
 } finally {$engineArchive.Dispose();$archiveStream.Dispose()}
+& (Join-Path $PSScriptRoot 'Split-EngineArchive.ps1') -Path (Join-Path $payload 'pob-engine.zip')
 Copy-Item (Join-Path $EngineCheckout 'LICENSE.md') (Join-Path $payload 'licenses/PoB-LICENSE.md')
+Copy-Item (Join-Path $PSScriptRoot 'licenses/zlib-LICENSE.txt') (Join-Path $payload 'licenses/zlib-LICENSE.txt')
 foreach($name in @('luajit.exe','lua51.dll','lua-utf8.dll')){Copy-Item (Join-Path $RuntimeDirectory $name) (Join-Path $payload 'runtime')}
 foreach($name in @('LuaJIT-COPYRIGHT','LuaUTF8-LICENSE')){Copy-Item (Join-Path $RuntimeDirectory $name) (Join-Path $payload 'licenses')}
 Copy-Item -LiteralPath $EngineLockPath -Destination (Join-Path $payload 'engine-lock.json')

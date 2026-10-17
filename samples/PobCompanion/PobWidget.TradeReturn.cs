@@ -11,7 +11,8 @@ public sealed partial class PobWidget
             uri.GetLeftPart(UriPartial.Authority)!="https://www.pathofexile.com"||!uri.AbsolutePath.StartsWith(game==2?"/trade2/search/":"/trade/search/",StringComparison.Ordinal))return null;
         // Retain only the public search query. Never store sign-in redirects or action tokens.
         var query=uri.Query.TrimStart('?').Split('&').FirstOrDefault(p=>p.StartsWith("q=",StringComparison.Ordinal));
-        return uri.GetLeftPart(UriPartial.Path)+(query is null?"":"?"+query);
+        var marker=System.Text.RegularExpressions.Regex.IsMatch(uri.Fragment,@"^#widgetrail-weighted=[0-9]{1,2}$")?uri.Fragment:"";
+        return uri.GetLeftPart(UriPartial.Path)+(query is null?"":"?"+query)+marker;
     }
     private void SaveTradeReturn(string url)
     {

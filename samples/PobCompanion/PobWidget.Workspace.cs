@@ -82,6 +82,7 @@ public sealed partial class PobWidget
         if(detailKind=="inventory")return StoredInventoryWorkspace();
         if(detailKind=="item-author")return ItemAuthoringWorkspace();
         if(detailKind=="calculations")return CalculationsWorkspace();
+        if(detailKind=="timeless")return TimelessWorkspace();
         if(detailKind=="gem-options")return GemOptionsWorkspace();
         if(detailKind=="item-manage")return ItemManagementWorkspace();
         if(detailKind=="feature-picker")return FeaturePickerWorkspace();
@@ -308,6 +309,8 @@ public sealed partial class PobWidget
     {
         var main = new List<WidgetElement>();
         AddSet(main, "trees", "tree");
+        if(B(State,"timelessFinder"))main.Add(Button("Find a Timeless Jewel…","timeless-open"));
+        if(B(State,"weaponTreeModes"))main.Add(TreeAllocationControl());
         if (mapSession is not null) main.Add(UI.WebView(mapSession.Reference, "pob.map").Classes("pob-map"));
         else
         {

@@ -13,6 +13,7 @@ public static class TreeMapMessages
         var previousMapNodes = previousMapState?.GetProperty("nodes").EnumerateArray().ToDictionary(n=>n.GetProperty("id").GetInt32());
         var previous = before?.GetProperty("nodes").EnumerateArray().ToDictionary(n => n.GetProperty("id").GetInt32(), n => n.GetProperty("allocated").GetBoolean());
         var oldDescriptions=before?.GetProperty("nodes").EnumerateArray().ToDictionary(n=>n.GetProperty("id").GetInt32(),n=>n.GetProperty("description").GetString());
+        var oldModes=before?.GetProperty("nodes").EnumerateArray().ToDictionary(n=>n.GetProperty("id").GetInt32(),Mode);
         var messages = new List<JsonElement> { JsonSerializer.SerializeToElement(new { type = "begin", reuseGeometry, revision }) };
         var visibleIds=state.GetProperty("nodes").EnumerateArray().Where(n=>Flag(n,"visible",true)).Select(n=>n.GetProperty("id").GetInt32()).ToHashSet();
         var nodes = state.GetProperty("nodes").EnumerateArray().Where(n=>visibleIds.Contains(n.GetProperty("id").GetInt32())).Select(n =>
@@ -28,8 +29,11 @@ public static class TreeMapMessages
                 icon = n.TryGetProperty("icon",out var icon) ? icon.GetString() : "",
                 interactive=Flag(n,"interactive",true),decoration=Flag(n,"decoration"),landmark=Flag(n,"landmark"),granted=Flag(n,"granted"),dimmed=Flag(n,"dimmed"),
                 radius=n.TryGetProperty("radius",out var radius)?radius.GetDouble():50,
+                allocationMode=Mode(n),
                 socketedItem=n.TryGetProperty("socketedItem",out var jewel)?jewel.GetString():"",
-                change = allocated != was ? allocated ? "added" : "removed" : allocated&&oldDescriptions is not null&&oldDescriptions.TryGetValue(id,out var oldText)&&oldText!=n.GetProperty("description").GetString()?"changed":"",
+                change = allocated != was ? allocated ? "added" : "removed" : allocated&&
+                    ((oldDescriptions is not null&&oldDescriptions.TryGetValue(id,out var oldText)&&oldText!=n.GetProperty("description").GetString())||
+                     (oldModes is not null&&oldModes.TryGetValue(id,out var oldMode)&&oldMode!=Mode(n)))?"changed":"",
             }, Json);
         });
         if (reuseGeometry)
@@ -40,6 +44,7 @@ public static class TreeMapMessages
             AddBatches(messages, "links", state.GetProperty("links").EnumerateArray().Where(edge=>visibleIds.Contains(edge.GetProperty("a").GetInt32())&&visibleIds.Contains(edge.GetProperty("b").GetInt32())), revision);
         }
         messages.Add(JsonSerializer.SerializeToElement(new { type = "end", revision, preserve, selected, preview = before.HasValue,
+            weaponTreeModes=Flag(state,"weaponTreeModes"),
             ascendancy = state.TryGetProperty("ascendancy",out var ascendancy) ? ascendancy.GetString() : "",
             treeVersion = state.TryGetProperty("treeVersion",out var treeVersion) ? treeVersion.GetString() : "" }));
         return messages;
@@ -49,6 +54,7 @@ public static class TreeMapMessages
                 (old.TryGetProperty(key,out var oldValue)?oldValue.GetRawText():null)!=(node.TryGetProperty(key,out var newValue)?newValue.GetRawText():null));
     }
     private static bool Flag(JsonElement node,string key,bool fallback=false)=>node.TryGetProperty(key,out var value)?value.ValueKind==JsonValueKind.True:fallback;
+    private static int Mode(JsonElement node)=>node.TryGetProperty("allocationMode",out var mode)?mode.GetInt32():0;
     public static string GeometryKey(JsonElement state)
     {
         using var stream = new MemoryStream();

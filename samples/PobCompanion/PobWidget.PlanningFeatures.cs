@@ -49,7 +49,7 @@ public sealed partial class PobWidget
         var buildId=documentId;var xml=result!.Xml;
         Work(async token=>
         {
-            var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId},token,xml);
+            var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId,allocationMode=B(State,"weaponTreeModes")?(int?)I(State,"allocationMode"):null},token,xml);
             lock(gate)if(documentId==buildId&&detailId==nodeId)attributeChoices=(nodeId,buildId,A(response.State,"choices"));
         },"Reading attribute choices…");
     }
@@ -77,6 +77,12 @@ public sealed partial class PobWidget
     private bool HandlePlanningAction(WidgetActionEvent action)
     {
         var id=action.ActionId;var parts=id.Split('.');
+        if(timelessDetail is {} jewel)
+        {
+            if(id=="timeless-detail-close")timelessDetail=null;
+            else if(id=="timeless-add."+jewel.Row.Id){timelessDetail=null;HandleTimeless(action);}
+            return true;
+        }
         if(id=="passive-choice-close"){passiveChoicePopup=null;return true;}
         if(passiveChoicePopup is not null&&parts[0]!="passive-choice")return true;
         if(featureReading is not null){if(id=="feature-close")featureReading=null;return true;}
@@ -89,12 +95,13 @@ public sealed partial class PobWidget
         if(parts is ["library-class",var selectedClass])
         {if(selectedClass=="all")libraryClass="";else if(int.TryParse(selectedClass,out var classIndex)&&classIndex>=0&&classIndex<LibraryClasses().Length)libraryClass=LibraryClasses()[classIndex];return true;}
         if(result is null)return false;
+        if(HandleTreeEditing(action))return true;
         if(id=="node-choices"&&detailKind=="node")
         {
             var nodeId=detailId;
             Work(async token=>
             {
-                var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId},token,result.Xml);
+                var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId,allocationMode=B(State,"weaponTreeModes")?(int?)I(State,"allocationMode"):null},token,result.Xml);
                 var choices=A(response.State,"choices");
                 lock(gate)
                 {
@@ -107,7 +114,7 @@ public sealed partial class PobWidget
             ((passiveChoicePopup is {} popup&&popup.Node==node&&popup.Choices.Any(c=>I(c,"id")==chosen))||
              (attributeChoices is {} attributes&&attributes.Node==node&&attributes.Build==documentId&&attributes.Choices.Any(c=>I(c,"id")==chosen))))
         {
-            passiveChoicePopup=null;detailKind="node";Preview(new{op="node-choice",id=node,choice=chosen});return true;
+            passiveChoicePopup=null;detailKind="node";Preview(new{op="node-choice",id=node,choice=chosen,allocationMode=B(State,"weaponTreeModes")?(int?)I(State,"allocationMode"):null});return true;
         }
         if(id=="back"&&detailKind=="feature-picker"&&featurePicker is {} picker){detailKind=picker.ReturnTo;featurePicker=null;return true;}
         if(id=="choice-search"){choiceSearch=action.CommittedText??"";return true;}
@@ -310,6 +317,9 @@ public sealed partial class PobWidget
 
     private WidgetView WithPlanningModal(WidgetView view)
     {
+        if(timelessDetail is {} jewel)return view.WithModal(new("pob-timeless-detail",jewel.Row.Title,
+            UI.Stack("pob.timeless.detail.body",UI.Row("pob.timeless.detail.actions",Button("Back to results","timeless-detail-close"),Button("Add to item inventory","timeless-add."+jewel.Row.Id)),
+                UI.VerticalScroll("pob.timeless.detail.lines",jewel.Lines).Classes("pob-scroll")).Classes("pob-card","pob-workspace"),"pob.timeless-detail-close","timeless-detail-close"){ScrollContent=false});
         if(passiveChoicePopup is {} passive)
         {
             var options=passive.Choices.Select(c=>

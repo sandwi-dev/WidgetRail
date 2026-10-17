@@ -8,6 +8,16 @@ let batchAction;
 let resultRoot;
 let resultObserver;
 let loadingResults=false;
+const weightedGroup=/^#widgetrail-weighted=([0-9]{1,2})$/.exec(window.location.hash)?.[1];
+let weightedReady=weightedGroup===undefined,weightedClicked=false,weightedStarted=Date.now(),weightedOldRoot;
+function settleWeightedOrder() {
+  if(weightedReady)return true;
+  const field=document.querySelector('.resultset .s[data-field="statgroup.'+weightedGroup+'"]');
+  if(field?.classList.contains('sorted-desc')&&(!weightedClicked||weightedOldRoot!==resultRoot||!weightedOldRoot?.isConnected)){weightedReady=true;return true;}
+  if(field&&!weightedClicked){weightedClicked=true;weightedOldRoot=resultRoot;field.click();}
+  if(Date.now()-weightedStarted<15000)queueRefresh();
+  return false;
+}
 function resultRows() { return [...(resultRoot?.querySelectorAll('.row[data-id]')??[])]; }
 function loadedEntries() {
   return [...new Set(resultRows().map(row=>row.getAttribute('data-id')))]
@@ -30,36 +40,47 @@ function refresh() {
   queued = false;
   if(!resultRoot?.isConnected) {
     resultObserver?.disconnect();resultRoot=document.querySelector('.resultset');
-    if(resultRoot){resultObserver=new MutationObserver(queueRefresh);resultObserver.observe(resultRoot,{childList:true,subtree:true});}
+    if(resultRoot){resultObserver=new MutationObserver(queueRefresh);resultObserver.observe(resultRoot,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});}
   }
   const resultSet=resultRoot;
+  const ordered=settleWeightedOrder();
   if(resultSet) {
     if(!batchAction?.isConnected) {
       batchAction=host.addAction(resultSet,'evaluate-request','Load and evaluate results',()=>({url:locationUrl()}));
       resultSet.prepend(batchAction);
     }
-    batchAction.disabled=loadingResults||loadedEntries().length===0;
+    batchAction.disabled=loadingResults||!ordered||loadedEntries().length===0;
+    if(!ordered)batchAction.firstChild.textContent=Date.now()-weightedStarted<15000?'Ordering by PoB weights…':'Select descending Weighted Sum on the website to evaluate';
+    else batchAction.firstChild.textContent='Load and evaluate results';
   }
   for (const row of resultRows()) {
     const id = row.getAttribute('data-id');
     const listing = listings.get(id);
     const previous = buttons.get(row);
     if (previous && (previous.id !== id || !listing)) { previous.button.remove(); buttons.delete(row); }
+    else if(previous)previous.button.disabled=!ordered;
     if (!listing || buttons.has(row)) continue;
     const location = row.querySelector('.right') || row;
     const button = host.addAction(location, 'compare-item', 'Compare in PoB', () => {
+      if(!settleWeightedOrder())throw new Error('Wait for the search order to finish updating');
       const current = listings.get(id);
       if (!row.isConnected || row.getAttribute('data-id') !== id || !current) throw new Error('Listing changed');
       return { entry: current, url: locationUrl() };
     });
+    button.disabled=!ordered;
     location.prepend(button);
     buttons.set(row, { id, button });
   }
   locateSavedListing();
 }
-function locationUrl() { return window.location.href; }
+function locationUrl() {
+  const url=new URL(window.location.href);
+  if(weightedGroup!==undefined&&weightedReady&&document.querySelector('.resultset .s[data-field="statgroup.'+weightedGroup+'"].sorted-desc'))url.hash='widgetrail-weighted='+weightedGroup;
+  return url.href;
+}
 function queueRefresh() { if (!queued) { queued = true; setTimeout(refresh,50); } }
 host.onRequest(async(method,payload,{signal,progress})=>{
+  if(!settleWeightedOrder())throw new Error('Select descending Weighted Sum on the website before evaluating.');
   if(method!=='load-results'||loadingResults)throw new Error('Loading is unavailable');
   const limit=payload?.limit;
   if(![20,50,100].includes(limit)||!resultRoot?.isConnected)throw new Error('Invalid result limit');

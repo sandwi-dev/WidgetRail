@@ -312,6 +312,7 @@ public sealed partial class PobWidget : Widget
         else
         {
             rows.Add(Text(B(n,"allocated")?$"Allocated. Refunding affects {I(n,"refundCount")} node(s).":B(n,"granted")?"Granted by an item; no passive points spent.":B(n,"canChoose")?"Choose an effect to preview its allocation path and calculation changes.":B(n,"canAllocate")?$"Allocation path: {I(n,"pathCount")} node(s).":"No available allocation path for this build.","node.state","pob-muted"));
+            AddTreeEditingControls(rows,n);
             if(B(n,"canChoose"))rows.Add(PassiveChoiceControl(n));
             if(B(n,"canAllocate") || B(n,"canRefund")) rows.Add(Button(B(n,"allocated")?"Preview refund":"Preview allocation path","node-change"));
             if(B(State,"canEditNodeNotes")&&B(n,"allocated"))rows.Add(Field("Node note",UI.TextEntry(S(n,"note"),"Add a note for this passive","node-note","pob.node-note",1024).Classes("pob-input"),"node-note"));

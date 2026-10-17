@@ -30,7 +30,7 @@ function Assert-InputsUnchanged {
     if((Get-FileHash -LiteralPath $EngineLockPath -Algorithm SHA256).Hash -ne $report.lockSha256){throw 'Candidate lock changed during verification.'}
     $head=& git -C $EngineCheckout rev-parse HEAD
     if($LASTEXITCODE -ne 0 -or $head.Trim() -ne $expected){throw 'Engine revision changed during verification.'}
-    & git -C $EngineCheckout diff --quiet HEAD -- src runtime/lua manifest.xml LICENSE.md
+    & git -C $EngineCheckout diff --quiet HEAD -- src runtime/lua runtime/zlib1.dll manifest.xml LICENSE.md
     if($LASTEXITCODE -ne 0){throw 'Engine sources changed during verification.'}
     $extra=@(& git -C $EngineCheckout ls-files --others --exclude-standard -- src runtime/lua)
     if($LASTEXITCODE -ne 0 -or $extra.Count -ne 0){throw 'Engine source inventory includes untracked files.'}
@@ -48,7 +48,7 @@ try {
     if($expected -notmatch '^[a-f0-9]{40}$'){throw 'Candidate requires an exact locked engine commit.'}
     $actual=(& git -C $EngineCheckout rev-parse HEAD).Trim()
     if($LASTEXITCODE -ne 0 -or $actual -ne $expected){throw 'Engine checkout does not match the candidate lock.'}
-    & git -C $EngineCheckout diff --quiet HEAD -- src runtime/lua manifest.xml LICENSE.md
+    & git -C $EngineCheckout diff --quiet HEAD -- src runtime/lua runtime/zlib1.dll manifest.xml LICENSE.md
     if($LASTEXITCODE -ne 0){throw 'Upstream engine sources are modified.'}
     $report.engineCommit=$actual;$report.engineRelease=$locks."poe$Game".release
     $report.widgetCommit=(& git -C $repo rev-parse HEAD).Trim()

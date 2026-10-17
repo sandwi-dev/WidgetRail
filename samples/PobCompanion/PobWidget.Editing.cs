@@ -25,6 +25,12 @@ public sealed partial class PobWidget
         var inventory=detailKind=="inventory"||detailKind=="item-author"&&authoringId>0
             ?await ReadInventoryAsync(next.Xml,I(next.State,"editedInventoryId")>0?I(next.State,"editedInventoryId"):inventoryId,token):null;
         var calculations=detailKind=="calculations"?await ReadCalculationsAsync(next.Xml,token):null;
+        JsonElement? finderProjection=null;TimelessRow[]? finderRows=null;
+        if(detailKind=="timeless")
+        {
+            finderProjection=next.State.TryGetProperty("timeless",out var finderState)?finderState:(await engine.ExecuteAsync(new{op="timeless-catalog"},token,next.Xml)).State;
+            finderRows=await ReadTimelessRowsAsync(finderProjection.Value,next.Xml,token);
+        }
         // Cancellation or calculation failure before this boundary never saves
         // a partial edit or changes history. Publication follows atomic file save.
         token.ThrowIfCancellationRequested();
@@ -32,6 +38,8 @@ public sealed partial class PobWidget
         lock(gate)
         {
             PushHistory(undo,before.Xml);redo.Clear();result=next;
+            if(finderProjection is {} finder){timelessState=finder;timelessRows=finderRows??[];}
+            if(I(next.State,"timelessAddedSeed")>0)ShowFeedback("Jewel added","Seed "+I(next.State,"timelessAddedSeed")+" was added to item inventory. Equip it there to compare the build change.",WidgetRail.WidgetSdk.ToastTone.Info);
             if(gem is {} gemValue)gemOptions=gemValue;else if(detailKind=="gem-options")detailKind="skill";
             if(inventory is not null)PublishInventory(inventory);
             if(calculations is not null)PublishCalculations(calculations);
@@ -58,6 +66,7 @@ public sealed partial class PobWidget
         var inventory=detailKind=="inventory"||detailKind=="item-author"&&authoringId>0
             ?await ReadInventoryAsync(next.Xml,detailKind=="item-author"?authoringId:inventoryId,token):null;
         var calculations=detailKind=="calculations"?await ReadCalculationsAsync(next.Xml,token):null;
+        var timeless=detailKind=="timeless"?(await engine.ExecuteAsync(new{op="timeless-catalog"},token,next.Xml)).State:(JsonElement?)null;
         BuildDocument.VerifySkillPreservation(xml,next.Xml);
         token.ThrowIfCancellationRequested();
         var remaining=source.Skip(1).ToArray();var moved=destination.Prepend(before.Xml).Take(12).ToArray();
@@ -65,6 +74,7 @@ public sealed partial class PobWidget
         lock(gate)
         {
             source.Pop();PushHistory(destination,before.Xml);result=next;
+            if(timeless is {} finder){timelessState=finder;timelessRows=[];}
             if(gem is {} gemValue)gemOptions=gemValue;else if(detailKind=="gem-options")detailKind="skill";
             if(inventory is not null)PublishInventory(inventory);
             if(calculations is not null)PublishCalculations(calculations);

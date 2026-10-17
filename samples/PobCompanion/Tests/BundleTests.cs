@@ -17,6 +17,15 @@ internal static class BundleTests
             var first=await EngineBundle.ResolveAsync(good,default);
             check(Directory.GetDirectories(cache).Length==1&&File.Exists(Path.Combine(first,".complete")),"Engine cache publishes a complete directory without staging leftovers");
             check(first==await EngineBundle.ResolveAsync(good,default),"Identical engine bundle reuses its immutable cache");
+            var split=Path.Combine(root,"split");var bytes=File.ReadAllBytes(good+".zip");var cut=bytes.Length-17;
+            File.WriteAllBytes(split+".zip.part0",bytes[..cut]);File.WriteAllBytes(split+".zip.part1",bytes[cut..]);
+            File.WriteAllText(split+".zip.parts.json",System.Text.Json.JsonSerializer.Serialize(new{parts=2,length=bytes.Length}));
+            check(first==await EngineBundle.ResolveAsync(split,default),"Split archive keeps the same content hash and cache identity as the unsplit archive");
+            using(var segments=EngineArchiveStream.Open(split))using(var splitZip=new ZipArchive(segments,ZipArchiveMode.Read))
+                check(splitZip.Entries.Single().FullName=="src/HeadlessWrapper.lua","ZIP central directory reads correctly across an archive-part boundary");
+            File.WriteAllText(split+".zip.parts.json",System.Text.Json.JsonSerializer.Serialize(new{parts=3,length=bytes.Length}));
+            var missing=false;try{await EngineBundle.ResolveAsync(split,default);}catch(IOException){missing=true;}
+            check(missing,"A missing archive part is rejected before the cache is published");
             var bad=Path.Combine(root,"bad");
             using(var zip=ZipFile.Open(bad+".zip",ZipArchiveMode.Create))
             { using var writer=new StreamWriter(zip.CreateEntry("../escape.lua").Open());writer.Write("invalid"); }

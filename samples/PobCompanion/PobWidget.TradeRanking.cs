@@ -13,12 +13,15 @@ public sealed partial class PobWidget
 {
     private sealed record RankingInput(PobTradeListing Listing,string? Raw,JsonElement Entry);
     private sealed record RankedItem(int Index,PobTradeCandidate Candidate,JsonElement Evaluation);
-    private sealed record RankingSave(string Baseline,string Slot,string Weights,RankedItem[] Rows,string[] Skipped);
+    private sealed record RankingSave(string Baseline,string Slot,string Weights,RankedItem[] Rows,string[] Skipped,string Sort="strength",CurrencyRateSnapshot? Rates=null);
     private readonly List<RankingInput> rankingInputs=[];
     private RankedItem[] rankedItems=[];
     private string[] rankingSkipped=[];
     private string rankingSlot="",rankingBaseline="",rankingWeights="",rankingBuild="",rankingSummary="";
     private bool rankingVisible;
+    private string rankingSort="strength";
+    private CurrencyRateSnapshot? rankingRates;
+    private static readonly (string Key,string Label)[] RankingSorts=[("strength","Strongest improvement"),("value","PoB price-adjusted score"),("price","Lowest price")];
     private JsonElement[] rankingSlots=[];
     private string rankingSelected="";
     private sealed record RankEntry(string Key,string Label,string Summary,string Tone,string Action,bool Selected);
@@ -105,13 +108,20 @@ public sealed partial class PobWidget
             var sorted=await engine.ExecuteAsync(new{op="trade-rank-finish"},token,before.Xml);
             var rows=A(sorted.State,"order").Select(index=>evaluated.Single(r=>r.Index==index.GetInt32())).ToArray();
             token.ThrowIfCancellationRequested();
-            var saved=new RankingSave(baseline,slot,weights,rows,skipped.ToArray());
+            (RankedItem[] Rows,CurrencyRateSnapshot? Rates) ordered;
+            string? sortingNotice=null;
+            try{ordered=await SortRankingAsync(rows,rankingSort,before.Xml,token);}
+            catch(Exception error)when(rankingSort!="strength"&&error is IOException or HttpRequestException)
+            {ordered=(rows,null);sortingNotice="Price order unavailable: "+RankingError(error.Message)+" Showing strongest improvement.";}
+            rows=ordered.Rows;var finalOrder=sortingNotice is null?rankingSort:"strength";
+            var saved=new RankingSave(baseline,slot,weights,rows,skipped.ToArray(),finalOrder,ordered.Rates);
             var savedJson=JsonSerializer.Serialize(saved);
             if(Encoding.UTF8.GetByteCount(savedJson)>5*1024*1024)throw new IOException("The evaluation exceeds the saved-results size limit. Evaluate a smaller batch.");
             BuildDocument.SaveAtomic(Path.Combine(dataDirectory,documentId+".ranking.json"),savedJson);
             lock(gate)
             {
-                rankedItems=rows;rankingSkipped=skipped.ToArray();rankingBaseline=baseline;rankingWeights=weights;rankingBuild=documentId??"";
+                rankingSort=finalOrder;rankingRates=ordered.Rates;rankedItems=rows;rankingSkipped=skipped.ToArray();rankingBaseline=baseline;rankingWeights=weights;rankingBuild=documentId??"";
+                if(sortingNotice is not null)ShowFeedback("Price ordering unavailable",sortingNotice,ToastTone.Warning);
                 rankingSummary=$"{rows.Length} ranked · {skipped.Count} skipped · {inputs.Length} of {rankingInputs.Count} loaded evaluated · {timer.Elapsed.TotalSeconds:F1}s";
                 rankingVisible=true;websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;
             }
@@ -125,7 +135,7 @@ public sealed partial class PobWidget
     private void RestoreRanking(string id)
     {
         ReadTradePreferences();
-        rankingInputs.Clear();rankedItems=[];rankingSkipped=[];rankingVisible=false;rankingBuild=id;rankingBaseline="";rankingSummary="";rankingSelected="";
+        rankingInputs.Clear();rankedItems=[];rankingSkipped=[];rankingVisible=false;rankingBuild=id;rankingBaseline="";rankingSummary="";rankingSelected="";rankingSort="strength";rankingRates=null;
         try
         {
             var file=new FileInfo(Path.Combine(dataDirectory,id+".ranking.json"));if(!file.Exists||file.Length>5*1024*1024)return;
@@ -133,6 +143,7 @@ public sealed partial class PobWidget
             if(saved is null||saved.Rows is not{Length:<=100}||saved.Slot is not{Length:>0 and <=128}||saved.Weights is not{Length:<=16384}||saved.Baseline is not{Length:64})return;
             if(saved.Rows.Select(r=>r.Index).Distinct().Count()!=saved.Rows.Length||saved.Rows.Any(r=>r.Index is <1 or >100||r.Candidate.Raw is not{Length:>0 and <=32768}||r.Candidate.Slot!=saved.Slot||!r.Candidate.Listing.IsValid(game)||!ValidRankingEvaluation(r.Evaluation)))return;
             if(saved.Rows.Select(r=>r.Candidate.Listing.Id).Distinct().Count()!=saved.Rows.Length)return;
+            rankingSort=RankingSorts.Any(s=>s.Key==saved.Sort)?saved.Sort:"strength";rankingRates=saved.Rates;
             rankedItems=saved.Rows;rankingSlot=saved.Slot;rankingBaseline=saved.Baseline;rankingWeights=saved.Weights;rankingSkipped=(saved.Skipped??[]).Take(100).Select(s=>Limit(SavedRankingError(s??""),600)).ToArray();
             rankingInputs.AddRange(rankedItems.Select(r=>new RankingInput(r.Candidate.Listing,r.Candidate.Raw,default)));
             rankingSummary=$"{rankedItems.Length} saved results · check current website availability";
@@ -153,6 +164,16 @@ public sealed partial class PobWidget
         var id=action.ActionId;var parts=id.Split('.');
         if(id.StartsWith("trade-rank-",StringComparison.Ordinal)&&((pendingBefore is not null||pastedItem is not null)&&!CanReplaceTradeComparison||result is null))
         {ShowFeedback("Finish current work","Finish the build edit or item draft before evaluating trade items.",ToastTone.Warning);return true;}
+        if(parts is ["trade-rank-sort",var order]&&RankingSorts.Any(s=>s.Key==order)&&rankedItems.Length>0)
+        {
+            if(RankingStale){ShowFeedback("Evaluate again","The build, target or weights changed. Recalculate before sorting.",ToastTone.Warning);return true;}
+            Work(async token=>
+            {
+                var sorted=await SortRankingAsync(rankedItems,order,(pendingBefore??result)!.Xml,token);
+                BuildDocument.SaveAtomic(Path.Combine(dataDirectory,documentId+".ranking.json"),JsonSerializer.Serialize(new RankingSave(rankingBaseline,rankingSlot,rankingWeights,sorted.Rows,rankingSkipped,order,sorted.Rates)));
+                lock(gate){rankedItems=sorted.Rows;rankingSort=order;rankingRates=sorted.Rates;}
+            },"Sorting evaluated listings…");return true;
+        }
         if(id=="trade-rank-hide"){rankingVisible=false;websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-rank-focus"){websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-rank-show"&&HasRanking)
@@ -216,7 +237,9 @@ public sealed partial class PobWidget
             UI.Grid("pob.rank.options",[GridTrack.Auto()],[GridTrack.Star(2),GridTrack.Star()],
                 UI.Select("Priority",TradePriorities.Select(p=>new SelectOption(p.Key,p.Label,"trade-rank-priority."+p.Key,p.Key==tradePriority)).ToArray(),"pob.rank.priority").FocusLeft("pob.website.browser").Classes("pob-select"),
                 UI.Select("Limit",new[]{20,50,100}.Select(n=>new SelectOption("limit"+n,n.ToString(),"trade-rank-limit."+n,n==tradeBatchLimit)).ToArray(),"pob.rank.limit").Classes("pob-select").InGrid(column:1)).Spacing(0,8),
+            UI.Select("Order",RankingSorts.Select(s=>new SelectOption(s.Key,s.Label,"trade-rank-sort."+s.Key,s.Key==rankingSort)).ToArray(),"pob.rank.order").Disabled(rankedItems.Length==0||stale).Classes("pob-select"),
             UI.Row("pob.rank.actions",Button("Load and evaluate","trade-rank-evaluate","rank.evaluate").FocusLeft("pob.website.browser"),Button("Hide results","trade-rank-hide","rank.hide")).Classes("pob-toolbar"),
+            Text(RankingRateLabel(),"rank.rates","pob-small pob-muted"),
             Text(stale?"Scores need recalculation for this build, slot or priority.":rankingSummary,"rank.summary","pob-small pob-muted"))
             .RememberChildFocus(rankingSlots.Length==0?"pob.rank.evaluate":"pob.rank.slot").Classes("pob-buildtools");
         var list=UI.Stack("pob.rank.list",UI.CollectionList("pob.rank.results",rankingCollection,128,"Evaluated trade listings").Classes("pob-scroll"))

@@ -428,3 +428,69 @@ and a return to interactive state. Evidence: `guide-physical-final.log`,
   loaded and ranked 100, with zero skipped and 2.4s engine evaluation. The page returned
   to its original top position. Visuals: auto-load-live-progress.png and auto-load-live-final.png.
   Live authenticated PoE1 loading remains unverified; its engine/workflow fixtures pass.
+
+
+## Approved follow-up in progress — 2026-10-17
+
+The user approved implementing the remaining trade ordering and currency-aware ranking,
+plus concrete tree-editor gaps: PoE1 tattoo editing, the upstream Timeless Jewel finder,
+and PoE2 shared/weapon-set passive allocation. This supersedes the earlier deferral of
+those specific controls. It does not authorize OAuth, stash integration, publishing, or purchases.
+
+- Currency conversion and price-adjusted sorting reuse both pinned engines' PullCXData and
+  SortFetchResults. Use GGG's public hourly exchange feed; no poe.ninja dependency or OAuth.
+  Preserve original prices, show the source hour/league, cache for 61 minutes, and report missing rates.
+- PoE1 generated queries already carry descending weighted ordering. PoE2's website URL drops
+  sort state; the adapter must use the website's visible Weighted Sum control once for a marked
+  generated search and verify descending state before batch evaluation. Do not fight subsequent
+  manual ordering or make a separate authenticated search request.
+- Tattoo choices, seed search and item creation remain upstream. Finder settings/edits use normal
+  recovery and Undo; adding a seed creates inventory only. Lists stay virtualized/searchable.
+- PoE2 allocation mode must be explicit beside the tree; node membership survives XML export,
+  previews, and Undo. Show weapon-set membership on the map as well as in node details.
+- Include pinned upstream compressed jewel tables and x64 zlib in engine packaging. Headless
+  Inflate was a stub; provide bounded decompression without modifying upstream sources.
+
+Delivered locally in codex/pob-companion (no merge, push or release):
+
+- Generated searches use upstream descending weighted ordering. Native testing caught the
+  website changing its arrow before replacing results; individual comparisons and batch
+  evaluation now wait for replacement results as well as the descending indicator.
+- Price sorting uses upstream conversion/sorting, retains numeric listing prices and does
+  not evaluate the items again. It identifies the historical market hour and fails visibly
+  on missing prices/rates. Header and response-body reads both have timeouts.
+- Tattoos, the PoE1 jewel finder and PoE2 allocation modes use upstream editing paths.
+  Point budgets come from the desktop display, not duplicated accounting formulas. The
+  finder follows the upstream button's availability: PoE2 retains disabled legacy code.
+- Included pinned compressed jewel data/zlib and segmented archives. Shared package limits
+  now allow 256 MiB expanded content, retaining the 32 MiB individual-entry ceiling and
+  existing integrity/path checks. Marketplace, CLI and runtime share those bounds.
+
+Evidence under artifacts/pob:
+
+- followups-full-engine1/2.log: 511/475 checks passed. Includes item/skill/configuration
+  editing, calculations, trade, imports, recovery, cancellation and engine failure tests.
+- followups-tree-final1/2.log: 18/19 focused checks passed after the final dialog and
+  availability corrections; tattoos and weapon membership survive XML reload, and the
+  last seed remains accessible beyond the initial response page.
+- followups-currency-final1/2.log: 12 checks each, including live public GGG conversion and
+  persisted-cache reuse. trade-ordering.cjs and trade-loading.cjs passed.
+- followups-catalog.log: 40 checks; runtime data-package lease: 1 check. Both real final
+  packages install and run through the shared bounds (PoE1 about 229 MiB expanded).
+- followups-live04/result.json: 18 native live PoE2 checks passed, including sequential
+  comparisons, weighted order, batch ranking, price order, controller A/B and LS navigation,
+  and seller-item lookup. A live 20-item batch ranked 19 and explicitly skipped one
+  unsupported Archon modifier. Earlier native failures exposed a sorting race and test
+  waits that observed an intermediate frame; the final run waits for selected order.
+- followups-native/seed-results.png and seed-detail-final.png: visually inspected native
+  finder, 8,001 seeds, and enlarged bounded detail dialog. Search/results appeared in
+  roughly two seconds for this single-socket fixture; not a general performance guarantee.
+  Tattoo picker and PoE2 allocation controls were also exercised through UI Automation.
+- Final candidate: followups-host + followups-installation + followups-final04-catalog,
+  launched with Launch-LayoutCandidate.ps1 and the original user data/settings paths.
+  Normal controller input is enabled; only one overlay process is left running.
+
+Remaining limits: live authenticated PoE1 trade was not retested. Finder conveniences such
+as protected-notable selection, socket-distance filtering and seed-specific trade URLs are
+not yet exposed; the core finder is not a claim of exhaustive desktop parity. Hourly rates
+are historical estimates, not live quotes. No purchasing or seller messaging was tested.

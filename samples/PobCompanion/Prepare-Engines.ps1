@@ -15,11 +15,15 @@ foreach ($name in @('poe1','poe2','luaJit','luaUtf8')) {
         & git -C $target fetch --depth 1 origin $dependency.commit
         if ($LASTEXITCODE -ne 0) { throw "Could not fetch $name." }
         if ($name.StartsWith('poe')) {
-            & git -C $target sparse-checkout set --no-cone '*.lua' '*.bin' '*.jsonc' '/LICENSE.md' '/manifest.xml' '/spec/TestBuilds/' '!/src/Export/'
+            & git -C $target sparse-checkout set --no-cone '*.lua' '*.bin' '*.jsonc' '/src/Data/TimelessJewelData/' '/runtime/zlib1.dll' '/LICENSE.md' '/manifest.xml' '/spec/TestBuilds/' '!/src/Export/'
             if ($LASTEXITCODE -ne 0) { throw 'Could not configure engine checkout.' }
         }
         & git -C $target checkout --detach FETCH_HEAD
         if ($LASTEXITCODE -ne 0) { throw "Could not prepare $name." }
+    }
+    if ($name.StartsWith('poe') -and (Test-Path -LiteralPath (Join-Path $target '.git/info/sparse-checkout'))) {
+        & git -C $target sparse-checkout add '/src/Data/TimelessJewelData/' '/runtime/zlib1.dll'
+        if ($LASTEXITCODE -ne 0) { throw 'Could not include upstream jewel data.' }
     }
     if ((& git -C $target rev-parse HEAD).Trim() -ne $dependency.commit) { throw "Unexpected commit in $target." }
     & git -C $target diff --quiet HEAD

@@ -13,6 +13,9 @@ internal static class TradeSearchTests
         check(query.GetProperty("stats").EnumerateArray().Any(g=>g.GetProperty("type").GetString()=="weight"&&g.GetProperty("filters").GetArrayLength()>0),"Upstream generates weighted item filters");
         check(query.GetProperty("filters").GetProperty("trade_filters").GetProperty("filters").GetProperty("price").GetProperty("max").GetInt32()==10,"Search honors the selected budget");
         check(WorkStateTests.SameBuild(loaded.Xml,result.Xml),"Generating a trade query does not change equipment or settings");
+        var url=PobTradeSearch.SearchUrl(game,"Standard",raw,weighted:true);
+        check(game==2?url.Contains("#widgetrail-weighted="):raw.GetProperty("sort").GetProperty("statgroup.0").GetString()=="desc","Generated website searches explicitly request descending weighted ordering");
+        check(PobWidget.SafeTradeReturnUrl(url,game)==url,"Generated weighted search marker survives idle return URL persistence");
         var output=Environment.GetEnvironmentVariable("POB_TRADE_QUERY_OUTPUT");if(output is not null)File.WriteAllText(output,raw.GetRawText());
         Console.WriteLine("Query characters: "+raw.GetRawText().Length);
         Console.WriteLine("URL characters: "+PobTradeSearch.SearchUrl(game,"Standard",raw).Length);

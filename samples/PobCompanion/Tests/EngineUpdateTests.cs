@@ -4,6 +4,7 @@ internal static class EngineUpdateTests
 {
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string evidence,Action<bool,string> check)
     {
+        await BundleTests.RunAsync(check);
         Directory.CreateDirectory(evidence);string xml;
         await using(var engine=new PobEngine(root,runtime,adapter))
         {
@@ -41,6 +42,8 @@ internal static class EngineUpdateTests
         await TradeSearchTests.RunAsync(game,root,runtime,adapter,xml,check);
         await TradeMenuTests.RunAsync(game,root,runtime,adapter,xml,check);
         await TradeWorkflowTests.RunAsync(game,root,runtime,adapter,xml,check);
+        await TreeEditingTests.RunAsync(game,root,runtime,adapter,xml,check);
+        await CurrencyRankingTests.RunAsync(game,root,runtime,adapter,xml,check);
         await TradeImprovementTests.RunAsync(game,root,runtime,adapter,xml,check);
         await ImportExportTests.RunAsync(game,root,runtime,adapter,xml,check);
         await ComparisonTests.RunAsync(root,runtime,adapter,xml,check);

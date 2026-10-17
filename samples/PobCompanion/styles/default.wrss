@@ -16,6 +16,7 @@ text { color: var(--text); text-align: start; }
 .pob-library-detail { gap: 14px; }
 .wrail-modal { width: 600px; height: 300px; }
 #pob-passive-choices { height: 450px; }
+#pob-timeless-detail { width: 900px; height: 650px; }
 .pob-button.pob-history-button { min-height: 32px; padding: 5px 12px; }
 .pob-history-button:disabled { opacity: 0.45; }
 .pob-loadout { max-width: 280px; }

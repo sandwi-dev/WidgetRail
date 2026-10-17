@@ -91,7 +91,7 @@
     const visible = nodes.map(n => ({ n, p: point(n) })).filter(({ n,p }) => p[0] > -Math.max(30,(n.radius||50)*scale) && p[0] < w+Math.max(30,(n.radius||50)*scale) && p[1] > -Math.max(30,(n.radius||50)*scale) && p[1] < h+Math.max(30,(n.radius||50)*scale));
     for(const {n,p:[x,y]}of visible)if(n.decoration)icon(n,x,y,(n.radius||190)*scale);
     const edgeStyle = (a, b) => (a.change === 'removed' || b.change === 'removed') && (active(a) || a.change === 'removed') && (active(b) || b.change === 'removed') ? 'removed'
-      : active(a) && active(b) ? a.change === 'added' || b.change === 'added' ? 'added' : 'active' : 'base';
+      : active(a) && active(b) && (!(a.allocationMode||0)||!(b.allocationMode||0)||a.allocationMode===b.allocationMode) ? a.change === 'added' || b.change === 'added' ? 'added' : 'active' : 'base';
     for (const dimmed of [true,false]) for (const style of ['base', 'active', 'removed', 'added']) {
       context.globalAlpha=dimmed ? .35 : 1;
       context.strokeStyle = colors[style]; context.lineWidth = style === 'base' ? 1 : 2;
@@ -117,6 +117,7 @@
       context.strokeStyle = color; context.fillStyle = active(n) ? color : getComputedStyle(map).backgroundColor;
       context.lineWidth = active(n) ? 2 : 1;nodePath(n,x,y,radius);context.fill();context.stroke();
       const painted=icon(n,x,y,radius);
+      if(n.allocated&&n.allocationMode>0){context.fillStyle=colors.active;context.font='bold 11px sans-serif';context.textAlign='left';context.textBaseline='bottom';context.fillText(String(n.allocationMode),x+radius+2,y-radius-2);}
       if(n.kind==='Notable'){nodePath(n,x,y,radius+2);context.stroke();}
       if(n.socketedItem){nodePath({kind:'Keystone'},x,y,radius*.45);context.fillStyle=colors.active;context.fill();}
       else if(!painted&&n.landmark&&radius>=5){context.fillStyle=colors.base;context.font=`bold ${Math.max(9,radius)}px sans-serif`;context.textAlign='center';context.textBaseline='middle';context.fillText(n.kind==='ClassStart'?'C':'A',x,y);}
@@ -134,7 +135,7 @@
     if(selectionVisible){
       const [x,y]=position,radius=Math.max(22,nodeRadius(target)+8);
       Object.assign(selectionMarker.style,{left:x+'px',top:y+'px',width:radius*2+'px',height:radius*2+'px'});
-      selectionLabel.textContent='Selected · '+target.name;
+      selectionLabel.textContent='Selected · '+target.name+(target.allocated&&target.allocationMode>0?' · Weapon set '+target.allocationMode:'');
       const lw=selectionLabel.offsetWidth,lh=selectionLabel.offsetHeight;
       selectionLabel.style.left=Math.max(8,Math.min(x-lw/2,w-lw-8))+'px';
       selectionLabel.style.top=Math.max(8,Math.min(y-radius-lh-10>=8?y-radius-lh-10:y+radius+10,h-lh-8))+'px';
@@ -156,7 +157,7 @@
       button.style.left = p[0] + 'px'; button.style.top = p[1] + 'px';
       button.onpointerenter=()=>hover(n.id,p[0],p[1]);button.onpointerleave=()=>hover(0,0,0);
       button.onfocus=()=>hover(n.id,p[0],p[1]);button.onblur=()=>hover(0,0,0);
-      button.setAttribute('aria-label', `${n.name}, ${kindLabel(n)}, ${n.allocated ? 'allocated' : n.granted?'granted by item':'unallocated'}${n.change ? ', preview ' + n.change : ''}`);
+      button.setAttribute('aria-label', `${n.name}, ${kindLabel(n)}, ${n.allocated ? 'allocated'+(n.allocationMode>0?' to weapon set '+n.allocationMode:'') : n.granted?'granted by item':'unallocated'}${n.change ? ', preview ' + n.change : ''}`);
       button.setAttribute('aria-pressed',String(n.id===selected));
       button.disabled = preview;
     }
@@ -228,6 +229,7 @@
     if(m.type==='end'){
       hasSnapshot=true;nodes=incoming.nodes;links=incoming.links;incoming=null;byId=new Map(nodes.map(n=>[n.id,n]));selected=m.selected||0;preview=!!m.preview;
       currentAscendancy=m.ascendancy||'';
+      const weaponLegend=document.getElementById('weapon-legend');if(weaponLegend)weaponLegend.hidden=!m.weaponTreeModes;
       if(treeVersion!==(m.treeVersion||'')){treeVersion=m.treeVersion||'';loadArtwork(treeVersion);}tooltipCache.clear();hover(0,0,0);
       const ascendancyButton=document.getElementById('ascendancy');
       ascendancyButton.disabled=!nodes.some(n=>n.ascendancy&&n.ascendancyName===currentAscendancy);

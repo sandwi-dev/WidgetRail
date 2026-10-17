@@ -20,7 +20,7 @@ internal static class TradeWorkflowTests
         File.WriteAllText(Path.Combine(directory,id+".xml"),xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);
         await using var engine=new PobEngine(root,runtime,adapter);
         string clipboard="Rarity: NORMAL\nGold Ring\nImplicits: 1\n15% increased Rarity of Items found"; IOException? clipboardFailure=null;
-        var widget=new PobWidget(game,engine,directory,()=>clipboardFailure is {} failure?throw failure:clipboard){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
+        var widget=new PobWidget(game,engine,directory,()=>clipboardFailure is {} failure?throw failure:clipboard){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"}),CurrencyRateLoader=(realm,league,_)=>Task.FromResult(new CurrencyRateSnapshot(realm,league,DateTimeOffset.UtcNow,DateTimeOffset.UtcNow.AddHours(-1),new(){{"chaos",.01},{"divine",1}}))};
         var opened=new List<WebSessionDefinition>();var closed=0;var navigated=0;
         var incoming=new System.Collections.Concurrent.ConcurrentQueue<string>();
         JsonElement[] loadEntries=[];var loadRequests=0;var requestedLimit=0;
@@ -177,6 +177,10 @@ internal static class TradeWorkflowTests
             await Action(target.ActionId);await Action("trade-rank-evaluate");
             check(loadRequests==2&&requestedLimit is 20 or 50 or 100&&!Nodes(View().Root).Any(n=>n.Id=="pob.rank.help"),"Website and panel actions request bounded automatic loading and omit redundant priority guidance");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("2 ranked"))&&ViewSnapshotValidator.Validate(View()).Count==0,"Received batch ranks both listings for an explicit equipment target in a valid native panel");
+            await Action("trade-rank-sort.price");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.rank.order").SelectOptions.Single(o=>o.IsSelected).Label=="Lowest price","Price order changes without another evaluation batch");
+            check(loadRequests==2&&Nodes(View().Root).Any(n=>n.Id=="pob.rank.rates"&&n.Text!.Contains("Standard")),"Changing order reuses evaluated candidates and displays the exchange league");
+            await Action("trade-rank-sort.value");await Action("trade-rank-sort.strength");
             var navigationBeforeRank=navigated;
             await Action("trade-rank-select.1");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.title")&&navigated==navigationBeforeRank&&PobWorkStore.Read(directory,id,game)?.Pending?.Slot=="Ring 2","Selecting a ranked result compares against the chosen slot without navigating the website");
