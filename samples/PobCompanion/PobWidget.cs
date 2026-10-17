@@ -166,7 +166,7 @@ public sealed partial class PobWidget : Widget
             else
             {
                 children.Add(BuildHeader());
-                children.Add(section is "Tree" or "Configuration" or "Notes" || detailKind is "skill-manage" or "gem-picker" ? CompactHeadlines() : Headlines());
+                children.Add(section=="Calcs" ? Headlines() : CompactHeadlines());
                 children.Add(Navigation());
                 if (pendingBefore is not null && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
@@ -176,7 +176,17 @@ public sealed partial class PobWidget : Widget
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);
             var initial = detailKind=="library" ? "pob.library.search" : detailKind=="menu"?"pob.rename":result is null ? "pob.paste" : detailKind.Length > 0 && !InlineDetail ? "pob.back" : SectionEntry();
             if (pendingBefore is not null) initial = "pob.apply";
+            if(result is not null && !ManagementView)
+            {
+                var body=UI.Stack("pob.body",children.Skip(1).ToArray()).RememberChildFocus(initial).Classes("pob-body");
+                children=[children[0],body];
+            }
             var root = UI.Stack("pob.root", children.ToArray()).Classes("pob-root").RememberChildFocus(initial);
+            if(BuildControlsAvailable)
+            {
+                quickControlTargets.Add("pob.buildtools");quickControlTargets.Add("pob.body");
+                root=root.Shortcut(ControllerButton.RightStick,"quick-controls.pob.buildtools","Build controls");
+            }
             if (busy) root = root.Shortcut(ControllerButton.B, "cancel-operation");
             else if(result is null&&detailKind=="library")root=root.Shortcut(ControllerButton.B,"back");
             if (result is not null)

@@ -30,10 +30,12 @@ public sealed partial class PobWidget
         if (section != "Tree") heading.Add(Text($"POE {game}  /  BUILD COMPANION", "eyebrow", "pob-eyebrow"));
         heading.Add(Text(BuildName(), "title", section == "Tree" ? "pob-tree-title" : "pob-title"));
         heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}  ·  Tree {S(State, "treeVersion").Replace('_', '.')}", "context", "pob-muted"));
+        var tools=UI.Stack("pob.buildtools",UI.Row("pob.buildcontrols", controls.ToArray()).Classes("pob-toolbar"),history)
+            .RememberChildFocus(loadouts.Length>0?"pob.loadout":"pob.menu").Classes("pob-buildtools");
+        if(BuildControlsAvailable)tools=tools.Shortcut(ControllerButton.RightStick,"quick-controls.pob.body","Return to content");
         return UI.Grid("pob.header", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto()],
             UI.Stack("pob.identity", heading.ToArray()),
-            UI.Stack("pob.buildtools",UI.Row("pob.buildcontrols", controls.ToArray()).Classes("pob-toolbar"),history)
-                .Classes("pob-buildtools").InGrid(column: 1)).Spacing(0, 20);
+            tools.InGrid(column: 1)).Spacing(0, 20);
     }
 
     private WidgetElement Navigation()
@@ -335,9 +337,10 @@ public sealed partial class PobWidget
             var quick=NeedsQuickControls(passiveQuery.Entries.Length);
             side.Add(QuickControls(UI.Stack("pob.tree.search-controls",
                 Text("Find a passive", "tree.searchtitle", "pob-eyebrow"),
-                UI.TextEntry(filter, "Search passives", "search", "pob.search").Classes("pob-input")).Classes("pob-buildtools"),
+                UI.TextEntry(filter, "Search all passives", "search", "pob.search").Classes("pob-input"),
+                Text("Search by name or modifier, including unallocated nodes.","tree.searchhint","pob-small pob-muted")).Classes("pob-buildtools"),
                 "pob.search","pob.tree.results","Passives",quick));
-            side.Add(Text($"{passiveQuery.Entries.Length} passives","tree.count","pob-muted"));
+            side.Add(Text($"{(filter.Length==0?"Allocated and granted passives":"Search results")} · {passiveQuery.Entries.Length}","tree.count","pob-muted"));
             side.Add(QuickControls(UI.Stack("pob.tree.results",list).Classes("pob-workspace"),
                 "pob.passives","pob.tree.search-controls","Search",quick));
         }

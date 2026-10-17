@@ -249,6 +249,9 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             dialog.Handle(button, phase); return true;
         }
         if (HasDialog) return true;
+        // The browser has no R3 action. Let an enclosing widget own this
+        // gesture, after browser dialogs have had their exclusive input turn.
+        if (button == ControllerButton.RightStick) return false;
         if (button == ControllerButton.B && toolbarFocused && (isPopup || document.Options.Chrome == BrowserChrome.OnDemand))
         {
             if (phase == ControllerEventPhase.Pressed) { backReleaseOwned = true; ToggleToolbar(); }

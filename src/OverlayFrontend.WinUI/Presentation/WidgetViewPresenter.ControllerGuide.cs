@@ -60,7 +60,15 @@ internal sealed partial class WidgetViewPresenter
                 new(ControllerPrompt.RightBumper, "Loop", ControllerButton.RightBumper),
                 .. (media.CanExpand ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress, media.IsExpanded ? "Collapse" : "Expand", ControllerButton.RightStick)] : []),
                 .. (media.IsExpanded || media.IsAdjustingVolume ? (ControllerGuideHint[])[new(ControllerPrompt.B, media.IsAdjustingVolume ? "Done" : "Back", ControllerButton.B)] : [])];
-        if (FocusedBrowser is { } browser) return CaptureBrowserGuide(browser);
+        if (FocusedBrowser is { } browser)
+        {
+            var browserHints=CaptureBrowserGuide(browser);
+            if(browser.PresentedInPin||browser.Surface?.ActiveSurface is not {HasDialog:false,NeedsRecovery:false})return browserHints;
+            // R3 is the browser's explicitly unowned button; expose only that
+            // ancestor shortcut, rather than advertising consumed page controls.
+            return (ControllerGuideHint[])[..browserHints,..ControllerGuideModel.Resolve(ControllerFocusPath(),new HashSet<ControllerButton>(),false)
+                .Where(hint=>hint.Button==ControllerButton.RightStick)];
+        }
         var focused = FocusedBinding();
         var path = ControllerFocusPath();
         if (focused?.Element is WidgetIndexedCollectionView && path.Count == 0) return [];

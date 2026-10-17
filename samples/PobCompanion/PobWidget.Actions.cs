@@ -33,6 +33,7 @@ public sealed partial class PobWidget
             if(id.StartsWith("quick-controls.",StringComparison.Ordinal))
             {
                 var target=id["quick-controls.".Length..];
+                if(target is "pob.buildtools" or "pob.body" && !BuildControlsAvailable)return ValueTask.CompletedTask;
                 var permitted=pendingBefore is null || target is "pob.tree.preview.actions" or "pob.tree.preview-details";
                 if(permitted&&quickControlTargets.Contains(target)){quickControlTarget=target;historyFocusRequested=false;focusRequestSequence++;Invalidate();}
                 return ValueTask.CompletedTask;

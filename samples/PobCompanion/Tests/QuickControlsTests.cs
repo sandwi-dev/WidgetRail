@@ -21,6 +21,33 @@ internal static class QuickControlsTests
         async Task Jump(string target){await widget.OnActionAsync(new("quick-controls."+target,"fixture"));check(View().FocusGroupEntryRequest?.GroupId==target,"L3 requests remembered group "+target);}
         try
         {
+            Set("result",baseline);
+            foreach(var section in new[]{"Calcs","Tree","Skills","Items","Configuration","Notes"})
+            {
+                Set("section",section);Set("detailKind","");
+                var view=View();var nodes=Nodes(view.Root).ToArray();
+                check(nodes.Any(n=>n.Id=="pob.headline.0")== (section=="Calcs"),section+" uses large statistic cards only in Calcs");
+                check(nodes.Any(n=>n.Id=="pob.compact.CombinedDPS")== (section!="Calcs"),section+" has exactly the intended summary layout");
+                check(nodes.Single(n=>n.Id=="pob.root").Shortcuts!.Any(s=>s.Button==ControllerButton.RightStick&&s.ActionId=="quick-controls.pob.buildtools"),section+" exposes R3 Build controls");
+                check(nodes.Single(n=>n.Id=="pob.buildtools").Shortcuts!.Any(s=>s.Button==ControllerButton.RightStick&&s.ActionId=="quick-controls.pob.body"),section+" header overrides R3 with Return to content");
+                check(nodes.Single(n=>n.Id=="pob.body").InitialChildFocusId is not null,"Body remembers the last content focus in "+section);
+                await Jump("pob.buildtools");await Jump("pob.body");
+            }
+            Set("section","Tree");Set("filter","");Set("detailKind","");
+            var emptySearch=View();
+            check(Nodes(emptySearch.Root).Single(n=>n.Id=="pob.tree.count").Text!.StartsWith("Allocated and granted passives"),"Empty passive search explains its restricted count");
+            Set("filter","Life");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.tree.count").Text!.StartsWith("Search results"),"Typed passive search labels matching results");
+            Set("filter","");
+            foreach(var state in new[]{"busy","preview","menu","library"})
+            {
+                Set("status","Updating build…");
+                Set("busy",state=="busy");Set("pendingBefore",state=="preview"?baseline:null);Set("detailKind",state is "menu" or "library"?state:"");
+                check(!Nodes(View().Root).SelectMany(n=>n.Shortcuts??[]).Any(s=>s.Button==ControllerButton.RightStick),"R3 is absent during "+state);
+                await widget.OnActionAsync(new("quick-controls.pob.buildtools","fixture"));
+                check(View().FocusGroupEntryRequest?.GroupId!="pob.buildtools","Stale R3 cannot escape "+state);
+            }
+            Set("busy",false);Set("pendingBefore",null);Set("detailKind","");
             foreach(var count in new[]{0,8,9,30})
             {
                 var state=JsonNode.Parse(baseline.State.GetRawText())!;
