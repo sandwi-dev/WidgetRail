@@ -24,8 +24,8 @@ private:
 };
 
 /// Tracks the exact legacy GameInput devices that need the XInput Guide
-/// compatibility adapter. Modern controllers use the event-driven GameInput
-/// system-button callback and must not create a hidden polling cadence.
+/// compatibility adapter. Notifications are hints: successful XInput reads
+/// also enable polling when GameInput enumeration is delayed or unavailable.
 class GuideCompatibilityActivation final {
 public:
     using DeviceId = std::array<std::uint8_t, APP_LOCAL_DEVICE_ID_SIZE>;
@@ -63,16 +63,18 @@ private:
 /// primary source; this adapter can be removed without touching host routing.
 class XInputGuideCompatibility final {
 public:
+    using StateReader = std::function<DWORD(DWORD, XINPUT_STATE*)>;
     XInputGuideCompatibility() = default;
     ~XInputGuideCompatibility();
     XInputGuideCompatibility(const XInputGuideCompatibility&) = delete;
     XInputGuideCompatibility& operator=(const XInputGuideCompatibility&) = delete;
 
-    [[nodiscard]] bool Initialize() noexcept;
+    [[nodiscard]] bool Initialize(StateReader reader = {}) noexcept;
     void Shutdown() noexcept;
     [[nodiscard]] std::uint8_t PollRisingEdges() noexcept;
     [[nodiscard]] bool TryReadState(DWORD slot, XINPUT_STATE& state, std::uint64_t& sampledAtMilliseconds) noexcept;
     [[nodiscard]] bool available() const noexcept { return guideAvailable_; }
+    [[nodiscard]] bool HasConnectedController() const noexcept;
 
 private:
     struct Source;

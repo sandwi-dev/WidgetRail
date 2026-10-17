@@ -70,6 +70,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
                 if (shortcut.Pressed) { diagnostics.Write("View + Menu shortcut accepted"); ToggleRequested?.Invoke(); }
             }
             else if (session.PollLegacyGuide(Now) is { } signal) Handle(signal);
+            UpdateGuidePolling();
         });
         try
         {
@@ -148,6 +149,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
                 $"written={diagnostics.WrittenCount} completed={diagnostics.Completion.IsCompleted}");
         }
         if (session is null || !visible || controllerRecoveryBlocked) return;
+        if (guideTimer.Interval.TotalMilliseconds > 25) UpdateGuidePolling();
         var candidate = GetForegroundWindow();
         if (IsCurrentExternalForeground(candidate) && ExternalForegroundObserved is not null && DeferExternalForegroundDismissal?.Invoke() != true)
         {
@@ -236,9 +238,14 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     private void UpdateGuidePolling()
     {
         var required = !controllerRecoveryBlocked && (viewMenuShortcut || session?.RequiresLegacyGuidePolling == true);
-        diagnostics.Write($"Legacy Guide polling required={required}");
-        if (required) guideTimer.Start();
-        else guideTimer.Stop();
+        if (controllerRecoveryBlocked || closed || session is null) { guideTimer.Stop(); return; }
+        var interval = TimeSpan.FromMilliseconds(required ? 25 : 1000);
+        if (!guideTimer.IsRunning || guideTimer.Interval != interval)
+        {
+            diagnostics.Write($"Guide polling cadence={(required ? "connected" : "discovery")} interval-ms={interval.TotalMilliseconds}");
+            guideTimer.Interval = interval;
+            guideTimer.Start();
+        }
     }
 
     private void Guard(Action action)

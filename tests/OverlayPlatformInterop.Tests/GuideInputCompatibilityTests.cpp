@@ -16,6 +16,49 @@ void Check(bool condition, const char* message) {
 }
 int main() {
     {
+        // No GameInput device notifications are delivered in this fixture.
+        // Exercise the same asynchronous XInput reader used by the live host.
+        auto connected = std::make_shared<std::atomic<bool>>(false);
+        auto pressed = std::make_shared<std::atomic<bool>>(false);
+        widgetrail::input::XInputGuideCompatibility adapter;
+        Check(adapter.Initialize([connected, pressed](DWORD slot, XINPUT_STATE* state) {
+            *state = {};
+            if (slot != 2 || !connected->load()) return DWORD(ERROR_DEVICE_NOT_CONNECTED);
+            state->Gamepad.wButtons = pressed->load() ? 0x0400 : 0;
+            return DWORD(ERROR_SUCCESS);
+        }), "injected XInput source initializes without GameInput enumeration");
+        auto wait = [&](auto condition) {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            while (!condition() && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            return condition();
+        };
+        Check(!adapter.HasConnectedController(), "no controller keeps fast Guide polling disabled");
+        connected->store(true);
+        Check(wait([&] { (void)adapter.PollRisingEdges(); return adapter.HasConnectedController(); }),
+            "successful XInput discovery enables Guide without a device notification");
+        pressed->store(true);
+        std::uint8_t edges{};
+        Check(wait([&] { edges |= adapter.PollRisingEdges(); return edges != 0; }) && edges == 4,
+            "Guide delivers the correct controller edge despite missing notifications");
+        for (int i = 0; i < 40; ++i) {
+            Check(adapter.PollRisingEdges() == 0, "held Guide does not repeatedly toggle");
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        connected->store(false);
+        Check(wait([&] { (void)adapter.PollRisingEdges(); return !adapter.HasConnectedController(); }),
+            "observed disconnect returns to discovery without a notification");
+        pressed->store(false); connected->store(true);
+        Check(wait([&] { (void)adapter.PollRisingEdges(); return adapter.HasConnectedController(); }),
+            "reconnect is discovered without GameInput");
+        pressed->store(true); edges = 0;
+        Check(wait([&] { edges |= adapter.PollRisingEdges(); return edges != 0; }) && edges == 4,
+            "fresh Guide after reconnect delivers once");
+        adapter.Shutdown();
+        Check(!adapter.HasConnectedController() && adapter.PollRisingEdges() == 0,
+            "shutdown retires discovery and pending Guide edges");
+    }
+    {
         struct BlockedDriver {
             std::promise<void> entered;
             std::promise<void> release;

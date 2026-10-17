@@ -255,8 +255,7 @@ struct WidgetRailOverlayPlatformHandle final {
         std::scoped_lock lock(mutex);
         return !controllerIsolation.active() &&
             guideCompatibility.available() &&
-            (!compatibilityDeviceTrackingAvailable ||
-             guideCompatibilityActivation.active());
+            guideCompatibility.HasConnectedController();
     }
 
     [[nodiscard]] bool TryReadRaw(
@@ -727,7 +726,7 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
             } else {
                 handle->compatibilityDeviceTrackingAvailable = true;
                 handle->Diagnostic(
-                    L"GameInput legacy-device tracking registered; hidden Guide polling remains dormant unless required");
+                    L"GameInput legacy-device tracking registered; XInput discovery also checks for missed notifications");
             }
         }
         handle->Diagnostic(
@@ -737,7 +736,7 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
 
     if (handle->guideCompatibility.Initialize()) {
         handle->Diagnostic(handle->compatibilityDeviceTrackingAvailable
-            ? L"XInput Guide compatibility adapter standing by for legacy devices"
+            ? L"XInput Guide compatibility adapter uses live connection discovery"
             : L"XInput Guide compatibility adapter active because GameInput device tracking is unavailable");
     } else {
         handle->Diagnostic(L"XInput Guide compatibility adapter unavailable");
@@ -929,7 +928,9 @@ WidgetRailOverlayPlatformPollLegacyGuide(
     *hasEvent = WRAIL_OVERLAY_PLATFORM_FALSE;
     const auto status = ValidateHandle(handle);
     if (status != WidgetRailOverlayPlatformStatus::Ok) return status;
-    if (!handle->RequiresLegacyPolling()) return WidgetRailOverlayPlatformStatus::Ok;
+    // The host also calls this at the idle discovery cadence. Do not gate that
+    // first read on a GameInput notification: that was the delayed-Guide bug.
+    if (handle->controllerIsolation.active() || !handle->guideCompatibility.available()) return WidgetRailOverlayPlatformStatus::Ok;
     const auto slots = handle->guideCompatibility.PollRisingEdges();
     if (slots == 0 || !handle->guideDebouncer.Accept(nowMilliseconds)) {
         return WidgetRailOverlayPlatformStatus::Ok;

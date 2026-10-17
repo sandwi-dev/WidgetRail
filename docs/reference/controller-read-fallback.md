@@ -33,6 +33,16 @@ navigation reads remain dormant. PS and Create + Options retain their existing
 opening shortcuts, using the native reader without another HID connection.
 View + Menu also retains its independent shortcut reader.
 
+Guide discovery does not depend on GameInput device notifications. In Guide mode,
+the host requests an asynchronous XInput scan once per second while no XInput
+controller is detected, then polls Guide at 25 ms while a successful scan reports
+a connection. This also works when GameInput initializes successfully but its
+enumeration is delayed. Connection evidence expires after 1500 ms; ordinary input
+and Guide edges still use the stricter 250 ms freshness limit below. Disconnects
+return to the discovery cadence. Notification arrival alone never toggles the
+overlay. The compatibility reader remains bypassed during exclusive isolation,
+and recovery-required state stops the host timer.
+
 Ordinary XInput slot reads and the legacy Guide compatibility scan share one
 asynchronous, demand-driven sample. The UI never calls XInput device enumeration
 synchronously. Only one scan can be outstanding; shutdown retires its owner without

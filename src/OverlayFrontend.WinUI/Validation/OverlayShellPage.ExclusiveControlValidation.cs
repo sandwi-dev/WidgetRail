@@ -36,6 +36,40 @@ internal sealed partial class OverlayShellPage
             mockPump.Failed += error => pumpFailure = error;
             try
             {
+                var discoveryBackend = new ReplayNativePlatform { FastGuidePolling = false };
+                var toggles = 0;
+                using (var discovery = new PlatformInputPump(DispatcherQueue, (nint)hostWindow, discoveryBackend))
+                {
+                    discovery.ToggleRequested += () => toggles++;
+                    await Task.Delay(1250);
+                    Check(discoveryBackend.GuidePollCalls is >=1 and <=2 && discoveryBackend.ReadControllerCalls == 0,
+                        "hidden startup discovers XInput once per second without reading ordinary navigation");
+                    discoveryBackend.FastGuidePolling = true; // Read succeeded; no GameInput notification.
+                    await Task.Delay(1250);
+                    var polls = discoveryBackend.GuidePollCalls;
+                    await Task.Delay(200);
+                    Check(discoveryBackend.GuidePollCalls >= polls + 3,
+                        "successful discovery promotes Guide cadence without a device notification");
+                    discoveryBackend.Toggle();
+                    await Until(() => toggles == 1);
+                    await Task.Delay(200);
+                    Check(toggles == 1, "one queued Guide edge delivers one toggle while hidden");
+                    discovery.SetVisible(true);
+                    discoveryBackend.Toggle();
+                    await Until(() => toggles == 2);
+                    Check(toggles == 2, "Guide remains available while the overlay is visible");
+                    discovery.SetVisible(false);
+                    discoveryBackend.FastGuidePolling = false;
+                    await Task.Delay(100);
+                    polls = discoveryBackend.GuidePollCalls;
+                    await Task.Delay(1250);
+                    Check(discoveryBackend.GuidePollCalls - polls is >=1 and <=2,
+                        "disconnect returns to bounded discovery while hidden");
+                }
+                var stoppedPolls = discoveryBackend.GuidePollCalls;
+                await Task.Delay(1100);
+                Check(discoveryBackend.DestroyCalls == 1 && discoveryBackend.GuidePollCalls == stoppedPolls,
+                    "disposing the input owner stops the discovery timer");
                 original = await store.LoadAsync();
                 Check(!original.Controllers.ExclusiveControl, "isolated profile starts with exclusive control off");
                 if (startup is not null) await startup;
@@ -64,10 +98,18 @@ internal sealed partial class OverlayShellPage
                 mockPump.ApplyControllerControlPreference(enabled);
                 await Task.Delay(1200);
                 Check(backend.ExclusiveControlCalls == 2, "repeated status exchanges and duplicate revisions do not reapply enable");
+                Invoke("Widget.settings.back");
+                await Until(() => Find("Widget.controllers.open-shortcut") is Control { IsEnabled: true });
                 Invoke("Widget.controllers.open-shortcut");
+                var optionId = "Widget.controllers.open-shortcut.Option." +
+                    (enabled.OpenShortcut == ControllerOpenShortcut.Guide ? "view-menu" : "guide");
+                await Until(() => Popup(optionId) is not null);
+                var optionPeer = FrameworkElementAutomationPeer.CreatePeerForElement(Popup(optionId)!);
+                ((IToggleProvider)optionPeer.GetPattern(PatternInterface.Toggle)).Toggle();
                 await UntilAsync(async () => (await store.LoadAsync()).Controllers.OpenShortcut != enabled.OpenShortcut);
                 await Task.Delay(1200);
                 Check(backend.ExclusiveControlCalls == 2, "changing the ordinary opening shortcut does not reapply isolation");
+                Invoke("Widget.controllers.help");
 
                 await Until(() => Find("Widget.controllers.exclusive-control") is Control { IsEnabled: true });
                 Invoke("Widget.controllers.exclusive-control");
@@ -160,6 +202,9 @@ internal sealed partial class OverlayShellPage
                 Check(backend.ExclusiveControlCalls == calls, $"request {calls} applied once and reported {state}");
             }
             FrameworkElement? Find(string id) => surface is null ? null : Descendants(surface).OfType<FrameworkElement>()
+                .FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == id);
+            FrameworkElement? Popup(string id) => VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot)
+                .SelectMany(p => Descendants(p.Child)).OfType<FrameworkElement>()
                 .FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == id);
             bool TextContains(string id, string text) => Find(id) is TextBlock block && block.Text.Contains(text, StringComparison.OrdinalIgnoreCase);
             bool StatusContains(string text) => TextContains("Widget.controllers.status", text);

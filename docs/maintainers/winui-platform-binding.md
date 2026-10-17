@@ -85,9 +85,12 @@ Callbacks may run on GameInput, DualSense or isolation threads. They must:
 The drain calls `DrainEvent` until `hasEvent == 0` (or a bounded batch followed
 by another queued drain). A signal is not a synthetic Guide press. Handle actual
 `GuideToggleRequested` events only, and respect the configured open shortcut.
-`LegacyGuidePollingChanged` controls a separate 25 ms compatibility timer only
-when Guide mode is selected. Hidden normal operation requires no navigation
-polling; native Guide callbacks remain registered while hidden.
+`LegacyGuidePollingChanged` requests a refresh of the separate Guide timer.
+Successful XInput connection samples also enable its 25 ms compatibility cadence;
+GameInput notification delivery is not a prerequisite. In Guide mode with no
+detected XInput controller, one asynchronous discovery scan per second checks for
+startup/reconnect. Hidden normal operation requires no navigation dispatch;
+native Guide callbacks remain registered while hidden. Dispose stops both timers.
 
 ## Lifecycle sequence
 

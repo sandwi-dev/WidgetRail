@@ -1,6 +1,7 @@
 #include "GuideInputCompatibility.h"
 
 #include <array>
+#include <algorithm>
 #include <filesystem>
 #include <atomic>
 #include <memory>
@@ -135,7 +136,9 @@ void GuidePollDispatcher::Request() noexcept {
 
 struct XInputGuideCompatibility::Source final {
     using GetState = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
-    HMODULE module{LoadSystemXInput()};
+    explicit Source(StateReader reader) : overrideReader(std::move(reader)) {}
+    StateReader overrideReader;
+    HMODULE module{overrideReader ? nullptr : LoadSystemXInput()};
     GetState getStateEx = module ? reinterpret_cast<GetState>(
         GetProcAddress(module, reinterpret_cast<LPCSTR>(100))) : nullptr;
     GetState getState = module ? reinterpret_cast<GetState>(
@@ -153,8 +156,8 @@ struct XInputGuideCompatibility::Source final {
         const auto started = GetTickCount64();
         const auto read = getStateEx ? getStateEx : getState;
         for (DWORD slot = 0; slot < XUSER_MAX_COUNT; ++slot) {
-            live[slot] = read(slot, &states[slot]) == ERROR_SUCCESS;
-            pressed[slot] = live[slot] && getStateEx &&
+            live[slot] = (overrideReader ? overrideReader(slot, &states[slot]) : read(slot, &states[slot])) == ERROR_SUCCESS;
+            pressed[slot] = live[slot] && (overrideReader || getStateEx) &&
                 (states[slot].Gamepad.wButtons & kGuideButtonBit) != 0;
             states[slot].Gamepad.wButtons &= ~kGuideButtonBit;
         }
@@ -170,13 +173,13 @@ struct XInputGuideCompatibility::Source final {
     }
 };
 
-bool XInputGuideCompatibility::Initialize() noexcept {
+bool XInputGuideCompatibility::Initialize(StateReader reader) noexcept {
     Shutdown();
     try {
-        auto source = std::make_shared<Source>();
-        if (!source->getState && !source->getStateEx) return false;
+        auto source = std::make_shared<Source>(std::move(reader));
+        if (!source->overrideReader && !source->getState && !source->getStateEx) return false;
         source_ = source;
-        guideAvailable_ = source->getStateEx != nullptr;
+        guideAvailable_ = source->overrideReader || source->getStateEx != nullptr;
         poller_ = std::make_unique<GuidePollDispatcher>([source] { return source->Poll(); });
         poller_->Request();
         return guideAvailable_;
@@ -191,6 +194,15 @@ void XInputGuideCompatibility::Shutdown() noexcept {
 
 std::uint8_t XInputGuideCompatibility::PollRisingEdges() noexcept {
     return poller_ ? poller_->Poll() : 0;
+}
+
+bool XInputGuideCompatibility::HasConnectedController() const noexcept {
+    if (!source_) return false;
+    std::scoped_lock lock(source_->mutex);
+    // Discovery runs once a second when idle; keep its successful sample long
+    // enough for that next host tick to promote the cadence to 25 ms.
+    return GetTickCount64() - source_->completedAt <= 1500 &&
+        std::any_of(source_->connected.begin(), source_->connected.end(), [](bool live) { return live; });
 }
 
 bool XInputGuideCompatibility::TryReadState(

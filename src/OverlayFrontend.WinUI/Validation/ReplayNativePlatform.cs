@@ -15,6 +15,8 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
     internal int ExclusiveControlCalls { get; private set; }
     internal int ReadControllerCalls { get; private set; }
     internal int DestroyCalls { get; private set; }
+    internal bool FastGuidePolling { get; set; } = true;
+    internal int GuidePollCalls { get; private set; }
     internal List<uint> ExclusiveControlRequests { get; } = new();
     public void Move(NavigationDirection direction)
     {
@@ -43,7 +45,7 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
     public void Shutdown(nint handle) { frames.Clear(); signals.Clear(); }
     public void Destroy(nint handle) { DestroyCalls++; Shutdown(handle); }
     public uint HasGameInput(nint handle) => 0;
-    public uint RequiresLegacyGuidePolling(nint handle) => 1;
+    public uint RequiresLegacyGuidePolling(nint handle) => FastGuidePolling ? 1U : 0U;
     public uint ControllerPrerequisites() => ControllerPrerequisiteFlags;
     public uint ControllerControlState(nint handle) => (uint)ControlState;
     public PlatformStatus SetExclusiveControl(nint handle, uint enabled)
@@ -60,7 +62,7 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
     public PlatformStatus DrainEvent(nint handle, ulong nowMilliseconds, ref PlatformEvent value, out uint hasEvent)
     { hasEvent = 0; return PlatformStatus.Ok; }
     public PlatformStatus PollLegacyGuide(nint handle, ulong nowMilliseconds, ref PlatformEvent value, out uint hasEvent)
-    { hasEvent = signals.TryDequeue(out var signal) ? 1U : 0U; if (hasEvent != 0) value = signal; return PlatformStatus.Ok; }
+    { GuidePollCalls++; hasEvent = signals.TryDequeue(out var signal) ? 1U : 0U; if (hasEvent != 0) value = signal; return PlatformStatus.Ok; }
     public PlatformStatus PrimeController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds) => PlatformStatus.Ok;
     public PlatformStatus ReadController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds, ref ControllerFrame frame)
     {
