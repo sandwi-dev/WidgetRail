@@ -150,7 +150,7 @@ public sealed partial class PobWidget
                 for(var i=0;i<item.Cells.Length;i++)
                 {
                     if(S(item.Cells[i],"text").Length==0)continue;
-                    if(runs.Count>0)runs.Add(new(" · ","muted"));
+                    if(runs.Count>0)runs.Add(new(" Â· ","muted"));
                     if(i<item.Labels.Length)runs.Add(new(item.Labels[i]+": ","muted"));
                     runs.AddRange(ReadFormattedRuns(item.Cells[i],"text","runs",true));
                 }
@@ -168,7 +168,7 @@ public sealed partial class PobWidget
         var chosen=A(selected,"items").FirstOrDefault(c=>S(c,"id")==calculationCell);
         var context=calculationCatalog.GetProperty("context");
         var heading=UI.Stack("pob.calculation.detail-heading",Text(S(chosen,"title"),"calculation.title","pob-heading"),Text(CalculationValue(S(chosen,"value")),"calculation.value","pob-heading pob-gold"),
-            Text($"{(calculationSelection.Group==0?"Following main skill":"Inspecting")}: {S(context,"skill")} · {(B(context,"minion")?"Minion":"Player")}","calculation.context","pob-small pob-muted"),CalculationModeControls(context));
+            Text($"{(calculationSelection.Group==0?"Following main skill":"Inspecting")}: {S(context,"skill")} Â· {(B(context,"minion")?"Minion":"Player")}","calculation.context","pob-small pob-muted"),CalculationModeControls(context));
         var right=new List<WidgetElement>{heading};
         var explanation=new List<WidgetElement>();
         foreach(var (entry,index) in A(calculationDetail,"sections").Select((entry,index)=>(entry,index)))
@@ -182,7 +182,7 @@ public sealed partial class PobWidget
         if(explanation.Count>0)right.Add(UI.VerticalScroll("pob.calculation.explanation",explanation.ToArray()).Classes("pob-scroll","pob-calculation-explanation"));
         if(calculationSources.Items.Length>0)
         {
-            right.Add(Text("Sources and breakdown · Select a row for all fields","calculation.sources-count","pob-small pob-muted"));
+            right.Add(Text("Sources and breakdown Â· Select a row for all fields","calculation.sources-count","pob-small pob-muted"));
             right.Add(QuickControls(UI.Stack("pob.calculation.sources",UI.CollectionList("pob.calculation.source-list",calculationSourceCollection,112,"Calculation sources").Classes("pob-scroll")).Classes("pob-workspace"),"pob.calculation.source-list","pob.calculation.tools","Section and search",NeedsQuickControls(calculationSources.Items.Length)));
         }
         else if(explanation.Count==0)right.Add(Text("PoB provides no further breakdown for this value.","calculation.empty","pob-muted"));

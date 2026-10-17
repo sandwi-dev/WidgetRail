@@ -5,7 +5,44 @@
 Complete the approved PoE1 and PoE2 widget trade workflows and reusable host support.
 Implement, test against upstream PoB, inspect the native UI, and leave one controller-enabled
 candidate running. Preserve user builds, pending changes, recovery records, and website logins.
-Local commits are allowed; merge, push, and release are not authorized by this work.
+The user accepted the completed changes and authorized merging into local main on 2026-10-17.
+Push and release remain separate actions.
+
+## Accepted delivery status — 2026-10-17
+
+The user accepted all delivered changes for local main integration. The dated progress entries
+below are a history; later delivery entries supersede earlier pending-work statements.
+
+Delivered scope includes both build-planning widgets, recovery, skill/item/set management,
+PoE2 game-file export, candidate-engine CI, trade search and batch ranking, predefined modifier
+editing, reusable scoped web-session adapters, controller/focus fixes, and upstream calculation
+breakdowns. Detailed calculations follow the main skill by default and allow explicit inspection
+without changing the saved desktop calculation context. Formula text is inline; source tables
+remain virtualized. No widget-maintained passive-effect attribution rules are shipped.
+
+Final integration checks passed: PoE1 engine-update suite 470/470, PoE2 434/434,
+shared SDK 160/160, protocol parity (172 constants), and all four page/tree Node checks.
+Evidence is retained in `artifacts/pob/merge-final-*`; the final UTF-8 punctuation correction
+also builds with zero warnings or errors. No new physical-acceptance claim is made by these checks.
+
+Remaining limits and follow-ups:
+
+- Live authenticated PoE1 trade loading still needs verification in its separate profile;
+  both-engine calculation and workflow fixtures do not replace that live check.
+- Ranking uses the selected PoB weights; currency-aware value ranking is not provided.
+  The website handoff does not enforce desktop PoB's descending weighted-sum search sort.
+- Account OAuth requires an approved application identity. Direct poe.ninja profile downloads
+  were removed to respect its API policy; copied PoB codes remain supported.
+- Complete desktop crafting/stash integration and every specialized tree mechanic remain
+  outside the delivered parity scope. Purchases remain in the official website.
+- Candidate-engine CI gates packages and retains failures; it does not automatically promote
+  pins or publish releases. Publishing and marketplace distribution are not part of this merge.
+- Guide open/close, reconnect and reopening after idle were accepted with the physical
+  controller. This does not imply exhaustive physical/display coverage for every trade flow.
+
+The running accepted candidate, saved builds and persistent website profiles still reside under
+this worktree's ignored artifacts. Retain the runtime checkout until those are deliberately
+migrated or the candidate is retired; archiving it now would delete required ignored files.
 
 ## Agreed decisions
 
