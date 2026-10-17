@@ -4,12 +4,31 @@ Two controller-first widgets share one implementation and run pinned Path of Bui
 
 ## Screenshots
 
-Native WidgetRail captures in Velvet Dusk, using midgame and late-game setups from [Ghost Activity's Martial Artist guide](https://pobb.in/ttCJAV3WX9bn). These are workflow examples, not current-league build recommendations. The PNG files in [screenshots](screenshots/) are also available for the marketplace listing.
+Native WidgetRail captures from 17 October 2026 in Velvet Dusk. The PoE2 planning example uses the late-game setup from [Ghost Activity's Martial Artist guide](https://pobb.in/ttCJAV3WX9bn). These are workflow examples, not current-league build recommendations. See the [screenshot index](screenshots/README.md) for captions, capture details and marketplace reuse, and [credits](#credits) for the upstream projects and artwork.
 
+**Calculations and loadouts.** Inspect damage, defences and calculation context without leaving the build.
 ![Calculations and setup](screenshots/calculations.png)
+
+**Skill groups.** The main group is pinned first; its gems, support gems and Full DPS inclusion remain editable.
 ![Skill groups and gem editing](screenshots/skills.png)
+
+**Passive tree.** Inspect an allocated node, its modifiers and weapon-set membership before previewing a change.
 ![Passive tree and node details](screenshots/tree.png)
+
+**PoE1 Timeless Jewels.** Search seeds for a socket using PoB's modifier weights. This synthetic planning example demonstrates the finder, not a recommended character build.
+![PoE1 Timeless Jewel finder and scored seeds](screenshots/poe1-timeless.png)
+
+**Configuration.** Browse relevant settings and enable their upstream explanations.
 ![Configuration sections](screenshots/configuration.png)
+
+**Builds and import.** Website shortcuts sit beside the shared browser preference; pob.cool's controller limitation is stated before opening it.
+![Build import and browser preference](screenshots/import.png)
+
+**Compare while browsing.** The official listing stays beside PoB's calculated gains and losses. The equipment target is explicit; comparing does not equip or buy the item.
+![Trade listing beside its PoB comparison](screenshots/trade-comparison.png)
+
+**Rank a batch.** The shortlist identifies the target, weights, limit and order. Unsupported items stay visible in the skipped list. These historical listings and prices are examples, not purchase recommendations.
+![Ranked trade listings and explicit skipped-item reasons](screenshots/trade-ranking.png)
 
 ## Using a build
 
@@ -109,6 +128,8 @@ The page adapter observes only the declared trade-item JSON responses requested 
 
 General website links use a preference shared by both widgets: Windows' default browser, or a web session in a widget modal. Trade always uses the overlay so listings and comparisons stay together. The modal fills most of the widget without exceeding its bounds. Closing it returns to the build; **Return to website** reopens the retained trade session. Each widget has its own persistent website profile, so logins survive session disposal and overlay restart without sharing the Browser widget's cookies. Existing widget idle unloading also releases its web sessions. Account import through GGG OAuth remains unavailable without an approved application identity.
 
+Choose **Open websites in** beside the poe.ninja and pob.cool shortcuts in Build & import. pob.cool requires a mouse and keyboard. After copying a build code, return to **Paste build from clipboard**. The shared on-screen keyboard also has a Paste key, including for password entry; password text is masked by default.
+
 **Export to PoE2** uses upstream's `.build` serializer for the selected tree, skills and equipment, or exports each linked loadout to its own file. The default destination is Windows' Documents folder under `My Games/Path of Exile 2/BuildPlanner`; the destination is editable. Existing files are preserved. These files provide in-game recommendations rather than equipping items or allocating passives. PoE1 retains the ordinary XML and share-code exports.
 
 The six categorical color roles follow the selected WidgetRail theme; labels and geometry also convey meaning. The tree consumes the host's packaged-page theme projection, including high contrast. Remote websites receive no theme injection.
@@ -141,4 +162,12 @@ Use `--loadouts-only` with a linked-loadout fixture to check independent copies,
 
 The weekly/manual `pob-engine-candidates` workflow resolves an exact upstream revision (PoE1 stable and PoE2 beta by default), builds the pinned Lua runtime, and runs real-engine checks before producing a candidate package. Failed checks prevent packaging; structured results, logs and binlogs are retained for diagnosis. Candidate locks do not replace the repository lock or the installed engine. The workflow does not publish releases automatically: review the results, inspect both widgets, and promote a tested package deliberately. The bridge adapter is the compatibility boundary; game calculations remain upstream.
 
-Each package includes the applicable upstream PoB license, LuaJIT copyright and lua-utf8 license. Fixtures used during development are not bundled as sample builds. Path of Building Community and Path of Exile are separate projects; these widgets are not affiliated with their maintainers or Grinding Gear Games.
+## Credits
+
+- **Path of Building Community contributors**, building on the original Path of Building by **Openarl / David Gowor**: the [PoE1 engine](https://github.com/PathOfBuildingCommunity/PathOfBuilding) and [PoE2 engine](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2) supply calculations, game rules, modifier parsing, trade-query generation and tree-editing tools. Their source revisions are pinned in [engine-lock.json](engine-lock.json); each package retains the upstream license and third-party notices.
+- **Grinding Gear Games**: Path of Exile and Path of Exile 2, their game data and artwork, the official trade website, and the public Currency Exchange history used by PoB. Game artwork and website imagery in these screenshots are not original WidgetRail artwork and are not covered by WidgetRail's code license.
+- **Ghost Activity**: the [Martial Artist guide and public PoB build](https://pobb.in/ttCJAV3WX9bn) used for the PoE2 walkthrough and planning screenshots. The widget demonstrates the imported build; it does not claim authorship of the build or recommend its historical gear for the current league.
+- **LuaJIT**, by Mike Pall and contributors; **lua-utf8**, by Xavier Wang and contributors; and **zlib**, by Jean-loup Gailly and Mark Adler. Packages include `LuaJIT-COPYRIGHT`, `LuaUTF8-LICENSE`, and [zlib-LICENSE.txt](licenses/zlib-LICENSE.txt), alongside `PoB-LICENSE.md`.
+- **[poe.ninja](https://poe.ninja/), [pob.cool](https://pob.cool/) and [pobb.in](https://pobb.in/)** provide the independent build-browsing, browser-planning and sharing services linked from the widget. Their website interfaces and services remain their own.
+
+Fixtures used during development are not bundled as sample builds. WidgetRail's companion UI and adapters are separate from these projects; no affiliation or endorsement by their maintainers or Grinding Gear Games is implied.
