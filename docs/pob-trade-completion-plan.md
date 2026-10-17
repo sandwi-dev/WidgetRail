@@ -103,9 +103,13 @@ Local commits are allowed; merge, push, and release are not authorized by this w
    representative special modifiers. Use actual native UI and visual inspection. Report any
    live-auth coverage gaps accurately. Finish with one normal candidate and evidence paths.
    Native action regression passes 8 checks on the final host: session-modal-native/actions-final-10.json.
-   The final candidate is artifacts/pob/page-adapter-final-10, with trade-adapter-installation04 and
+   The final candidate is artifacts/pob/page-adapter-candidate-reviewed, with trade-adapter-installation04 and
    trade-adapter-catalog-reviewed. User profiles/logins are preserved. No purchase or seller message
    was sent. Marketplace screenshots have not been published; captures remain local evidence.
+   Final comparison layout was visually inspected after restart (final-comparison.png): price,
+   seller, trade method, return action, and pending Apply/Discard precede calculation details.
+   Review corrected the adapter button background to the opaque composed theme surface, since
+   a transparent item brush cannot safely be flattened over an unrelated website background.
 
 ## Unresolved engineering details
 

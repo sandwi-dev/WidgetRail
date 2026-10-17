@@ -18,7 +18,9 @@ internal sealed partial class BrowserSurface
     internal void ApplyHostedTheme(ShellChromePalette palette, IReadOnlyDictionary<string,BridgeNodeRenderStyles>? styles, double textScale)
     {
         static string Hex(Color color) => $"#{color.R:x2}{color.G:x2}{color.B:x2}";
-        pageActionStyle=$"background:{Hex(palette.Item)};color:{Hex(palette.Text)};border-color:{Hex(palette.Focus)};font-size:{(14*Math.Clamp(textScale,.85,1.5)).ToString(System.Globalization.CultureInfo.InvariantCulture)}px;";
+        // Item can be transparent; the composed surface keeps the text contrast
+        // independent of the third-party page's background in every host theme.
+        pageActionStyle=$"background:{Hex(palette.Surface)};color:{Hex(palette.Text)};border-color:{Hex(palette.Focus)};font-size:{(14*Math.Clamp(textScale,.85,1.5)).ToString(System.Globalization.CultureInfo.InvariantCulture)}px;";
         pageAdapter?.SetStyle(pageActionStyle);
         if (!IsHostedPackage) return;
         var colors = new Dictionary<string,string>
