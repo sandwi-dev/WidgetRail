@@ -364,6 +364,7 @@ The user confirmed repeated Guide open/close and reconnect on the final candidat
 records 17 Guide events without any GameInput device-connection notification. The normal
 120-second PoB unload completed. A subsequent 40.58-second hidden sample used 1843.75ms host
 CPU (0.284% of this 16-logical-processor machine), with handles decreasing from 1653 to 1649;
-this is an observed sample, not a before/after performance comparison. Reopening after that
-idle period still awaits the user's physical confirmation. Evidence: `guide-physical-final.log`,
+this is an observed sample, not a before/after performance comparison. The user also confirmed
+Guide reopening after the two-minute idle period; the lifecycle log shows a second worker start
+and a return to interactive state. Evidence: `guide-physical-final.log`,
 `guide-unloaded-performance.json`, and `ranking-candidate-state.json` under artifacts/pob.
