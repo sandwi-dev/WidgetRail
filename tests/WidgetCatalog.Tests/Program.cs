@@ -31,6 +31,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Case-colliding directory prefixes are rejected", DirectoryCaseCollisionIsRejected),
     ("Unix symlink entries are rejected", SymlinkIsRejected),
     ("Entry count and expanded size limits are enforced", LimitsAreEnforced),
+    ("Data-heavy packages use the shared bounded budget", DataHeavyPackageBudget),
     ("Aggregate installed catalog limits reject work before publication", AggregateCatalogLimits),
     ("Over-limit catalogs expose bounded inactive-version recovery", OverLimitCatalogRecovery),
     ("Maximum catalog recovery projection stays within its budget", MaximumCatalogRecoveryIsBounded),
@@ -640,6 +641,20 @@ static async Task SymlinkIsRejected()
     var exception = await Assert.ThrowsAsync<WidgetPackageException>(
         () => new WidgetCatalog(Path.Combine(temp.Path, "catalog")).CreateInstaller().ValidateAsync(package));
     Assert.Equal("unsupported_entry_type", exception.Code);
+}
+
+static async Task DataHeavyPackageBudget()
+{
+    using var temp = new TemporaryDirectory();
+    var chunk = new string('x', 24 * 1024 * 1024);
+    var package = CreatePackage(temp.Path, "dev.test.large-data", "dev.test", "1.0.0",
+        extras: [new ExtraEntry("data/a.bin", chunk), new ExtraEntry("data/b.bin", chunk), new ExtraEntry("data/c.bin", chunk)]);
+    var options = new WidgetCatalogOptions();
+    Assert.Equal(256L * 1024 * 1024, options.MaximumTotalBytes);
+    Assert.Equal(32L * 1024 * 1024, options.MaximumEntryBytes);
+    await new WidgetCatalog(Path.Combine(temp.Path, "catalog")).CreateInstaller().ValidateAsync(package);
+    var bounded = new WidgetCatalog(Path.Combine(temp.Path, "bounded"), options with { MaximumTotalBytes = 64L * 1024 * 1024 });
+    Assert.Equal("package_too_large", (await Assert.ThrowsAsync<WidgetPackageException>(() => bounded.CreateInstaller().ValidateAsync(package))).Code);
 }
 
 static async Task LimitsAreEnforced()

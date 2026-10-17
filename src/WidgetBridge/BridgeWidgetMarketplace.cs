@@ -227,7 +227,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         RemotePackageDownloader.DownloadedPackage? downloaded = null;
         try
         {
-            using (var downloader = new RemotePackageDownloader(_http, new() { TemporaryDirectoryRoot = downloadRoot }))
+            using (var downloader = new RemotePackageDownloader(_http, new() { TemporaryDirectoryRoot = downloadRoot, MaximumBytes = WidgetPackageLimits.MaximumDownloadBytes }))
                 downloaded = await downloader.DownloadAsync(RemotePackageSource.Resolve(source.ToString())!, hash, job.Cancellation.Token,
                     progress: (received, total) =>
                     {

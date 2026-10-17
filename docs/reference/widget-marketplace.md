@@ -62,7 +62,7 @@ the current review before starting another download or release check. A review t
 package or be replayed after installation. The verified stream stays write-locked
 through review and installation.
 
-Downloads use the CLI's 72 MiB archive bound, HTTPS/redirect/timeout rules, and
+Downloads use the CLI's 272 MiB widget archive bound, HTTPS/redirect/timeout rules, and
 checksum resolution. Archive expansion and installation use the existing catalog
 limits. The private `.marketplace-downloads` directory permits only a bounded
 number of leftovers; cleanup touches recognized temporary package files without
@@ -121,7 +121,7 @@ versions, then presents one review with per-package compatibility, permission an
 full-access information. Cancel is initially focused. Approval applies only to
 those retained bytes and the installed baselines recorded in the review.
 
-A batch admits up to 16 packages, 256 MiB of archives and 128 KiB of review metadata.
+A batch admits up to 16 packages, 544 MiB of archives and 128 KiB of review metadata.
 Larger reviews remain available as individual updates rather than truncating
 permission details. Cancellation keeps completed installations and cancels queued
 work. Per-item results explain failures; Retry remaining updates excludes already
@@ -129,3 +129,5 @@ completed items. Reviews expire and reject changed installed baselines.
 
 Installed covers curated marketplace packages. Other locally imported packages
 remain in Settings → Widgets. Additional repository support is deferred.
+
+Widget package limits are shared by the CLI, installer and runtime content lease: 256 MiB expanded per package, with a 32 MiB per-file limit. Large immutable datasets may use bounded archive parts. Path, entry-count, seal and extraction checks still apply. Theme package limits and generic non-widget downloads are unchanged.

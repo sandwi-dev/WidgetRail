@@ -204,7 +204,7 @@ internal static class InstallCommand
             await output.WriteLineAsync("Using the published SHA-256 for this GitHub release asset.");
         }
         if (expectedSha256 is null) throw new CliUsageException("Remote widget installation requires --sha256 <64-hex>.");
-        using var downloader = new RemotePackageDownloader(remoteHttpHandler);
+        using var downloader = new RemotePackageDownloader(remoteHttpHandler, new() { MaximumBytes = WidgetPackageLimits.MaximumDownloadBytes });
         await using var downloaded = await downloader.DownloadAsync(remoteUri, expectedSha256, cancellationToken);
         var remoteApproval = await InspectTrustAsync(
             catalog, downloaded.PackageStream, parsed, output, cancellationToken);

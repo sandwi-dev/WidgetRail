@@ -79,7 +79,7 @@ internal static class PackageUpdateCommand
         }
         using var downloader = new RemotePackageDownloader(handler, new RemoteDownloadOptions
         {
-            MaximumBytes = theme ? ThemePackage.MaximumArchiveBytes : RemoteDownloadOptions.DefaultMaximumBytes,
+            MaximumBytes = theme ? ThemePackage.MaximumArchiveBytes : WidgetPackageLimits.MaximumDownloadBytes,
         });
         await using var downloaded = await downloader.DownloadAsync(RemotePackageSource.Resolve(source.ToString(), extension)!, expected, token, extension);
         var hash = Convert.ToHexString(downloaded.Sha256).ToLowerInvariant();

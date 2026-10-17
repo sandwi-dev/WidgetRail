@@ -7,7 +7,7 @@ namespace WidgetRail.WidgetBridge;
 
 internal sealed partial class BridgeWidgetMarketplace
 {
-    private const long MaximumRetainedUpdateBytes = 256L * 1024 * 1024;
+    private const long MaximumRetainedUpdateBytes = WidgetPackageLimits.MaximumRetainedUpdateBytes;
     // Leave room in the broker response for catalog metadata and item results.
     private const int MaximumBatchReviewBytes = 128 * 1024;
     private sealed record PendingBatch(IReadOnlyList<PendingPackage> Packages, DateTimeOffset Expires);

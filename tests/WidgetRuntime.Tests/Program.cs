@@ -89,6 +89,7 @@ if (expectedRuntime is not null && !RuntimeEnvironment.GetRuntimeDirectory().Sta
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Data package leases pin larger inventories and enforce the shared ceiling", DataPackageLeaseTests.Run),
     ("Intent delivery rejects duplicate and inactive requests", IntentDeliveryScenarios.DuplicateAndLifecycle),
     ("Intent delivery does not replay cancelled or failed handlers", IntentDeliveryScenarios.CancellationAndFailure),
     ("Intent IPC uses the exact running worker without recovery", IntentDeliveryScenarios.ProcessBoundary),
@@ -217,6 +218,7 @@ if (testPrefixIndex >= 0)
 }
 
 var failures = new List<string>();
+if(args.Contains("--package-budget-only",StringComparer.Ordinal))tests=tests.Where(t=>t.Name.StartsWith("Data package leases",StringComparison.Ordinal)).ToArray();
 foreach (var test in tests)
 {
     try

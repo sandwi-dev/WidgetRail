@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetRuntime;
 
@@ -11,7 +12,7 @@ namespace WidgetRail.WidgetRuntime;
 internal sealed class PinnedDirectoryContentLease : IWidgetProcessContentLease
 {
     internal const int MaximumEntries = 1_024;
-    internal const long MaximumAggregateFileBytes = 64L * 1024 * 1024;
+    internal const long MaximumAggregateFileBytes = WidgetPackageLimits.MaximumExpandedBytes;
     private const uint GenericRead = 0x80000000;
     private const uint FileShareRead = 0x00000001;
     private const uint OpenExisting = 3;
