@@ -5,6 +5,10 @@ notify; downloading and installing remain explicit user actions.
 
 ## Install an update
 
+Have a mouse and keyboard available before installing. The installer does not
+support WidgetRail's controller navigation, and WidgetRail closes during setup.
+The update page shows this warning beside the download/install action.
+
 1. Choose **Download update**. WidgetRail downloads only the new installer for the
    installed edition and verifies its SHA256 against the GitHub release digest or
    checksum manifest. The page shows download progress and allows cancellation.

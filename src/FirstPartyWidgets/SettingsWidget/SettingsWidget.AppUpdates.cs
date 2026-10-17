@@ -88,6 +88,8 @@ internal static partial class SettingsPresentation
         var snapshot = state.Snapshot;
         var busy = snapshot.State is "checking" or "downloading";
         var handingOff = snapshot.State == "handoff";
+        var installerWarning = UI.Text("Mouse and keyboard required for installation. The installer does not support controllers, and WidgetRail closes while setup runs.",
+            "app-update.input-warning").Classes("page-help", "app-update-input-warning");
         var items = new List<WidgetElement>
         {
             UI.Text("App updates", "app-update.heading").Classes("page-heading"),
@@ -98,6 +100,7 @@ internal static partial class SettingsPresentation
             UI.Text("Check shortly after startup and notify when an update is available. Downloads and installation remain manual.", "app-update.auto.help").Classes("page-help"),
             UI.Button("Check for updates", "app-update.check", "app-update.check").Busy(busy).Disabled(handingOff).Classes("secondary-button"),
         };
+        if (snapshot.AvailableVersion is null) items.Insert(items.Count - 1, installerWarning);
         if (snapshot.AvailableVersion is { } available)
         {
             items.Add(UI.Text("Available " + available, "app-update.available").Classes("section-heading"));
@@ -106,6 +109,7 @@ internal static partial class SettingsPresentation
                 items.Add(UI.Button(state.NotesExpanded ? "Hide release notes" : "Show release notes", "app-update.notes", "app-update.notes.toggle").Classes("secondary-button"));
                 if (state.NotesExpanded) items.AddRange(ReleaseNoteElements(snapshot.Notes));
             }
+            items.Add(installerWarning);
             if (snapshot.CanInstall)
                 items.Add(UI.Button(snapshot.State == "ready" ? "Install and restart" : handingOff ? "Starting installer…" : "Download update", snapshot.State == "ready" ? "app-update.install" : "app-update.download", "app-update.primary")
                     .Busy(busy || handingOff).Disabled(handingOff).Classes("primary-button"));
