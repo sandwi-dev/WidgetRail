@@ -12,7 +12,7 @@ if(args is ["--note-links-only"])
     Console.WriteLine($"Note links: {passed} passed, {failed} failed");return failed==0?0:1;
 }
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only" or "--trade-improvements-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -39,6 +39,7 @@ if(args.Length==5)
         await ItemWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     }
     else if(args[4]=="--engine-failure-only")await EngineFailureTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--trade-improvements-only")await TradeImprovementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--trade-workflow-only")await TradeWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--trade-only")await TradeSearchTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--sets-only")await SetManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);

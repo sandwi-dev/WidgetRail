@@ -4,11 +4,11 @@ local itemSettings
 function M.configure(settings)itemSettings=settings end
 local function index(id,list)assert(type(id)=='number'and id%1==0 and list[id],'This item option no longer exists');return list[id]end
 local function withDialog(action,accept)
-  local popup,close=main.OpenPopup,main.ClosePopup;local visited=false
-  main.OpenPopup=function(_,width,height,title,controls)visited=true;return accept(controls)end
+  local popup,close=main.OpenPopup,main.ClosePopup;local visited=false;local accepted
+  main.OpenPopup=function(_,width,height,title,controls)visited=true;accepted=accept(controls);return accepted end
   main.ClosePopup=function()end
   local ok,result=pcall(action);main.OpenPopup,main.ClosePopup=popup,close
-  assert(ok,result);assert(visited,'The upstream editor did not open');return result
+  assert(ok,result);assert(visited,'The upstream editor did not open');return accepted
 end
 local function display(req)
   local tab=build.itemsTab
@@ -70,6 +70,35 @@ local function affixChoices(item,slot,clean)
   end end end
   return result,drop
 end
+local function modifierDialog(req,accept)
+  local tab=build.itemsTab
+  assert(tab.controls.displayItemAddCustom:IsShown(),'This item does not support added modifiers')
+  return withDialog(function()return tab:AddCustomModifierToDisplayItem()end,function(controls)
+    if req.source then
+      local selected;for i,entry in ipairs(controls.source.list)do if entry.sourceId==req.source then selected=i end end
+      assert(selected and req.source~='CUSTOM','This modifier source is not available for this item')
+      controls.source:SetSel(selected)
+    end
+    return accept(controls)
+  end)
+end
+function M.modifiers(req,clean)
+  display(req)
+  return modifierDialog(req,function(controls)
+    local sources={}
+    for _,source in ipairs(controls.source.list)do if source.sourceId~='CUSTOM'then
+      sources[#sources+1]={key=source.sourceId,title=clean(source.label)}
+    end end
+    local selected=controls.source.list[controls.source.selIndex].sourceId
+    local choices={}
+    if selected~='CUSTOM'then for i,entry in ipairs(controls.modSelect.list)do
+      local label=clean(entry.label)
+      choices[#choices+1]={id=i,title=label:match('^(.-)%s+%[')or label,
+        description=clean(table.concat(entry.mod,'\n'))..(entry.mod.level and'\nRequired item level '..entry.mod.level or''),key=entry.label}
+    end end
+    return {sources=sources,source=selected,choices=choices}
+  end)
+end
 function M.inspect(req,clean,textRuns)
   local item=display(req);local tab=build.itemsTab
   local result={raw=item:BuildRaw(),name=clean(item.name or item.baseName),rarity=item.rarity,crafted=item.crafted==true,
@@ -110,6 +139,13 @@ function M.draft(req,clean,textRuns)
     local _,drop=affixChoices(item,req.slot,clean)
     assert(type(req.value)=='number'and req.value>=0 and req.value<=100,'Roll must be between 0 and 100 percent')
     item[drop.outputTable][drop.outputIndex].range=req.value/100;item:Craft()
+  elseif req.mode=='modifier-add'then
+    modifierDialog(req,function(controls)
+      local choice=index(req.id,controls.modSelect.list)
+      assert(choice.label==req.modId,'The modifier list changed. Choose the modifier again')
+      controls.modSelect:SetSel(req.id);controls.save.onClick()
+    end)
+    item=tab.displayItem
   elseif req.mode=='custom-add'then
     assert(tab.controls.displayItemAddCustom:IsShown(),'This item does not support custom modifiers')
     assert(type(req.text)=='string'and #req.text<=4096 and not req.text:find('[\r\n]'),'Enter one modifier at a time')

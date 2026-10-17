@@ -9,6 +9,7 @@ public sealed partial class PobWidget
     private bool overlayWebsites;
     private WidgetWebSession? websiteSession;
     private string? websiteUrl;
+    private string? websiteBuild;
     private bool websiteVisible;
     private readonly Dictionary<string,string> websiteActions=new(StringComparer.Ordinal);
     private WidgetElement WebsitePreference()=>UI.Stack("pob.website-preference",
@@ -31,13 +32,13 @@ public sealed partial class PobWidget
     private bool HandleWebsiteAction(WidgetActionEvent action)
     {
         if(action.ActionId=="website-close"){websiteVisible=false;Invalidate();return true;}
-        if(websiteVisible&&!action.ActionId.StartsWith("trade-review-",StringComparison.Ordinal))return true;
+        if(websiteVisible&&!action.ActionId.StartsWith("trade-review-",StringComparison.Ordinal)&&!action.ActionId.StartsWith("trade-rank-",StringComparison.Ordinal))return true;
         if(action.ActionId=="website-resume")
         {
-            if(websiteSession is null||websiteSession.Completion.IsCompleted)
+            if(websiteSession is null||websiteSession.Completion.IsCompleted||websiteBuild!=documentId)
             {
-                var retry=tradeListing?.FindUrl(game)??websiteUrl;
-                if(retry is not null)Work(token=>OpenWebsiteAsync(retry,token),"Finding saved listing…");
+                var retry=savedTradeUrl??tradeListing?.Url??websiteUrl;
+                if(retry is not null)Work(token=>OpenWebsiteAsync(retry,token),"Restoring trade results…");
             }
             else{websiteVisible=true;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;Invalidate();}
             return true;
@@ -64,17 +65,19 @@ public sealed partial class PobWidget
         }
         else if(websiteUrl!=url)await session.NavigateAsync(url,token);
         token.ThrowIfCancellationRequested();
-        lock(gate){websiteUrl=url;websiteVisible=true;if(CanReplaceTradeComparison&&pendingBefore is not null)websiteReview=true;}
+        lock(gate){websiteUrl=url;websiteBuild=documentId;SaveTradeReturn(url);websiteVisible=true;if(CanReplaceTradeComparison&&pendingBefore is not null)websiteReview=true;}
     }
 
     private WidgetView WithWebsiteModal(WidgetView view)
     {
         if(!websiteVisible||websiteSession is not {} session)return view;
-        var reviewing=websiteReview&&CanReplaceTradeComparison&&pendingBefore is not null;
-        var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:reviewing?BrowserInteractionMode.ActivateToInteract:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"))
+        var ranking=rankingVisible&&HasRanking;
+        var reviewing=!ranking&&websiteReview&&CanReplaceTradeComparison&&pendingBefore is not null;
+        var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:reviewing||ranking?BrowserInteractionMode.ActivateToInteract:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"))
             .RememberChildFocus("pob.website").Classes("pob-workspace");
-        if(!reviewing&&CanReplaceTradeComparison)web=web.Shortcut(ControllerButton.RightStick,"trade-review-show","Show comparison");
-        WidgetElement body=reviewing?Split("website",web,TradeReviewPanel(),3,2):web;
+        if(!reviewing&&!ranking&&HasRanking)web=web.Shortcut(ControllerButton.RightStick,"trade-rank-show","Ranked results");
+        else if(!reviewing&&!ranking&&CanReplaceTradeComparison)web=web.Shortcut(ControllerButton.RightStick,"trade-review-show","Show comparison");
+        WidgetElement body=ranking?Split("website",web,TradeRankingPanel(),3,2):reviewing?Split("website",web,TradeReviewPanel(),3,2):web;
         var modal=view.WithModal(new("pob-website","Website",WithFeedback(body,null),"pob.website","website-close")
         {
             ScrollContent=false,
@@ -84,7 +87,7 @@ public sealed partial class PobWidget
                     :new[]{Button("Close","website-close","website.close")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")
         });
         if(!busy&&websiteFocusSequence>0)
-            modal=modal with{FocusGroupEntryRequest=new(){RequestId=websiteFocusSequence,GroupId=reviewing?websiteFocus:"pob.website.browser"}};
+            modal=modal with{FocusGroupEntryRequest=new(){RequestId=websiteFocusSequence,GroupId=reviewing||ranking?websiteFocus:"pob.website.browser"}};
         if(!busy&&reviewing&&websiteReviewRevealSequence>0)
             modal=modal with{ScrollRevealRequest=new(websiteReviewRevealSequence,"pob.website.review.details","pob.website.review.skill")};
         return modal;

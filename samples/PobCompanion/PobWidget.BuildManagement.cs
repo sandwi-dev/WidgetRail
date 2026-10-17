@@ -143,6 +143,7 @@ public sealed partial class PobWidget
         if(documentId!=id)tradeCandidates.Clear();
         tradeListing=null;tradeBrowsing=false;websiteReview=false;
         documentId=id;result=loaded;pendingImport=null;replaceOnImport=false;pendingBefore=null;pastedItem=null;previewSlot=null;
+        RestoreRanking(id);RestoreTradeReturn(id);
         recoveryReadOnly=false;selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;
         compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version.":"";
     }
@@ -179,7 +180,7 @@ public sealed partial class PobWidget
         DemandSavedBuild(target);token.ThrowIfCancellationRequested();
         // Each exact file belongs to the confirmed GUID. Never delete exports,
         // recovery copies, other builds, or a directory recursively.
-        foreach(var suffix in new[]{".work.json",".xml",".original.xml",".name.txt"})File.Delete(Path.Combine(dataDirectory,target+suffix));
+        foreach(var suffix in new[]{".work.json",".xml",".original.xml",".name.txt",".ranking.json",".trade-url.txt"})File.Delete(Path.Combine(dataDirectory,target+suffix));
         if(target==documentId)
         {
             File.Delete(Path.Combine(dataDirectory,"selected.txt"));

@@ -4,6 +4,11 @@ const listings = new Map();
 const buttons = new WeakMap();
 let queued = false;
 let located = '';
+let batchAction;
+function loadedEntries() {
+  return [...new Set([...document.querySelectorAll('.resultset .row[data-id]')].map(row=>row.getAttribute('data-id')))]
+    .map(id=>listings.get(id)).filter(Boolean).slice(0,100);
+}
 let requestedListing = /^#widgetrail-listing=([a-fA-F0-9]{16,128})$/.exec(window.location.hash)?.[1];
 function locateSavedListing() {
   if (!requestedListing || located === requestedListing) return;
@@ -19,6 +24,16 @@ function locateSavedListing() {
 }
 function refresh() {
   queued = false;
+  const resultSet=document.querySelector('.resultset');
+  if(resultSet&&host.addBatchAction) {
+    if(!batchAction?.isConnected) {
+      batchAction=host.addBatchAction(resultSet,'evaluate-items','Evaluate loaded results',()=>({context:{url:locationUrl()},items:loadedEntries()}));
+      resultSet.prepend(batchAction);
+    }
+    const label='Evaluate loaded results ('+loadedEntries().length+')';
+    if(batchAction.firstChild.textContent!==label)batchAction.firstChild.textContent=label;
+    batchAction.disabled=loadedEntries().length===0;
+  }
   for (const row of document.querySelectorAll('.resultset .row[data-id]')) {
     const id = row.getAttribute('data-id');
     const listing = listings.get(id);

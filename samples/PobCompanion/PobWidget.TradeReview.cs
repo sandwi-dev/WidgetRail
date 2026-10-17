@@ -25,6 +25,7 @@ public sealed partial class PobWidget
             previewSlot=candidate.Slot;itemDraftSlots=slots;tradeBrowsing=true;section="Items";detailKind="choose-slot";
             tradeCandidates.Clear();tradeCandidates.AddRange(recent);websiteReview=true;
             websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
+            rankingVisible=false;
             websiteReviewRevealSequence=focusRequestSequence;
         }
     }
@@ -41,7 +42,7 @@ public sealed partial class PobWidget
         if(id=="trade-review-hide")
         {websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-show")
-        {websiteReview=true;websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
+        {rankingVisible=false;websiteReview=true;websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-find"&&tradeListing is {} listing)
         {
             Work(async token=>
@@ -110,11 +111,13 @@ public sealed partial class PobWidget
     private List<WidgetElement> TradeReviewControls(string prefix)
     {
         var rows=new List<WidgetElement>();
+        if(HasRanking)rows.Add(Button("Back to ranked results","trade-rank-show",prefix+".rank-back").FocusLeft("pob.website.browser"));
+        else if(tradeCandidates.Count>1)rows.Add(Button("Rank recent comparisons","trade-rank-recent").FocusLeft("pob.website.browser"));
         if(tradeCandidates.Count>1)
             rows.Add(UI.Select("Recent comparisons",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
                 TradeItemName(c.Listing)+" · "+c.Listing.Price,"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob."+prefix+".recent").FocusLeft("pob.website.browser").Classes("pob-select"));
-        if(itemDraftSlots.Length>1)
-            rows.Add(UI.Select("Compare with",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,slot,"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").FocusLeft("pob.website.browser").Classes("pob-select"));
+        if(itemDraftSlots.Length>0)
+            rows.Add(UI.Select("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").FocusLeft("pob.website.browser").Classes("pob-select"));
         rows.Add(UI.Row("pob."+prefix+".actions",
             Button("Find seller’s item","trade-review-find",prefix+".find").FocusLeft("pob.website.browser").FocusRight("pob."+prefix+".equip"),
             Button("Equip in build","trade-review-equip",prefix+".equip").FocusLeft("pob."+prefix+".find").Disabled(pendingBefore is null)).Classes("pob-toolbar"));
@@ -197,12 +200,12 @@ public sealed partial class PobWidget
         var selectors=new List<WidgetElement>();
         if(tradeCandidates.Count>1)selectors.Add(UI.Select("Recent comparisons",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
             TradeItemName(c.Listing)+" · "+c.Listing.Price,"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob.item.compare.recent").Classes("pob-select"));
-        if(itemDraftSlots.Length>1)selectors.Add(UI.Select("Compare with",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,slot,"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob.item.compare.slot").Classes("pob-select"));
+        if(itemDraftSlots.Length>0)selectors.Add(UI.Select("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob.item.compare.slot").Classes("pob-select"));
         else selectors.Add(Text("COMPARISON · "+previewSlot+" · not equipped","item.compare.status","pob-eyebrow pob-gold"));
         var controls=UI.Stack("pob.item.compare.controls",
             UI.Row("pob.item.compare.selectors",selectors.ToArray()).Classes("pob-toolbar"),
             UI.Row("pob.item.compare.actions",
-                Button(websiteSession is null?"Find saved listing":"Return to listings","website-resume","item.compare.browse"),
+                Button("Return to listings","website-resume","item.compare.browse"),
                 Button("Equip in build","trade-review-equip","item.compare.equip"),
                 Button("Find seller’s item","trade-review-find","item.compare.find"),
                 Button("Finish comparing","trade-review-close","item.compare.close")).Classes("pob-toolbar"))

@@ -25,7 +25,8 @@ internal sealed record PobTradeListing(string Id,string Url,string Price,string 
         uri.GetLeftPart(UriPartial.Authority)=="https://www.pathofexile.com"&&uri.AbsolutePath.StartsWith(game==2?"/trade2/":"/trade/",StringComparison.Ordinal)&&
         Price is {Length:<=100}&&Seller is {Length:<=100}&&Method is {Length:<=60}&&(Fee is null||Fee.Length<=120)&&
         (Availability is null||Availability.Length<=80)&&(Character is null||Character.Length<=100)&&
-        (ItemName is null||ItemName.Length<=200)&&(BaseType is null||BaseType.Length<=200);
+        (ItemName is null||ItemName.Length<=200)&&(BaseType is null||BaseType.Length<=200)&&
+        new[]{Price,Seller,Method,Fee,Availability,Character,ItemName,BaseType}.All(value=>value is null||!value.Any(char.IsControl));
 }
 
 public sealed partial class PobWidget
@@ -36,6 +37,7 @@ public sealed partial class PobWidget
     private bool CanReplaceTradeComparison=>tradeBrowsing&&tradeListing is not null&&pastedItem is not null&&detailKind=="choose-slot";
     private async Task ReadWebsiteActionsAsync(WidgetWebSession session)
     {
+        var batches=new WebSessionPageActionBatchReader();
         try
         {
             await foreach(var message in session.ReadMessagesAsync(WidgetLifetimeToken))
@@ -43,9 +45,29 @@ public sealed partial class PobWidget
                 lock(gate)
                 {
                     if(!ReferenceEquals(websiteSession,session))return;
+                    if(S(message,"kind")=="page-location")
+                    {try{if(websiteBuild==documentId)SaveTradeReturn(S(message,"url"));}catch(IOException){ShowFeedback("Could not remember trade page","The current website remains open.",ToastTone.Warning);}continue;}
                     if(S(message,"kind")=="page-action-error")
                     {ShowFeedback("Website comparison unavailable","Reload the results or use Paste item to compare.",ToastTone.Warning);Invalidate();continue;}
-                    if(S(message,"kind")!="page-action"||S(message,"action")!="compare-item")continue;
+                    if(S(message,"kind")!="page-action")continue;
+                    if(S(message,"action")=="evaluate-items")
+                    {
+                        try
+                        {
+                            if(!message.TryGetProperty("payload",out var part))throw new IOException("The website returned no evaluation data.");
+                            if(batches.TryRead(part,out var batchContext,out var entries))
+                            {
+                                if(busy){ShowFeedback("Operation in progress","Finish or cancel the current operation, then evaluate again.",ToastTone.Info);Invalidate();continue;}
+                                if(result is null||(pendingBefore is not null||pastedItem is not null)&&!CanReplaceTradeComparison)
+                                    throw new IOException("Finish the current build edit or item draft before evaluating listings.");
+                                ReceiveTradeBatch(batchContext,entries);
+                            }
+                        }
+                        catch(Exception error)when(error is IOException or JsonException or InvalidOperationException)
+                        {ShowFeedback("Evaluation not started",Limit(error.Message,350),ToastTone.Warning);Invalidate();}
+                        continue;
+                    }
+                    if(S(message,"action")!="compare-item")continue;
                     if(busy)continue; // The visible cancellable progress indicator owns this operation.
                     if((pendingBefore is not null||pastedItem is not null)&&!CanReplaceTradeComparison||result is null)
                     {ShowFeedback("Finish current work",result is null?"Open a build before comparing an item.":"Close the website and finish the existing build edit or item draft first.",ToastTone.Warning);Invalidate();continue;}
@@ -64,10 +86,22 @@ public sealed partial class PobWidget
     }
     private async Task ReadTradeItemAsync(JsonElement payload,CancellationToken token)
     {
+        var context=ReadTradeListing(payload,out var entry);
+        lock(gate)SaveTradeReturn(context.Url);
+        var before=pendingBefore??result!;
+        var converted=await engine.ExecuteAsync(new{op="trade-item",entry},token,before.Xml);
+        var raw=S(converted.State,"raw");
+        var slots=await ItemSlotsAsync(raw,before.Xml,token);
+        if(slots.Length==0)throw new IOException("This item has no compatible equipment slot in the current build.");
+        var slot=slots.Contains(previewSlot)?previewSlot!:slots.Contains(tradeSlot)?tradeSlot:slots[0];
+        await CompareTradeCandidateAsync(new(raw,context,slot),before,slots,token);
+    }
+    private PobTradeListing ReadTradeListing(JsonElement payload,out JsonElement entry)
+    {
         var url=S(payload,"url");
         if(!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.GetLeftPart(UriPartial.Authority)!="https://www.pathofexile.com"||
             !uri.AbsolutePath.StartsWith(game==2?"/trade2/":"/trade/",StringComparison.Ordinal))throw new IOException("This listing belongs to a different game or website.");
-        if(!payload.TryGetProperty("entry",out var entry)||entry.ValueKind!=JsonValueKind.Object||
+        if(!payload.TryGetProperty("entry",out entry)||entry.ValueKind!=JsonValueKind.Object||
             !entry.TryGetProperty("item",out var item)||item.ValueKind!=JsonValueKind.Object||
             !entry.TryGetProperty("listing",out var listing)||listing.ValueKind!=JsonValueKind.Object||
             !listing.TryGetProperty("account",out var account)||account.ValueKind!=JsonValueKind.Object)
@@ -82,13 +116,7 @@ public sealed partial class PobWidget
             Limit(S(item,"name"),200),Limit(S(item,"typeLine"),200),
             listing.TryGetProperty("instantBuyout",out var instant)&&instant.ValueKind is JsonValueKind.True or JsonValueKind.False?instant.GetBoolean():null);
         if(!context.IsValid(game))throw new IOException("The listing details are incomplete. Reload the search.");
-        var before=pendingBefore??result!;
-        var converted=await engine.ExecuteAsync(new{op="trade-item",entry},token,before.Xml);
-        var raw=S(converted.State,"raw");
-        var slots=await ItemSlotsAsync(raw,before.Xml,token);
-        if(slots.Length==0)throw new IOException("This item has no compatible equipment slot in the current build.");
-        var slot=slots.Contains(previewSlot)?previewSlot!:slots.Contains(tradeSlot)?tradeSlot:slots[0];
-        await CompareTradeCandidateAsync(new(raw,context,slot),before,slots,token);
+        return context;
     }
     private void AddTradeListing(List<WidgetElement> rows)
     {
@@ -99,7 +127,7 @@ public sealed partial class PobWidget
         if(listing.Fee is not null)rows.Add(Text("Gold fee: "+listing.Fee,"trade.fee","pob-small pob-muted"));
         rows.Add(Text("Listed price may change. Return to the official listing to check availability and buy.","trade.purchase.help","pob-small pob-muted"));
         rows.Add(Text(TradeItemName(listing),"trade.item-name","pob-heading"));
-        rows.Add(websiteSession is not null?Button("Return to listings","website-resume"):WebsiteButton("Find saved listing","trade-listing-open",listing.FindUrl(game)));
+        rows.Add(websiteSession is not null?Button("Return to listings","website-resume"):Button("Find seller’s item","trade-review-find"));
     }
     private static string CurrencyName(string currency)=>currency switch
     {"chaos"=>"Chaos Orb","divine"=>"Divine Orb","exalted"=>"Exalted Orb","regal"=>"Regal Orb","alch"=>"Orb of Alchemy","annul"=>"Orb of Annulment","mirror"=>"Mirror of Kalandra",_=>currency};

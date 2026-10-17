@@ -15,6 +15,19 @@ public sealed partial class PobWidget
     private WidgetIndexedCollection<ListQuery,ListEntry>? inventoryCollection;
     private sealed record InventoryView(JsonElement State,int Id,JsonElement Item,string[] Slots);
     private string[] inventorySlots=[];
+    private JsonElement[] modifierSources=[];
+    private string modifierSource="";
+    private void OpenPredefinedModifiers(string? source=null)=>Work(async token=>
+    {
+        var response=await engine.ExecuteAsync(new{op="item-modifiers",raw=S(authoredItem,"raw"),source},token,result!.Xml);
+        lock(gate)
+        {
+            modifierSources=A(response.State,"sources");modifierSource=S(response.State,"source");
+            if(modifierSources.Length==0){ShowFeedback("No predefined modifiers","PoB only offers custom modifier text for this item.",ToastTone.Info);return;}
+            if(detailKind=="feature-picker")detailKind="item-author";
+            OpenFeaturePicker("Add modifier","author-modifier.",A(response.State,"choices"));
+        }
+    },"Reading eligible modifiers…");
 
     private async Task<InventoryView> ReadInventoryAsync(string xml,int selected,CancellationToken token)
     {
@@ -58,9 +71,9 @@ public sealed partial class PobWidget
         lock(gate){tradeBrowsing=false;pastedItem=raw;itemDraftSlots=slots;authoredItem=next;authoringId=0;featurePicker=null;detailKind="item-author";}
     },"Updating item draft…");
 
-    private object AuthorCommand(string mode,int slot=0,string? modId=null,int value=0,int id=0,string? text=null,string? control=null)=>
-        authoringId>0?new{op="item-author",mode,itemId=authoringId,slot,modId,value,id,text,control}:
-        new{op="item-draft",mode,raw=pastedItem,slot,modId,value,id,text,control};
+    private object AuthorCommand(string mode,int slot=0,string? modId=null,int value=0,int id=0,string? text=null,string? control=null,string? source=null)=>
+        authoringId>0?new{op="item-author",mode,itemId=authoringId,slot,modId,value,id,text,control,source}:
+        new{op="item-draft",mode,raw=pastedItem,slot,modId,value,id,text,control,source};
 
     private void ChangeAuthoredItem(object command)
     {if(authoringId>0)Edit(command);else ChangeItemDraft(command);}
@@ -83,6 +96,16 @@ public sealed partial class PobWidget
     {
         if(result is null)return false;
         var id=action.ActionId;var parts=id.Split('.');
+        if(id=="author-add-modifier"&&detailKind=="item-author"){OpenPredefinedModifiers();return true;}
+        if(parts is ["author-source",var source]&&featurePicker?.Prefix=="author-modifier."&&modifierSources.Any(s=>S(s,"key")==source))
+        {OpenPredefinedModifiers(source);return true;}
+        if(parts is ["author-modifier",var modifier]&&int.TryParse(modifier,out var modifierId)&&featurePicker is {Prefix:"author-modifier."} modifiers)
+        {
+            var choice=modifiers.Choices.FirstOrDefault(c=>I(c,"id")==modifierId);
+            if(choice.ValueKind==JsonValueKind.Object)
+            {featurePicker=null;detailKind="item-author";ChangeAuthoredItem(AuthorCommand("modifier-add",id:modifierId,modId:S(choice,"key"),source:modifierSource));}
+            return true;
+        }
         if(id=="inventory"){OpenInventory(inventoryId);return true;}
         if(id=="inventory-search"){inventorySearch=action.CommittedText??"";return true;}
         if(parts is ["inventory-select",var selected]&&int.TryParse(selected,out var selectedId)&&A(inventoryState,"inventory").Any(i=>I(i,"id")==selectedId))
@@ -252,7 +275,11 @@ public sealed partial class PobWidget
         }
         if(!B(authoredItem,"crafted"))foreach(var range in A(authoredItem,"ranges"))
             controls.Add(Field(S(range,"title")+" · Roll %",UI.TextEntry(I(range,"roll").ToString(),"0–100","author-range."+I(range,"id"),"pob.author-range."+I(range,"id"),3).Classes("pob-input"),"author-range."+I(range,"id")));
-        if(B(authoredItem,"canAddCustom"))controls.Add(Field("Add custom modifier",UI.TextEntry("","e.g. +25 to maximum Mana","author-custom","pob.author-custom",2048).Classes("pob-input"),"author-custom"));
+        if(B(authoredItem,"canAddCustom"))
+        {
+            controls.Add(Button("Add modifier…","author-add-modifier"));
+            controls.Add(Field("Custom modifier text",UI.TextEntry("","e.g. +25 to maximum Mana","author-custom","pob.author-custom",2048).Classes("pob-input"),"author-custom"));
+        }
         foreach(var custom in A(authoredItem,"custom"))
         {
             var rows=new List<WidgetElement>();AddFormatted(rows,custom,"text","runs","author.custom."+I(custom,"id"),emphasizeStats:true);

@@ -220,6 +220,11 @@ public sealed partial class PobWidget
             .Select(c=>new GemEntry("choice"+I(c,"id"),Plain(S(c,"title"))+(B(c,"active")?" · Selected":""),picker.Prefix+I(c,"id"),S(c,"description")==S(c,"title")?"":Plain(S(c,"description")))).ToArray();
         if(!choiceQuery.Entries.SequenceEqual(entries)){choiceQuery=new(entries);choiceCollection.PublishQuery(choiceQuery,entries.Length);}
         var toolRows=new List<WidgetElement>{UI.Row("pob.choice.header",Button("Back","back"),Text(picker.Title,"choice.title","pob-heading")).Classes("pob-toolbar")};
+        if(picker.Prefix=="author-modifier.")
+        {
+            toolRows.Add(UI.Select("Source",modifierSources.Select(s=>new SelectOption(S(s,"key"),S(s,"title"),"author-source."+S(s,"key"),S(s,"key")==modifierSource)).ToArray(),"pob.author-source").Classes("pob-select"));
+            toolRows.Add(Text("PoB's eligible modifiers for this item. Planning edits do not guarantee an in-game craft.","modifier.help","pob-small pob-muted"));
+        }
         if(picker.Prefix=="craft-base.")toolRows.Add(UI.Select("Rarity",new[]{"NORMAL","MAGIC","RARE"}.Select(r=>new SelectOption(r,char.ToUpperInvariant(r[0])+r[1..].ToLowerInvariant(),"craft-rarity."+r,r==craftRarity)).ToArray(),"pob.craft-rarity").Classes("pob-select"));
         toolRows.Add(UI.TextEntry(choiceSearch,picker.Prefix=="unique-item."?"Search unique names or bases":"Search options","choice-search","pob.choice-search",100).Classes("pob-input"));
         toolRows.Add(Text($"{entries.Length} {(picker.Prefix=="unique-item."?"unique items":"options")}","choice.count","pob-muted"));

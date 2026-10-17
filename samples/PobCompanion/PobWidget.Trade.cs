@@ -1,12 +1,14 @@
 using System.Globalization;
 using System.Text.Json;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.Samples.PobCompanion;
 
 public sealed partial class PobWidget
 {
     private string tradeSlot="",tradeLeague="Standard",tradeBudget="",tradeCurrency="divine",tradePriority="balanced",tradeMode="securable";
+    private string? cachedTradeKey,cachedTradeUrl;
     private string[] tradeLeagues=["Standard","Hardcore"];
     internal Func<int,CancellationToken,Task<string[]>> TradeLeagueLoader { get; init; } = PobTradeSearch.ReadLeaguesAsync;
     private static readonly (string Key,string Label)[] TradeModes=[("securable","Instant buyout"),("available","Instant buyout and in person"),("onlineleague","In person (online in league)"),("online","In person (online)"),("any","Any (includes offline)")];
@@ -15,18 +17,20 @@ public sealed partial class PobWidget
         ("damage","Damage","Weights modifiers by their effect on your build’s Full DPS."),
         ("defence","Defence","Weights modifiers by effective hit pool under your current configuration."),
         ("life","Life","Weights modifiers by their effect on maximum life."),
-        ("energyshield","Energy shield","Weights modifiers by their effect on maximum energy shield.")];
+        ("energyshield","Energy shield","Weights modifiers by their effect on maximum energy shield."),
+        ("custom","Custom weights","Uses your selected statistics and their relative importance for search and ranking.")];
 
     private bool HandleTradeAction(WidgetActionEvent action)
     {
         var id=action.ActionId;var parts=id.Split('.');
+        if(HandleTradeOptions(action))return true;
         if(id=="trade")
         {
             tradeSlot=ItemSlot;detailKind="trade";focusRequestSequence++;ReadTradePreferences();
             RefreshTradeLeagues();return true;
         }
         if(id=="trade-browse")
-        {ReadTradePreferences();Work(token=>OpenWebsiteAsync(BrowseTradeUrl(),token),"Opening trade website…");return true;}
+        {if(detailKind!="trade")tradeSlot=ItemSlot;ReadTradePreferences();Work(token=>OpenWebsiteAsync(BrowseTradeUrl(),token),"Opening trade website…");return true;}
         if(detailKind!="trade")return false;
         if(id=="trade-open"&&result is {} current)
         {
@@ -42,7 +46,7 @@ public sealed partial class PobWidget
         else if(parts is["trade-priority",var priority]&&TradePriorities.Any(p=>p.Key==priority))tradePriority=priority;
         else if(parts is["trade-currency",var currency]&&currency is "divine"or"chaos"or"exalted")tradeCurrency=currency;
         else return false;
-        Work(_=>{BuildDocument.SaveAtomic(Path.Combine(dataDirectory,"trade-settings.json"),JsonSerializer.Serialize(new{league=tradeLeague,budget=tradeBudget,currency=tradeCurrency,priority=tradePriority,mode=tradeMode}));return Task.CompletedTask;},"Saving search preferences…");
+        Work(_=>{SaveTradePreferences();return Task.CompletedTask;},"Saving search preferences…");
         return true;
     }
     private string BrowseTradeUrl()=>PobTradeSearch.SearchUrl(game,tradeLeague,
@@ -53,9 +57,13 @@ public sealed partial class PobWidget
     {
         var budget=0d;
         if(price.Length>0&&(!double.TryParse(price,NumberStyles.AllowDecimalPoint,CultureInfo.InvariantCulture,out budget)||!double.IsFinite(budget)||budget<0))throw new IOException("Enter a positive budget, or leave it empty for no price limit.");
-        var query=await engine.ExecuteAsync(new{op="trade-search",slot,priority,budget,currency,mode},token,xml);
+        var request=new{op="trade-search",slot,priority,budget,currency,mode,weights=TradeWeights(),advanced=TradeAdvanced(),@base=tradeBase};
+        var key=XmlHash(xml)+league+JsonSerializer.Serialize(request);
+        if(key==cachedTradeKey&&cachedTradeUrl is not null)return cachedTradeUrl;
+        var query=await engine.ExecuteAsync(request,token,xml);
         token.ThrowIfCancellationRequested();
-        return PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query"));
+        var url=PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query"));
+        cachedTradeKey=key;cachedTradeUrl=url;return url;
     }
     private void ReadTradePreferences()
     {
@@ -68,20 +76,28 @@ public sealed partial class PobWidget
             var currency=S(root,"currency");if(currency is "divine"or"chaos"or"exalted")tradeCurrency=currency;
             var mode=S(root,"mode");if(TradeModes.Any(m=>m.Key==mode))tradeMode=mode;
             var priority=S(root,"priority");if(TradePriorities.Any(p=>p.Key==priority))tradePriority=priority;
+            if(root.TryGetProperty("weights",out var weights)&&weights.ValueKind==JsonValueKind.Object)
+            {tradeWeights.Clear();foreach(var w in weights.EnumerateObject().Take(20))if(int.TryParse(w.Name,out var id)&&w.Value.TryGetDouble(out var value)&&double.IsFinite(value)&&value>=0&&value<=100)tradeWeights[id]=value;}
+            if(root.TryGetProperty("flags",out var flags)&&flags.ValueKind==JsonValueKind.Object)
+            {tradeFlags.Clear();foreach(var f in flags.EnumerateObject())if(f.Name is "includeMirrored" or "includeCorrupted" or "includeRunes" or "includeTalisman" or "includeScourge" or "includeEldritch"&&f.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)tradeFlags[f.Name]=f.Value.GetBoolean();}
+            if(root.TryGetProperty("numbers",out var numbers)&&numbers.ValueKind==JsonValueKind.Object)
+            {tradeNumbers.Clear();foreach(var n in numbers.EnumerateObject())if(n.Name is "maxLevel" or "sockets" or "links"&&n.Value.TryGetInt32(out var value)&&value>=0&&value<=100)tradeNumbers[n.Name]=value;}
+            if(root.TryGetProperty("batchLimit",out var batch)&&batch.TryGetInt32(out var count)&&count is 20 or 50 or 100)tradeBatchLimit=count;
             tradeLeagues=tradeLeagues.Append(tradeLeague).Distinct(StringComparer.Ordinal).ToArray();
         }
-        catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException){ }
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException){ }
     }
     private void RefreshTradeLeagues()=>Work(async token=>
     {
+        await ReadTradeCatalogAsync(token);
         var leagues=await TradeLeagueLoader(game,token);
         lock(gate)tradeLeagues=leagues.Append(tradeLeague).Distinct(StringComparer.Ordinal).ToArray();
     },"Loading trade leagues…");
 
     private WidgetElement TradeWorkspace()=>UI.Stack("pob.trade.page",ManagementHeader("Find equipment upgrades"),
-        UI.VerticalScroll("pob.trade.scroll",
-            Text(tradeSlot,"trade.slot","pob-heading"),
-            BrowseTradeButton(),
+        QuickControls(UI.Row("pob.trade.actions",new WidgetElement[]{TradeSearchButton(),BrowseTradeButton()}.Concat(websiteSession is not null||savedTradeUrl is not null?new[]{Button("Return to listings","website-resume")}:Array.Empty<WidgetElement>()).ToArray()).Classes("pob-toolbar"),"pob.trade-open","pob.trade.scroll","Search options",true),
+        QuickControls(UI.VerticalScroll("pob.trade.scroll",
+            TradeSlotControl(),
             Text("Search for non-unique equipment that may improve this build. PoB calculates the filters; listings and trading stay on the official website.","trade.help","pob-muted"),
             Text("Trade opens in the overlay so you can compare listings beside your build. Sign in once; this widget remembers your login.","trade.website-help","pob-small pob-muted"),
             UI.Select("League",tradeLeagues.Select((l,i)=>new SelectOption("league"+i,l,"trade-league."+i,l==tradeLeague)).ToArray(),"pob.trade-league").Classes("pob-select"),
@@ -89,13 +105,13 @@ public sealed partial class PobWidget
             Text("Instant buyout lets you travel to the merchant and buy in game. In-person listings require contacting the seller.","trade.mode-help","pob-small"),
             UI.Select("Prioritize",TradePriorities.Select(p=>new SelectOption(p.Key,p.Label,"trade-priority."+p.Key,p.Key==tradePriority)).ToArray(),"pob.trade-priority").Classes("pob-select"),
             Text(TradePriorities.Single(p=>p.Key==tradePriority).Help,"trade.priority-help","pob-small pob-muted"),
+            TradeOptionControls(),
             UI.Row("pob.trade.price",Field("Maximum price (optional)",UI.TextEntry(tradeBudget,"No price limit","trade-budget","pob.trade-budget",20).Classes("pob-input"),"trade-budget"),
                 UI.Select("Currency",new[]{"divine","chaos","exalted"}.Select(c=>new SelectOption(c,char.ToUpperInvariant(c[0])+c[1..]+" Orb","trade-currency."+c,c==tradeCurrency)).ToArray(),"pob.trade-currency").Classes("pob-select")).Classes("pob-toolbar","pob-price-fields"),
-            UI.Row("pob.trade.actions",(websiteSession is not null?new[]{TradeSearchButton(),Button("Return to website","website-resume")}:new[]{TradeSearchButton()}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar"),
             Text("Weights estimate an upgrade; they do not guarantee it. Compare an item before applying it.","trade.caution","pob-small pob-muted"),
             UI.Row("pob.trade.return",Button("Paste item to compare","item-paste"),Button("Refresh leagues","trade-refresh")).Classes("pob-toolbar"),
             Text(game==2
                 ?"In the overlay browser, use Compare in PoB beside a listing. For clipboard import, hover over an item in game and press Ctrl+C. The PoE2 website has no built-in Copy item button in an external browser."
                 :"In the overlay browser, use Compare in PoB beside a listing. On the trade site, use Copy item for clipboard import. In game, hover over an item and press Ctrl+C, then paste here.","trade.paste-help","pob-small pob-muted"))
-            .Classes("pob-scroll","pob-panel")).Classes("pob-workspace");
+            .Classes("pob-scroll","pob-panel"),A(tradeCatalog,"slots").Length>0?"pob.trade-slot":"pob.trade-league","pob.trade.actions","Search controls",true)).Classes("pob-workspace");
 }

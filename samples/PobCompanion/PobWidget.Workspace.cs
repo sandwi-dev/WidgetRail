@@ -25,7 +25,8 @@ public sealed partial class PobWidget
         var historyControls=new List<WidgetElement>{
             UI.Button("Undo","undo","pob.undo").Disabled(undo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"),
             UI.Button("Redo","redo","pob.redo").Disabled(redo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button")};
-        if(websiteSession is not null)historyControls.Add(UI.Button("Return to website","website-resume","pob.website-return").Classes("pob-button"));
+        if(websiteSession is not null||savedTradeUrl is not null)historyControls.Add(UI.Button("Return to listings","website-resume","pob.website-return").Classes("pob-button"));
+        if(HasRanking)historyControls.Add(Button("Ranked results","trade-rank-show").Disabled((pendingBefore is not null||pastedItem is not null)&&!CanReplaceTradeComparison));
         var history=UI.Row("pob.history",historyControls.ToArray())
             .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
@@ -273,7 +274,7 @@ public sealed partial class PobWidget
                 UI.Grid("pob.item.tools",[GridTrack.Auto(),GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star()],
                     Button(pastedItem is null?"Replace from clipboard":"Continue comparison",action).FocusLeft(returnId).FocusRight("pob.item-manage").FocusDown("pob.trade").Disabled(pendingBefore is not null),
                     Button("Item settings","item-manage").FocusLeft("pob."+action).FocusDown("pob.trade-browse").Disabled(entries.Length==0).InGrid(column:1),
-                    Button("Find upgrades","trade").FocusLeft(returnId).FocusRight("pob.trade-browse").FocusUp("pob."+action).Disabled(entries.Length==0).InGrid(row:1),
+                    Button("Find upgrades","trade").FocusLeft(returnId).FocusRight("pob.trade-browse").FocusUp("pob."+action).InGrid(row:1),
                     BrowseTradeButton().FocusLeft("pob.trade").FocusUp("pob.item-manage").InGrid(row:1,column:1)).Spacing(8,8),
             UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
             .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");

@@ -102,6 +102,8 @@ public sealed partial class PobWidget
             }
             tradeBrowsing=work?.TradeBrowse==true;
             tradeCandidates.Clear();tradeCandidates.AddRange(work?.TradeCandidates??[]);
+            RestoreRanking(id);
+            RestoreTradeReturn(id);
             selections.Clear(); detailId = 0; section = "Calcs"; detailKind = ""; filter = "";
             passiveReturnKey = null; nodeReturnToMap = false; historyFocusRequested = false; compatibilityNotice = "";
             // Restore only the context needed to finish the user's pending work.

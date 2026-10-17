@@ -288,3 +288,54 @@ now jump to Equipment controls even with one set; controls offer LS back to the 
 The default entry is Item inventory. Both quick-controls suites pass 116 checks
 (`equipment-shortcut-tests{1,2}.txt`). Candidate uses equipment-shortcut-catalog with the existing
 host and original data/settings; the user's restored comparison was preserved during replacement.
+
+### Delivered: batch ranking, search controls, modifier sources and return URLs
+
+The approved planning/editing additions are implemented for both widgets:
+
+- Evaluate loaded website results in batches (20 by default; 50/100 available), with a virtualized
+  shortlist beside the retained website, progress, cancellation, explicit target equipment,
+  priority/limit controls, skipped-item reasons, and stable listing identities. Selecting a row
+  opens its full comparison; returning restores shortlist focus. No automatic website scrolling
+  occurs when changing comparisons. Upstream GetResultEvaluation and SortFetchResults own scoring
+  and ordering. Every candidate uses the same committed build; changed builds/targets/weights
+  mark scores stale. Recent comparisons can also be ranked.
+- Upstream custom statistic weights and applicable mirrored/corruption/rune/talisman/Scourge/
+  Eldritch weights, level and socket/link options. Search controls remain fixed above the scroll
+  area with LS navigation. Empty builds and empty slots are searchable; ambiguous empty slots
+  request an item category using a detached base reference, without equipping a dummy item.
+- Existing/imported item Add modifier exposes upstream sources and searchable virtualized
+  choices. Numeric descriptions use rich text; rolls, eligibility, item identity and Undo remain
+  upstream. Custom modifier text is separate.
+- The user's later decision supersedes removing Return to listings: retain it and persist the
+  current public trade-search URL across unload. Find seller's item is the separate narrow lookup.
+  Saved URLs exclude authentication paths, non-query parameters and action fragments. Ranked item
+  copies and metadata persist per build; malformed ranking records cannot prevent the build loading.
+- Shared host addBatchAction and SDK WebSessionPageActionBatchReader use trusted user actions,
+  bounded ordered chunks, origin-scoped delivery and complete-batch validation. Page-location
+  observation supports reusable return URLs. The host's former 14-level action parser rejected
+  real batch metadata; it now uses the existing shared 16-level message budget. Unicode and long
+  document URLs are included in wire-size accounting. No separate temporary-page API was added.
+
+Validation evidence (under artifacts/pob):
+
+- ranking-delivery-workflow1/2.txt: 63/64 checks, including custom-weight UI, explicit target changes,
+  batch selection without navigation, restart, corrupted-ranking fallback and retained drafts.
+- ranking-passed-items1/2.txt: 48/46 item checks, including modifier source selection, search,
+  existing-item edits, identity and Undo. ranking-passed-trade-improvements1/2.txt: 15 checks each.
+- ranking-native05/result.json: 13 native checks, including nested metadata, trusted actions,
+  controller navigation/LS, virtualized selection, return flow and origin isolation.
+- ranking-live04/result.json: 16 live PoE2 checks. Ten real listings evaluated in 2.5 seconds;
+  controller selection and exact seller-item lookup passed. Authenticated live PoE1 was not tested.
+- 100-item engine fixture: PoE1 13.56s, PoE2 7.54s; 20 items 2.91s/1.60s. Retained engine memory
+  increased about 0.4/0.7 MiB. Both measured 0ms engine CPU during a 1.2s idle interval. These are
+  fixture measurements, not guarantees for every build. Cancellation restores committed work.
+- Shared SDK byte/depth boundary test and page-action-batches.cjs pass, including Unicode, long
+  URLs, synthetic-click rejection, ordered 100-item delivery and oversize rejection.
+- Native visual inspection: ranking-live04/evidence/ranked.png, ranking-live/evidence/search.png,
+  and ranking-native03/evidence/modifiers.png. EngineUpdateTests now includes the new trade suite.
+
+Limits: evaluation uses data already loaded by ordinary website browsing, up to the configured
+limit; it does not claim to rank the entire market. Cross-currency price-aware ranking is withheld
+without reliable exchange rates. Purchase actions remain on the official website. Exact web page
+scroll restoration is not promised. No merge or release is part of this delivery.
