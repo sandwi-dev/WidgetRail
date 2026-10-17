@@ -5,8 +5,12 @@ const buttons = new WeakMap();
 let queued = false;
 let located = '';
 let batchAction;
+let resultRoot;
+let resultObserver;
+let loadingResults=false;
+function resultRows() { return [...(resultRoot?.querySelectorAll('.row[data-id]')??[])]; }
 function loadedEntries() {
-  return [...new Set([...document.querySelectorAll('.resultset .row[data-id]')].map(row=>row.getAttribute('data-id')))]
+  return [...new Set(resultRows().map(row=>row.getAttribute('data-id')))]
     .map(id=>listings.get(id)).filter(Boolean).slice(0,100);
 }
 let requestedListing = /^#widgetrail-listing=([a-fA-F0-9]{16,128})$/.exec(window.location.hash)?.[1];
@@ -24,17 +28,19 @@ function locateSavedListing() {
 }
 function refresh() {
   queued = false;
-  const resultSet=document.querySelector('.resultset');
-  if(resultSet&&host.addBatchAction) {
+  if(!resultRoot?.isConnected) {
+    resultObserver?.disconnect();resultRoot=document.querySelector('.resultset');
+    if(resultRoot){resultObserver=new MutationObserver(queueRefresh);resultObserver.observe(resultRoot,{childList:true,subtree:true});}
+  }
+  const resultSet=resultRoot;
+  if(resultSet) {
     if(!batchAction?.isConnected) {
-      batchAction=host.addBatchAction(resultSet,'evaluate-items','Evaluate loaded results',()=>({context:{url:locationUrl()},items:loadedEntries()}));
+      batchAction=host.addAction(resultSet,'evaluate-request','Load and evaluate results',()=>({url:locationUrl()}));
       resultSet.prepend(batchAction);
     }
-    const label='Evaluate loaded results ('+loadedEntries().length+')';
-    if(batchAction.firstChild.textContent!==label)batchAction.firstChild.textContent=label;
-    batchAction.disabled=loadedEntries().length===0;
+    batchAction.disabled=loadingResults||loadedEntries().length===0;
   }
-  for (const row of document.querySelectorAll('.resultset .row[data-id]')) {
+  for (const row of resultRows()) {
     const id = row.getAttribute('data-id');
     const listing = listings.get(id);
     const previous = buttons.get(row);
@@ -52,7 +58,47 @@ function refresh() {
   locateSavedListing();
 }
 function locationUrl() { return window.location.href; }
-function queueRefresh() { if (!queued) { queued = true; queueMicrotask(refresh); } }
+function queueRefresh() { if (!queued) { queued = true; setTimeout(refresh,50); } }
+host.onRequest(async(method,payload,{signal,progress})=>{
+  if(method!=='load-results'||loadingResults)throw new Error('Loading is unavailable');
+  const limit=payload?.limit;
+  if(![20,50,100].includes(limit)||!resultRoot?.isConnected)throw new Error('Invalid result limit');
+  loadingResults=true;queueRefresh();
+  const url=locationUrl(),root=resultRoot,first=resultRows()[0]?.getAttribute('data-id');
+  const originalX=window.scrollX,originalY=window.scrollY;
+  const started=Date.now();let lastProgress=started,lastCount=-1,lastScroll=0;
+  let reason='';
+  const wait=()=>new Promise((resolve,reject)=>{
+    if(signal.aborted){reject(new Error('Cancelled'));return;}
+    const abort=()=>{clearTimeout(timer);reject(new Error('Cancelled'));};
+    const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},150);
+    signal.addEventListener('abort',abort,{once:true});
+  });
+  try {
+    while(true) {
+      if(signal.aborted)throw new Error('Cancelled');
+      if(locationUrl()!==url||!root.isConnected||resultRows()[0]?.getAttribute('data-id')!==first)throw new Error('Search changed');
+      const entries=loadedEntries().slice(0,limit),now=Date.now();
+      if(entries.length!==lastCount){lastCount=entries.length;lastProgress=now;progress({kind:'trade-loading',loaded:lastCount,limit});}
+      if(entries.length>=limit)break;
+      if(now-lastProgress>6000||now-started>24000){reason='No more item details arrived from the website.';break;}
+      if(now-lastScroll>=700){
+        const rows=resultRows();
+        const next=rows.find(row=>!listings.has(row.getAttribute('data-id')))||rows.at(-1);
+        next?.scrollIntoView({block:'end',behavior:'instant'});
+        window.scrollBy({top:Math.min(window.innerHeight*.75,700),behavior:'instant'});
+        lastScroll=now;
+      }
+      await wait();
+    }
+    const items=loadedEntries().slice(0,limit);
+    if(!items.length)throw new Error('No loaded listings');
+    return host.batchResult({url,requested:limit,loaded:items.length,reason},items);
+  }finally{
+    loadingResults=false;queueRefresh();
+    if(locationUrl()===url&&root.isConnected)window.scrollTo({left:originalX,top:originalY,behavior:'instant'});
+  }
+});
 host.onResponse(({ url, body }) => {
   if (!/^\/api\/trade2?\/fetch\//.test(new URL(url).pathname) || !Array.isArray(body.result)) return;
   for (const entry of body.result) {
@@ -69,7 +115,9 @@ host.onResponse(({ url, body }) => {
   }
   queueRefresh();
 });
-new MutationObserver(queueRefresh).observe(document, { childList: true, subtree: true });
+// The outer observer only discovers/replaces the result container. Row scans
+// are scoped to that container and coalesced, including during automatic loading.
+new MutationObserver(()=>{if(!resultRoot?.isConnected)queueRefresh();}).observe(document, { childList: true, subtree: true });
 queueRefresh();
 window.addEventListener('hashchange', () => {
   const requested = /^#widgetrail-listing=([a-fA-F0-9]{16,128})$/.exec(window.location.hash)?.[1];

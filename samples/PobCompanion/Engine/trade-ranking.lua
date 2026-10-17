@@ -12,8 +12,8 @@ function M.begin(req,search)
   active={query=q,calc=calc,base=base,slot=req.slot,xml=build:SaveDB('code')}
   return {ready=true}
 end
-function M.item(req,convert,search,clean)
-  local a=assert(active,'Start evaluation again');assert(a.xml==build:SaveDB('code'),'The build changed; evaluate again')
+function M.item(req,convert,search,clean,validated)
+  local a=assert(active,'Start evaluation again');if not validated then assert(a.xml==build:SaveDB('code'),'The build changed; evaluate again')end
   assert(#a.query.resultTbl[1]<100,'Evaluation is limited to 100 items')
   local previousCount=#a.query.resultTbl[1]
   local ok,result=pcall(function()
@@ -39,6 +39,13 @@ function M.item(req,convert,search,clean)
   end)
   if not ok then a.query.resultTbl[1][previousCount+1]=nil;return {error=clean(result):sub(1,350)}end
   return result
+end
+function M.items(req,convert,search,clean)
+  local a=assert(active,'Start evaluation again');assert(a.xml==build:SaveDB('code'),'The build changed; evaluate again')
+  assert(type(req.items)=='table'and #req.items>=1 and #req.items<=10,'Send up to 10 items per evaluation batch')
+  local results={}
+  for _,item in ipairs(req.items)do results[#results+1]=M.item(item,convert,search,clean,true)end
+  return {results=results}
 end
 function M.finish()
   local a=assert(active,'Start evaluation again');assert(a.xml==build:SaveDB('code'),'The build changed; evaluate again')

@@ -23,6 +23,7 @@ internal static class TradeWorkflowTests
         var widget=new PobWidget(game,engine,directory,()=>clipboardFailure is {} failure?throw failure:clipboard){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
         var opened=new List<WebSessionDefinition>();var closed=0;var navigated=0;
         var incoming=new System.Collections.Concurrent.ConcurrentQueue<string>();
+        JsonElement[] loadEntries=[];var loadRequests=0;var requestedLimit=0;
         WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().WithHandler(WidgetWebSessionCapabilities.Command,async(command,token)=>
         {
             if(command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted){opened.Add(command.Definition!);return new WebSessionReply{Session=new(new string('a',32))};}
@@ -30,6 +31,17 @@ internal static class TradeWorkflowTests
             {await Task.Delay(50,token);if(incoming.TryDequeue(out var message))return new(){MessagesBase64=[message]};}
             if(command.Operation==WebSessionOperation.Close)closed++;
             if(command.Operation==WebSessionOperation.Navigate)navigated++;
+            if(command.Operation==WebSessionOperation.PostMessage)
+            {
+                using var posted=JsonDocument.Parse(Convert.FromBase64String(command.MessageBase64!));var request=posted.RootElement;
+                if(request.GetProperty("kind").GetString()=="request")
+                {
+                    loadRequests++;requestedLimit=request.GetProperty("payload").GetProperty("limit").GetInt32();
+                    var requestId=request.GetProperty("id").GetString();var responseId=Guid.NewGuid().ToString();
+                    incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{widgetRail=1,kind="progress",id=requestId,payload=new{kind="trade-loading",loaded=loadEntries.Length,limit=requestedLimit}})));
+                    for(var index=0;index<loadEntries.Length;index++)incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{widgetRail=1,kind="response-batch",id=requestId,payload=new{batchId=responseId,index,total=loadEntries.Length,context=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test"},items=new[]{loadEntries[index]}}})));
+                }
+            }
             return new WebSessionReply();
         }).Build());var sequence=0;
         IEnumerable<ViewNode> Nodes(ViewNode n)=>new[]{n}.Concat((n.Children??[]).SelectMany(Nodes));
@@ -154,7 +166,8 @@ internal static class TradeWorkflowTests
             await Task.Delay(300);await Idle();
             check(File.ReadAllText(Path.Combine(directory,id+".work.json"))==preserved,"Rejected next listing preserves the previous comparison and history");
             var batchId=Guid.NewGuid().ToString();
-            incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="evaluate-items",payload=new{batchId,index=0,total=1,context=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test"},items=new object[]{entry,second}}})));
+            loadEntries=[JsonSerializer.SerializeToElement(entry),JsonSerializer.SerializeToElement(second)];
+            incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="evaluate-request",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test"}})));
             var rankDeadline=DateTime.UtcNow.AddSeconds(30);
             while(!Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text?.Contains("ranked")==true))
             {if(DateTime.UtcNow>rankDeadline)throw new TimeoutException("Batch ranking did not finish: "+string.Join(" | ",Nodes(View().Root).Select(n=>n.Text)));await Task.Delay(30);}
@@ -162,6 +175,7 @@ internal static class TradeWorkflowTests
             check(Nodes(View().Root).Where(n=>n.Id.StartsWith("pob.rank.skipped.",StringComparison.Ordinal)&&n.Id!="pob.rank.skipped.title").Any(n=>n.Text=="Gold Ring: "+reason),"Incompatible listings display item name and readable reason without Lua locations");
             var target=Nodes(View().Root).Single(n=>n.Id=="pob.rank.slot").SelectOptions.Single(o=>o.Label.StartsWith("Ring 2 —",StringComparison.Ordinal));
             await Action(target.ActionId);await Action("trade-rank-evaluate");
+            check(loadRequests==2&&requestedLimit is 20 or 50 or 100&&!Nodes(View().Root).Any(n=>n.Id=="pob.rank.help"),"Website and panel actions request bounded automatic loading and omit redundant priority guidance");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("2 ranked"))&&ViewSnapshotValidator.Validate(View()).Count==0,"Received batch ranks both listings for an explicit equipment target in a valid native panel");
             var navigationBeforeRank=navigated;
             await Action("trade-rank-select.1");

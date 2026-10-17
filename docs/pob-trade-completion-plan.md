@@ -368,3 +368,26 @@ this is an observed sample, not a before/after performance comparison. The user 
 Guide reopening after the two-minute idle period; the lifecycle log shows a second worker start
 and a return to interactive state. Evidence: `guide-physical-final.log`,
 `guide-unloaded-performance.json`, and `ranking-candidate-state.json` under artifacts/pob.
+
+2026-10-17 automatic loading and batch evaluation:
+
+- Load and evaluate uses the selected 20/50/100 limit, drives ordinary site lazy loading,
+  reports progress, supports cancellation, and restores the original scroll position.
+  Partial supply is explicitly reported. Page parsing uses the observed JSON cache and
+  coalesced result-container scans. The redundant paragraph below the ranking count is removed.
+- Shared adapted-session RPC stays in the allowed origin's isolated world. Requests are bounded,
+  cancellable on hide/navigation, and response batches are assembled atomically by the SDK.
+  Unadapted remote pages cannot receive widget messages. Site-specific loading stays in the adapter.
+- Ten-item Lua requests reuse the calculator and avoid repeated per-item build serialization.
+  Fixtures verify identical scores/order for all 100 items and unchanged build XML: PoE1
+  17.66s single-item / 2.05s batches; PoE2 8.42s / 1.16s. These are local warm-session fixture
+  measurements, not guaranteed speedups for every build; loading time is separate.
+- Checks under artifacts/pob: load-evaluate-trade-workflow1/2 (75/76),
+  load-evaluate-trade-improvements1/2 (16 each), auto-load-broker-tests (4),
+  auto-load-sdk-tests (1 suite), auto-load-native03/result.json (15 native checks).
+  Node checks cover trusted batching, request cancellation, automatic 10-to-100 loading,
+  short results, changed searches, and scroll restoration; candidate CI runs these too.
+- Live PoE2: a fresh page began with ten loaded listings; one Load and evaluate action
+  loaded and ranked 100, with zero skipped and 2.4s engine evaluation. The page returned
+  to its original top position. Visuals: auto-load-live-progress.png and auto-load-live-final.png.
+  Live authenticated PoE1 loading remains unverified; its engine/workflow fixtures pass.

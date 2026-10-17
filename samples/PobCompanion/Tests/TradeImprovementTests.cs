@@ -32,16 +32,28 @@ internal static class TradeImprovementTests
         var workingBefore=engine.WorkingSet;var timer=Stopwatch.StartNew();
         await engine.ExecuteAsync(new{op="trade-rank-begin",slot="Ring 1",priority="custom",weights},default,before.Xml);
         JsonElement last=default;
+        var singleScores=new List<double>();
         for(var i=1;i<=100;i++)
         {
             last=(await engine.ExecuteAsync(new{op="trade-rank-item",raw=$"Rarity: RARE\nCandidate {i}\nGold Ring\nImplicits: 0\n+{i} to maximum Mana"},default,before.Xml)).State;
             if(last.TryGetProperty("error",out var failure))throw new IOException(failure.GetString());
+            singleScores.Add(last.GetProperty("score").GetDouble());
             if(i==20)Console.WriteLine($"PERF {game}: 20 items {timer.Elapsed.TotalSeconds:F2}s, working set {engine.WorkingSet/1048576.0:F1} MiB");
         }
         var order=await engine.ExecuteAsync(new{op="trade-rank-finish"},default,before.Xml);
         check(order.State.GetProperty("order").GetArrayLength()==100&&order.State.GetProperty("order")[0].GetInt32()==100,"Upstream sorts 100 candidates with custom Mana weight, highest first");
         check(WorkStateTests.SameBuild(before.Xml,order.Xml),"Batch evaluation does not change build equipment or XML");
         Console.WriteLine($"PERF {game}: 100 items {timer.Elapsed.TotalSeconds:F2}s, working set before {workingBefore/1048576.0:F1} MiB, after {engine.WorkingSet/1048576.0:F1} MiB");
+        timer.Restart();var batchScores=new List<double>();
+        await engine.ExecuteAsync(new{op="trade-rank-begin",slot="Ring 1",priority="custom",weights},default,before.Xml);
+        for(var offset=0;offset<100;offset+=10)
+        {
+            var batch=await engine.ExecuteAsync(new{op="trade-rank-items",items=Enumerable.Range(offset+1,10).Select(i=>new{raw=$"Rarity: RARE\nCandidate {i}\nGold Ring\nImplicits: 0\n+{i} to maximum Mana"}).ToArray()},default,before.Xml);
+            batchScores.AddRange(batch.State.GetProperty("results").EnumerateArray().Select(r=>r.GetProperty("score").GetDouble()));
+        }
+        var batchOrder=await engine.ExecuteAsync(new{op="trade-rank-finish"},default,before.Xml);
+        check(batchScores.SequenceEqual(singleScores)&&batchOrder.State.GetRawText()==order.State.GetRawText()&&WorkStateTests.SameBuild(before.Xml,batchOrder.Xml),"Ten-item engine batches produce identical scores, ordering and unchanged equipment for all 100 items");
+        Console.WriteLine($"PERF {game}: 100 items in ten-item batches {timer.Elapsed.TotalSeconds:F2}s (12 engine requests instead of 102)");
         var equipped=await engine.ExecuteAsync(new{op="item",slot="Ring 1",raw=last.GetProperty("raw").GetString()},default,before.Xml,compare:true);
         var manaAfter=equipped.State.GetProperty("stats").EnumerateArray().Single(s=>s.GetProperty("name").GetString()=="Mana").GetProperty("value").GetDouble();
         check(Math.Abs(last.GetProperty("changes").EnumerateArray().Single(c=>c.GetProperty("stat").GetString()=="Mana").GetProperty("after").GetDouble()-manaAfter)<.001,"Ranked change agrees with a full independent PoB equipment calculation");

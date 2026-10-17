@@ -89,9 +89,9 @@ internal sealed partial class OverlayShellPage
                     Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.workspace.equipment-comparison"),"Expanded comparison uses two columns");
                     await Action("website-resume");await WebAppUntil(()=>Page()==livePage);
                     await FocusBrowser();await Press(ControllerButton.A);await WebAppUntil(()=>livePage.IsInteracting);
-                    await livePage.ClickPageActionFixtureAsync(action:"evaluate-items");
+                    await livePage.ClickPageActionFixtureAsync(action:"evaluate-request");
                     await Task.Delay(1000);
-                    await File.WriteAllTextAsync(path+".batch-diagnostics",JsonSerializer.Serialize(new{page=livePage.PageActionDiagnostics(),button=await livePage.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action=\"evaluate-items\"]')?.textContent"),frame=surface!.CurrentBinding!.Frame.Snapshot}));
+                    await File.WriteAllTextAsync(path+".batch-diagnostics",JsonSerializer.Serialize(new{page=livePage.PageActionDiagnostics(),button=await livePage.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action=\"evaluate-request\"]')?.textContent"),frame=surface!.CurrentBinding!.Frame.Snapshot}));
                     await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.Contains("ranked"))&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
                     Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.results"),"Live website batch produces a virtualized ranked shortlist");
                     await File.WriteAllTextAsync(path+".ranking",JsonSerializer.Serialize(surface!.CurrentBinding!.Frame.Snapshot));
@@ -124,7 +124,14 @@ internal sealed partial class OverlayShellPage
                 Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Text=="2 × Chaos Orb · Fixture seller"),"Trusted action delivers exact selected item and price to a recoverable draft");
                 await WebAppUntil(()=>!Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
                 await FocusBrowser();await Press(ControllerButton.A);await WebAppUntil(()=>page.IsInteracting);
-                await page.ClickPageActionFixtureAsync(action:"evaluate-items");
+                await page.ClickPageActionFixtureAsync(action:"evaluate-request");
+                await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
+                await Action("cancel-operation");
+                await WebAppUntil(()=>!Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
+                await WebAppUntilScript(page,"!document.querySelector('[data-widgetrail-action=\"evaluate-request\"]').disabled");
+                Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.title"),"Cancelling website loading preserves the existing comparison and permits retry");
+                await FocusBrowser();await Press(ControllerButton.A);await WebAppUntil(()=>page.IsInteracting);
+                await page.ClickPageActionFixtureAsync(action:"evaluate-request");
                 await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.slot")&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
                 var rankSlot=Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Single(n=>n.Id=="pob.rank.slot").SelectOptions.First(o=>o.Label.StartsWith("Ring 1 —",StringComparison.Ordinal));
                 await Action(rankSlot.ActionId);await Action("trade-rank-evaluate");
@@ -177,7 +184,7 @@ internal sealed partial class OverlayShellPage
             {await RouteButtonAsync(button,ControllerEventPhase.Pressed);await RouteButtonAsync(button,ControllerEventPhase.Released);}
             async Task Action(string id)
             {
-                await WebAppUntil(()=>surface?.CurrentBinding is {} binding&&!Nodes(binding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation")&&
+                await WebAppUntil(()=>surface?.CurrentBinding is {} binding&&(id=="cancel-operation"||!Nodes(binding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"))&&
                     Nodes(binding.Frame.Snapshot.Root).Any(n=>n.ActionId==id||n.SelectOptions.Any(o=>o.ActionId==id)));
                 var frame=surface!.CurrentBinding!.Frame;var node=Nodes(frame.Snapshot.Root).Last(n=>n.ActionId==id||n.SelectOptions.Any(o=>o.ActionId==id));
                 await InvokeAsync(new(frame,new(id,node.Id,ControllerButton.A,InputScopeId:frame.Snapshot.ActiveInputScopeId)));

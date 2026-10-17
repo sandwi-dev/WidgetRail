@@ -29,6 +29,13 @@ jobs:
           dotnet-version: |
             10.0.302
             8.0.x
+      - name: Validate page loading and bounded messaging
+        shell: pwsh
+        run: |
+          foreach($test in 'page-action-batches','page-adapter-requests','trade-loading') {
+            node "samples/PobCompanion/Tests/$test.cjs"
+            if($LASTEXITCODE -ne 0){throw "Page adapter regression failed: $test"}
+          }
       - name: Resolve exact upstream revision
         shell: pwsh
         env:

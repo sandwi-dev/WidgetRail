@@ -325,6 +325,7 @@ local function command(req)
   if op=='trade-catalog' then return {state=tradeSearch.catalog(req,clean),xml=build:SaveDB('code')}end
   if op=='trade-rank-begin' then return {state=tradeRanking.begin(req,tradeSearch),xml=build:SaveDB('code')}end
   if op=='trade-rank-item' then return {state=tradeRanking.item(req,tradeItem.convert,tradeSearch,clean),xml=build:SaveDB('code')}end
+  if op=='trade-rank-items' then return {state=tradeRanking.items(req,tradeItem.convert,tradeSearch,clean),xml=build:SaveDB('code')}end
   if op=='trade-rank-finish' then return {state=tradeRanking.finish(),xml=build:SaveDB('code')}end
   if op=='trade-item' then return {state={raw=tradeItem.convert(req.entry)},xml=build:SaveDB('code')}end
   if op=='item-bases' then return{state={choices=itemAuthoring.bases(clean)},xml=build:SaveDB('code')}end

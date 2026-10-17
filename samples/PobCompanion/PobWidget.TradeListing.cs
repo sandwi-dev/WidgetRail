@@ -45,6 +45,8 @@ public sealed partial class PobWidget
                 lock(gate)
                 {
                     if(!ReferenceEquals(websiteSession,session))return;
+                    if(S(message,"kind")=="progress"&&busy&&message.TryGetProperty("payload",out var progress)&&S(progress,"kind")=="trade-loading")
+                    {status=$"Loading {Math.Clamp(I(progress,"loaded"),0,100)} of up to {Math.Clamp(I(progress,"limit"),1,100)} listings…";Invalidate();continue;}
                     if(S(message,"kind")=="page-location")
                     {
                         var location=S(message,"url");var heading=WebsiteHeading(location);
@@ -55,6 +57,13 @@ public sealed partial class PobWidget
                     if(S(message,"kind")=="page-action-error")
                     {ShowFeedback("Website comparison unavailable","Reload the results or use Paste item to compare.",ToastTone.Warning);Invalidate();continue;}
                     if(S(message,"kind")!="page-action")continue;
+                    if(S(message,"action")=="evaluate-request")
+                    {
+                        if(busy)continue;
+                        if(result is null||(pendingBefore is not null||pastedItem is not null)&&!CanReplaceTradeComparison)
+                        {ShowFeedback("Finish current work","Open a build and finish its current edit before evaluating listings.",ToastTone.Warning);Invalidate();continue;}
+                        ReadTradePreferences();Work(LoadAndEvaluateTradeAsync,"Loading trade results…");continue;
+                    }
                     if(S(message,"action")=="evaluate-items")
                     {
                         try

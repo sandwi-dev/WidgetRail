@@ -42,10 +42,24 @@ public sealed partial class PobWidget
     private string RankingWeightKey()=>JsonSerializer.Serialize(new{tradePriority,weights=TradeWeights()});
     private bool RankingStale=>rankingBuild!=documentId||rankingBaseline!=XmlHash((pendingBefore??result)!.Xml)||rankingWeights!=RankingWeightKey();
     private bool HasRanking=>rankingBuild==documentId&&(rankedItems.Length>0||rankingInputs.Count>0);
+    private async Task LoadAndEvaluateTradeAsync(CancellationToken token)
+    {
+        var session=websiteSession??throw new IOException("Open the trade website first.");
+        var limit=tradeBatchLimit;
+        var reply=await session.RequestAsync<object,JsonElement>("load-results",new{limit},token);
+        var context=reply.GetProperty("context");var entries=A(reply,"items");
+        token.ThrowIfCancellationRequested();
+        lock(gate)ReadTradeBatch(context,entries,false);
+        var shortBatch=entries.Length<limit;
+        await EvaluateTradeBatchAsync(token);
+        if(shortBatch)lock(gate){rankingSummary+=$" · Website supplied {entries.Length} of up to {limit}";}
+    }
 
     private void ReceiveTradeBatch(JsonElement context,JsonElement[] entries)
+    {ReadTradeBatch(context,entries,true);}
+    private void ReadTradeBatch(JsonElement context,JsonElement[] entries,bool start)
     {
-        ReadTradePreferences();rankingInputs.Clear();var skipped=new List<string>();var ids=new HashSet<string>();
+        var preserveSlot=HasRanking;ReadTradePreferences();rankingInputs.Clear();var skipped=new List<string>();var ids=new HashSet<string>();
         foreach(var entry in entries.Take(100))
         {
             try
@@ -57,9 +71,9 @@ public sealed partial class PobWidget
             catch(IOException error){skipped.Add(Limit(error.Message,250));}
         }
         if(rankingInputs.Count==0)throw new IOException("No valid listings were received. Load trade results and evaluate again.");
-        rankingSlot=tradeSlot.Length>0?tradeSlot:previewSlot??"Weapon 1";
+        if(!preserveSlot)rankingSlot=tradeSlot.Length>0?tradeSlot:previewSlot??"Weapon 1";
         rankingSkipped=skipped.ToArray();rankedItems=[];rankingBuild=documentId??"";rankingVisible=true;
-        Work(EvaluateTradeBatchAsync,"Preparing listing evaluation…");
+        if(start)Work(EvaluateTradeBatchAsync,"Preparing listing evaluation…");
     }
     private async Task EvaluateTradeBatchAsync(CancellationToken token)
     {
@@ -72,16 +86,21 @@ public sealed partial class PobWidget
             lock(gate){rankingSlots=A(catalog,"slots");rankingVisible=true;websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;}
             if(!rankingSlots.Any(s=>S(s,"name")==slot))throw new IOException("Choose an active equipment slot for evaluation.");
             await engine.ExecuteAsync(new{op="trade-rank-begin",slot,priority=tradePriority,weights=TradeWeights()},token,before.Xml);
-            for(var i=0;i<inputs.Length;i++)
+            for(var offset=0;offset<inputs.Length;offset+=10)
             {
-                token.ThrowIfCancellationRequested();var input=inputs[i];
-                lock(gate)status=$"Evaluating {i+1} of {inputs.Length} listings…";Invalidate();
-                var request=input.Raw is null?(object)new{op="trade-rank-item",entry=input.Entry}:new{op="trade-rank-item",raw=input.Raw};
-                var response=(await engine.ExecuteAsync(request,token,before.Xml)).State;
+                token.ThrowIfCancellationRequested();var batch=inputs.Skip(offset).Take(10).ToArray();
+                lock(gate)status=$"Evaluating {offset+1}–{offset+batch.Length} of {inputs.Length} listings…";Invalidate();
+                var request=new{op="trade-rank-items",items=batch.Select(input=>input.Raw is null?(object)new{entry=input.Entry}:new{raw=input.Raw}).ToArray()};
+                var responses=A((await engine.ExecuteAsync(request,token,before.Xml)).State,"results");
+                if(responses.Length!=batch.Length)throw new IOException("PoB returned an incomplete evaluation batch. Evaluate again.");
+                for(var j=0;j<batch.Length;j++)
+                {
+                var input=batch[j];var response=responses[j];
                 var error=RankingError(S(response,"error"));
                 if(error.Length>0){skipped.Add(TradeItemName(input.Listing)+": "+error);continue;}
                 var evaluation=JsonSerializer.SerializeToElement(response.EnumerateObject().Where(p=>p.Name!="raw").ToDictionary(p=>p.Name,p=>p.Value));
                 evaluated.Add(new(I(response,"index"),new(S(response,"raw"),input.Listing,slot),evaluation));
+                }
             }
             var sorted=await engine.ExecuteAsync(new{op="trade-rank-finish"},token,before.Xml);
             var rows=A(sorted.State,"order").Select(index=>evaluated.Single(r=>r.Index==index.GetInt32())).ToArray();
@@ -147,7 +166,7 @@ public sealed partial class PobWidget
             rankingSlot=previewSlot??tradeSlot;rankingBuild=documentId??"";rankingVisible=true;
             Work(async token=>{await OpenWebsiteAsync(websiteUrl??rankingInputs[0].Listing.Url,token);await EvaluateTradeBatchAsync(token);},"Evaluating recent comparisons…");return true;
         }
-        if(id=="trade-rank-evaluate"&&HasRanking){Work(EvaluateTradeBatchAsync,"Preparing listing evaluation…");return true;}
+        if(id=="trade-rank-evaluate"&&HasRanking){Work(LoadAndEvaluateTradeAsync,"Loading trade results…");return true;}
         if(parts is ["trade-rank-limit",var count]&&int.TryParse(count,out var limit)&&limit is 20 or 50 or 100)
         {tradeBatchLimit=limit;SaveTradePreferences();return true;}
         if(parts is ["trade-rank-priority",var priority]&&TradePriorities.Any(p=>p.Key==priority))
@@ -197,9 +216,8 @@ public sealed partial class PobWidget
             UI.Grid("pob.rank.options",[GridTrack.Auto()],[GridTrack.Star(2),GridTrack.Star()],
                 UI.Select("Priority",TradePriorities.Select(p=>new SelectOption(p.Key,p.Label,"trade-rank-priority."+p.Key,p.Key==tradePriority)).ToArray(),"pob.rank.priority").FocusLeft("pob.website.browser").Classes("pob-select"),
                 UI.Select("Limit",new[]{20,50,100}.Select(n=>new SelectOption("limit"+n,n.ToString(),"trade-rank-limit."+n,n==tradeBatchLimit)).ToArray(),"pob.rank.limit").Classes("pob-select").InGrid(column:1)).Spacing(0,8),
-            UI.Row("pob.rank.actions",Button("Evaluate again","trade-rank-evaluate","rank.evaluate").FocusLeft("pob.website.browser"),Button("Hide results","trade-rank-hide","rank.hide")).Classes("pob-toolbar"),
-            Text(rankingSummary,"rank.summary","pob-small pob-muted"),
-            Text(stale?"Scores need recalculation for this build, slot or priority.":"Priority: "+TradePriorities.Single(p=>p.Key==tradePriority).Label+". Inspect gains and losses before equipping. Prices retain their listed currencies.","rank.help","pob-small pob-muted"))
+            UI.Row("pob.rank.actions",Button("Load and evaluate","trade-rank-evaluate","rank.evaluate").FocusLeft("pob.website.browser"),Button("Hide results","trade-rank-hide","rank.hide")).Classes("pob-toolbar"),
+            Text(stale?"Scores need recalculation for this build, slot or priority.":rankingSummary,"rank.summary","pob-small pob-muted"))
             .RememberChildFocus(rankingSlots.Length==0?"pob.rank.evaluate":"pob.rank.slot").Classes("pob-buildtools");
         var list=UI.Stack("pob.rank.list",UI.CollectionList("pob.rank.results",rankingCollection,128,"Evaluated trade listings").Classes("pob-scroll"))
             .RememberChildFocus("pob.rank.results").Shortcut(ControllerButton.LeftStick,"trade-rank-focus","Ranking controls").Classes("pob-workspace");
