@@ -40,9 +40,12 @@ internal sealed partial class OverlayShellPage
                     {
                         if(index>0)
                         {
-                            await Action("trade-review-browse");
+                            await FocusBrowser();
                             await WebAppUntil(()=>!livePage.IsInteracting);
                             await Press(ControllerButton.A);
+                            await Task.Delay(200);
+                            var currentSlot=Walk(XamlRoot.Content).OfType<BrowserSlot>().Single(e=>AutomationProperties.GetAutomationId(e)=="Widget.pob.website");
+                            await File.WriteAllTextAsync(path+".input",JsonSerializer.Serialize(new{interactive,foreground,visible,switching,slotActive=currentSlot.Active,slotInput=currentSlot.AcceptsInput,canDisplay=currentSlot.CanDisplay,page=livePage.PageActionDiagnostics(),ownsFocus=livePage.IsInteractionFocused?.Invoke(),focused=AutomationProperties.GetAutomationId(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject)}));
                             await WebAppUntil(()=>livePage.IsInteracting);
                         }
                         var listing=await livePage.EvaluateFixtureAsync("document.querySelectorAll('[data-widgetrail-action]')["+index+"].closest('[data-id]').getAttribute('data-id')");
@@ -50,10 +53,11 @@ internal sealed partial class OverlayShellPage
                         await livePage.ClickPageActionFixtureAsync(index);
                         await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.title")&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation")&&
                             (index==0||Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.recent"&&n.SelectOptions.Any(o=>o.Id==listingIds[index]&&o.IsSelected))));
+                        await WebAppUntil(()=>FocusedWithin("Widget.pob.website.review.tools"));
                         Check(ReferenceEquals(Page(),livePage),"Comparison "+index+" keeps the website attached");
                         await File.WriteAllTextAsync(path+".comparison"+index,JsonSerializer.Serialize(surface!.CurrentBinding!.Frame.Snapshot));
                     }
-                    await Action("trade-review-browse");
+                    await FocusBrowser();
                     await WebAppUntil(()=>!livePage.IsInteracting);
                     Check(livePage.RequiresActivation,"Comparison appearance dynamically changes the retained browser to activation mode");
                     await Press(ControllerButton.A);await WebAppUntil(()=>livePage.IsInteracting);
@@ -66,8 +70,13 @@ internal sealed partial class OverlayShellPage
                     for(var current=focused;current is not null;current=VisualTreeHelper.GetParent(current))
                         if(AutomationProperties.GetAutomationId(current)=="Widget.pob.website.review")inReview=true;
                     Check(inReview,"Right after B reaches the comparison panel through native directional navigation");
+                    var bottom=Walk(XamlRoot.Content).OfType<Microsoft.UI.Xaml.Controls.Control>().Single(e=>AutomationProperties.GetAutomationId(e)=="Widget.pob.website.review.hide");
+                    bottom.StartBringIntoView();bottom.Focus(FocusState.Keyboard);await Task.Delay(150);
+                    await Press(ControllerButton.LeftStick);
+                    await WebAppUntil(()=>FocusedWithin("Widget.pob.website.review.tools"));
+                    Check(true,"LS from the bottom of comparison details returns to the fixed controls");
                     await Action("trade-review-hide");await WebAppUntil(()=>!livePage.RequiresActivation&&livePage.IsInteracting);
-                    await Action("trade-review-show");await WebAppUntil(()=>livePage.RequiresActivation&&!livePage.IsInteracting);
+                    await Press(ControllerButton.RightStick);await WebAppUntil(()=>livePage.RequiresActivation&&!livePage.IsInteracting);
                     Check(Page()==livePage,"Hiding and showing comparison changes interaction policy without recreating the website");
                     var recent="trade-review-recent."+listingIds[0];
                     await Action(recent);
@@ -110,6 +119,23 @@ internal sealed partial class OverlayShellPage
             finally{BrowserSurface.FixturePage=old;BrowserSurface.FixtureContentType=oldType;await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new{passed=error is null,checks,error}));}
             void Check(bool value,string label){if(!value)throw new InvalidOperationException(label);checks.Add(label);File.WriteAllText(path+".progress",string.Join('\n',checks));}
             BrowserSurface? Page()=>Walk(XamlRoot.Content).OfType<BrowserSlot>().FirstOrDefault(s=>AutomationProperties.GetAutomationId(s)=="Widget.pob.website")?.Surface;
+            bool FocusedWithin(string id)
+            {
+                for(var node=FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;node is not null;node=VisualTreeHelper.GetParent(node))
+                    if(AutomationProperties.GetAutomationId(node)==id)return true;
+                return false;
+            }
+            async Task FocusBrowser()
+            {
+                var button=Walk(XamlRoot.Content).OfType<Microsoft.UI.Xaml.Controls.Control>().Single(e=>AutomationProperties.GetAutomationId(e)=="Widget.pob.website.review.find");
+                var focused=button.Focus(FocusState.Keyboard);await Task.Delay(200);
+                await File.WriteAllTextAsync(path+".before-direction",JsonSerializer.Serialize(new{focused,inTools=FocusedWithin("Widget.pob.website.review.tools"),interacting=Page()?.IsInteracting,ownsFocus=Page()?.IsInteractionFocused?.Invoke(),requiresActivation=Page()?.RequiresActivation}));
+                surface!.MoveFocus(FocusNavigationDirection.Left);
+                await WebAppUntil(()=>FocusedWithin("Widget.pob.website.browser"));
+                await Task.Delay(200);
+                await File.WriteAllTextAsync(path+".after-direction",JsonSerializer.Serialize(new{interacting=Page()?.IsInteracting,ownsFocus=Page()?.IsInteractionFocused?.Invoke(),requiresActivation=Page()?.RequiresActivation}));
+                Check(true,"Left from Find seller item reaches the website without navigating");
+            }
             async Task Press(ControllerButton button)
             {await RouteButtonAsync(button,ControllerEventPhase.Pressed);await RouteButtonAsync(button,ControllerEventPhase.Released);}
             async Task Action(string id)

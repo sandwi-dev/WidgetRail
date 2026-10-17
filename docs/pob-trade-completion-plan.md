@@ -37,7 +37,8 @@ Local commits are allowed; merge, push, and release are not authorized by this w
   current price/availability there; do not implement purchasing or seller messaging ourselves.
 - Reject missing, stale, unsupported, oversized, or ambiguous results visibly. Do not silently
   omit modifiers or pretend an estimated website ranking is a full PoB calculation.
-- No YouTube integration, bulk listing evaluation, or new OAuth integration in this work.
+- No YouTube integration or new OAuth integration. Bulk listing evaluation was initially deferred;
+  bounded upstream evaluation/ranking was subsequently approved (see the follow-up scope below).
 
 ## Starting evidence (superseded by verification below)
 
@@ -201,3 +202,45 @@ clipboard-busy/read errors instead of being mislabeled as invalid item data. Reg
 cover non-text, empty, link, oversized, busy, valid, and protected-draft paths in both engines
 (`trade-order-tests1.txt`: 52 checks; `trade-order-tests2.txt`: 53 checks).
 Candidate uses `trade-order-host` and `trade-order-catalogb` with the original user profile.
+
+### Approved next implementation scope
+
+The user approved the following after reviewing desktop PoB's capabilities and its 20-listing
+default / 10-to-100 configurable fetch range. These are approved work, not implemented features:
+
+- Reuse upstream candidate evaluation, custom weights, and ranking. Start with a bounded explicit
+  evaluation of 20 candidates, configurable up to 100, with progress and cancellation. Continue
+  using structured results obtained through normal visible website browsing; this approval does
+  not authorize purchasing, seller messaging, collecting session credentials, or a new OAuth flow.
+  Explain that ranking covers evaluated candidates under chosen weights, not the whole market.
+  Price-aware ranking requires valid conversion rates and must not silently compare currencies.
+- Expose upstream custom stat weights and applicable advanced query-generation options, preserving
+  upstream eligibility and formulas instead of duplicating them in the widget.
+- Support empty-slot searches where upstream can infer the category; request category/base choices
+  when the slot is ambiguous. Do not equip a placeholder into the user's build to enable search.
+- Expose predefined modifier sources and searchable choices from PoB's Add modifier dialog for
+  imported/existing items. The current adapter forces CUSTOM; include applicable Prefix, Suffix,
+  and game-specific sources without replacing upstream eligibility/range handling. Keep arbitrary
+  custom text as a separate option and preserve real-item identity, pending edits, and Undo.
+
+### Comparison action cleanup and LS correction
+
+Find seller's item replaces Browse listings in the fixed sidebar actions; its lower duplicate and
+the Comparison controls header button are removed. Left from that action or the selectors returns
+to the retained website without navigating; Equip's Left neighbor remains the adjacent Find action.
+Find opens the narrowed seller/base search and moves focus to the browser. Show comparison is only
+present while the panel is hidden, with an R3 shortcut so controller users can restore it while
+automatic website interaction is active.
+
+LS previously entered the entire remembered-child panel and could return to the same scrolled
+child. It now explicitly enters the fixed controls group. New comparisons and Show comparison
+also enter that group. Regression coverage includes the top action, directional link, and LS target;
+native coverage exercises LS from the last control in the scrolled details.
+
+Verification: `artifacts/pob/trade-actions-tests{1,2}.txt` passes 54/55 workflow checks.
+`trade-actions-native03/live-result.json` passes 13 live native checks, including Left from the
+new primary action, A/B/Right, LS from the bottom, and R3 restoring a hidden comparison. Native
+tests wait for the requested controls focus to settle before sending the next directional input.
+The final screenshot is `trade-actions-native03/evidence/final.png`. Candidate uses
+`trade-actions-host03` and `trade-actions-catalog`, with the original data/settings and controller
+input enabled. The broader approved ranking/search/modifier scope above remains pending.

@@ -115,6 +115,10 @@ internal static class TradeWorkflowTests
             await Action("trade-review-hide");
             check(Nodes(View().Root).Single(n=>n.Id=="pob.website").WebBrowser?.InteractionMode==BrowserInteractionMode.InteractOnFocus&&opened.Count==1,"Hiding the comparison restores automatic browsing on the same session");
             await Action("trade-review-show");
+            var tools=Nodes(View().Root).Single(n=>n.Id=="pob.website.review.tools");
+            check(Nodes(tools).Single(n=>n.Id=="pob.website.review.find").ActionId=="trade-review-find"&&Nodes(tools).Single(n=>n.Id=="pob.website.review.find").Focus?.Left=="pob.website.browser"&&!Nodes(View().Root).Any(n=>n.Text=="Browse listings"||n.Text=="Comparison controls"),"Find seller item replaces redundant focus buttons and links Left to the website");
+            await Action("trade-review-focus");
+            check(View().FocusGroupEntryRequest?.GroupId=="pob.website.review.tools","LS explicitly enters comparison controls rather than the panel's remembered scroll child");
             var originalComparison=work.Pending!.Xml;
             await Action("trade-review-slot.1");
             originalComparison=PobWorkStore.Read(directory,id,game)!.Pending!.Xml;
@@ -133,7 +137,7 @@ internal static class TradeWorkflowTests
             check(File.ReadAllText(Path.Combine(directory,id+".work.json"))==preserved,"Rejected next listing preserves the previous comparison and history");
             await Action("trade-review-expand");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.workspace.equipment-comparison")&&Nodes(View().Root).Any(n=>n.Id=="pob.item.name"),"Expanded comparison shows item details beside impact");
-            await Action("website-resume");await Action("trade-review-browse");
+            await Action("website-resume");
             check(View().FocusGroupEntryRequest?.GroupId=="pob.website.browser"&&opened.Count==1&&navigated==0,"Browsing restores focus to the retained page without navigation or discard");
             await Action("website-close");
             var recoverySnapshot=PobWorkStore.Read(directory,id,game)!;

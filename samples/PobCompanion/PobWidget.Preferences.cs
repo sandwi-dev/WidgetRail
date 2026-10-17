@@ -73,13 +73,15 @@ public sealed partial class PobWidget
         var reviewing=websiteReview&&CanReplaceTradeComparison&&pendingBefore is not null;
         var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:reviewing?BrowserInteractionMode.ActivateToInteract:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"))
             .RememberChildFocus("pob.website").Classes("pob-workspace");
+        if(!reviewing&&CanReplaceTradeComparison)web=web.Shortcut(ControllerButton.RightStick,"trade-review-show","Show comparison");
         WidgetElement body=reviewing?Split("website",web,TradeReviewPanel(),3,2):web;
         var modal=view.WithModal(new("pob-website","Website",WithFeedback(body,null),"pob.website","website-close")
         {
             ScrollContent=false,
             HeaderActions=UI.Row("pob.website.header-actions",
-                Button(reviewing?"Comparison controls":"Show comparison",reviewing?"trade-review-focus":"trade-review-show","website.review-shortcut").Disabled(!CanReplaceTradeComparison),
-                Button("Close","website-close","website.close")).Classes("pob-toolbar")
+                (!reviewing&&CanReplaceTradeComparison
+                    ?new[]{Button("Show comparison","trade-review-show","website.review-shortcut"),Button("Close","website-close","website.close")}
+                    :new[]{Button("Close","website-close","website.close")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")
         });
         if(!busy&&websiteFocusSequence>0)
             modal=modal with{FocusGroupEntryRequest=new(){RequestId=websiteFocusSequence,GroupId=reviewing?websiteFocus:"pob.website.browser"}};

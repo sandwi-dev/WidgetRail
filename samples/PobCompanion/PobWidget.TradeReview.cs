@@ -24,7 +24,7 @@ public sealed partial class PobWidget
             pendingBefore=before;result=next;tradeListing=candidate.Listing;pastedItem=candidate.Raw;
             previewSlot=candidate.Slot;itemDraftSlots=slots;tradeBrowsing=true;section="Items";detailKind="choose-slot";
             tradeCandidates.Clear();tradeCandidates.AddRange(recent);websiteReview=true;
-            websiteFocus="pob.website.review";websiteFocusSequence=++focusRequestSequence;
+            websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
             websiteReviewRevealSequence=focusRequestSequence;
         }
     }
@@ -34,18 +34,22 @@ public sealed partial class PobWidget
         var id=action.ActionId;
         if(id=="trade-review-details")
         {websiteFocus="pob.website.review.reading";websiteFocusSequence=++focusRequestSequence;return true;}
-        if(id=="trade-review-browse")
-        {websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-focus")
-        {websiteFocus="pob.website.review";websiteFocusSequence=++focusRequestSequence;return true;}
+        {websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-expand")
         {websiteVisible=false;focusRequestSequence++;return true;}
         if(id=="trade-review-hide")
         {websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-show")
-        {websiteReview=true;websiteFocus="pob.website.review";websiteFocusSequence=++focusRequestSequence;return true;}
+        {websiteReview=true;websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-find"&&tradeListing is {} listing)
-        {Work(token=>OpenWebsiteAsync(listing.FindUrl(game),token),"Finding saved listing…");return true;}
+        {
+            Work(async token=>
+            {
+                await OpenWebsiteAsync(listing.FindUrl(game),token);
+                lock(gate){websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;}
+            },"Finding saved listing…");return true;
+        }
         if(id=="trade-review-adopt"&&tradeListing is {} legacy&&pastedItem is {} raw&&previewSlot is {} legacySlot)
         {
             Work(async token=>
@@ -103,18 +107,17 @@ public sealed partial class PobWidget
         return false;
     }
 
-    private List<WidgetElement> TradeReviewControls(string prefix,bool inWebsite)
+    private List<WidgetElement> TradeReviewControls(string prefix)
     {
         var rows=new List<WidgetElement>();
         if(tradeCandidates.Count>1)
             rows.Add(UI.Select("Recent comparisons",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
-                TradeItemName(c.Listing)+" · "+c.Listing.Price,"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob."+prefix+".recent").Classes("pob-select"));
+                TradeItemName(c.Listing)+" · "+c.Listing.Price,"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob."+prefix+".recent").FocusLeft("pob.website.browser").Classes("pob-select"));
         if(itemDraftSlots.Length>1)
-            rows.Add(UI.Select("Compare with",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,slot,"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").Classes("pob-select"));
+            rows.Add(UI.Select("Compare with",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,slot,"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").FocusLeft("pob.website.browser").Classes("pob-select"));
         rows.Add(UI.Row("pob."+prefix+".actions",
-            Button(inWebsite?"Browse listings":websiteSession is null?"Find saved listing":"Return to listings",inWebsite?"trade-review-browse":"website-resume",prefix+".browse"),
-            Button("Equip in build","trade-review-equip",prefix+".equip").Disabled(pendingBefore is null)).Classes("pob-toolbar"));
-        if(!inWebsite)rows.Add(Button("Close comparison","trade-review-close",prefix+".close"));
+            Button("Find seller’s item","trade-review-find",prefix+".find").FocusLeft("pob.website.browser").FocusRight("pob."+prefix+".equip"),
+            Button("Equip in build","trade-review-equip",prefix+".equip").FocusLeft("pob."+prefix+".find").Disabled(pendingBefore is null)).Classes("pob-toolbar"));
         return rows;
     }
 
@@ -154,16 +157,15 @@ public sealed partial class PobWidget
         reading.AddRange(ItemDetails(item,prefix+".item"));
         reading.Add(Text("Purchase details",prefix+".purchase.heading","pob-heading"));
         AddTradeContext(reading,prefix);
-        reading.Add(Button("Find this seller’s item","trade-review-find",prefix+".find"));
         reading.Add(Button("Hide panel","trade-review-hide",prefix+".hide"));
         details.Add(UI.Stack("pob.website.review.reading",reading.ToArray()).RememberChildFocus("pob."+prefix+".expand").Classes("pob-buildtools"));
-        var controls=TradeReviewControls(prefix,true);
+        var controls=TradeReviewControls(prefix);
         controls.Insert(0,Text(S(item,"name",TradeItemName(tradeListing!)),prefix+".title","pob-heading"));
         controls.Insert(1,Text(tradeListing!.Price+" · "+previewSlot,prefix+".summary","pob-gold"));
-        var tools=UI.Stack("pob.website.review.tools",controls.ToArray()).RememberChildFocus("pob."+prefix+".browse").Classes("pob-buildtools");
+        var tools=UI.Stack("pob.website.review.tools",controls.ToArray()).RememberChildFocus("pob."+prefix+".find").Classes("pob-buildtools");
         var scroll=UI.VerticalScroll("pob.website.review.details",details.ToArray()).Classes("pob-scroll")
             .Shortcut(ControllerButton.LeftStick,"trade-review-focus","Comparison controls");
-        return UI.Stack("pob.website.review",tools,scroll).RememberChildFocus("pob."+prefix+".browse")
+        return UI.Stack("pob.website.review",tools,scroll).RememberChildFocus("pob."+prefix+".find")
             .Shortcut(ControllerButton.X,"trade-review-details","Item details").Classes("pob-panel","pob-tree-main");
     }
 
