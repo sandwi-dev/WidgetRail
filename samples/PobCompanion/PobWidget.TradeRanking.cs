@@ -206,7 +206,7 @@ public sealed partial class PobWidget
         var children=new List<WidgetElement>{tools,list};
         if(rankingSkipped.Length>0)children.Add(UI.VerticalScroll("pob.rank.skipped",new WidgetElement[]{Text("Skipped listings","rank.skipped.title","pob-small")}
             .Concat(rankingSkipped.Select((reason,i)=>Text(Limit(reason,600),"rank.skipped."+i,"pob-small pob-muted"))).ToArray())
-            .Shortcut(ControllerButton.LeftStick,"trade-rank-focus","Ranking controls").Classes("pob-scroll"));
+            .Shortcut(ControllerButton.LeftStick,"trade-rank-focus","Ranking controls").Classes("pob-scroll","pob-rank-skipped"));
         return UI.Stack("pob.rank.panel",children.ToArray()).Classes("pob-panel","pob-tree-main");
     }
 }

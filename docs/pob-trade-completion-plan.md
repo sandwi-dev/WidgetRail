@@ -349,3 +349,21 @@ checks. Native visual evidence: `site-labels-modal.png` and `site-labels-skipped
 An intermittent Guide activation report recovered without a restart; the captured
 `guide-recovery-20261017.log` shows legacy Guide polling enabling immediately before accepted
 Guide events. The underlying detection cause is unconfirmed; no controller behavior was changed.
+
+2026-10-17 next candidate: the ranked-list skipped section fits its content with a 120px
+maximum and remains scrollable; the virtualized results list takes the remaining height.
+Visual checks cover no skipped entries and one short message (`rank-space-final.png`,
+`rank-space-one-skip.png` under artifacts/pob). Temporary layout-test data was restored.
+The shared Guide fallback now discovers live XInput connections independently of GameInput
+notifications. Native policy suites pass, including 171 Guide compatibility checks; the
+WinUI timer/Settings fixture passes 31 checks (`guide-discovery-ui02/result.json`). The first
+fixture run exposed a stale shortcut-control locator, corrected for the current Settings page.
+Physical-controller acceptance and hidden idle measurements are recorded separately from
+these automated checks. No Windows service, driver, or controller preference is changed.
+The user confirmed repeated Guide open/close and reconnect on the final candidate. Its log
+records 17 Guide events without any GameInput device-connection notification. The normal
+120-second PoB unload completed. A subsequent 40.58-second hidden sample used 1843.75ms host
+CPU (0.284% of this 16-logical-processor machine), with handles decreasing from 1653 to 1649;
+this is an observed sample, not a before/after performance comparison. Reopening after that
+idle period still awaits the user's physical confirmation. Evidence: `guide-physical-final.log`,
+`guide-unloaded-performance.json`, and `ranking-candidate-state.json` under artifacts/pob.
