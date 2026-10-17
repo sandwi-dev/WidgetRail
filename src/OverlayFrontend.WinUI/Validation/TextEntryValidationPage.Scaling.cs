@@ -57,6 +57,7 @@ internal sealed partial class TextEntryValidationPage
             Near(keys.ColumnSpacing, 5) && Near(((FontIcon)((StackPanel)commit.Content).Children[0]).FontSize, 22.5),
             "text accessibility scales typography independently from keyboard geometry and controller glyphs");
         await CapturePopupAsync(dialog, "text-entry-scale-accessibility");
+        Check(dialog.AllKeysVisibleForValidation, "Large-text keyboard keeps Paste and every action inside the popup");
         popupTheme.Update(null, AppearanceSettings.Default with { BoldText = false });
         await Task.Delay(100);
         Check(Near(key.FontSize, 16) && Near(title.FontSize, 20) && key.FontWeight.Weight == 400 &&

@@ -41,7 +41,11 @@ Use A/Cross to type the selected character or activate an action.
 
 Repeats begin after 400 ms and continue every 90 ms. Moving to another key or
 changing the character layer cancels a held character. Actions such as Clear,
-Done, Cancel, Shift and Show/Hide never repeat.
+Done, Cancel, Shift, Paste and Show/Hide never repeat.
+
+The bottom-row **Paste** key inserts clipboard text at the caret or replaces the
+selected text, without closing the keyboard. It also works in password fields,
+which are masked by default, and website fields using the browser's normal paste behavior.
 
 The caret remains visible while controller keys have focus. Private text starts
 hidden whenever an editor opens. Switching from native mouse/keyboard editing

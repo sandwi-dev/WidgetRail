@@ -38,6 +38,15 @@ internal static class TextEntryEditing
         return new(value.Remove(first, end - first), first);
     }
 
+    internal static Edit Paste(string value, int start, int length, string inserted, int maximumLength)
+    {
+        var (first, end) = Selection(value, start, length);
+        var available = Math.Max(0, maximumLength - value.Length + end - first);
+        var count = inserted.Length <= available ? inserted.Length : Floor(Boundaries(inserted), available);
+        if (count == 0) return new(value, first);
+        return new(value.Remove(first, end - first).Insert(first, inserted[..count]), first + count);
+    }
+
     private static (int Start, int End) Selection(string value, int start, int length)
     {
         var boundaries = Boundaries(value);

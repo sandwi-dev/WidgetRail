@@ -119,6 +119,25 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
                 Check(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(dialog.XamlRoot) is Button { FocusState: FocusState.Keyboard, UseSystemFocusVisuals: true } focusedKey &&
                     AutomationProperties.GetAutomationId(focusedKey) == "Widget.TextEntry.Key.10",
                     "Live keyboard starts with keyboard-visible focus on Q");
+                var originalClipboard = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+                var clipboardBackup = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                foreach (var format in originalClipboard.AvailableFormats) clipboardBackup.SetData(format, await originalClipboard.GetDataAsync(format));
+                var clipboardOptions = new Windows.ApplicationModel.DataTransfer.ClipboardContentOptions { IsAllowedInHistory = false, IsRoamable = false };
+                try
+                {
+                    var fixtureClipboard = new Windows.ApplicationModel.DataTransfer.DataPackage(); fixtureClipboard.SetText("paste-fixture");
+                    if (!Windows.ApplicationModel.DataTransfer.Clipboard.SetContentWithOptions(fixtureClipboard, clipboardOptions)) throw new InvalidOperationException("Fixture clipboard unavailable");
+                    var pasteKey = (Button)FindElement(dialog, "Widget.TextEntry.Paste")!;
+                    pasteKey.Focus(FocusState.Keyboard); dialog.Activate(); await dialog.WaitForLiveInputAsync();
+                    Check(await Eval("document.getElementById('plain').value==='originalpaste-fixture' && window.enters===0"), "Live Paste key inserts clipboard text through native browser editing without submitting");
+                    Check(ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(dialog.XamlRoot), pasteKey), "Live Paste retains controller focus");
+                    dialog.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true); dialog.InsertForValidation("original"); await dialog.WaitForLiveInputAsync();
+                    ((Button)FindElement(dialog, "Widget.TextEntry.Key.10")!).Focus(FocusState.Keyboard);
+                }
+                finally
+                {
+                    if (!Windows.ApplicationModel.DataTransfer.Clipboard.SetContentWithOptions(clipboardBackup, clipboardOptions)) throw new InvalidOperationException("Clipboard restoration failed");
+                }
                 var initialAnchor = dialog.FieldAnchor!.Value;
                 await browser.EvaluateFixtureAsync("document.getElementById('plain').style.marginLeft='100px'");
                 await Task.Delay(400);

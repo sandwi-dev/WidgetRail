@@ -76,29 +76,31 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         }
         var editor = (Control?)text ?? password!;
         AutomationProperties.SetAutomationId(editor, "Widget.TextEntry.Editor");
-        for (var column = 0; column < 10; ++column) keys.ColumnDefinitions.Add(new());
+        // Half-key columns keep character geometry while allowing narrower utility keys.
+        for (var column = 0; column < 20; ++column) keys.ColumnDefinitions.Add(new());
         for (var row = 0; row < 6; ++row) keys.RowDefinitions.Add(new() { Height = GridLength.Auto });
         for (var index = 0; index < Letters.Length; ++index)
         {
             var position = index;
-            var key = AddKey("", "Key." + index, index / 10, index % 10, 1, () => Insert(Character(position)));
+            var key = AddKey("", "Key." + index, index / 10, index % 10 * 2, 2, () => Insert(Character(position)));
             characters.Add(key);
         }
-        AddKey("Left", "CaretLeft", 4, 0, 2, () => MoveCaret(-1), ControllerPrompt.LeftBumper);
-        AddKey("Right", "CaretRight", 4, 2, 2, () => MoveCaret(1), ControllerPrompt.RightBumper);
-        AddKey("Shift", "Shift", 4, 4, 2, ToggleShift, ControllerPrompt.LeftTrigger);
-        AddKey("Symbols", "Symbols", 4, 6, 2, () => { repeat.Reset(); symbols = !symbols; RefreshCharacters(); });
-        spaceKey = AddKey("Space", "Space", 4, 8, 2, () => Insert(" "));
-        AddKey("Backspace", "Backspace", 5, 0, IsSensitive ? 2 : 3, Backspace, ControllerPrompt.X);
-        AddKey("Clear", "Clear", 5, IsSensitive ? 2 : 3, IsSensitive ? 2 : 3, Clear, ControllerPrompt.Y);
-        if (IsSensitive) AddKey("Show", "Reveal", 5, 4, 2, TogglePassword, ControllerPrompt.RightStickPress);
-        AddKey(DismissLabel, "Cancel", 5, 6, 2, () => Complete(false), ControllerPrompt.B);
-        AddKey(commitLabel, "Commit", 5, 8, 2, () => Complete(true), ControllerPrompt.RightTrigger);
+        AddKey("Left", "CaretLeft", 4, 0, 4, () => MoveCaret(-1), ControllerPrompt.LeftBumper);
+        AddKey("Right", "CaretRight", 4, 4, 4, () => MoveCaret(1), ControllerPrompt.RightBumper);
+        AddKey("Shift", "Shift", 4, 8, 4, ToggleShift, ControllerPrompt.LeftTrigger);
+        AddKey("Symbols", "Symbols", 4, 12, 4, () => { repeat.Reset(); symbols = !symbols; RefreshCharacters(); });
+        spaceKey = AddKey("Space", "Space", 4, 16, 4, () => Insert(" "));
+        AddKey("Backspace", "Backspace", 5, 0, IsSensitive ? 4 : 5, Backspace, ControllerPrompt.X);
+        AddKey("Clear", "Clear", 5, IsSensitive ? 4 : 5, 3, Clear, ControllerPrompt.Y);
+        if (IsSensitive) AddKey("Show", "Reveal", 5, 7, 3, TogglePassword, ControllerPrompt.RightStickPress);
+        AddKey("Paste", "Paste", 5, IsSensitive ? 10 : 8, 4, () => _ = PasteAsync());
+        AddKey(DismissLabel, "Cancel", 5, IsSensitive ? 14 : 12, IsSensitive ? 3 : 4, () => Complete(false), ControllerPrompt.B);
+        AddKey(commitLabel, "Commit", 5, IsSensitive ? 17 : 16, IsSensitive ? 3 : 4, () => Complete(true), ControllerPrompt.RightTrigger);
         if (this.multiline || allowSubmit)
         {
             keys.RowDefinitions.Add(new() { Height = GridLength.Auto });
-            if (this.multiline) AddKey("New line", "NewLine", 6, 0, allowSubmit ? 5 : 10, () => Insert("\n"));
-            if (allowSubmit) AddKey(IsLive ? "Send Enter" : "Apply + Enter", "Submit", 6, this.multiline ? 5 : 0, this.multiline ? 5 : 10,
+            if (this.multiline) AddKey("New line", "NewLine", 6, 0, allowSubmit ? 10 : 20, () => Insert("\n"));
+            if (allowSubmit) AddKey(IsLive ? "Send Enter" : "Apply + Enter", "Submit", 6, this.multiline ? 10 : 0, this.multiline ? 10 : 20,
                 () => { if (IsLive) SendLive(new(KeyboardEditKind.Key, Key: "Enter", KeyCode: 13)); else { SubmitRequested = true; Complete(true); } });
         }
         WidgetControllerPrompts.Changed += RefreshPrompts;
@@ -181,8 +183,17 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         body.Width = IsFloating ? Math.Max(1, floatingWidth - (IsLive ? 28 : 52) * interfaceScale) :
             Math.Max(1, Math.Min(640 * interfaceScale, root.Size.Width - (IsLive ? 28 : 120) * interfaceScale));
         foreach (var (key, _, _, _) in prompts)
-            ((TextBlock)((StackPanel)key.Content).Children[1]).Visibility = IsFloating && floatingWidth < 540 * interfaceScale
+        {
+            var row = (StackPanel)key.Content;
+            var label = (TextBlock)row.Children[1];
+            label.Visibility = Visibility.Visible;
+            row.Measure(new(double.PositiveInfinity, double.PositiveInfinity));
+            var span = Grid.GetColumnSpan(key);
+            var width = Math.Max(0, body.Width - keys.ColumnSpacing * 19) / 20 * span + keys.ColumnSpacing * (span - 1);
+            label.Visibility = IsFloating && floatingWidth < 540 * interfaceScale ||
+                row.DesiredSize.Width + key.Padding.Left + key.Padding.Right + 2 > width
                 ? Visibility.Collapsed : Visibility.Visible;
+        }
     }
     internal void ApplyPopupMetrics(double zoom, double size, Windows.UI.Text.FontWeight weight, FontFamily? family)
     {

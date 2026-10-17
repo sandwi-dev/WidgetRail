@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetProtocol;
 using Windows.ApplicationModel.DataTransfer;
@@ -23,6 +24,33 @@ internal sealed partial class TextEntryValidationPage
             {
                 sensitive = secret; value = ""; Apply(); await Open();
                 var dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
+                var paste = (Button)FindDialog("Widget.TextEntry.Paste")!;
+                paste.Focus(FocusState.Keyboard);
+                await presenter.HandleControllerButtonAsync(ControllerButton.A);
+                var pasteDeadline = Environment.TickCount64 + 3000;
+                while (dialog.TakeValue() != "past" && Environment.TickCount64 < pasteDeadline) await Task.Delay(25);
+                Check(dialog.TakeValue() == "past" && FocusedId == "Widget.TextEntry.Paste",
+                    secret ? "Sensitive Paste button respects MaxLength and retains controller focus" : "Paste button respects MaxLength and retains controller focus");
+                await presenter.HandleControllerButtonAsync(ControllerButton.A, ControllerEventPhase.Repeated);
+                Check(dialog.TakeValue() == "past", "Holding Paste does not repeat the clipboard insertion");
+                if (secret)
+                {
+                    ((PasswordBox)Editor()).Password = "ab";
+                    await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper);
+                    await presenter.HandleControllerButtonAsync(ControllerButton.A);
+                    pasteDeadline = Environment.TickCount64 + 3000;
+                    while (dialog.TakeValue() != "apab" && Environment.TickCount64 < pasteDeadline) await Task.Delay(25);
+                    Check(dialog.TakeValue() == "apab", "Sensitive paste inserts at the visible controller caret without replacing surrounding text");
+                }
+                else
+                {
+                    var selected = (TextBox)Editor(); selected.Text = "abcd"; selected.Select(1, 2);
+                    await presenter.HandleControllerButtonAsync(ControllerButton.A);
+                    pasteDeadline = Environment.TickCount64 + 3000;
+                    while (dialog.TakeValue() != "apad" && Environment.TickCount64 < pasteDeadline) await Task.Delay(25);
+                    Check(dialog.TakeValue() == "apad", "Paste replaces the selected range while preserving text outside it");
+                }
+                await presenter.HandleControllerButtonAsync(ControllerButton.Y);
                 Check(dialog.HandleKeyboardKey(Windows.System.VirtualKey.V, control: true), "Paste shortcut is accepted from the controller keyboard");
                 var deadline = Environment.TickCount64 + 3000;
                 while (dialog.TakeValue() != "past" && Environment.TickCount64 < deadline) await Task.Delay(25);

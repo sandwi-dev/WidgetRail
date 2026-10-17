@@ -94,6 +94,9 @@ internal sealed partial class WidgetTextEntryDialog
             var panel = NativeDialogPresentation.FindPart<FrameworkElement>(this, "BackgroundElement");
             if (panel is not null)
             {
+                // The native template can retain its opening width after a text-scale
+                // change. Keep its viewport in sync with the keyboard's owned popup.
+                panel.Width = panel.MinWidth = panel.MaxWidth = width;
                 panel.MaxHeight = double.PositiveInfinity;
                 panel.MinHeight = 0;
                 panel.HorizontalAlignment = HorizontalAlignment.Left;

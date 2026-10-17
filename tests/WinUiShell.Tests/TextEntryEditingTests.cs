@@ -41,4 +41,14 @@ public sealed class TextEntryEditingTests
         Assert.AreEqual(0, TextEntryEditing.Move("", 0, 0, -1));
         Assert.AreEqual(0, TextEntryEditing.Move("", 0, 0, 1));
     }
+
+    [TestMethod]
+    public void PasteFitsWholeTextElementsAtTheCaretOrSelection()
+    {
+        Assert.AreEqual(new TextEntryEditing.Edit("apab", 3), TextEntryEditing.Paste("ab", 1, 0, "paste", 4));
+        Assert.AreEqual(new TextEntryEditing.Edit("a😀d", 3), TextEntryEditing.Paste("abcd", 1, 2, "😀more", 4));
+        Assert.AreEqual(new TextEntryEditing.Edit("ab", 1), TextEntryEditing.Paste("ab", 1, 0, "😀", 3));
+        Assert.AreEqual(new TextEntryEditing.Edit("ae\u0301b", 3), TextEntryEditing.Paste("ab", 1, 0, "e\u0301more", 4));
+        Assert.AreEqual(new TextEntryEditing.Edit("abcd", 1), TextEntryEditing.Paste("abcd", 1, 2, "", 4));
+    }
 }
