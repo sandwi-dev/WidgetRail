@@ -64,8 +64,10 @@ internal static class QuickControlsTests
                 state[skills?"skills":"items"]=JsonSerializer.SerializeToNode(Enumerable.Range(1,count).Select(i=>new{id=i,title="Skill "+i,name="Item "+i,slot="Slot "+i,gems=Array.Empty<object>(),details=Array.Empty<object>()}));
                 state[skills?"skillSets":"itemSets"]=JsonSerializer.SerializeToNode(Enumerable.Range(1,sets).Select(i=>new{id=i,title="Set "+i,active=i==1}));
                 Set("result",new PobResult(JsonSerializer.SerializeToElement(state),xml));Set("section",section);Set("detailKind","");
-                check(Shortcut(View(),"pob.inventory.rows")== (count>8&&(skills||sets>1)),section+" long-list shortcut reaches available group/set controls: "+count+" / "+sets);
-                if(count>8&&sets>1){await Jump("pob.inventory.tools");await Jump("pob.inventory.rows");}
+                check(Shortcut(View(),"pob.inventory.rows")== (count>8),section+" long-list shortcut reaches controls even with one set: "+count+" / "+sets);
+                check(Shortcut(View(),"pob.inventory.tools")== (count>8),section+" controls provide the return shortcut only for long lists: "+count+" / "+sets);
+                if(!skills)check(Nodes(View().Root).Single(n=>n.Id=="pob.inventory.tools").InitialChildFocusId=="pob.inventory","Equipment controls initially focus Item inventory: "+sets+" set(s)");
+                if(count>8){await Jump("pob.inventory.tools");await Jump("pob.inventory.rows");}
             }
             foreach(var count in new[]{3,12})
             {

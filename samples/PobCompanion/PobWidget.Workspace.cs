@@ -300,11 +300,11 @@ public sealed partial class PobWidget
                     .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
         }
         var sets=A(State,skills?"skillSets":"itemSets").Length>1;
-        var quick=(skills||sets)&&NeedsQuickControls(entries.Length);
+        var quick=NeedsQuickControls(entries.Length);
         ContainerElement tools=UI.Stack("pob.inventory.tools",header.ToArray()).Classes("pob-buildtools");
         ContainerElement rows=UI.VerticalScroll("pob.inventory.rows",list.ToArray()).Classes("pob-scroll");
-        if(sets||skills)tools=QuickControls(tools,sets?"pob.set."+(skills?"skills":"items"):"pob.group-create","pob.inventory.rows",skills?"Skill groups":"Equipment",quick);
-        if(entries.Length>0)rows=QuickControls(rows,"pob."+kind+"."+I(entries[0],"id"),"pob.inventory.tools",skills?"Group controls":"Equipment set",quick);
+        tools=QuickControls(tools,skills?(sets?"pob.set.skills":"pob.group-create"):"pob.inventory","pob.inventory.rows",skills?"Skill groups":"Equipment",quick);
+        if(entries.Length>0)rows=QuickControls(rows,"pob."+kind+"."+I(entries[0],"id"),"pob.inventory.tools",skills?"Group controls":"Equipment controls",quick);
         return Split("inventory",UI.Stack("pob.list",tools,rows).Classes("pob-panel","pob-tree-main"), detailPanel, 1, 1.55);
     }
 

@@ -261,3 +261,30 @@ including overlay routing with either preference, invalid price feedback, retain
 and returning to Items without changing the saved build. Native search-page labels were
 visually checked in trade-routing-search.png. The running controller-enabled candidate uses
 trade-actions-host03 with trade-routing-catalog and the original data/settings.
+
+### Next delivery order: useful trade recommendations
+
+1. Add an explicit Evaluate results action for a batch of listings supplied by normal website
+   browsing (20 by default, configurable up to 100). Reuse upstream conversion, calculation,
+   weights and ranking. Calculate every item against the same committed build/slot/configuration,
+   never against the preceding preview. Show evaluated/available counts, progress, cancellation,
+   and excluded-item reasons. Do not imply the whole market has been evaluated.
+2. Present a ranked shortlist beside the website with item identity, price, score under the chosen
+   weights, important damage/defence/resource changes and downsides. Selection updates the existing
+   comparison panel without navigating or scrolling the website. Keep full details, seller lookup
+   and Equip explicit; preserve selection while results arrive. Recalculate or mark scores stale
+   when the baseline, slot or weights change. Price-aware ranking requires valid exchange rates.
+3. Expose upstream custom weights and applicable advanced search options behind compact advanced
+   controls, retaining useful presets. Add empty-slot searches with category/base choices only
+   when upstream cannot infer them. Never equip a dummy item to generate a search.
+4. Expose upstream predefined modifier sources and searchable modifier choices for existing items,
+   keeping custom text separate and preserving eligibility, ranges, identity, recovery and Undo.
+5. Gate each delivery with both-engine calculation comparisons and full controller workflows:
+   search, batch evaluation, shortlist navigation, detail scrolling, cancellation, seller lookup,
+   changed build, hide/reopen and recovery. Inspect the native UI and do not buy or message sellers.
+
+The immediate equipped-items LS fix removes the obsolete multiple-set prerequisite. Long lists
+now jump to Equipment controls even with one set; controls offer LS back to the remembered list.
+The default entry is Item inventory. Both quick-controls suites pass 116 checks
+(`equipment-shortcut-tests{1,2}.txt`). Candidate uses equipment-shortcut-catalog with the existing
+host and original data/settings; the user's restored comparison was preserved during replacement.
