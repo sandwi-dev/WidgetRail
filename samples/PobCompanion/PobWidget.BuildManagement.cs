@@ -81,7 +81,7 @@ public sealed partial class PobWidget
         return UI.Stack("pob.library.detail",
             Text(selected.Name,"library.selected.title","pob-heading"),
             Text(selected.Id==documentId?"Current build":"Saved build","library.selected.status","pob-muted"),
-            Button("Open build","saved."+selected.Id,"library.open").FocusLeft("pob.saved-builds"),
+            UI.Stack("pob.library.open-action",Button("Open build","saved."+selected.Id,"library.open").FocusLeft("pob.saved-builds")).RememberChildFocus("pob.library.open"),
             Field("Build name",UI.TextEntry(selected.Name,"Build name","library-rename","pob.library.rename",100).FocusLeft("pob.saved-builds").Classes("pob-input"),"library-name"),
             Button("Duplicate build","library-duplicate").FocusLeft("pob.saved-builds"),
             Button("Delete build…","library-delete").FocusLeft("pob.saved-builds"))

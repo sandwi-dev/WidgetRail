@@ -68,6 +68,10 @@ internal static class ManagementTests
             check(WorkStateTests.SameBuild(PobWorkStore.Read(directory,copy,game)!.CommittedXml,committed)&&PobWorkStore.Read(directory,copy,game)!.Undo.Length==0,"Duplicate creates an independent build with fresh history");
             await Action("library-search","no matching build");check(Has("pob.library.empty"),"Library search has a usable empty state");
             await Action("library-search","");await Action("library-sort.name");await Action("library-select."+copy);
+            var selectionFocus=widget.Render().FocusGroupEntryRequest;
+            check(selectionFocus?.GroupId=="pob.library.open-action"&&Nodes(Snapshot().Root).Single(n=>n.Id==selectionFocus.GroupId).InitialChildFocusId=="pob.library.open","Activating a saved build explicitly focuses Open build, independently of remembered detail focus");
+            await Action("library-select."+copy);
+            check(widget.Render().FocusGroupEntryRequest?.RequestId>selectionFocus!.RequestId,"Activating the same saved build issues a fresh Open build focus request");
             await Action("library-delete");check(Snapshot().ActiveInputScopeId=="pob.delete-confirmation.scope","Delete uses an isolated confirmation scope");
             await Action("delete-cancel");check(File.Exists(Path.Combine(directory,copy+".work.json")),"Cancel leaves the selected build intact");
             await Action("library-delete");await Action("delete-confirm");

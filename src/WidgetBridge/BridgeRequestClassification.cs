@@ -62,7 +62,10 @@ internal readonly record struct BridgeRequestKey
     internal BridgeIndexedRangeRequest? IndexedRange { get; private init; }
     internal BridgeIndexedArtworkRequest? IndexedArtwork { get; private init; }
     internal bool IsIndependent => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.CancelIndexedRange or
-        BridgeRequestKind.CancelIntent or
+        // Preparation validates source authority under the registry operation gate,
+        // then awaits author code on its own bounded lane. Do not hold the widget
+        // FIFO while it runs: progress snapshots and cancellation must stay live.
+        BridgeRequestKind.PrepareIntent or BridgeRequestKind.CancelIntent or
         BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or
         BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork;
     internal bool IsIndexedProvider => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ResolveIndexedArtwork;

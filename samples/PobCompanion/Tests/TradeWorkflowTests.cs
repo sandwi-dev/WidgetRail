@@ -24,6 +24,8 @@ internal static class TradeWorkflowTests
             var helmet=baseline.State.GetProperty("items").EnumerateArray().First(i=>i.GetProperty("slot").GetString()=="Helmet").GetProperty("id").GetInt32();
             await Action("section.3");await Action("item."+helmet);await Action("trade");
             var search=Nodes(View().Root).Single(n=>n.Id=="pob.trade-open");
+            var pasteHelp=Nodes(View().Root).Single(n=>n.Id=="pob.trade.paste-help").Text!;
+            check(pasteHelp.Contains("Ctrl+C")&&(game==2?pasteHelp.Contains("no built-in Copy item button"):pasteHelp.Contains("On the trade site, use Copy item")),"Item-copy instructions distinguish PoE2 website limitations from PoE1");
             check(search.IsDisabled!=true&&search.Intent?.PreparationKey?.StartsWith("pob.trade-search.",StringComparison.Ordinal)==true&&!Nodes(View().Root).Any(n=>n.Id=="pob.trade-build"),"Trade offers one enabled Search action that prepares its URL on invocation");
             check(search.Intent!.Routing==WidgetIntentRouting.Windows&&search.Intent.Version==2,"Search respects the default browser and declares support for long generated URLs");
             await Action("trade-priority.life");await Action("trade-budget","not a price");

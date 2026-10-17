@@ -114,6 +114,17 @@ internal sealed class BridgeRequestDispatcher : IAsyncDisposable
                 _widgetTails.TryGetValue(requestKey.WidgetId, out var tail)
                 ? tail
                 : Task.CompletedTask;
+            if (requestKey.Kind == BridgeRequestKind.PrepareIntent)
+            {
+                // A cancelled caller can return before its author callback drains.
+                // Keep successive preparations ordered without putting their long
+                // lifetime in the widget FIFO used by progress/input snapshots.
+                predecessor = Task.WhenAll(_active.Values.Where(entry =>
+                    entry.Key.Kind == BridgeRequestKind.PrepareIntent &&
+                    entry.WidgetId == requestKey.WidgetId).Select(entry => entry.Completion));
+                if (requestKey.WidgetId is not null && _widgetTails.TryGetValue(requestKey.WidgetId, out var inputTail))
+                    predecessor = Task.WhenAll(predecessor, inputTail);
+            }
             if (requestKey.Kind == BridgeRequestKind.CancelIndexedRange && requestKey.IndexedRange is { } demand)
             {
                 var earlierRead = _active.Values.FirstOrDefault(entry => entry.Key.Kind is (BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange) && entry.Key.IndexedRange == demand);

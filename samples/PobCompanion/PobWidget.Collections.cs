@@ -11,6 +11,7 @@ public sealed partial class PobWidget
     private WidgetIndexedCollection<ListQuery,ListEntry>? passives,library;
     private PobResult? passiveResult;
     private string? passiveFilter,passiveReturnKey;
+    private bool libraryOpenFocusRequested;
 
     private WidgetIndexedCollection<ListQuery,ListEntry> CreateList(string id,bool isPassive)=>
         CreateIndexedCollection<ListQuery,ListEntry>(id,isPassive?passiveQuery:libraryQuery,0,new()
@@ -82,6 +83,7 @@ public sealed partial class PobWidget
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
         if(busy||focusRequestSequence==0)return null;
+        if(detailKind=="library"&&libraryOpenFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.library.open-action"};
         if(modifierFocusRequested&&section=="Configuration"&&configSection=="Custom modifiers"&&string.IsNullOrWhiteSpace(filter))return new(){RequestId=focusRequestSequence,GroupId="pob.custom.edit-tools"};
         if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};
         if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.history"};

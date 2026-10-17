@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$EvidenceDirectory
 )
 # Run against the foreground Saved builds page in a disposable profile with
-# at least two builds. This changes focus only; no build actions are invoked.
+# at least two builds. This selects library rows and changes focus, without
+# opening or modifying any build.
 $ErrorActionPreference='Stop'
 $output=[IO.Path]::GetFullPath($EvidenceDirectory)
 if(Test-Path -LiteralPath $output){throw 'Choose a fresh evidence directory.'}
@@ -53,6 +54,12 @@ try{
     Test-FocusMove left 'Widget.pob.saved-builds.Item.1'
     Test-FocusMove up 'Widget.pob.saved-builds.Item.0'
     Test-FocusMove right 'Widget.pob.library.rename'
+    Test-FocusMove left 'Widget.pob.saved-builds.Item.0'
+    Test-FocusMove enter 'Widget.pob.library.open'
+    Test-FocusMove left 'Widget.pob.saved-builds.Item.0'
+    Test-FocusMove down 'Widget.pob.saved-builds.Item.1'
+    Test-FocusMove enter 'Widget.pob.library.open'
+    Test-FocusMove left 'Widget.pob.saved-builds.Item.1'
     @{passed=$true;checks=$checks.ToArray()}|ConvertTo-Json|Set-Content (Join-Path $output 'result.json')
     "Passed $($checks.Count) native library navigation checks."
 }catch{

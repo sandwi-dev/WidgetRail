@@ -31,6 +31,8 @@ internal sealed partial class OverlayShellPage
                 {
                     var pending = InvokeIntentAsync(new(source, new("prepare-wait", "prepare-wait", ControllerButton.A, InputScopeId: "root")));
                     await Until(() => preparingIntent);
+                    await Until(() => Walk(surface!).OfType<TextBlock>().Any(text => text.Text == "Calculating search…"));
+                    Check(!pending.IsCompleted, "Native progress renders while intent preparation is still pending");
                     await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
                     await pending;
                     await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);

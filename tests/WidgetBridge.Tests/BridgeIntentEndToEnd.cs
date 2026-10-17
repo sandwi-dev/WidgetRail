@@ -17,6 +17,33 @@ internal static class BridgeIntentEndToEnd
         _=await session.ListWidgetsAsync(deadline.Token);
         async Task<WidgetPresentationFrame> Source()=>await session.EstablishPresentationAsync(session.GetTarget("intent-source"),WidgetLifecycleState.Interactive,deadline.Token);
         var source=await Source();var ordinal=source.Authority.WorkerRun;
+        using(var progressCancellation=CancellationTokenSource.CreateLinkedTokenSource(deadline.Token))
+        {
+            var progress=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<WidgetPresentationChangedEventArgs> changed=(_,args)=>
+            {
+                if(args.State.WidgetId=="intent-source"&&args.State.LastGood is {} frame&&
+                    frame.Snapshot.Root.Children.Any(node=>node.Id=="preparation-progress"&&node.Text=="Calculating search…"))progress.TrySetResult();
+            };
+            session.PresentationChanged+=changed;
+            var pending=session.PrepareIntentAsync(source,new("prepare-wait","prepare-wait",ControllerButton.A,InputScopeId:"root"),progressCancellation.Token);
+            try
+            {
+                await progress.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                Check(!pending.IsCompleted);
+            }
+            finally
+            {
+                progressCancellation.Cancel();
+                try{await pending;}catch(OperationCanceledException){}
+                session.PresentationChanged-=changed;
+            }
+        }
+        // Retry immediately after cancellation, while the old worker callback may
+        // still be draining. No intervening snapshot request should be necessary.
+        source=session.GetState("intent-source")!.LastGood!;
+        Check((await session.PrepareIntentAsync(source,new("prepare-fail","prepare-fail",ControllerButton.A,InputScopeId:"root"),deadline.Token)).PreparationFailed);
+        source=await Source();
         var action=new WidgetActionEvent("prepare","prepare",ControllerButton.A,InputScopeId:"root");
         var prepared=await session.PrepareIntentAsync(source,action,deadline.Token);
         Check(prepared.Kind==WidgetIntentLaunchKind.ExternalBrowser);
@@ -227,6 +254,7 @@ internal sealed class IntentBridgeProbeWidget : Widget
     private int calls;
     private string feedback = "None";
     private string readiness = "None";
+    private volatile bool preparing;
     public override ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
         readiness = LifecycleState.ToString();
@@ -252,7 +280,8 @@ internal sealed class IntentBridgeProbeWidget : Widget
             Link("prepare","Calculate and open","placeholder").OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url="https://example.com/placeholder"}),WidgetIntentRouting.Windows).PrepareIntent("calculate"),
             Link("prepare-wait","Cancel preparation","placeholder").PrepareIntent("wait"),
             Link("prepare-fail","Failed preparation","placeholder").PrepareIntent("fail"),
-            UI.Button("Publish browser notification","notify-browser","notify-browser")), "open")
+            UI.Button("Publish browser notification","notify-browser","notify-browser"),
+            UI.Text(preparing?"Calculating search…":"Ready","preparation-progress")), "open")
         { PinnedLayouts = [WidgetView.PinnedLayout("links-pin", "Pinned links", new(),
             UI.Stack("pin-root", Link("pin-open", "Pinned guide", "pinned"), UI.CollectionList("pin-links", links, 52, "Pinned links")).InputScope("pin-scope"),
             initialFocusId: "pin-open", activeInputScopeId: "pin-scope")] };
@@ -272,8 +301,19 @@ internal sealed class IntentBridgeProbeWidget : Widget
     public override async ValueTask<JsonElement?> OnPrepareIntentAsync(string key,WidgetIntentRequest request,CancellationToken cancellationToken=default)
     {
         if(target||key=="fail")return null;
-        await Task.Delay(key=="wait"?Timeout.Infinite:3000,cancellationToken);
-        return JsonSerializer.SerializeToElement(new{url="https://example.com/calculated"});
+        preparing=true;Invalidate();
+        try
+        {
+            await Task.Delay(key=="wait"?Timeout.Infinite:3000,cancellationToken);
+            return JsonSerializer.SerializeToElement(new{url="https://example.com/calculated"});
+        }
+        finally
+        {
+            // Exercise a cooperative handler that needs asynchronous cleanup
+            // after cancellation, rather than relying on a scheduling race.
+            if(key=="wait")await Task.Delay(150);
+            preparing=false;Invalidate();
+        }
     }
     public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {

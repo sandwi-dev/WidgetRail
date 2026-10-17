@@ -33,6 +33,7 @@ public sealed partial class PobWidget
             if (pendingBefore is not null && detailKind=="node" && id=="preview-nodes")
             { showChangedNodes=!showChangedNodes;Invalidate();return ValueTask.CompletedTask; }
             quickControlTarget=null;
+            libraryOpenFocusRequested=false;
             if(id.StartsWith("quick-controls.",StringComparison.Ordinal))
             {
                 var target=id["quick-controls.".Length..];
@@ -87,7 +88,7 @@ public sealed partial class PobWidget
                 await RefreshMapAsync(token);
             },"Creating build…");
             else if(id=="rename" && documentId is not null) RenameBuild(documentId,action.CommittedText??"");
-            else if(parts[0]=="library-select"&&parts.Length==2&&savedBuilds.Any(b=>b.Id==parts[1])){librarySelection=parts[1];}
+            else if(parts[0]=="library-select"&&parts.Length==2&&savedBuilds.Any(b=>b.Id==parts[1])){librarySelection=parts[1];libraryOpenFocusRequested=true;focusRequestSequence++;}
             else if(id=="library-search")librarySearch=action.CommittedText??"";
             else if(parts[0]=="library-sort"&&parts.Length==2&&parts[1] is "recent" or "name")librarySort=parts[1];
             else if(id=="library-rename"&&librarySelection is {} rename)RenameBuild(rename,action.CommittedText??"");
