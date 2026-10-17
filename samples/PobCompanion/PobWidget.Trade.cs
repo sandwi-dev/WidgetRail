@@ -7,16 +7,6 @@ namespace WidgetRail.Samples.PobCompanion;
 public sealed partial class PobWidget
 {
     private string tradeSlot="",tradeLeague="Standard",tradeBudget="",tradeCurrency="divine",tradePriority="balanced",tradeMode="securable";
-    private CancellationTokenSource? tradePreparation;
-    private string? tradeIntentXml,tradeIntentContext;
-    private string tradeIntentKey="";
-    private string TradeIntentKey()
-    {
-        var context=JsonSerializer.Serialize(new{documentId,tradeSlot,tradePriority,tradeLeague,tradeBudget,tradeCurrency,tradeMode});
-        if(tradeIntentXml!=result?.Xml||tradeIntentContext!=context)
-        {tradeIntentXml=result?.Xml;tradeIntentContext=context;tradeIntentKey="pob.trade-search."+Guid.NewGuid().ToString("N");}
-        return tradeIntentKey;
-    }
     private string[] tradeLeagues=["Standard","Hardcore"];
     internal Func<int,CancellationToken,Task<string[]>> TradeLeagueLoader { get; init; } = PobTradeSearch.ReadLeaguesAsync;
     private static readonly (string Key,string Label)[] TradeModes=[("securable","Instant buyout"),("available","Instant buyout and in person"),("onlineleague","In person (online in league)"),("online","In person (online)"),("any","Any (includes offline)")];
@@ -35,8 +25,10 @@ public sealed partial class PobWidget
             tradeSlot=ItemSlot;detailKind="trade";focusRequestSequence++;ReadTradePreferences();
             RefreshTradeLeagues();return true;
         }
+        if(id=="trade-browse")
+        {ReadTradePreferences();Work(token=>OpenWebsiteAsync(BrowseTradeUrl(),token),"Opening trade website…");return true;}
         if(detailKind!="trade")return false;
-        if(id=="trade-open"&&overlayWebsites&&result is {} current)
+        if(id=="trade-open"&&result is {} current)
         {
             var slot=tradeSlot;var priority=tradePriority;var league=tradeLeague;var price=tradeBudget;var currency=tradeCurrency;var mode=tradeMode;
             Work(async token=>await OpenWebsiteAsync(await CalculateTradeUrlAsync(current.Xml,slot,priority,league,price,currency,mode,token),token),"Calculating upgrade search…");
@@ -53,42 +45,10 @@ public sealed partial class PobWidget
         Work(_=>{BuildDocument.SaveAtomic(Path.Combine(dataDirectory,"trade-settings.json"),JsonSerializer.Serialize(new{league=tradeLeague,budget=tradeBudget,currency=tradeCurrency,priority=tradePriority,mode=tradeMode}));return Task.CompletedTask;},"Saving search preferences…");
         return true;
     }
-    public override async ValueTask<JsonElement?> OnPrepareIntentAsync(string key,WidgetRail.WidgetProtocol.WidgetIntentRequest request,CancellationToken cancellationToken=default)
-    {
-        string xml,slot,priority,league,price,currency,mode;
-        using var preparation=CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        lock(gate)
-        {
-            if(detailKind!="trade"||busy||result is null||key!=TradeIntentKey())return null;
-            xml=result.Xml;slot=tradeSlot;priority=tradePriority;league=tradeLeague;price=tradeBudget;currency=tradeCurrency;mode=tradeMode;
-            busy=true;status="Calculating upgrade search…";feedback=null;tradePreparation=preparation;
-        }
-        Invalidate();
-        try
-        {
-            return JsonSerializer.SerializeToElement(new{url=await CalculateTradeUrlAsync(xml,slot,priority,league,price,currency,mode,preparation.Token)});
-        }
-        catch(OperationCanceledException)
-        {
-            lock(gate)ShowFeedback("Cancelled","Your build is unchanged.",ToastTone.Info);
-            cancellationToken.ThrowIfCancellationRequested();return null;
-        }
-        catch(Exception error)when(error is IOException or InvalidOperationException or JsonException)
-        {lock(gate)ShowFeedback("Search not opened",Limit(error.Message,350),ToastTone.Warning);return null;}
-        finally
-        {
-            lock(gate){tradePreparation=null;busy=false;status="";}
-            Invalidate();
-        }
-    }
-
-    private ButtonElement BrowseTradeButton()=>WebsiteButton("Browse trade","trade-browse",PobTradeSearch.SearchUrl(game,tradeLeague,
-        game==2?JsonSerializer.SerializeToElement(new{status=new{option=tradeMode}}):JsonSerializer.SerializeToElement(new{query=new{status=new{option=tradeMode}}})));
-    private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open")with
-    {
-        Intent=overlayWebsites?null:PobPreferences.Web(game==2?"https://www.pathofexile.com/trade2":"https://www.pathofexile.com/trade",extended:true)
-            with{PreparationKey=TradeIntentKey()}
-    };
+    private string BrowseTradeUrl()=>PobTradeSearch.SearchUrl(game,tradeLeague,
+        game==2?JsonSerializer.SerializeToElement(new{status=new{option=tradeMode}}):JsonSerializer.SerializeToElement(new{query=new{status=new{option=tradeMode}}}));
+    private ButtonElement BrowseTradeButton()=>Button("Browse trade website","trade-browse");
+    private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open");
     private async Task<string> CalculateTradeUrlAsync(string xml,string slot,string priority,string league,string price,string currency,string mode,CancellationToken token)
     {
         var budget=0d;
@@ -123,7 +83,7 @@ public sealed partial class PobWidget
             Text(tradeSlot,"trade.slot","pob-heading"),
             BrowseTradeButton(),
             Text("Search for non-unique equipment that may improve this build. PoB calculates the filters; listings and trading stay on the official website.","trade.help","pob-muted"),
-            Text("The trade website requires you to sign in. Your login stays in the browser you choose.","trade.website-help","pob-small pob-muted"),
+            Text("Trade opens in the overlay so you can compare listings beside your build. Sign in once; this widget remembers your login.","trade.website-help","pob-small pob-muted"),
             UI.Select("League",tradeLeagues.Select((l,i)=>new SelectOption("league"+i,l,"trade-league."+i,l==tradeLeague)).ToArray(),"pob.trade-league").Classes("pob-select"),
             UI.Select("Trade method",TradeModes.Select(m=>new SelectOption(m.Key,m.Label,"trade-mode."+m.Key,m.Key==tradeMode)).ToArray(),"pob.trade-mode").Classes("pob-select"),
             Text("Instant buyout lets you travel to the merchant and buy in game. In-person listings require contacting the seller.","trade.mode-help","pob-small"),
@@ -136,6 +96,6 @@ public sealed partial class PobWidget
             UI.Row("pob.trade.return",Button("Paste item to compare","item-paste"),Button("Refresh leagues","trade-refresh")).Classes("pob-toolbar"),
             Text(game==2
                 ?"In the overlay browser, use Compare in PoB beside a listing. For clipboard import, hover over an item in game and press Ctrl+C. The PoE2 website has no built-in Copy item button in an external browser."
-                :"In the overlay browser, use Compare in PoB beside a listing. On the trade site, use Copy item for clipboard import. In game, hover over an item and press Ctrl+C, then paste here.","trade.paste-help","pob-small pob-muted"),WebsitePreference())
+                :"In the overlay browser, use Compare in PoB beside a listing. On the trade site, use Copy item for clipboard import. In game, hover over an item and press Ctrl+C, then paste here.","trade.paste-help","pob-small pob-muted"))
             .Classes("pob-scroll","pob-panel")).Classes("pob-workspace");
 }

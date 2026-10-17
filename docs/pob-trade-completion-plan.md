@@ -244,3 +244,20 @@ tests wait for the requested controls focus to settle before sending the next di
 The final screenshot is `trade-actions-native03/evidence/final.png`. Candidate uses
 `trade-actions-host03` and `trade-actions-catalog`, with the original data/settings and controller
 input enabled. The broader approved ranking/search/modifier scope above remains pending.
+
+### Trade routing and exit labels
+
+Search trade and Browse trade website always use the widget's persistent overlay session,
+regardless of the general-link browser preference. The trade page no longer includes that
+preference; elsewhere it is labelled Open general links in and explicitly excludes trade.
+The obsolete external trade intent-preparation path was removed; calculation progress and
+cancellation use the existing widget operation flow. No host/intent API change was needed.
+
+Finish comparing replaces Close comparison in the expanded view: it ends the current preview
+and returns to Items without equipping it. Hiding the side panel remains a separate action.
+
+Verification: trade-routing-tests1.txt passes 56 checks and trade-routing-tests2.txt passes 57,
+including overlay routing with either preference, invalid price feedback, retained sessions,
+and returning to Items without changing the saved build. Native search-page labels were
+visually checked in trade-routing-search.png. The running controller-enabled candidate uses
+trade-actions-host03 with trade-routing-catalog and the original data/settings.

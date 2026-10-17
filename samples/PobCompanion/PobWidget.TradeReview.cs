@@ -67,7 +67,7 @@ public sealed partial class PobWidget
                 SaveWork(before,new(before.Xml,undo.ToArray(),redo.ToArray()),refreshXml:false);
                 lock(gate){result=before;pendingBefore=null;pastedItem=null;tradeListing=null;tradeBrowsing=false;websiteReview=false;detailKind="";focusRequestSequence++;}
                 return Task.CompletedTask;
-            },"Closing comparison…");return true;
+            },"Finishing comparison…");return true;
         }
         if(id.StartsWith("trade-review-slot.",StringComparison.Ordinal)&&int.TryParse(id[18..],out var slot)&&slot>=0&&slot<itemDraftSlots.Length)
         {
@@ -205,7 +205,7 @@ public sealed partial class PobWidget
                 Button(websiteSession is null?"Find saved listing":"Return to listings","website-resume","item.compare.browse"),
                 Button("Equip in build","trade-review-equip","item.compare.equip"),
                 Button("Find seller’s item","trade-review-find","item.compare.find"),
-                Button("Close comparison","trade-review-close","item.compare.close")).Classes("pob-toolbar"))
+                Button("Finish comparing","trade-review-close","item.compare.close")).Classes("pob-toolbar"))
             .RememberChildFocus("pob.item.compare.browse").Classes("pob-buildtools");
         return UI.Stack("pob.item.compare.page",controls,columns).Classes("pob-workspace","pob-tree-main");
     }

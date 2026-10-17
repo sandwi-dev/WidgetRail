@@ -12,7 +12,7 @@ public sealed partial class PobWidget
         cancellationToken.ThrowIfCancellationRequested();
         lock (gate)
         {
-            if (action.ActionId == "cancel-operation") { if(tradePreparation is not null)tradePreparation.Cancel();else Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
+            if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
             if(HandleWebsiteAction(action))return ValueTask.CompletedTask;
             if(HandleTradeReviewAction(action)){Invalidate();return ValueTask.CompletedTask;}
