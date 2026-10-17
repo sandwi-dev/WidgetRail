@@ -33,11 +33,13 @@ public sealed record WebSessionSource
 
 public sealed record WebSessionDefinition(string Key, string AccessibleName, WebSessionSource Source)
 {
+    public WebSessionPageAdapter? PageAdapter { get; init; }
     public WebBrowserOptions Browser { get; init; } = new()
     { Chrome = BrowserChrome.OnDemand, Background = BrowserBackgroundMode.KeepAlive };
     public bool IsWellFormed() => WebSessionContract.IsKey(Key) &&
         AccessibleName is { Length: > 0 and <= 160 } && !string.IsNullOrWhiteSpace(AccessibleName) &&
-        !AccessibleName.Any(char.IsControl) && Source?.IsWellFormed() == true && Browser?.IsWellFormed() == true;
+        !AccessibleName.Any(char.IsControl) && Source?.IsWellFormed() == true && Browser?.IsWellFormed() == true &&
+        (PageAdapter is null || Source.Kind == WebSessionSourceKind.Remote && PageAdapter.IsWellFormed());
 }
 
 /// <summary>Opaque, worker-lifetime reference. It carries no browser data or credentials.</summary>
@@ -47,7 +49,7 @@ public sealed record WebSessionReference(string Id)
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WebSessionOperation>))]
-public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close }
+public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close, OpenAdapted }
 
 public sealed record WebSessionCommand(WebSessionOperation Operation)
 {

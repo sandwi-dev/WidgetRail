@@ -32,7 +32,12 @@ public sealed partial class PobWidget
     {
         if(action.ActionId=="website-close"){websiteVisible=false;Invalidate();return true;}
         if(websiteVisible)return true;
-        if(action.ActionId=="website-resume"&&websiteSession is not null){websiteVisible=true;Invalidate();return true;}
+        if(action.ActionId=="website-resume"&&websiteSession is not null)
+        {
+            if(websiteSession.Completion.IsCompleted&&websiteUrl is {} retry)Work(token=>OpenWebsiteAsync(retry,token),"Reopening website…");
+            else{websiteVisible=true;Invalidate();}
+            return true;
+        }
         if(overlayWebsites&&websiteActions.TryGetValue(action.ActionId,out var url))
         {Work(token=>OpenWebsiteAsync(url,token),"Opening website…");return true;}
         return false;
@@ -47,9 +52,11 @@ public sealed partial class PobWidget
         if(session is null)
         {
             session=await HostServices.WebSessions.OpenAsync(new("websites","PoB website",WebSessionSource.Remote(url))
-            {Browser=new(){Storage=BrowserStorage.Persistent,ProfileKey="websites",Background=BrowserBackgroundMode.Automatic,Chrome=BrowserChrome.Toolbar,Popups=BrowserPopupMode.Hosted}},token);
+            {Browser=new(){Storage=BrowserStorage.Persistent,ProfileKey="websites",Background=BrowserBackgroundMode.Automatic,Chrome=BrowserChrome.Toolbar,Popups=BrowserPopupMode.Hosted},
+             PageAdapter=new(){ScriptAsset="payload/web/trade-actions.js",Origins=["https://www.pathofexile.com"],Responses=[new("https://www.pathofexile.com",game==2?"/api/trade2/fetch/":"/api/trade/fetch/")]}},token);
             if(token.IsCancellationRequested){await session.DisposeAsync();token.ThrowIfCancellationRequested();}
             websiteSession=session;
+            _=ReadWebsiteActionsAsync(session);
         }
         else if(websiteUrl!=url)await session.NavigateAsync(url,token);
         token.ThrowIfCancellationRequested();

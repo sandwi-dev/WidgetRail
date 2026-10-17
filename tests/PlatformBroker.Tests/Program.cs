@@ -8,6 +8,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Web sessions bind owner and retire pending authority", WebSessionTests.OwnershipAsync),
     ("Web session canceled startup retires native work", WebSessionTests.CancellationAsync),
     ("Web session sources validate package and network boundaries", WebSessionTests.SourcesAsync),
+    ("Web session adapters require explicit operation and retain remote messaging isolation", WebSessionTests.AdaptedAsync),
     ("Widget notifications are intrinsic bounded and available in background", NotificationBrokerTests.Authority),
     ("Widget activity is intrinsic scoped and clears", ActivityBrokerTests.Authority),
     ("Marketplace management is intrinsic narrow and cannot smuggle mutations through reads", MarketplaceBrokerTests.Authority),

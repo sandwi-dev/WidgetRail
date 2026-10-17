@@ -63,9 +63,11 @@ public sealed class WebSessionRegistry
         lock (gate)
         {
             if (owner.Retired) throw Failure("session_closed");
-            if (command.Operation == WebSessionOperation.Open)
+            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted)
             {
                 if (command.Definition?.IsWellFormed() != true || command.Session is not null || command.MessageBase64 is not null || command.ResourceUrl is not null || command.Destination is not null)
+                    throw Failure("invalid_payload");
+                if ((command.Operation == WebSessionOperation.OpenAdapted) != (command.Definition.PageAdapter is not null))
                     throw Failure("invalid_payload");
                 if (sessions.Values.Any(s => ReferenceEquals(s.Owner, owner) && s.Definition.Key == command.Definition.Key)) throw Failure("session_exists");
                 if (sessions.Count >= 8 || sessions.Values.Count(s => ReferenceEquals(s.Owner, owner)) >= 4) throw Failure("session_limit");
@@ -128,7 +130,7 @@ public sealed class WebSessionRegistry
         }
         catch
         {
-            if (command.Operation == WebSessionOperation.Open) lock (gate) CloseLocked(session, "session_failed");
+            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted) lock (gate) CloseLocked(session, "session_failed");
             throw;
         }
     }

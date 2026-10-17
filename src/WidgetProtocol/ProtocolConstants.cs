@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 85;
+    public const int CurrentVersion = 86;
+    public const int WebSessionPageAdapterVersion = 86;
     public const int IntentPreparationVersion = 85;
     public const int ExtendedWebLinksVersion = 84;
     public const int WebSessionVersion = 83;

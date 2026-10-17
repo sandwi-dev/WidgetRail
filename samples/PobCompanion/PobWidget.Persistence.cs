@@ -12,7 +12,7 @@ public sealed partial class PobWidget
         return A(response.State,"slots").Select(s=>S(s,"name")).ToArray();
     }
     private PobWorkState CurrentWork(string committedXml, PobPendingChange? pending = null, string? draft = null) =>
-        new(committedXml, undo.ToArray(), redo.ToArray(), pending, draft);
+        new(committedXml, undo.ToArray(), redo.ToArray(), pending, draft, draft is null ? null : tradeListing);
 
     private void SaveWork(PobResult committed, PobWorkState work, string? targetId = null, bool refreshXml = true)
     {
@@ -91,6 +91,7 @@ public sealed partial class PobWidget
             foreach (var entry in (work?.Undo ?? []).Reverse()) undo.Push(entry);
             foreach (var entry in (work?.Redo ?? []).Reverse()) redo.Push(entry);
             pastedItem = work?.ItemDraft; previewSlot = work?.Pending?.Slot; itemDraftSlots=draftSlots;
+            tradeListing=work?.TradeListing;
             selections.Clear(); detailId = 0; section = "Calcs"; detailKind = ""; filter = "";
             passiveReturnKey = null; nodeReturnToMap = false; historyFocusRequested = false; compatibilityNotice = "";
             // Restore only the context needed to finish the user's pending work.
@@ -119,14 +120,14 @@ public sealed partial class PobWidget
         var text = raw ?? readClipboard();
         if (text.Length > 32768 || string.IsNullOrWhiteSpace(text)) throw new IOException("Copy an item description first (up to 32,768 characters).");
         var slots=await ItemSlotsAsync(text,result!.Xml,token);
-        SaveWork(result!, CurrentWork(result!.Xml, draft: text), refreshXml: false);
-        lock (gate) { pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; section = "Items"; }
+        SaveWork(result!, new(result!.Xml,undo.ToArray(),redo.ToArray(),ItemDraft:text), refreshXml: false);
+        lock (gate) { tradeListing=null;pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; section = "Items"; }
     }, "Reading item…");
 
     private void DiscardItemDraft() => Work(_ =>
     {
         SaveWork(result!, CurrentWork(result!.Xml), refreshXml: false);
-        lock (gate) { pastedItem = null; previewSlot = null; detailKind = ""; }
+        lock (gate) { tradeListing=null;pastedItem = null; previewSlot = null; detailKind = ""; }
         return Task.CompletedTask;
     }, "Discarding item draft…");
 }

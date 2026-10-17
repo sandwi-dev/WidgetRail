@@ -9,6 +9,7 @@ local planningFeatures=dofile(adapterDirectory..'planning-features.lua')
 local gameExport=dofile(adapterDirectory..'build-export.lua')
 local setManagement=dofile(adapterDirectory..'set-management.lua')
 local tradeSearch=dofile(adapterDirectory..'trade-search.lua')
+local tradeItem=dofile(adapterDirectory..'trade-item.lua')
 local itemAuthoring=dofile(adapterDirectory..'item-authoring.lua')
 itemAuthoring.configure(planningFeatures)
 local passiveChoices=dofile(adapterDirectory..'passive-choices.lua')
@@ -320,6 +321,7 @@ local function command(req)
   local op=req.op
   if op=='game-export' then return {state={files=gameExport.export(req)},xml=build:SaveDB('code')}end
   if op=='trade-search' then return {state={query=tradeSearch.generate(req)},xml=build:SaveDB('code')}end
+  if op=='trade-item' then return {state={raw=tradeItem.convert(req.entry)},xml=build:SaveDB('code')}end
   if op=='item-bases' then return{state={choices=itemAuthoring.bases(clean)},xml=build:SaveDB('code')}end
   if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean)},xml=build:SaveDB('code')}end
   if op=='item-unique-draft' then return{state={authoring=itemAuthoring.uniqueDraft(req,clean,textRuns)},xml=build:SaveDB('code')}end

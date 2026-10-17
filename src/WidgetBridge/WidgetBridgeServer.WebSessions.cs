@@ -28,8 +28,10 @@ public sealed partial class WidgetBridgeServer
                     var configured = catalog.GetConfigured(item.WidgetId);
                     if (configured.InstanceId != item.Identity.InstanceId || configured.PackageId != item.Identity.PackageId ||
                         configured.PublisherId != item.Identity.PublisherId) throw new BridgeProtocolException("Web session owner retired.");
-                    var resources = item.Command.Definition?.Source is { Kind: WebSessionSourceKind.Package } source
-                        ? EmbeddedMediaAssetResolver.ResolveResources(configured, source.Resources) : [];
+                    var declared = item.Command.Definition?.Source is { Kind: WebSessionSourceKind.Package } source
+                        ? source.Resources : item.Command.Definition?.PageAdapter is { } adapter
+                            ? [new EmbeddedMediaResource { Path = adapter.ScriptAsset, ContentType = "text/javascript" }] : [];
+                    var resources = declared.Count > 0 ? EmbeddedMediaAssetResolver.ResolveResources(configured, declared) : [];
                     if (registry.IsCurrent(item)) result.Add(new(item, resources.Select(r =>
                         new BridgeWebSessionResource(r.Path, r.ContentType, r.Sha256, r.ContentBase64)).ToArray()));
                 }

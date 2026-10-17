@@ -17,6 +17,7 @@ internal sealed partial class OverlayShellPage
         {
             var checks=new List<string>();string? error=null;
             var oldFixture=BrowserSurface.FixturePage;
+            var originalAppearance=Appearance;
             BrowserSurface.FixturePage=_=>"<!doctype html><title>Website fixture</title><input aria-label='Fixture input'><a href='/next'>Next page</a><p style='height:2000px'>Scrollable reference</p>";
             try
             {
@@ -44,6 +45,8 @@ internal sealed partial class OverlayShellPage
                 await page.EvaluateFixtureAsync("localStorage.setItem('pob-modal-test','saved'); document.cookie='pob-modal-test=saved;Max-Age=3600;SameSite=Lax;Secure'; window.sessionTest=42; true");
                 for(var cycle=0;cycle<3;cycle++)
                 {
+                    ApplyOverlayMotionValidationAppearance(originalAppearance with
+                    {Motion=cycle==1?WidgetRail.PlatformSettings.MotionPreference.Reduced:WidgetRail.PlatformSettings.MotionPreference.Full});
                     await hideAndReopen();
                     await Until(()=>visible&&foreground&&interactive&&!switching&&ReferenceEquals(Page(),page));
                     await Task.Delay(300);
@@ -93,6 +96,7 @@ internal sealed partial class OverlayShellPage
             finally
             {
                 BrowserSurface.FixturePage=oldFixture;
+                ApplyOverlayMotionValidationAppearance(originalAppearance);
                 await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new{passed=error is null,checks,error}));
             }
             bool Busy()=>surface?.CurrentBinding is not {} binding||Nodes(binding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation");

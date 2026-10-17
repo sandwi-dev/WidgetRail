@@ -52,7 +52,7 @@ internal sealed partial class BrowserOwner
                 if (entries.TryGetValue(key, out var closed)) await RetireAsync(key, closed);
                 return;
             }
-            if (request.Command.Operation == WebSessionOperation.Open)
+            if (request.Command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted)
             {
                 var definition = request.Command.Definition!;
                 if (!definition.IsWellFormed() || entries.ContainsKey(key)) throw new InvalidOperationException("Invalid hosted session request.");
@@ -102,7 +102,7 @@ internal sealed partial class BrowserOwner
             errorCode = "session_failed";
             // Page content and request payloads are deliberately absent from diagnostics.
             Diagnostics.FrontendFailureLog.Current.Write("web-session", null, $"operation={request.Command.Operation} code={errorCode}");
-            if (request.Command.Operation == WebSessionOperation.Open && entries.TryGetValue(key, out var failed)) await RetireAsync(key, failed);
+            if (request.Command.Operation is (WebSessionOperation.Open or WebSessionOperation.OpenAdapted) && entries.TryGetValue(key, out var failed)) await RetireAsync(key, failed);
         }
         finally
         {

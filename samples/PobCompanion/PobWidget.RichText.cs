@@ -78,6 +78,7 @@ public sealed partial class PobWidget
         var after=A(State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
         var rows=new List<WidgetElement>{Text("Equipment comparison · "+previewSlot,"item.compare.heading","pob-heading"),
             Text("Replacing "+S(before,"name","empty slot")+" with "+S(after,"name"),"item.compare.names")};
+        AddTradeListing(rows);
         AddComparison(rows,pendingBefore.State,State,"item.compare.stats");
         rows.Add(Text("Proposed item","item.compare.proposed","pob-eyebrow"));
         if(after.ValueKind==JsonValueKind.Object)rows.AddRange(ItemDetails(after));

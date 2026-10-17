@@ -232,6 +232,7 @@ public sealed partial class PobWidget : Widget
         if (detailKind == "choose-slot")
         {
             if(pendingBefore is not null)return ItemComparisonContent();
+            AddTradeListing(rows);
             rows.Add(Button("Discard item draft", "back")); rows.Add(Text("Choose the slot to replace", "slot.heading", "pob-heading"));
             rows.Add(UI.Row("pob.draft.actions",Button("Edit item","draft-edit"),Button("Save to inventory","draft-store")).Classes("pob-toolbar"));
             var slots = A(State, "slots"); rows.AddRange(slots.Select((slot,index)=>(slot,index))

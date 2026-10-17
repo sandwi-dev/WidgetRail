@@ -1,0 +1,94 @@
+using System.Text.Json;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Media;
+using WidgetRail.OverlayFrontend.WinUI.Browser;
+using WidgetRail.WidgetProtocol;
+
+namespace WidgetRail.OverlayFrontend.WinUI.Shell;
+
+internal sealed partial class OverlayShellPage
+{
+    internal void EnablePobTradeActionsValidation(string path)
+    {
+        Loaded+=async(_,_)=>
+        {
+            var checks=new List<string>();string? error=null;
+            var old=BrowserSurface.FixturePage;var oldType=BrowserSurface.FixtureContentType;
+            var live=Environment.GetCommandLineArgs().Contains("--live-pob-trade-actions");
+            var id=new string('b',64);
+            var response=JsonSerializer.Serialize(new{result=new[]{new{id,item=new{rarity="Normal",name="",typeLine="Gold Ring",ilvl=80,
+                implicitMods=new[]{new{description="15% increased Rarity of Items found"}}},listing=new{price=new{amount=2,currency="chaos"},account=new{name="Fixture seller"},method="psapi"}}}});
+            BrowserSurface.FixturePage=url=>new Uri(url).AbsolutePath.StartsWith("/api/",StringComparison.Ordinal)?response:
+                "<!doctype html><div class='resultset'><div class='row' data-id='"+id+"'><div class='right'></div></div></div><script>setTimeout(()=>fetch('/api/trade2/fetch/fixture').then(r=>r.json()),700)</script>";
+            BrowserSurface.FixtureContentType=url=>new Uri(url).AbsolutePath.StartsWith("/api/",StringComparison.Ordinal)?"application/json":"text/html";
+            if(live){BrowserSurface.FixturePage=old;BrowserSurface.FixtureContentType=oldType;}
+            try
+            {
+                if(startup is not null)await startup;
+                await WebAppUntil(()=>interactive&&foreground&&!switching&&surface?.CurrentBinding is not null);
+                if(live)
+                {
+                    await Action("section.3");await Action("item.29");await Action("trade");await Action("websites.overlay");await Action("trade-open");
+                    await WebAppUntil(()=>Page() is {IsReady:true,IsNavigationInProgress:false});
+                    var livePage=Page()!;
+                    await WebAppUntilScript(livePage,"!!document.querySelector('[data-widgetrail-action]')");
+                    Check(true,"Live official listing receives Compare in PoB");
+                    await livePage.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action]').scrollIntoView({block:'center'});true");
+                    await Task.Delay(500);
+                    await File.WriteAllTextAsync(path+".listing",await livePage.EvaluateFixtureAsync("(()=>{const b=document.querySelector('[data-widgetrail-action]'),r=b.closest('[data-id]');return {id:r.getAttribute('data-id'),name:r.querySelector('.item-popup__header')?.innerText,action:b.innerText}})()"));
+                    await livePage.ClickPageActionFixtureAsync();
+                    await Task.Delay(300);
+                    await File.WriteAllTextAsync(path+".diagnostics",JsonSerializer.Serialize(new{host=livePage.PageActionDiagnostics(),dom=await livePage.EvaluateFixtureAsync("(()=>{const b=document.querySelector('[data-widgetrail-action]'),r=b.getBoundingClientRect();return {height:innerHeight,width:innerWidth,x:r.x,y:r.y,w:r.width,h:r.height,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,500),scroll:document.scrollingElement.scrollTop}})()")}));
+                    await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.slot.heading"));
+                    var slot=Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).First(n=>n.Text=="Helmet"&&n.ActionId?.StartsWith("replace-slot.")==true);
+                    await Action(slot.ActionId!);
+                    await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.item.compare.heading"));
+                    Check(true,"Live selected helmet reaches calculated equipment comparison");
+                    await Action("website-resume");await WebAppUntil(()=>ReferenceEquals(Page(),livePage));
+                    Check(await livePage.EvaluateFixtureAsync("!!document.querySelector('[data-widgetrail-action]')")=="true","Live comparison returns to retained official listing");
+                    return;
+                }
+                await Action("menu");await Action("websites.overlay");await Action("open-poe-ninja");
+                await WebAppUntil(()=>Page() is {IsReady:true,IsNavigationInProgress:false});
+                var page=Page()!;
+                await Task.Delay(1200);
+                Check(await page.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action]')===null")=="true","Undeclared origin gets no page actions");
+                page.NavigateForValidation("https://www.pathofexile.com/trade2/search/Standard/fixture");
+                await WebAppUntilScript(page,"!!document.querySelector('[data-widgetrail-action]')");
+                Check(true,"Sealed adapter observes declared JSON and adds an associated action");
+                Check(await page.EvaluateFixtureAsync("!Object.getOwnPropertyNames(globalThis).some(k=>k.startsWith('widgetRailAction')) && typeof globalThis.__widgetRailResponse==='undefined'")=="true","Page scripts cannot access isolated adapter bindings or response callbacks");
+                await page.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action]').click();true");await Task.Delay(350);
+                Check(surface!.CurrentBinding!.Frame.Snapshot.Root.Kind==ViewNodeKind.ModalLayer,"Synthetic website click cannot invoke a widget action");
+                await page.ClickPageActionFixtureAsync();
+                await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.slot.heading"));
+                Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Text=="2 × Chaos Orb · Fixture seller"),"Trusted action delivers exact selected item and price to a recoverable draft");
+                await Action("website-resume");await WebAppUntil(()=>ReferenceEquals(Page(),page));
+                Check(await page.EvaluateFixtureAsync("!!document.querySelector('[data-widgetrail-action]')")=="true","Returning retains the same document and listing action");
+                await Action("website-close");await Action("back");
+                Check(!Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.slot.heading"),"Discard draft returns to build without equipping");
+                await Action("website-resume");await WebAppUntil(()=>ReferenceEquals(Page(),page));
+                page.NavigateForValidation("https://outside.example/fixture");
+                await WebAppUntilScript(page,"location.hostname==='outside.example'");await Task.Delay(900);
+                Check(await page.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action]')===null")=="true","Navigation retires adapter actions and response authority outside declared origin");
+                await Action("website-close");
+            }
+            catch(Exception failure){error=failure.ToString();}
+            finally{BrowserSurface.FixturePage=old;BrowserSurface.FixtureContentType=oldType;await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new{passed=error is null,checks,error}));}
+            void Check(bool value,string label){if(!value)throw new InvalidOperationException(label);checks.Add(label);File.WriteAllText(path+".progress",string.Join('\n',checks));}
+            BrowserSurface? Page()=>Walk(XamlRoot.Content).OfType<BrowserSlot>().FirstOrDefault(s=>AutomationProperties.GetAutomationId(s)=="Widget.pob.website")?.Surface;
+            async Task Action(string id)
+            {
+                await WebAppUntil(()=>surface?.CurrentBinding is {} binding&&!Nodes(binding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation")&&
+                    Nodes(binding.Frame.Snapshot.Root).Any(n=>n.ActionId==id||n.SelectOptions.Any(o=>o.ActionId==id)));
+                var frame=surface!.CurrentBinding!.Frame;var node=Nodes(frame.Snapshot.Root).First(n=>n.ActionId==id||n.SelectOptions.Any(o=>o.ActionId==id));
+                await InvokeAsync(new(frame,new(id,node.Id,ControllerButton.A,InputScopeId:frame.Snapshot.ActiveInputScopeId)));
+                await RouteButtonAsync(ControllerButton.A,ControllerEventPhase.Released);
+                await WebAppUntil(()=>surface?.CurrentBinding?.Frame.Snapshot.Sequence>frame.Snapshot.Sequence);
+            }
+        };
+        static IEnumerable<ViewNode> Nodes(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Nodes));
+        static IEnumerable<DependencyObject> Walk(DependencyObject node)
+        {yield return node;for(var i=0;i<VisualTreeHelper.GetChildrenCount(node);i++)foreach(var child in Walk(VisualTreeHelper.GetChild(node,i)))yield return child;}
+    }
+}

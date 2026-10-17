@@ -54,6 +54,19 @@ internal static class WebSessionTests
 
     internal static Task SourcesAsync()
     {
+        var adapter=new WebSessionPageAdapter {ScriptAsset="web/actions.js",Origins=["https://example.com"],Responses=[new("https://example.com","/api/items/")]};
+        var adapted=new WebSessionDefinition("adapted","Adapted page",WebSessionSource.Remote("https://example.com")){PageAdapter=adapter};
+        Check(adapted.IsWellFormed()&&adapter.AllowsPage("https://example.com/results"),"Exact origin adapter is valid.");
+        Check(!adapter.AllowsPage("https://example.com.evil.test/")&&!adapter.AllowsPage("http://example.com/")&&!adapter.AllowsPage("https://example.com:444/"),"Adapter origins do not admit suffixes, HTTP, or other ports.");
+        Check(!(adapter with {Origins=["https://*.example.com"]}).IsWellFormed(),"Adapters require exact origins, never wildcards.");
+        Check(!(adapter with {ScriptAsset="../actions.js"}).IsWellFormed(),"Adapter assets cannot escape the sealed package.");
+        Check(!(adapter with {Responses=[new("https://other.example","/api/items/")]}).IsWellFormed(),"Response access must be declared within page origins.");
+        Check(!(Definition() with {PageAdapter=adapter}).IsWellFormed(),"Remote adapter does not alter packaged messaging.");
+        var rule=adapter.Responses[0];
+        Check(rule.Matches("https://example.com/api/items/123?q=abc")&&!rule.Matches("https://example.com/api/items-other/123")&&
+            !rule.Matches("https://evil.example/api/items/123"),"Response paths are scoped at a segment boundary.");
+        Check(!(rule with {PathPrefix="/api/../"}).IsWellFormed()&&!(rule with {PathPrefix="/api/%2e%2e/"}).IsWellFormed()&&
+            !(rule with {MaximumBytes=WebSessionResponseRule.MaximumResponseBytes+1}).IsWellFormed(),"Ambiguous paths and oversized response limits are rejected.");
         Check(Definition().IsWellFormed(), "Packaged definition is valid.");
         Check(!(Definition() with { Source = WebSessionSource.Package("../secret", [new() { Path = "../secret", ContentType = "text/html" }]) }).IsWellFormed(), "Package path traversal is rejected.");
         Check(!WebSessionContract.IsNetworkOrigin("https://127.0.0.1") && !WebSessionContract.IsNetworkOrigin("https://localhost") &&
@@ -63,6 +76,21 @@ internal static class WebSessionTests
         Check(WebSessionSource.Package("web/index.html", [new() { Path="web/index.html", ContentType="text/html" },
             new() { Path="web/art.webp", ContentType="image/webp" }]).IsWellFormed(), "Transparent WebP artwork is supported in packaged sessions.");
         return Task.CompletedTask;
+    }
+
+    internal static async Task AdaptedAsync()
+    {
+        var registry=new WebSessionRegistry();
+        using var owner=registry.CreateOwner("widget",new("example.widget","example.publisher","widget"),false);
+        var definition=new WebSessionDefinition("adapted","Adapted page",WebSessionSource.Remote("https://example.com"))
+            {PageAdapter=new(){ScriptAsset="web/actions.js",Origins=["https://example.com"]}};
+        await Reject(()=>owner.ExecuteAsync(new(WebSessionOperation.Open){Definition=definition},default).AsTask(),"invalid_payload");
+        var open=owner.ExecuteAsync(new(WebSessionOperation.OpenAdapted){Definition=definition},default).AsTask();
+        var work=(await registry.TakeAsync(default)).Work.Single();registry.Complete(new(work.RequestId));
+        var session=(await open).Session!;
+        await Reject(()=>owner.ExecuteAsync(new(WebSessionOperation.PostMessage){Session=session,MessageBase64="e30="},default).AsTask(),"messaging_unavailable");
+        owner.Dispose();
+        await Reject(()=>owner.ExecuteAsync(new(WebSessionOperation.ReadMessages){Session=session},default).AsTask(),"session_closed");
     }
 
     private static WebSessionDefinition Definition() => new("player", "Synthetic player",

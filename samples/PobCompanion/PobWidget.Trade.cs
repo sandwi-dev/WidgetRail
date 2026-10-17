@@ -127,7 +127,7 @@ public sealed partial class PobWidget
             Text("Weights estimate an upgrade; they do not guarantee it. Compare an item before applying it.","trade.caution","pob-small pob-muted"),
             UI.Row("pob.trade.return",Button("Paste item to compare","item-paste"),Button("Refresh leagues","trade-refresh")).Classes("pob-toolbar"),
             Text(game==2
-                ?"In game, hover over an item and press Ctrl+C, then paste here to compare. PoE2 trade listings need a compatible item copy/export browser extension; the website has no built-in Copy item button."
-                :"On the trade site, use Copy item. In game, hover over an item and press Ctrl+C. Then paste here to compare it with your equipment.","trade.paste-help","pob-small pob-muted"),WebsitePreference())
+                ?"In the overlay browser, use Compare in PoB beside a listing. For clipboard import, hover over an item in game and press Ctrl+C. The PoE2 website has no built-in Copy item button in an external browser."
+                :"In the overlay browser, use Compare in PoB beside a listing. On the trade site, use Copy item for clipboard import. In game, hover over an item and press Ctrl+C, then paste here.","trade.paste-help","pob-small pob-muted"),WebsitePreference())
             .Classes("pob-scroll","pob-panel")).Classes("pob-workspace");
 }

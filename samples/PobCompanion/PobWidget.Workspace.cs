@@ -22,9 +22,11 @@ public sealed partial class PobWidget
             controls.Add(UI.Select("Loadout", choices, "pob.loadout").Disabled(pendingBefore is not null).Classes("pob-select", "pob-loadout"));
         }
         controls.Add(UI.Button("Build & import", "menu", "pob.menu").Disabled(pendingBefore is not null).Classes("pob-button"));
-        var history=UI.Row("pob.history",
+        var historyControls=new List<WidgetElement>{
             UI.Button("Undo","undo","pob.undo").Disabled(undo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"),
-            UI.Button("Redo","redo","pob.redo").Disabled(redo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"))
+            UI.Button("Redo","redo","pob.redo").Disabled(redo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button")};
+        if(websiteSession is not null)historyControls.Add(UI.Button("Return to website","website-resume","pob.website-return").Classes("pob-button"));
+        var history=UI.Row("pob.history",historyControls.ToArray())
             .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
         if (section != "Tree") heading.Add(Text($"PoE{game} Path of Building", "eyebrow", "pob-eyebrow"));

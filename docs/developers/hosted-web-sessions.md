@@ -47,6 +47,34 @@ its work is finished. This does not change ordinary declarative browser parking.
 
 ## Remote websites in widget modals
 
+Remote sessions can opt into a sealed page adapter (protocol 86). This is separate
+from packaged-page RPC: ordinary remote websites still cannot post widget messages.
+Set `WebSessionDefinition.PageAdapter` with a package-local `ScriptAsset`, exact
+HTTPS `Origins`, and optional `Responses` rules. A response rule names an allowed
+origin and a slash-terminated path prefix. Response access is explicit; declaring
+an origin alone does not grant response bodies.
+
+The script runs in an isolated JavaScript world in the top-level document. It
+receives `host.onResponse(callback)` for declared JSON responses already loaded
+by the site, and `host.addAction(parentElement, actionKey, label, getPayload)` to
+insert a normal, accessible button. Actions require trusted browser clicks and an
+interactive visible session. Page-script `.click()` calls are ignored. No cookies,
+request headers, arbitrary CDP methods, or additional authenticated fetch API are
+exposed by this contract. Website DOM and response data remain untrusted inputs.
+
+Read results through `session.ReadMessagesAsync()`. An action event has `kind:
+"page-action"`, `action`, `document`, and `payload`; recoverable failures use
+`kind: "page-action-error"` and an error code. Validate the site's schema and
+selection identity before changing widget state. Keep site selectors/converters
+in the adapter and widget, rather than the host.
+
+Scripts are capped at 64 KiB. Responses default to 256 KiB and may declare up to
+1 MiB; the host bounds network buffering and concurrent body reads. Results use
+the existing 64 KiB message bound. Navigation retires the document context and
+pending response authority. Only matching top-level frame/loader responses are
+delivered; worker and unrelated-frame traffic is not part of this contract.
+`OpenAdapted` fails on older hosts rather than silently opening without the adapter.
+
 Use the same session API for a website that should open above the widget and
 return to it when dismissed. No cross-widget intent is needed:
 

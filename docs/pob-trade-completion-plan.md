@@ -67,22 +67,45 @@ Local commits are allowed; merge, push, and release are not authorized by this w
    Native validation passes 17 checks including three reopen cycles, 720x640 and 1040x880 resize,
    live session preservation, Back/focus return, and worker-restart storage/cookie persistence.
    Evidence: artifacts/pob/session-modal-native/reopen-red.json and reopen-resize-02.json.
-   This does not yet establish physical controller or multiple display-DPI acceptance.
-2. **Live extraction proof — pending.** Observe only declared trade-item response bodies in the
+   Final native rerun also covers Full and Reduced motion at the current 125% display scale:
+   artifacts/pob/session-modal-native/modal-final-10.json. This does not establish physical
+   controller or multiple display-DPI acceptance.
+2. **Live extraction proof — PoE2 verified; PoE1 sign-in pending.** Observe only declared trade-item response bodies in the
    authenticated WebView, without reading cookies/auth headers. Match displayed listing IDs.
    Verify both games' schema and upstream conversion on representative supported items. Record
    what is proven and unsupported; adjust the integration before building on assumptions.
-3. **Shared session page actions — pending.** Define a minimal reusable contract, sealed adapter
+   Captured ten actual PoE2 helmets, with 56 parsed modifier descriptions and 15 matching defence
+   values. The strict adapter accepts nine and rejects one with unrevealed veiled modifiers that
+   upstream omits. Live native comparison of Brood Corona, Soaring Mask passed and returned to
+   the same official listing. Evidence: artifacts/pob/live-trade-validation/result-09.json,
+   return-listing.png, comparison.png. The test used a copy of the user's build.
+3. **Shared session page actions — implemented, native tests passing.** Define a minimal reusable contract, sealed adapter
    resources, exact origin/data boundaries, bounds, stale-document protection, user invocation,
    cancellation, cleanup, and renderer/controller integration. Pick concrete limits from payload
    evidence. Test wrong origins, navigations, superseded requests and worker retirement.
-4. **PoB integration — pending.** In-page Compare in PoB, exact selected-item conversion, listing
+   Protocol 86 adds explicit OpenAdapted, sealed adapter script, exact HTTPS origins, and explicit
+   JSON response path/size rules. Isolated-world actions require trusted clicks and foreground
+   session input. CDP observes only responses from the admitted top-level frame and loader;
+   late navigations are rejected. Native checks cover denied origin, real response delivery,
+   page-world isolation, synthetic-click rejection, trusted selection, retained return, and
+   navigation away. Evidence: artifacts/pob/session-modal-native/trade-actions-06.json (8 checks).
+4. **PoB integration — implemented, functional tests passing.** In-page Compare in PoB, exact selected-item conversion, listing
    context, existing equipment comparison, explicit apply/discard, and return to retained listing.
    No build mutation on browsing, conversion failure, or cancellation.
-5. **End-to-end acceptance — pending.** Exercise search/select/compare/apply/discard/return,
+   Both engines pass 22 workflow checks, including malformed response handling, draft/preview preservation, refusal to overwrite
+   pending work, explicit discard, and restart restoring listing context with a fresh-session link.
+   Shared broker checks (4) and managed/native protocol parity pass. Results live under
+   artifacts/pob/trade-workflow-reviewed{1,2}.txt. Button colors/text sizing follow the host palette.
+   Both engines also pass 36 existing persistence checks (work-state-final{1,2}.txt).
+5. **End-to-end acceptance — PoE2 live workflow and native visual inspection complete;
+   live PoE1 authentication and physical controller acceptance remain.** Exercise search/select/compare/apply/discard/return,
    close/hide/reopen/restart, repeated items, missing listings, expired login, both engines and
    representative special modifiers. Use actual native UI and visual inspection. Report any
    live-auth coverage gaps accurately. Finish with one normal candidate and evidence paths.
+   Native action regression passes 8 checks on the final host: session-modal-native/actions-final-10.json.
+   The final candidate is artifacts/pob/page-adapter-final-10, with trade-adapter-installation04 and
+   trade-adapter-catalog-reviewed. User profiles/logins are preserved. No purchase or seller message
+   was sent. Marketplace screenshots have not been published; captures remain local evidence.
 
 ## Unresolved engineering details
 

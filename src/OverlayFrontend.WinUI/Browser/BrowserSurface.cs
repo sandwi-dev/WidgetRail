@@ -69,6 +69,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal Action? InteractionChanged { get; set; }
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
     internal static Func<string, string?>? FixturePage { get; set; }
+    internal static Func<string, string>? FixtureContentType { get; set; }
     internal Presentation.WidgetTextEntryDialog? FixtureEditor => editDialog;
     internal bool FixtureZoomIdle => !zoomPumping;
     internal void NavigateForValidation(string url) => core!.Navigate(url);
@@ -434,7 +435,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                 core.WebResourceRequested += (_, args) =>
                 {
                     var html = FixturePage?.Invoke(args.Request.Uri) ?? "<!doctype html><title>Blocked test request</title>";
-                    args.Response = env.CreateWebResourceResponse(new MemoryStream(Encoding.UTF8.GetBytes(html)).AsRandomAccessStream(), 200, "OK", "Content-Type: text/html");
+                    args.Response = env.CreateWebResourceResponse(new MemoryStream(Encoding.UTF8.GetBytes(html)).AsRandomAccessStream(), 200, "OK", "Content-Type: "+(FixtureContentType?.Invoke(args.Request.Uri)??"text/html"));
                 };
             }
 #endif
@@ -520,6 +521,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
+        pageAdapter?.Dispose();pageAdapter=null;
         if (retired) return; hostedMessages.Writer.TryComplete(); SetPresentation(false, false); retired = true; DisposeMemoryPolicy(); ResetPointerVisual(); lifetime.Cancel();
         InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;
         nativeNotifications?.Dispose(); nativeNotifications = null;

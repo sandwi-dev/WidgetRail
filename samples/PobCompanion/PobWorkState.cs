@@ -5,7 +5,7 @@ namespace WidgetRail.Samples.PobCompanion;
 
 internal sealed record PobPendingChange(string Xml, string Kind, int NodeId = 0, string? Slot = null);
 internal sealed record PobWorkState(string CommittedXml, string[] Undo, string[] Redo,
-    PobPendingChange? Pending = null, string? ItemDraft = null);
+    PobPendingChange? Pending = null, string? ItemDraft = null, PobTradeListing? TradeListing = null);
 
 /// <summary>One atomic document owns committed work, pending work and its history.</summary>
 internal static class PobWorkStore
@@ -72,6 +72,7 @@ internal static class PobWorkStore
         string Decode(string value) => value is null ? throw new IOException("Saved work is incomplete.") : BuildDocument.Decode(value, game);
         return work with
         {
+            TradeListing=work.ItemDraft is not null&&work.TradeListing?.IsValid(game)==true?work.TradeListing:null,
             CommittedXml = Decode(work.CommittedXml),
             Undo = work.Undo.Select(Decode).ToArray(), Redo = work.Redo.Select(Decode).ToArray(),
             Pending = work.Pending is {} pending ? pending with { Xml = Decode(pending.Xml) } : null,

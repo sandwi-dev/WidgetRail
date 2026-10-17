@@ -10,6 +10,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal sealed partial class BrowserSurface
 {
     private WebSessionDefinition? hostedDefinition;
+    private WebSessionPageAdapterHost? pageAdapter;
+    private string? pageActionStyle;
     private IReadOnlyList<BridgeWebSessionResource> hostedResources = [];
     private Uri? localResource;
     private readonly SemaphoreSlim hostedNavigationGate = new(1, 1);
@@ -113,6 +115,24 @@ internal sealed partial class BrowserSurface
             if (RequiresPageRecovery(args.ProcessFailedKind))
                 FailHostedSession("Hosted browser process stopped.");
         };
+        if (hostedDefinition.PageAdapter is { } adapter)
+        {
+            var resource=hostedResources.SingleOrDefault();
+            if(resource is null||resource.Path!=adapter.ScriptAsset||resource.ContentType!="text/javascript"||resource.ContentBase64.Length>90000)
+                throw new InvalidOperationException("Page adapter resource is unavailable.");
+            var scriptBytes=Convert.FromBase64String(resource.ContentBase64);
+            if(scriptBytes.Length>64*1024||!Convert.ToHexString(SHA256.HashData(scriptBytes)).Equals(resource.Sha256,StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Page adapter resource is invalid.");
+            pageAdapter=new(core,adapter,Encoding.UTF8.GetString(scriptBytes),()=>!retired&&!faulted&&visible&&input&&!loading,json=>
+            {
+                var encoded=Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+                try {WebSessionContract.DecodeMessage(encoded);}
+                catch(ArgumentException){FailHostedSession("Page adapter result exceeds its bound.");return;}
+                if(!hostedMessages.Writer.TryWrite(encoded))FailHostedSession("Page adapter message queue exceeded its bound.");
+            });
+            if(pageActionStyle is not null)pageAdapter.SetStyle(pageActionStyle);
+            await pageAdapter.StartAsync();
+        }
         if (!IsHostedPackage) return;
         var definition = hostedDefinition;
         var origin = new Uri(document.Url).GetLeftPart(UriPartial.Authority);

@@ -60,7 +60,8 @@ public sealed partial class PobWidget
                 Work(async token=>
                 {
                     token.ThrowIfCancellationRequested();
-                    SaveWork(current,new(current.Xml,undo.Prepend(previous.Xml).Take(12).ToArray(),[],ItemDraft:detailKind=="choose-slot"?null:pastedItem));
+                    SaveWork(current,new(current.Xml,undo.Prepend(previous.Xml).Take(12).ToArray(),[],ItemDraft:detailKind=="choose-slot"?null:pastedItem,
+                        TradeListing:detailKind=="choose-slot"||pastedItem is null?null:tradeListing));
                     lock(gate)
                     {
                         PushHistory(undo,previous.Xml);redo.Clear();
