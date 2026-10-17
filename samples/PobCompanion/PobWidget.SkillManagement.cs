@@ -115,7 +115,8 @@ public sealed partial class PobWidget
         }
         foreach(var reason in A(group,"weaponSets").Select(s=>S(s,"reason")).Where(s=>s.Length>0).Distinct())
             properties.Add(Text(reason,"group-weapon-reason."+properties.Count,"pob-small pob-muted"));
-        properties.Add(Text($"Order · {position+1} of {groups.Length}","group-order","pob-field-label"));
+        properties.Add(Text($"Saved order · {position+1} of {groups.Length}","group-order","pob-field-label"));
+        properties.Add(Text("The main group is pinned first in Skills. These controls change the saved order.","group-order.hint","pob-small pob-muted"));
         properties.Add(UI.Row("pob.group-order.actions",Button("Move up","group-up").Disabled(position==0),Button("Move down","group-down").Disabled(position==groups.Length-1))
             .RememberChildFocus(position==0?"pob.group-down":"pob.group-up").Classes("pob-toolbar"));
         properties.Add(UI.Stack("pob.group-order.context",

@@ -237,6 +237,7 @@ public sealed partial class PobWidget
     {
         var skills = section == "Skills";
         var entries = A(State, skills ? "skills" : "items");
+        if(skills)entries=entries.OrderByDescending(entry=>B(entry,"main")).ToArray();
         var kind = skills ? "skill" : "item";
         if (entries.Length > 0 && (detailKind != kind || !entries.Any(e => I(e, "id") == detailId)))
         { detailKind = kind; detailId = selections.TryGetValue(kind, out var remembered) && entries.Any(e => I(e, "id") == remembered) ? remembered : I(entries[0], "id"); }
@@ -251,8 +252,8 @@ public sealed partial class PobWidget
             var id = I(entry, "id");
             var title = skills ? S(entry, "title") : S(entry, "name", S(entry, "base"));
             if(skills && string.IsNullOrWhiteSpace(title))title="Unnamed group";
-            var subtitle = skills ? $"{A(entry, "gems").Length} gems" + (B(entry, "main") ? " · Main skill" : "") + (B(entry,"fullDps")?" · Full DPS":"") + (B(entry, "enabled") ? "" : " · Disabled") : S(entry, "slot");
-            if(skills&&B(entry,"generated"))subtitle="Granted skill"+(S(entry,"slot").Length>0?" · "+S(entry,"slot"):"")+(B(entry,"main")?" · Main skill":"")+(B(entry,"fullDps")?" · Full DPS":"")+(B(entry,"enabled")?"":" · Disabled");
+            var subtitle = skills ? $"{A(entry, "gems").Length} gems" + (B(entry, "main") ? " · Main skill (pinned)" : "") + (B(entry,"fullDps")?" · Full DPS":"") + (B(entry, "enabled") ? "" : " · Disabled") : S(entry, "slot");
+            if(skills&&B(entry,"generated"))subtitle="Granted skill"+(S(entry,"slot").Length>0?" · "+S(entry,"slot"):"")+(B(entry,"main")?" · Main skill (pinned)":"")+(B(entry,"fullDps")?" · Full DPS":"")+(B(entry,"enabled")?"":" · Disabled");
             if(id==detailId)subtitle+=" · Inspecting";
             list.Add(UI.ActionSurface(kind + "." + id, "pob." + kind + "." + id, title + ", " + subtitle, ActionSurfaceOrientation.Vertical,
                 Text(Limit(title, 160), kind + ".title." + id, "pob-list-title"),

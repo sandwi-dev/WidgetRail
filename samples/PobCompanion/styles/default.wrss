@@ -87,3 +87,5 @@ text { color: var(--text); text-align: start; }
 .pob-operation-toast { gap:12px; align:center; }
 .pob-operation-copy { flex-grow:1; min-width:0px; gap:4px; }
 .pob-operation-title { color:var(--text); font-size:14px; font-weight:600; }
+
+.pob-calculation-explanation { padding: 8px 10px; gap: 6px; }

@@ -55,24 +55,47 @@ internal static class CalculationViewTests
             await Action("calculation-cell."+totalBase.GetProperty("id").GetString());
             var source=Nodes(View().Root).Single(n=>n.Id=="pob.calculation.source-list").IndexedCollection!;
             check(source.Count>=130,"Native source collection declares the complete upstream row count");
-            var texts=new List<string>();
+            var texts=new List<string>();var expandableIndex=-1;
             for(var start=0;start<source.Count;start+=16)
             {
                 using var lease=await host.AcquireAsync("pob.calculation.source-list",start,Math.Min(16,source.Count-start));
                 foreach(var row in lease.Range.Items)
                 {
                     if(WinUiPresentationContract.ValidateSubtree(row.Root).Count!=0)throw new InvalidOperationException("Unsupported lazy source row: "+row.Key);
-                    texts.Add(string.Join(" ",Nodes(row.Root).Select(n=>n.Text)));
+                    texts.Add(string.Concat(Nodes(row.Root).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text)));
+                    if(Nodes(row.Root).Any(n=>n.ActionId=="read"))expandableIndex=start+lease.Range.Items.ToList().IndexOf(row);
                 }
             }
             check(texts.Any(t=>t.Contains("Source 129",StringComparison.Ordinal)),"Controller-accessible lazy rows include sources beyond the old cutoff");
-            using(var lease=await host.AcquireAsync("pob.calculation.source-list",source.Count-1,1))
+            using(var lease=await host.AcquireAsync("pob.calculation.source-list",expandableIndex,1))
             {
                 check(lease.RouteAction(lease.Range.Items[0].Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"A on a source row routes through the collection controller action");
                 var deadline=DateTime.UtcNow.AddSeconds(5);
                 while(!Nodes(View().Root).Any(n=>n.Id=="pob.feature-reading.body")&&DateTime.UtcNow<deadline)await Task.Delay(20);
                 check(Nodes(View().Root).Any(n=>n.Id=="pob.feature-reading.body"&&n.Kind==ViewNodeKind.Scroll),"Full source details open in a scrollable reading panel");
             }
+            await Action("feature-close");
+            var physicalSection=extended.State.GetProperty("sections").EnumerateArray().First(s=>s.GetProperty("items").EnumerateArray().Any(c=>c.GetProperty("outputs").EnumerateArray().Any(o=>o.GetString()=="PhysicalMaximumHitTaken")));
+            var physical=physicalSection.GetProperty("items").EnumerateArray().First(c=>c.GetProperty("outputs").EnumerateArray().Any(o=>o.GetString()=="PhysicalMaximumHitTaken"));
+            var physicalDetail=(await engine.ExecuteAsync(new{op="calculation-detail",id=physical.GetProperty("id").GetString()},default,many.Xml)).State;
+            var explanations=physicalDetail.GetProperty("sections").EnumerateArray().Where(s=>s.GetProperty("lines").GetArrayLength()>0).ToArray();
+            await Action("calculation-section."+physicalSection.GetProperty("id").GetString());
+            await Action("calculation-cell."+physical.GetProperty("id").GetString());
+            var blocks=Nodes(View().Root).Single(n=>n.Id=="pob.calculation.source-list").IndexedCollection!;
+            var narrativeText=new List<string>();var narrativeBlocks=0;
+            for(var start=0;start<blocks.Count;start++)
+            {
+                using var lease=await host.AcquireAsync("pob.calculation.source-list",start,1);
+                var row=lease.Range.Items.Single().Root;
+                check(WinUiPresentationContract.ValidateSubtree(row).Count==0,"Calculation block satisfies native presentation contract: "+start);
+                if(row.StyleClasses?.Contains("pob-calculation-explanation")==true)
+                {
+                    narrativeBlocks++;narrativeText.Add(string.Concat(Nodes(row).Where(n=>n.Kind==ViewNodeKind.Text).Select(n=>n.Text)));
+                    check(Nodes(row).Any(n=>n.Kind==ViewNodeKind.RichText)&&Nodes(row).Count(n=>n.ActionId=="read")==1,"Formula block uses inline rich text with one action for the complete explanation");
+                }
+            }
+            check(explanations.Length>0&&narrativeBlocks>=explanations.Length&&explanations.SelectMany(s=>s.GetProperty("lines").EnumerateArray()).All(l=>narrativeText.Any(t=>t.Contains(l.GetProperty("text").GetString()!,StringComparison.Ordinal))),"Grouped formula retains every upstream explanatory line");
+            check(!Nodes(View().Root).Single(n=>n.Id=="pob.calculation.sources-count").Text!.Contains("source rows"),"Formula view does not mislabel table row count as the complete explanation");
         }
         finally{await WidgetTestHost.DestroyAsync(widget);}
     }
