@@ -17,6 +17,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | 5 | Add whole-build and loadout comparison | Planned; not started |
 | 6 | Add unified search and direct navigation | Planned; not started |
 | Independent host change | Rename Marketplace to WidgetRail Catalogue | Agreed; not started |
+| Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
@@ -112,6 +113,21 @@ Rename the user-facing Marketplace to **WidgetRail Catalogue**, using the user's
 - [ ] Test caching, unchanged responses, expiry, rate-limit responses and retry behavior with deterministic fake HTTP/time fixtures. Do not intentionally exhaust GitHub's live limits to test them. Record native workflow and request-count evidence before declaring completion.
 
 This is independent of the PoB architecture work. Technical identifiers and historical records need not be mechanically renamed.
+
+## Shared host scroll-container edge cues
+
+Show whether content remains above or below a vertically scrolling container. This is a reusable host presentation feature, not PoB-specific drawing.
+
+- [ ] Use short, centered, fixed-length themed lines at the inside top/bottom edges: approximately 32–48 logical pixels wide and 1–2 pixels thick, finalized through native visual inspection.
+- [ ] Show the top cue only when content is hidden above, and the bottom cue only when content is hidden below. Show both between the ends and neither when content fits.
+- [ ] Keep length independent of scroll progress. The proposed growing/shrinking lines were rejected because they would duplicate a scrollbar. Preserve existing scrollbars for position and extent information.
+- [ ] Place cues in stable edge padding or a narrow reserved strip, outside the text/control viewport. Never obscure useful content, intercept input, participate in focus navigation or change layout as cues appear/disappear.
+- [ ] Use a muted theme role distinct from the focus outline; ensure light/dark/high-contrast readability. No pulsing or bouncing. A brief visibility fade is acceptable, respecting reduced motion.
+- [ ] Determine visibility from actual scroll extent/offset with a small boundary tolerance to avoid fractional-offset flicker. Update on scrolling, resizing and content changes without continuous polling or idle rendering.
+- [ ] Handle independently scrolling nested containers without drawing duplicate cues for wrappers that do not scroll. Keep implementation scope to host-owned scroll surfaces; do not inject indicators into remote websites.
+- [ ] Verify Notes-style text, virtualized lists, calculation breakdowns and modals, including no overflow, both boundaries, dynamic content, scaling and controller/mouse navigation. Confirm indicators do not conflict with the existing hidden-interaction focus outline or focus-after-settle behavior.
+
+The conversation mockup is a design reference only; native visual acceptance is still required. No additional visualization is requested.
 
 ## Resource and trade decisions
 
