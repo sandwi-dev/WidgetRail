@@ -212,9 +212,8 @@ public sealed partial class TaskSwitcherWidget : Widget
             var children = new List<WidgetElement>
             {
                 header,
-                UI.Alert("Trouble switching windows?",
-                    "If Task Switcher isn't working as expected, you may need to restart the overlay from Settings.",
-                    AlertTone.Warning, "tasks.restart-help"),
+                UI.Text("Switching not working? Restart the overlay from Settings.",
+                    "tasks.restart-help").Classes("tasks-count"),
                 UI.VerticalScroll("tasks.list", UI.ResponsiveGrid("tasks.grid", 240, 3, rows.ToArray()).Classes("tasks-grid")).Classes("tasks-list"),
             };
             if (_toast is not null)
