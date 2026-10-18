@@ -65,15 +65,16 @@ split into protocol-bounded wrapping blocks in the scrollable update page.
 
 ## Validation
 
-The service tests use fake HTTP and a controlled helper acknowledgement. The
-Windows PowerShell handoff tests use inert installer callbacks and temporary files,
-covering readiness/exit ordering, file locks, checksums, changed installations,
-installer cancellation/failure and host-exit timeouts. They do not run an installer
-or alter a real profile. Full installed-version upgrade acceptance remains physical.
+Service and handoff tests use controlled HTTP, temporary files and inert callbacks
+for readiness/exit ordering, locks, checksums, changed installations, cancellation,
+failure and timeouts. Six additional real-Inno upgrade cases cover Bare and
+Production with startup enabled, disabled and foreign-owned. Those cases use the
+actual payload and handoff, isolated registration/shortcut/data names, complete
+installed-file verification and hidden relaunch. They preserve edition and saved
+update-check choices without changing the normal installation.
 
-Routine-update implementation has automated service, Settings, installer-contract
-and inert PowerShell handoff coverage. Syntax compilation and fake installers do
-not establish installed-version upgrade, prerequisite provisioning, Windows prompt,
-restart or failure-recovery acceptance. Record those results against the exact
-candidate in the active verification ledger before claiming them complete.
-Temporary native candidates cannot install app updates.
+This does not establish unmodified production-registration, clean-machine
+prerequisite/UAC, Windows execution-policy, or real restart/failure-recovery
+acceptance. Current evidence and remaining native/controller checks are recorded
+in the [verification ledger](../pob-improvements-verification.md). Temporary native
+candidates cannot install app updates.

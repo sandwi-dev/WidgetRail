@@ -418,8 +418,8 @@ Do not create delta-only or per-heartbeat micro-snapshots. Keep at most ten rece
 milestones in a live delivery document. Do not read `docs/history/**` wholesale during normal
 startup.
 
-The pre-compaction version of this goal is preserved as [historical
-evidence](history/review-planner-goal/2026-09-01T07-15-26-07-00.md).
+The pre-compaction version of this goal is preserved in Git history at commit
+`01873671` (`docs/history/review-planner-goal/2026-09-01T07-15-26-07-00.md`).
 
 ## Visible product priority
 

@@ -59,7 +59,7 @@ workflow improvements and existing feature regression checks remain the acceptan
   save/reload, Undo/Redo, recovery, cancellation and timeout recovery.
 - The newly built current-source harness subsequently passed the broad engine gate:
   **535 passed, 0 failed**, exit 0 (`current-gate.log`). Its binary predates only the
-  subsequent PoE1 display-name string change; final package build is still required.
+  subsequent PoE1 display-name string change; later package and native checks are recorded below.
 - Current C# harness build: zero warnings/errors (`tests-build-01.log` and binlog).
   Empty/partial workflows: **23 passed, 0 failed** (`current-empty-02.log`);
   import/share-code/reload preservation: **7 passed, 0 failed** (`current-import.log`).
@@ -71,9 +71,13 @@ workflow improvements and existing feature regression checks remain the acceptan
   or upstream patches were needed.
 - Repository lock and both PoE1 display/package names now identify the beta;
   PoE2's lock entry is unchanged. README, guide and developer naming agree.
-- Remaining: final integrated package verification and
-  native workflow acceptance. The parent already ran PoE2 shared-adapter regressions;
-  this beta update changes no functional shared Lua code.
+- Final PoE1 packages have since passed release verification and installation through
+  the ordinary verified CLI flow. The installed widget opened a fresh build, Search
+  and its packaged tree; all six main-section transitions passed native checks.
+  Both engines passed the later empty-build and changed-workflow gates. See the
+  [verification ledger](pob-improvements-verification.md) for exact candidates.
+  Remaining: the full integrated subpage/controller/couch walkthrough. The beta
+  migration itself changes no functional shared Lua code.
 
 ## Bounded performance evidence
 

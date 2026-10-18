@@ -721,3 +721,87 @@ top-level DLLs match its qualified publication. Host source is `65af1548`; PoB
 Recheck live PID/path before reusing it. Spotify authentication and the remaining
 integrated application/subpage/physical-controller acceptance and final documentation
 audit remain open; the goal is still active.
+
+## Catalogue end-to-end and shared controls checkpoint — 2026-10-18
+
+`scripts/Test-CatalogueNativeWorkflow.ps1` now drives an isolated native installation
+through the real core workers, bridge, package admission, consent and Settings
+handoff. Only release HTTP, time and OS audio are simulated. Its test-only bridge
+entrypoint refuses a normal-profile root; production construction retains its
+existing sources. It never falls back to external HTTP.
+
+`catalogue-native-repeat-20261018-c/result.json` passes **22 checks**: review Cancel,
+install, disabled-state retention, a delayed download with stable focus and no
+duplicate request after hide/reopen, permission denial/retry/approval, partial
+batch failure, batch Cancel/approve, retry of failed work, Settings scrolling,
+revert and ordinary re-update of the retained newer version. Re-update retains
+exactly two versions and keeps the widget disabled. Three further external-launch
+reopens and a 125-second hidden/reopen pass verify rendered pixels, not merely UIA
+bounds. The partial-failure page was visually inspected; useful results, error and
+retry actions are readable. The isolated Performance Monitor enable change used
+for the subsequent pin fixture was restored. No normal-profile music, display or
+build state was changed.
+
+Two initial driver attempts reached the same Settings technical link below the
+fold and correctly failed their visible-geometry gate. UIA focus alone did not
+reveal that clipped control. The driver now explicitly scrolls the Settings
+container before activation; no production focus workaround was added.
+
+An earlier manual Debug fixture (PID 67724) became invisible after reopening while
+UIA remained interactive. A foreground-owned screen capture confirmed desktop
+pixels beneath it. That observation remains **unresolved**, not a passed visual
+check or a claimed fix. The second-process route already calls `ShowOverlay()`;
+no motion error was present in its failure log. Published Release passed the full
+workflow above, and the freshly built x64 Debug frontend passed a separate
+hide/external-reopen capture after the pin tests. The initial fresh Debug comparison
+accidentally selected an older `bin/Debug` output; it is excluded from current-build
+evidence. Subsequent launches explicitly bind Platform=x64 and verify loaded DLLs.
+No speculative production animation change was made.
+
+`music-native-themes-20261018/native-result.json` passes **381 native assertions**
+for main/compact Spotify and YouTube Music players, using actual package WRSS with
+the default palette, Mineral Light and a simulated high-contrast style override
+with 125% text. Checks cover artwork bounds, horizontal overflow, reachable
+transport controls and the same focused save/like button surviving busy updates.
+The light and high-contrast main-player captures were visually inspected. Images
+and collection viewports are local substitutes; this does not establish populated
+queue or authenticated Spotify behaviour, nor a real Windows contrast-theme change.
+All 297 deployed Debug DLLs matched the qualified output. The first launch selected
+an old Debug output and failed protocol admission; its result is excluded.
+
+`shared-final-native-20261018/text-entry-result.json` passes **169 keyboard checks**,
+including suggestion navigation, stale-result rejection, stable typing area,
+reduced motion, password behaviour and disposal. `pin-menu-performance-result.json`
+passes **16 actual Manage pin menu checks**, covering Move/resize and Opacity,
+duplicate opening A, re-priming, Save and Cancel with restored main input ownership.
+Audio Mixer was an unsuitable initial pin fixture because it offers no pin layout;
+the qualified run uses Performance Monitor. These are native automation and synthetic
+controller-frame checks, not physical couch/controller acceptance.
+
+Catalogue single-update headings and completion summaries now use singular grammar.
+The focused integrated bridge workflow passes again; the frontend production
+publication and corrected Debug fixture build pass. Earlier fixture build failures
+were an unspecified native preview DLL path and use of a bridge-implementation
+resolver after the contract split; the final fixture uses the existing frontend
+style resolver and explicit current native inputs.
+
+Current guides now distinguish completed implementation from integrated acceptance,
+describe actual workspace sizing and inspection/retry/disclosure behaviour, and
+record real isolated-Inno evidence. One broken historical goal link was replaced
+with its verified Git-history reference. Remaining acceptance includes PoB trade
+and editing subpages after sizing changes, authenticated Spotify, environment-specific
+updater fallback behaviour and physical controller/couch/hardware limits. The
+invisible-overlay observation remains open. No merge, push, release or CI repair.
+
+Cumulative candidate **f** is running hidden with the normal profile and controller
+input enabled, PID **50556** at this checkpoint. Its launch contains only `--hidden`
+and its installation root; no validation/profile flags. All **138 deployed DLLs**
+match the published frontend; no visible windows or child processes were present
+after launch. Publication began at `610e777c` with the fixture source changes still
+uncommitted; the final Bridge was republished after the completion-summary correction
+now committed in `70970879`. `publication.json` deliberately retains its original
+dirty-source provenance. `3ac478aa` adds only the Debug music fixture. PoB packages
+remain the qualified 0.1.4.6 installed earlier. See
+`cumulative-candidate-20261018-f/live-payload.json` and the unique publication binlogs.
+The latest documentation link audit passes **240 Markdown files / 760 relative
+local targets**, with no missing targets. Recheck the live process before acting.

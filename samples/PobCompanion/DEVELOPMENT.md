@@ -22,7 +22,11 @@ The widgets are named **PoE1 Path of Building (Beta)** and **PoE2 Path of Buildi
 
 `PobBuildComparisonService` owns typed read-only projections and a cache capped at four comparisons and an estimated 8 MiB. Its key includes exact build bytes and engine identity. `PobEngine.ProjectReadOnlyAsync` holds the existing engine semaphore across baseline preparation, comparison and baseline restoration. Cancellation/failure retires the process while retaining the original restart baseline. No second engine, saved-file writes or Apply action is introduced. Difference rows use the shared indexed collection and preserve upstream display order.
 
-Inline skill-option reads coalesce for 100 ms, cache up to 32 groups for one document/XML, and discard superseded responses. Once admitted, a read uses the active widget lifetime rather than the typing/navigation cancellation token: changing groups must not repeatedly retire the shared engine. Hide/unload still cancels active work.
+`PobSkillOptionsState` owns selection, pending read, failure/retry and a cache of up to 32 groups for one exact document/XML. Typed skill, inventory-search and calculation-search readers reject malformed required data instead of presenting empty success. Inline skill-option reads coalesce for 100 ms and discard superseded responses. Once admitted, a read uses the active widget lifetime rather than the typing/navigation cancellation token: changing groups must not repeatedly retire the shared engine. Hide/unload still cancels active work. Explicit Retry bypasses a malformed snapshot; unavailable search categories are retried on reopening Search.
+
+`PobInspectionContext` reads loadout and weapon context from the existing upstream snapshot/XML, cached for the exact result/group. It distinguishes the active calculation weapon set from the group's enabled weapon sets and omits missing optional context. Known warning destinations use supplied identities, never inferred warning text.
+
+`PobDisclosureState` retains at most 24 recent presentation contexts per owner. Calculation breakdown and saved-inactive-setting toggles retire stale tokens on context changes, retain summary values, and return focus to the toggle. Search reveals matching retained configuration controls. Disclosure never mutates the build.
 
 ## Engine pins and PoE2 beta audit
 
