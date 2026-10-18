@@ -3,7 +3,8 @@
 -- copying, which writes into the source object and can grow attribute-node
 -- graphs on subsequent loads. Keep class metadata shared and attach metatables
 -- only after copying raw fields. No calculation rules are changed.
-if not common.classes.Tooltip.Tooltip then return end
+local compatibility=dofile((debug.getinfo(1,'S').source:sub(2):match('^(.*[/\\])')or '')..'engine-compatibility.lua')
+if not compatibility.hasExplicitConstructors() then return end
 local upstreamCopy=copyTableSafe
 copyTableSafe=function(value,noRecurse,preserveMeta)
   if noRecurse or not preserveMeta then return upstreamCopy(value,noRecurse,preserveMeta) end

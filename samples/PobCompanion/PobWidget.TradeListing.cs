@@ -18,11 +18,11 @@ internal sealed record PobTradeListing(string Id,string Url,string Price,string 
         if(start>=parts.Length)return Url;
         var query=JsonSerializer.SerializeToElement(new{status=new{option="any"},type=BaseType,
             filters=new{trade_filters=new{filters=new{account=new{input=Seller}}}}});
-        return PobTradeSearch.SearchUrl(game,Uri.UnescapeDataString(parts[start]),game==2?query:JsonSerializer.SerializeToElement(new{query,sort=new{price="asc"}}))+"#widgetrail-listing="+Id;
+        return PobTradeSearch.SearchUrl(game,Uri.UnescapeDataString(parts[start]),PobGame.For(game).CompressedSearch?query:JsonSerializer.SerializeToElement(new{query,sort=new{price="asc"}}))+"#widgetrail-listing="+Id;
     }
     internal bool IsValid(int game)=>Id is {Length:>=16 and <=128}&&Id.All(char.IsAsciiHexDigit)&&
         Url is {Length:<=8192}&&Uri.TryCreate(Url,UriKind.Absolute,out var uri)&&uri.UserInfo.Length==0&&
-        uri.GetLeftPart(UriPartial.Authority)=="https://www.pathofexile.com"&&uri.AbsolutePath.StartsWith(game==2?"/trade2/":"/trade/",StringComparison.Ordinal)&&
+        uri.GetLeftPart(UriPartial.Authority)=="https://www.pathofexile.com"&&uri.AbsolutePath.StartsWith(PobGame.For(game).TradePath,StringComparison.Ordinal)&&
         (PriceAmount is null||double.IsFinite(PriceAmount.Value)&&PriceAmount>0)&&(PriceCurrency is null||PriceCurrency.Length is >0 and <=100&&PriceCurrency.All(c=>char.IsAsciiLetterOrDigit(c)||c=='-'))&&
         Price is {Length:<=100}&&Seller is {Length:<=100}&&Method is {Length:<=60}&&(Fee is null||Fee.Length<=120)&&
         (Availability is null||Availability.Length<=80)&&(Character is null||Character.Length<=100)&&
@@ -115,7 +115,7 @@ public sealed partial class PobWidget
     {
         var url=S(payload,"url");
         if(!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.GetLeftPart(UriPartial.Authority)!="https://www.pathofexile.com"||
-            !uri.AbsolutePath.StartsWith(game==2?"/trade2/":"/trade/",StringComparison.Ordinal))throw new IOException("This listing belongs to a different game or website.");
+            !uri.AbsolutePath.StartsWith(PobGame.For(game).TradePath,StringComparison.Ordinal))throw new IOException("This listing belongs to a different game or website.");
         if(!payload.TryGetProperty("entry",out entry)||entry.ValueKind!=JsonValueKind.Object||
             !entry.TryGetProperty("item",out var item)||item.ValueKind!=JsonValueKind.Object||
             !entry.TryGetProperty("listing",out var listing)||listing.ValueKind!=JsonValueKind.Object||

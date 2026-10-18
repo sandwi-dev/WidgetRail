@@ -52,7 +52,7 @@ public sealed partial class PobWidget
         if(choices.Count>0)character.Add(UI.Grid("pob.manage.class",[GridTrack.Auto()],choices.Select(_=>GridTrack.Star()).ToArray(),choices.ToArray()).Spacing(0,12));
         if(recoveryReadOnly)character.Insert(0,Text("Recovered build is read-only. Duplicate it from Saved builds to continue editing.","recovery.readonly","pob-muted"));
         character.Add(Text("PoB engine · "+S(State,"engineVersion","Unknown"),"engine-version","pob-small pob-muted"));
-        if(B(State,"canCreateLoadout"))
+        if(Capabilities.CanCreateLoadout)
         {
             character.Add(Field("Save current setup as a new loadout",UI.TextEntry("","Loadout name, e.g. Midgame","loadout-create","pob.loadout-create",60).Classes("pob-input"),"loadout-create"));
             character.Add(Text("Creates independent copies of the current tree, equipment, skills and configuration. Switch between saved setups using Loadout above.","loadout-create.help","pob-small pob-muted"));
@@ -70,7 +70,7 @@ public sealed partial class PobWidget
                     Text(replaceOnImport?"Review the confirmation before replacing this build. Undo restores its previous contents.":"Imports create a separate saved build.","import.help","pob-muted"),
                     ImportField()),
                 ManagementSection("Export","export",UI.Row("pob.manage.export.actions",
-                    (game==2?new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file"),Button("Export to PoE2…","game-export")}:
+                    (gameDefinition.SupportsGameFileExport?new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file"),Button("Export to PoE2…","game-export")}:
                         new[]{Button("Copy PoB import code","export"),Button("Save XML","export-file")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")))
                 .Classes("pob-scroll")).Classes("pob-workspace");
     }

@@ -10,6 +10,14 @@ Two controller-first widgets share one implementation and run pinned Path of Bui
 
 The widgets are named **PoE1 Path of Building** and **PoE2 Path of Building (Beta)**. The beta label identifies PoE2's pinned upstream beta engine; PoE1 uses an upstream release.
 
+### Shared implementation boundaries
+
+`PobGame` owns fixed identity, document roots, website endpoint/encoding contracts and game-file export support. Runtime availability comes from the engine's typed `PobEngineCapabilities`, not its game number. The Lua `engine-compatibility.lua` module contains upstream constructor conventions and feature probes. Eligibility and calculations stay in PoB.
+
+`PobResult.Read` validates response envelopes and declared capabilities before the engine updates its remembered XML. Operation-only replies can omit build capabilities; malformed declared capabilities fail visibly. Package C# and the whole Engine adapter directory together.
+
+`PobBuildLibrary` owns file discovery and metadata caching and publishes entries and metadata as one snapshot. UI search/filter state stays in `PobWidget`; the library performs no navigation or build mutations. Metadata cache entries are retired when their XML disappears.
+
 ## Engine pins and PoE2 beta audit
 
 The authoritative source pins are in [engine-lock.json](engine-lock.json). The audit below records the PoE2 beta used for the current implementation.

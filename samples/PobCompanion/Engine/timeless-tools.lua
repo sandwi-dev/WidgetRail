@@ -1,4 +1,5 @@
 -- Use PoB's finder controls, search and item constructor. No seed calculations here.
+local compatibility=dofile((debug.getinfo(1,'S').source:sub(2):match('^(.*[/\\])')or '')..'engine-compatibility.lua')
 local M={}
 local resultsVersion=0
 local resultRows,resultSocket={},{}
@@ -16,7 +17,7 @@ local selections={'jewelSelect','conquerorSelect','socketSelect','devotionSelect
 local labels={jewelSelect='Jewel type',conquerorSelect='Conqueror',socketSelect='Jewel socket',devotionSelect1='First devotion modifier',devotionSelect2='Second devotion modifier',fallbackWeightsList='Fallback weights',abyssAscendancySelect='Ascendancy outcome',nodeSelect='Desired modifier'}
 function M.inspect(req,clean,textRuns)
   assert(req.version==resultsVersion and type(req.id)=='number'and resultRows[req.id]and resultControl,'Jewel results expired. Search again.')
-  local tooltip=new('Tooltip');if common.classes.Tooltip.Tooltip then tooltip:Tooltip()end
+  local tooltip=compatibility.create('Tooltip')
   resultControl:AddValueTooltip(tooltip,req.id,resultRows[req.id])
   local lines={}
   for _,line in ipairs(tooltip.lines)do
@@ -25,7 +26,7 @@ function M.inspect(req,clean,textRuns)
   return {lines=lines}
 end
 -- PoE2 retains legacy finder code and item bases, but disables its desktop control.
-function M.available()return build.treeTab.FindTimelessJewel~=nil and build.treeTab.controls.findTimelessJewel~=nil end
+function M.available()return compatibility.timelessFinder(build)end
 local function shown(c)
   return c and c:IsShown()
 end

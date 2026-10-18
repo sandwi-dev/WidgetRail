@@ -1,11 +1,9 @@
 -- Invoke the same set-list callbacks used by desktop PoB. No set schema is recreated here.
+local compatibility=dofile((debug.getinfo(1,'S').source:sub(2):match('^(.*[/\\])')or '')..'engine-compatibility.lua')
 local M={}
 local types={tree={'treeTab','PassiveSpecListControl','specList'},items={'itemsTab','ItemSetListControl','itemSetOrderList','itemSets'},
   skills={'skillsTab','SkillSetListControl','skillSetOrderList','skillSets'},config={'configTab','ConfigSetListControl','configSetOrderList','configSets'}}
-local function create(class,...)
-  if common.classes.Tooltip.Tooltip then local object=new(class);object[class](object,...);return object end
-  return new(class,...)
-end
+local create=compatibility.create
 function M.edit(req)
   local info=assert(types[req.kind],'Unknown set type');local tab=build[info[1]]
   local list=tab[info[3]];local sets=info[4]and tab[info[4]]or list

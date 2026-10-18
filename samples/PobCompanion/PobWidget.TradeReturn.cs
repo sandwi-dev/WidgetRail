@@ -8,7 +8,7 @@ public sealed partial class PobWidget
     internal static string? SafeTradeReturnUrl(string? url,int game)
     {
         if(url is not{Length:>0 and <=48000}||!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.UserInfo.Length>0||
-            uri.GetLeftPart(UriPartial.Authority)!="https://www.pathofexile.com"||!uri.AbsolutePath.StartsWith(game==2?"/trade2/search/":"/trade/search/",StringComparison.Ordinal))return null;
+            uri.GetLeftPart(UriPartial.Authority)!="https://www.pathofexile.com"||!uri.AbsolutePath.StartsWith(PobGame.For(game).TradeSearchPath,StringComparison.Ordinal))return null;
         // Retain only the public search query. Never store sign-in redirects or action tokens.
         var query=uri.Query.TrimStart('?').Split('&').FirstOrDefault(p=>p.StartsWith("q=",StringComparison.Ordinal));
         var marker=System.Text.RegularExpressions.Regex.IsMatch(uri.Fragment,@"^#widgetrail-weighted=[0-9]{1,2}$")?uri.Fragment:"";

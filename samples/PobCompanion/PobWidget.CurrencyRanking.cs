@@ -9,7 +9,7 @@ public sealed partial class PobWidget
         var parts=new Uri(url).AbsolutePath.Split('/',StringSplitOptions.RemoveEmptyEntries);
         var index=Array.IndexOf(parts,"search")+1;
         if(index<=0||index>=parts.Length)throw new IOException("The listing league is unavailable. Open a trade search again.");
-        var realm=game==2?"poe2":"pc";
+        var realm=PobGame.For(game).DefaultRealm;
         if(parts[index] is "pc" or "poe2" or "xbox" or "sony")realm=parts[index++];
         if(index>=parts.Length)throw new IOException("The listing league is unavailable.");
         return(realm,Uri.UnescapeDataString(parts[index]));

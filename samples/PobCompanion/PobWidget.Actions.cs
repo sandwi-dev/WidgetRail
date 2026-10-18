@@ -130,7 +130,7 @@ public sealed partial class PobWidget
             {
                 var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
                 if (node.ValueKind == JsonValueKind.Object && (B(node,"canAllocate") || B(node,"canRefund")))
-                    Preview(new{op="node",id=detailId,allocationMode=B(State,"weaponTreeModes")?(int?)I(State,"allocationMode"):null,mode=B(node,"allocated")?"refund":"allocate"});
+                    Preview(new{op="node",id=detailId,allocationMode=Capabilities.WeaponTreeModes?(int?)I(State,"allocationMode"):null,mode=B(node,"allocated")?"refund":"allocate"});
             }
             else if(id is "skill-main" or "skill-enabled" or "skill-fullDps") Edit(new{op="skill",id=detailId,field=id[6..]});
             else if(parts[0]=="gem"&&parts.Length==3&&int.TryParse(parts[1],out var gem)&&double.TryParse(action.CommittedText,NumberStyles.Number,CultureInfo.InvariantCulture,out var number))

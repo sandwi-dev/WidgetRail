@@ -4,7 +4,34 @@ using System.Text.Json;
 
 namespace WidgetRail.Samples.PobCompanion;
 
-public sealed record PobResult(JsonElement State, string Xml);
+public sealed record PobResult
+{
+    public PobResult(JsonElement state, string xml)
+    {
+        State = state;
+        Xml = xml;
+        Capabilities = PobEngineCapabilities.Read(state);
+    }
+
+    public JsonElement State { get; }
+    public string Xml { get; }
+    internal PobEngineCapabilities Capabilities { get; }
+
+    internal static PobResult Read(JsonElement envelope)
+    {
+        if (envelope.ValueKind != JsonValueKind.Object || !envelope.TryGetProperty("ok", out var ok) ||
+            ok.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new IOException("PoB returned an invalid response.");
+        if (!ok.GetBoolean())
+            throw new PobCommandException(envelope.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String
+                ? error.GetString()! : "PoB could not complete this change.");
+        if (!envelope.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object ||
+            !result.TryGetProperty("state", out var state) || state.ValueKind != JsonValueKind.Object ||
+            !result.TryGetProperty("xml", out var xml) || xml.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(xml.GetString()))
+            throw new IOException("PoB returned incomplete build data. The current build has not been replaced.");
+        return new(state.Clone(), xml.GetString()!);
+    }
+}
 
 /// <summary>One serialized engine session. Cancellation retires the process; late results cannot affect another build.</summary>
 public sealed class PobEngine(string engineDirectory, string runtimeDirectory, string adapterPath) : IAsyncDisposable
@@ -67,11 +94,9 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
         await process!.StandardInput.WriteLineAsync(line.AsMemory(), token);
         await process.StandardInput.FlushAsync(token);
         using var parsed = JsonDocument.Parse(await ReadLineAsync(process.StandardOutput, token), new() { MaxDepth = 64 });
-        var root = parsed.RootElement;
-        if (!root.GetProperty("ok").GetBoolean()) throw new PobCommandException(root.GetProperty("error").GetString() ?? "PoB could not complete this change.");
-        var result = root.GetProperty("result");
-        lastXml = result.GetProperty("xml").GetString()!;
-        return new(result.GetProperty("state").Clone(), lastXml);
+        var result = PobResult.Read(parsed.RootElement);
+        lastXml = result.Xml;
+        return result;
     }
 
     private async Task<bool> EnsureStartedAsync(CancellationToken token)

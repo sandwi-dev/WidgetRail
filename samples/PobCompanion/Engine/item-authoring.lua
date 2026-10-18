@@ -1,4 +1,5 @@
 -- Item identity, affix eligibility, ranges and calculations remain upstream.
+local compatibility=dofile((debug.getinfo(1,'S').source:sub(2):match('^(.*[/\\])')or '')..'engine-compatibility.lua')
 local M={}
 local itemSettings
 function M.configure(settings)itemSettings=settings end
@@ -118,7 +119,7 @@ function M.inspect(req,clean,textRuns)
   for i,line in ipairs(item.rangeLineList or{})do result.ranges[#result.ranges+1]={id=i,title=clean(line.line),roll=math.floor((line.range or .5)*100+.5)}end
   -- Item information is separate from our explicit Compare action. Upstream's
   -- default hover also includes desktop hotkeys and comparisons to other slots.
-  local tooltip=new('Tooltip');if common.classes.Tooltip.Tooltip then tooltip:Tooltip()end
+  local tooltip=compatibility.create('Tooltip')
   local previous=tab.showStatDifferences;tab.showStatDifferences=false
   local ok,err=pcall(tab.AddItemTooltip,tab,tooltip,item,nil,false,600)
   tab.showStatDifferences=previous;assert(ok,err)

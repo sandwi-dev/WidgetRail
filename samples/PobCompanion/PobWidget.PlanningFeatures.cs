@@ -49,7 +49,7 @@ public sealed partial class PobWidget
         var buildId=documentId;var xml=result!.Xml;
         Work(async token=>
         {
-            var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId,allocationMode=B(State,"weaponTreeModes")?(int?)I(State,"allocationMode"):null},token,xml);
+            var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId,allocationMode=Capabilities.WeaponTreeModes?(int?)I(State,"allocationMode"):null},token,xml);
             lock(gate)if(documentId==buildId&&detailId==nodeId)attributeChoices=(nodeId,buildId,A(response.State,"choices"));
         },"Reading attribute choices…");
     }
@@ -101,7 +101,7 @@ public sealed partial class PobWidget
             var nodeId=detailId;
             Work(async token=>
             {
-                var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId,allocationMode=B(State,"weaponTreeModes")?(int?)I(State,"allocationMode"):null},token,result.Xml);
+                var response=await engine.ExecuteAsync(new{op="passive-choices",id=nodeId,allocationMode=Capabilities.WeaponTreeModes?(int?)I(State,"allocationMode"):null},token,result.Xml);
                 var choices=A(response.State,"choices");
                 lock(gate)
                 {
@@ -114,7 +114,7 @@ public sealed partial class PobWidget
             ((passiveChoicePopup is {} popup&&popup.Node==node&&popup.Choices.Any(c=>I(c,"id")==chosen))||
              (attributeChoices is {} attributes&&attributes.Node==node&&attributes.Build==documentId&&attributes.Choices.Any(c=>I(c,"id")==chosen))))
         {
-            passiveChoicePopup=null;detailKind="node";Preview(new{op="node-choice",id=node,choice=chosen,allocationMode=B(State,"weaponTreeModes")?(int?)I(State,"allocationMode"):null});return true;
+            passiveChoicePopup=null;detailKind="node";Preview(new{op="node-choice",id=node,choice=chosen,allocationMode=Capabilities.WeaponTreeModes?(int?)I(State,"allocationMode"):null});return true;
         }
         if(id=="back"&&detailKind=="feature-picker"&&featurePicker is {} picker){detailKind=picker.ReturnTo;featurePicker=null;return true;}
         if(id=="choice-search"){choiceSearch=action.CommittedText??"";return true;}

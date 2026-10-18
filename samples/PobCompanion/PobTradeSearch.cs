@@ -10,7 +10,7 @@ internal static class PobTradeSearch
     {
         using var client=new HttpClient(new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromSeconds(15)};
         client.DefaultRequestHeaders.UserAgent.ParseAdd("WidgetRail-PoB/0.1");
-        using var response=await client.GetAsync($"https://www.pathofexile.com/api/trade{(game==2?"2":"")}/data/leagues",HttpCompletionOption.ResponseHeadersRead,token);
+        using var response=await client.GetAsync($"https://www.pathofexile.com{PobGame.For(game).TradeApiPath}data/leagues",HttpCompletionOption.ResponseHeadersRead,token);
         response.EnsureSuccessStatusCode();
         await using var stream=await response.Content.ReadAsStreamAsync(token);
         using var buffer=new MemoryStream();var bytes=new byte[8192];int count;
@@ -22,17 +22,17 @@ internal static class PobTradeSearch
     internal static string SearchUrl(int game,string league,JsonElement query,bool weighted=false)
     {
         if(string.IsNullOrWhiteSpace(league)||league.Length>160||league.Any(char.IsControl))throw new IOException("Choose a league.");
-        var root=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/{Uri.EscapeDataString(league)}";
+        var root=$"https://www.pathofexile.com{PobGame.For(game).TradeSearchPath}{Uri.EscapeDataString(league)}";
         var text=query.GetRawText();
         string url;
-        if(game==2)
+        if(PobGame.For(game).CompressedSearch)
         {
             using var output=new MemoryStream();
             using(var zip=new GZipStream(output,CompressionLevel.Optimal,true))zip.Write(Encoding.UTF8.GetBytes(text));
             url=root+"/"+Convert.ToBase64String(output.ToArray()).Replace('+','-').Replace('/','_');
         }
         else url=root+"?q="+Uri.EscapeDataString(text);
-        if(game==2&&weighted&&query.TryGetProperty("stats",out var stats))
+        if(PobGame.For(game).CompressedSearch&&weighted&&query.TryGetProperty("stats",out var stats))
         {
             var index=Array.FindIndex(stats.EnumerateArray().ToArray(),g=>g.TryGetProperty("type",out var type)&&type.GetString()=="weight");
             if(index<0)throw new IOException("PoB did not provide a weighted search group.");

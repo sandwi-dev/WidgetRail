@@ -15,7 +15,7 @@ internal static class PobCurrencyRates
 {
     internal static async Task<CurrencyRateSnapshot> ReadAsync(int game,string realm,string league,string directory,PobEngine engine,string xml,CancellationToken token)
     {
-        if(realm is not("pc" or "poe2" or "xbox" or "sony")||game==2&&realm!="poe2"||game==1&&realm=="poe2"||string.IsNullOrWhiteSpace(league)||league.Length>160)
+        if(!PobGame.For(game).SupportsRealm(realm)||string.IsNullOrWhiteSpace(league)||league.Length>160)
             throw new IOException("The listing's game, realm or league is unavailable.");
         var now=DateTimeOffset.UtcNow;
         var key=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(realm+"\n"+league)));
@@ -30,7 +30,7 @@ internal static class PobCurrencyRates
         using var client=new HttpClient(new HttpClientHandler{AllowAutoRedirect=false}){Timeout=TimeSpan.FromSeconds(30)};
         client.DefaultRequestHeaders.UserAgent.ParseAdd("WidgetRail-PoB/0.1");
         var hour=DateTimeOffset.FromUnixTimeSeconds((now.ToUnixTimeSeconds()/3600-1)*3600);
-        var staticTask=ReadJsonAsync(client,$"https://www.pathofexile.com/api/trade{(game==2?"2":"")}/data/static",4*1024*1024,token);
+        var staticTask=ReadJsonAsync(client,$"https://www.pathofexile.com{PobGame.For(game).TradeApiPath}data/static",4*1024*1024,token);
         var marketsTask=ReadJsonAsync(client,$"https://web.poecdn.com/api/currency-exchange{(realm=="pc"?"":"/"+realm)}/{hour.ToUnixTimeSeconds()}",32*1024*1024,token);
         try{await Task.WhenAll(staticTask,marketsTask);}
         catch(OperationCanceledException)when(!token.IsCancellationRequested){throw new IOException("GGG currency data did not respond in time. Try price ordering again later.");}

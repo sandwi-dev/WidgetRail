@@ -51,7 +51,7 @@ public sealed partial class PobWidget
         return true;
     }
     private string BrowseTradeUrl()=>PobTradeSearch.SearchUrl(game,tradeLeague,
-        game==2?JsonSerializer.SerializeToElement(new{status=new{option=tradeMode}}):JsonSerializer.SerializeToElement(new{query=new{status=new{option=tradeMode}}}));
+        gameDefinition.CompressedSearch?JsonSerializer.SerializeToElement(new{status=new{option=tradeMode}}):JsonSerializer.SerializeToElement(new{query=new{status=new{option=tradeMode}}}));
     private ButtonElement BrowseTradeButton()=>Button("Browse trade website","trade-browse");
     private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open").Disabled(!TradeCatalogReady||!TradeSlotAvailable);
     private async Task<string> CalculateTradeUrlAsync(string xml,string slot,string priority,string league,string price,string currency,string mode,CancellationToken token)
@@ -122,8 +122,6 @@ public sealed partial class PobWidget
                 UI.Select("Currency",new[]{"divine","chaos","exalted"}.Select(c=>new SelectOption(c,char.ToUpperInvariant(c[0])+c[1..]+" Orb","trade-currency."+c,c==tradeCurrency)).ToArray(),"pob.trade-currency").Classes("pob-select")).Classes("pob-toolbar","pob-price-fields"),
             Text("Weights estimate an upgrade; they do not guarantee it. Compare an item before applying it.","trade.caution","pob-small pob-muted"),
             UI.Row("pob.trade.return",Button("Paste item to compare","item-paste"),Button("Refresh leagues","trade-refresh")).Classes("pob-toolbar"),
-            Text(game==2
-                ?"In the overlay browser, use Compare in PoB beside a listing. For clipboard import, hover over an item in game and press Ctrl+C. The PoE2 website has no built-in Copy item button in an external browser."
-                :"In the overlay browser, use Compare in PoB beside a listing. On the trade site, use Copy item for clipboard import. In game, hover over an item and press Ctrl+C, then paste here.","trade.paste-help","pob-small pob-muted"))
+            Text(gameDefinition.ItemCopyHelp,"trade.paste-help","pob-small pob-muted"))
             .Classes("pob-scroll","pob-panel"),TradeCatalogReady?"pob.trade-slot":"pob.trade-league","pob.trade.actions","Search controls",true)).Classes("pob-workspace");
 }

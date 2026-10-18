@@ -1,9 +1,7 @@
 -- Only generate queries. Authentication, listings and purchases remain on the trade website.
+local compatibility=dofile((debug.getinfo(1,'S').source:sub(2):match('^(.*[/\\])')or '')..'engine-compatibility.lua')
 local M={}
-local function create(class,...)
-  if common.classes.Tooltip.Tooltip then local object=new(class);object[class](object,...);return object end
-  return new(class,...)
-end
+local create=compatibility.create
 local metrics={balanced={{stat='FullDPS',label='Full DPS',weightMult=1},{stat='TotalEHP',label='Effective Hit Pool',weightMult=.5}},
   damage={{stat='FullDPS',label='Full DPS',weightMult=1}},life={{stat='Life',label='Life',weightMult=1}},
   energyshield={{stat='EnergyShield',label='Energy Shield',weightMult=1}},defence={{stat='TotalEHP',label='Effective Hit Pool',weightMult=1}}}

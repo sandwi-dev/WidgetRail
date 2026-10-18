@@ -309,8 +309,8 @@ public sealed partial class PobWidget
     {
         var main = new List<WidgetElement>();
         AddSet(main, "trees", "tree");
-        if(B(State,"timelessFinder"))main.Add(Button("Find a Timeless Jewel…","timeless-open"));
-        if(B(State,"weaponTreeModes"))main.Add(TreeAllocationControl());
+        if(Capabilities.TimelessFinder)main.Add(Button("Find a Timeless Jewel…","timeless-open"));
+        if(Capabilities.WeaponTreeModes)main.Add(TreeAllocationControl());
         if (mapSession is not null) main.Add(UI.WebView(mapSession.Reference, "pob.map").Classes("pob-map"));
         else
         {

@@ -5,6 +5,13 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
+if(args is ["--architecture-only"])
+{
+    var passed=0;var failed=0;
+    ArchitectureTests.Run((ok,name)=>{Console.WriteLine((ok?"PASS ":"FAIL ")+name);if(ok)passed++;else failed++;});
+    Console.WriteLine($"Architecture: {passed} passed, {failed} failed");return failed==0?0:1;
+}
+
 if(args is ["--bundle-only"])
 {
     var passed=0;var failed=0;

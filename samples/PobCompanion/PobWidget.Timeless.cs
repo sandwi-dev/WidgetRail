@@ -17,7 +17,7 @@ public sealed partial class PobWidget
     private bool HandleTimeless(WidgetActionEvent action)
     {
         var id=action.ActionId;var parts=id.Split('.');
-        if(id=="timeless-open"&&B(State,"timelessFinder")&&pendingBefore is null)
+        if(id=="timeless-open"&&Capabilities.TimelessFinder&&pendingBefore is null)
         {
             Work(async token=>
             {

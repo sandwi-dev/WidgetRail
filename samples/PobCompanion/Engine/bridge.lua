@@ -2,6 +2,7 @@
 -- Only structured data enters this process; requests are never evaluated as Lua.
 local output = io.stdout
 local adapterDirectory=assert(arg[0]:match('^(.*[/\\])'),'Adapter requires an absolute path')
+local compatibility=dofile(adapterDirectory..'engine-compatibility.lua')
 local treeGeometry=dofile(adapterDirectory..'tree-geometry.lua')
 local treePresentation=dofile(adapterDirectory..'tree-presentation.lua')
 local skillManagement=dofile(adapterDirectory..'skill-management.lua')
@@ -90,8 +91,7 @@ end
 local function itemDetails(item,slot)
   -- Reuse upstream presentation formatting, including rolled ranges and
   -- variant filtering. Never expose serialization-only prefix/suffix codes.
-  local tooltip=new('Tooltip')
-  if common.classes.Tooltip.Tooltip then tooltip:Tooltip() end
+  local tooltip=compatibility.create('Tooltip')
   local previous=build.itemsTab.showStatDifferences
   build.itemsTab.showStatDifferences=false
   local ok=pcall(build.itemsTab.AddItemTooltip,build.itemsTab,tooltip,item,slot,false,600)
@@ -121,10 +121,11 @@ local function snapshot()
   local active=build.calcsTab.mainEnv.player.mainSkill
   result.mainSkill=active and active.activeEffect and active.activeEffect.grantedEffect.name or ''
   result.mainSkillShowsAverage=active and active.skillData and not not active.skillData.showAverage or false
-  result.canCreateLoadout=type(build.CustomLoadout)=='function'
+  result.capabilities=compatibility.capabilities(build)
+  result.canCreateLoadout=result.capabilities.canCreateLoadout
   result.skillSlots={}
   for _,slot in ipairs(build.skillsTab.controls.groupSlot and build.skillsTab.controls.groupSlot.list or {})do result.skillSlots[#result.skillSlots+1]={name=slot.slotName or '',label=clean(slot.label or slot.slotName or 'None')}end
-  result.skillWeaponSets=build.skillsTab.controls.set1Enabled~=nil
+  result.skillWeaponSets=result.capabilities.skillWeaponSets
   result.mainSkillGroup=build.mainSocketGroup
   result.mainSkillDisabled=active and (active.disableReason~=nil or active.skillFlags and active.skillFlags.disable==true) or false
   result.mainSkillDisabledReason=active and clean(active.disableReason) or ''
@@ -277,7 +278,7 @@ local function snapshot()
   planningFeatures.snapshot(result,textRuns,clean)
   local passivePoints,ascendancyPoints=build.spec:CountAllocNodes()
   result.passivePoints=passivePoints;result.ascendancyPoints=ascendancyPoints
-  result.weaponTreeModes=build.spec.GetEffectiveAllocationPath~=nil
+  result.weaponTreeModes=result.capabilities.weaponTreeModes
   if result.weaponTreeModes then
     -- Project the desktop display after OnFrame; PoB owns point accounting.
     local budgets={}
@@ -287,7 +288,7 @@ local function snapshot()
     assert(#budgets==4,'PoB passive point display has changed')
     result.passiveBudgets=budgets;result.passivePoints=budgets[1].used
   end
-  result.timelessFinder=timelessTools.available()
+  result.timelessFinder=result.capabilities.timelessFinder
   result.allocationMode=build.spec.allocMode or 0
   for id,n in pairs(build.spec.nodes) do
     if finite(n.x) and finite(n.y) then

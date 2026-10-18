@@ -33,7 +33,7 @@ public static class BuildDocument
         using var reader = XmlReader.Create(new StringReader(text), new() { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaximumBytes });
         XDocument document;
         try { document = XDocument.Load(reader); } catch (XmlException) { throw new IOException("This is not a valid PoB build document."); }
-        var expected = game == 2 ? "PathOfBuilding2" : "PathOfBuilding";
+        var expected = PobGame.For(game).DocumentRoot;
         if (document.Root?.Name != expected) throw new IOException($"Use the PoE {(game == 2 ? 1 : 2)} companion for this build, or choose a valid PoB export.");
         return text;
     }

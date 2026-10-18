@@ -9,7 +9,8 @@ public sealed partial class PobWidget : Widget
 {
     private readonly object gate = new();
     private readonly int game;
-    private string WidgetName => game == 2 ? "PoE2 Path of Building (Beta)" : "PoE1 Path of Building";
+    private readonly PobGame gameDefinition;
+    private string WidgetName => gameDefinition.Name;
     private readonly string dataDirectory;
     private readonly PobEngine engine;
     private readonly string? artworkDirectory;
@@ -17,7 +18,7 @@ public sealed partial class PobWidget : Widget
     private PobResult? result, pendingBefore;
     private readonly Stack<string> undo = new();
     private string? documentId;
-    private (string Id,string Name)[] savedBuilds = [];
+    private (string Id,string Name)[] savedBuilds => librarySnapshot.Entries;
     private string? pastedItem;
     private string? previewSlot;
     private string section = "Calcs", filter = "", status = "", detailKind = "";
@@ -38,14 +39,15 @@ public sealed partial class PobWidget : Widget
     private static readonly string[] NavigationSections = ["Calcs", "Skills", "Items", "Configuration", "Tree", "Notes"];
     public PobWidget(int game, string payloadDirectory, string? dataDirectory = null)
     {
-        this.game = game;
+        this.game = game; gameDefinition = PobGame.For(game);
         this.dataDirectory = dataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "applications", "pob" + game);
         preferences=new(Environment.GetEnvironmentVariable("WIDGETRAIL_POB_PREFERENCES")??Path.Combine(Path.GetDirectoryName(Path.GetFullPath(this.dataDirectory))!,"pob-preferences"));
         engine = new(Path.Combine(payloadDirectory, "pob-engine"), Path.Combine(payloadDirectory, "runtime"), Path.Combine(payloadDirectory, "Engine", "bridge.lua"));
         artworkDirectory=Path.Combine(payloadDirectory,"web","art");
     }
-    public PobWidget(int game, PobEngine engine, string dataDirectory, Func<string>? readClipboard = null, string? preferencesDirectory=null) { this.game = game; this.engine = engine; this.dataDirectory = dataDirectory; this.readClipboard = readClipboard ?? ClipboardText.Read; preferences=new(preferencesDirectory??Path.Combine(dataDirectory,"preferences")); }
+    public PobWidget(int game, PobEngine engine, string dataDirectory, Func<string>? readClipboard = null, string? preferencesDirectory=null) { this.game = game; gameDefinition = PobGame.For(game); this.engine = engine; this.dataDirectory = dataDirectory; this.readClipboard = readClipboard ?? ClipboardText.Read; preferences=new(preferencesDirectory??Path.Combine(dataDirectory,"preferences")); }
     private JsonElement State => result?.State ?? default;
+    private PobEngineCapabilities Capabilities => result?.Capabilities ?? PobEngineCapabilities.None;
     private static string S(JsonElement e, string key, string fallback = "") => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.ValueKind != JsonValueKind.Null ? v.ValueKind == JsonValueKind.String ? v.GetString()! : v.ToString() : fallback;
     private static int I(JsonElement e, string key) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
     private static bool B(JsonElement e, string key) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
@@ -316,7 +318,7 @@ public sealed partial class PobWidget : Widget
             AddTreeEditingControls(rows,n);
             if(B(n,"canChoose"))rows.Add(PassiveChoiceControl(n));
             if(B(n,"canAllocate") || B(n,"canRefund")) rows.Add(Button(B(n,"allocated")?"Preview refund":"Preview allocation path","node-change"));
-            if(B(State,"canEditNodeNotes")&&B(n,"allocated"))rows.Add(Field("Node note",UI.TextEntry(S(n,"note"),"Add a note for this passive","node-note","pob.node-note",1024).Classes("pob-input"),"node-note"));
+            if(Capabilities.CanEditNodeNotes&&B(n,"allocated"))rows.Add(Field("Node note",UI.TextEntry(S(n,"note"),"Add a note for this passive","node-note","pob.node-note",1024).Classes("pob-input"),"node-note"));
         }
         return rows;
     }

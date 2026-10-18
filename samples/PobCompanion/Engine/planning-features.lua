@@ -1,6 +1,7 @@
 -- Project upstream editor capabilities; callbacks own validation and parsing.
+local compatibility=dofile((debug.getinfo(1,'S').source:sub(2):match('^(.*[/\\])')or '')..'engine-compatibility.lua')
 local M={}
-local function tooltip()local t=new('Tooltip');if common.classes.Tooltip.Tooltip then t:Tooltip()end;return t end
+local function tooltip()return compatibility.create('Tooltip')end
 local function index(i,list)assert(type(i)=='number'and i%1==0 and list[i],'Selection no longer exists');return list[i]end
 local function controlOptions(control)
   local choices={}
@@ -80,7 +81,7 @@ function M.snapshot(result,textRuns,clean)
       result.characterRunes[#result.characterRunes+1]={id=name,title=clean(build.itemsTab.controls[name..' Label']:GetProperty('label')),options=controlOptions(c)}
     end
   end
-  result.canEditNodeNotes=build.spec.nodeNotes~=nil
+  result.canEditNodeNotes=result.capabilities.canEditNodeNotes
   result.gemSortMetrics={}
   if build.skillsTab.gemSlots[1].nameSpec.DPSBuilder then
     for _,metric in ipairs(build.skillsTab.controls.sortGemsByDPSFieldControl.list)do result.gemSortMetrics[#result.gemSortMetrics+1]={id=metric.type,title=clean(metric.label)}end

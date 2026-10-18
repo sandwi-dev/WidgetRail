@@ -11,7 +11,7 @@ public sealed partial class PobWidget
     private bool HandleGameExportAction(WidgetActionEvent action)
     {
         var id=action.ActionId;
-        if(id=="game-export" && game==2)
+        if(id=="game-export" && gameDefinition.SupportsGameFileExport)
         { gameExportName=BuildName(); gameExportPaths=[]; detailKind="game-export"; focusRequestSequence++; return true; }
         if(detailKind!="game-export")return false;
         if(id=="back"){detailKind="menu";focusRequestSequence++;return true;}
