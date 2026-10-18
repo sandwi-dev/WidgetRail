@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-18
 
-**Status: all implementation scope listed below is agreed; implementation has not started.** All rows in the implementation tracking table have the same scope approval. Deferred, excluded and explicitly out-of-scope discussion items remain outside that approval. Scope approval is distinct from acceptance of the finished implementation. Keep this document updated as work is verified; this status clarification does not itself start implementation.
+**Status: implementation resumed on 2026-10-18. All implementation scope listed below is agreed.** All rows in the implementation tracking table have the same scope approval. Deferred, excluded and explicitly out-of-scope discussion items remain outside that approval. Scope approval is distinct from acceptance of the finished implementation. Keep this document updated as work is verified; The latest instruction resumes implementation, including the music follow-up.
 
 This plan covers the next round of PoE1 and PoE2 widget improvements discussed after reviewing PoB Redux. It supplements the [existing trade plan](pob-trade-completion-plan.md); it does not restart completed work or reopen deferred CI repairs.
 
@@ -10,19 +10,19 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 | Order | Work item | Status |
 | --- | --- | --- |
-| 1 | Clean up shared code and game-specific boundaries | Agreed; not started |
-| 2 | Adjust widget dimensions and stabilize workspace sizing | Agreed; not started |
+| 1 | Clean up shared code and game-specific boundaries | In progress |
+| 2 | Adjust widget dimensions and stabilize workspace sizing | Implemented sizing policy; native verification pending |
 | 2a | Compact layouts and inspect the app for couch readability | Agreed; not started |
 | 2b | Improve PoB editing and inspection workflows using Redux as a reference | Agreed; not started |
 | 3 | Bring PoE1 to a tested beta candidate and audit new features | Agreed; not started |
 | 4 | Complete passive-tree artwork and measure rendering improvements | Agreed; not started |
 | 5 | Add whole-build and loadout comparison | Agreed; not started |
 | 6 | Add unified search and direct navigation | Agreed; not started |
-| Independent host change | Rename Marketplace to WidgetRail Catalogue | Agreed; not started |
+| Independent host change | Rename Marketplace to WidgetRail Catalogue | In progress; focused tests passed |
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Agreed; not started |
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
-| Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Agreed; not started |
-| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Agreed for planning; implementation explicitly on hold |
+| Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Existing facilities audited; extension pending |
+| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Agreed; implementation resumed, queued |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
@@ -87,6 +87,9 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 - [ ] Record coverage, findings, corrections and final native visual evidence under the existing app-wide verification checklist. Use local/sanitized fixtures for repeated checks; preserve the minimal-live-GGG constraint. Final couch-distance readability remains physical user acceptance.
 
 ## Shared rich previews and anchored popovers
+
+Audit (2026-10-18): `PresentOnFocus` and `FocusPresentationSurface` already provide widget-authored, bounded passive content selected locally by host focus, including indexed-row ownership. Reuse these instead of adding a duplicate passive inspector. Extend placement/activation for anchored previews; retain passive-fragment validation. Explicit interactive inspection should reuse the modal focus scope, Back handling and restoration with an anchored presentation option. Existing presentation identities, row leases and transient input admission must remain authoritative. No public API shape is finalized by this audit.
+
 
 Provide reusable widget-authored content anchored to an existing element. Content is composed from the normal widget UI elements; it is not restricted to item descriptions, artwork or statistics and does not require another layout language.
 
@@ -214,7 +217,7 @@ Requested on 2026-10-18. Investigation and planning only for now: the user expli
 
 ### Live testing authorization and service traffic
 
-- The user authorizes using their normal profile for live testing of these changes when implementation resumes, including the music actions needed to verify the agreed workflows. This does not lift the current instruction to remain at investigation/planning until resumed.
+- The user authorizes using their normal profile for live testing of these changes when implementation resumes, including the music actions needed to verify the agreed workflows. Implementation resumed with the 2026-10-18 instruction to continue the plan.
 - Use **WidgetRail as the Spotify playback device**. Verify the active target before playback/queue tests; do not use another Spotify Connect device as a fallback. If WidgetRail is unavailable, report the blocker rather than redirect playback elsewhere.
 - Use Spotify and YouTube Music as a person would: deliberate browsing, playback and individual actions at normal pace. No rapid calls, automated request bursts, bulk live mutations, repeated refresh loops or service stress testing. Account for background polling and automatic refreshes as well as explicit actions. Use cached data and coalesced refreshes; respect rate-limit/retry responses and stop live retries on throttling or authentication challenges.
 - Keep rapid-input, race, failure and maximum-size tests in deterministic fakes/local fixtures. Use a small number of representative live checks for real integration and native controller/mouse workflows. Do not run scripted live mutations merely to populate a maximum-size test queue. Record which checks were simulated versus live.
@@ -270,9 +273,18 @@ The conversation mockup is a design reference only; native visual acceptance is 
 - PoB documentation split into [overview](../samples/PobCompanion/README.md), [user guide](../samples/PobCompanion/USER_GUIDE.md) and [developer documentation](../samples/PobCompanion/DEVELOPMENT.md).
 - Grouping duplicate passive names into expandable rows was discussed earlier. It is not yet part of the implementation scope. If revisited, preserve distinct node identities and investigate a reusable flattened virtualized-list pattern rather than assuming nested expandable lists exist.
 
+## Efficient verification strategy
+
+- Use deterministic tests and local fixtures for logic, lifecycle, races, stale results, failure paths and resource limits. Repeated checks must not call live services.
+- Use native UI automation for focus, reachability, scrolling, bounds, enabled state and navigation. Batch related checks and report failures compactly.
+- Inspect representative changed layouts visually: dense content, materially different responsive layouts and relevant empty/error states. Crop evidence to the affected surface where possible; repeat only after relevant changes, failures or uncertainty.
+- Check geometry/accessibility across representative themes/scales automatically; inspect appearance where it differs materially or automation flags a concern.
+- Coordinate one integrated workflow pass, then targeted retests. Keep one shared coverage record so parallel contributors do not duplicate work.
+- Distinguish automated, native visual and physical controller/couch acceptance. Do not claim all possible visual states or couch readability were verified from screenshots.
+
 ## Verification and delivery records
 
-For each implemented item, record the commit, relevant tests, performance evidence where applicable, visual inspection and remaining limitations below. Distinguish automated checks from physical acceptance. Check both games when changing shared code. No implementation or acceptance evidence has been recorded for this round yet.
+For each implemented item, record the commit, relevant tests, performance evidence where applicable, visual inspection and remaining limitations below. Distinguish automated checks from physical acceptance. Check both games when changing shared code. Current evidence and unverified states are recorded in [the verification ledger](pob-improvements-verification.md).
 
 Cumulative candidates may be launched hidden with the normal profile, as previously authorized; keep one candidate instance. A documentation-only update does not require rebuilding or relaunching the application.
 

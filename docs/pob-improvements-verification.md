@@ -1,0 +1,36 @@
+# PoB and shared UI improvement verification
+
+Updated 2026-10-18. This ledger records implementation evidence, not final acceptance of the full plan.
+
+Local commits: `2bbf0b6c` architecture boundaries; `41d1fe9a` workspace sizing; `317be39e` Catalogue rename/tests. Nothing merged, pushed or released.
+
+## First implementation slice
+
+| Area | Evidence | Still required |
+| --- | --- | --- |
+| Fixed game contracts | Central `PobGame`; endpoint, realm, export and document-root assertions | Beta naming follows the later PoE1 migration |
+| Engine boundary | Validated response envelopes and typed capabilities; Lua constructor/availability helper; 24 local architecture assertions | Type subsequent workflow responses as those areas change |
+| Saved-build discovery | Separate metadata/cache owner; atomic UI snapshot; recovery-only entries, malformed XML, removed files and cache invalidation covered | Unified-search integration later |
+| PoE1 and PoE2 regressions | Each: management 39, sets 28, trade 5, currency ranking 11, empty builds 23 passed | Native integration after the UI changes are assembled |
+| PoE2 planning workflow | 26 passed with the existing Monk guide fixture | No equivalent PoE1 test claimed; this fixture is explicitly PoE2-specific |
+| Planning dimensions | Shared 1320 logical-pixel preferred width; available height; smaller management screens preserved; both engines' management assertions pass | Native bounds, modal, scaling and focus inspection |
+| Catalogue rename | Preserved technical identities; presentation 8, service 16, Settings Catalogue workflow 1, SDK Gallery 13 passed | Native label fit, full flow review, release caching/rate-limit work |
+| Rich previews | Existing `PresentOnFocus`, `FocusPresentationSurface`, source ownership and modal scopes audited | Anchored placement/activation and interactive extension |
+
+PoB totals: **262 passing assertions** across the distinct scopes above, plus the focused Lua compatibility test. Catalogue-related totals: **38 passing assertions**. C# builds completed without warnings or errors. No GGG, Spotify or YouTube requests were made for these checks. No screenshots or native interaction were needed for this logic/refactoring slice; visual acceptance is explicitly pending.
+
+Logs and uniquely named binlogs are under `artifacts/pob/architecture-*` and `artifacts/catalogue-*`. Engine revisions were verified against `samples/PobCompanion/engine-lock.json`: PoE1 `b32759ab0f31a1c8499a0d420cb0f0633d4fe478`; PoE2 `84a11f1295f67a25f434329197444438514983f1`.
+
+Two initial planning-test invocations used unsuitable fixtures: PoE1 against a hard-coded PoE2 harness, then a Ranger fixture for assertions requiring the Monk's Runic Meridians. These were test-selection mistakes, not product fixes. The intended Monk fixture passed all 26 assertions. Logs are retained rather than overwritten.
+
+## Shared native coverage queue
+
+Batch these checks into the integrated candidate pass; repeat only affected cases after fixes:
+
+- PoB section transitions, planning/management size changes, modal bounds and hide/reopen focus.
+- Dense, empty and partial builds; long names; representative small-display and TV scaling.
+- Changed Catalogue/Settings labels, Back and focus restoration, install/review/cancel/update flows.
+- Shared rich previews, once implemented, with a generic fixture and one PoB workflow.
+- Light/dark/high-contrast appearance where changes affect rendering. Use geometry/accessibility automation broadly and focused screenshots for visual differences.
+
+Actual controller ownership and couch-distance readability remain physical acceptance checks. Model/snapshot tests do not establish those results.
