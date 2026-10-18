@@ -938,3 +938,25 @@ Evidence: `preview-accessibility-final-20261018/result.json` and
 `preview-hc-final-20261018` (scaling) and `preview-hc-fixed-20261018` (palette).
 No Windows contrast setting was changed; actual OS-theme transition and physical
 couch readability are not asserted.
+
+## Bare optional-package continuity — 2026-10-18, open finding
+
+Added a bounded opt-in case to `Test-InstalledUpdate.ps1`. One additional real
+Bare Inno update preserved the enabled Performance Monitor package and its bytes;
+normal registration/startup state remained isolated. However the subsequent
+installed native launch reported zero installed packages and did not expose the
+widget. A native-only resume reproduced that failure without repeating setup.
+The bundled CLI still lists the enabled selected version, and read-only discovery
+through the installed WidgetCatalog assembly finds it. Captured child arguments
+point to the intended isolated catalogue. Cause remains unresolved; no speculative
+production change was made. This is **not** completed Bare install/upgrade/launch
+acceptance.
+
+The harness now treats `activeVersion: null` correctly as automatic newest-version
+selection, reads actual `selectedVersion` from CLI inventory, and checks archive
+bytes on resume. It also captures failure trees and actual child roots when the
+native readiness probe exits nonzero. PowerShell parsing passes. Evidence:
+`installed-update-20261018/run-0ca80065/bare-disabled`,
+`run-6721368e/bare-native-resume`, `bare-discovery-ui.json` and
+`bare-discovery-settings.json`. The isolated installation is retained for diagnosis;
+no production installation or user package was removed.
