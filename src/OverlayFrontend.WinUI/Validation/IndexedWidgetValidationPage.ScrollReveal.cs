@@ -14,20 +14,37 @@ internal sealed partial class IndexedWidgetValidationPage
     private async Task ValidateScrollRevealAsync(string path)
     {
         var checks = new List<string>();
+        var trace = new List<object>();
+        void Trace(string phase)
+        {
+            if (trace.Count < 32 && View() is not null)
+            {
+                var query = FindNode(session?.GetState("indexed-owned")?.LastGood?.Snapshot.Root, "items")?.IndexedCollection;
+                trace.Add(new { phase, state = Collection().NavigationDiagnosticState(), parentFocus = FocusedParent(), query });
+            }
+        }
         try
         {
             await Wait(() => View() is { IsLoaded: true } && Parent() is { IsLoaded: true });
             Parent().Focus(FocusState.Keyboard);
             await Send("reveal-exact");
             await Wait(() => Visible(75));
+            Trace("first-visible");
+            await SettledOffset();
+            Trace("reveal-settled");
             Check(FocusedParent(), "Deep occurrence reveal retains toolbar focus");
             var scroll = Scroll();
             Check(scroll.VerticalOffset > 0 && View()!.SelectedIndex == -1, "Reveal scrolls without selecting an item");
 
             scroll.ChangeView(null, 0, null, true);
             await Wait(() => scroll.VerticalOffset < 1);
+            await SettledOffset();
+            if (scroll.VerticalOffset >= 1) { Trace("top-did-not-stay-settled"); throw new InvalidOperationException("Native reset left the top before content update."); }
+            Trace("returned-to-top");
             await Send("reveal-republish");
             await Task.Delay(350, lifetime.Token);
+            await SettledOffset();
+            Trace("content-republished");
             Check(scroll.VerticalOffset < 1 && FocusedParent(), "Content updates do not replay a consumed reveal");
 
             await Send("reveal-wrong");
@@ -63,8 +80,9 @@ internal sealed partial class IndexedWidgetValidationPage
             Check(failure is null, "Native presenter reported no errors");
             Write(true, null);
         }
-        catch (Exception error) { Write(false, error.ToString()); }
+        catch (Exception error) { Trace("failure"); Write(false, error.ToString()); }
 
+        WidgetIndexedCollectionView Collection() => Descendants(presenter).OfType<WidgetIndexedCollectionView>().Single();
         Button Parent() => Descendants(presenter).OfType<Button>().Single(b => AutomationProperties.GetAutomationId(b) == "Widget.parent");
         bool FocusedParent() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Parent());
         ScrollViewer Scroll() => Descendants(View()!).OfType<ScrollViewer>().First();
@@ -75,6 +93,20 @@ internal sealed partial class IndexedWidgetValidationPage
             var scroll = Scroll();
             var bounds = row.TransformToVisual(scroll).TransformBounds(new(0, 0, row.ActualWidth, row.ActualHeight));
             return bounds.Y >= -1 && bounds.Bottom <= scroll.ViewportHeight + 1;
+        }
+        async Task SettledOffset()
+        {
+            var previous = double.NaN;
+            var stable = 0;
+            var deadline = Environment.TickCount64 + 5000;
+            while (stable < 5)
+            {
+                if (Environment.TickCount64 > deadline) { Trace("settle-timeout"); throw new TimeoutException("Native reveal geometry did not settle."); }
+                await Task.Delay(40, lifetime.Token);
+                var next = Scroll().VerticalOffset;
+                stable = !Collection().HasPendingNativeNavigation && Math.Abs(next - previous) < 0.1 ? stable + 1 : 0;
+                previous = next;
+            }
         }
         async Task Send(string action)
         {
@@ -96,7 +128,7 @@ internal sealed partial class IndexedWidgetValidationPage
         void Write(bool passed, string? error)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new { passed, checks, error }, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(path, JsonSerializer.Serialize(new { passed, checks, trace, error }, new JsonSerializerOptions { WriteIndented = true }));
         }
     }
 }

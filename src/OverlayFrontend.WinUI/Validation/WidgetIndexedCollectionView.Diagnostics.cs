@@ -8,11 +8,12 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetIndexedCollectionView
 {
+    internal bool HasPendingNativeNavigation => pendingIndex is not null;
     internal object NavigationDiagnosticState()
     {
         var slot = navigationRetention?.Slot;
         var scroll = view is null ? null : FindNativeScroll(view);
-        return new { pendingIndex, entering, navigationQueued, navigationNeedsScroll, CanReceiveInput,
+        return new { pendingIndex, entering, scrollOnly, navigationQueued, navigationNeedsScroll, CanReceiveInput,
             current = slot?.Value?.Lease.IsCurrent, key = slot?.Key, failed = slot?.Failed,
             targetLoaded = pendingIndex is { } index && view?.ContainerFromIndex(index) is FrameworkElement { IsLoaded: true },
             offset = scroll?.VerticalOffset, extent = scroll?.ScrollableHeight, viewport = scroll?.ViewportHeight,
@@ -36,4 +37,12 @@ internal sealed partial class WidgetIndexedCollectionView
     internal Action<string>? NavigationTrace { get; set; }
     partial void TraceNavigation(string phase, int index, WidgetIndexedRow row, Control target) =>
         NavigationTrace?.Invoke($"{phase} index={index} entry={pendingEntry?.Index} entering={entering} nativeEnabled={target.IsEnabled} rowDisabled={row.Item.Root.IsDisabled} rowBusy={row.Item.Root.IsBusy} current={row.Lease.IsCurrent}");
+    partial void TraceContinuity(string phase, IndexedViewportMemento? viewport)
+    {
+        if (NavigationTrace is null) return;
+        var scroll = view is null ? null : FindNativeScroll(view);
+        var container = viewport is null ? null : view?.ContainerFromIndex(viewport.Index) as FrameworkElement;
+        var position = container is not null && scroll is not null ? container.TransformToVisual(scroll).TransformPoint(new(0, 0)).Y : (double?)null;
+        NavigationTrace($"continuity {phase} index={viewport?.Index} key={viewport?.Key} expected={viewport?.LeadingPosition} actual={position} scroll={scroll?.VerticalOffset} pendingOffset={pendingContinuity?.Offset} pendingFocus={pendingContinuity?.Focus?.Index} loaded={container?.IsLoaded}");
+    }
 }

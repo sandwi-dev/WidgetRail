@@ -36,6 +36,7 @@ internal sealed partial class WidgetIndexedCollectionView
             viewport = oldViewport with { Query = query.QueryGeneration, Index = anchor, Key = keys[anchor] };
         if (oldFocus is not null && IndexedCollectionContract.RebaseOccurrence(oldKeys, keys, oldFocus.ItemKey) is var index && index >= 0)
             focus = oldFocus with { QueryGeneration = query.QueryGeneration, Index = index, ItemKey = keys[index] };
+        TraceContinuity("capture", viewport);
         return new(viewport, focus);
     }
 
@@ -76,6 +77,7 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         continuityQueued = false;
         if (pendingContinuity is not { } pending || source is null || view is null) return;
+        TraceContinuity("restore", pending.Viewport);
         if (disposed || !presentationActive || !CanReceiveInput) { CancelContinuity(); return; }
         if (pending.Focus is { } focus)
         {
@@ -98,9 +100,12 @@ internal sealed partial class WidgetIndexedCollectionView
         if (viewportReady && pending.Focus is null) CancelContinuity();
     }
 
+    partial void TraceContinuity(string phase, IndexedViewportMemento? viewport);
+
     private void CancelContinuity()
     {
         if (pendingContinuity is not { } pending) return;
+        TraceContinuity("cancel", pending.Viewport);
         pendingContinuity = null;
         if (source is not null) source.Items.StateChanged -= ContinuityDataChanged;
         if (view is not null) view.LayoutUpdated -= ContinuityLayoutChanged;

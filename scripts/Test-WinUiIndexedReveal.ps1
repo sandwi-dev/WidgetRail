@@ -29,8 +29,9 @@ try {
         if (-not (Get-Process -Id $owned -ErrorAction SilentlyContinue)) { throw 'Reveal fixture exited before publishing a result.' }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
-    if (-not $result -or $result.passed -ne $true -or $result.checks.Count -lt 10) { throw "Indexed reveal failed: $($result.error)" }
-    "Passed $($result.checks.Count) native indexed-reveal checks."
+    $expectedChecks = if ($Scenario -eq "continuity") { 16 } else { 10 }
+    if (-not $result -or $result.passed -ne $true -or $result.checks.Count -lt $expectedChecks) { throw "Indexed $Scenario failed: $($result.error)" }
+    "Passed $($result.checks.Count) native indexed-$Scenario checks."
 } finally {
     if ($owned -gt 0 -and (Get-Process -Id $owned -ErrorAction SilentlyContinue)) {
         & (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $owned

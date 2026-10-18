@@ -82,7 +82,14 @@ internal sealed partial class WidgetIndexedCollectionView
         var delta = memory.LeadingPosition is { } leading ? position - leading : position + Math.Clamp(memory.ClippedFraction, -1, 1) * size;
         var current = horizontal ? scroll.HorizontalOffset : scroll.VerticalOffset;
         var desired = Math.Clamp(current + delta, 0, horizontal ? scroll.ScrollableWidth : scroll.ScrollableHeight);
-        if (Math.Abs(desired - current) <= 1 / (view.XamlRoot?.RasterizationScale ?? 1)) return true;
+        if (Math.Abs(desired - current) <= 1 / (view.XamlRoot?.RasterizationScale ?? 1))
+        {
+            // An applied request is no longer pending. Native BringIntoView may
+            // subsequently move the viewport while a replacement lease loads;
+            // the same target must then be eligible for reconciliation again.
+            pendingOffset = null;
+            return true;
+        }
         if (pendingOffset != desired)
         {
             pendingOffset = desired;
