@@ -263,9 +263,9 @@ begin
     if WizardSilent and (PreviousRoot <> '') then EnableStartup := StartupWasEnabled;
     if EnableStartup then begin
       if not RegWriteStringValue(HKCU, RunKey, 'WidgetRail', StartupCommand(ApplicationRoot)) then begin
-        Log('WidgetRail was installed, but startup could not be enabled. Retry from WidgetRail Settings.');
+        Log('WidgetRail was installed, but startup could not be enabled. Run setup again and select Start WidgetRail when I sign in.');
         if not WizardSilent then
-          MsgBox('WidgetRail was installed, but startup could not be enabled. Try again from WidgetRail Settings.', mbError, MB_OK);
+          MsgBox('WidgetRail was installed, but startup could not be enabled. Run setup again and select Start WidgetRail when I sign in.', mbError, MB_OK);
         WarningPath := ExpandConstant('{param:WRAILWARNING|}');
         if WarningPath <> '' then SaveStringToFile(WarningPath, 'startup', False);
       end;
