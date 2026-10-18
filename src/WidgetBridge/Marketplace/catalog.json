@@ -10,6 +10,11 @@
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/calculations.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/trade-ranking.png"]
   },
   {
+    "id": "widgetrail.samples.mapgenie", "publisher": "widgetrail.samples", "name": "MapGenie",
+    "description": "Explore interactive game maps, find collectibles and track your progress.",
+    "screenshots": []
+  },
+  {
     "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
     "description": "Watch Twitch streams with controller navigation and pinnable webapp windows.",
     "screenshots": []

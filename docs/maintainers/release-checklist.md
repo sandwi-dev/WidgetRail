@@ -60,12 +60,14 @@ cleanup boundaries before describing uninstall as removing every possible sign-i
 
 ## Publish deliberately
 
-Discord, Game Help and Display Profiles are marketplace-only; neither edition may include their runtime folders or catalog entries. Build their release assets separately:
+Discord, Game Help, Display Profiles, Twitch and MapGenie are marketplace-only; neither edition may include their runtime folders or catalog entries. Build their release assets separately:
 
 ```powershell
 ./samples/DiscordWidget/Build-CommunityPackage.ps1
 ./samples/GameHelpWidget/Build-CommunityPackage.ps1
 ./samples/DisplayProfilesWidget/Build-CommunityPackage.ps1
+./samples/TwitchWidget/Build-CommunityPackage.ps1
+./samples/MapGenieWidget/Build-CommunityPackage.ps1
 ```
 
 Publish the resulting immutable `.wrwidget` archives alongside the release. GitHub's asset digests are supported; when publishing a checksum manifest, combine the generated `SHA256SUMS.txt` entries into one release-wide file with each asset listed once. A shared `-OutputDirectory` accumulates that file automatically. Individual `.sha256` sidecars are also generated for manual verification. The curated marketplace selects compatible published assets; a catalog entry alone is not a downloadable package. Review installation/enablement and permission requests with a fresh widget catalog before release.
