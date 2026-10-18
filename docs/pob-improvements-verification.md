@@ -373,3 +373,31 @@ An explicit empty favicon avoids an unnecessary undeclared-resource request.
 These are isolated renderer checks, not complete widget session/controller/couch
 acceptance. Integrated tree edit/inspect/reopen workflows and fresh cumulative
 package admission remain on the final acceptance list.
+
+## Cumulative publication checkpoint — 2026-10-18
+
+Fresh publication completed from clean commit `8bd04bd4`:
+`artifacts/pob/cumulative-candidate-20261018-b/publication.json`.
+Both assembled folders passed the actual release verifier and a post-verification
+inventory/hash check under `assembled/0.1.0-preview.36`:
+
+- Production: two core widgets and nine verified optional archives.
+- Bare: two core widgets and no optional archives.
+
+No installer, user package installation, capability grants, merge, push or release
+occurred. This resolves the earlier stale Developer-staging structural blocker.
+Actual isolated first-start/seeding, disable/uninstall/restart/re-update workflows
+remain to be exercised. Rebuild/package the current PoB applications with the
+already-generated all-version artwork before replacing normal-profile packages.
+
+The last hidden normal-profile frontend restored here is PID 57904, still from
+`cumulative-candidate-20261018` (earlier source `7a28e2b4`). It is deliberately not
+presented as running the new inspection/tree changes. Verify PID/path live before
+closing or replacing it. All native validation processes from this checkpoint have
+been closed. Source worktree is `codex/pob-companion`; main remains untouched.
+
+Remaining substantive plan work includes inline skill editing, actionable warning
+navigation, unified search/direct navigation, read-only whole-build/loadout comparison,
+fresh integrated packages, live music checks at human pace, actual guarded update and
+display workflows, app-wide compact/high-contrast/scaling acceptance and final docs
+reconciliation. The goal remains active; these commits are a checkpoint, not completion.

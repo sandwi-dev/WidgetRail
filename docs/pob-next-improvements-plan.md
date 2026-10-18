@@ -22,7 +22,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | After host prerequisites | Add unified search and direct navigation | Agreed; not started |
 | Cross-app adoption and verification | Compact layouts and inspect the app for couch readability | Catalogue and music player slices inspected; remaining application audit pending |
 | Independent completed slice | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, setup prerequisites and card styling implemented; focused and native checks passed |
-| Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Packaging, update bundle identity, one-time ordinary package seeding and Catalogue inventory implemented; deterministic checks pass; fresh assembled payload/native acceptance pending |
+| Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Packaging, update identity, ordinary package seeding and Catalogue inventory implemented; fresh Bare/Production folders pass structural verification; native first-start/update acceptance pending |
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Implemented; offline and native player checks pass; integrated/live workflows pending |
 | Display widget expansion | Add trusted reusable display controls, then expose them in the widget | Implemented; 25 deterministic and 124 native presentation checks pass; real guarded hardware acceptance pending |
 | App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; offline tests/Inno fixture compile pass; real installed upgrade acceptance pending |
