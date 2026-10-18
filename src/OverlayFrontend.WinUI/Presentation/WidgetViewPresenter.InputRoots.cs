@@ -32,12 +32,15 @@ internal sealed partial class WidgetViewPresenter
         // DirectionalKeyDown for the very same arrow press.
         root.PreviewKeyDown += key;
         root.PreviewKeyDown += DirectionalKeyDown;
+        // Bubble after native child controls have had their own Escape handling.
+        root.KeyDown += ModalKeyDown;
         root.AddHandler(PointerPressedEvent, pressed, true);
         root.AddHandler(PointerWheelChangedEvent, wheel, true);
         return new InputRootLease(() =>
         {
             root.ContextRequested -= NativeContextRequested; root.PreviewKeyDown -= NativeContextKeyDown;
             root.GotFocus -= focused; root.GettingFocus -= OnGettingFocus; root.PreviewKeyDown -= key; root.PreviewKeyDown -= DirectionalKeyDown;
+            root.KeyDown -= ModalKeyDown;
             root.RemoveHandler(PointerPressedEvent, pressed); root.RemoveHandler(PointerWheelChangedEvent, wheel);
         });
     }

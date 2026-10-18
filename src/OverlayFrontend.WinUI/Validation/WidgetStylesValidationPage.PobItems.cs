@@ -114,8 +114,10 @@ internal sealed partial class WidgetStylesValidationPage
                     Check(slotBounds.Top>=0&&slotBounds.Bottom<=panel.ActualHeight,"Equipment target remains fixed outside the description scroll region");
                     Check(slot.Focus(FocusState.Keyboard), "Inventory equipment slot control accepts focus");
                     page.ActivateFocused(); await Wait(() => page.HasTransientControl);
-                    await page.HandleControllerButtonAsync(ControllerButton.B);
+                    if(Environment.GetCommandLineArgs().Contains("--native-modal-keyboard")) NativeContextProbeInput.Escape();
+                    else await page.HandleControllerButtonAsync(ControllerButton.B);
                     await Wait(() => !page.HasTransientControl && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), slot));
+                    Check(open,"Cancelling the nested dropdown does not dismiss its parent inspection");
                     Check(slotChanges == 0 && equipped == 0, "Cancelling slot dropdown keeps slot focus and performs no equip");
                     page.ActivateFocused(); await Wait(() => page.HasTransientControl &&
                         FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused &&

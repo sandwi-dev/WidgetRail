@@ -895,3 +895,25 @@ on 2026-10-18 in `catalogue-store-comparison-20261018/UniGetUI-README.md`; no li
 GitHub throttling or repeated service calls were used for acceptance. Existing
 local cache/request-count and 22 native install/update workflow checks cover the
 network and installation boundary separately.
+
+## Keyboard dismissal and delayed dialog completion — 2026-10-18
+
+Installed inventory inspection revealed that keyboard Escape did nothing despite
+working pointer/context-menu, wheel and Tab interaction. Presenter input roots now
+route otherwise-unhandled Escape through the active modal's existing declared B
+action. Native child handling, browser keyboard focus, gamepad filtering, input
+admission and presentation ownership remain authoritative. Repeats are coalesced
+per modal incarnation; completing an older action cannot clear a newer guard.
+
+The actual installed 0.1.4.7 PoE1 and PoE2 inventories each pass **3 checks**:
+explicit inspection, native Escape returning to the exact row/screen position,
+and separate Select opening the editor. The generic native suite passes **160
+assertions**, including ordinary/anchored modals, themes/sizes, repeated Escape,
+reopening the same dialog ID and out-of-order completions. A fixture correction
+focused the intended left opener before the race scenario; previously it correctly
+restored the right opener retained from the preceding test. The item-inspection
+matrix passes **264 assertions**, including closing a nested slot popup without
+closing the inspector. Evidence: `inspection-packaged-final/poe{1,2}-item-inspection-escape.json`,
+`modal-keyboard-race-fixed-20261018/result.json`, and
+`inspection-fixed-actions-items/native-result.json`. These are native keyboard and
+synthetic controller assertions, not physical-controller acceptance.

@@ -81,13 +81,65 @@ internal sealed partial class WidgetStylesValidationPage
                         var close = Find<Button>("Widget.anchor.done")!;
                         var command = close.Command!;
                         if (anchored && width == 900 && id == "anchor.left") await Capture(Path.Combine(directory, themeId + ".png"));
-                        presenter.ActivateFocused();
+                        if(Environment.GetCommandLineArgs().Contains("--native-modal-keyboard"))
+                        {
+                            NativeContextProbeInput.Escape();
+                            await Wait(()=>!opened);
+                            Check(true,"Native Escape dismisses the active "+(anchored?"anchored":"ordinary")+" modal");
+                        }
+                        else presenter.ActivateFocused();
                         Trace("after-close " + id + " " + presenter.FocusDiagnostics());
                         await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener));
                         Check(true, (anchored ? "Anchored" : "Ordinary") + " dialog restores exact " + id + " opener without waiting for GotFocus");
                         Check(dispatched[^1] == "anchor.close", "Close dispatches through the existing modal action");
                         var count = dispatched.Count; command.Execute(null);
                         Check(dispatched.Count == count, "Retired popover action cannot dispatch");
+                    }
+                    if (Environment.GetCommandLineArgs().Contains("--native-modal-keyboard") && width == 900 &&
+                        themeId == ThemeIdentity.BuiltInMonoInk)
+                    {
+                        var originalDispatch = presenter.DispatchActionAsync;
+                        var firstDismissal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var secondDismissal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var attempts = 0;
+                        presenter.DispatchActionAsync = request =>
+                        {
+                            Check(request.Action.ActionId == "anchor.close", "Pending Escape dispatch keeps the modal's declared dismiss action");
+                            attempts++;
+                            if (attempts == 1) return firstDismissal.Task;
+                            if (attempts == 2) return secondDismissal.Task;
+                            opened = false; Publish(); return Task.CompletedTask;
+                        };
+                        try
+                        {
+                            anchored = true; anchorId = "anchor.left";
+                            Check(Find<Button>("Widget.anchor.left")!.Focus(FocusState.Keyboard),
+                                "Pending Escape race establishes its actual left opener before opening");
+                            opened = true; Publish();
+                            await Wait(() => Find<Button>("Widget.anchor.done") is { } done && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), done));
+                            NativeContextProbeInput.Escape(); await Wait(() => attempts == 1);
+                            Publish(); // A harmless snapshot must not reset same-modal coalescing.
+                            NativeContextProbeInput.Escape(); await Task.Delay(80);
+                            Check(attempts == 1, "Repeated Escape coalesces for the same pending modal across snapshots");
+                            opened = false; Publish();
+                            await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Find<Button>("Widget.anchor.left")));
+                            opened = true; Publish(); // Reuse the ID, but create a distinct modal incarnation.
+                            await Wait(() => Find<Button>("Widget.anchor.done") is { } done && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), done));
+                            NativeContextProbeInput.Escape(); await Wait(() => attempts == 2);
+                            Check(true, "An old pending dismissal cannot suppress Escape in a reopened modal with the same ID");
+                            firstDismissal.SetResult(); await Task.Delay(80);
+                            NativeContextProbeInput.Escape(); await Task.Delay(80);
+                            Check(attempts == 2, "Late completion of the old dismissal cannot clear the new modal's pending guard");
+                            secondDismissal.SetResult(); await Task.Delay(80);
+                            NativeContextProbeInput.Escape(); await Wait(() => attempts == 3 && !opened);
+                            Check(true, "Current dismissal completion releases only its own Escape guard");
+                            await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Find<Button>("Widget.anchor.left")));
+                        }
+                        finally
+                        {
+                            firstDismissal.TrySetResult(); secondDismissal.TrySetResult();
+                            presenter.DispatchActionAsync = originalDispatch;
+                        }
                     }
                     anchored = true; minimumSize = true; anchorId = "anchor.right"; opened = true; Publish();
                     await Wait(() => Find<Button>("Widget.anchor.done") is { IsLoaded: true } done && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), done));
