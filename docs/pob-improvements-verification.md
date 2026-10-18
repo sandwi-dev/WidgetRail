@@ -805,3 +805,55 @@ remain the qualified 0.1.4.6 installed earlier. See
 `cumulative-candidate-20261018-f/live-payload.json` and the unique publication binlogs.
 The latest documentation link audit passes **240 Markdown files / 760 relative
 local targets**, with no missing targets. Recheck the live process before acting.
+
+## Installed PoB subpages and inspection reading position — 2026-10-18
+
+Both installed 0.1.4.6 engines passed **26 website-modal checks each** using copied
+builds, an isolated profile and locally intercepted pages. Coverage includes modal
+bounds, 75/100/125% interface scaling, enlarged text, full/reduced motion, three
+hide/reopen cycles, Back restoration, retained sessions and cookies/local storage
+surviving worker restart. No trade-site requests were needed. Both games also pass
+**15 offline trade workflow checks each**: origin isolation, trusted versus synthetic
+actions, cancel/retry, batch evaluation, explicit Ring 2 selection, ranked-row
+navigation, comparison and return to retained listings without equipping.
+`2f0f4046` updates the fixture for the compact **Edit ranking…** flow and both trade
+API routes. An initial timeout expected an always-visible target selector; the
+product had successfully ranked the item. A retry initially restored the previous
+test's unfinished draft, so the qualified runs use clean copied build directories.
+Evidence: `pob-installed-subpages-20261018/poe{1,2}-website.json` and
+`poe{1,2}-trade-clean.json`.
+
+Native inspection of a long inventory item found a real presentation defect:
+initial focus on the footer scrolled past the first details. `a2497a48` moves item
+and gem actions, plus the item equipment selector, outside a bounded reading
+viewport using the existing Grid/Scroll/modal composition. It adds no host API,
+gameplay rule or engine request. Descriptions open at the top; controls remain
+visible while reading the end. Close and reopen reset reading position.
+
+Both-engine item suites pass **81/79**, and skill suites **78/80**. The wider item
+fixture now selects the helmet it created instead of assuming an arbitrary build's
+first equipped item supports ordinary affixes. Native matrices pass **256 item**
+and **84 gem** assertions across both games, dark/light themes and wide/constrained
+views, with deliberately long descriptions. They verify initial/reopened offset,
+fixed action bounds, dropdown cancellation/confirmation, no accidental equip,
+original-row focus restoration and unchanged A selection. See
+`inspection-fixed-actions-{items,gems}/native-result.json` and the corresponding
+engine logs. The initial native fixture still expected Equip inside the description
+scroll region; that assertion now checks its fixed panel bounds.
+
+Both packaged **0.1.4.7** widgets pass the actual inventory workflow again: navigate
+six rows, use X Inspect, close back to the same row and screen position, then use
+the independent Select action. The new PoE1 inspector capture was visually inspected
+and now begins with usage, name, type and physical damage rather than halfway through
+the description. `inspection-packaged-final/` records three checks per game.
+Packaging reuses byte-verified engine/runtime/web assets from qualified 0.1.4.6;
+`inspection-fixed-actions-packages/poe{1,2}/asset-provenance.json` records the hashes.
+
+The normal profile now selects both 0.1.4.7 packages, enabled as before. Cumulative
+host **f** is restored **hidden**, controller-enabled, PID **65792** at this checkpoint.
+Its 138 frontend DLLs and both installed PoB implementation DLLs match the qualified
+payloads. No visible windows or child processes were present after hidden launch;
+see `cumulative-candidate-20261018-f/final-running.json` and `final-live-payload.json`.
+The earlier invisible-overlay observation is still unresolved. Spotify authentication,
+remaining broader editing/app acceptance, updater environment-specific fallback and
+physical controller/couch/hardware limits remain open; the goal is not complete.

@@ -90,6 +90,10 @@ internal sealed partial class WidgetStylesValidationPage
                 page.ActivateFocused();
                 await Wait(() => !open && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener));
                 Check(chosen == 0, "Closing returns to the same native candidate without choosing it");
+                open=true;Publish();
+                await Wait(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject reopened&&AutomationProperties.GetAutomationId(reopened)=="Widget."+inspection.InitialFocusId);
+                Check(Find<ScrollViewer>("Widget.pob.gem-inspection.details",root)!.VerticalOffset<1,"Reopening gem inspection starts at the first detail after the previous view was scrolled");
+                page.ActivateFocused();await Wait(()=>!open&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),opener));
                 page.ActivateFocused();
                 Check(chosen == 1, "A still chooses the focused gem after returning from inspection");
                 void Publish()

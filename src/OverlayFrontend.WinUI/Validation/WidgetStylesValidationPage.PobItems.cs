@@ -138,6 +138,10 @@ internal sealed partial class WidgetStylesValidationPage
                 page.ActivateFocused();
                 await Wait(() => !open && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener));
                 Check(selected == 0 && equipped == 0, "Close returns inspection to the same native item without selecting or equipping");
+                open=true;Publish();
+                await Wait(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject reopened&&AutomationProperties.GetAutomationId(reopened)=="Widget."+inspection.InitialFocusId);
+                Check(Find<ScrollViewer>("Widget.pob.candidate-inspection.details",root)!.VerticalOffset<1,"Reopening item inspection starts at the first detail after the previous view was scrolled");
+                page.ActivateFocused();await Wait(()=>!open&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),opener));
                 page.ActivateFocused();
                 Check(selected == 1 && equipped == 0, "A retains the item's existing selection action after inspection");
 

@@ -44,7 +44,8 @@ Gem, inventory and unique-library candidates offer **X → Inspect** (or the poi
 context menu). A keeps its normal selection action. Focus previews show already
 loaded information; inspection keeps the list and search in place. Use the explicit
 Add, Replace, Equip or Open item draft action when ready. Inventory inspection lets
-you choose an eligible equipment slot. Back/Close returns to the same candidate.
+you choose an eligible equipment slot. Inspection opens at the first detail and
+keeps its actions visible while you scroll. Back/Close returns to the same candidate.
 Gem inspection names the active loadout and calculation weapon set when supplied,
 and separately shows which weapon sets have the selected group enabled. Missing context
 is omitted rather than guessed.
