@@ -12,15 +12,17 @@ function M.begin(req,search)
   active={query=q,calc=calc,base=base,slot=req.slot,xml=build:SaveDB('code')}
   return {ready=true}
 end
-function M.item(req,convert,search,clean,validated)
+function M.item(req,tradeItem,search,clean,validated)
   local a=assert(active,'Start evaluation again');if not validated then assert(a.xml==build:SaveDB('code'),'The build changed; evaluate again')end
   assert(#a.query.resultTbl[1]<100,'Evaluation is limited to 100 items')
   local previousCount=#a.query.resultTbl[1]
   local ok,result=pcall(function()
-    local raw=req.raw or convert(req.entry)
+    local raw=req.raw or tradeItem.convert(req.entry)
     assert(type(raw)=='string'and #raw<=32768,'Invalid item text')
     local item=search.create('Item',raw)
     assert(item.base and build.itemsTab:IsItemValidForSlot(item,a.slot),'This item does not fit the comparison slot')
+    item:BuildModList()
+    local warnings=tradeItem.warnings(item)
     local rows=a.query.resultTbl[1];local index=#rows+1;rows[index]={item_string=raw}
     local output
     local success,evaluation=pcall(a.query.GetResultEvaluation,a.query,1,index,function(args)output=a.calc(args);return output end,a.base)
@@ -35,16 +37,16 @@ function M.item(req,convert,search,clean,validated)
     end
     local percent=a.query.GetResultScorePercent and a.query:GetResultScorePercent(ev)
     local baseline=a.query.tradeQueryGenerator.WeightedRatioOutputs(a.base,a.base,a.query.statSortSelectionList)
-    return {index=index,raw=raw,score=ev.weight,baselineScore=finite(baseline)and baseline or nil,scorePercent=finite(percent)and percent or nil,changes=changes}
+    return {index=index,raw=raw,score=ev.weight,baselineScore=finite(baseline)and baseline or nil,scorePercent=finite(percent)and percent or nil,changes=changes,warnings=warnings}
   end)
   if not ok then a.query.resultTbl[1][previousCount+1]=nil;return {error=clean(result):sub(1,350)}end
   return result
 end
-function M.items(req,convert,search,clean)
+function M.items(req,tradeItem,search,clean)
   local a=assert(active,'Start evaluation again');assert(a.xml==build:SaveDB('code'),'The build changed; evaluate again')
   assert(type(req.items)=='table'and #req.items>=1 and #req.items<=10,'Send up to 10 items per evaluation batch')
   local results={}
-  for _,item in ipairs(req.items)do results[#results+1]=M.item(item,convert,search,clean,true)end
+  for _,item in ipairs(req.items)do results[#results+1]=M.item(item,tradeItem,search,clean,true)end
   return {results=results}
 end
 function M.finish()

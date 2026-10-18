@@ -22,6 +22,7 @@ internal static class TradeWorkflowTests
         foreach(var (url,title) in new[]{("https://www.pathofexile.com/trade2/search/poe2/Standard/a?q=private","PoE2 Trade"),("https://www.pathofexile.com/trade/search/Standard/a","PoE1 Trade"),("https://poe.ninja/poe2/builds","poe.ninja"),("https://pob.cool/","pob.cool"),("https://www.example.com/long/path?query=value","example.com"),("invalid","Website")})
             check(PobWidget.WebsiteHeading(url)==title,"Website heading identifies site without path or query: "+title);
         await TradeItemTests.RunAsync(game,root,runtime,adapter,xml,check);
+        await TradeModifierParityTests.RunAsync(game,root,runtime,adapter,xml,check);
         var directory=Path.Combine(Path.GetTempPath(),"widgetrail-trade-workflow-"+Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);var id=Guid.NewGuid().ToString("N");
         File.WriteAllText(Path.Combine(directory,id+".xml"),xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);
@@ -161,8 +162,11 @@ internal static class TradeWorkflowTests
             originalComparison=PobWorkStore.Read(directory,id,game)!.Pending!.Xml;
             check(PobWorkStore.Read(directory,id,game)?.Pending?.Slot=="Ring 2","Slot dropdown recalculates without a separate selection page");
             var second=JsonSerializer.SerializeToNode(entry)!;second["id"]=new string('c',64);second["item"]!["implicitMods"]![0]!["description"]="20% increased Rarity of Items found";second["listing"]!["price"]!["amount"]=3;
+            const string unmodeled="8% chance to gain an additional random Charge when you gain a Charge";
+            second["item"]!["explicitMods"]=new JsonArray(new JsonObject{["description"]=unmodeled});
             incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="compare-item",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test",entry=second}})));
             await WaitComparison(new string('c',64));
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.warnings.proposed.0"&&n.Text==unmodeled),"Unmodeled trade effects are explained beside the numerical comparison");
             work=PobWorkStore.Read(directory,id,game)!;
             check(work.TradeCandidates?.Length==2&&work.ItemDraft!.Contains("20% increased")&&WorkStateTests.SameBuild(work.CommittedXml,baseline.Xml),"Second listing replaces only the browsing preview and uses the same committed baseline");
             await Action("trade-review-recent."+entry.id);
@@ -187,6 +191,8 @@ internal static class TradeWorkflowTests
             await Action(target.ActionId);await Action("trade-rank-evaluate");
             check(loadRequests==2&&requestedLimit is 20 or 50 or 100&&!Nodes(View().Root).Any(n=>n.Id=="pob.rank.help"),"Website and panel actions request bounded automatic loading and omit redundant priority guidance");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("2 ranked"))&&ViewSnapshotValidator.Validate(View()).Count==0,"Received batch ranks both listings for an explicit equipment target in a valid native panel");
+            using(var ranking=JsonDocument.Parse(File.ReadAllText(Path.Combine(directory,id+".ranking.json"))))
+                check(ranking.RootElement.GetProperty("Rows").EnumerateArray().Any(r=>r.GetProperty("Evaluation").GetProperty("warnings").EnumerateArray().Any(w=>w.GetString()==unmodeled)),"Saved ranking preserves unmodeled-effect warnings for restart");
             await Action("trade-rank-sort.price");
             await Action("trade-rank-edit");
             check(Nodes(View().Root).Single(n=>n.Id=="pob.rank.order").SelectOptions.Single(o=>o.IsSelected).Label=="Lowest price","Price order changes without another evaluation batch");

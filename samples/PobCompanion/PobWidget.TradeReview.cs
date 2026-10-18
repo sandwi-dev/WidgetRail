@@ -149,6 +149,14 @@ public sealed partial class PobWidget
         var before=pendingBefore!;
         var equipped=A(before.State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
         var rows=new List<WidgetElement>{Text("Main skill: "+S(before.State,"mainSkill","None"),prefix+".skill","pob-small")};
+        var proposed=A(State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
+        foreach(var (item,label,key) in new[]{(proposed,"Proposed item","proposed"),(equipped,"Equipped item","equipped")})
+        {
+            var warnings=A(item,"warnings");
+            if(warnings.Length==0)continue;
+            rows.Add(Text(label+": PoB does not model these modifiers; the comparison uses its recognized effects.",prefix+".warnings."+key,"pob-small pob-gold"));
+            for(var i=0;i<warnings.Length;i++)rows.Add(Text(warnings[i].GetString()??"",prefix+".warnings."+key+"."+i,"pob-small pob-life"));
+        }
         AddComparison(rows,before.State,State,prefix+".stats");
         rows.Add(Text("Against "+S(equipped,"name","empty slot")+" · active loadout and configuration. Build unchanged until equipped.",prefix+".help","pob-small"));
         return rows;

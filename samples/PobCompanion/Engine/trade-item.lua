@@ -2,6 +2,19 @@
 -- converter omits socket groups, influence and some new defence/skill metadata.
 local M={}
 local function assert(value,message)if not value then error(message,0)end;return value end
+-- Follow Item/BuildModList: an empty parsed mod list is valid (display-only).
+-- Unparsed text remains on the item, but upstream omits its calculation effects.
+function M.warnings(item)
+ local warnings,seen={},{}
+ for _,group in ipairs({'implicitModLines','explicitModLines','enchantModLines','runeModLines','scourgeModLines','crucibleModLines'})do
+  for _,line in ipairs(item[group]or{})do
+   if not line.disabled and item:CheckModLineVariant(line) and (line.extra or not line.modList) and not seen[line.line]then
+    seen[line.line]=true;warnings[#warnings+1]=line.line
+   end
+  end
+ end
+ return warnings
+end
 function M.convert(entry)
  assert(type(entry)=='table' and type(entry.item)=='table' and type(entry.listing)=='table','Invalid trade item')
  assert(not entry.item.veiledMods or #entry.item.veiledMods==0,'This item has unrevealed modifiers. Compare it after they are revealed.')
@@ -56,11 +69,6 @@ function M.convert(entry)
   end
  end
  item:BuildModList()
- for _,group in ipairs({'implicitModLines','explicitModLines','enchantModLines','runeModLines','scourgeModLines','crucibleModLines'})do
-  for _,line in ipairs(item[group]or{})do
-   assert(not line.extra and line.modList and #line.modList>0,'PoB cannot calculate modifier: '..line.line)
-  end
- end
- return raw
+ return raw,M.warnings(item)
 end
 return M

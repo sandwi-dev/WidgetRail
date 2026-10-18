@@ -24,7 +24,7 @@ public sealed partial class PobWidget
     private static readonly (string Key,string Label)[] RankingSorts=[("strength","Strongest improvement"),("value","PoB price-adjusted score"),("price","Lowest price")];
     private JsonElement[] rankingSlots=[];
     private string rankingSelected="";
-    private sealed record RankEntry(string Key,string Label,string Price,string Summary,string Tone,string Action,bool Selected);
+    private sealed record RankEntry(string Key,string Label,string Price,string Summary,string Tone,string Action,bool Selected,int WarningCount);
     private sealed record RankQuery(string Context,RankEntry[] Entries);
     private WidgetIndexedCollection<RankQuery,RankEntry>? rankingCollection;
     private RankQuery rankingQuery=new("",[]);
@@ -155,6 +155,8 @@ public sealed partial class PobWidget
         static bool Number(JsonElement v)=>v.ValueKind==JsonValueKind.Number&&v.TryGetDouble(out var n)&&double.IsFinite(n);
         if(value.ValueKind!=JsonValueKind.Object||!value.TryGetProperty("score",out var score)||!Number(score))return false;
         foreach(var key in new[]{"scorePercent","baselineScore"})if(value.TryGetProperty(key,out var v)&&!Number(v))return false;
+        if(value.TryGetProperty("warnings",out var warnings)&&
+            (warnings.ValueKind!=JsonValueKind.Array||warnings.GetArrayLength()>100||warnings.EnumerateArray().Any(w=>w.ValueKind!=JsonValueKind.String||w.GetString() is not {Length:>0 and <=2048})))return false;
         if(!value.TryGetProperty("changes",out var changes)||changes.ValueKind!=JsonValueKind.Array||changes.GetArrayLength()>20)return false;
         return changes.EnumerateArray().All(c=>c.ValueKind==JsonValueKind.Object&&c.TryGetProperty("stat",out var s)&&s.ValueKind==JsonValueKind.String&&s.GetString()is{Length:>0 and <=64}&&
             new[]{"before","after","delta"}.All(k=>c.TryGetProperty(k,out var v)&&Number(v)));
@@ -223,19 +225,20 @@ public sealed partial class PobWidget
         rankingCollection??=CreateIndexedCollection<RankQuery,RankEntry>("pob.rank.source",rankingQuery,0,new()
         {
             ReadRange=(q,start,count,token)=>ValueTask.FromResult<IReadOnlyList<RankEntry>>(q.Entries.Skip(start).Take(count).ToArray()),ItemKey=e=>new(e.Key),
-            RenderItem=(_,e,c)=>UI.ActionSurface("select",c.Id("row"),e.Label+" · "+e.Price,ActionSurfaceOrientation.Vertical,
+            RenderItem=(_,e,c)=>UI.ActionSurface("select",c.Id("row"),e.Label+" · "+e.Price+(e.WarningCount>0?$" · PoB does not model {e.WarningCount} modifiers":""),ActionSurfaceOrientation.Vertical,
                 UI.Grid(c.Id("identity"),[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
                     UI.Text(e.Label,c.Id("title")).Classes("pob-list-title","pob-rank-title"),
                     UI.Text(e.Price,c.Id("price")).Classes("pob-small","pob-gold").InGrid(column:1)).Spacing(0,8),
                 UI.RichText(c.Id("summary"),
                     UI.Text(e.Summary.Split(" · Player DPS",2)[0],c.Id("score")).Classes("pob-small","pob-inline",e.Tone),
-                    UI.Text(e.Summary.Contains(" · Player DPS",StringComparison.Ordinal)?" · Player DPS"+e.Summary.Split(" · Player DPS",2)[1]:"",c.Id("damage")).Classes("pob-small","pob-inline","pob-muted"))
+                    UI.Text(e.Summary.Contains(" · Player DPS",StringComparison.Ordinal)?" · Player DPS"+e.Summary.Split(" · Player DPS",2)[1]:"",c.Id("damage")).Classes("pob-small","pob-inline","pob-muted"),
+                    UI.Text(e.WarningCount>0?$" · {e.WarningCount} unmodeled":"",c.Id("warnings")).Classes("pob-small","pob-inline","pob-gold"))
                     .Classes("pob-small","pob-rank-metrics")).Selected(e.Selected).FocusLeft("pob.website.browser").Classes("pob-list-item","pob-rank-item"),
             OnAction=(q,e,a,token)=>{lock(gate){if(!ReferenceEquals(q,rankingQuery)||busy||a.ActionId!="select")return ValueTask.CompletedTask;return OnActionAsync(a with{ActionId=e.Action},token);}}
         });
         var stale=RankingStale;
         var entries=rankedItems.Select((r,i)=>new RankEntry(r.Candidate.Listing.Id,$"{i+1}. {TradeItemName(r.Candidate.Listing)}",r.Candidate.Listing.Price,RankingRowSummary(r,stale),
-            !stale&&r.Evaluation.TryGetProperty("scorePercent",out var p)?p.GetDouble()<0?"pob-life":"pob-green":"pob-muted","trade-rank-select."+r.Index,r.Candidate.Listing.Id==rankingSelected)).ToArray();
+            !stale&&r.Evaluation.TryGetProperty("scorePercent",out var p)?p.GetDouble()<0?"pob-life":"pob-green":"pob-muted","trade-rank-select."+r.Index,r.Candidate.Listing.Id==rankingSelected,A(r.Evaluation,"warnings").Length)).ToArray();
         var revision=stale?"stale":rankingWeights+rankingBaseline;
         if(rankingQuery.Context!=revision||!rankingQuery.Entries.SequenceEqual(entries))
         {var same=rankingQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));rankingQuery=new(revision,entries);if(same)rankingCollection.UpdateContent(rankingQuery);else rankingCollection.PublishQuery(rankingQuery,entries.Length);}

@@ -250,7 +250,7 @@ local function snapshot()
   for slotIndex,slot in ipairs(build.itemsTab.orderedSlots) do
     result.slots[#result.slots+1]={name=slot.slotName}
     local item=build.itemsTab.items[slot.selItemId]
-    if item then result.items[#result.items+1]={id=slotIndex,itemId=item.id,slot=slot.slotName or slot.id or '',name=clean(item.name or item.baseName),rarity=item.rarity,raw=item.raw or '',base=clean(item.baseName),details=itemDetails(item,slot)} end
+    if item then result.items[#result.items+1]={id=slotIndex,itemId=item.id,slot=slot.slotName or slot.id or '',name=clean(item.name or item.baseName),rarity=item.rarity,raw=item.raw or '',base=clean(item.baseName),details=itemDetails(item,slot),warnings=tradeItem.warnings(item)} end
   end
   local seen={}
   local configSection='General'
@@ -347,12 +347,12 @@ local function command(req)
   if op=='trade-search' then return {state={query=tradeSearch.generate(req)},xml=build:SaveDB('code')}end
   if op=='trade-catalog' then return {state=tradeSearch.catalog(req,clean),xml=build:SaveDB('code')}end
   if op=='trade-rank-begin' then return {state=tradeRanking.begin(req,tradeSearch),xml=build:SaveDB('code')}end
-  if op=='trade-rank-item' then return {state=tradeRanking.item(req,tradeItem.convert,tradeSearch,clean),xml=build:SaveDB('code')}end
-  if op=='trade-rank-items' then return {state=tradeRanking.items(req,tradeItem.convert,tradeSearch,clean),xml=build:SaveDB('code')}end
+  if op=='trade-rank-item' then return {state=tradeRanking.item(req,tradeItem,tradeSearch,clean),xml=build:SaveDB('code')}end
+  if op=='trade-rank-items' then return {state=tradeRanking.items(req,tradeItem,tradeSearch,clean),xml=build:SaveDB('code')}end
   if op=='trade-rank-finish' then return {state=tradeRanking.finish(),xml=build:SaveDB('code')}end
   if op=='currency-rates' then return {state=currencyRates.read(req),xml=build:SaveDB('code')}end
   if op=='trade-rank-sort' then return {state=currencyRates.sort(req),xml=build:SaveDB('code')}end
-  if op=='trade-item' then return {state={raw=tradeItem.convert(req.entry)},xml=build:SaveDB('code')}end
+  if op=='trade-item' then local raw,warnings=tradeItem.convert(req.entry);return {state={raw=raw,warnings=warnings},xml=build:SaveDB('code')}end
   if op=='item-bases' then return{state={choices=itemAuthoring.bases(clean)},xml=build:SaveDB('code')}end
   if op=='item-modifiers' then return{state=itemAuthoring.modifiers(req,clean),xml=build:SaveDB('code')}end
   if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean)},xml=build:SaveDB('code')}end
