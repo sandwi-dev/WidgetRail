@@ -1,5 +1,15 @@
 [
   {
+    "id": "widgetrail.samples.poe1-companion", "publisher": "widgetrail.samples", "name": "PoE1 Path of Building",
+    "description": "Plan Path of Exile builds, edit skills and equipment, and compare trade upgrades using the pinned Path of Building Community release engine. Full-access add-on.",
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/poe1-timeless.png"]
+  },
+  {
+    "id": "widgetrail.samples.poe2-companion", "publisher": "widgetrail.samples", "name": "PoE2 Path of Building (Beta)",
+    "description": "Plan Path of Exile 2 builds, manage loadouts and skill groups, and rank trade upgrades using a pinned Path of Building Community beta engine. Full-access add-on.",
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/calculations.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/trade-ranking.png"]
+  },
+  {
     "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
     "description": "Watch Twitch streams with controller navigation and pinnable webapp windows.",
     "screenshots": []
