@@ -225,7 +225,7 @@ Cumulative candidates may be launched hidden with the normal profile, as previou
 Credit PoB Redux for the ideas, techniques and implementation work that actually contribute to these improvements. Attribution is part of delivery, not an optional follow-up.
 
 - [ ] Record the specific Redux contributions adopted as each feature is implemented, with source links and revisions where relevant.
-- [ ] Add a concise acknowledgement linking to PoB Redux in the widget README credits, with fuller attribution in developer documentation and relevant marketplace documentation.
+- [ ] Add a concise acknowledgement linking to PoB Redux in the widget README credits, with fuller attribution in developer documentation. Catalogue documentation does not need credits.
 - [ ] Distinguish inspiration from adapted code or reused assets; do not imply contributions were incorporated when they were only evaluated.
 - [ ] For reused code or assets, verify the applicable license and retain required copyright/license notices in source and distributed packages. Keep existing PoB Community and Grinding Gear Games credits; Redux attribution supplements them.
 
