@@ -1,5 +1,7 @@
 # PoE widget screenshot index
 
+[Project overview](../README.md) | [User guide](../USER_GUIDE.md)
+
 Captured from the native WidgetRail candidate on 17 October 2026 using Velvet Dusk at 125% Windows display scaling. Images contain the widget area rather than the surrounding desktop. These are real UI captures, not mockups or altered calculation results.
 
 The PoE2 planning build is the **Late game** loadout from [Ghost Activity's Martial Artist guide](https://pobb.in/ttCJAV3WX9bn), imported for the walkthrough. Its values reflect the pinned PoE2 beta and the saved configuration; they are not a current-league recommendation or a performance benchmark.
