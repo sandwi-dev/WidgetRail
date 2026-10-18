@@ -158,7 +158,7 @@ public sealed partial class SdkGalleryWidget
 
     private StackElement IntentExamples() => UI.Stack("gallery.intents",
         UI.SectionHeader("Intents and pins", "gallery.intents.header", description: "Launch another widget through declared contracts; prefer its existing pinned surface."),
-        UI.Button("Browse marketplace", "unused", "gallery.intent.marketplace").OpenIntent(WidgetIntentContracts.Marketplace,
+        UI.Button("Browse catalogue", "unused", "gallery.intent.marketplace").OpenIntent(WidgetIntentContracts.Marketplace,
             JsonSerializer.SerializeToElement(new { }),WidgetIntentPresentation.OpenWidget).WithIntentFeedback(),
         UI.Row("gallery.intents.actions",
             UI.Button("Open example.com", "unused", "gallery.intent.web").OpenIntent(WidgetIntentContracts.Web,

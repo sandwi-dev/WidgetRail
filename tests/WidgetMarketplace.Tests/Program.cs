@@ -203,7 +203,25 @@ static async Task Contracts()
     await using var service = new BridgeWidgetMarketplace(new Catalog(root), _ => Task.CompletedTask);
     var snapshot = await service.HandleAsync(new("status"), default);
     MarketplaceContract.ValidateSnapshot(snapshot);
-    Check(snapshot.Items.Count == 10 && snapshot.Items.Any(i => i.Screenshots.Count == 2), "Curated inventory or screenshots missing");
+    Check(snapshot.Items.Count > 0 && snapshot.Items.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() == snapshot.Items.Count,
+        "Curated inventory is empty or contains duplicate package identities");
+    foreach (var item in snapshot.Items)
+    {
+        Check(!string.IsNullOrWhiteSpace(item.Name) && !string.IsNullOrWhiteSpace(item.Description), "Listing metadata missing: " + item.Id);
+        Check(item.Screenshots.Distinct(StringComparer.Ordinal).Count() == item.Screenshots.Count, "Duplicate screenshot: " + item.Id);
+        foreach (var screenshot in item.Screenshots)
+        {
+            Check(Uri.TryCreate(screenshot, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+                uri.Host == "raw.githubusercontent.com" && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment),
+                "Screenshot must be an immutable HTTPS repository asset: " + item.Id);
+            var segments = uri!.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            Check(segments.Length >= 4 && segments[2].Length >= 7 && segments[2].All(Uri.IsHexDigit),
+                "Screenshot is not pinned to a commit: " + item.Id);
+        }
+    }
+    Check(snapshot.Items.Single(item => item.Id == "widgetrail.samples.poe1-companion").Screenshots.Count > 0 &&
+        snapshot.Items.Single(item => item.Id == "widgetrail.samples.poe2-companion").Screenshots.Count >= 2,
+        "PoB listing previews are missing");
     foreach (var package in new[] { "widgetrail.samples.twitch", "widgetrail.samples.discord", "widgetrail.samples.game-help", "widgetrail.samples.display-profiles", "widgetrail.samples.poe1-companion", "widgetrail.samples.poe2-companion" })
         Check(snapshot.Items.Any(item => item.Id == package), "Marketplace-only listing missing: " + package);
     foreach (var command in new[] { new MarketplaceCommand("install"), new("status", ApproveFullTrust: true), new("download", PackageId: "../../bad") })

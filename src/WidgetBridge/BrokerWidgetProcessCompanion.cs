@@ -39,7 +39,7 @@ internal sealed class BrokerWidgetProcessCompanion :
         _hostEffects = new DeferredHostEffectCoordinator(hostEffectSink);
         _isolated = context.IsolationPolicy == WidgetWorkerIsolationPolicy.RequireAppContainer;
         if (marketplace is not null && !_isolated)
-            throw new InvalidOperationException("Marketplace management requires the verified sandboxed marketplace worker.");
+            throw new InvalidOperationException("Catalogue management requires the verified sandboxed catalogue worker.");
         if (_isolated && string.IsNullOrWhiteSpace(context.AppContainerSid))
             throw new InvalidOperationException(
                 "An isolated widget broker requires the runtime AppContainer SID.");

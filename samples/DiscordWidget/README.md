@@ -8,7 +8,7 @@ wrail new widget Discord --id widgetrail.samples.discord --publisher widgetrail.
 
 The source and manifest use the same contracts as external authors. The repository project references the SDK project instead of the generated offline NuGet feed. The host contains no Discord-specific selectors, token handling, or browser engine.
 
-Install from **Marketplace**; Discord is not bundled in either installer. The widget uses persistent, isolated website sessions. Microphone, camera and screen-sharing consent are handled by the host's website controls, separately from widget capability permissions.
+Install from **Catalogue**; Discord is not bundled in either installer. The widget uses persistent, isolated website sessions. Microphone, camera and screen-sharing consent are handled by the host's website controls, separately from widget capability permissions.
 
 Build its `.wrwidget` package with `./Build-CommunityPackage.ps1`. This creates an archive and SHA-256 sidecar without installing or publishing. See [the implementation plan](../../docs/webapp-implementation-plan.md) for validation and platform limitations.
 

@@ -18,7 +18,7 @@ wrail enable widgetrail.samples.mapgenie
 ```
 
 The builder validates the package and generates SHA256 sidecars; it does not
-install or publish. MapGenie is marketplace-only and excluded from both installers.
+install or publish. MapGenie is catalogue-only and excluded from both installers.
 Its curated listing becomes downloadable when a matching archive is published.
 
 ## Manual checks

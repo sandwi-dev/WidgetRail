@@ -102,7 +102,7 @@ public sealed partial class SettingsWidget
         catch (PlatformDiagnosticsException)
         {
             lock (_stateLock) _marketplaceState = _marketplaceState with
-            { Error = "The marketplace request could not complete. Check its status before retrying.", ReviewOpen = false };
+            { Error = "The catalogue request could not complete. Check its status before retrying.", ReviewOpen = false };
             PublishSettingsChanged();
         }
     }

@@ -79,7 +79,7 @@ Updates are explicit. Open **Settings → About & troubleshooting → App update
 Have a mouse and keyboard available before choosing **Install and restart**. The installer and any Windows approval prompts do not support WidgetRail's controller navigation.
 Your widgets and settings are kept. Built-in widgets update with the application.
 
-Use **Marketplace → Updates** for individual updates or **Update all**. For a
+Use **Catalogue → Updates** for individual updates or **Update all**. For a
 local add-on, open its details in **Settings → Widgets → Update from file**.
 Choose the newer `.wrwidget` package and approve full access if requested. Updates
 preserve enabled state, permissions and saved data. See

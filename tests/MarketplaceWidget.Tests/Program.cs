@@ -51,6 +51,7 @@ static async Task ExportNative(string directory)
 static async Task Navigation()
 {
     await using var f=new Fixture();await f.Start();
+    Check(Node(f,"marketplace.title")?.Text == "WidgetRail Catalogue", "Catalogue heading missing");
     Check(f.Commands.All(c=>c.Action is "status" or "refresh") && f.Commands.Any(c=>c.Action == "refresh"),"Opening did not check releases or unexpectedly mutated packages");
     Check(Walk(f.View().Root).Count(n=>n.Kind==ViewNodeKind.ActionSurface)==2,"Catalog cards missing");
     await f.Act("marketplace.tab.installed");
@@ -181,6 +182,7 @@ static Task Package()
 {
     var manifest=ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"fixture/manifest.json")));
     Check(WidgetManifestValidator.Validate(manifest).Count==0,"Manifest invalid");
+    Check(manifest.Name == "WidgetRail Catalogue" && manifest.Id == "widgetrail.firstparty.marketplace", "Display rename changed the package identity");
     Check(manifest.Permissions.Count==0 && manifest.OptionalPermissions.Count==0,"Widget attempts to self-declare management authority");
     Check(manifest.Intents!.Handles.Single().Id==WidgetIntentContracts.OpenMarketplace,"Marketplace handler missing");
     var style=WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,"fixture/default.wrss")),"default.wrss");

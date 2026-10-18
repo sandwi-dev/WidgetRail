@@ -29,7 +29,7 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Local companions and secrets](community-companion-services.md)
 - [Private widget state](private-widget-state.md)
 - [Widget package format](widget-packaging.md)
-- [Widget marketplace and updates](widget-marketplace.md)
+- [Widget catalogue and updates](widget-marketplace.md)
 - [User-created webapps](user-webapps.md)
 - [Icon provenance](widget-icon-provenance.md)
 - [Live window previews](window-previews.md)

@@ -126,7 +126,7 @@ different publisher or package cannot read it.
 For unsigned community packages, the authenticated publisher authority includes
 the host-verified immutable content digest. Modified bytes therefore receive a
 different state namespace even if the manifest repeats publisher, package, and
-version text. Exact verified bytes recover their previous namespace. Approved Marketplace,
+version text. Exact verified bytes recover their previous namespace. Approved Catalogue,
 Settings **Update from file**, and CLI `update` operations can carry preferences
 into the new namespace without reusing the old security authority.
 

@@ -26,7 +26,7 @@ waiting for CI; other CI failures remain separate follow-up work.
   self-contained WinUI frontend and private service runtimes. No application MSIX,
   identity-package registration or certificate trust is required. Bridge and
   workers launch from the installed payload; full-MSIX startup-copy caches are retired.
-- Current source membership is Settings plus ten widgets in Production and Settings plus fourteen in Developer, including SDK Gallery and samples. Discord, Game Help and Display Profiles are community marketplace packages, excluded from both installers. `eng/release-content.json` selects edition membership. Publishing their package assets is a separate release step.
+- Current source membership is Settings plus ten widgets in Production and Settings plus fourteen in Developer, including SDK Gallery and samples. Discord, Game Help and Display Profiles are community catalogue packages, excluded from both installers. `eng/release-content.json` selects edition membership. Publishing their package assets is a separate release step.
 - Both preview.25 installers were built from the accepted commit and their
   inventories/checksums verified. This does not claim clean-machine installation,
   upgrade, rollback or every system-provider workflow has been physically qualified.

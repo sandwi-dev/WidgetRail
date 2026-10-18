@@ -1,7 +1,7 @@
 # Display Profiles
 
 Save a Windows display setup once, then restore it from the overlay.
-Install **Display Profiles** from Marketplace. It is a community widget and is not included in either installer.
+Install **Display Profiles** from Catalogue. It is a community widget and is not included in either installer.
 
 ## Save and use a profile
 

@@ -193,7 +193,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
                     ? item with { AvailableVersion = asset.Version.ToString(), DownloadBytes = asset.Asset.Size, IsPrerelease = asset.Release.Prerelease,
                         AvailableVersionSaved = installed.Widgets.FirstOrDefault(w => w.Id == item.Id)?.Versions.Contains(asset.Version) == true }
                     : item with { AvailableVersion = null, DownloadBytes = null, IsPrerelease = false, AvailableVersionSaved = false }).ToArray() };
-            Finish(job, "completed", "Marketplace refreshed. Download a widget to check compatibility and review its permissions.");
+            Finish(job, "completed", "Catalogue refreshed. Download a widget to check compatibility and review its permissions.");
         }
     }
 
@@ -236,7 +236,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
                     }).ConfigureAwait(false);
             var inspection = await _catalog.CreateInstaller().ValidateAsync(downloaded.PackageStream, job.Cancellation.Token).ConfigureAwait(false);
             if (inspection.Id != definition.Id || inspection.Manifest.Publisher != definition.Publisher || inspection.Version != asset.Version)
-                throw new WidgetPackageException("marketplace_identity_changed", "The package does not match its marketplace listing.");
+                throw new WidgetPackageException("marketplace_identity_changed", "The package does not match its catalogue listing.");
             var installed = (await _catalog.DiscoverAsync(job.Cancellation.Token).ConfigureAwait(false)).Widgets.SingleOrDefault(w => w.Id == definition.Id);
             var compatibility = WidgetHostCompatibility.Evaluate(inspection.Manifest);
             var required = inspection.Manifest.Permissions.ToArray();
@@ -297,7 +297,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         await PackageSources.SaveAsync(_catalog.Root, "widget", new(installed.Id, installed.Version.ToString(), installed.Manifest.Publisher,
             package.Source.ToString(), package.Review.Sha256, installed.ContentDigest), sourceWarning, CancellationToken.None).ConfigureAwait(false);
         if (sourceWarning.GetStringBuilder().Length != 0)
-            message += " Its CLI update-source metadata could not be saved; marketplace updates remain available.";
+            message += " Its CLI update-source metadata could not be saved; catalogue updates remain available.";
         try
         {
             await settings.ReloadAsync().ConfigureAwait(false);
@@ -332,15 +332,15 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
     private static string Friendly(Exception error) => error switch
     {
         DistributionOperationException e when e.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) => "GitHub's request limit was reached. Try again later.",
-        DistributionOperationException e when e.Message.Contains("SHA-256", StringComparison.Ordinal) => "The download failed its SHA-256 check. Refresh the marketplace before retrying.",
-        DistributionOperationException e when e.Message.Contains("download limit", StringComparison.Ordinal) => "This package exceeds the marketplace download limit. Obtain a smaller compatible package from its author.",
-        DistributionUsageException => "This release has no usable checksum or package source. It cannot be installed from the marketplace.",
+        DistributionOperationException e when e.Message.Contains("SHA-256", StringComparison.Ordinal) => "The download failed its SHA-256 check. Refresh the catalogue before retrying.",
+        DistributionOperationException e when e.Message.Contains("download limit", StringComparison.Ordinal) => "This package exceeds the catalogue download limit. Obtain a smaller compatible package from its author.",
+        DistributionUsageException => "This release has no usable checksum or package source. It cannot be installed from the catalogue.",
         DistributionOperationException => "The download or release check failed. Check your connection and try again.",
         WidgetPackageException { Code: "update_selection_failed" } => "The new version was saved, but could not be selected. The previous version remains selected. Check storage access, then retry the update.",
         WidgetPackageException { Code: "install_activation_failed" } => "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.",
         WidgetPackageException { Code: "package_incompatible" } => "This widget is not compatible with this WidgetRail version.",
         WidgetPackageException { Code: "retained_version_mismatch" } => "The saved version differs from the reviewed update. Its files were not changed.",
-        WidgetPackageException { Code: "update_not_newer" } => "The installed version changed. Refresh the marketplace and review again.",
+        WidgetPackageException { Code: "update_not_newer" } => "The installed version changed. Refresh the catalogue and review again.",
         WidgetPackageException { Code: "marketplace_review_changed" } => "The selected widget version changed after review. Refresh and download again to review its current permissions.",
         WidgetPackageException => "The package could not be installed or validated. Review its compatibility and your installed versions.",
         _ => "The operation could not complete. Check available disk space and try again.",

@@ -25,7 +25,7 @@ internal static class SettingsInstalledWidgetPresentation
         {
             UI.Text("Widgets", "installed.heading").Classes("page-heading"),
             UI.Row("installed.actions",
-                UI.Button("Marketplace", "open.marketplace", "installed.marketplace")
+                UI.Button("Browse catalogue", "open.marketplace", "installed.marketplace")
                     .OpenIntent(WidgetIntentContracts.Marketplace, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget)
                     .FocusUp("settings.back").FocusDown(tab),
                 UI.Button("Install local widget", "host.install-local-widget", "installed.install-local")

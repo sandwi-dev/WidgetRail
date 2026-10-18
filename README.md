@@ -94,11 +94,11 @@ Both installer editions include the following widgets:
 | **Performance Monitor** | Pin FPS and system CPU/GPU/RAM/VRAM readings. FPS requires explicit Windows approval for a separate collector. |
 | **[Browser](docs/reference/widget-web-browser.md)** | Browse with a controller pointer, drag, zoom and text entry; open URLs or Google searches, use bookmarks/history and pin the page. |
 | **Settings** | Configure layout, appearance, accessibility, controllers, widgets, permissions, and diagnostics. |
-| **[Marketplace](docs/reference/widget-marketplace.md)** | Browse community widgets and review installations and updates. |
+| **[WidgetRail Catalogue](docs/reference/widget-marketplace.md)** | Browse widgets and review installations and updates. |
 
-Use **Marketplace**, also available from **Settings → Widgets**, to discover
+Use **Catalogue**, also available from **Settings → Widgets**, to discover
 add-ons and manage their updates from one page. **Update all** verifies packages
-before one explicit review. See [Widget marketplace](docs/reference/widget-marketplace.md).
+before one explicit review. See [Widget catalogue](docs/reference/widget-marketplace.md).
 
 The tray displays local time, internet connectivity over Wi-Fi or Ethernet,
 and Bluetooth radio status. Available controls depend on Windows permissions,
@@ -106,7 +106,7 @@ connected hardware, and installed providers.
 
 ## Additional widgets
 
-Use **Marketplace** to browse these add-ons, or install their separate `.wrwidget` downloads. They are not
+Use **Catalogue** to browse these add-ons, or install their separate `.wrwidget` downloads. They are not
 included in either installer.
 
 | Add-on | Features | Setup requirements |
@@ -155,7 +155,7 @@ bold text, and widget-switch animations. Startup is off by default.
 Use **Settings → Widgets → Install local widget** for a downloaded `.wrwidget`
 package. Full-access widgets require explicit approval because
 they run with your Windows account's permissions.
-New widgets installed here or through Marketplace are enabled and request
+New widgets installed here or through Catalogue are enabled and request
 permissions when a feature needs them. The Widgets list has **All**, **Built-in**,
 and **Community** filters and returns to your selected row after viewing details.
 
@@ -243,7 +243,7 @@ Built-in widgets update with the application; your settings and installed add-on
 are retained. Production and Developer use the same application version and
 saved data, rather than separate stable and unstable channels.
 
-Update marketplace add-ons from **Marketplace → Updates**. For a local package,
+Update catalogue add-ons from **Catalogue → Updates**. For a local package,
 use **Settings → Widgets → Update from file** in its details. Updates preserve
 enabled state, permissions, and saved data; full-access updates require approval.
 

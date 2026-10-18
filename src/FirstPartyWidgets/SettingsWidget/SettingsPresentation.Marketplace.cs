@@ -16,7 +16,7 @@ internal static partial class SettingsPresentation
         var selected = state.Snapshot.Items.FirstOrDefault(i => i.Id == state.SelectedId);
         var items = new List<WidgetElement>
         {
-            UI.Text(detail ? selected?.Name ?? "Widget details" : "Widget marketplace", "marketplace.heading").Classes("page-heading"),
+            UI.Text(detail ? selected?.Name ?? "Widget details" : "WidgetRail Catalogue", "marketplace.heading").Classes("page-heading"),
         };
         if (!detail || selected is null)
         {
@@ -37,7 +37,7 @@ internal static partial class SettingsPresentation
                     UI.Text("›", id + ".chevron").Classes("installed-entry-chevron")).Classes("installed-entry"));
             }
             if (state.Snapshot.Items.Count == 0)
-                items.Add(UI.Text("The marketplace is unavailable. You can still install a local .wrwidget file from Widgets.", "marketplace.empty").Classes("page-help"));
+                items.Add(UI.Text("The catalogue is unavailable. You can still install a local .wrwidget file from Widgets.", "marketplace.empty").Classes("page-help"));
         }
         else
         {
@@ -66,7 +66,7 @@ internal static partial class SettingsPresentation
                 items.Add(UI.Button("Manage widget and permissions", "marketplace.manage", "marketplace.manage").Classes("setting-row"));
         }
         if (operation is { Kind: "download-updates" or "install-updates", State: "running" or "review" })
-            items.Add(UI.Button("Manage updates in Marketplace", "open.marketplace", "marketplace.batch.open")
+            items.Add(UI.Button("Manage updates in Catalogue", "open.marketplace", "marketplace.batch.open")
                 .OpenIntent(WidgetIntentContracts.Marketplace, System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget));
         if ((state.Error ?? operation?.Message) is { } message)
         {

@@ -101,7 +101,7 @@ widget, install packages, and manage versions. **All**, **Built-in**, and
 returns to the selected widget and restores it into view.
 
 - **Install:** choose a `.wrwidget` file in the Windows file picker (mouse/keyboard). The overlay shows controller-accessible full-access approval when needed and completion dialogs. Fresh installs start enabled and ask for permissions when features need them.
-- **Update:** use **Marketplace → Updates** for marketplace add-ons, or **Update from file** in widget details for a local package. Updates preserve enabled/disabled and stopped state, permissions and saved data; new permissions are not granted automatically.
+- **Update:** use **Catalogue → Updates** for catalogue add-ons, or **Update from file** in widget details for a local package. Updates preserve enabled/disabled and stopped state, permissions and saved data; new permissions are not granted automatically.
 - **Remove old versions:** use the version controls to remove an unused version. The current version is protected.
 - **Uninstall:** remove a community widget from its details. If it is enabled, confirm **Disable and uninstall**. Its saved data is kept.
 - **Clear local data:** separately clear the selected widget's overlay-owned private state and restart its worker. Credentials, provider data and ordinary user files are excluded.

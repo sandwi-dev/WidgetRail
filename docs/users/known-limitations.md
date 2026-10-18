@@ -36,7 +36,7 @@ and playback policies. Pinning a view does not bypass them.
 
 ## Distribution and trust
 
-Updates are manual. There is no automatic widget marketplace or publisher-signing
+Updates are manual. There is no automatic widget catalogue or publisher-signing
 service. A package checksum verifies bytes, not the publisher's identity.
 Treat full-access widgets as you would any other Windows application.
 

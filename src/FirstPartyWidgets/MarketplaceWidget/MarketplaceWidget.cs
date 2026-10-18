@@ -115,7 +115,7 @@ public sealed class MarketplaceWidget : Widget
             catch (WidgetCapabilityException error) { if(context.IsCurrent) model.Update(s => s with { Error = error.ErrorCode switch {
                 "marketplace_review_required" => "The reviewed package changed or expired. Check status, then download and review it again.",
                 "marketplace_refresh_required" => "Check available releases before downloading.",
-                _ => "Marketplace is unavailable. Check status before retrying. You can still manage installed widgets in Settings." }, ReviewToken = null }); }
+                _ => "WidgetRail Catalogue is unavailable. Check status before retrying. You can still manage installed widgets in Settings." }, ReviewToken = null }); }
             catch (OperationCanceledException) when(context.CancellationToken.IsCancellationRequested) { }
             finally { if(context.IsCurrent) model.Update(s => s with { Busy = false }); }
         });
@@ -141,7 +141,7 @@ public sealed class MarketplaceWidget : Widget
         var state = model.Value; var operation = state.Snapshot.Operation; var running = operation?.State == "running";
         var busy = state.Busy || running || operation?.State == "review";
         var selected = state.Snapshot.Items.FirstOrDefault(i => i.Id == state.Selected);
-        var items = new List<WidgetElement> { UI.Text(selected?.Name ?? "Marketplace","marketplace.title").Classes("page-heading") };
+        var items = new List<WidgetElement> { UI.Text(selected?.Name ?? "WidgetRail Catalogue","marketplace.title").Classes("page-heading") };
         string initial;
         if (selected is null)
         {
@@ -152,9 +152,9 @@ public sealed class MarketplaceWidget : Widget
                 new SegmentedTab("marketplace.tab.updates", $"Updates ({updates})", "marketplace.tab.updates")));
             items.Add(UI.Text(state.Section switch
             {
-                Section.Installed => "Your marketplace widgets. Manage other installed packages in Settings → Widgets.",
+                Section.Installed => "Your widgets from the catalogue. Manage other installed widgets in Settings → Widgets.",
                 Section.Updates => "Review and update your widgets here. Your preferences and data are preserved.",
-                _ => "Official WidgetRail add-ons. Download to review before installing."
+                _ => "Discover widgets for WidgetRail. Download to review before installing."
             },"marketplace.help").Classes("page-help"));
             items.Add(UI.Button("Check for updates","marketplace.refresh","marketplace.refresh").Busy(busy));
             if (state.Section == Section.Updates && updates > 0)
@@ -194,7 +194,7 @@ public sealed class MarketplaceWidget : Widget
                 Section.Updates => state.Error is not null || operation?.State == "failed" ? "Updates could not be checked. Try again when ready." :
                     running && operation?.Kind == "refresh" ? "Checking available updates…" :
                     state.Snapshot.CheckedAtUtc is null ? "Check for updates to see available releases." : "No updates were found at the last check.",
-                _ => state.Error is not null ? "Marketplace unavailable." : "Loading the official catalog…"
+                _ => state.Error is not null ? "Catalogue unavailable." : "Loading the catalogue…"
             },"marketplace.empty").Classes("page-help"));
             initial = state.Section != Section.Updates && visible.Any(i => i.Id == state.LastSelected)
                 ? "marketplace.item." + Key(state.LastSelected!) : "marketplace.tab." + state.Section.ToString().ToLowerInvariant();
@@ -239,7 +239,7 @@ public sealed class MarketplaceWidget : Widget
             : operation.State == "review" ? "Discard download" : "Cancel operation", "marketplace.cancel", "marketplace.cancel").Busy(state.Busy || operation.Message == "Cancelling…"));
         if(state.Error is not null) items.Add(UI.Button("Check status","marketplace.status","marketplace.status.retry").Busy(state.Busy));
         var root = UI.VerticalScroll("marketplace.page",items.ToArray()).InputScope("marketplace.page").Classes("marketplace-widget");
-        if (selected is not null) root = root.Shortcut(ControllerButton.B,"marketplace.back",label: "Marketplace");
+        if (selected is not null) root = root.Shortcut(ControllerButton.B,"marketplace.back",label: "Catalogue");
         else root = root.Shortcut(ControllerButton.X,"marketplace.tab.updates",label: "Updates");
         if (!busy) root = root.Shortcut(ControllerButton.Y,"marketplace.refresh",label: "Check updates");
         if (selected?.Screenshots.Count > 1) root = root.Shortcut(ControllerButton.LeftBumper,"marketplace.screenshot.previous",label: "Previous screenshot")

@@ -1421,7 +1421,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
     private async ValueTask<MarketplaceSnapshot> HandleMarketplaceWidgetAsync(MarketplaceCommand command,CancellationToken token)
     {
         try { return _marketplace is null ? MarketplaceSnapshot.Unavailable : await _marketplace.HandleAsync(command,token).ConfigureAwait(false); }
-        catch (PlatformDiagnosticsException error) { throw new BrokerException(error.Code,"Marketplace could not complete the request."); }
+        catch (PlatformDiagnosticsException error) { throw new BrokerException(error.Code,"Catalogue could not complete the request."); }
     }
 
     private void PublishHostEffect(

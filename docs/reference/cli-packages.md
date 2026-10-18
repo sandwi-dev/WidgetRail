@@ -85,8 +85,8 @@ Hashes verify bytes, not publishers. Remote installation does not create an
 automatic update subscription. See [Publishing](../developers/publishing-and-installation.md)
 and [Package format](widget-packaging.md).
 
-For controller-friendly discovery, use [Settings' widget marketplace](widget-marketplace.md).
-It shares this downloader and package validation. Marketplace installations also
+For controller-friendly discovery, use [Settings' widget catalogue](widget-marketplace.md).
+It shares this downloader and package validation. Catalogue installations also
 record their GitHub source for CLI update checks; installation never enables a
 widget automatically.
 
@@ -147,7 +147,7 @@ the settings transfer along with that exact package. Permissions and credentials
 are not copied. Existing settings for the destination package, including cleared
 state, remain intact. If the old worker still holds its package files, close
 WidgetRail and retry; the CLI will not copy a potentially stale snapshot.
-Marketplace and Settings handle worker retirement automatically without disabling
+Catalogue and Settings handle worker retirement automatically without disabling
 the widget.
 
 Local packages use the same reviewed update contract:

@@ -9,7 +9,7 @@ become available progressively. An incomplete catalog does not mean that other
 widgets were uninstalled. Finishing discovery does not select a widget, reopen
 the overlay, or restore pins.
 
-The lightweight inventory used by marketplace and CLI lists contains display
+The lightweight inventory used by catalogue and CLI lists contains display
 information and version directories only; it grants no execution or permission
 authority. Enabling, selecting a different version, permission review, and
 launch admission still use verified package content. Launch holds verified file
@@ -59,10 +59,10 @@ locked files are retried on a later catalog change. Existing longer histories
 are trimmed when that widget is next installed or updated, not during startup.
 The larger internal discovery ceiling permits legacy catalogs and cleanup retries.
 
-Marketplace and Settings updates preserve enabled state; CLI updates require the
+Catalogue and Settings updates preserve enabled state; CLI updates require the
 widget to be disabled first. Settings exposes **Revert to previous version** in
 its existing **Technical details** section. Disable the widget before reverting,
-then review permissions and enable it again. After reverting, use the normal Marketplace, file or CLI update flow
+then review permissions and enable it again. After reverting, use the normal Catalogue, file or CLI update flow
 to return to a newer version. A retained package is verified against the reviewed
 archive and reused without overwriting its immutable files. Rollback changes package selection;
 it does not restore a snapshot of saved widget data.

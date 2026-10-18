@@ -21,8 +21,10 @@ internal static class MarketplaceScenarios
             await widget.InitializationTask;
             await Action("open.installed-widgets");
             Check(Node("installed.marketplace").ActionId == "open.marketplace", "No marketplace entry in Widgets");
+            Check(Node("installed.marketplace").Text == "Browse catalogue", "Catalogue entry label missing");
             await Action("open.marketplace");
             Check(Snapshot().ActiveInputScopeId == "marketplace.page", "Wrong browse input scope");
+            Check(Node("marketplace.heading").Text == "WidgetRail Catalogue", "Catalogue page heading missing");
             var listing = Walk(Snapshot().Root).Single(n => n.ActionId?.StartsWith("marketplace.select.") == true);
             await Action(listing.ActionId!);
             Check(Node("marketplace.screenshot").Kind == ViewNodeKind.Image, "Screenshot was not displayed");

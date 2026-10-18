@@ -20,7 +20,7 @@ Install and Update from file use a Windows file picker followed by themed
 overlay dialogs for full-trust approval, progress and completion. The picker
 requires mouse/keyboard; the overlay dialogs support controller navigation.
 Completion refreshes the widget and permission lists. Fresh installations through
-Settings and Marketplace start enabled and request permissions when needed.
+Settings and Catalogue start enabled and request permissions when needed.
 Updates validate the new package before replacing the selection and preserve
 enabled state, permissions and data; the older version remains available until
 removed. CLI staging remains a separate disabled-install workflow.
@@ -140,7 +140,7 @@ to installation or startup controls. These are host-owned management operations.
 Settings' indexed widget rows use host-resolved catalog icons, including disabled
 widgets. Protocol 82 adds a typed package ID, version, source (built-in or installed)
 and optional sealed content digest to an icon reference. Only trusted Settings and
-Marketplace views may use this authority; package manifests and ordinary widgets
+Catalogue views may use this authority; package manifests and ordinary widgets
 cannot borrow another package's assets. Only the target's presentation icon is
 available. Workers are never started to obtain icons.
 

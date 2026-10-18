@@ -1,15 +1,16 @@
-# Widget marketplace and updates
+# WidgetRail Catalogue and updates
 
-Open **Marketplace** from the widget tray, or use **Settings → Widgets → Browse marketplace**.
-It is included in both app editions. The initial curated catalog
-contains Discord, Twitch, Game Help, Display Profiles, Playnite Library, Spotify, YouTube Video, and YouTube Music. Discord, Twitch, Game Help and Display Profiles are marketplace-only and are not bundled in either installer. Built-in
-widgets are distributed with the app; the marketplace does not replace them.
+Open **WidgetRail Catalogue** from the widget tray, or use **Settings → Widgets → Browse catalogue**.
+Discover widgets, inspect their setup requirements and screenshots, then download
+and review their permissions before installing. The catalogue also brings updates
+for installed listings together in one place. Availability depends on published
+packages; a listing alone does not mean a downloadable version exists.
 
 ## Browse, review, install
 
 The catalog describes setup requirements and shows available and installed
 versions. **Browse**, **Installed** and **Updates** separate discovery from
-management. Opening Marketplace checks releases without hiding existing content
+management. Opening Catalogue checks releases without hiding existing content
 or blocking navigation, while preserving an active download or review. Manual
 **Check for updates** remains available. Preview releases are labelled. The
 current feed inspects the latest 20 non-draft releases and chooses the highest
@@ -39,10 +40,12 @@ preserve enabled/disabled and stopped state. The review explains that ordinary
 widget settings will be kept. Approval copies only the bounded private-settings
 document into the exact replacement package namespace; permissions and credentials
 are not transferred. Existing destination settings and cleared state are respected.
-Older versions remain available. Existing **Versions** controls select a previous
-version while the widget is disabled. Up-to-date listings and versions already
-saved after a rollback open management rather than downloading the same version
-again.
+Updates automatically trim retained versions to at most three, preserving the
+active version and its previous selection. To revert, disable the widget and open
+its **Technical details** in Settings, then choose **Revert to previous version**.
+After reverting, use the ordinary update action in Catalogue again to restore the
+newer version, even when that version is still retained locally. Up-to-date
+listings offer **Manage in Settings**.
 
 Curated placement and checksums do not constitute a publisher signature. There
 are no accounts, payments, ratings or public submissions in this version.
@@ -89,8 +92,8 @@ digest. Failure to save optional CLI source metadata does not undo installation.
   existing verified catalog transactions. Reviewed fresh installs start enabled;
   updates preserve existing enable and stop choices. Permissions are never granted
   by installation. Low-level CLI installation remains disabled staging.
-- Marketplace commands and validation are shared protocol contracts; Settings'
-  private diagnostics channel and the dedicated marketplace call the same Bridge
+- Catalogue commands and validation are shared protocol contracts; Settings'
+  private diagnostics channel and the dedicated Catalogue call the same Bridge
   service. The review UI is shared too. There is no second installation pipeline.
 - `HostServices.Marketplace` is a reserved, host-granted service attached only to
   the sealed, bundled `widgetrail.firstparty.marketplace` running in AppContainer.
@@ -99,10 +102,10 @@ digest. Failure to save optional CLI source metadata does not undo installation.
   Read/status operations require a visible widget; download/install/cancel require
   interaction. The operation and command action must agree, preventing a read call
   from carrying an installation command. URLs and paths are never accepted.
-- Other widgets should open the marketplace using `WidgetIntentContracts.Marketplace`
+- Other widgets should open the catalogue using `WidgetIntentContracts.Marketplace`
   (`widgetrail.marketplace.open`, version 1, empty object payload). Declare the
   empty-object schema with `additionalProperties: false` and `properties: {}`.
-  Settings and SDK Gallery demonstrate this route. Marketplace uses Settings'
+  Settings and SDK Gallery demonstrate this route. Catalogue uses Settings'
   widget-details intent for installed management.
 - Additional GitHub repositories and private-source authentication are deferred.
 
@@ -127,7 +130,7 @@ permission details. Cancellation keeps completed installations and cancels queue
 work. Per-item results explain failures; Retry remaining updates excludes already
 completed items. Reviews expire and reject changed installed baselines.
 
-Installed covers curated marketplace packages. Other locally imported packages
+Installed covers widgets listed in the catalogue. Other locally imported widgets
 remain in Settings → Widgets. Additional repository support is deferred.
 
 Widget package limits are shared by the CLI, installer and runtime content lease: 256 MiB expanded per package, with a 32 MiB per-file limit. Large immutable datasets may use bounded archive parts. Path, entry-count, seal and extraction checks still apply. Theme package limits and generic non-widget downloads are unchanged.

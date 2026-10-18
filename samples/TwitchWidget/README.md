@@ -24,7 +24,7 @@ wrail install <path-to-widgetrail.samples.twitch-0.1.0.wrwidget>
 wrail enable widgetrail.samples.twitch
 ```
 
-The builder validates the package and produces SHA-256 sidecars. It does not install or publish. Twitch is not bundled in either installer. Its curated marketplace listing will become downloadable after a matching package is published; local installation works before publication.
+The builder validates the package and produces SHA-256 sidecars. It does not install or publish. Twitch is not bundled in either installer. Its curated catalogue listing will become downloadable after a matching package is published; local installation works before publication.
 
 ## Physical test checklist
 

@@ -19,7 +19,7 @@ Use **PoE1 Path of Building** for Path of Exile or **PoE2 Path of Building (Beta
 
 ## Get started
 
-1. [Install WidgetRail](../../docs/users/getting-started.md), then open **Marketplace** and install the widget for your game. Installation requests full access so the widget can run its local PoB engine.
+1. [Install WidgetRail](../../docs/users/getting-started.md), then open **Catalogue** and install the widget for your game. Installation requests full access so the widget can run its local PoB engine.
 2. Open the widget and paste a **PoB share code** or **pobb.in link**, import an exported XML file, or create a new build.
 3. Use **LB/RB** to switch sections. The on-screen controller guide shows the actions available for the current control. Keyboard and mouse also work.
 
