@@ -104,22 +104,34 @@ internal sealed partial class WidgetTextEntryDialog
                 panel.Margin = new Thickness(0);
             }
             var height = panel?.ActualHeight ?? ActualHeight;
+            var suggestionHeight = suggestionRegion?.ActualHeight ?? 0;
+            var baseHeight = Math.Max(0, height - suggestionHeight);
             var anchor = FieldAnchor ?? owner;
             var x = Math.Clamp(anchor.X + (anchor.Width - width) / 2, available.Left, Math.Max(available.Left, available.Right - width));
-            var y = anchor.Y + (anchor.Height - height) / 2;
+            var y = anchor.Y + (anchor.Height - baseHeight) / 2;
             if (FieldAnchor is not null)
             {
                 var below = available.Bottom - anchor.Bottom - 8;
                 var above = anchor.Top - available.Top - 8;
-                y = below >= height || below >= above ? anchor.Bottom + 8 : anchor.Top - height - 8;
+                y = below >= baseHeight || below >= above ? anchor.Bottom + 8 : anchor.Top - baseHeight - 8;
                 // If neither vertical side fits, try beside the field before
                 // clamping over it. Never reduce the keyboard's key viewport.
-                if (below < height && above < height && available.Right - anchor.Right >= width + 8)
+                if (below < baseHeight && above < baseHeight && available.Right - anchor.Right >= width + 8)
                 { x = anchor.Right + 8; y = anchor.Y; }
-                else if (below < height && above < height && anchor.Left - available.Left >= width + 8)
+                else if (below < baseHeight && above < baseHeight && anchor.Left - available.Left >= width + 8)
                 { x = anchor.Left - width - 8; y = anchor.Y; }
             }
-            y = Math.Clamp(y, available.Top, Math.Max(available.Top, available.Bottom - height));
+            // Anchor the editor/keys using only their height. Suggestions grow
+            // above that baseline, with their own bounded scrolling viewport.
+            var minimumTopSpace = suggestionRegion is null ? 0 : 40 * interfaceScale + body.Spacing;
+            y = Math.Clamp(y, Math.Min(available.Top + minimumTopSpace, Math.Max(available.Top, available.Bottom - baseHeight)),
+                Math.Max(available.Top, available.Bottom - baseHeight));
+            if (suggestionRegion is not null)
+            {
+                suggestionAvailableHeight = Math.Max(0, y - available.Top);
+                ResizeSuggestionRegion();
+            }
+            y -= suggestionHeight;
             x = Math.Round(x); y = Math.Round(y);
             if (Math.Abs(popup.HorizontalOffset - x) >= 1) popup.HorizontalOffset = x;
             if (Math.Abs(popup.VerticalOffset - y) >= 1) popup.VerticalOffset = y;

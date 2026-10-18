@@ -9,6 +9,61 @@ namespace WinUiShell.Tests;
 public sealed class TextSuggestionControllerTests
 {
     private static TextSuggestionResult Result(string value) => new([new("match", value, value)]);
+    [TestMethod]
+    public async Task RefreshRetainsVisibleResultsButRevokesAllSelectionUntilCurrentReply()
+    {
+        var views = new ConcurrentQueue<TextSuggestionView>();
+        var reply = new TaskCompletionSource<TextSuggestionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        using var owner = new TextSuggestionController("search", new("catalog"), 100,
+            (_, _) => Interlocked.Increment(ref calls) == 1 ? Task.FromResult(Result("Fireball")) : reply.Task,
+            views.Enqueue, 1, 1);
+        owner.Update("fi"); await Until(() => views.LastOrDefault()?.Selectable == true);
+        var original = views.Last();
+        owner.Update("fi"); await Task.Delay(20); Assert.AreEqual(1, calls);
+        owner.Update("ice");
+        var retained = views.Last();
+        Assert.AreEqual("Fireball", retained.Items.Single().Value);
+        Assert.IsTrue(retained.Stale); Assert.IsFalse(retained.Selectable);
+        Assert.IsNull(owner.Accept(original.Revision, "match"));
+        Assert.IsNull(owner.Accept(retained.Revision, "match"));
+        await Until(() => calls == 2);
+        Assert.IsTrue(views.Last().Loading); Assert.AreEqual("Fireball", views.Last().Items.Single().Value);
+        reply.SetResult(Result("Ice Spear"));
+        await Until(() => views.LastOrDefault()?.Selectable == true);
+        Assert.AreEqual("Ice Spear", owner.Accept(views.Last().Revision, "match"));
+    }
+
+    [TestMethod]
+    public async Task ShortInputAndEmptyReplyClearRetainedResults()
+    {
+        var views = new ConcurrentQueue<TextSuggestionView>();
+        using var owner = new TextSuggestionController("search", new("catalog", MinimumLength: 2), 100,
+            (query, _) => Task.FromResult(query.Text == "none" ? TextSuggestionResult.Empty : Result("Gem")), views.Enqueue, 1, 1);
+        owner.Update("gem"); await Until(() => views.LastOrDefault()?.Selectable == true);
+        owner.Update("g"); Assert.AreEqual(0, views.Last().Items.Count); Assert.IsFalse(views.Last().Stale);
+        owner.Update("gem"); await Until(() => views.LastOrDefault()?.Selectable == true);
+        owner.Update("none"); await Until(() => views.LastOrDefault() is { Text: "none", Queried: true });
+        Assert.AreEqual(0, views.Last().Items.Count);
+    }
+
+    [TestMethod]
+    public async Task LatestPendingDisplayExpiresEvenWhenOldProviderIgnoresCancellation()
+    {
+        var views = new ConcurrentQueue<TextSuggestionView>();
+        var blocked = new TaskCompletionSource<TextSuggestionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        using var owner = new TextSuggestionController("search", new("catalog"), 100,
+            (query, _) => { Interlocked.Increment(ref calls); return query.Text == "old" ? blocked.Task : Task.FromResult(Result(query.Text)); },
+            views.Enqueue, 1, 1, timeout: 100);
+        owner.Update("gem"); await Until(() => views.LastOrDefault()?.Selectable == true);
+        owner.Update("old"); await Until(() => calls == 2);
+        owner.Update("latest");
+        await Until(() => views.LastOrDefault() is { Text: "latest", Unavailable: true });
+        Assert.AreEqual(0, views.Last().Items.Count); Assert.AreEqual(2, calls);
+        blocked.SetResult(Result("Old reply")); await owner.Completion;
+        Assert.AreEqual("latest", views.Last().Items.Single().Value); Assert.AreEqual(3, calls);
+    }
     private static async Task Until(Func<bool> condition)
     {
         using var timeout = new CancellationTokenSource(3000);

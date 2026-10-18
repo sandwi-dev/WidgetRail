@@ -20,6 +20,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     private readonly Dictionary<Button, Action> commands = [];
     private readonly int maximumLength;
     private readonly StackPanel body = new() { Spacing = 12 };
+    private readonly StackPanel keyboardLayout = new();
     private readonly TextBlock heading = new() { TextWrapping = TextWrapping.Wrap, MaxLines = 2 };
     private double interfaceScale = 1;
     private bool uppercase;
@@ -49,6 +50,8 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         this.finish = finish;
         maximumLength = node.TextEntryMaximumLength ?? ProtocolConstants.MaximumTextEntryLength;
         heading.Text = node.AccessibilityLabel ?? node.TextEntryPlaceholder ?? "Enter text";
+        var placeholder = string.Equals(node.TextEntryPlaceholder?.Trim(), heading.Text.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? string.Empty : node.TextEntryPlaceholder ?? string.Empty;
         Title = heading;
         if (IsLive) { Title = null; heading.Visibility = Visibility.Collapsed; body.Children.Add(heading); }
         AutomationProperties.SetName(this, heading.Text);
@@ -60,7 +63,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         if (node.TextEntryInputKind == TextEntryInputKind.Sensitive && !IsLive)
         {
             password = new PasswordBox { MaxLength = maximumLength, PasswordRevealMode = PasswordRevealMode.Hidden,
-                Header = node.TextEntryPlaceholder ?? "Private text" };
+                PlaceholderText = placeholder };
             password.PasswordChanged += (_, _) => secretCaret = password.Password.Length;
             body.Children.Add(password);
         }
@@ -68,7 +71,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         {
             text = new TextBox { AcceptsReturn = this.multiline, TextWrapping = this.multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
                 Text = node.TextEntryValue ?? string.Empty, MaxLength = maximumLength,
-                Header = node.TextEntryPlaceholder ?? "Text", IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
+                PlaceholderText = placeholder, IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
                 MaxHeight = this.multiline ? 160 : double.PositiveInfinity };
             text.Select(text.Text.Length, 0);
             if (IsLive) { text.IsReadOnly = true; text.IsTabStop = false; text.Header = null; }
@@ -76,6 +79,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         }
         var editor = (Control?)text ?? password!;
         AutomationProperties.SetAutomationId(editor, "Widget.TextEntry.Editor");
+        AutomationProperties.SetName(editor, heading.Text);
         // Half-key columns keep character geometry while allowing narrower utility keys.
         for (var column = 0; column < 20; ++column) keys.ColumnDefinitions.Add(new());
         for (var row = 0; row < 6; ++row) keys.RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -108,7 +112,8 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         RefreshCharacters();
         body.Children.Add(keys);
         InitializeCaret();
-        Content = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        keyboardLayout.Children.Add(body);
+        Content = new ScrollViewer { Content = keyboardLayout, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         ApplyPopupMetrics(1, 16, new() { Weight = 400 }, null);
         GettingFocus += (_, args) =>
@@ -122,6 +127,8 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             if (FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key))
             { if (!ReferenceEquals(rememberedKey, key)) repeat.CancelCharacter(); rememberedKey = key; key.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }); }
             RefreshCaret();
+            RefreshSuggestionPrompt();
+            GuideChanged?.Invoke();
         };
         Closing += (_, _) => { if (!completed) Complete(false); };
         AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
@@ -314,7 +321,9 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             case ControllerButton.RightTrigger: Complete(true); break;
             case ControllerButton.LeftBumper: MoveCaret(-1); break;
             case ControllerButton.RightBumper: MoveCaret(1); break;
-            case ControllerButton.RightStick: TogglePassword(); break;
+            case ControllerButton.RightStick:
+                if (IsSensitive) TogglePassword(); else ToggleSuggestionFocus();
+                break;
             case ControllerButton.LeftStick: AcceptFirstSuggestion(); break;
             case ControllerButton.DPadUp: MoveFocus(FocusNavigationDirection.Up); break;
             case ControllerButton.DPadDown: MoveFocus(FocusNavigationDirection.Down); break;

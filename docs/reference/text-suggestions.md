@@ -8,13 +8,25 @@ final-value action; Cancel sends nothing. Arrival never moves focus to a choice.
 Press **LS/L3** to fill the first current suggestion without leaving the keys.
 Its controller glyph appears on the first suggestion and in the controller guide
 only while a result is available. Selecting any suggestion with mouse or A has
-the same behavior; **RT/Done** still confirms the entry.
+the same behavior; **RT/Done** still confirms the entry. **RS/R3** enters the
+first current suggestion from anywhere on the keyboard. Left/right browses the
+row and reveals overflow; R3 returns to the remembered keyboard key. Password
+entry retains R3 for showing/hiding the password.
 
-The suggestion area collapses when idle or after accepting a result. It uses
-only populated result rows; loading, unavailable, and no-match states use a
-compact status line. Resizing this area preserves the focused keyboard key.
+Suggestions use one horizontal row of content-sized buttons with capped label
+widths. A fixed R3 glyph precedes the row; the mouse wheel also scrolls overflow.
+The area collapses when idle or after accepting a result. Its top edge animates
+briefly while the editor and keys stay anchored; reduced motion skips animation.
+Loading, unavailable, and no-match states use compact feedback.
 
-![PoB gem suggestions in the host keyboard](../images/text-suggestions.png)
+After text changes, previous results remain visible but inactive while the latest
+query runs. L3, A and queued mouse activation cannot accept them. A response
+replaces the results together; below-minimum input, an empty response, or a
+deadline clears them. Editing while browsing returns focus to the remembered
+keyboard key. New results never restore suggestion focus or its scroll position.
+Unchanged text does not reset results or issue another lookup.
+
+![Content-sized suggestions in the host keyboard](../images/text-suggestions.png)
 
 ```csharp
 private readonly TextSuggestionCatalog catalog = new(new[]
@@ -88,7 +100,7 @@ choices; the host does not apply a second filter or infer per-word completion.
 |---|---|
 | Pacing | Uses the validated field options above |
 | Work | One active query and one replaceable pending text value per editor |
-| Results | Six by default, at most eight; no suggestion scrolling |
+| Results | Six by default, at most eight; a single horizontally scrollable row |
 | Text | At most 512 UTF-16 units, also bounded by the field maximum |
 | Labels/descriptions | At most 96/128 UTF-16 units; no control characters |
 | Provider deadline | Uses the validated field option; failure shows unavailable and Done remains usable |
@@ -101,6 +113,11 @@ callbacks. The bridge also limits concurrent queries to one per widget and eight
 globally. Suggestions never start an unloaded worker. A custom worker that fails
 to respond to protocol cancellation can be terminated by the existing process
 boundary; provider errors alone do not terminate a healthy worker.
+
+The latest pending display also has a bounded wait if an older callback ignores
+cancellation. It becomes unavailable rather than retaining inactive choices
+indefinitely. If the callback later drains, the latest pending query can proceed;
+once dispatched, it receives its full configured provider deadline.
 
 Sensitive fields, pinned fragments, indexed-item text fields and browser live-edit
 keyboards do not support suggestions in this version. Ordinary widget fields do.

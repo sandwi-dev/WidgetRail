@@ -3,7 +3,10 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed record TextSuggestionView(long Revision, string Text, IReadOnlyList<TextSuggestion> Items,
-    bool Loading = false, bool Unavailable = false, bool Queried = false);
+    bool Loading = false, bool Unavailable = false, bool Queried = false, bool Stale = false)
+{
+    internal bool Selectable => Queried && !Loading && !Unavailable && !Stale;
+}
 
 /// <summary>One active query and one replaceable pending value, with bounded field timing and host-owned focus.</summary>
 internal sealed class TextSuggestionController : IDisposable
@@ -17,6 +20,7 @@ internal sealed class TextSuggestionController : IDisposable
     private readonly string fieldId, sessionId = Guid.NewGuid().ToString("N");
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? demand;
+    private CancellationTokenSource? pendingDeadline;
     private Task? pump;
     private Work? pending;
     private TextSuggestionView view = new(0, "", []);
@@ -45,9 +49,17 @@ internal sealed class TextSuggestionController : IDisposable
         {
             if (disposed || revision > 0 && view.Text == text) return;
             CancelDemand();
-            state = view = new(++revision, text, []);
+            var retained = view.Items;
+            ++revision;
             pending = text.Length >= source.MinimumLength && text.Length <= Math.Min(maximumLength, TextSuggestionContract.MaximumQueryLength)
                 ? new(revision, text, Environment.TickCount64) : null;
+            state = view = new(revision, text, pending is null ? [] : retained, Stale: pending is not null && retained.Count > 0);
+            RetireDeadline();
+            if (pending is not null)
+            {
+                pendingDeadline = new();
+                _ = ExpirePendingAsync(pending, pendingDeadline.Token);
+            }
             if (!running && pending is not null) { running = true; pump = Task.Run(PumpAsync); }
         }
         Publish(state);
@@ -59,9 +71,10 @@ internal sealed class TextSuggestionController : IDisposable
         string value;
         lock (gate)
         {
-            if (disposed || expectedRevision != revision || view.Loading || view.Items.FirstOrDefault(item => item.Id == id) is not { } item) return null;
+            if (disposed || expectedRevision != revision || !view.Selectable || view.Items.FirstOrDefault(item => item.Id == id) is not { } item) return null;
             value = item.Value;
             CancelDemand(); pending = null;
+            RetireDeadline();
             state = view = new(++revision, value, []);
         }
         Publish(state);
@@ -90,8 +103,9 @@ internal sealed class TextSuggestionController : IDisposable
                     if (disposed) return;
                     if (pending != work || revision != work.Revision) continue;
                     pending = null; lastStart = Environment.TickCount64;
+                    RetireDeadline(); // Once dispatched, the request has its own full provider deadline.
                     demand = request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-                    loading = view = new(work.Revision, work.Text, [], Loading: true);
+                    loading = view = new(work.Revision, work.Text, view.Items, Loading: true, Stale: view.Items.Count > 0);
                 }
                 Publish(loading);
                 Task<TextSuggestionResult>? operation = null;
@@ -140,7 +154,8 @@ internal sealed class TextSuggestionController : IDisposable
         TextSuggestionView state;
         lock (gate)
         {
-            if (disposed || work.Revision != revision) return;
+            if (disposed || work.Revision != revision || view.Queried) return;
+            RetireDeadline();
             state = view = new(work.Revision, work.Text, result.Items.ToArray(), Unavailable: result.Unavailable, Queried: true);
         }
         Publish(state);
@@ -158,6 +173,28 @@ internal sealed class TextSuggestionController : IDisposable
     {
         if (demand is { IsCancellationRequested: false }) ObserveCancellation(demand.CancelAsync());
     }
+
+    // A provider ignoring cancellation can occupy the one query slot. Bound
+    // the latest pending display too, without spawning more provider calls.
+    private async Task ExpirePendingAsync(Work work, CancellationToken token)
+    {
+        try { await Task.Delay(Math.Max(debounce, interval) + timeout, token).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return; }
+        TextSuggestionView state;
+        lock (gate)
+        {
+            if (disposed || token.IsCancellationRequested || work.Revision != revision || view.Queried) return;
+            CancelDemand();
+            state = view = new(revision, work.Text, [], Unavailable: true, Queried: true);
+            RetireDeadline();
+        }
+        Publish(state);
+    }
+
+    private void RetireDeadline()
+    {
+        pendingDeadline?.Cancel(); pendingDeadline?.Dispose(); pendingDeadline = null;
+    }
     private static void ObserveCancellation(Task task) => _ = task.ContinueWith(done => { _ = done.Exception; },
         CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
@@ -167,6 +204,7 @@ internal sealed class TextSuggestionController : IDisposable
         {
             if (disposed) return;
             disposed = true; revision++; pending = null; publish = null;
+            RetireDeadline();
             CancelDemand(); ObserveCancellation(lifetime.CancelAsync());
             if (!running) lifetime.Dispose();
         }

@@ -19,7 +19,7 @@ internal sealed partial class TextEntryValidationPage
         var editor = (TextBox)Editor();
         var key = (Button)FindDialog("Widget.TextEntry.Key.10")!;
         var commit = (Button)FindDialog("Widget.TextEntry.Commit")!;
-        var body = (StackPanel)((ScrollViewer)dialog.Content).Content;
+        var body = dialog.BodyForValidation;
         var keys = (Grid)body.Children[1];
         var title = (TextBlock)dialog.Title;
         var focused = FocusedId;

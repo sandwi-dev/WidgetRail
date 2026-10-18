@@ -98,9 +98,11 @@ internal sealed partial class WidgetViewPresenter
     }
     internal static IReadOnlyList<ControllerGuideHint> CaptureKeyboardGuide(WidgetTextEntryDialog keyboard) =>
         (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Navigate"),
-                new(ControllerPrompt.A, "Type (hold to repeat)", ControllerButton.A),
+                new(ControllerPrompt.A, keyboard.SuggestionsFocused ? "Use suggestion" : "Type (hold to repeat)", ControllerButton.A),
                 .. (keyboard.CanAcceptFirstSuggestion ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickPress,
                     "Use first suggestion", ControllerButton.LeftStick)] : []),
+                .. (keyboard.CanAcceptFirstSuggestion ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress,
+                    keyboard.SuggestionsFocused ? "Back to keyboard" : "Suggestions", ControllerButton.RightStick)] : []),
                 new(ControllerPrompt.X, "Delete (hold to repeat)", ControllerButton.X),
                 new(ControllerPrompt.LeftBumper, "Caret left", ControllerButton.LeftBumper),
                 new(ControllerPrompt.RightBumper, "Caret right", ControllerButton.RightBumper),

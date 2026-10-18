@@ -116,6 +116,7 @@ internal sealed partial class WidgetViewPresenter
 internal sealed class NativeComputedStyleAdapter : IDisposable
 {
     private static WidgetMotionOptions motionOptions = WidgetMotionOptions.From(AppearanceSettings.Default, true);
+    internal static TimeSpan DialogResizeDuration => motionOptions.AnimateDialogs ? motionOptions.Duration(150) : TimeSpan.Zero;
     private static WidgetAccessibilityPolicy accessibility = WidgetAccessibilityPolicy.From(AppearanceSettings.Default);
     internal static void SetAccessibilityPolicy(AppearanceSettings settings)
     {
