@@ -23,6 +23,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
 | Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Existing facilities audited; extension pending |
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Agreed; implementation resumed, queued |
+| Display widget expansion | Add display controls alongside saved profiles, using Quick Settings as a reference | Agreed direction; feature audit and implementation queued |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
@@ -241,6 +242,23 @@ Show whether content remains above or below a vertically scrolling container. Th
 - [ ] Verify Notes-style text, virtualized lists, calculation breakdowns and modals, including no overflow, both boundaries, dynamic content, scaling and controller/mouse navigation. Confirm indicators do not conflict with the existing hidden-interaction focus outline or focus-after-settle behavior.
 
 The conversation mockup is a design reference only; native visual acceptance is still required. No additional visualization is requested.
+
+## Display widget expansion
+
+Added at the user's request on 2026-10-18. Expand the existing Display Profiles widget into a useful controller-accessible display-control surface, retaining its saved-profile workflow. Consider a clearer name such as **Display Controls** if profiles become one part of the widget. Preserve widget/package identity, permissions and saved profiles when changing the display name.
+
+Reference: [Quick Settings](https://github.com/LoZazaMastro/Quick-Settings), inspected read-only at `72013a2b19d1ebcc4a47358fe5bec763ce826dfe`. Its display features include resolution and refresh-rate selection, native HDR, a software screen dimmer and AMD ADLX color controls. The dimmer is an overlay, not monitor-backlight control; AMD brightness/color settings are driver-specific. Reference functionality is not proof of compatibility with every WidgetRail user's hardware.
+
+- [ ] Audit the existing display-profile provider and reusable host services before adding controls. Existing profiles already preserve topology, resolution, exact refresh rate, orientation, positions and primary display; expose suitable direct controls without duplicating that native implementation.
+- [ ] Plan and implement direct per-display mode controls, prioritizing resolution, refresh rate and supported HDR. Enumerate actual supported modes/capabilities, identify the affected monitor clearly, and verify applied state rather than displaying optimistic success. Evaluate primary/orientation/topology controls against existing profile functionality and controller usability.
+- [ ] Evaluate brightness/dimming and color controls from the reference. Distinguish hardware brightness, software dimming and GPU color adjustment in both capabilities and labels. Choose supported, bounded implementations after checking Windows APIs, monitor/driver support and dependencies; do not silently replace a missing hardware capability with a dimming overlay.
+- [ ] Keep reusable display operations and native/device access in the trusted host provider, exposed through appropriately scoped SDK capabilities. The widget remains presentation/orchestration rather than bundling a separate localhost agent, vendor helper or raw native implementation by default.
+- [ ] Preserve the existing timed Keep/Revert and independent rollback guard for mode/topology changes. Cover monitor disconnection, unsupported modes, external changes, expiry, widget unload, host shutdown and failed readback. Keep controls responsive during slow native operations, coalesce repeated slider changes and avoid continuous polling.
+- [ ] Keep common controls compact and readable from the couch, use selectors where appropriate, and give unsupported or unavailable features accurate treatment. Make direct current-display adjustments distinct from saving/replacing a profile. Define deliberately which new fields profiles save; do not silently change the meaning of existing saved profiles.
+- [ ] Use fake backends for repeated apply/revert, failure and race tests; inspect native presentation and perform a small coordinated hardware check with restoration of test-only changes. Record unsupported hardware-dependent paths explicitly.
+- [ ] Attribute actual inspiration/adapted code, verify the license of each reused component, and retain required notices. Quick Settings' repository is MIT, but its bundled dependencies have separate terms; do not assume every binary can be copied under that license.
+
+This addition concerns display controls. Quick Settings' audio, CPU/TDP, game-launch automation, Lossless Scaling and broader Radeon gaming features are reference context, not automatically included in the requested display-widget expansion. No reference executables, installers or helpers were run during the audit.
 
 ## Resource and trade decisions
 
