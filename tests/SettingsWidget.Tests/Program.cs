@@ -117,6 +117,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Technical details expose one rollback action and reject obsolete version actions", CompactVersionManagement),
     ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
     ("Built-in widgets remain available and can be disabled without removing files", BuiltInWidgetInventory),
+    ("Bundled Marketplace technical details show its declared idle unloading policy", MarketplaceResidencyDetails),
     ("Installed copies cannot shadow built-in widget management", InstalledBuiltInCopy),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
@@ -577,7 +578,7 @@ static async Task ControllerScrollSurface()
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.HeightMode);
     Assert.Equal(880d, root.Surface?.PreferredWidth);
-    Assert.Equal(520d, root.Surface?.PreferredHeight);
+    Assert.Equal(552d, root.Surface?.PreferredHeight);
     Assert.Equal(520d, root.Surface?.MinimumWidth);
     Assert.Equal(360d, root.Surface?.MinimumHeight);
     Assert.Equal(ViewNodeKind.Scroll,
@@ -1988,6 +1989,29 @@ static async Task BuiltInWidgetInventory()
         "A forged built-in management action mutated community catalog state.");
     Assert.Valid(list);
     Assert.Valid(details);
+}
+
+static async Task MarketplaceResidencyDetails()
+{
+    using var temp = new TemporaryDirectory();
+    var bundledRoot = Path.Combine(temp.Path, "runtime");
+    var destination = Path.Combine(bundledRoot, "Marketplace");
+    Directory.CreateDirectory(destination);
+    File.Copy(Path.Combine(ProjectDirectory(), "..", "MarketplaceWidget", "manifest.json"),
+        Path.Combine(destination, "manifest.json"));
+    var widget = CreateWithPermissions(temp.Path, Path.Combine(temp.Path, "catalog"),
+        new ConsentStore(Path.Combine(temp.Path, "consent")), bundledRoot);
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.builtin.select.0");
+    Assert.True(!Nodes(Snapshot(widget).Root).Any(node => node.Id == "installed.details.residency"),
+        "Residency should remain in Technical details, not clutter the management page.");
+    await Action(widget, "open.widget-technical");
+    var technical = Snapshot(widget);
+    Assert.Contains("Unload after idle", Text(technical.Root, "installed.details.residency").Text!);
+    Assert.Contains("120 seconds", Text(technical.Root, "installed.details.residency").Text!);
+    Assert.Valid(technical);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
 }
 
 static async Task InstalledBuiltInCopy()

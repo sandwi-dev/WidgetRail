@@ -212,6 +212,7 @@ internal static class SettingsInstalledWidgetPresentation
                         .Classes("diagnostic-line"),
                     UI.Text($"Runtime: {builtIn.Entrypoint.Runtime}", "installed.details.runtime", "Package runtime")
                         .Classes("diagnostic-line"),
+                    ResidencyDetails(builtIn),
                     UI.Text($"Compatibility: {builtInCompatibility.Message}",
                         "installed.details.compatibility", "Package compatibility")
                         .Classes(builtInCompatibility.IsSupported ? "diagnostic-ok" : "diagnostic-error"),
@@ -252,17 +253,6 @@ internal static class SettingsInstalledWidgetPresentation
         var optionalPermissions = manifest.OptionalPermissions.Count == 0
             ? "None"
             : string.Join(", ", manifest.OptionalPermissions.Order(StringComparer.Ordinal));
-        var residency = WidgetResidencyPolicies.Resolve(manifest);
-        var residencyDescription = residency.Mode switch
-        {
-            WidgetResidencyMode.KeepAlive =>
-                "Keep alive · process stays resident in Background; lifecycle callbacks still pause presentation work",
-            WidgetResidencyMode.SuspendWhenHidden =>
-                "Suspend when hidden · cooperative Background lifecycle; no process/thread suspension",
-            WidgetResidencyMode.UnloadAfterIdle =>
-                $"Unload after idle · Destroying after {residency.IdleDuration?.TotalSeconds:0} seconds; last view is cached",
-            _ => "Unknown",
-        };
         var contentDigest = package.ActiveVersion.ContentDigest.ToLowerInvariant();
         var fullTrust = WidgetManifestTrust.Resolve(manifest) ==
             WidgetExecutionTrust.FullTrustCurrentUser;
@@ -339,8 +329,7 @@ internal static class SettingsInstalledWidgetPresentation
                     "installed.details.host-api", "Supported host API range").Classes("diagnostic-line"),
                 UI.Text($"Architectures: {string.Join(", ", manifest.Architectures)}",
                     "installed.details.architectures", "Supported architectures").Classes("diagnostic-line"),
-                UI.Text($"Residency: {residencyDescription}",
-                    "installed.details.residency", "Worker residency policy").Classes("page-help"),
+                ResidencyDetails(manifest),
                 UI.Text($"Compatibility: {compatibility.Message}",
                     "installed.details.compatibility", "Package compatibility")
                     .Classes(compatibility.IsSupported ? "diagnostic-ok" : "diagnostic-error"),
@@ -373,6 +362,23 @@ internal static class SettingsInstalledWidgetPresentation
                 ? SettingsInstalledWidgetUninstallPolicy.FocusId
                 : canToggleNow ? "installed.details.toggle" : "installed.details.back",
             "installed.details");
+    }
+
+    private static TextElement ResidencyDetails(WidgetManifest manifest)
+    {
+        var residency = WidgetResidencyPolicies.Resolve(manifest);
+        var description = residency.Mode switch
+        {
+            WidgetResidencyMode.KeepAlive =>
+                "Keep alive · process stays resident in Background; lifecycle callbacks still pause presentation work",
+            WidgetResidencyMode.SuspendWhenHidden =>
+                "Suspend when hidden · cooperative Background lifecycle; no process/thread suspension",
+            WidgetResidencyMode.UnloadAfterIdle =>
+                $"Unload after idle · Destroying after {residency.IdleDuration?.TotalSeconds:0} seconds; last view is cached",
+            _ => "Unknown",
+        };
+        return UI.Text($"Residency: {description}", "installed.details.residency", "Worker residency policy")
+            .Classes("page-help");
     }
 
     private static ScrollElement DetailsContent(IEnumerable<WidgetElement> content, bool technical)
