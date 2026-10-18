@@ -109,6 +109,8 @@ The exact invocation shortcut, result grouping and action set remain to be desig
 | Redux-maintained patches to upstream PoB | Excluded at the user's request. |
 | GGG OAuth integration | Outside this scope; current website workflow is accepted. |
 | AI integration | Outside this scope. |
+| Reading/synchronizing a build from the running game | Scrapped at the user's request: no suitable approach identified. Do not pursue screen/OCR reconstruction, memory reading or a new live clipboard-sync workflow. Existing manual item paste/import remains available. |
+| Game-relative annotation overlays | Not planned; no concrete current workflow justifies the feature. Keep researched overlay projects as references only. |
 | Broad passive scoring | Deferred pending usefulness and single-engine performance measurements. |
 | Automatic multi-point passive planning | Deferred; additional selection rules and maintenance are not justified yet. |
 | Automatic merge/release or renewed CI repair | Not authorized by this plan. |
