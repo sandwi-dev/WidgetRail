@@ -35,6 +35,7 @@ ctor WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest(string ProfileId, bool
 ctor WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest(bool Enabled)
 ctor WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest(string ProfileId)
 ctor WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest(string DeviceId)
+ctor WidgetRail.WidgetSdk.WebSessionPageActionBatchReader()
 ctor WidgetRail.WidgetSdk.WidgetActionEvent(string ActionId, string SourceElementId, WidgetRail.WidgetProtocol.ControllerButton? ControllerButton = null, WidgetRail.WidgetProtocol.ControllerEventPhase Phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, double? RequestedValue = null, string? InputScopeId = null)
 ctor WidgetRail.WidgetSdk.WidgetActionFailedEventArgs(WidgetRail.WidgetSdk.WidgetActionEvent Action, System.Exception Exception)
 ctor WidgetRail.WidgetSdk.WidgetAppLaunchObservation(WidgetRail.WidgetSdk.WidgetAppLaunchObservationState State, bool SupportsRunning, bool SupportsEnded)
@@ -523,6 +524,7 @@ method WidgetRail.WidgetSdk.ButtonElement.LeadingInlinePng(string pngBase64, Wid
 method WidgetRail.WidgetSdk.ButtonElement.OpenIntent(WidgetRail.WidgetProtocol.WidgetIntentContract contract, System.Text.Json.JsonElement payload, WidgetRail.WidgetProtocol.WidgetIntentPresentation presentation = WidgetRail.WidgetProtocol.WidgetIntentPresentation.PreferExistingSurface) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.OpenIntent(WidgetRail.WidgetProtocol.WidgetIntentContract contract, System.Text.Json.JsonElement payload, WidgetRail.WidgetProtocol.WidgetIntentRouting routing, WidgetRail.WidgetProtocol.WidgetIntentPresentation presentation = WidgetRail.WidgetProtocol.WidgetIntentPresentation.PreferExistingSurface) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.PersistFocusAs(string id) -> WidgetRail.WidgetSdk.ButtonElement
+method WidgetRail.WidgetSdk.ButtonElement.PrepareIntent(string key) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Selected(bool selected = true) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ButtonElement
@@ -883,6 +885,8 @@ method WidgetRail.WidgetSdk.WebBrowserElement.Equals(WidgetRail.WidgetSdk.Widget
 method WidgetRail.WidgetSdk.WebBrowserElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WebBrowserElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WebBrowserElement.ToString() -> string
+method WidgetRail.WidgetSdk.WebSessionPageActionBatchReader.Reset() -> void
+method WidgetRail.WidgetSdk.WebSessionPageActionBatchReader.TryRead(System.Text.Json.JsonElement payload, out System.Text.Json.JsonElement batchContext, out System.Text.Json.JsonElement[] batchItems) -> bool
 method WidgetRail.WidgetSdk.Widget.CreatePinnedLayoutHandle(string id, string name, WidgetRail.WidgetProtocol.WidgetSurfaceHints surface, string? initialFocusId = null, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.PinnedLayoutHandle
 method WidgetRail.WidgetSdk.Widget.RenderSnapshot(string widgetInstanceId, long sequence) -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetActionEvent.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionEvent
@@ -1941,6 +1945,7 @@ method static WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Equalit
 method static WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Inequality(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
 method static WidgetRail.WidgetSdk.WebBrowserElement.op_Equality(WidgetRail.WidgetSdk.WebBrowserElement? left, WidgetRail.WidgetSdk.WebBrowserElement? right) -> bool
 method static WidgetRail.WidgetSdk.WebBrowserElement.op_Inequality(WidgetRail.WidgetSdk.WebBrowserElement? left, WidgetRail.WidgetSdk.WebBrowserElement? right) -> bool
+method static WidgetRail.WidgetSdk.WebSessionMessageBatcher.Create<T>(System.Collections.Generic.IEnumerable<T?> items, System.Func<System.Collections.Generic.IReadOnlyList<T?>,System.Text.Json.JsonElement> envelope) -> System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>
 method static WidgetRail.WidgetSdk.WidgetActionEvent.op_Equality(WidgetRail.WidgetSdk.WidgetActionEvent? left, WidgetRail.WidgetSdk.WidgetActionEvent? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetActionEvent.op_Inequality(WidgetRail.WidgetSdk.WidgetActionEvent? left, WidgetRail.WidgetSdk.WidgetActionEvent? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.op_Equality(WidgetRail.WidgetSdk.WidgetActionFailedEventArgs? left, WidgetRail.WidgetSdk.WidgetActionFailedEventArgs? right) -> bool
@@ -2309,6 +2314,7 @@ method virtual WidgetRail.WidgetSdk.Widget.OnEmbeddedMediaPlaybackEventAsync(Wid
 method virtual WidgetRail.WidgetSdk.Widget.OnIntentAsync(WidgetRail.WidgetProtocol.WidgetIntentRequest request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetIntentResult>
 method virtual WidgetRail.WidgetSdk.Widget.OnIntentCompletedAsync(WidgetRail.WidgetProtocol.WidgetIntentFeedback feedback, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method virtual WidgetRail.WidgetSdk.Widget.OnPrepareIntentAsync(string key, WidgetRail.WidgetProtocol.WidgetIntentRequest request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Text.Json.JsonElement?>
 method virtual WidgetRail.WidgetSdk.Widget.OnResolveArtworkAsync(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
@@ -3475,6 +3481,7 @@ type sealed class WidgetRail.WidgetSdk.TileArtwork
 type sealed class WidgetRail.WidgetSdk.ToastElement : System.IEquatable<WidgetRail.WidgetSdk.ToastElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest : System.IEquatable<WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest>
 type sealed class WidgetRail.WidgetSdk.WebBrowserElement : System.IEquatable<WidgetRail.WidgetSdk.WebBrowserElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.WebSessionPageActionBatchReader
 type sealed class WidgetRail.WidgetSdk.WidgetActionEvent : System.IEquatable<WidgetRail.WidgetSdk.WidgetActionEvent>
 type sealed class WidgetRail.WidgetSdk.WidgetActivityService
 type sealed class WidgetRail.WidgetSdk.WidgetAppLaunchObservation : System.IEquatable<WidgetRail.WidgetSdk.WidgetAppLaunchObservation>
@@ -3637,6 +3644,7 @@ type static class WidgetRail.WidgetSdk.GridTrack
 type static class WidgetRail.WidgetSdk.SliderMath
 type static class WidgetRail.WidgetSdk.StyleExtensions
 type static class WidgetRail.WidgetSdk.UI
+type static class WidgetRail.WidgetSdk.WebSessionMessageBatcher
 type static class WidgetRail.WidgetSdk.WidgetActivityCapabilities
 type static class WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetAudioCapabilities
