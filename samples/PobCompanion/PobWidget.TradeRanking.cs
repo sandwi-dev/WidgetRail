@@ -262,7 +262,7 @@ public sealed partial class PobWidget
             if(rankingSkippedExpanded)controls.Add(UI.VerticalScroll("pob.rank.skipped",rankingSkipped.Select((reason,i)=>Text(Limit(reason,600),"rank.skipped."+i,"pob-small pob-muted")).ToArray())
                 .Shortcut(ControllerButton.LeftStick,"trade-rank-focus","Ranking controls").Classes("pob-scroll","pob-rank-skipped"));
         }
-        var tools=UI.Stack("pob.rank.tools",controls.ToArray()).RememberChildFocus("pob.rank.edit").Classes("pob-buildtools");
+        var tools=UI.Stack("pob.rank.tools",controls.ToArray()).RememberChildFocus("pob.rank.edit").Classes("pob-buildtools","pob-rank-tools");
         var list=UI.Stack("pob.rank.list",UI.CollectionList("pob.rank.results",rankingCollection,76,"Evaluated trade listings").Classes("pob-scroll"))
             .RememberChildFocus("pob.rank.results").Shortcut(ControllerButton.LeftStick,"trade-rank-focus","Ranking controls").Classes("pob-workspace");
         return UI.Stack("pob.rank.panel",tools,list).Classes("pob-panel","pob-tree-main");

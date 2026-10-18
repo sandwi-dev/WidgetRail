@@ -26,6 +26,7 @@ text { color: var(--text); text-align: start; }
 .pob-price-fields { align: end; }
 .pob-scroll { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; gap: 10px; }
 .pob-rank-skipped { flex-grow: 0; max-height: 120px; }
+.pob-rank-tools { flex-grow: 0; }
 .pob-list-item.pob-rank-item { padding: 8px 10px; min-height: 64px; gap: 4px; }
 .pob-rank-title { max-lines: 1; text-overflow: ellipsis; }
 .pob-rank-metrics { max-lines: 2; }
