@@ -10,6 +10,7 @@ public sealed partial class PobWidget
     private string tradeSlot="",tradeLeague="Standard",tradeBudget="",tradeCurrency="divine",tradePriority="balanced",tradeMode="securable";
     private string? cachedTradeKey,cachedTradeUrl;
     private string[] tradeLeagues=["Standard","Hardcore"];
+    private bool tradeLeaguesLoaded;
     internal Func<int,CancellationToken,Task<string[]>> TradeLeagueLoader { get; init; } = PobTradeSearch.ReadLeaguesAsync;
     private static readonly (string Key,string Label)[] TradeModes=[("securable","Instant buyout"),("available","Instant buyout and in person"),("onlineleague","In person (online in league)"),("online","In person (online)"),("any","Any (includes offline)")];
     private static readonly (string Key,string Label,string Help)[] TradePriorities=[
@@ -39,7 +40,7 @@ public sealed partial class PobWidget
             return true;
         }
         if(id=="back"){detailKind="item";focusRequestSequence++;return true;}
-        if(id=="trade-refresh"){RefreshTradeLeagues();return true;}
+        if(id=="trade-refresh"){RefreshTradeLeagues(force:true);return true;}
         if(id=="trade-budget")tradeBudget=action.CommittedText??"";
         else if(parts is["trade-league",var league]&&int.TryParse(league,out var li)&&li>=0&&li<tradeLeagues.Length)tradeLeague=tradeLeagues[li];
         else if(parts is["trade-mode",var mode]&&TradeModes.Any(m=>m.Key==mode))tradeMode=mode;
@@ -87,11 +88,19 @@ public sealed partial class PobWidget
         }
         catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException){ }
     }
-    private void RefreshTradeLeagues()=>Work(async token=>
+    private void RefreshTradeLeagues(bool force=false)=>Work(async token=>
     {
         await ReadTradeCatalogAsync(token);
+        // Reuse successful discovery for this widget instance; explicit refresh
+        // or a fresh instance after unloading/restart fetches the list again.
+        lock(gate)if(tradeLeaguesLoaded&&!force)return;
         var leagues=await TradeLeagueLoader(game,token);
-        lock(gate)tradeLeagues=leagues.Append(tradeLeague).Distinct(StringComparer.Ordinal).ToArray();
+        token.ThrowIfCancellationRequested();
+        lock(gate)
+        {
+            tradeLeagues=leagues.Append(tradeLeague).Distinct(StringComparer.Ordinal).ToArray();
+            tradeLeaguesLoaded=true;
+        }
     },"Loading trade leagues…");
 
     private WidgetElement TradeWorkspace()=>UI.Stack("pob.trade.page",ManagementHeader("Find equipment upgrades"),

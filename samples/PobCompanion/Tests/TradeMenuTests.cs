@@ -13,7 +13,9 @@ internal static class TradeMenuTests
         // minimal CI fixture, which otherwise contains only a helmet.
         var fixture=await engine.ExecuteAsync(new{op="item",slot="Weapon 1 Swap",raw="Rarity: NORMAL\n"+(game==1?"Driftwood Wand":"Attuned Wand")},default,xml);
         File.WriteAllText(Path.Combine(directory,id+".xml"),fixture.Xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);
-        var widget=new PobWidget(game,engine,directory){TradeLeagueLoader=(_,_)=>Task.FromResult(new[]{"Standard","Hardcore"})};
+        var leagueRequests=0;
+        var widget=new PobWidget(game,engine,directory){TradeLeagueLoader=(_,_)=>
+        {leagueRequests++;return Task.FromResult(new[]{"Standard","Hardcore"});}};
         WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().Build());var sequence=0;
         IEnumerable<ViewNode> Nodes(ViewNode n)=>new[]{n}.Concat((n.Children??[]).SelectMany(Nodes));
         ViewSnapshot View()=>widget.Render().CreateSnapshot("trade-menu",++sequence);
@@ -38,6 +40,11 @@ internal static class TradeMenuTests
                 await Action("back");
             }
             await Action("trade");
+            check(leagueRequests==1,"Reopening trade for different equipment reuses the in-memory league list");
+            await Action("trade-refresh");
+            check(leagueRequests==2,"Explicit Refresh leagues fetches a new list");
+            await Action("back");await Action("trade");
+            check(leagueRequests==2,"Successful manual refresh also populates the league cache");
             var slots=Nodes(View().Root).Single(n=>n.Id=="pob.trade-slot").SelectOptions.Where(o=>o.Id!="requested").ToArray();
             foreach(var slot in slots)
             {

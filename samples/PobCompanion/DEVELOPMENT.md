@@ -60,6 +60,8 @@ The tree renderer uses zoom-dependent detail without changing the host's interac
 
 ## Trade integration
 
+League discovery is cached in memory for each widget instance. Equipment searches reuse the list; explicit Refresh leagues or a new instance after unloading/restart fetches it again. Failed requests do not replace the last successful list. There is no timed refresh or disk cache.
+
 Empty-slot searches use a detached category reference rather than equipping a placeholder.
 
 The page adapter observes only the declared trade-item JSON responses requested by normal browsing. Batch evaluation does not issue extra authenticated API requests. No session cookie or purchase token is copied into build data. **Return to listings** reuses the retained page or restores the saved public search URL after unloading. **Find seller's item** instead opens a seller-and-base search and attempts to locate the saved listing. Exact page scroll position is not retained. Basic page actions require protocol 86; batch evaluation additionally requires the host's `addBatchAction` API.
