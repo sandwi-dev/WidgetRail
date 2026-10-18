@@ -100,6 +100,12 @@ public:
         const auto consider = [&](ControllerSource source) -> std::optional<ControllerActivitySample> {
             auto sample = read(source);
             if (!sample.connected) return std::nullopt;
+            // Connection validity belongs to the reader (including cache expiry).
+            // Rejected activity still proves a live connection: otherwise the
+            // interval between release and the next async sample looks like a
+            // disconnect and cancels modes such as pinned-window adjustment.
+            // The idle result below is always neutral, never a replayed gesture.
+            if (!idle.connected || (last_ && sample.source == *last_)) idle = sample;
             // A mirrored backend may still cache the press we just released.
             // It can become an owner only after acquiring a newer sample.
             // This is a freshness boundary, not a button debounce interval.
@@ -110,7 +116,6 @@ public:
                 held_ = last_ = sample.source;
                 return sample;
             }
-            if (!idle.connected || (last_ && sample.source == *last_)) idle = sample;
             return std::nullopt;
         };
         if (auto sample = consider({Path::GameInputVisibleLease, 0})) return *sample;

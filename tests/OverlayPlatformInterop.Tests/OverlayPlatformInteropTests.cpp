@@ -226,6 +226,54 @@ void CachedBackendCannotReplayAReleasedPress() {
         "reset removes the release boundary instead of inventing a timestamp-zero release");
 }
 
+void CachedReleasePreservesConnectionWithoutReplayingInput() {
+    using namespace widgetrail::platform;
+    using Path = widgetrail::input::ControllerReadPath;
+    // No GameInput or HID fallback: this is the normal XInput-only read path.
+    ControllerActivitySelection selection;
+    ControllerFrameTracker tracker;
+    tracker.Prime(true, {}, 90);
+    ControllerActivitySample cached{{Path::XInputCompatibility, 0}, {}, true};
+    cached.sampledAtMilliseconds = 100;
+    cached.state.buttons = XINPUT_GAMEPAD_A;
+    ControllerActivitySample other{{Path::DualSenseHid, 1}, {}, false};
+    const auto read = [&](ControllerSource source) {
+        if (source == cached.source) return cached;
+        if (source.path == Path::DualSenseHid) return other;
+        return ControllerActivitySample{source};
+    };
+    const auto frame = [&](std::uint64_t now) {
+        const auto sample = selection.Poll(read, now);
+        return tracker.Update(sample.connected, sample.state, now);
+    };
+    Check(frame(105).pressedButtons == XINPUT_GAMEPAD_A, "XInput-only menu entry delivers A");
+    cached.state = {}; cached.sampledAtMilliseconds = 110;
+    Check(frame(120).releasedButtons == XINPUT_GAMEPAD_A, "XInput-only release is delivered once");
+    auto next = frame(135);
+    Check(next.connected && next.pressedButtons == 0 && next.releasedButtons == 0,
+        "a cached neutral sample after release keeps the controller connected");
+    // A stale active mirror must also preserve connectivity without replaying
+    // any button, trigger or navigation input while waiting for a fresh read.
+    cached.state.buttons = XINPUT_GAMEPAD_A;
+    cached.state.leftTrigger = 255; cached.state.leftThumbX = 32767;
+    cached.sampledAtMilliseconds = 120;
+    next = frame(150);
+    Check(next.connected && next.state.buttons == 0 && next.state.leftTrigger == 0 &&
+        next.state.leftThumbX == 0 && next.pressedButtons == 0 && next.leftTriggerPressed == 0 &&
+        next.stickNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::None,
+        "a rejected cached gesture is connected neutral input, not a disconnect");
+    other.connected = true; other.state.buttons = XINPUT_GAMEPAD_B;
+    next = frame(155);
+    Check(next.pressedButtons == XINPUT_GAMEPAD_B, "stale cache does not block fresh input from another controller");
+    other.state = {}; (void)frame(160); other.connected = false;
+    cached.sampledAtMilliseconds = 170; cached.state = {}; cached.state.buttons = XINPUT_GAMEPAD_A;
+    Check(frame(175).pressedButtons == XINPUT_GAMEPAD_A, "a fresh XInput press remains immediate after the boundary");
+    cached.connected = false;
+    next = frame(180);
+    Check(!next.connected && next.releasedButtons == XINPUT_GAMEPAD_A, "real reader disconnect still releases the held button");
+    Check(!frame(195).connected, "expired or absent readers remain disconnected");
+}
+
 void ControllerGlyphsFollowActivityNotBackend() {
     using namespace widgetrail::platform;
     using Family = WidgetRailOverlayPlatformControllerFamily;
@@ -398,6 +446,7 @@ int main(int argc, char** argv) {
     BackgroundWindowPublicationPreservesControllerEdges();
     ControllerActivitySelectionKeepsHoldsAndReleases();
     CachedBackendCannotReplayAReleasedPress();
+    CachedReleasePreservesConnectionWithoutReplayingInput();
     ControllerActivityThresholdsAndRepeats();
     ControllerGlyphsFollowActivityNotBackend();
     QueuedNavigationCannotRepeatAfterRenderingStall();

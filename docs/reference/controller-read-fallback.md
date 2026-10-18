@@ -57,3 +57,10 @@ older XInput copy of the same held button from becoming a second press after a
 GameInput release. Live readers remain eligible immediately; there is no added
 button debounce delay, and fresh input from another controller still follows the
 normal backend priority.
+
+Rejecting a cached gesture does not discard the reader's connection evidence.
+While that sample is still within the reader's freshness limit, selection returns
+connected, neutral input until fresh activity is eligible. This keeps controller
+modes active between asynchronous samples without replaying buttons, triggers,
+or stick movement. Actual reader disconnects and expired samples still report
+disconnected input.

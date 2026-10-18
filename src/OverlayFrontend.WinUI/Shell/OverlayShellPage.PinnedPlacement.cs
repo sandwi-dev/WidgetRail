@@ -17,6 +17,10 @@ internal sealed partial class OverlayShellPage
     private bool PinnedAdjustmentActive => pinnedAdjustment is not null || savingPinnedAdjustment;
     private readonly PinnedPlacementInput pinnedPlacementInput = new();
     private RawControllerState lastPlacementController;
+    private int pinnedAdjustmentTraceRemaining;
+
+    private void TracePinnedAdjustment(string reason) => switchDiagnostics?.Write(
+        $"pin-adjustment {reason} active={pinnedAdjustment is not null} saving={savingPinnedAdjustment} visible={visible} foreground={foreground} interactive={interactive} switching={switching}");
 
     private void InitializePinnedPlacement() => PreviewKeyDown += (_, args) =>
     {
@@ -55,6 +59,8 @@ internal sealed partial class OverlayShellPage
         var placement = new PinnedPlacementAdjustment(current.Window.Bounds, current.Monitor, current.Limits,
             current.LayoutId, current.Window.OpacityPercent);
         pinnedAdjustment = new(current, placement, opacityOnly, selectionVersion, visibleSince);
+        pinnedAdjustmentTraceRemaining = 40;
+        TracePinnedAdjustment($"begin opacity={opacityOnly}");
         restorePinnedAdjustmentFocus = true;
         var state = lastPlacementController;
         pinnedPlacementInput.Prime(state.Buttons, state.LeftThumbX, state.LeftThumbY, state.RightThumbX, state.RightThumbY, Environment.TickCount64);
@@ -91,6 +97,12 @@ internal sealed partial class OverlayShellPage
     {
         lastPlacementController = frame.State;
         if (pinnedAdjustment is null && !savingPinnedAdjustment) return false;
+        if (switchDiagnostics is not null && pinnedAdjustmentTraceRemaining > 0 &&
+            (frame.Connected == 0 || frame.Primed != 0 || frame.PressedButtons != 0 || frame.ReleasedButtons != 0))
+        {
+            --pinnedAdjustmentTraceRemaining;
+            TracePinnedAdjustment($"frame connected={frame.Connected} primed={frame.Primed} path={frame.ReadPath} buttons={frame.State.Buttons:X4} pressed={frame.PressedButtons:X4} released={frame.ReleasedButtons:X4}");
+        }
         if (retired || !visible || !foreground || frame.Connected == 0 ||
             pinnedAdjustment is { } pending && (!ReferenceEquals(pinned, pending.Surface) || !pending.Surface.IsCurrent))
         {
@@ -178,6 +190,7 @@ internal sealed partial class OverlayShellPage
     {
         if (!save) { CancelPinnedAdjustment(); return; }
         if (pinnedAdjustment is not { } adjustment || savingPinnedAdjustment) return;
+        TracePinnedAdjustment("save");
         savingPinnedAdjustment = true;
         // A is the commit boundary. Hide/deactivation after this point does not
         // reinterpret a requested save as Cancel while the atomic write finishes.
@@ -205,12 +218,14 @@ internal sealed partial class OverlayShellPage
         }
     }
 
-    private void CancelPinnedAdjustment(bool restoreFocus = true)
+    private void CancelPinnedAdjustment(bool restoreFocus = true,
+        [System.Runtime.CompilerServices.CallerMemberName] string caller = "")
     {
         // Also revoke a pending save's focus return. Saving remains atomic,
         // but completion after hide/deactivation must not restore native focus.
         if (!restoreFocus) restorePinnedAdjustmentFocus = false;
         if (pinnedAdjustment is not { } adjustment) return;
+        TracePinnedAdjustment($"cancel caller={caller} restoreFocus={restoreFocus}");
         pinnedAdjustment = null;
         if (ReferenceEquals(pinned, adjustment.Surface)) RestorePinnedPlacement(adjustment);
         EndPinnedAdjustmentPresentation(adjustment);
