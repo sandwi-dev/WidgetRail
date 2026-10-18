@@ -1707,7 +1707,7 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["fullWidgetPinningSupported", "icon", "iconAssets", "id", "instanceId", "name", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
+    Assert.SequenceEqual(["canManage", "canStop", "fullWidgetPinningSupported", "icon", "iconAssets", "id", "instanceId", "isStopped", "isUserWebApp", "name", "notificationCategories", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
@@ -4831,7 +4831,8 @@ static async Task PlatformAppearanceIsLazy()
     Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected",
         "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph",
         "status", "tray-clock", "tray-date", "tray-status-icon", "dialog", "dialog-title", "dialog-description", "dialog-footer",
-        "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused" }.Order(StringComparer.Ordinal),
+        "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused",
+        "data-blue", "data-gold", "data-green", "data-orange", "data-purple", "data-red" }.Order(StringComparer.Ordinal),
         shellStyles.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.True(shellStyles.GetProperty("tray-item:focused")
         .TryGetProperty("outline-color", out _), "Focused tray style was not resolved.");

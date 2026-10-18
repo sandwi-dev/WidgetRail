@@ -340,6 +340,8 @@ internal static partial class FullTrustCommunityScenarios
             focused is { Kind: ViewNodeKind.ActionSurface, ActionId: "playnite-library.launch" } ||
             focused is { Kind: ViewNodeKind.Button, Id: "playnite-library.empty.action",
                 ActionId: "playnite-library.refresh" } ||
+            focused is { Kind: ViewNodeKind.Button, Id: "playnite-library.connection-required.action",
+                ActionId: "playnite-library.playnite.open" } ||
             focused is { Kind: ViewNodeKind.Button, Id: "playnite-library.error.action",
                 ActionId: "playnite-library.retry" };
     }
