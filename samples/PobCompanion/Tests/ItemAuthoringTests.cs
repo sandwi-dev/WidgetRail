@@ -60,9 +60,11 @@ internal static class ItemAuthoringTests
         var uniques=library.State.GetProperty("choices").EnumerateArray().ToArray();
         check(uniques.Length>50&&uniques.Select(u=>u.GetProperty("key").GetString()).Distinct().Count()==uniques.Length,"Unique library exposes stable upstream identities");
         var goldrim=uniques.First(u=>u.GetProperty("title").GetString()!.Contains("Goldrim",StringComparison.Ordinal));
-        var unique=await engine.ExecuteAsync(new{op="item-unique-draft",key=goldrim.GetProperty("key").GetString()},default,before.Xml);
+        // Compare against the state already loaded for the library: upstream
+        // load normalizes whitespace in historical custom-modifier blocks.
+        var unique=await engine.ExecuteAsync(new{op="item-unique-draft",key=goldrim.GetProperty("key").GetString()},default,library.Xml);
         var uniqueRaw=unique.State.GetProperty("authoring").GetProperty("raw").GetString();
-        check(unique.State.GetProperty("authoring").GetProperty("rarity").GetString()=="UNIQUE"&&WorkStateTests.SameBuild(before.Xml,unique.Xml),"Choosing a library unique creates an unequipped draft only");
+        check(unique.State.GetProperty("authoring").GetProperty("rarity").GetString()=="UNIQUE"&&WorkStateTests.SameBuild(library.Xml,unique.Xml),"Choosing a library unique creates an unequipped draft only");
         await engine.ExecuteAsync(new{op="item-draft",mode="control",raw=uniqueRaw,control="displayItemQualityEdit",value=7},default,before.Xml);
         var originalUnique=await engine.ExecuteAsync(new{op="item-unique-draft",key=goldrim.GetProperty("key").GetString()},default,before.Xml);
         check(originalUnique.State.GetProperty("authoring").GetProperty("raw").GetString()==uniqueRaw,"Editing a unique draft leaves the shared upstream database unchanged");

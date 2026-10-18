@@ -248,8 +248,10 @@ public sealed partial class PobWidget
             AddAuthoredDescription(details,"stored");
         }
         else details.Add(Text("Craft or paste an item to add it to this build's inventory.","stored.empty","pob-muted"));
+        var detailPanel=UI.VerticalScroll("pob.stored.details",details.ToArray());
+        if(inventoryId>0)detailPanel=detailPanel.RememberChildFocus("pob.inventory-edit");
         return Split("stored",UI.Stack("pob.stored.left",tools,list).Classes("pob-panel","pob-workspace"),
-            UI.VerticalScroll("pob.stored.details",details.ToArray()).RememberChildFocus("pob.inventory-edit").Classes("pob-scroll","pob-panel"),1,1.5);
+            detailPanel.Classes("pob-scroll","pob-panel"),1,1.5);
     }
 
     private void AddAuthoredDescription(List<WidgetElement> rows,string prefix)
