@@ -101,3 +101,36 @@ scenarios and existing installer contract checks pass. Inno compiled using inert
 payload fixtures. No real installation/UAC/settings mutation was performed. Real
 isolated upgrade acceptance, native warning/result flows and post-install full
 inventory-check timing remain open; Bare edition integration is pending.
+
+## Cumulative candidate — 2026-10-18 10:56 PDT
+
+Published from clean source commit `7a28e2b4`; subsequent `2ae51e0e` only reorders
+the execution plan to prioritize host prerequisites. Full WinUI payload publication
+succeeded, including native components, host services, bundled widget seals and
+runtime verification. Candidate: `artifacts/pob/cumulative-candidate-20261018`.
+The normal-profile frontend was launched hidden, without test-profile or validation
+flags, PID 60648 at this checkpoint. Exactly one frontend remained running and
+responding. `live-payload.json` verifies all **138 deployed DLLs** against the
+published build. Recheck process identity before future UI work.
+
+Installed through the normal reviewed CLI path, with saved widget settings retained:
+
+- Spotify `0.3.90.1` (compact heart, busy focus, local suggestions and saved songs).
+- YouTube Music `0.3.43.1` (queue removal/continuity, likes and local suggestions).
+- PoE1 and PoE2 `0.1.4.3` (shared boundaries, sizing, configuration and tag search;
+  PoE1 now uses its tested beta pin).
+
+These are local candidate package versions, not published releases. No merge/push
+or application installer was executed. All four selected packages are enabled.
+Live account operations and physical controller acceptance remain pending.
+
+Packaging used the existing `artifacts/pob/release36-python` environment (Pillow
+12.3.0 and zstandard 0.25.0). The PoE2 checkout lacked its pinned runtime DLL; it was
+restored from the exact pinned upstream URL and checked against Git object hash
+`ccdf3c85c0a2a62b6c4140e145a5582e98f93d30`. Upstream source was not patched. Failed
+attempt logs remain alongside successful `poe1-final` and `poe2-final` packages.
+
+Next execution phase: shared anchored preview/popover contracts and implementation,
+scroll-edge cues, generic native input/lifecycle/bounds checks, then dependent PoB
+adoption. Existing passive `PresentOnFocus`/`FocusPresentationSurface` and modal
+scope/restore machinery are the foundations; no duplicate temporary-page system.
