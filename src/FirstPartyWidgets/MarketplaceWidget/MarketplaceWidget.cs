@@ -222,7 +222,10 @@ public sealed class MarketplaceWidget : Widget
             initial = selected.AvailableVersion is null ? "marketplace.refresh" : "marketplace.primary";
         }
         if (operation is { Kind: "download-updates", State: "review" } && state.Snapshot.UpdateBatch is { } readyBatch)
-            items.Add(UI.Button($"Review {readyBatch.Items.Count(item => item.State == "review")} updates", "marketplace.batch.review", "marketplace.batch.review.open").Busy(state.Busy));
+        {
+            var count = readyBatch.Items.Count(item => item.State == "review");
+            items.Add(UI.Button($"Review {count} {(count == 1 ? "update" : "updates")}", "marketplace.batch.review", "marketplace.batch.review.open").Busy(state.Busy));
+        }
         if (state.Section == Section.Updates && state.Snapshot.UpdateBatch?.Items.Any(result => result.State is "failed" or "cancelled" &&
             state.Snapshot.Items.Any(item => item.Id == result.PackageId && UpdateAvailable(item))) == true)
             items.Add(UI.Button("Retry remaining updates", "marketplace.retry-updates", "marketplace.retry-updates").Busy(busy));

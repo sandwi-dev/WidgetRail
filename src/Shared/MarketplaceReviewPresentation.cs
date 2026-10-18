@@ -12,7 +12,7 @@ internal static class MarketplaceReviewPresentation
         var fullTrust = reviews.Any(review => review.FullTrust);
         var content = new List<WidgetElement>
         {
-            UI.Text($"Review {reviews.Length} verified updates", "marketplace.batch.review.heading").Classes("section-heading"),
+            UI.Text($"Review {reviews.Length} verified {(reviews.Length == 1 ? "update" : "updates")}", "marketplace.batch.review.heading").Classes("section-heading"),
             UI.Text(fullTrust
                 ? "Includes full-access widgets, marked below. These run with your Windows account's access to files, network and other apps. Install only if you trust their source."
                 : "These updates run in WidgetRail's sandbox. Permissions are listed below.", "marketplace.batch.review.trust")
