@@ -1,98 +1,73 @@
 # Current platform status
 
-Updated 2026-10-05 for application `0.1.0-preview.27` (SDK/CLI `0.4.1-dev`,
-presentation protocol 76). The user accepted the SVG recovery, optional F1
-shortcut and Browser/Game Help icons for main integration and public release.
-This page describes the implemented product. Migration reports preserve the
-decisions and evidence from earlier stages; their pending work and candidate
-process states are not current release status.
-
-Preview.27 corrects the controller preference reply validator after F1 was added.
-Preview.26 rejected the new Boolean field, stopped status exchange and let driver
-readiness expire, displaying installed drivers as unavailable. Current and older
-reply formats now validate explicitly; malformed/unknown fields remain rejected.
-All 330 presentation-session checks pass. The user requested publication without
-waiting for CI; other CI failures remain separate follow-up work.
+Reviewed against source on 2026-10-18: application `0.1.0-preview.36`, SDK/CLI
+`0.4.6-dev`, presentation protocol 92. These are source versions, not a claim that
+a corresponding release has been published or that every workflow is qualified.
+See [versioning](versioning.md) for the authoritative version files.
 
 ## Frontend and distribution
 
-- `OverlayFrontend.WinUI` is the production frontend. XAML owns ordinary controls,
-  layout, virtualization, focus and accessibility; Microsoft.UI.Composition owns
-  presentation motion. The original renderer and Rust/Taffy build graph are retired.
-- `OverlayPlatformInterop` and `WinUiWindowPreviewNative` retain native Windows,
-  controller and GPU capture work. Browser and embedded-media surfaces retain
-  host-owned WebView2 instances; ordinary widgets publish declarative documents.
-- Distribution uses unsigned per-user Inno installers with an unpackaged,
-  self-contained WinUI frontend and private service runtimes. No application MSIX,
-  identity-package registration or certificate trust is required. Bridge and
-  workers launch from the installed payload; full-MSIX startup-copy caches are retired.
-- Current source membership is Settings plus ten widgets in Production and Settings plus fourteen in Developer, including SDK Gallery and samples. Discord, Game Help and Display Profiles are community catalogue packages, excluded from both installers. `eng/release-content.json` selects edition membership. Publishing their package assets is a separate release step.
-- Both preview.25 installers were built from the accepted commit and their
-  inventories/checksums verified. This does not claim clean-machine installation,
-  upgrade, rollback or every system-provider workflow has been physically qualified.
+`OverlayFrontend.WinUI` is the production frontend. XAML owns ordinary controls,
+layout, virtualization, focus and accessibility; Microsoft.UI.Composition owns
+presentation motion. Native Windows, controller and GPU capture work remains in
+`OverlayPlatformInterop` and `WinUiWindowPreviewNative`. The original renderer and
+Rust/Taffy build graph are retired. Browser and media surfaces use host-owned WebView2.
 
-## Implemented authoring and behavior
+Distribution uses unsigned, per-user Inno installers with an unpackaged,
+self-contained WinUI frontend and private service runtimes. No application MSIX,
+identity-package registration or certificate trust is required. See the
+[installer contract](../../eng/installer/README.md).
 
-F1 keyboard opening is optional and off by default, including profiles that do
-not contain the new setting. Settings > Controllers applies it immediately;
-disabling it releases the global registration. SVG icon loading coalesces requests,
-retries transient failures in bounded batches and preserves ready artwork across
-compatible label updates. Settings is 0.1.9, Browser 0.1.4 and Game Help 0.1.1.
-Validation passed 54 native SVG checks, nine native F1 checks, 14 icon-session
-tests, 83 Settings tests and 37 catalog checks, plus trimmed Release publication.
-The first F1 fixture attempt lacked its required activation flag and timed out
-before its assertions; the corrected fixture invocation passed.
+Bare contains Settings and WidgetRail Catalogue. Production adds the initial
+optional-widget selection in `eng/release-content.json`: Capture Library,
+Performance Monitor, Now Playing, Games & Apps, Task Switcher, Audio Mixer,
+Network Controls, Power and Browser. Both bundles have the same host capabilities,
+runtimes and CLI. Developer edition is retired; SDK Gallery and other optional
+widgets are distributed through Catalogue. A listing requires a published package
+to be downloadable.
 
-Use the [WinUI authoring contract](../reference/winui-authoring.md) and
-[indexed/discovered collections](../developers/indexed-collections.md). The legacy
-eager cursor presentation metadata is not a WinUI virtualization path.
-Shared elements include native media playback, browser/provider documents, rich
-text with inline links, capture preview and scroll reveal. Full-trust and sandboxed
-widgets can use permission-gated shared host services. Game Help owns its Gemini
-client, credentials and provider-specific response handling in its own application.
+Production's initial packages are enabled once through ordinary sandbox package
+admission, without granting capabilities. Existing selections and later removal
+are preserved. Only Settings and Catalogue remain sealed built-in widgets; their
+host-managed permission defaults preserve explicit user denials. Other packages
+use the same review, consent, update and uninstall flow regardless of publisher.
 
-[Intents](../reference/widget-intents.md) support per-handler availability,
-delivery feedback, Windows routing and passive pinned-destination preference.
-B follows normal widget/tray navigation; there is no return-to-sender stack.
-Capture targets the foreground application after the overlay hides, without
-selecting or foregrounding another application. Video has a five-second preparation
-countdown followed by five seconds of silent capture. The user reopens the overlay
-to review, edit the question, send, retry or discard.
+## Implemented behavior and contracts
 
-Settle is the default focus animation. Directional navigation can scroll remaining
-content after reaching the last focusable control. The old `HoldDpadToScroll`
-preference and gated Settings action still exist, but WinUI does not advertise or
-consume that feature. It is distinct from current navigation scrolling.
-The startup backend targets the WinUI executable and Inno offers startup at sign-in;
-the current presentation-session handshake does not advertise the Settings startup
-control. Use installer startup selection and Windows Startup Apps for that workflow.
+- Controller opening supports View + Menu or Guide/PS. Optional F1 is off by
+  default and controlled from Settings → Controllers.
+- Startup at sign-in is selected in the installer. The startup backend targets
+  the WinUI executable, but the current WinUI handshake does not advertise the
+  Settings startup switch. Windows Startup Apps controls an existing entry.
+- App updates use explicit download and install actions. Supporting installers
+  use unattended routine installation after preflight, with a separately confirmed
+  interactive fallback. See [App updates](../reference/app-updates.md).
+- Pins are session-only; placement preferences survive restart, pinned selection
+  does not. See [Pinning](../users/pinning.md) for input and lifecycle behavior.
+- Shared authoring includes responsive layouts, indexed collections, rich text,
+  keyboard suggestions, rich previews, anchored inspection, scroll reveal, native
+  media, hosted browsers and provider documents. Use the
+  [WinUI authoring contract](../reference/winui-authoring.md) and
+  [reference index](../reference/README.md) for exact supported declarations.
+- [Intents](../reference/widget-intents.md) support handler availability, delivery
+  feedback, Windows routing and passive pinned destinations. B follows ordinary
+  widget/tray navigation; there is no return-to-sender stack.
+- [Capture and Game Help](../reference/widget-capture-and-game-help.md) keep capture
+  host-owned. Game Help owns its provider client, credentials and response handling.
+- The old held-D-pad preference is not consumed by WinUI; ordinary directional
+  navigation can scroll when the last focusable control has been reached.
 
-Pins are session-only: placement preferences survive restart, pinned selection does
-not. Replace pin, Unpin, Move/resize and Change opacity precede Interact in the tray
-menu. Local widget installation uses a Windows file picker and themed overlay
-dialogs, followed by automatic catalog refresh. Clear local data removes only
-overlay-owned private state. Built-in widget capabilities are granted by default
-while preserving explicit user denials.
+## Qualification and documentation
 
-## Validation and remaining boundaries
+Report automated checks, native inspection and physical acceptance separately,
+against the exact source and payload under test. A successful build or fixture
+cannot establish couch readability, controller hardware behavior, every Windows
+provider, mixed-monitor behavior, clean-machine prerequisites or a real installed
+update/uninstall. Preserve outstanding acceptance requirements in the active
+verification record and [release checklist](release-checklist.md).
 
-The accepted feature closeout and preview.25 edition correction are recorded in
-the [Game Help progress record](game-help-implementation-plan.md). Focused managed
-suites, native presentation checks, trimmed Release publication and installer
-inventory checks passed at that checkpoint. No installer was run as part of the
-preview.25 delivery and no remote push was performed.
-
-Physical system-provider, controller/backend, mixed-monitor/DPI and clean-machine
-installer coverage must be reported for its tested scope. Memory/performance
-investigations remain deferred; old native-renderer benchmarks are not WinUI
-performance claims. See [release preparation](release-checklist.md),
-[verification/building](building.md), and [known limitations](../users/known-limitations.md).
-
-## Documentation ownership
-
-User and developer guides and reference pages describe current behavior. Maintainer
-implementation records keep dated observations without rewriting failed experiments
-as successes. Consult current source and the linked reference for live contracts;
-do not run retired scripts or restore obsolete MSIX/renderer workflows from a log.
-Documentation tests check local links and selected source/contract assertions, not
-every prose claim or UI behavior. Update the owning reference when changing code.
+Deferred CI repairs remain separate work. No status document authorizes a merge,
+push, release, installation or profile change. Current guides describe supported
+behavior; Git history retains superseded plans and experiments. Do not restore old
+MSIX or renderer workflows from historical logs. Documentation checks validate
+links and selected contracts, not every prose claim or runtime behavior.

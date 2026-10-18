@@ -2,19 +2,20 @@
 
 Settings is the built-in entry point for configuring the overlay, reviewing
 permissions, and managing widgets. It stays enabled so users can recover from
-an unwanted configuration. Other built-in widgets can be disabled.
+an unwanted configuration. Catalogue is the other built-in widget. Optional
+widgets, including Production's initial selection, are ordinary installed packages.
 
 For everyday instructions, use [Customization](../users/customization.md).
 This page explains the relationships an author or platform contributor needs.
 
 ## Widget management
 
-The Widgets section has **All**, **Built-in**, and **Community** filters over a
+The Widgets section has **All**, **Built-in**, and **Widgets** filters over a
 virtualized list. Rows have stable package identities, and returning from details
 restores and reveals the selected row. Refreshes preserve the filter and stable
-selection. Bundled widgets update with WidgetRail. Community packages have their
-own versions, permissions, and update files. The ordinary list has no pagination;
-version-management and catalog-recovery pages keep their bounded paging.
+selection. Settings and Catalogue update with WidgetRail; optional packages have
+their own versions, permissions and update files. The ordinary list has no pagination;
+catalog-recovery pages keep their bounded paging.
 
 Install and Update from file use a Windows file picker followed by themed
 overlay dialogs for full-trust approval, progress and completion. The picker
@@ -22,12 +23,15 @@ requires mouse/keyboard; the overlay dialogs support controller navigation.
 Completion refreshes the widget and permission lists. Fresh installations through
 Settings and Catalogue start enabled and request permissions when needed.
 Updates validate the new package before replacing the selection and preserve
-enabled state, permissions and data; the older version remains available until
-removed. CLI staging remains a separate disabled-install workflow.
+enabled state, permissions and data. Ordinary updates retain the selected version
+and one backup, cleaning older packages automatically. Disable the widget and use
+**Technical details → Revert to previous version** to revert; the normal update
+flow can select a retained newer version again. CLI staging remains a separate
+disabled-install workflow.
 
-Uninstall and unused-version removal require confirmation. Cancelling an
-uninstall does not disable a working widget. The selected version cannot be
-removed as an unused version. Saved widget data is preserved by widget removal. **Clear local data** is a
+Uninstall and catalog-recovery removal require confirmation. Cancelling an
+uninstall does not disable a working widget. Recovery can remove only eligible
+inactive, non-selected versions. Saved widget data is preserved by widget removal. **Clear local data** is a
 separate confirmed operation for overlay-owned private state, with worker restart;
 it excludes credentials, provider data and ordinary user files.
 See [Package and share](../developers/publishing-and-installation.md).

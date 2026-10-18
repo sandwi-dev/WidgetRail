@@ -34,4 +34,4 @@ The builder validates the package and produces SHA-256 sidecars. It does not ins
 - Try Twitch's player/chat pop-out; test both placement choices and return from it with B.
 - If desired, sign in yourself, restart WidgetRail, and check session retention. Chat entry can be checked without sending a message.
 
-See [validation notes](../../docs/twitch-webapp-plan.md) for the tested scope and remaining site-dependent checks.
+See [the hosted-browser reference](../../docs/reference/widget-web-browser.md) for shared behavior. The checklist above still requires verification against the current Twitch website; local fixtures do not establish live-site compatibility.

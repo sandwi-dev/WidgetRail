@@ -16,11 +16,12 @@ branding. Publishing those artifacts is a separate step.
 - Establish the reporting channel described in [SECURITY.md](../../SECURITY.md).
 - Run CI on the exact proposed main commit after an authorized push.
 
-The repository retains three active planning documents at the owner's request:
+The repository retains three operating and ownership documents:
 `docs/delivery-plan.md`, `docs/review-planner-goal.md`, and
-`docs/implementation-agent-goal.md`. They are working records, not user guides
-or the public API contract. Older research and archived progress notes are removed;
-their previous revisions remain available through Git.
+`docs/implementation-agent-goal.md`. They are not user guides or the public API
+contract. Keep an active implementation plan and its verification ledger until
+delivery is complete. Retire superseded plans after transferring current operational
+guidance and unresolved acceptance requirements; use Git history for old discussion.
 
 ## Build the editions
 
@@ -36,7 +37,7 @@ From a clean committed checkout with the [development tools](building.md):
 pwsh -NoProfile -File .\scripts\Build-Release.ps1
 pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
 pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
-  -ReleaseRoot .\artifacts\releases\0.1.0-preview.27 `
+  -ReleaseRoot .\artifacts\releases\0.1.0-preview.36 `
   -CompilerPath .\artifacts\tools\installer-compiler\package\tools\ISCC.exe
 ```
 
@@ -66,7 +67,7 @@ cleanup boundaries before describing uninstall as removing every possible sign-i
 
 ## Publish deliberately
 
-Publish every optional widget as a Catalogue package, including widgets preinstalled by Production. Discord, Game Help, Display Profiles, Twitch and MapGenie remain separate downloads. Build their release assets separately:
+Publish every optional widget as a Catalogue package, including widgets preinstalled by Production. Discord, Game Help, Display Controls, Twitch and MapGenie remain separate downloads. Build their release assets separately:
 
 ```powershell
 ./samples/DiscordWidget/Build-CommunityPackage.ps1

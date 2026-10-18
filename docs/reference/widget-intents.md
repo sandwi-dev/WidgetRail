@@ -1,12 +1,12 @@
-# Widget intents (in development)
+# Widget intents
 
 Button/card actions, pinned controls and virtualized row actions are implemented
 through contracts, manifests, Bridge dispatch, worker delivery, native frontend
 activation and passive delivery into existing full-widget or authored-layout pins.
 Compact embedded-media destinations also support passive delivery.
-Do not advertise intent handling in published packages until the full integration
-and release compatibility gate are complete. Track progress in
-[the Game Help plan](../maintainers/game-help-implementation-plan.md).
+Declare only the contracts your package implements and validate them against its
+supported host/SDK range. See [SDK compatibility](../developers/widget-sdk-compatibility.md)
+for package compatibility checks.
 
 ## Routing an action through Windows
 

@@ -1,18 +1,19 @@
 # WinUI migration implementation status
 
-Updated 2026-10-03. WinUI migration and the accepted Game Help prerequisites are
-integrated into local main. The current release is `0.1.0-preview.25`; Production
-and Developer Inno installers include Browser and Game Help. No MSIX identity or
+Historical checkpoint, 2026-10-03: WinUI migration and the accepted Game Help
+prerequisites had been integrated into local main. That checkpoint was
+`0.1.0-preview.25`; its Production and Developer installers included Browser and
+Game Help. Current distribution differs; see the summary link below. No MSIX identity or
 application signing certificate is required.
 
 ## Current summary
 
 See [Current platform status](current-platform-status.md) for the implemented
 frontend, edition contents, validation boundaries and remaining qualification.
-The [Game Help progress record](game-help-implementation-plan.md) records the final
-accepted feature closeout and preview.25 packaging correction. Worktrees remain
-preserved; the final test candidate was closed. No push or preview.25 installation
-was performed during closeout.
+The former Game Help closeout is retained in Git history. This document is a
+historical implementation log; its candidate processes, package membership and
+acceptance statements are not current operational instructions. Follow the
+[release checklist](release-checklist.md) for current qualification gates.
 
 ## Historical implementation log
 

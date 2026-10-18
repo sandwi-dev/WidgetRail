@@ -55,8 +55,8 @@ preserve enabled/disabled and stopped state. The review explains that ordinary
 widget settings will be kept. Approval copies only the bounded private-settings
 document into the exact replacement package namespace; permissions and credentials
 are not transferred. Existing destination settings and cleared state are respected.
-Updates automatically trim retained versions to at most three, preserving the
-active version and its previous selection. To revert, disable the widget and open
+Ordinary updates retain the active version and one backup, cleaning older
+versions automatically. Locked files can remain until a later cleanup retry. To revert, disable the widget and open
 its **Technical details** in Settings, then choose **Revert to previous version**.
 After reverting, use the ordinary update action in Catalogue again to restore the
 newer version, even when that version is still retained locally. Up-to-date
@@ -105,7 +105,7 @@ digest. Failure to save optional CLI source metadata does not undo installation.
 - Publish immutable `<package-id>-<version>.wrwidget` assets with GitHub asset
   digests or a supported checksum manifest. ID, publisher and version inside the
   archive must match the curated listing and advertised asset.
-- Discord, Twitch, Game Help and Display Profiles each provide `samples/<Widget>Widget/Build-CommunityPackage.ps1`, backed by `scripts/Build-MarketplacePackage.ps1`. Build their archives and SHA-256 sidecars, then attach them to the release when publishing. Adding a listing alone does not make an unpublished package downloadable. These builders do not install, enable, grant access or publish.
+- Discord, Twitch, Game Help and Display Controls each provide `samples/<Widget>Widget/Build-CommunityPackage.ps1`, backed by `scripts/Build-MarketplacePackage.ps1`. Build their archives and SHA-256 sidecars, then attach them to the release when publishing. Adding a listing alone does not make an unpublished package downloadable. These builders do not install, enable, grant access or publish.
 - `PackageDistribution` owns shared remote download, release and source-record
   code. CLI command parsing and exit-code mapping remain in the CLI.
 - `BridgeWidgetMarketplace` owns jobs and archive handles. Mutations use the

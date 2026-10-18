@@ -58,26 +58,27 @@ current focus. [Learn the controls](controls.md).
 
 ## Try one useful action
 
-Open **Audio Mixer**, choose an application that is playing audio, and adjust its
+Production includes Audio Mixer. In Bare, install it from **WidgetRail Catalogue**
+first. Open **Audio Mixer**, choose an application that is playing audio, and adjust its
 volume. Approve access if requested. Press **View + Menu** again to hide the
 overlay and return to your desktop or game.
 
-For later sessions, enable **Settings → General → Start WidgetRail when I sign in**.
-Startup is optional and starts the application quietly. It does not open a
-separate fullscreen environment.
+For later sessions, select **Start WidgetRail when I sign in** during setup.
+Windows **Settings → Apps → Startup** controls an existing startup entry; rerun
+setup to create one if it is missing. The current overlay does not expose a
+startup switch. Startup is optional and starts the application quietly.
 
 ## Enable the features you want
 
-1. Open **Settings → Widgets** and select a widget you want to use. Built-in widgets
-   have their declared permissions enabled by default. You can review or revoke
-   them in **Permissions & configuration**; updates preserve your decisions.
-   Downloaded widgets request access when a feature needs it.
-   Enable the widget if it is disabled.
+1. Open **Settings → Widgets** and select a widget you want to use. Optional widgets,
+   including those preinstalled by Production, request permission when a feature
+   needs it. Review or revoke access in **Permissions & configuration**. A changed
+   package may request access again. Enable the widget if it is disabled.
 2. Choose **Disable widget** for widgets you do not need. They leave the tray
    and can be enabled again later. Settings stays enabled so you can always
    manage the application.
-3. Open **Settings → General** to choose **Position** and decide whether to start
-   WidgetRail when signing in. Adjust **Interface size** in **Appearance**.
+3. Open **Settings → General** to choose **Position**. Adjust **Interface size**
+   in **Appearance**.
    B opens the radial chooser; directional navigation also lets you use the rail. See [Customization](customization.md) for the full set of options.
 
 Spotify, YouTube, and Playnite are separate add-ons. Follow each widget's README
@@ -96,7 +97,8 @@ installer manually.
 Use **Catalogue → Updates** for individual updates or **Update all**. For a
 local add-on, open its details in **Settings → Widgets → Update from file**.
 Choose the newer `.wrwidget` package and approve full access if requested. Updates
-preserve enabled state, permissions and saved data. See
+preserve enabled state and ordinary widget settings. Permissions and credentials
+are scoped to the package; a changed package can require approval or sign-in again. See
 [Managing widgets](customization.md#manage-widgets).
 
 ## Uninstall

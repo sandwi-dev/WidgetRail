@@ -6,10 +6,9 @@ The user accepted the theme and widget WRSS changes and authorized merging them
 into main after testing the candidate from `f774122b`. The verified candidate is
 `artifacts/theme-main-candidate/candidate02`; Spotify and YouTube Video received
 style-only local package updates. Earlier validation and pending-acceptance
-statements below describe the audit's history. The newly reported YouTube Music
-settings/library focus jump is tracked separately in the
-[next widget and notification plan](../widget-notification-adoption-plan.md);
-its cause is not yet established and it is not claimed fixed by this theme work.
+statements below describe the audit's history. These checks do not establish
+current music-widget workflow acceptance. Use the current widget README and active
+verification record for that scope; the superseded follow-up chronology is in Git history.
 
 
 Date: 2026-10-15. Baseline: `main` at `235283ddee5d4a2ac73e1a0e19ac57c7d888c02e`.

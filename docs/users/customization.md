@@ -91,35 +91,41 @@ directional navigation into the rail continues to use the rail.
 
 Reorder widgets to keep your frequent actions close together. The tray's
 controller guide shows the reorder and reload actions. You can disable widgets
-you do not use, including built-in widgets other than Settings.
+you do not use. Settings stays enabled so you can manage the application.
 
 ## Manage widgets
 
 **Settings → Widgets** is the place to review permissions, enable or disable a
 widget, install packages, and manage versions. **All**, **Built-in**, and
-**Community** filters share a virtualized scrolling list. Back from details
+**Widgets** filters share a virtualized scrolling list. Only Settings and Catalogue
+are built-in; Production preinstalls ordinary optional packages. Back from details
 returns to the selected widget and restores it into view.
 
 - **Install:** choose a `.wrwidget` file in the Windows file picker (mouse/keyboard). The overlay shows controller-accessible full-access approval when needed and completion dialogs. Fresh installs start enabled and ask for permissions when features need them.
 - **Update:** use **Catalogue → Updates** for catalogue add-ons, or **Update from file** in widget details for a local package. Updates preserve enabled/disabled and stopped state, permissions and saved data; new permissions are not granted automatically.
-- **Remove old versions:** use the version controls to remove an unused version. The current version is protected.
-- **Uninstall:** remove a community widget from its details. If it is enabled, confirm **Disable and uninstall**. Its saved data is kept.
+- **Revert:** disable the widget, open **Technical details**, and choose **Revert to previous version**. Ordinary updates keep one backup and clean older versions automatically. Use the normal update action to return to the newer version.
+- **Uninstall:** remove an optional widget from its details, including one preinstalled by Production. If it is enabled, confirm **Disable and uninstall**. Its saved data is kept.
 - **Clear local data:** separately clear the selected widget's overlay-owned private state and restart its worker. Credentials, provider data and ordinary user files are excluded.
 
-Built-in widgets belong to the application release. Disable them if you do not
-want them; they are not separately uninstalled or updated from a package file.
+Settings and Catalogue belong to the application release and are not separately
+uninstalled or updated from a package file. Every other widget uses the same
+installation, update and removal controls, regardless of its publisher or bundle.
+Production seeds its initial selection once; later app updates do not reinstall a
+widget you removed or overwrite its selected package version.
 
-If you previously installed a widget that now comes with WidgetRail, Settings
-labels that installed package as an **Unused copy**. Choose **Manage built-in
-version** to enable the version the overlay uses. You can disable and remove
-the extra copy separately. Local Data controls apply only to the copy you select.
+If an installed package duplicates a sealed built-in identity, Settings labels it
+an **Unused copy** and offers **Manage built-in version**. This applies to the core
+widgets, not the optional packages preinstalled by Production. Local Data controls
+apply only to the copy you select.
 
 ## Permissions
 
 Enable only the Windows capabilities you want a widget to use. A permission
 describes access such as reading audio devices or switching windows. Built-in
 widgets receive their declared host capabilities by default; explicit user
-denials are preserved. Installed community packages still require review. See
+denials are preserved. Optional packages receive no capability grants from
+installation, including Production's initial packages. Full-access approval and
+capability consent are separate decisions. See
 [capabilities](../reference/capabilities.md) for the exact trust boundary.
 
 A **full-access** widget runs as an ordinary Windows application and can do more

@@ -41,8 +41,9 @@ notes for what is available in each download.
 **Bare** starts with Settings and Catalogue; install Audio Mixer from Catalogue
 before following the volume example above. Both bundles support the same widgets.
 
-To make it available each session, enable **Settings → General → Start WidgetRail
-when I sign in**. It starts quietly; the shortcut opens it when you need it.
+To make it available each session, select **Start WidgetRail when I sign in**
+during setup. It starts quietly; the shortcut opens it when you need it. Windows
+**Settings → Apps → Startup** can enable or disable an existing startup entry.
 
 Guide/PS can be selected as an alternative shortcut in **Settings → Controllers**.
 For display size, use **Settings → Appearance → Interface size**; text size is
@@ -83,7 +84,7 @@ Service integrations may need a separate account, key or companion before use.
 | [YouTube Music](samples/YtMusicWidget/README.md) | Account sign-in through Chrome or Edge; unofficial integration. |
 | [Game Help](samples/GameHelpWidget/README.md) | Your Gemini API key; provider quotas and charges apply. |
 | [Discord](samples/DiscordWidget/README.md) / [Twitch](samples/TwitchWidget/README.md) | Website sign-in for account features; website compatibility varies. |
-| [Display Profiles](samples/DisplayProfilesWidget/README.md) | Supported display hardware and permission for display controls. |
+| [Display Controls](samples/DisplayProfilesWidget/README.md) | Supported display hardware and permission for display controls. |
 
 Full-access packages require explicit approval because they run with your Windows
 account's permissions. Read the widget's requirements before installing.

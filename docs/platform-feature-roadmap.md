@@ -250,9 +250,9 @@ Keep the full objective active until all five are ready for physical testing.
 ### App update/recovery design (before implementation)
 
 This checkpoint records the original implementation. The subsequent
-[Settings/update batch](settings-updates-plan.md) adds optional startup checks
-and notification activation, and replaces desktop recovery shortcuts with
-recovery initiated from Settings. See [current behavior](reference/app-updates.md).
+app-update implementation now includes optional startup checks and notification
+activation. Its installer flow supersedes this checkpoint's recovery design;
+see [current behavior](reference/app-updates.md).
 
 - Explicit Settings check, release notes, matching-edition download and final
   confirmation. No polling notifications, shutdown, silent installation or elevation

@@ -9,10 +9,10 @@ That checkpoint has not been published, so these references are not public web l
 Assessment date: 2026-09-26. WidgetRail baseline: `092ee64d`.
 This is a source-based architecture assessment, not a runtime comparison or a migration decision.
 
-2026-09-27: the [WinUI 3 migration plan](winui3-migration-plan.md) now defines
-the primary replacement direction and qualification gates, following the user's
-preference for C# and Windows integration. Compose is a fallback. Recommendations
-below document earlier decisions; native-evolution and Compose priorities are historical.
+The WinUI migration superseded these recommendations. Its original proposal and
+the Compose fallback plan are retained in Git history. Follow
+[current platform status](current-platform-status.md) and the
+[release checklist](release-checklist.md) for current architecture and qualification.
 
 ## Recommendation
 

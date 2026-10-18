@@ -8,11 +8,12 @@ community package.
 
 The **application version** identifies a complete WidgetRail release. Its source
 is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.36`.
-Both Production and Developer use this version. Their contents differ, not
+Both Production and Bare use this version. Their contents differ, not
 their stability channel.
 
-The host, bridge, workers, built-in widgets, resources, and private runtime ship
-together. Native and managed product metadata, artifact names, and release
+The host, bridge, workers, Settings, Catalogue, resources, and private runtime ship
+together. Production also supplies an initial selection of ordinary widget packages;
+those packages can subsequently be updated or removed independently. Native and managed product metadata, artifact names, and release
 manifests use the application release settings. Optional checks notify after the
 overlay's first initialization. Users explicitly download and install updates
 from Settings, or run a newer installer themselves; installation is never automatic.
@@ -50,11 +51,10 @@ version numbers alone do not establish compatibility.
 
 | Version | Meaning |
 |---|---|
-| Presentation protocol (currently 1–76) | The UI data features supported between a widget and host |
+| Presentation protocol (currently 1–92) | The UI data features supported between a widget and host |
 | Capability suffix, such as `.v1` | A particular Windows-service contract |
 | Manifest version | The package schema |
 | Template format (currently 2) | The format understood by the scaffold tooling |
-| Native layout crate version | Internal build metadata |
 
 These numbers change when their own contracts change. They do not all move
 with an application patch.

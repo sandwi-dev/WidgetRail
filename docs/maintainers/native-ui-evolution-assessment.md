@@ -12,9 +12,9 @@ The original design/effort assessment uses source inspection and saved trace
 evidence. Subsequent native implementation is tracked below; no replacement
 renderer or Skia integration benchmark has been performed.
 
-2026-09-27: see the [WinUI 3 migration plan](winui3-migration-plan.md) for the
-new proposed direction. The implementation results below remain evidence, but
-do not establish end-to-end improvement over the pre-WIDGE-293 product. The
+The WinUI migration has superseded this assessment; its original plan is in Git
+history. See [current platform status](current-platform-status.md). The original
+implementation results below do not establish end-to-end improvement over the pre-WIDGE-293 product. The
 native-first recommendation is historical, not the current migration plan.
 
 ## Implementation progress

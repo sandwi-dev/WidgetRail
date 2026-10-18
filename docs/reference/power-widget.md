@@ -1,6 +1,7 @@
 # Power widget
 
-The bundled Power widget controls the Windows PC, independently of Settings'
+Power is an optional widget preinstalled by Production and available through
+Catalogue in Bare. It controls the Windows PC, independently of Settings'
 Quit and Restart WidgetRail buttons.
 
 - Sleep acts immediately and keeps applications open.
@@ -9,7 +10,7 @@ Quit and Restart WidgetRail buttons.
 - Unavailable options are disabled. Check again refreshes availability without polling.
 - Errors use themed, timed toasts. Failed commands are never retried automatically.
 
-Like other built-in widgets, its permissions require explicit consent in Settings.
+Its capabilities require explicit consent; preinstallation grants no access.
 `system.power.read.v1` exposes three availability booleans.
 `system.power.control.v1` permits the three explicit operations while Interactive;
 it does not allow dashboard gestures or background control. Neither permission

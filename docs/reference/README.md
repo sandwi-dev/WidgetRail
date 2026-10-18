@@ -42,7 +42,7 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Audio device selection](audio-device-selection.md) and [spatial sound](spatial-audio-controls.md)
 - [Games & Apps](games-and-apps.md), [Task Switcher](task-switcher.md), and [Power](power-widget.md)
 - [Network Controls](network-controls.md) and [tray status](tray-status.md)
-- [Display Profiles](display-profiles.md)
+- [Display Controls](display-profiles.md)
 - [Performance Monitor and shared metrics](performance-monitor.md)
 - [Settings support reports](support-reports.md)
 - [Playnite](playnite-library.md) and [Spotify](spotify-integration.md)

@@ -29,9 +29,10 @@ the overlay gains focus.
 ## The overlay opens but a widget cannot control Windows
 
 Open **Settings → Widgets**, select the widget and review its
-permissions. Built-in widgets are not automatically granted permissions.
-Audio, networking, window management and power operations require their
-respective permissions.
+permissions. Optional widgets, including those preinstalled by Production,
+receive no capability grants from installation. Audio, networking, window
+management and power operations require their respective permissions. The sealed
+built-in widgets have host-managed defaults; explicit user denials are preserved.
 
 A provider can still reject an operation after permission is granted: for
 example, the device may have disconnected or Windows may prevent a window switch.

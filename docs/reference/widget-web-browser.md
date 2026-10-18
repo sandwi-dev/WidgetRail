@@ -41,7 +41,10 @@ is the ordinary-browser default; persistent storage is explicit. Up to four root
 browser sessions and two hosted popup controllers can be resident. The owner
 retires them with the worker/document lifetime.
 Main and pinned presentations borrow the same controller; crossing XAML roots
-waits for the native child's unload/load lifecycle. Native history and navigation
+waits for the native child's unload/load lifecycle and the prior composition
+commit before attaching the controller to its destination. This bounded transfer
+must remain cancellation-aware; do not substitute a fixed repaint delay or recreate
+the controller to hide missing passive-pin pixels. Native history and navigation
 survive compatible widget updates.
 While a visible pin exists, it owns the page regardless of main-widget input
 readiness. Opening the main widget shows a pin notice and a View hint, without

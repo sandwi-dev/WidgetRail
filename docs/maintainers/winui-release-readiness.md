@@ -1,6 +1,6 @@
 # WinUI Release readiness
 
-## Current unpackaged Inno release — 2026-10-03
+## Historical unpackaged Inno release — 2026-10-03
 
 The accepted main build is `0.1.0-preview.25`. Both real Inno installers have been
 compiled, with release inventories and checksums verified. Production has Settings
@@ -10,8 +10,9 @@ files, with private .NET 8 service runtimes. Start menu, CLI and startup launch
 the WinUI executable directly. No application MSIX, identity registration,
 certificate trust or deployment helper is required.
 
-See [current platform status](current-platform-status.md) and the
-[accepted closeout](game-help-implementation-plan.md) for exact scope and evidence.
+This is the historical preview.25 checkpoint; current edition membership and
+behavior are in [current platform status](current-platform-status.md). The former
+Game Help closeout is retained in Git history.
 Clean-machine provisioning, upgrade, edition switch, rollback and uninstall remain
 separate physical checks. Successful compilation and catalog checks do not prove
 those workflows. Use [release preparation](release-checklist.md) for current steps.

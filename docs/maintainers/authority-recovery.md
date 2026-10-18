@@ -5,7 +5,7 @@ Recovery retries a recorded operation; it is not a general permission editor.
 
 ## Review a recorded failure
 
-Use **Settings → Diagnostics** for user-facing recovery. The confirmation's
+Use **Settings → About & troubleshooting → Diagnostics** for user-facing recovery. The confirmation's
 initial focus is **Cancel**. The UI never renders or speaks the opaque confirmation token.
 
 For maintenance, the CLI offers:

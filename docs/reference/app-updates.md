@@ -71,14 +71,9 @@ covering readiness/exit ordering, file locks, checksums, changed installations,
 installer cancellation/failure and host-exit timeouts. They do not run an installer
 or alter a real profile. Full installed-version upgrade acceptance remains physical.
 
-Preview.34 validation: service scenarios 10/10; Settings 92/92; isolated Windows
-PowerShell handoff checks passed. Production Settings snapshots passed 21 native
-renderer/focus checks at 520/880 DIP and normal/large text. Long notes and the ready
-page were visually reviewed; scrolling reaches the install action. No real installer
-was executed during these checks. Existing profile/recovery data was not modified.
-
-Current unattended implementation checks: 12 service scenarios, the focused
-Settings flow, eight inert PowerShell handoff scenarios and installer contract
-checks passed. Inno compiled against an inert fixture. No real installer or
-Windows settings mutation was run; isolated installed-version acceptance remains
-pending. Temporary native candidates cannot install app updates.
+Routine-update implementation has automated service, Settings, installer-contract
+and inert PowerShell handoff coverage. Syntax compilation and fake installers do
+not establish installed-version upgrade, prerequisite provisioning, Windows prompt,
+restart or failure-recovery acceptance. Record those results against the exact
+candidate in the active verification ledger before claiming them complete.
+Temporary native candidates cannot install app updates.
