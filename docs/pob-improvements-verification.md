@@ -468,3 +468,46 @@ is claimed to fix this unreproduced observation. Evidence:
 `cumulative-candidate-20261018-b/acceptance/distribution-native-result.json`.
 Permission-request flows, installed update/rollback/re-update and normal-profile
 integrated acceptance remain separate unfinished checks.
+
+## Shared desktop context actions and live provider checks — 2026-10-18
+
+`fccef292` connects native right-click, Shift+F10 and Apps-key requests to the
+existing context-menu owner and indexed-lease path. Opening does not invoke Select;
+busy/retired owners remain rejected and dismissal returns to the exact opener.
+Native SendInput fixtures pass 73 ordinary and 25 indexed assertions. Indexed
+evidence: `context-indexed-20261018-b/result.json`; ordinary:
+`context-native-20261018/context-menu-result.json`. Initial indexed invocation was
+too early (no frame); a subsequent continuity assertion used a baseline from before
+the deliberate row-focus change. The fixture now awaits readiness and takes the
+menu-only baseline after returning to row 75. These are synthetic desktop checks,
+not physical controller evidence. Live queue menu retest awaits the new publication.
+
+Normal-profile YouTube Music `0.3.43.1` loaded with its existing sign-in. Playback,
+Like/Unlike and focus retention worked; the test like was removed. Queue entry
+revealed the playing occurrence at index 12 while focus stayed on Queue. Manual
+scrolling back to index 0 was retained through playback updates. Playback was paused
+after checking. Spotify `0.3.90.1` displays Connect Spotify account, so live testing
+needs user reconnection; no credentials were inspected. Evidence:
+`music-live-20261018.json`. Queue removal and playlist Play next remain pending.
+
+Display Controls `0.1.1.1` was installed through the ordinary CLI update path with
+existing profile data preserved. Read/control consent was requested and accepted
+through native UI. The UI reported Odyssey G93SC 5120×1440 at 240 Hz, offered the
+enumerated modes, and showed Keep/Revert after requesting 120 Hz. No Keep was
+chosen; after timeout fresh controls reported 240 Hz again. Saved profile file
+timestamp remained unchanged. The transient 120 Hz mode was not independently
+sampled; this is bounded timed-flow evidence, not complete mode/HDR/Keep/disconnect
+qualification. `display-live-rollback-20261018.json` records that limitation.
+Capability copy now names mode/HDR changes rather than only saved profiles.
+
+## Documentation reconciliation — 2026-10-18
+
+`3af957e8` corrects startup, Bare/Production membership, permission/credential scope,
+retention, update navigation, Display Controls naming and current source versions.
+It removes 22 superseded plan/discussion documents and fixes incoming links while
+retaining the active plan/ledger and ongoing ownership instructions. The audit
+checked 241 Markdown files and 756 local targets with zero missing files; external
+URLs and fragment anchors were not checked. Details:
+`documentation-audit-20261018.json`. Final review against the launched cumulative
+candidate remains required; older architecture histories with live operational
+guidance were not indiscriminately deleted.

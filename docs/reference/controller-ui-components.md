@@ -73,6 +73,18 @@ its own control or menu instead.
 Generated composites use derived child IDs. Keep the parent ID stable and avoid
 reusing it for unrelated controls. This protects navigation and update matching.
 
+## Context actions
+
+Attach secondary actions with `ContextAction` and an optional `ContextMenuShortcut`
+on the existing action surface. The native host opens the same menu from the
+declared controller button, right-click, Shift+F10 or the keyboard Apps key.
+Right-click uses the clicked row; keyboard/controller use the focused owner.
+Opening the menu never invokes the surface's primary Select action.
+
+Menus retain the exact indexed occurrence while open. Replaced rows, revoked input,
+busy owners and stale menu actions cannot operate on a newer item. Closing restores
+focus to the opener. Widgets should not create a second pointer-only menu.
+
 ## Sliders
 
 Define the value, minimum, maximum, and step. Use a label and visible value so
