@@ -60,3 +60,44 @@ Typed validated configuration metadata, changed-setting section counts/filter, a
 `artifacts/pob/indexed-continuity-native04/result.json`: **16/16** native checks pass, including three settled insert/remove/shuffle passes, focused removal, external focus, delayed content, native scroll interruption and empty replacement. The new interruption fixture reproduced a real stale pending-offset defect: after a target had settled, a later native offset change was ignored because the previous target was still marked pending. Clearing that completed marker allows reconciliation; user scrolling/departure still cancels restoration.
 
 `artifacts/pob/indexed-reveal-native03/result.json`: **10/10** scroll-only reveal checks pass after the fixture waits for native navigation and geometry to settle before its independent top reset. Earlier native02 reported content replay while the previous native reveal could still be unwinding; no production reveal change was made. Diagnostic traces exist only in bounded validation output, not normal candidate logs.
+
+## Music workflows and compact saved-song control
+
+Spotify: 86/86 widget, 44/44 provider and 6/6 community-application tests pass.
+YouTube Music: 38/38 C#, 39/39 Python and the JavaScript playback-race fixture pass.
+No live service calls made. Spotify uses the current unified library endpoints,
+batched saved-state reads and account-scoped bounded state. Suggestions are local.
+YouTube Music keeps its 500-entry queue; Spotify's observation remains 50 and its
+current track stays in the separate persistent player, not an invented queue row.
+
+`artifacts/pob/music-native-heart03/native-result.json`: **121 native assertions**
+(including five shared preflight checks) pass across main and compact pinned players
+at preferred/minimum heights. Exact same save/like Button objects, native focus,
+IsEnabled and tab eligibility survive busy/idle snapshots. Native controller-style
+bring-into-view reaches transport after resizing. Visual inspection covers main
+Spotify, its compact pin and the YouTube Music compact pin; final normalized assets
+use the real SVG sanitizer. The sanitizer rejected an unsupported heart stroke join;
+the asset was corrected rather than weakening validation.
+
+Native checks found and fixed Spotify main-pane overflow and a compact-pin flex
+rule preventing scrolling. Remaining: integrated queue/context-menu navigation,
+account-authenticated deliberate save/like round trips (restore test mutations),
+light/high-contrast music appearance and physical controller acceptance. Current
+native player fixtures intentionally substitute collections and artwork locally.
+
+## Routine controller-only updates
+
+Supporting target installers advertise a fixed unattended preflight capability
+under the verified installer hash. Unknown targets take the explicit interactive
+fallback; they are never executed with speculative flags. Target prerequisites are
+checked before graceful shutdown and again before setup. Silent paths preserve
+startup/check choices and record warnings without custom blocking message boxes.
+Failure/cancel/restart recovery launches only a verified installed payload. Installer
+outcome notifications are distinguished from ordinary network-check failures so
+routine failed background checks remain quiet.
+
+12/12 service tests, 1/1 focused Settings flow, eight inert PowerShell handoff
+scenarios and existing installer contract checks pass. Inno compiled using inert
+payload fixtures. No real installation/UAC/settings mutation was performed. Real
+isolated upgrade acceptance, native warning/result flows and post-install full
+inventory-check timing remain open; Bare edition integration is pending.

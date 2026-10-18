@@ -5,22 +5,32 @@ notify; downloading and installing remain explicit user actions.
 
 ## Install an update
 
-Have a mouse and keyboard available before installing. The installer does not
-support WidgetRail's controller navigation, and WidgetRail closes during setup.
-The update page shows this warning beside the download/install action.
+Routine updates can be completed with the controller when the target installer's
+prerequisites are already satisfied and Windows permits it to run.
 
 1. Choose **Download update**. WidgetRail downloads only the new installer for the
    installed edition and verifies its SHA256 against the GitHub release digest or
-   checksum manifest. The page shows download progress and allows cancellation.
-2. Choose **Install and restart**. A small helper verifies and locks the installer,
-   checks the installed version and acknowledges readiness. Only then does the
-   host close gracefully. If preparation fails, the app remains open for retry.
-3. The normal interactive Windows installer opens after WidgetRail exits. On
-   successful setup, the helper verifies the newly registered version and reopens
-   WidgetRail. Cancelling setup leaves the current installation available from Start.
+   checksum manifest. Download progress and cancellation remain available.
+2. Choose **Install and restart**. The helper verifies and locks the installer,
+   checks the installation identity, and uses the target installer's supported
+   preflight to check prerequisites before closing WidgetRail.
+3. When ready, WidgetRail closes gracefully, setup runs without a wizard, and the
+   verified installed app reopens. Startup at sign-in, automatic-check preferences
+   and installation location are preserved.
 
-There is no extra review dialog, manual quit step, profile backup, old-installer
-download, or rollback UI. Settings, sign-ins, widget data and browser profiles stay
+If prerequisites require setup, or the installer does not advertise support for
+this unattended flow, WidgetRail stays open and offers **Open interactive setup**.
+That second action explicitly confirms the fallback. Have a mouse and keyboard
+available for the installer and any Windows approval prompts. Silent setup cannot
+approve UAC or bypass Windows execution policies.
+
+Cancelled or failed setup reopens a verified usable installation where available.
+A recorded result appears in App updates and an update notification; restart-required
+and startup-registration warnings explain the next action. If no usable payload can
+be verified, the helper leaves diagnostics instead of launching unverified files.
+
+Routine installation has no extra review dialog or manual quit step. There is no
+profile-backup or rollback UI. Settings, sign-ins, widget data and browser profiles stay
 in place. Existing recovery folders created by earlier releases are left alone;
 the legacy recovery mutex is still respected while an older helper owns the profile.
 
@@ -31,7 +41,8 @@ minutes for the host to exit; it never force-kills it. Checksum verification is 
 an Authenticode signing claim; Windows can still show unsigned-installer warnings.
 
 The initiating version owns the updater. Updating from an older release still uses
-that release's flow; the simplified behavior starts with preview.34.
+that release's flow. The unattended flow requires both a supporting updater and
+a supporting target installer.
 
 ## Automatic checks and notifications
 
@@ -65,3 +76,9 @@ PowerShell handoff checks passed. Production Settings snapshots passed 21 native
 renderer/focus checks at 520/880 DIP and normal/large text. Long notes and the ready
 page were visually reviewed; scrolling reaches the install action. No real installer
 was executed during these checks. Existing profile/recovery data was not modified.
+
+Current unattended implementation checks: 12 service scenarios, the focused
+Settings flow, eight inert PowerShell handoff scenarios and installer contract
+checks passed. Inno compiled against an inert fixture. No real installer or
+Windows settings mutation was run; isolated installed-version acceptance remains
+pending. Temporary native candidates cannot install app updates.

@@ -11,6 +11,7 @@ using System.Threading.Channels;
 namespace WidgetRail.WidgetBridge;
 
 internal sealed record AppInstallation(string Version, string Edition, string Root, bool CanInstall);
+internal sealed class InteractiveAppUpdateRequiredException : IOException { }
 
 internal sealed partial class BridgeAppUpdates : IAsyncDisposable
 {
@@ -45,6 +46,7 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         try { _snapshot = _snapshot with { AutomaticallyCheck = _preference.Read() }; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         { _snapshot = _snapshot with { AutomaticallyCheck = false, Message = "Could not read automatic-update preference. Save a choice in App updates." }; }
+        ReadInstallerOutcome();
     }
 
     internal static BridgeAppUpdates Create(string? profile, Action requestExit)
@@ -105,17 +107,25 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
                 if (_snapshot.State != "ready" || command.ReviewToken != _snapshot.ReviewToken || !_installation.CanInstall || _prepared is null)
                     return ValueTask.FromResult(_snapshot);
                 var prepared = _prepared;
+                var interactive = _snapshot.RequiresInteractiveSetup;
                 Set(_snapshot with { State = "handoff", ReviewToken = null, Message = "Starting setup. WidgetRail will close automatically and reopen after installation." });
                 _job = Task.Run(async () =>
                 {
                     try
                     {
+                        await SetInteractivePlanAsync(prepared, interactive, _lifetime.Token).ConfigureAwait(false);
                         // Do not close a working app until the helper has verified
                         // the installer and acknowledged that it is ready to wait.
                         await _launch(prepared, _lifetime.Token).ConfigureAwait(false);
                         _requestExit();
                     }
-                    catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or TimeoutException or OperationCanceledException)
+                    catch (InteractiveAppUpdateRequiredException)
+                    {
+                        lock (_gate) if (!_disposed) Set(_snapshot with { State = "ready", RequiresInteractiveSetup = true,
+                            ReviewToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+                            Message = "This update requires interactive setup. Mouse and keyboard may be needed for prerequisites or Windows approval. WidgetRail is still open; choose Open interactive setup when ready." });
+                    }
+                    catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or TimeoutException or OperationCanceledException or JsonException or InvalidOperationException)
                     {
                         lock (_gate) if (!_disposed) Set(_snapshot with { State = "ready",
                             ReviewToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
@@ -128,7 +138,7 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
             _operation?.Dispose();
             _operation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             var cancellation = _operation.Token;
-            Set(_snapshot with { State = command.Action == "check" ? "checking" : "downloading", ReviewToken = null,
+            Set(_snapshot with { State = command.Action == "check" ? "checking" : "downloading", ReviewToken = null, InstallerOutcomePending = false,
                 Message = command.Action == "check" ? "Checking releases…" : "Downloading update…", DownloadedBytes = 0, TotalBytes = null });
             _job = Task.Run(async () =>
             {
@@ -174,13 +184,13 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         }
         await File.WriteAllTextAsync(Path.Combine(root, "plan.json"), JsonSerializer.Serialize(new
         { schema = 1, previousVersion = _installation.Version, updateVersion = release.Tag.TrimStart('v'), edition = _installation.Edition, previousRoot = _installation.Root,
-            updateSha256 = newHash }), token);
+            updateSha256 = newHash, interactive = false }), token);
         token.ThrowIfCancellationRequested();
         lock (_gate)
         {
             _prepared = root;
-            Set(_snapshot with { State = "ready", ReviewToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
-                Message = "Update verified. Install and restart will close WidgetRail and open the installer. Your settings and sign-ins stay in place." });
+            Set(_snapshot with { State = "ready", RequiresInteractiveSetup = false, ReviewToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+                Message = "Update verified. Install and restart checks prerequisites before closing WidgetRail. Routine updates run unattended; settings and sign-ins stay in place." });
         }
     }
 
@@ -242,7 +252,9 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         using var process = Process.Start(info) ?? throw new IOException("Update helper could not start.");
         try
         {
-            if (await process.StandardOutput.ReadLineAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(20), token).ConfigureAwait(false) != "ready")
+            var response = await process.StandardOutput.ReadLineAsync(token).AsTask().WaitAsync(TimeSpan.FromSeconds(90), token).ConfigureAwait(false);
+            if (response == "interactive-required") throw new InteractiveAppUpdateRequiredException();
+            if (response != "ready")
                 throw new IOException("Update helper did not become ready.");
         }
         catch

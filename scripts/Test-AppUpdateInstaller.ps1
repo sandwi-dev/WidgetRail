@@ -10,6 +10,14 @@ try {
     [IO.File]::WriteAllText($installer, 'Inert fixture, never executed')
     $plan = [pscustomobject]@{ schema=1; edition='production'; previousVersion='0.1.0-preview.33'; updateVersion='0.1.0-preview.34'; previousRoot=(Join-Path $root 'old-app'); updateSha256=(Get-FileHash $installer).Hash }
     $script:installed = [pscustomobject]@{ ApplicationRoot=$plan.previousRoot; Edition='production'; version=$plan.previousVersion }
+    function Payload($path, $version) {
+        New-Item -ItemType Directory -Path $path -Force | Out-Null
+        $exe = Join-Path $path 'OverlayFrontend.WinUI.exe'
+        [IO.File]::WriteAllText($exe, 'Inert application, never launched')
+        [IO.File]::WriteAllText((Join-Path $path 'release.json'), (@{ version=$version; edition='production'; files=@(@{path='OverlayFrontend.WinUI.exe';bytes=(Get-Item $exe).Length;sha256=(Get-FileHash $exe).Hash}) } | ConvertTo-Json -Depth 4))
+    }
+    Payload $plan.previousRoot $plan.previousVersion
+    Payload (Join-Path $root 'new-app') $plan.updateVersion
     $events = [Collections.Generic.List[string]]::new()
     Invoke-UpdateHandoff $root $plan { $script:installed } { $events.Add('ready') } { $events.Add('closed') } {
         param($path)
@@ -21,17 +29,38 @@ try {
         $events.Add('installer'); return 0
     } { param($path) Check ($path -eq $script:installed.ApplicationRoot) 'Wrong app relaunched'; $events.Add('relaunch') }
     Check (($events -join ',') -eq 'ready,closed,installer,relaunch') 'Incorrect handoff order'
-    Check (@(Get-ChildItem $root).Count -eq 1) 'Handoff created unexpected files or a profile backup'
+    Check (@(Get-ChildItem $root).Count -eq 3) 'Handoff created unexpected files or a profile backup'
     Write-Output 'PASS verification, readiness, graceful-exit ordering, locked installer, successful relaunch; no profile work'
 
     foreach ($code in @(2,3010,5)) {
         $script:installed = [pscustomobject]@{ ApplicationRoot=$plan.previousRoot; Edition='production'; version=$plan.previousVersion }
-        $rejected = $false
-        try { Invoke-UpdateHandoff $root $plan { $script:installed } {} {} { return $code } { throw 'Must not relaunch' } }
-        catch { if ($code -ne 5 -or $_.Exception.Message -notlike '*exit code 5*') { throw }; $rejected=$true }
-        Check ($rejected -eq ($code -eq 5)) 'Wrong cancellation/reboot/failure handling'
+        $events.Clear()
+        $script:fixtureCode = $code
+        Invoke-UpdateHandoff $root $plan { $script:installed } {} {} { return $script:fixtureCode } { $events.Add('relaunch') } -RecordOutcome { param($outcome) $events.Add($outcome) }
+        $expected = switch ($code) { 2 {'cancelled'}; 3010 {'restart-required'}; default {'failed'} }
+        Check (($events -join ',') -eq "$expected,relaunch") 'Verified installation did not reopen with outcome'
     }
-    Write-Output 'PASS installer cancellation, reboot-needed and failure do not relaunch'
+    Write-Output 'PASS cancellation, restart-needed and failure report outcomes and reopen a verified usable app'
+
+    $events.Clear()
+    $result = Invoke-UpdateHandoff $root $plan { $script:installed } { throw 'Must not close host' } {} { throw 'Must not install' } {} -Preflight { 'interactive-required' }
+    Check ($result -eq 'interactive-required') 'Prerequisite failure did not request interactive review'
+    Write-Output 'PASS interactive fallback leaves working app open before confirmation'
+
+    $silent = @(Get-UpdateSetupArguments $root $false)
+    $interactiveArgs = @(Get-UpdateSetupArguments $root $true)
+    Check ($silent -contains '/VERYSILENT' -and $silent -contains '/SUPPRESSMSGBOXES' -and $silent -contains '/NORESTART' -and $silent -contains '/RESTARTEXITCODE=3010') 'Unattended/restart arguments missing'
+    Check ($interactiveArgs -notcontains '/VERYSILENT' -and $interactiveArgs -notcontains '/SUPPRESSMSGBOXES') 'Interactive setup suppressed UI'
+    Write-Output 'PASS deliberate unattended and interactive argument sets'
+
+    $exe = Join-Path $plan.previousRoot 'OverlayFrontend.WinUI.exe'
+    [IO.File]::AppendAllText($exe, 'corrupt')
+    $rejected=$false
+    try { Invoke-UpdateHandoff $root $plan { $script:installed } {} {} { return 5 } { throw 'Must not relaunch corrupt app' } }
+    catch { $rejected=$_.Exception.Message -like '*verified usable*' }
+    Check $rejected 'Corrupt installed payload relaunched'
+    Payload $plan.previousRoot $plan.previousVersion
+    Write-Output 'PASS corrupt application inventory prevents relaunch'
 
     $rejected = $false
     try { Invoke-UpdateHandoff $root $plan { $script:installed } {} { $script:installed.version='0.1.0-preview.35' } { throw 'Must not install' } {} }

@@ -6,10 +6,11 @@ AppId={{B72CEDF4-8B83-4B69-9E63-F90C6F54AA31}
 AppName={#DisplayName}
 AppVersion={#AppVersion}
 AppPublisher=WidgetRail
+VersionInfoDescription=WidgetRail Setup (unattended v1)
 SetupIconFile=widgetrail.ico
 DefaultDirName={localappdata}\Programs\WidgetRail
 DisableDirPage=yes
-UsePreviousAppDir=no
+UsePreviousAppDir=yes
 UsePreviousTasks=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
@@ -103,6 +104,21 @@ begin
     (RegQueryStringValue(HKLM64, Key, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0'));
 end;
 
+function InitializeSetup: Boolean;
+var
+  Preflight, Status: String;
+begin
+  Result := True;
+  Preflight := ExpandConstant('{param:WRAILPREFLIGHT|}');
+  if Preflight = '' then Exit;
+  { The verified updater invokes this before closing the working application.
+    Do not extract prerequisites, initialize the wizard or mutate installation. }
+  Status := 'interactive-required';
+  if HasGameInput and HasWebView2 then Status := 'ready';
+  SaveStringToFile(Preflight, Status, False);
+  Result := False;
+end;
+
 procedure InitializeWizard;
 var
   Current: String;
@@ -160,6 +176,12 @@ var
   GameInputLog, LogArguments: String;
 begin
   Result := '';
+  { Recheck immediately before changing anything: prerequisites can disappear
+    between preflight and installation. Never elevate from unattended setup. }
+  if WizardSilent and (not HasGameInput or not HasWebView2) then begin
+    Result := 'Required Microsoft components changed. Open WidgetRail App updates and retry using interactive setup.';
+    Exit;
+  end;
   if FindWindowByClassName('WidgetRail.OverlayHost') <> 0 then begin
     Result := 'Quit WidgetRail from its Settings header, then try again. Setup will not force it to close.';
     Exit;
@@ -218,8 +240,8 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Current: String;
-  Owned: Boolean;
-  Preference, Temporary, Value: String;
+  Owned, EnableStartup: Boolean;
+  Preference, Temporary, Value, WarningPath: String;
 begin
   if CurStep <> ssPostInstall then Exit;
   Preference := ExpandConstant('{localappdata}\WidgetRail\automatic-app-updates.txt');
@@ -237,9 +259,16 @@ begin
     Owned := ((PreviousRoot <> '') and (CompareText(Current, PreviousCommand) = 0)) or
       (CompareText(Current, StartupCommand(ApplicationRoot)) = 0);
   if Owned and not ForeignStartup then begin
-    if WizardIsTaskSelected('startup') then begin
-      if not RegWriteStringValue(HKCU, RunKey, 'WidgetRail', StartupCommand(ApplicationRoot)) then
-        MsgBox('WidgetRail was installed, but startup could not be enabled. Try again from WidgetRail Settings.', mbError, MB_OK);
+    EnableStartup := WizardIsTaskSelected('startup');
+    if WizardSilent and (PreviousRoot <> '') then EnableStartup := StartupWasEnabled;
+    if EnableStartup then begin
+      if not RegWriteStringValue(HKCU, RunKey, 'WidgetRail', StartupCommand(ApplicationRoot)) then begin
+        Log('WidgetRail was installed, but startup could not be enabled. Retry from WidgetRail Settings.');
+        if not WizardSilent then
+          MsgBox('WidgetRail was installed, but startup could not be enabled. Try again from WidgetRail Settings.', mbError, MB_OK);
+        WarningPath := ExpandConstant('{param:WRAILWARNING|}');
+        if WarningPath <> '' then SaveStringToFile(WarningPath, 'startup', False);
+      end;
     end else if not RegDeleteValue(HKCU, RunKey, 'WidgetRail') then
       Log('Startup entry was absent or could not be removed.');
   end;

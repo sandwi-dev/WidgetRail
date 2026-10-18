@@ -31,6 +31,15 @@ internal sealed partial class OverlayShellPage
             await center.Ready;
             if (retired || !ReferenceEquals(sender, owner?.Session) || snapshot.Revision <= appUpdateRevision) return;
             appUpdateRevision = snapshot.Revision;
+            if (snapshot.State == "failed" && snapshot.InstallerOutcomePending)
+            {
+                center.Publish("settings", appUpdateNotificationOwner, new("app-update", new WidgetNotification("app-update", "WidgetRail update needs attention")
+                {
+                    Body = snapshot.Message,
+                    Visibility = WidgetNotificationVisibility.Always,
+                }), () => !retired && ReferenceEquals(sender, owner?.Session));
+                return;
+            }
             if (snapshot.State == "current") { center.Inbox.WithdrawWidgetKey("settings", "app-update"); return; }
             if (snapshot.State is not ("available" or "ready") || snapshot.AvailableVersion is not { } version || version == notifiedAppVersion) return;
             notifiedAppVersion = version;

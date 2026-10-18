@@ -75,6 +75,11 @@ internal static class AppUpdateScenarios
             await Action("app-update.download"); Check(Node("app-update.primary").IsBusy == true && Node("app-update.primary").IsDisabled != true);
             service.Ready(); await Action("open.app-updates");
             Check(Node("app-update.primary").Text == "Install and restart");
+            Check(!Walk(Snapshot().Root).Any(n => n.Id == "app-update.input-warning"));
+            service.Interactive(); await Action("open.app-updates");
+            Check(Node("app-update.primary").Text == "Open interactive setup");
+            Check(Node("app-update.input-warning").Text!.Contains("Mouse", StringComparison.OrdinalIgnoreCase));
+            service.Ready(); await Action("open.app-updates");
             Check(!Walk(Snapshot().Root).Any(n => n.Id.StartsWith("app-update.recovery", StringComparison.Ordinal)));
             Check(ViewSnapshotValidator.Validate(Snapshot()).Count == 0 && WinUiPresentationContract.Validate(Snapshot()).Count == 0);
             await Action("app-update.install"); Check(service.Installs == 1);
@@ -102,6 +107,7 @@ internal static class AppUpdateScenarios
             if (command.Action == "install") { Installs++; snapshot = snapshot with { Revision = 4, State = "handoff", ReviewToken = null }; }
             return ValueTask.FromResult(snapshot);
         }
-        internal void Ready() => snapshot = snapshot with { Revision = 3, State = "ready", ReviewToken = new string('C', 64) };
+        internal void Interactive() => snapshot = snapshot with { Revision = snapshot.Revision + 1, RequiresInteractiveSetup = true };
+        internal void Ready() => snapshot = snapshot with { Revision = snapshot.Revision + 1, State = "ready", RequiresInteractiveSetup = false, ReviewToken = new string('C', 64) };
     }
 }

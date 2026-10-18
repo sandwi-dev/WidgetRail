@@ -46,25 +46,81 @@ function Assert-UpdateInstallation([object]$Installed, [object]$Release, [object
         $Release.version -ne $Plan.previousVersion) { throw 'The installation changed. Open WidgetRail and check for updates again.' }
 }
 
+function Get-UpdateSetupArguments([string]$Root, [bool]$Interactive, [string]$PreviousRoot = '') {
+    # Start-Process joins arguments as a command line. Reject quotes rather than
+    # relying on PowerShell array quoting for paths supplied to native setup.
+    if ($Root.Contains('"')) { throw 'Invalid update directory.' }
+    $arguments = @('/NORESTART', '/RESTARTEXITCODE=3010', ('/LOG="' + (Join-Path $Root 'setup.log') + '"'),
+        ('/WRAILWARNING="' + (Join-Path $Root 'warning.txt') + '"'))
+    if (!$Interactive) { $arguments += @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/SP-') }
+    if ($PreviousRoot) {
+        $versions = Split-Path $PreviousRoot -Parent
+        if ((Split-Path $versions -Leaf) -ne 'versions' -or $versions.Contains('"')) { throw 'Invalid registered installation directory.' }
+        $arguments += '/DIR="' + (Split-Path $versions -Parent) + '"'
+    }
+    return $arguments
+}
+
+function Test-UpdateInstalledPayload([object]$Installed, [object]$Plan) {
+    # A failed/cancelled installer must never cause us to launch a partial payload.
+    # Inno uses immutable per-inventory directories; check every recorded file.
+    try {
+        if ($Installed.Edition -ne $Plan.edition -or $Installed.version -notin @($Plan.previousVersion, $Plan.updateVersion)) { return $false }
+        $root = [IO.Path]::GetFullPath($Installed.ApplicationRoot)
+        if ([IO.Path]::GetDirectoryName($root) -ne [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Plan.previousRoot))) { return $false }
+        Assert-UpdatePlainPath $root
+        $manifestPath = Join-Path $root 'release.json'
+        Assert-UpdatePlainPath $manifestPath
+        if ((Get-Item -LiteralPath $manifestPath).Length -gt 8MB) { return $false }
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($manifest.version -ne $Installed.version -or $manifest.edition -ne $Installed.Edition) { return $false }
+        $files = @($manifest.files)
+        if (!$files.Count -or $files.Count -gt 50000 -or !($files.path -contains 'OverlayFrontend.WinUI.exe')) { return $false }
+        foreach ($file in $files) {
+            if ([IO.Path]::IsPathRooted($file.path) -or $file.sha256 -notmatch '^[a-fA-F0-9]{64}$') { return $false }
+            $path = [IO.Path]::GetFullPath((Join-Path $root $file.path))
+            if (!$path.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { return $false }
+            Assert-UpdatePlainPath $path
+            if ((Get-Item -LiteralPath $path).Length -ne $file.bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $file.sha256) { return $false }
+        }
+        return $true
+    } catch { return $false }
+}
+
 function Invoke-UpdateHandoff([string]$Root, [object]$Plan, [scriptblock]$ReadInstallation,
-    [scriptblock]$Ready, [scriptblock]$WaitClosed, [scriptblock]$RunInstaller, [scriptblock]$Relaunch) {
+    [scriptblock]$Ready, [scriptblock]$WaitClosed, [scriptblock]$RunInstaller, [scriptblock]$Relaunch,
+    [scriptblock]$Preflight = { 'ready' }, [scriptblock]$VerifyInstalled = { param($installed, $plan) Test-UpdateInstalledPayload $installed $plan },
+    [scriptblock]$RecordOutcome = {}) {
     $lease = Open-UpdateInstaller $Root $Plan
     try {
         $installed = & $ReadInstallation
         Assert-UpdateInstallation $installed $installed $Plan
+        $previous = [pscustomobject]@{ ApplicationRoot=$Plan.previousRoot; Edition=$Plan.edition; version=$Plan.previousVersion }
+        if ((& $Preflight) -ne 'ready') { return 'interactive-required' }
         & $Ready
         & $WaitClosed
         $installed = & $ReadInstallation
         Assert-UpdateInstallation $installed $installed $Plan
-        $code = & $RunInstaller (Join-Path $Root 'update.exe')
-        if ($code -eq 0) {
+        $code = -1
+        try { $code = & $RunInstaller (Join-Path $Root 'update.exe') } catch { $code = -1 }
+        $outcome = switch ($code) { 0 { 'success' }; 2 { 'cancelled' }; 3010 { 'restart-required' }; default { 'failed' } }
+        try {
             $installed = & $ReadInstallation
-            if ($installed.version -ne $Plan.updateVersion -or $installed.Edition -ne $Plan.edition) {
-                throw 'Setup did not register the expected update. Open WidgetRail from Start.'
-            }
+            $usable = & $VerifyInstalled $installed $Plan
+        } catch { $usable = $false }
+        if ($code -eq 0 -and (!$usable -or $installed.version -ne $Plan.updateVersion)) { $outcome = 'failed' }
+        if (!$usable -and (& $VerifyInstalled $previous $Plan)) {
+            $installed = $previous
+            $usable = $true
+            # This is a verified retained executable, not a rollback of registry,
+            # preferences or files. A later interactive setup repairs registration.
+            if ($outcome -eq 'success') { $outcome = 'failed' }
+        }
+        & $RecordOutcome $outcome
+        if ($usable) {
             & $Relaunch $installed.ApplicationRoot
-        } elseif ($code -notin @(2, 3010)) {
-            throw "Setup did not finish (exit code $code). Run the installer again or open WidgetRail from Start."
+        } else {
+            throw 'Setup did not leave a verified usable installation. Run WidgetRail setup again from its download. Details are recorded in the update log.'
         }
     } finally { $lease.Dispose() }
 }

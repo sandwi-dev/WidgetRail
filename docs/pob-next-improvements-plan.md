@@ -22,9 +22,9 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Agreed; not started |
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
 | Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Existing facilities audited; extension pending |
-| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Agreed; implementation resumed, queued |
+| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Implemented; offline and native player checks pass; integrated/live workflows pending |
 | Display widget expansion | Add display controls alongside saved profiles, using Quick Settings as a reference | Agreed direction; feature audit and implementation queued |
-| App update workflow | Controller-only routine updates through the existing Inno installer | Agreed; implementation queued |
+| App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; offline tests/Inno fixture compile pass; real installed upgrade acceptance pending |
 | Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Agreed; required before final delivery |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
@@ -194,7 +194,7 @@ This records the next-release distribution scope; it does not independently auth
 
 ## YouTube Music and Spotify workflow follow-up
 
-Requested on 2026-10-18. Investigation and planning only for now: the user explicitly said not to fix these yet. These widget changes are independent of the PoB cleanup. Service limitations below constrain delivery; do not simulate unsupported remote operations or silently replace the user's remote queue.
+Requested on 2026-10-18; implementation resumed under the approved goal. The earlier investigation-only hold is superseded. These widget changes are independent of the PoB cleanup. Service limitations below constrain delivery; do not simulate unsupported remote operations or silently replace the user's remote queue.
 
 ### Verified current behaviour
 
@@ -365,3 +365,12 @@ Credit PoB Redux for the ideas, techniques and implementation work that actually
 - [ ] For reused code or assets, verify the applicable license and retain required copyright/license notices in source and distributed packages. Keep existing PoB Community and Grinding Gear Games credits; Redux attribution supplements them.
 
 The comparison reviewed [PoB Redux at a5afd8b](https://github.com/pobredux/pob-redux/tree/a5afd8b80de993623c1fc5c1541269312361e50f). Its code is a reference for ideas, not proof of measured performance in WidgetRail or an instruction to reproduce every feature. Recheck current upstream code when implementing.
+
+### Music control refinement (2026-10-18)
+
+Saved songs use a compact themed heart beside Spotify's title, with outline/filled
+states, action labels and mouse tooltips. Pending Save/Like controls retain stable
+identity and focus eligibility; duplicate operations are coalesced rather than
+disabling the currently focused control. Native busy/idle identity and focus checks
+cover both players and pins. Spotify's pane and compact pin remain scrollable at
+constrained heights. Final native/controller integration remains separate.

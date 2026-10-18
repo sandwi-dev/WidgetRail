@@ -18,6 +18,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cancellation leaves installation untouched", Cancel),
     ("Automatic checks default on, run once, honor opt-out and persist", Automatic),
     ("Failed helper launch keeps the app open and permits retry", LaunchFailure),
+    ("Prerequisite fallback requires a fresh reviewed interactive action", InteractiveFallback),
+    ("Installer recovery is visible and survives automatic check until manual retry", Recovery),
 };
 var errors = 0;
 foreach (var test in tests) try { await test.Run(); Console.WriteLine("PASS " + test.Name); } catch (Exception error) { errors++; Console.WriteLine("FAIL " + test.Name + ": " + error); }
@@ -35,7 +37,7 @@ static async Task Check()
     await using var fixture = new Fixture();
     await fixture.Service.HandleAsync(new("check"), default);
     var result = await Wait(fixture.Service);
-    Assert(result.State == "available" && result.AvailableVersion == "0.1.0-preview.30" && result.Notes == "Release notes\nFixed things");
+    Assert(!result.InstallerOutcomePending && result.State == "available" && result.AvailableVersion == "0.1.0-preview.30" && result.Notes == "Release notes\nFixed things");
 }
 static async Task Stable()
 {
@@ -123,6 +125,44 @@ static async Task LaunchFailure()
     await fixture.Service.HandleAsync(new("install", state.ReviewToken), default);
     await fixture.Exited.Task.WaitAsync(TimeSpan.FromSeconds(5));
     Assert(fixture.Launches == 2 && fixture.Exits == 1);
+}
+static async Task InteractiveFallback()
+{
+    await using var fixture = new Fixture();
+    await fixture.Service.HandleAsync(new("check"), default); await Wait(fixture.Service);
+    await fixture.Service.HandleAsync(new("download"), default);
+    var ready = await Wait(fixture.Service);
+    fixture.LaunchReady.SetException(new InteractiveAppUpdateRequiredException());
+    await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default);
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    AppUpdateSnapshot state;
+    do { await Task.Delay(10, deadline.Token); state = await fixture.Service.HandleAsync(new("status"), default); } while (state.State == "handoff");
+    Assert(state.State == "ready" && state.RequiresInteractiveSetup && state.ReviewToken != ready.ReviewToken && fixture.Exits == 0);
+    await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default);
+    Assert(fixture.Launches == 1);
+    fixture.LaunchReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    fixture.LaunchReady.SetResult();
+    await fixture.Service.HandleAsync(new("install", state.ReviewToken), default);
+    await fixture.Exited.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    using var plan = JsonDocument.Parse(File.ReadAllText(Directory.GetFiles(fixture.Root, "plan.json", SearchOption.AllDirectories).Single()));
+    Assert(plan.RootElement.GetProperty("interactive").GetBoolean() && fixture.Exits == 1);
+}
+static async Task Recovery()
+{
+    await using var fixture = new Fixture();
+    Directory.CreateDirectory(fixture.Root);
+    foreach (var outcome in new[] { "failed", "cancelled", "restart-required", "startup-warning" })
+    {
+        File.WriteAllText(Path.Combine(fixture.Root, "result.json"), JsonSerializer.Serialize(new { outcome }));
+        await using var restarted = new BridgeAppUpdates(new("0.1.0-preview.29", "production", "", false), fixture.Root, fixture.Api);
+        var checksBefore = fixture.Api.Checks;
+        var state = await restarted.CheckAtStartupAsync(default);
+        Assert(state.InstallerOutcomePending && state.State == "failed" && state.Message.Length != 0 && fixture.Api.Checks == checksBefore);
+        await restarted.HandleAsync(new("check"), default);
+        Assert(!(await Wait(restarted)).InstallerOutcomePending);
+
+        Assert(!File.Exists(Path.Combine(fixture.Root, "result.json")));
+    }
 }
 static void Assert(bool value, string message = "Assertion failed") { if (!value) throw new Exception(message); }
 static async Task<AppUpdateSnapshot> Wait(BridgeAppUpdates service)

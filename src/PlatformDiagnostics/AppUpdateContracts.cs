@@ -4,7 +4,7 @@ public sealed record AppUpdateCommand(string Action, string? ReviewToken = null)
 public sealed record AppUpdateSnapshot(long Revision, string State, string CurrentVersion,
     string? AvailableVersion = null, string Notes = "", string Message = "", long DownloadedBytes = 0,
     long? TotalBytes = null, bool CanInstall = false, string? ReviewToken = null,
-    bool AutomaticallyCheck = true)
+    bool AutomaticallyCheck = true, bool RequiresInteractiveSetup = false, bool InstallerOutcomePending = false)
 {
     public static AppUpdateSnapshot Unavailable { get; } = new(0, "unavailable", "unknown", Message: "Updates are unavailable in this session.");
 }
