@@ -18,19 +18,21 @@ internal sealed partial class OverlayShellPage
             var checks=new List<string>();string? error=null;
             var old=BrowserSurface.FixturePage;var oldType=BrowserSurface.FixtureContentType;
             var live=Environment.GetCommandLineArgs().Contains("--live-pob-trade-actions");
+            var tradeRoot="trade2";
             var id=new string('b',64);
             System.Text.Json.Nodes.JsonNode nestedMetadata=System.Text.Json.Nodes.JsonValue.Create(true)!;
             for(var depth=0;depth<10;depth++)nestedMetadata=new System.Text.Json.Nodes.JsonObject{["child"]=nestedMetadata};
-            var response=JsonSerializer.Serialize(new{result=new[]{new{id,item=new{rarity="Normal",name="",typeLine="Gold Ring",ilvl=80,
-                nestedMetadata,implicitMods=new[]{new{description="15% increased Rarity of Items found"}}},listing=new{price=new{amount=2,currency="chaos"},account=new{name="Fixture seller"},method="psapi"}}}});
+            var response=JsonSerializer.Serialize(new{result=new[]{new{id,item=new{rarity="Normal",frameType=0,identified=true,name="",typeLine="Gold Ring",ilvl=80,
+                nestedMetadata,implicitMods=new[]{"15% increased Rarity of Items found"}},listing=new{price=new{amount=2,currency="chaos"},account=new{name="Fixture seller"},method="psapi"}}}});
             BrowserSurface.FixturePage=url=>new Uri(url).AbsolutePath.StartsWith("/api/",StringComparison.Ordinal)?response:
-                "<!doctype html><div class='resultset'><div class='row' data-id='"+id+"'><div class='right'></div></div></div><script>setTimeout(()=>fetch('/api/trade2/fetch/fixture').then(r=>r.json()),700)</script>";
+                "<!doctype html><div class='resultset'><div class='row' data-id='"+id+"'><div class='right'></div></div></div><script>setTimeout(()=>fetch('/api/"+tradeRoot+"/fetch/fixture').then(r=>r.json()),700)</script>";
             BrowserSurface.FixtureContentType=url=>new Uri(url).AbsolutePath.StartsWith("/api/",StringComparison.Ordinal)?"application/json":"text/html";
             if(live){BrowserSurface.FixturePage=old;BrowserSurface.FixtureContentType=oldType;}
             try
             {
                 if(startup is not null)await startup;
                 await WebAppUntil(()=>interactive&&foreground&&!switching&&surface?.CurrentBinding is not null);
+                tradeRoot=activeWidget=="widgetrail.samples.poe1-companion"?"trade":"trade2";
                 if(live)
                 {
                     await Action("section.3");await Action("item.1");await Action("trade");await Action("trade-open");
@@ -121,7 +123,7 @@ internal sealed partial class OverlayShellPage
                 var page=Page()!;
                 await Task.Delay(1200);
                 Check(await page.EvaluateFixtureAsync("document.querySelector('[data-widgetrail-action]')===null")=="true","Undeclared origin gets no page actions");
-                page.NavigateForValidation("https://www.pathofexile.com/trade2/search/Standard/fixture");
+                page.NavigateForValidation("https://www.pathofexile.com/"+tradeRoot+"/search/Standard/fixture");
                 await WebAppUntilScript(page,"!!document.querySelector('[data-widgetrail-action=\"compare-item\"]')");
                 Check(true,"Sealed adapter observes declared JSON and adds an associated action");
                 Check(await page.EvaluateFixtureAsync("!Object.getOwnPropertyNames(globalThis).some(k=>k.startsWith('widgetRailAction')) && typeof globalThis.__widgetRailResponse==='undefined'")=="true","Page scripts cannot access isolated adapter bindings or response callbacks");
@@ -140,11 +142,13 @@ internal sealed partial class OverlayShellPage
                 Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.title"),"Cancelling website loading preserves the existing comparison and permits retry");
                 await FocusBrowser();await Press(ControllerButton.A);await WebAppUntil(()=>page.IsInteracting);
                 await page.ClickPageActionFixtureAsync(action:"evaluate-request");
-                await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.slot")&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
-                var rankSlot=Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Single(n=>n.Id=="pob.rank.slot").SelectOptions.First(o=>o.Label.StartsWith("Ring 1 —",StringComparison.Ordinal));
+                await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.edit")&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
+                await Action("trade-rank-edit");
+                var rankSlot=Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Single(n=>n.Id=="pob.rank.slot").SelectOptions.First(o=>o.Label.StartsWith("Ring 2 —",StringComparison.Ordinal));
                 await Action(rankSlot.ActionId);await Action("trade-rank-evaluate");
                 await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("1 ranked"))&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
                 Check(Page()==page&&page.RequiresActivation,"Trusted batch action evaluates listings beside the retained website");
+                await Action("trade-rank-edit");
                 await WebAppUntil(()=>Walk(XamlRoot.Content).OfType<WidgetIndexedCollectionView>().Any(c=>AutomationProperties.GetAutomationId(c)=="Widget.pob.rank.results"));
                 var rankedList=Walk(XamlRoot.Content).OfType<WidgetIndexedCollectionView>().Single(c=>AutomationProperties.GetAutomationId(c)=="Widget.pob.rank.results");
                 rankedList.Enter(allowFallback:true);await WebAppUntil(()=>rankedList.CaptureFocusedItem() is not null);
@@ -153,7 +157,7 @@ internal sealed partial class OverlayShellPage
                 rankedList.Enter(allowFallback:true);await WebAppUntil(()=>rankedList.CaptureFocusedItem() is not null);await Task.Delay(200);
                 await Press(ControllerButton.A);
                 await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.title")&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
-                Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.slot"&&n.SelectOptions.Any(o=>o.IsSelected&&o.Label.StartsWith("Ring 1 —",StringComparison.Ordinal))),"Controller selection opens comparison against the explicitly selected equipment");
+                Check(Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.website.review.slot"&&n.SelectOptions.Any(o=>o.IsSelected&&o.Label==rankSlot.Label)),"Controller selection opens comparison against the explicitly selected equipment");
                 await Action("trade-rank-show");await WebAppUntil(()=>Nodes(surface!.CurrentBinding!.Frame.Snapshot.Root).Any(n=>n.Id=="pob.rank.panel")&&!Nodes(surface.CurrentBinding.Frame.Snapshot.Root).Any(n=>n.Id=="pob.cancel-operation"));
                 Check(Page()==page,"Back to ranked results keeps the website and shortlist");
                 await Action("trade-rank-hide");
