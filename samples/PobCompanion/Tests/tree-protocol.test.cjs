@@ -26,7 +26,7 @@ class Element {
   set height(value){this.pixelHeight=value;this.heightWrites=(this.heightWrites||0)+1;}
   getBoundingClientRect() { return {left:0,top:0}; }
 }
-for (const id of ['map','lines','nodes','status','added','removed','selected','fit','ascendancy','locate','in','out','left','right','up','down','tooltip','tooltip-name','tooltip-kind','tooltip-copy','tooltip-cost','selection-marker','selection-label']) elements.set(id, new Element(id));
+for (const id of ['map','lines','nodes','status','added','removed','selected','fit','ascendancy','locate','in','out','left','right','up','down','tooltip','tooltip-name','tooltip-kind','tooltip-copy','tooltip-cost','selection-marker']) elements.set(id, new Element(id));
 let receive, resize;
 const sandbox = {
   document: { getElementById: id => elements.get(id), createElement: tag => new Element(undefined,tag), activeElement: null, documentElement:{clientWidth:1000,clientHeight:600,dataset:{}} },
@@ -112,9 +112,8 @@ while(frames.length)frames.shift()();
 assert.ok(Math.abs(parseFloat(position())-parseFloat(beforeZoom))<.001,'L2 reverses the internal zoom step');
 console.log('PASS controller zoom shares minus/plus controls and consumes browser zoom');
 message({type:'select',id:2});
-const marker=elements.get('selection-marker'),selectedLabel=elements.get('selection-label');
+const marker=elements.get('selection-marker');
 assert.equal(marker.hidden,false);
-assert.match(selectedLabel.textContent,/Selected.*Right/);
 for(let i=0;i<12;i++){elements.get('out').onclick();while(frames.length)frames.shift()();}
 assert.ok(parseFloat(marker.style.width)>=44,'Selection stays large enough to spot at minimum zoom');
 for(let i=0;i<20;i++)elements.get('right').onclick();while(frames.length)frames.shift()();

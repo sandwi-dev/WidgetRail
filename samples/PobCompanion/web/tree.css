@@ -34,7 +34,6 @@ footer { min-height:38px; font-size:calc(12px * var(--widgetrail-text-scale,1));
 .tone-muted { color:var(--widgetrail-muted,var(--ink)); }
 .tone-emphasis { font-weight:650; }
 #selection-marker { position:absolute; z-index:2; pointer-events:none; transform:translate(-50%,-50%); border:3px solid var(--selected); border-radius:8px; box-shadow:0 0 0 3px var(--bg),0 0 0 4px var(--ink); }
-#selection-label { position:absolute; z-index:3; pointer-events:none; max-width:min(240px,80%); padding:5px 9px; border:1px solid var(--selected); border-radius:6px; background:var(--surface); color:var(--ink); font-size:12px; font-weight:600; box-shadow:0 2px 8px #0006; }
 button:disabled { opacity:.55; }
 .color-probe { display:none; }
 #added { color:var(--added); } #removed { color:var(--removed); } #selected { color:var(--selected); }

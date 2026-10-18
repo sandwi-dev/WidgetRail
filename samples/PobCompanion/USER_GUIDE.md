@@ -74,7 +74,7 @@ The calculation inspector shows skill context for main-skill damage, group conte
 
 Damage labels follow PoB's display mode: skills that report average damage are labelled accordingly, with hit damage per second shown separately in Calcs. Item replacement offers slots accepted by the engine for the pasted item. Configuration omits inapplicable default controls while retaining authored non-default settings.
 
-Native passive descriptions and tree hover cards share theme-aware rich text, preserving upstream wording and colors and emphasizing values and recognizable stat terms in otherwise plain modifiers. The selected tree node has a screen-space frame and name label; Locate selected centers it at a readable minimum zoom. Buff-only main skills show **No direct damage** instead of a misleading zero DPS, while damaging skills retain PoB's calculated values and disabled-skill reasons.
+Native passive descriptions and tree hover cards share theme-aware rich text, preserving upstream wording and colors and emphasizing values and recognizable stat terms in otherwise plain modifiers. The selected tree node has a screen-space frame; Locate selected centers it at a readable minimum zoom. Buff-only main skills show **No direct damage** instead of a misleading zero DPS, while damaging skills retain PoB's calculated values and disabled-skill reasons.
 
 ## Items and trade
 

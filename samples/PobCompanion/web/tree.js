@@ -7,7 +7,7 @@
   let currentAscendancy = '';
   let treeVersion = '', artwork = null;
   const sheets = new Map(), tooltipCache = new Map(), tooltip = document.getElementById('tooltip');
-  const selectionMarker=document.getElementById('selection-marker'),selectionLabel=document.getElementById('selection-label');
+  const selectionMarker=document.getElementById('selection-marker');
   let hoverId = 0, hoverTimer = null, hoverX = 0, hoverY = 0;
   function loadArtwork(version){
     artwork=null;sheets.clear();
@@ -142,14 +142,10 @@
     context.globalAlpha=1;
     const target=byId.get(selected),position=target?point(target):null;
     const selectionVisible=target?.interactive!==false&&position&&position[0]>=0&&position[0]<=w&&position[1]>=0&&position[1]<=h;
-    selectionMarker.hidden=selectionLabel.hidden=!selectionVisible;
+    selectionMarker.hidden=!selectionVisible;
     if(selectionVisible){
       const [x,y]=position,radius=Math.max(22,nodeRadius(target)+8);
       Object.assign(selectionMarker.style,{left:x+'px',top:y+'px',width:radius*2+'px',height:radius*2+'px'});
-      selectionLabel.textContent='Selected · '+target.name+(target.allocated&&target.allocationMode>0?' · Weapon set '+target.allocationMode:'');
-      const lw=selectionLabel.offsetWidth,lh=selectionLabel.offsetHeight;
-      selectionLabel.style.left=Math.max(8,Math.min(x-lw/2,w-lw-8))+'px';
-      selectionLabel.style.top=Math.max(8,Math.min(y-radius-lh-10>=8?y-radius-lh-10:y+radius+10,h-lh-8))+'px';
     }
     // Large invisible input targets do not change the visual size of a passive.
     const focused = Number(document.activeElement?.dataset.node || 0);
