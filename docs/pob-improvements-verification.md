@@ -548,3 +548,69 @@ installed unattended-updater acceptance, remaining guarded display variants, bro
 app/Catalogue permission/update/rollback workflows, complete requirement-by-requirement
 architecture and layout audit, and final documentation reconciliation. Keep the
 initial unreproduced Bare pixel/UIA divergence visible in the audit.
+
+## Follow-up requirement audit and workflow completion — 2026-10-18
+
+The follow-up audit found specific unfinished implementation, beyond the broad
+acceptance matrix. These are now implemented: an owner for exact-build skill-option
+cache/read/failure state; strict typed skill/search responses; explicit skill-option
+retry; exact navigation from a disabled main-skill warning; upstream loadout/weapon
+context in gem inspection; and selective calculation/inactive-setting disclosure.
+Collapse retains totals/current choices, rejects stale tokens and returns focus to
+its toggle. Search reveals a matching retained setting. Stat-to-calculation
+navigation now finds its containing section while preserving an already matching
+section. No passive-effect rules or extra engines were introduced.
+
+Focused engine evidence (`final-gap-*`, `context-final-*`): skill options 38/27,
+skill management 75/77, unified search 40/40, empty builds 23/23, disclosures 25/25,
+calculation context 11/11 (PoE1/PoE2). Architecture checks: 64. These passed before
+native disclosure inspection; fixture failures first exposed an incorrect assumption
+that the Life overview itself always has source detail. The fixture now deliberately
+selects upstream Total Base and separately asserts overview section navigation.
+
+Catalogue adds five exported/native fixture states: empty, loading, retained stale
+error, long prerequisites and absent prerequisites. Its executable suite passes
+12/12. `MarketplaceIntegratedWorkflow` passes real widget → broker → reviewed
+installer → catalog persistence and permission-pipe flows with inert local archives
+and fake HTTP: cancel/approve, forged review rejection, partial batch retry,
+revert/re-update with disabled preference retained, and permission deny/approve.
+This is integrated logic/pipe evidence, not a claim of physical controller or live
+GitHub acceptance.
+
+Updater path verification retains per-component reparse checks but replaces repeated
+PowerShell provider discovery with direct filesystem attributes. The same 100 warm
+paths measured 2.73 s before and 0.07 s after; hashes are still checked independently.
+The linked-ancestor regression passes even when the final file is absent.
+`update-path-check-performance-20261018.json` records the narrow measurement.
+
+Actual Inno acceptance now passes six cases: Bare and Production, each with startup
+enabled, disabled and foreign-owned. `scripts/Test-InstalledUpdate.ps1` compiles
+the real setup code/payload with isolated AppId, registry, shortcut and data names;
+it calls the real handoff function, validates the entire installed inventory and
+relaunches the actual executable hidden with an isolated profile. Existing
+update-check choices and edition remain unchanged. Evidence:
+`installed-update-20261018/results.json`. This does not claim unmodified production
+registration or UAC/clean-machine prerequisite acceptance. Initial harness attempts
+needed a short install path for Inno and correct missing-registry-value handling.
+The isolated registration/shortcut was subsequently uninstalled; the existing
+Developer installation registration and shortcut stayed unchanged (`cleanup.json`).
+
+Both assembled editions also pass the seven native hidden-startup checks: no Bridge
+or widget/update startup while hidden, Guide adapter present, one initial-widget
+commit on first show, input suspension on hide and one Bridge retained on reopen.
+Evidence: `final-hidden-startup-{production,bare}-20261018/result.json`.
+These are application/adapter checks, not new physical Guide-button acceptance.
+
+Catalogue's 11 states pass 108 native assertions per theme (Mono Ink and Mineral
+Light) at 900/560 DIP; representative stale-error and long-prerequisite renders
+were inspected. PoB disclosure/layout fixtures pass 528 native assertions across
+both games, 1320×900/820×600 DIP, dark/light plus simulated system high-contrast
+ink and 125% text scaling. This is a high-contrast renderer override, not a change
+to the user's Windows contrast setting. Native inspection caught undersized list
+viewports beneath fixed Configuration/Calcs controls. Configuration now scrolls
+its navigation as one region; Calcs gives controls and result/source lists bounded
+scrolling regions, retaining complete row visibility. Configuration and quick-control
+regressions pass both engines. Representative compact and high-contrast renders
+were inspected after correction. Evidence: `catalogue-states-20261018/*/native-result.json`
+and `disclosure-native-scroll-20261018/native-result.json`. Subsequent count-label
+cleanup removes zero-count noise; both-engine disclosure checks pass again.

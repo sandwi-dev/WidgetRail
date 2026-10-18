@@ -10,7 +10,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 | Order | Work item | Status |
 | --- | --- | --- |
-| Foundation already started | Clean up shared code and game-specific boundaries | In progress; fixed game contracts, typed changed workflows and compatibility boundary implemented |
+| Foundation already started | Clean up shared code and game-specific boundaries | Implemented for changed workflows; typed search/skill projections, owned skill-option lifecycle and bounded caches pass both-engine checks |
 | **Next: host prerequisites** | Extend reusable rich previews / anchored popovers | Implemented; 136 anchored, 32 passive and 14 indexed-source native assertions pass, including themes and motion; ready for PoB adoption with integrated acceptance still required |
 | **Host prerequisites** | Add subtle scroll-container edge cues | Implemented; 22 cue, 42 reading-focus, 93 directional, 10 indexed-reveal and 16 indexed-continuity native assertions pass; final integrated app audit remains |
 | **Host prerequisites** | Finish shared layout, focus, scrolling, sizing and accessibility changes needed by planned widget workflows | Indexed reveal/continuity and busy-focus fixes tested; qualify remaining shared changes before adoption |
@@ -25,7 +25,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Structural and isolated native first-start checks pass; Production disable/remove/restart/reinstall verified; update/permission workflows and one earlier unreproduced visual mismatch remain |
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | YouTube Music live playback, like/unlike, queue reveal/manual scroll, removal and ordered playlist Play next pass; Spotify awaits reconnection; broader acceptance remains |
 | Display widget expansion | Add trusted reusable display controls, then expose them in the widget | 25 deterministic and 124 native checks pass; native consent and timed refresh-change flow returns to original 240 Hz; HDR/Keep/disconnection hardware coverage remains |
-| App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; offline tests/Inno fixture compile pass; real installed upgrade acceptance pending |
+| App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; six isolated real-Inno upgrade/startup-preservation cases pass; production-registration and prerequisite/UAC variants remain unverified |
 | Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Current guides reconciled and 22 superseded plans retired; 756 local file targets valid; final reconciliation against remaining changes still required |
 
 **Dependency order clarified on 2026-10-18:** complete the necessary shared host
@@ -43,13 +43,13 @@ Cleanup comes before UI additions so new features use the improved boundaries. P
 
 The current apps have separate entry points, packages, engine pins, processes and build storage, but share most C# UI, Lua adapters and web rendering. Sharing common workflows is intentional. Do not duplicate the entire UI or create a framework rewrite.
 
-- [ ] Extract cohesive components from the large partial `PobWidget` class for workflows being changed. Give components clear state ownership; moving methods into more partial-class files alone is not sufficient.
-- [ ] Centralize fixed game differences such as identity, trade endpoints and game-file export support.
-- [ ] Represent variable feature availability through explicit engine capabilities. Do not replace every legitimate feature condition with a game-number branch.
-- [ ] Introduce validated, typed adapter-response models for the areas being changed. Distinguish absent optional capabilities from malformed required data; do not silently turn invalid data into plausible defaults.
-- [ ] Isolate engine-version/API compatibility in focused Lua helpers, separate from UI and gameplay logic.
-- [ ] Keep unavoidable dependencies on PoB internals inside the adapter and exercise them with real-engine compatibility tests.
-- [ ] Remove superseded/dead code and check both engines before adding new behavior.
+- [x] Extract cohesive components from the large partial `PobWidget` class for workflows being changed. Give components clear state ownership; moving methods into more partial-class files alone is not sufficient.
+- [x] Centralize fixed game differences such as identity, trade endpoints and game-file export support.
+- [x] Represent variable feature availability through explicit engine capabilities. Do not replace every legitimate feature condition with a game-number branch.
+- [x] Introduce validated, typed adapter-response models for the areas being changed. Distinguish absent optional capabilities from malformed required data; do not silently turn invalid data into plausible defaults.
+- [x] Isolate engine-version/API compatibility in focused Lua helpers, separate from UI and gameplay logic.
+- [x] Keep unavoidable dependencies on PoB internals inside the adapter and exercise them with real-engine compatibility tests.
+- [x] Remove superseded/dead code and check both engines before adding new behavior.
 
 Capability handling should continue to use PoB's available controls, eligibility, choices and enabled state. The widget must not start maintaining its own passive-effect or calculation rules.
 
