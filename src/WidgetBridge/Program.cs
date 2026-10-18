@@ -24,6 +24,10 @@ internal static class Program
                 Guid.TryParseExact(guardPipe["WidgetRail.DisplayGuard.".Length..], "N", out _))
                 return await WidgetRail.WindowsDisplayProvider.DisplayRestoreGuard.RunAsync(guardPipe).ConfigureAwait(false);
             var pipeName = RequiredValue(args, "--host-pipe");
+            var startupWidget = OptionalValue(args, "--startup-widget");
+            if (startupWidget is not null && (startupWidget.Length is < 1 or > 128 ||
+                startupWidget.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('.' or '-' or '_'))))
+                throw new ArgumentException("Invalid startup widget identifier.");
             var catalogPath = RequiredValue(args, "--catalog");
             var acceptTimeout = OptionalInt(args, "--accept-timeout-ms", 10_000, 100, 60_000);
             var maximumBytes = OptionalInt(args, "--max-message-bytes",
@@ -70,20 +74,24 @@ internal static class Program
                 catalogPath, installedCatalogRoot, workerHostExecutable, catalog,
                 initialDiagnostics: trustedCatalog.Warnings,
                 installedCatalogPending: true,
-                loadCatalog: async cancellationToken =>
-                {
-                    var loaded = await BridgeCatalog.LoadWithInstalledObservedAsync(catalogPath,
-                        installedCatalogRoot, workerHostExecutable, cancellationToken).ConfigureAwait(false);
-                    await PrepareBundledPermissionsAsync(loaded.Catalog, consentStore, cancellationToken)
-                        .ConfigureAwait(false);
-                    var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-                    return loaded with { Catalog = loaded.Catalog.WithWidgetSettings(settings.BuiltInWidgets)
-                        .WithUserWebApps(await userWebApps.ReadAsync(cancellationToken).ConfigureAwait(false))
-                        .WithStoppedWidgets(await stopState.LoadAsync(cancellationToken).ConfigureAwait(false)) };
-                },
+                loadCatalog: null,
                 catalogLoadObserved: mediaDiagnostics.RecordInstalledCatalogLoad,
                 initialWidgetRejections: trustedCatalog.WidgetRejections,
-                settingsFilePath: settingsPaths.SettingsFile);
+                settingsFilePath: settingsPaths.SettingsFile,
+                loadProgressively: async (cancellationToken, publish) =>
+                {
+                    var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+                    var apps = await userWebApps.ReadAsync(cancellationToken).ConfigureAwait(false);
+                    var stopped = await stopState.LoadAsync(cancellationToken).ConfigureAwait(false);
+                    BridgeCatalogLoadResult Configure(BridgeCatalogLoadResult value) => value with {
+                        Catalog = value.Catalog.WithWidgetSettings(settings.BuiltInWidgets).WithUserWebApps(apps).WithStoppedWidgets(stopped) };
+                    var loaded = await BridgeCatalog.LoadWithInstalledObservedAsync(catalogPath,
+                        installedCatalogRoot, workerHostExecutable, cancellationToken,
+                        startupWidget is null ? [] : [startupWidget],
+                        (progress, token) => publish(Configure(progress), token)).ConfigureAwait(false);
+                    await PrepareBundledPermissionsAsync(loaded.Catalog, consentStore, cancellationToken).ConfigureAwait(false);
+                    return Configure(loaded);
+                });
             catalogMonitor.Diagnostics += (_, warnings) =>
             {
                 foreach (var warning in warnings)

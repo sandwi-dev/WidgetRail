@@ -8,6 +8,8 @@ using WidgetRail.WidgetProtocol;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Startup admission skips inactive payloads and yields the requested enabled selection first", StartupActiveSelections),
+    ("Startup admission rejects changed selections and cancelled enumeration", StartupSelectionRaces),
     ("Package SVG icons normalize a bounded static subset and reject active content",
         PackageSvgIconCatalogTests.Run),
     ("Reviewed updates keep only settings across exact package authorities", ReviewedSettingsContinuity),
@@ -76,6 +78,59 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task StartupActiveSelections()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    var old = await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.first", "dev.test", "1.0.0"));
+    var current = await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.first", "dev.test", "2.0.0"));
+    var requested = await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.requested", "dev.test", "1.0.0"));
+    var disabled = await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.disabled", "dev.test", "1.0.0"));
+    await catalog.SetActiveVersionAsync(current.Id, current.Version);
+    await catalog.SetEnabledAsync(current.Id, true);
+    await catalog.SetEnabledAsync(requested.Id, true);
+    File.Delete(Path.Combine(old.InstallPath, "manifest.json"));
+    File.Delete(Path.Combine(disabled.InstallPath, "manifest.json"));
+    var inventory = await catalog.InspectInventoryAsync();
+    Assert.Equal(3, inventory.Widgets.Count);
+    Assert.Equal(2, inventory.Widgets.Single(entry => entry.Id == current.Id).Versions.Count);
+    Assert.Equal(disabled.Id, inventory.Widgets.Single(entry => entry.Id == disabled.Id).Name);
+    var admitted = new List<CatalogWidget>();
+    await foreach (var widget in catalog.DiscoverEnabledAsync([requested.Id])) admitted.Add(widget);
+    Assert.SequenceEqual(new[] { requested.Id, current.Id }, admitted.Select(widget => widget.Id));
+    Assert.Equal(current.Version, admitted[1].ActiveVersion.Version);
+    Assert.True(admitted.All(widget => widget.Versions.Count == 1), "Startup hashed retained versions.");
+    Assert.True(admitted.All(widget => widget.ActiveVersion.VerifiedFiles.Count > 0), "Startup returned an unverified executable descriptor.");
+    await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.DiscoverAsync());
+    File.AppendAllText(Path.Combine(requested.InstallPath, "manifest.json"), " ");
+    await Assert.ThrowsAsync<WidgetPackageException>(async () => {
+        await foreach (var _ in catalog.DiscoverEnabledAsync([requested.Id])) { }
+    });
+    // Inventory remains descriptive even when selected bytes fail validation.
+    Assert.Equal(3, (await catalog.InspectInventoryAsync()).Widgets.Count);
+}
+
+static async Task StartupSelectionRaces()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    var first = await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.first", "dev.test", "1.0.0"));
+    var last = await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.last", "dev.test", "1.0.0"));
+    await catalog.SetEnabledAsync(first.Id, true); await catalog.SetEnabledAsync(last.Id, true);
+    await using (var stream = catalog.DiscoverEnabledAsync([first.Id]).GetAsyncEnumerator())
+    {
+        Assert.True(await stream.MoveNextAsync(), "Requested widget was not yielded.");
+        await catalog.SetEnabledAsync(last.Id, false);
+        var error = await Assert.ThrowsAsync<WidgetPackageException>(async () => { await stream.MoveNextAsync(); });
+        Assert.Equal("catalog_changed", error.Code);
+    }
+    using var cancel = new CancellationTokenSource();
+    await using var cancelled = catalog.DiscoverEnabledAsync(cancellationToken: cancel.Token).GetAsyncEnumerator();
+    Assert.True(await cancelled.MoveNextAsync(), "Enabled widget missing before cancellation.");
+    cancel.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(async () => { await cancelled.MoveNextAsync(); });
+}
 
 static async Task ReviewedSettingsContinuity()
 {

@@ -139,6 +139,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             owner = await OwnedBridgeProcess.StartAsync(new(options.InstallationRoot,
                 options.SettingsRoot, options.InstalledCatalogRoot)
             {
+                StartupWidgetId = options.InitialWidgetId,
                 WindowPreviews = previewCaptures is not null,
                 ExclusiveControllerControl = ControllerControlStatusRequested is not null,
                 ForegroundDelegationDiagnostic = message => WindowActivationDiagnostic?.Invoke(message),
@@ -169,6 +170,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task InitializeStartupCatalogAsync(Action<string> Phase)
     {
+        var startupSelection = selectionVersion;
         var startupOwner = owner ?? throw new InvalidOperationException("The widget service is not connected.");
         WidgetPresentationCatalog catalog;
         await transitions.WaitAsync(lifetime.Token);
@@ -199,14 +201,17 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         var initial = explicitInitial ?? startupSettings
             ?? catalogItems.FirstOrDefault(widget => widget.Id == preferences.LastWidget)
             ?? catalogItems.FirstOrDefault();
-        if (initial is not null) await SelectAsync(initial.Id,
-            enterWidget: explicitInitial is not null || startupSettings is null && preferences.ReopenWidget);
-        else ShowRecovery("No installed widgets are available.", false);
+        if (startupSelection == selectionVersion)
+        {
+            if (initial is not null) await SelectAsync(initial.Id,
+                enterWidget: explicitInitial is not null || startupSettings is null && preferences.ReopenWidget);
+            else ShowRecovery("No installed widgets are available.", false);
+        }
         Phase("initial-widget-ready");
         await PublishDevelopmentReadyAsync();
         // Settings is already in the trusted catalog. Keep its first view
-        // independent of installed-package validation, but restore saved pins
-        // only after the complete admitted catalog is available.
+        // independent of installed-package validation. Continue discovery for
+        // the remaining tray entries; saved pin placement never starts widgets.
         if (!catalog.IsComplete)
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);

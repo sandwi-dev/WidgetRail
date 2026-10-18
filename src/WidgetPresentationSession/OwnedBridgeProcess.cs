@@ -6,6 +6,8 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed record BridgeProcessOptions(string InstallationRoot, string SettingsRoot, string InstalledCatalogRoot)
 {
+    /// <summary>Host startup preference; changes validation order, never package authority.</summary>
+    public string? StartupWidgetId { get; init; }
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(10);
     /// <summary>Opt in only when the frontend owns a permission-checked capture renderer.</summary>
     public bool WindowPreviews { get; init; }
@@ -49,6 +51,12 @@ public sealed record BridgeProcessOptions(string InstallationRoot, string Settin
             "--installed-catalog-root", Path.GetFullPath(InstalledCatalogRoot),
             "--accept-timeout-ms", ((int)ConnectTimeout.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture),
         }) info.ArgumentList.Add(value);
+        if (StartupWidgetId is { } startup)
+        {
+            if (startup.Length is < 1 or > 128 || startup.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('.' or '-' or '_')))
+                throw new ArgumentException("Invalid startup widget identifier.");
+            info.ArgumentList.Add("--startup-widget"); info.ArgumentList.Add(startup);
+        }
         return info;
     }
 }

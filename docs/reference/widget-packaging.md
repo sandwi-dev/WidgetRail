@@ -3,6 +3,18 @@
 A `.wrwidget` is a ZIP package with a manifest, code, and declared assets. Users
 install a specific immutable version, then review and enable it.
 
+Startup verifies enabled, selected versions rather than reading every retained
+payload. The requested initial widget is validated first, and verified widgets
+become available progressively. An incomplete catalog does not mean that other
+widgets were uninstalled. Finishing discovery does not select a widget, reopen
+the overlay, or restore pins.
+
+The lightweight inventory used by marketplace and CLI lists contains display
+information and version directories only; it grants no execution or permission
+authority. Enabling, selecting a different version, permission review, and
+launch admission still use verified package content. Launch holds verified file
+handles, so inventory data or file timestamps never substitute for validation.
+
 ## Typical layout
 
 ```text

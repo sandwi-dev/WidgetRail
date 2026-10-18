@@ -5,7 +5,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetCatalog;
 
-public sealed class WidgetCatalog
+public sealed partial class WidgetCatalog
 {
     private readonly string _root;
     private readonly string _packagesRoot;
@@ -1099,17 +1099,11 @@ public sealed class WidgetCatalog
                     throw new WidgetPackageException(
                         "installed_version_limit",
                         "Installed widget version count exceeds the catalog limit.");
-                FileSystemSafety.EnsureNoReparsePoints(_root, versionDirectory);
-                var manifestPath = Path.Combine(versionDirectory, "manifest.json");
-                if (!File.Exists(manifestPath))
-                    throw new WidgetPackageException("missing_manifest", $"Installed widget is missing manifest.json: {versionDirectory}");
-                FileSystemSafety.EnsureNoReparsePoints(_root, manifestPath);
-                var verification = InstalledPackageIntegrity.Verify(
-                    _root, versionDirectory, _options, CheckBudget);
+                var verified = VerifyVersion(directoryId, versionDirectory, CheckBudget);
                 try
                 {
-                    aggregateEntries = checked(aggregateEntries + verification.EntryCount);
-                    aggregateBytes = checked(aggregateBytes + verification.TotalBytes);
+                    aggregateEntries = checked(aggregateEntries + verified.VerifiedEntryCount);
+                    aggregateBytes = checked(aggregateBytes + verified.VerifiedTotalBytes);
                 }
                 catch (OverflowException exception)
                 {
@@ -1126,33 +1120,7 @@ public sealed class WidgetCatalog
                     throw new WidgetPackageException(
                         "installed_byte_limit",
                         "Installed widget bytes exceed the catalog limit.");
-                CheckBudget();
-                var manifest = verification.Manifest;
-                var errors = WidgetManifestValidator.Validate(manifest);
-                if (errors.Count != 0)
-                    throw new WidgetPackageException("invalid_manifest", $"Installed manifest failed validation: {errors[0].Path}: {errors[0].Message}");
-                if (!string.Equals(manifest.Id, directoryId, StringComparison.Ordinal))
-                    throw new WidgetPackageException("identity_mismatch", $"Manifest ID '{manifest.Id}' does not match directory '{directoryId}'.");
-                if (!Version.TryParse(manifest.Version, out var version) ||
-                    !string.Equals(version.ToString(), Path.GetFileName(versionDirectory), StringComparison.Ordinal) ||
-                    !string.Equals(manifest.Version, Path.GetFileName(versionDirectory), StringComparison.Ordinal))
-                    throw new WidgetPackageException("identity_mismatch", $"Manifest version '{manifest.Version}' does not match its install directory.");
-                var entrypointPath = Path.GetFullPath(Path.Combine(
-                    versionDirectory,
-                    WidgetEntrypointRuntimes.ResolvePackagePath(manifest.Entrypoint)
-                        .Replace('/', Path.DirectorySeparatorChar)));
-                if (!FileSystemSafety.IsWithin(versionDirectory, entrypointPath) || !File.Exists(entrypointPath))
-                    throw new WidgetPackageException("missing_entrypoint", $"Installed widget entrypoint is missing: {entrypointPath}");
-                FileSystemSafety.EnsureNoReparsePoints(_root, entrypointPath);
-                result.Add(new InstalledWidgetVersion(
-                    manifest.Id, version, versionDirectory, manifest, verification.ContentDigest)
-                {
-                    VerifiedWrssDigests = verification.WrssDigests,
-                    VerifiedFiles = verification.VerifiedFiles,
-                    VerificationOptions = _options,
-                    VerifiedEntryCount = verification.EntryCount,
-                    VerifiedTotalBytes = verification.TotalBytes,
-                });
+                result.Add(verified);
             }
         }
         return result.OrderBy(item => item.Id, StringComparer.Ordinal)
@@ -1160,13 +1128,51 @@ public sealed class WidgetCatalog
             .ToArray();
     }
 
+
+    private InstalledWidgetVersion VerifyVersion(string directoryId, string versionDirectory, Action checkpoint)
+    {
+        FileSystemSafety.EnsureNoReparsePoints(_root, versionDirectory);
+        var manifestPath = Path.Combine(versionDirectory, "manifest.json");
+        if (!File.Exists(manifestPath))
+            throw new WidgetPackageException("missing_manifest", $"Installed widget is missing manifest.json: {versionDirectory}");
+        FileSystemSafety.EnsureNoReparsePoints(_root, manifestPath);
+        var verification = InstalledPackageIntegrity.Verify(
+            _root, versionDirectory, _options, checkpoint);
+        var manifest = verification.Manifest;
+        var errors = WidgetManifestValidator.Validate(manifest);
+        if (errors.Count != 0)
+            throw new WidgetPackageException("invalid_manifest", $"Installed manifest failed validation: {errors[0].Path}: {errors[0].Message}");
+        if (!string.Equals(manifest.Id, directoryId, StringComparison.Ordinal))
+            throw new WidgetPackageException("identity_mismatch", $"Manifest ID '{manifest.Id}' does not match directory '{directoryId}'.");
+        if (!Version.TryParse(manifest.Version, out var version) ||
+            !string.Equals(version.ToString(), Path.GetFileName(versionDirectory), StringComparison.Ordinal) ||
+            !string.Equals(manifest.Version, Path.GetFileName(versionDirectory), StringComparison.Ordinal))
+            throw new WidgetPackageException("identity_mismatch", $"Manifest version '{manifest.Version}' does not match its install directory.");
+        var entrypointPath = Path.GetFullPath(Path.Combine(
+            versionDirectory,
+            WidgetEntrypointRuntimes.ResolvePackagePath(manifest.Entrypoint)
+                .Replace('/', Path.DirectorySeparatorChar)));
+        if (!FileSystemSafety.IsWithin(versionDirectory, entrypointPath) || !File.Exists(entrypointPath))
+            throw new WidgetPackageException("missing_entrypoint", $"Installed widget entrypoint is missing: {entrypointPath}");
+        FileSystemSafety.EnsureNoReparsePoints(_root, entrypointPath);
+        return new InstalledWidgetVersion(
+            manifest.Id, version, versionDirectory, manifest, verification.ContentDigest)
+        {
+            VerifiedWrssDigests = verification.WrssDigests,
+            VerifiedFiles = verification.VerifiedFiles,
+            VerificationOptions = _options,
+            VerifiedEntryCount = verification.EntryCount,
+            VerifiedTotalBytes = verification.TotalBytes,
+        };
+    }
+
     private IReadOnlyList<(string Id, Version Version)> DiscoverRepairDirectories(
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool repairBounds = true)
     {
         if (!Directory.Exists(_packagesRoot)) return [];
-        var maximumIds = Math.Min(10_000, _options.MaximumInstalledWidgetIds + 32);
-        var maximumPerWidget = Math.Min(10_000, _options.MaximumVersionsPerWidget + 128);
-        var maximumVersions = Math.Min(10_000, _options.MaximumInstalledVersions + 512);
+        var maximumIds = repairBounds ? Math.Min(10_000, _options.MaximumInstalledWidgetIds + 32) : _options.MaximumInstalledWidgetIds;
+        var maximumPerWidget = repairBounds ? Math.Min(10_000, _options.MaximumVersionsPerWidget + 128) : _options.MaximumVersionsPerWidget;
+        var maximumVersions = repairBounds ? Math.Min(10_000, _options.MaximumInstalledVersions + 512) : _options.MaximumInstalledVersions;
         var started = _timeProvider.GetTimestamp();
         void CheckBudget()
         {

@@ -140,7 +140,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
             if (job.Kind == "refresh") await RefreshAsync(job).ConfigureAwait(false);
             else if (job.Kind == "inventory")
             {
-                UpdateInstalled((await _catalog.DiscoverAsync(job.Cancellation.Token).ConfigureAwait(false)).Widgets);
+                UpdateInstalled((await _catalog.InspectInventoryAsync(job.Cancellation.Token).ConfigureAwait(false)).Widgets);
                 Finish(job, "completed", "Installed versions refreshed.");
             }
             else if (job.Kind == "download") await DownloadAsync(job).ConfigureAwait(false);
@@ -167,7 +167,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
 
     private async Task RefreshAsync(OwnedJob job)
     {
-        var installed = await _catalog.DiscoverAsync(job.Cancellation.Token).ConfigureAwait(false);
+        var installed = await _catalog.InspectInventoryAsync(job.Cancellation.Token).ConfigureAwait(false);
         UpdateInstalled(installed.Widgets);
         using var client = new GitHubReleaseClient(_http);
         var releases = await client.ListAsync(Repository, 1, job.Cancellation.Token).ConfigureAwait(false);
@@ -191,7 +191,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
             _snapshot = _snapshot with { Revision = _snapshot.Revision + 1, CheckedAtUtc = _clock.GetUtcNow(),
                 Items = _snapshot.Items.Select(item => selected.TryGetValue(item.Id, out var asset)
                     ? item with { AvailableVersion = asset.Version.ToString(), DownloadBytes = asset.Asset.Size, IsPrerelease = asset.Release.Prerelease,
-                        AvailableVersionSaved = installed.Widgets.FirstOrDefault(w => w.Id == item.Id)?.Versions.Any(v => v.Version == asset.Version) == true }
+                        AvailableVersionSaved = installed.Widgets.FirstOrDefault(w => w.Id == item.Id)?.Versions.Contains(asset.Version) == true }
                     : item with { AvailableVersion = null, DownloadBytes = null, IsPrerelease = false, AvailableVersionSaved = false }).ToArray() };
             Finish(job, "completed", "Marketplace refreshed. Download a widget to check compatibility and review its permissions.");
         }
@@ -301,20 +301,20 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         try
         {
             await settings.ReloadAsync().ConfigureAwait(false);
-            UpdateInstalled((await _catalog.DiscoverAsync(CancellationToken.None).ConfigureAwait(false)).Widgets);
+            UpdateInstalled((await _catalog.InspectInventoryAsync(CancellationToken.None).ConfigureAwait(false)).Widgets);
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         { message = "The package was installed, but the widget list could not refresh. Open Widgets in Settings and refresh."; }
         return message;
     }
 
-    private void UpdateInstalled(IReadOnlyList<CatalogWidget> widgets)
+    private void UpdateInstalled(IReadOnlyList<WidgetInventoryEntry> widgets)
     {
         lock (_gate) _snapshot = _snapshot with { Revision = _snapshot.Revision + 1,
             Items = _snapshot.Items.Select(item => item with
-            { InstalledVersion = widgets.FirstOrDefault(w => w.Id == item.Id)?.ActiveVersion.Version.ToString(),
+            { InstalledVersion = widgets.FirstOrDefault(w => w.Id == item.Id)?.SelectedVersion.ToString(),
                 AvailableVersionSaved = Version.TryParse(item.AvailableVersion, out var available) &&
-                    widgets.FirstOrDefault(w => w.Id == item.Id)?.Versions.Any(v => v.Version == available) == true }).ToArray() };
+                    widgets.FirstOrDefault(w => w.Id == item.Id)?.Versions.Contains(available) == true }).ToArray() };
     }
     internal PlatformWidgetPackageNotification TakeNotification()
     {

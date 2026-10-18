@@ -44,13 +44,16 @@ internal static class VersionCommand
         if (parsed.Positionals.Count != 1)
             throw new CliUsageException("Usage: wrail version list <widget-id> [--catalog <root>]");
 
-        var widget = await GetWidgetAsync(parsed.Positionals[0], parsed.Option("--catalog"), cancellationToken);
+        var root = CatalogPath.Resolve(parsed.Option("--catalog"));
+        var inventory = await new CatalogService(root).InspectInventoryAsync(cancellationToken);
+        var widget = inventory.Widgets.SingleOrDefault(item => item.Id == parsed.Positionals[0])
+            ?? throw new CliOperationException($"Widget '{parsed.Positionals[0]}' is not installed.");
         await output.WriteLineAsync(
-            $"{widget.Id} is {(widget.Enabled ? "enabled" : "disabled")}; active version {widget.ActiveVersion.Version}.");
-        foreach (var installed in widget.Versions)
+            $"{widget.Id} is {(widget.Enabled ? "enabled" : "disabled")}; active version {widget.SelectedVersion}.");
+        foreach (var version in widget.Versions)
         {
-            var marker = installed.Version == widget.ActiveVersion.Version ? "active" : "     ";
-            await output.WriteLineAsync($"{marker}  {installed.Version}  {installed.InstallPath}");
+            var marker = version == widget.SelectedVersion ? "active" : "     ";
+            await output.WriteLineAsync($"{marker}  {version}  {Path.Combine(root, "packages", widget.Id, version.ToString())}");
         }
         return 0;
     }

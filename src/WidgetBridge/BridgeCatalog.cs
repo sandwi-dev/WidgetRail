@@ -460,45 +460,67 @@ public sealed class BridgeCatalog
         string trustedCatalogPath,
         string installedCatalogRoot,
         string workerHostExecutable,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? priorityWidgetIds = null,
+        Func<BridgeCatalogLoadResult, CancellationToken, Task>? publish = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(workerHostExecutable);
         var installedRoot = Path.GetFullPath(installedCatalogRoot);
         var trustedLoad = LoadTrustedObserved(trustedCatalogPath, installedRoot);
-        var trusted = trustedLoad.Catalog;
         var workerHost = Path.GetFullPath(workerHostExecutable);
         var warnings = trustedLoad.Warnings.ToList();
-        WidgetCatalogSnapshot installed;
+        var combined = trustedLoad.Catalog._ordered.ToList();
+        var installed = new List<CatalogWidget>();
         var discoveryStarted = Stopwatch.GetTimestamp();
         try
         {
-            installed = await new CatalogService(
-                installedRoot).DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            await foreach (var widget in new CatalogService(installedRoot)
+                .DiscoverEnabledAsync(priorityWidgetIds, cancellationToken).ConfigureAwait(false))
+            {
+                installed.Add(widget);
+                AppendInstalledWidgets([widget], combined, warnings, installedRoot, workerHost);
+                if (publish is not null)
+                    await publish(Result(false), cancellationToken).ConfigureAwait(false);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Result(true);
+        }
+        catch (WidgetPackageException exception) when (exception.Code == "catalog_changed")
+        {
+            // A concurrent enable/version/order edit supersedes this scan. It
+            // is not evidence that already-admitted package bytes are corrupt.
+            throw new BridgeCatalogSelectionChangedException();
         }
         catch (Exception exception) when (exception is WidgetPackageException or IOException or UnauthorizedAccessException)
         {
             var code = exception is WidgetPackageException package ? package.Code : "catalog_unavailable";
             warnings.Add($"Installed widget catalog was ignored ({SafeDiagnostic(code)}).");
-            return new BridgeCatalogLoadResult(
-                trusted, warnings, InstalledCatalogValid: false)
+            return new BridgeCatalogLoadResult(trustedLoad.Catalog, warnings.ToArray(), InstalledCatalogValid: false)
             {
                 WidgetRejections = trustedLoad.WidgetRejections,
-                InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
-                    Succeeded: false,
-                    PackageCount: 0,
-                    VersionCount: 0,
-                    FileCount: 0,
-                    ByteCount: 0,
-                    ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)),
+                InstalledCatalogObservation = new(false, installed.Count, installed.Count,
+                    installed.Sum(widget => widget.ActiveVersion.VerifiedEntryCount),
+                    installed.Sum(widget => widget.ActiveVersion.VerifiedTotalBytes), BoundedElapsedMilliseconds(discoveryStarted)),
             };
         }
 
-        var combined = trusted._ordered.ToList();
+        BridgeCatalogLoadResult Result(bool complete) => new(new BridgeCatalog(combined).WithCompleteness(complete), warnings.ToArray())
+        {
+            WidgetRejections = trustedLoad.WidgetRejections,
+            InstalledCatalogObservation = complete ? new(true, installed.Count, installed.Count,
+                installed.Sum(widget => widget.ActiveVersion.VerifiedEntryCount),
+                installed.Sum(widget => widget.ActiveVersion.VerifiedTotalBytes), BoundedElapsedMilliseconds(discoveryStarted)) : null,
+        };
+    }
+
+    private static void AppendInstalledWidgets(IEnumerable<CatalogWidget> widgets, List<ConfiguredWidget> combined,
+        List<string> warnings, string installedRoot, string workerHost)
+    {
         var known = combined.Select(widget => widget.Id).ToHashSet(StringComparer.Ordinal);
         var knownPackages = combined.Select(widget => widget.PackageId)
             .ToHashSet(StringComparer.Ordinal);
-        foreach (var widget in installed.Widgets.Where(item => item.Enabled))
+        foreach (var widget in widgets.Where(item => item.Enabled))
         {
             if (combined.Count == 256)
             {
@@ -645,20 +667,6 @@ public sealed class BridgeCatalog
                 PackageIconAdmissionFailure = packageIconFailure,
             }));
         }
-        return new BridgeCatalogLoadResult(
-            new BridgeCatalog(combined), warnings, InstalledCatalogValid: true)
-        {
-            WidgetRejections = trustedLoad.WidgetRejections,
-            InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
-                Succeeded: true,
-                PackageCount: installed.Widgets.Count,
-                VersionCount: installed.Widgets.Sum(widget => widget.Versions.Count),
-                FileCount: installed.Widgets.Sum(widget =>
-                    widget.Versions.Sum(version => version.VerifiedEntryCount)),
-                ByteCount: installed.Widgets.Sum(widget =>
-                    widget.Versions.Sum(version => version.VerifiedTotalBytes)),
-                ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)),
-        };
     }
 
     internal static BridgeCatalog LoadTrusted(
@@ -1287,6 +1295,11 @@ internal readonly record struct BridgeInstalledCatalogObservation(
     int FileCount,
     long ByteCount,
     long ElapsedMilliseconds);
+
+internal sealed class BridgeCatalogSelectionChangedException : IOException
+{
+    internal BridgeCatalogSelectionChangedException() : base("Installed selections changed during catalog validation.") { }
+}
 
 public sealed record BridgeCatalogLoadResult(
     BridgeCatalog Catalog,

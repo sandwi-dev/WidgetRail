@@ -267,13 +267,13 @@ internal static class InstallCommand
 
 internal static class ListCommand
 {
-    public static async Task<int> RunAsync(string[] args, TextWriter output)
+    public static async Task<int> RunAsync(string[] args, TextWriter output, CancellationToken cancellationToken = default)
     {
         var parsed = new CommandArguments(args, "--catalog");
         if (parsed.Positionals.Count != 0)
             throw new CliUsageException("Usage: wrail list [--catalog <root>]");
 
-        var snapshot = await new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog"))).DiscoverAsync();
+        var snapshot = await new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog"))).InspectInventoryAsync(cancellationToken);
         if (snapshot.Widgets.Count == 0)
         {
             await output.WriteLineAsync("No widgets installed.");
@@ -285,7 +285,7 @@ internal static class ListCommand
             var versions = widget.Versions.Count == 1 ? "1 version" : $"{widget.Versions.Count} versions";
             await output.WriteLineAsync(
                 $"{(widget.Enabled ? "enabled " : "disabled")}  {widget.Id}  " +
-                $"{widget.ActiveVersion.Version}  {widget.Name}  ({versions})");
+                $"{widget.SelectedVersion}  {widget.Name}  ({versions})");
         }
         return 0;
     }

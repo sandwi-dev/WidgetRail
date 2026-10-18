@@ -30,7 +30,8 @@ internal readonly record struct BridgeCatalogStateSnapshot(
 /// <summary>
 /// Maintains one validated, last-good bridge catalog and publishes monotonically
 /// increasing revisions. File-system notifications are hints only: every
-/// publication is produced by a complete bounded reload and semantic comparison.
+/// publication is produced by bounded validation and semantic comparison. Startup
+/// can add individually verified selections before its terminal catalog revision.
 /// </summary>
 public sealed class BridgeCatalogMonitor : IAsyncDisposable
 {
@@ -52,6 +53,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     });
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Func<CancellationToken, Task<BridgeCatalogLoadResult>> _loadCatalog;
+    private readonly Func<CancellationToken, Func<BridgeCatalogLoadResult, CancellationToken, Task>, Task<BridgeCatalogLoadResult>>? _loadProgressively;
     private readonly Action<BridgeInstalledCatalogObservation>? _catalogLoadObserved;
     private readonly Func<CancellationToken, Task> _prepareWatchers;
     private readonly Action? _beforePublicationCheck;
@@ -104,7 +106,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         Func<CancellationToken, Task>? prepareWatchers = null,
         Action? beforePublicationCheck = null,
         IReadOnlyList<BridgeCatalogWidgetRejection>? initialWidgetRejections = null,
-        string? settingsFilePath = null)
+        string? settingsFilePath = null,
+        Func<CancellationToken, Func<BridgeCatalogLoadResult, CancellationToken, Task>, Task<BridgeCatalogLoadResult>>? loadProgressively = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trustedCatalogPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
@@ -113,6 +116,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         _installedCatalogRoot = Path.GetFullPath(installedCatalogRoot);
         _workerHostExecutable = Path.GetFullPath(workerHostExecutable);
         _settingsFilePath = settingsFilePath;
+        _loadProgressively = loadProgressively;
         _current = (initialCatalog ?? throw new ArgumentNullException(nameof(initialCatalog)))
             .WithCompleteness(!installedCatalogPending);
         _lastDiagnostics = initialDiagnostics?.Take(64).ToArray() ?? [];
@@ -271,7 +275,22 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             IReadOnlyList<string>? loadFailureWarnings = null;
             try
             {
-                loaded = await _loadCatalog(reloadCancellation.Token).ConfigureAwait(false);
+                loaded = _loadProgressively is null
+                    ? await _loadCatalog(reloadCancellation.Token).ConfigureAwait(false)
+                    : await _loadProgressively(reloadCancellation.Token, (progress, token) =>
+                    {
+                        PublishStartupProgress(progress, demand, token);
+                        return Task.CompletedTask;
+                    }).ConfigureAwait(false);
+            }
+            catch (BridgeCatalogSelectionChangedException)
+            {
+                lock (_stateGate)
+                {
+                    reloadCancellation.Token.ThrowIfCancellationRequested();
+                    SignalReload(forceRevision: false);
+                    return new(false, true, _revision, _current, ["Catalog selections changed; validation will retry."]);
+                }
             }
             catch (Exception exception) when (exception is BridgeCatalogException or WidgetRail.PlatformSettings.PlatformSettingsException or
                                                    IOException or UnauthorizedAccessException)
@@ -289,6 +308,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             BridgeCatalogReloadResult result;
             lock (_stateGate)
             {
+                reloadCancellation.Token.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 if (demand.Generation != _reloadDemandGeneration)
                     return new BridgeCatalogReloadResult(
                         false, true, _revision, _current,
@@ -360,6 +381,28 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         {
             _reloadGate.Release();
         }
+    }
+
+    private void PublishStartupProgress(BridgeCatalogLoadResult progress, ReloadDemand demand, CancellationToken token)
+    {
+        BridgeCatalogChanged? changed = null;
+        lock (_stateGate)
+        {
+            token.ThrowIfCancellationRequested();
+            if (_disposed || !_installedCatalogPending || demand.Generation != _reloadDemandGeneration || !progress.InstalledCatalogValid) return;
+            var next = ApplyRuntimeChoices(progress.Catalog).WithCompleteness(false);
+            // Progress only adds admitted widgets. A retried/replaced discovery
+            // cannot temporarily remove/restart a widget the user has already
+            // entered. Replacements and removals commit at the terminal revision.
+            var incoming = next.IntentWidgets.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
+            if (_current.IntentWidgets.Any(widget => !incoming.TryGetValue(widget.Id, out var replacement) ||
+                    widget.WorkerFingerprint != replacement.WorkerFingerprint) || _current.IsEquivalentTo(next)) return;
+            _current = next;
+            _lastDiagnostics = progress.Warnings.Take(64).ToArray();
+            _widgetRejections = progress.WidgetRejections.Take(256).ToArray();
+            changed = new(++_revision, _current, _lastDiagnostics);
+        }
+        Changed?.Invoke(this, changed);
     }
 
     public async ValueTask DisposeAsync()

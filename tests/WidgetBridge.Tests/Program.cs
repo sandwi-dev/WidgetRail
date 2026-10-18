@@ -237,6 +237,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
+    ("Catalog progressive startup admits the requested widget without changing user lifecycle", ProgressiveCatalogPreservesLifecycle),
+    ("Catalog progressive startup rejects superseded and cancelled results", ProgressiveCatalogRejectsLateResults),
     ("Catalog completeness is revisioned through failure and same-widget recovery", CatalogCompletenessRecovery),
     ("Cold installed catalog loading does not block trusted bridge readiness", ColdInstalledCatalogDoesNotBlockBridgeReadiness),
     ("Catalog reload authority is single-flight latest-wins and cancellable", CatalogReloadAuthorityIsLatestWinsAndCancellable),
@@ -3781,6 +3783,119 @@ static async Task InvalidInstalledStyleFailsSoft()
     Assert.Equal(1, load.Warnings.Count);
     Assert.True(load.Warnings[0].Contains("invalid styles", StringComparison.Ordinal),
         "Expected invalid installed styles to be isolated to their package.");
+}
+
+static async Task ProgressiveCatalogPreservesLifecycle()
+{
+    using var trustedFiles = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("wrail-progressive-startup");
+    var root = Path.Combine(temporary.Path, "catalog");
+    var packages = new WidgetRail.WidgetCatalog.WidgetCatalog(root);
+    await InstallWidgetAsync(packages, temporary.Path, "dev.example.alpha", true);
+    await InstallWidgetAsync(packages, temporary.Path, "dev.example.beta", true);
+    var trusted = BridgeCatalog.LoadTrusted(trustedFiles.Path, root);
+    var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    await using var registry = new RegistryFixture(trusted);
+    await using var monitor = new BridgeCatalogMonitor(trustedFiles.Path, root, Environment.ProcessPath!, trusted,
+        initialDiagnostics: null, installedCatalogPending: true, loadCatalog: null,
+        loadProgressively: (token, publish) => BridgeCatalog.LoadWithInstalledObservedAsync(
+            trustedFiles.Path, root, Environment.ProcessPath!, token, ["dev.example.beta"], async (partial, ct) =>
+            {
+                await publish(partial, ct);
+                if (!ready.Task.IsCompleted) { ready.SetResult(); await release.Task.WaitAsync(ct); }
+            }));
+    monitor.Changed += (_, change) => registry.Registry.ApplyCatalog(change.Catalog, change.Revision);
+    var loading = monitor.ReloadNowAsync();
+    try
+    {
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(monitor.Current.IsComplete, "Partial catalog was marked complete.");
+        Assert.SequenceEqual(new[] { "test-widget", "dev.example.beta" }, monitor.Current.Widgets.Select(widget => widget.Id));
+        Assert.Equal(0, registry.Clients.Count); // Discovery itself never starts a worker.
+        await registry.SetLifecycleAsync("dev.example.beta", WidgetLifecycleState.Interactive);
+        await registry.SetLifecycleAsync("dev.example.beta", WidgetLifecycleState.Background);
+        await registry.SetLifecycleAsync("test-widget", WidgetLifecycleState.Interactive);
+        await registry.SetLifecycleAsync("test-widget", WidgetLifecycleState.Background);
+        release.SetResult();
+        var completed = await loading.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(completed.Current.IsComplete, "Final admission did not close discovery.");
+        Assert.Equal(2, registry.Clients.Count);
+        Assert.True(registry.Clients.All(client => client.Starts == 1 && client.DisposeCount == 0 &&
+            client.LifecycleStates.Last() == WidgetLifecycleState.Background),
+            "Later catalog batches restarted, reopened or stole lifecycle from the user's selection.");
+        await registry.SetLifecycleAsync("test-widget", WidgetLifecycleState.Interactive);
+        Assert.Equal(1, registry.Clients.Single(client => client.WidgetId == "test-widget").Starts);
+    }
+    finally { release.TrySetResult(); await loading; }
+}
+
+static async Task ProgressiveCatalogRejectsLateResults()
+{
+    using var trustedFiles = TemporaryCatalog.Create();
+    using var extraFiles = TemporaryCatalog.Create(id: "later-widget", instanceId: "later.instance");
+    using var temporary = new TemporaryDirectory("wrail-progressive-races");
+    var trusted = BridgeCatalog.Load(trustedFiles.Path);
+    var extra = BridgeCatalog.Load(extraFiles.Path);
+    var added = new BridgeCatalog([.. trusted.IntentWidgets, .. extra.IntentWidgets]);
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var calls = 0;
+    await using var monitor = new BridgeCatalogMonitor(trustedFiles.Path, temporary.Path, Environment.ProcessPath!, trusted,
+        initialDiagnostics: null, installedCatalogPending: true, loadCatalog: null,
+        loadProgressively: async (token, publish) =>
+        {
+            if (++calls == 1)
+            {
+                entered.SetResult(); await release.Task; // deliberately ignores cancellation until delivery
+                await publish(new(added, []), token);
+                return new(added, []);
+            }
+            return new(trusted, []);
+        });
+    var publishedExtra = false;
+    monitor.Changed += (_, change) => publishedExtra |= change.Catalog.Widgets.Any(widget => widget.Id == "later-widget");
+    var stale = monitor.ReloadNowAsync();
+    await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    var newest = monitor.ReloadNowAsync();
+    release.SetResult();
+    Assert.False((await stale).Published, "Superseded terminal result was published.");
+    await newest;
+    Assert.False(publishedExtra, "Superseded progress admitted a stale widget.");
+
+    var selectionCalls = 0;
+    await using var selectionMonitor = new BridgeCatalogMonitor(trustedFiles.Path, temporary.Path, Environment.ProcessPath!, trusted,
+        initialDiagnostics: null, installedCatalogPending: true, loadCatalog: null,
+        loadProgressively: async (token, publish) =>
+        {
+            await publish(new(added, []), token);
+            if (++selectionCalls == 1) throw new BridgeCatalogSelectionChangedException();
+            return new(added, []);
+        });
+    var changedSelection = await selectionMonitor.ReloadNowAsync();
+    Assert.True(changedSelection.RetainedLastGood && !selectionMonitor.Current.IsComplete &&
+        selectionMonitor.Current.Widgets.Any(widget => widget.Id == "later-widget"),
+        "Changing another selection during discovery revoked an already admitted widget.");
+    await selectionMonitor.ReloadNowAsync();
+    Assert.True(selectionMonitor.Current.IsComplete, "A fresh validation did not finish after selection changed.");
+
+    var cancelEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var cancelRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var cancellation = new CancellationTokenSource();
+    await using var cancelledMonitor = new BridgeCatalogMonitor(trustedFiles.Path, temporary.Path, Environment.ProcessPath!, trusted,
+        initialDiagnostics: null, installedCatalogPending: true, loadCatalog: null,
+        loadProgressively: async (token, publish) =>
+        {
+            cancelEntered.SetResult(); await cancelRelease.Task;
+            await publish(new(added, []), token);
+            return new(added, []);
+        });
+    var cancelled = cancelledMonitor.ReloadNowAsync(cancellation.Token);
+    await cancelEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    cancellation.Cancel(); cancelRelease.SetResult();
+    await Assert.ThrowsAsync<OperationCanceledException>(async () => { await cancelled; });
+    Assert.Equal(0L, cancelledMonitor.Revision);
+    Assert.SequenceEqual(trusted.Widgets.Select(widget => widget.Id), cancelledMonitor.Current.Widgets.Select(widget => widget.Id));
 }
 
 static async Task CatalogMonitorIsRevisionedAndLastGood()

@@ -7,6 +7,14 @@ namespace WidgetPresentationSession.Tests;
 public sealed class BridgeProcessOptionsTests
 {
     [TestMethod]
+    public void StartupPriorityIsOptionalAndRemainsOneBoundedArgument()
+    {
+        var options = new BridgeProcessOptions(@"C:\candidate", @"C:\profile", @"C:\catalog") { StartupWidgetId = "dev.example.widget" };
+        CollectionAssert.AreEqual(new[] { "--startup-widget", "dev.example.widget" }, options.CreateStartInfo("pipe").ArgumentList.TakeLast(2).ToArray());
+        foreach (var invalid in new[] { "", "../widget", "widget --other", new string('a', 129) })
+            Assert.ThrowsExactly<ArgumentException>(() => (options with { StartupWidgetId = invalid }).CreateStartInfo("pipe"));
+    }
+    [TestMethod]
     public void BundledRuntimeIsSelectedOnlyInTheChildEnvironment()
     {
         var root = Path.Combine(Path.GetTempPath(), "wrail-runtime-" + Guid.NewGuid().ToString("N"));

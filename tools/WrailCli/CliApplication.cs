@@ -49,7 +49,7 @@ public static class CliApplication
                 "repair" => await RepairCommand.RunAsync(args[1..], output, cancellationToken),
                 "authority-recovery" => await AuthorityRecoveryCommand.RunAsync(
                     args[1..], output, cancellationToken),
-                "list" => await ListCommand.RunAsync(args[1..], output),
+                "list" => await ListCommand.RunAsync(args[1..], output, cancellationToken),
                 "enable" => await EnabledCommand.RunAsync(args[1..], output, enabled: true),
                 "disable" => await EnabledCommand.RunAsync(args[1..], output, enabled: false),
                 "version" => await VersionCommand.RunAsync(args[1..], output, cancellationToken),
