@@ -25,8 +25,11 @@ internal static class MarketplaceScenarios
             await Action("open.marketplace");
             Check(Snapshot().ActiveInputScopeId == "marketplace.page", "Wrong browse input scope");
             Check(Node("marketplace.heading").Text == "WidgetRail Catalogue", "Catalogue page heading missing");
+            await Action("marketplace.refresh");
+            Check(service.ManualRefresh, "Explicit Settings refresh did not bypass freshness through the bounded host contract");
             var listing = Walk(Snapshot().Root).Single(n => n.ActionId?.StartsWith("marketplace.select.") == true);
             await Action(listing.ActionId!);
+            Check(Node("marketplace.version").Text!.Contains("Previously checked release"), "Settings hid retained release provenance");
             Check(Node("marketplace.screenshot").Kind == ViewNodeKind.Image, "Screenshot was not displayed");
             Check(Snapshot().Root.Shortcuts.Any(s => s.Button == ControllerButton.RightBumper && s.ActionId == "marketplace.screenshot.next"),
                 "Screenshot controller shortcut missing");
@@ -51,6 +54,7 @@ internal static class MarketplaceScenarios
             await Action("marketplace.install");
             Check(service.InstallCalls == 1 && service.ApprovedFullTrust, "Exact review was not approved");
             Check(Node("marketplace.version").Text!.Contains("2.0.0"), "Installed version did not refresh");
+            Check(!Node("marketplace.version").Text!.Contains("Up to date"), "Retained release claimed a fully checked latest version");
             await Action("back");
             Check(Snapshot().InitialFocusId == listing.Id, "Back lost the selected listing");
         }
@@ -66,12 +70,14 @@ internal static class MarketplaceScenarios
     {
         internal int InstallCalls;
         internal bool ApprovedFullTrust;
+        internal bool ManualRefresh;
         private MarketplaceSnapshot _snapshot = new(1,
             [new("dev.test.marketplace", "Test widget", "Description", ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/main/docs/images/overview-rail.png",
-                "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/main/docs/images/pinned-video.png"], "2.0.0", "1.0.0", 1000)], CheckedAtUtc: DateTimeOffset.UtcNow);
+                "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/main/docs/images/pinned-video.png"], "2.0.0", "1.0.0", 1000, RetainedAvailability: true)], CheckedAtUtc: DateTimeOffset.UtcNow);
         public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken token = default) => ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
         public ValueTask<MarketplaceSnapshot> MarketplaceAsync(MarketplaceCommand command, CancellationToken token = default)
         {
+            if (command.Action == "refresh") ManualRefresh = command.ForceRefresh;
             if (command.Action == "download")
                 _snapshot = _snapshot with { Revision = 2, Operation = new(new string('A', 32), "download", "running", "dev.test.marketplace") };
             if (command.Action == "install")

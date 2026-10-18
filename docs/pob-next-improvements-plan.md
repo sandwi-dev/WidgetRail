@@ -14,11 +14,11 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | 2 | Adjust widget dimensions and stabilize workspace sizing | Implemented sizing policy; native verification pending |
 | 2a | Compact layouts and inspect the app for couch readability | Agreed; not started |
 | 2b | Improve PoB editing and inspection workflows using Redux as a reference | Agreed; not started |
-| 3 | Bring PoE1 to a tested beta candidate and audit new features | Agreed; not started |
+| 3 | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; packaging/native inspection pending |
 | 4 | Complete passive-tree artwork and measure rendering improvements | Agreed; not started |
 | 5 | Add whole-build and loadout comparison | Agreed; not started |
 | 6 | Add unified search and direct navigation | Agreed; not started |
-| Independent host change | Rename Marketplace to WidgetRail Catalogue | In progress; focused tests passed |
+| Independent host change | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, setup prerequisites and card styling implemented; focused and native checks passed |
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Agreed; not started |
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
 | Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Existing facilities audited; extension pending |
@@ -282,6 +282,14 @@ Current-source audit confirms `PrivilegesRequired=lowest`, per-user installation
 References: [Inno command-line options](https://jrsoftware.org/ishelp/topic_setupcmdline.htm), [privilege behavior](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm), and [Smart App Control](https://learn.microsoft.com/windows/apps/develop/smart-app-control/overview). Read the current documentation when implementing. This is update-workflow work, not a signing/package-identity migration or authorization to resume unrelated deferred CI repairs.
 
 ## Final documentation audit and retirement
+
+### Everyday experience first (approved 2026-10-18)
+
+- [ ] Rewrite the README opening around **Your PC, ready for a controller**: use the existing Windows desktop and games without entering a separate fullscreen launcher. Explain launch once/startup at sign-in and the supported View + Menu toggle before introducing the C# framework.
+- [ ] Make Quick Start demonstrate one useful action: install/launch, open with View + Menu, adjust an application's volume with Audio Mixer, then hide and return. Account for Bare edition needing Audio Mixer installed through Catalogue; recommend Production for this first-run example.
+- [ ] Keep the README order: opening and short demo, Quick Start, everyday uses, optional widgets and setup, compatibility, building widgets. Preserve the existing documentation-index structure. Move CLI commands, renderer/cache internals and exhaustive setting tables into maintained guides.
+- [ ] Reconcile Settings → General, Appearance/interface size, update checks versus explicit installation, current update recovery behavior and path-specific install/enable/permission behavior. Keep one detailed explanation per topic and link to it.
+- [ ] Add a clearly marked owner-supplied demonstration placeholder: one uninterrupted supported desktop/game → open overlay → adjust audio → switch app or pin content → hide sequence, with View + Menu visible. Use placeholders only for assets or information the owner must supply, never in place of facts verifiable from code.
 
 Run this after implementation decisions settle, then recheck changed links and examples before delivery. Public documentation should describe the actual delivered app, not a mixture of former plans and current behavior.
 

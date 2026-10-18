@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using WidgetRail.PackageDistribution;
 using WidgetRail.PlatformDiagnostics;
 using WidgetRail.WidgetProtocol;
 
@@ -63,6 +64,7 @@ internal sealed partial class BridgeWidgetMarketplace
 
     private async Task DownloadBatchAsync(OwnedJob job, IReadOnlyList<string> ids)
     {
+        using var releases = new GitHubReleaseClient(_http); // One checksum manifest fetch per release in this batch.
         var packages = new List<PendingPackage>();
         var transferred = false;
         long retained = 0;
@@ -84,7 +86,7 @@ internal sealed partial class BridgeWidgetMarketplace
                         UpdateBatchItem(job, id, "failed", "This update exceeds the space reserved for this batch. Update it separately.");
                         continue;
                     }
-                    package = await DownloadPackageAsync(job, id, cleanCache: false).ConfigureAwait(false);
+                    package = await DownloadPackageAsync(job, id, cleanCache: false, releases).ConfigureAwait(false);
                     if (!package.Review.Compatible || package.Review.InstalledVersion is null)
                     {
                         UpdateBatchItem(job, id, "failed", package.Review.InstalledVersion is null

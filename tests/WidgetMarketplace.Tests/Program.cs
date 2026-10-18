@@ -38,7 +38,21 @@ if (args is ["--probe-live-review"])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Catalogue cache: freshness and conditional refresh", MarketplaceCacheTests.FreshnessAndValidators),
+    ("Catalogue cache: bounded older release discovery", MarketplaceCacheTests.PaginationAndBound),
+    ("Catalogue cache: removed pages invalidate old releases", MarketplaceCacheTests.PaginationShrinks),
+    ("Catalogue cache: stale content and primary cooldown", MarketplaceCacheTests.CooldownAndStale),
+    ("Catalogue cache: secondary limits back off without automatic retries", MarketplaceCacheTests.SecondaryBackoffAndNoAutomaticRetry),
+    ("Catalogue cache: successful exhausted responses stop pagination", MarketplaceCacheTests.SuccessfulExhaustionStopsPagination),
+    ("Catalogue cache: concurrent checks and waiter cancellation", MarketplaceCacheTests.CoalescingAndCancellation),
+    ("Catalogue cache: malformed and oversized metadata", MarketplaceCacheTests.MalformedAndBoundedResponses),
+    ("Catalogue cache: Last-Modified and unexpected unchanged response", MarketplaceCacheTests.LastModifiedAndUnexpected304),
+    ("Catalogue cache: curated releases survive aging outside a bounded scan", MarketplaceCacheTests.RetainedCuratedAvailability),
+    ("Catalogue cache: bridge preserves availability and refresh wire intent", MarketplaceCacheTests.BridgeAndWire),
     ("Batch updates require aggregate exact review and preserve preferences", MarketplaceBatchTests.ApprovalAndResults),
+    ("Batch packages share a published checksum manifest within one review", MarketplaceBatchTests.SharedChecksumManifest),
+    ("Failed checksum manifests are not retried for every package", MarketplaceBatchTests.ChecksumFailureDoesNotRetryPerPackage),
+    ("Shared checksum metadata retains per-asset integrity and ambiguity checks", MarketplaceBatchTests.SharedChecksumsStillValidateEachAsset),
     ("Batch download failures retain successful work and retry only failed items", MarketplaceBatchTests.PartialFailureAndRetry),
     ("Batch cancellation retires downloaded reviews and pending network work", MarketplaceBatchTests.CancelDownloadAndReview),
     ("Batch cancellation after publication preserves the committed result", MarketplaceBatchTests.CancelAfterCommit),
@@ -54,6 +68,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Wrong package identity fails without catalog mutation", IdentityMismatch),
     ("Cancellation reaches the network job without blocking status", Cancellation),
     ("Curated embedded inventory and command contracts are bounded", Contracts),
+    ("Setup requirements survive wire and refresh without mutable catalog authority", SetupRequirements),
 };
 var failures = 0;
 foreach (var test in tests)
@@ -226,6 +241,51 @@ static async Task Contracts()
         Check(snapshot.Items.Any(item => item.Id == package), "Marketplace-only listing missing: " + package);
     foreach (var command in new[] { new MarketplaceCommand("install"), new("status", ApproveFullTrust: true), new("download", PackageId: "../../bad") })
         await Reject(() => service.HandleAsync(command, default).AsTask());
+    foreach (var (id, required) in new (string, string[])[]
+    {
+        ("playnite-library", ["Playnite Bridge", "token"]),
+        ("spotify", ["Client ID", "redirect", "Premium"]),
+        ("game-help", ["Gemini API key"]),
+        ("youtube-video", ["YouTube Data API v3"])
+    })
+    {
+        var requirements = string.Join(" ", snapshot.Items.Single(item => item.Id == "widgetrail.samples." + id).SetupRequirements ?? []);
+        Check(required.All(text => requirements.Contains(text, StringComparison.OrdinalIgnoreCase)), "Discovery requirements missing for " + id);
+    }
+    Check(snapshot.Items.Single(item => item.Id == "widgetrail.samples.poe1-companion").Name.EndsWith("(Beta)", StringComparison.Ordinal),
+        "PoE1 beta engine is not identified in its listing");
+}
+static async Task SetupRequirements()
+{
+    var item = new MarketplaceItem("test.widget", "Widget", "Description", []);
+    Check(MarketplaceValidation.SnapshotError(new(0, [item])) is null, "Legacy omitted requirements rejected");
+    Check(MarketplaceValidation.SnapshotError(new(0, [item with { SetupRequirements = [] }])) is null, "Empty requirements rejected");
+    foreach (var invalid in new IReadOnlyList<string>[]
+    {
+        [""], ["  "], ["Line\nbreak"], [null!], [new string('a', 321)], Enumerable.Repeat("Requirement", 9).ToArray()
+    })
+        Check(MarketplaceValidation.SnapshotError(new(0, [item with { SetupRequirements = invalid }])) == "invalid_marketplace_snapshot",
+            "Malformed setup requirements accepted");
+    var bounded = item with { SetupRequirements = Enumerable.Repeat(new string('a', 320), 8).ToArray() };
+    Check(MarketplaceValidation.SnapshotError(new(0, [bounded])) is null, "Valid requirement bounds rejected");
+    var roundTrip = JsonSerializer.Deserialize<MarketplaceItem>(JsonSerializer.Serialize(bounded))!;
+    Check(roundTrip.SetupRequirements!.SequenceEqual(bounded.SetupRequirements!), "Requirements lost on wire roundtrip");
+
+    await using var fixture = new Fixture("2.0.0");
+    var requirements = new List<string> { "Requires an account." };
+    var definitions = new List<CuratedWidget> { new(Fixture.Id, "dev.test", "Widget", "Description", [], requirements) };
+    await using var service = new BridgeWidgetMarketplace(fixture.Catalog, _ => Task.CompletedTask, definitions, fixture.Handler, fixture.Clock);
+    requirements[0] = "Changed after publication.";
+    definitions.Clear();
+    var initial = await service.HandleAsync(new("status"), default);
+    Check(initial.Items.Single().SetupRequirements!.SequenceEqual(["Requires an account."]), "Caller mutation changed published requirements");
+    await service.HandleAsync(new("refresh"), default);
+    var refreshed = await Wait(service, "completed");
+    Check(refreshed.Items.Single().AvailableVersion == "2.0.0" &&
+        refreshed.Items.Single().SetupRequirements!.SequenceEqual(["Requires an account."]), "Refresh lost setup requirements or curated definitions");
+    await service.HandleAsync(new("inventory"), default);
+    var inventory = await Wait(service, "completed");
+    Check(inventory.Items.Single().SetupRequirements!.SequenceEqual(["Requires an account."]), "Inventory refresh lost setup requirements");
 }
 static async Task<MarketplaceSnapshot> Wait(BridgeWidgetMarketplace service, string state, TimeSpan? timeout = null)
 {

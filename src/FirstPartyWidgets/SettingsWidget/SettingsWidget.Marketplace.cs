@@ -51,7 +51,7 @@ public sealed partial class SettingsWidget
             if (count > 0) lock (_stateLock) _marketplaceState = state with
             { ScreenshotIndex = (state.ScreenshotIndex + count + (action.ActionId.EndsWith("next", StringComparison.Ordinal) ? 1 : -1)) % count };
         }
-        else if (action.ActionId == "marketplace.refresh") await ReadMarketplaceAsync(new("refresh"), token).ConfigureAwait(false);
+        else if (action.ActionId == "marketplace.refresh") await ReadMarketplaceAsync(new("refresh", ForceRefresh: true), token).ConfigureAwait(false);
         else if (action.ActionId == "marketplace.manage" && state.SelectedId is not null)
         {
             await ReloadInstalledWidgetsAsync(token).ConfigureAwait(false);

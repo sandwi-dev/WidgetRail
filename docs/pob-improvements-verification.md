@@ -40,3 +40,17 @@ Batch these checks into the integrated candidate pass; repeat only affected case
 - Light/dark/high-contrast appearance where changes affect rendering. Use geometry/accessibility automation broadly and focused screenshots for visual differences.
 
 Actual controller ownership and couch-distance readability remain physical acceptance checks. Model/snapshot tests do not establish those results.
+
+## Catalogue discovery, presentation and release checks (2026-10-18)
+
+Implemented bounded host-lifetime release caching (15-minute freshness, 30-second manual-check minimum, conditional ETag/Last-Modified requests, five serial pages maximum), provider cooldowns without automatic retries, retained availability labelling, and one checksum-manifest read per URL per update batch. Package identity/hash review remains unchanged. Offline service tests: **31/31**; Catalogue presentation: **10/10**; Settings review workflow: **1/1**. No live GitHub stress requests or installs were used.
+
+Catalogue now has fixed navigation/actions, responsive cards, semantic blue headings, gold setup labels, existing status badges, and full **Before you install** requirements. Requirements are bounded plain-text metadata, separate from permissions. Existing Back/selected-card restoration, explicit review and update-all actions are preserved. PoE1 discovery is labelled Beta. Unavailable release data is not labelled Available.
+
+Native local-fixture evidence: `artifacts/pob/catalogue-native04/native-result.json` and `artifacts/pob/catalogue-native-light01/native-result.json`: **37 checks each**, using Neon Circuit and Mineral Light, 900/560 logical-pixel widths, 650 logical-pixel content height, current 125% display scale. Covered Browse, details, Installed, Updates, aggregate review and completed state. Checked initial focus, no horizontal scroll clipping, fixed header while scrolling, top-aligned different-height cards, explicit review approval and native Cancel dispatch. Cropped native renders inspected for wide Browse, narrow details/Updates and light Browse. The initial visual review caught vertically centered shorter cards; responsive-grid children now align at the top, with a native regression assertion.
+
+This is representative native rendering evidence, not physical controller/couch acceptance or completion of the entire compact-layout audit. Empty/error states, broader shared responsive-grid consumers, final catalogue package integration, and remaining distribution terminology still require the integrated pass.
+
+## PoB configuration and gem search implementation
+
+Typed validated configuration metadata, changed-setting section counts/filter, and whole-entry local gem name/upstream-tag search are implemented. Real-engine checks: configuration **11/11 per game**, quick controls **117/117 per game**, architecture/model **30/30**; gem management/search **46/46 PoE1** and **48/48 PoE2**. Tag matching preserves upstream eligibility and ranking; it does not mutate build XML. Evidence: `artifacts/pob/configuration-*`, `gem-search-1-diagnostic.log`, `gem-search-2-final.log`. Native workflow inspection and final Redux attribution remain pending.

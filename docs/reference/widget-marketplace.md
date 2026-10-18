@@ -12,14 +12,29 @@ The catalog describes setup requirements and shows available and installed
 versions. **Browse**, **Installed** and **Updates** separate discovery from
 management. Opening Catalogue checks releases without hiding existing content
 or blocking navigation, while preserving an active download or review. Manual
-**Check for updates** remains available. Preview releases are labelled. The
-current feed inspects the latest 20 non-draft releases and chooses the highest
-matching package version for each curated item.
+**Check for updates** remains available. Preview releases are labelled. Availability
+is cached in the host for 15 minutes, so reopening the widget normally makes no
+release request. Manual checks respect a 30-second minimum spacing and any GitHub
+cooldown. Expired/manual checks use ETag or Last-Modified validators and inspect up
+to five sequential pages of 100 releases, choosing the highest matching package
+version for each curated item. A truncated scan retains previously known curated
+releases outside that window and labels them **Previously checked release**; it
+does not claim their availability is current. Complete scans remove missing assets.
+Failures leave cached information visible with retry guidance. A batch shares its
+release checksum manifest without weakening individual archive verification; a
+new batch checks the manifest again.
 
 Open a listing to view its description, download size and screenshots. LB/RB or
 the screenshot buttons change the preview. YouTube Music has no screenshots in
 the initial catalog. Screenshot URLs are pinned to a repository commit so they
 do not change underneath a published app.
+
+Setup requirements appear before download, separately from package permissions.
+For example, Playnite needs its separate bridge and token; Spotify needs your own
+developer app and Premium for playback; Game Help needs a Gemini API key; YouTube
+Video search needs a YouTube Data API key. Conditional account requirements are
+labelled for the features that need them. Credentials are entered in each widget's
+setup flow, never in Catalogue.
 
 **Y** checks for updates; **X** opens Updates. The three tabs remain available while a job runs.
 **B** returns from details to the previously selected card. From the catalog, B
@@ -82,6 +97,11 @@ digest. Failure to save optional CLI source metadata does not undo installation.
   in the app. Additions require a reviewed app build. The initial source is
   `sandwi-dev/WidgetRail` releases; arbitrary source entry is still available via
   the CLI and local file installation, not through this trusted catalog.
+- Optional `setupRequirements` metadata contains at most eight plain-text entries
+  of 320 characters each. Empty or control-character entries are rejected. The
+  host snapshots this metadata and retains it through release and inventory
+  refreshes. Update it when service prerequisites change; it does not grant
+  permissions or establish that the user already meets a requirement.
 - Publish immutable `<package-id>-<version>.wrwidget` assets with GitHub asset
   digests or a supported checksum manifest. ID, publisher and version inside the
   archive must match the curated listing and advertised asset.

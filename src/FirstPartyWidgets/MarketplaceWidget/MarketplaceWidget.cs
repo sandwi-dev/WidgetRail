@@ -91,7 +91,7 @@ public sealed class MarketplaceWidget : Widget
                 model.Update(s => s with { ReviewToken = null });
                 Work(ct => ReadAsync(new("install-updates", OperationId: operation.Id, ReviewToken: acceptedToken,
                     ApproveFullTrust: batch.Items.Any(item => item.Review?.FullTrust == true)), ct)); break;
-            case "marketplace.refresh" when operation?.State is not ("running" or "review"): Work(ct => ReadAsync(new("refresh"),ct)); break;
+            case "marketplace.refresh" when operation?.State is not ("running" or "review"): Work(ct => ReadAsync(new("refresh", ForceRefresh: true),ct)); break;
             case "marketplace.status": Work(ct => ReadAsync(new("status"),ct)); break;
             case "marketplace.download" when state.Selected is not null && operation?.State is not ("running" or "review"):
                 Work(ct => ReadAsync(new("download",PackageId: state.Selected),ct)); break;
@@ -130,9 +130,9 @@ public sealed class MarketplaceWidget : Widget
     private static string Key(string id) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id)));
     private static bool UpdateAvailable(MarketplaceItem item) => Version.TryParse(item.AvailableVersion,out var available) &&
         Version.TryParse(item.InstalledVersion,out var installed) && available > installed;
-    private static string ItemStatus(MarketplaceItem item) => UpdateAvailable(item) ? $"Update available · {item.InstalledVersion} → {item.AvailableVersion}" :
+    private static string ItemStatus(MarketplaceItem item) => (UpdateAvailable(item) ? $"Update available · {item.InstalledVersion} → {item.AvailableVersion}" :
         item.InstalledVersion is not null ? "Installed " + item.InstalledVersion :
-        item.AvailableVersion is not null ? "Available " + item.AvailableVersion : "Check releases for available versions";
+        item.AvailableVersion is not null ? "Available " + item.AvailableVersion : "Check releases for available versions") + (item.RetainedAvailability ? " · Previously checked release" : "");
     private static WidgetElement Manage(MarketplaceItem item,string id) => UI.Button("Manage in Settings","unused",id)
         .OpenIntent(WidgetIntentContracts.WidgetSettings,JsonSerializer.SerializeToElement(new { packageId = item.Id }),WidgetIntentPresentation.OpenWidget);
 
@@ -141,25 +141,20 @@ public sealed class MarketplaceWidget : Widget
         var state = model.Value; var operation = state.Snapshot.Operation; var running = operation?.State == "running";
         var busy = state.Busy || running || operation?.State == "review";
         var selected = state.Snapshot.Items.FirstOrDefault(i => i.Id == state.Selected);
-        var items = new List<WidgetElement> { UI.Text(selected?.Name ?? "WidgetRail Catalogue","marketplace.title").Classes("page-heading") };
+        var header = new List<WidgetElement> { UI.Text(selected?.Name ?? "WidgetRail Catalogue","marketplace.title").Classes("page-heading") };
+        var items = new List<WidgetElement>();
+        var commands = new List<WidgetElement>();
         string initial;
         if (selected is null)
         {
             var updates = state.Snapshot.Items.Count(UpdateAvailable);
-            items.Add(UI.SegmentedTabs("marketplace.tabs", "marketplace.tab." + state.Section.ToString().ToLowerInvariant(),
+            header.Add(UI.SegmentedTabs("marketplace.tabs", "marketplace.tab." + state.Section.ToString().ToLowerInvariant(),
                 new SegmentedTab("marketplace.tab.browse", "Browse", "marketplace.tab.browse"),
                 new SegmentedTab("marketplace.tab.installed", "Installed", "marketplace.tab.installed"),
                 new SegmentedTab("marketplace.tab.updates", $"Updates ({updates})", "marketplace.tab.updates")));
-            items.Add(UI.Text(state.Section switch
-            {
-                Section.Installed => "Your widgets from the catalogue. Manage other installed widgets in Settings → Widgets.",
-                Section.Updates => "Review and update your widgets here. Your preferences and data are preserved.",
-                _ => "Discover widgets for WidgetRail. Download to review before installing."
-            },"marketplace.help").Classes("page-help"));
-            items.Add(UI.Button("Check for updates","marketplace.refresh","marketplace.refresh").Busy(busy));
+            commands.Add(UI.Button("Check for updates","marketplace.refresh","marketplace.refresh").Busy(busy));
             if (state.Section == Section.Updates && updates > 0)
-                items.Add(UI.Button($"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
-            if (state.Snapshot.CheckedAtUtc is { } checkedAt) items.Add(UI.Text("Last checked " + checkedAt.ToLocalTime().ToString("g",CultureInfo.CurrentCulture),"marketplace.checked").Classes("page-help"));
+                commands.Add(UI.Button($"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
             var visible = state.Snapshot.Items.Where(i => state.Section switch
                 { Section.Installed => i.InstalledVersion is not null,
                     Section.Updates => UpdateAvailable(i) || state.Snapshot.UpdateBatch?.Items.Any(result => result.PackageId == i.Id) == true, _ => true }).ToArray();
@@ -181,16 +176,15 @@ public sealed class MarketplaceWidget : Widget
                     actions.Add(Manage(item, id + ".manage"));
                     return (WidgetElement)UI.Stack(id,
                         UI.Text(item.Name, id + ".name").Classes("section-heading"),
+                        ItemBadges(item, id),
                         UI.Text(status, id + ".status").Classes(result?.State == "failed" ? "diagnostic-error" : "page-help"),
                         UI.Row(id + ".actions", actions.ToArray())).Classes("marketplace-card");
                 }
-                return (WidgetElement)UI.ActionSurface("marketplace.select." + Key(item.Id),id,item.Name + ". " + ItemStatus(item),ActionSurfaceOrientation.Vertical,
-                    UI.Text(item.Name,id + ".name").Classes("section-heading"),UI.Text(ItemStatus(item),id + ".status").Classes("page-help"),
-                    UI.Text(item.Description,id + ".description").Classes("diagnostic-line")).Classes("marketplace-card"); }).ToArray();
-            items.Add(UI.ResponsiveGrid("marketplace.items",260,2,cards));
+                return BrowseCard(item, id); }).ToArray();
+            items.Add(UI.ResponsiveGrid("marketplace.items",320,2,cards));
             if (visible.Length == 0) items.Add(UI.Text(state.Section switch
             {
-                Section.Installed => "No marketplace widgets installed yet. Find one in Browse.",
+                Section.Installed => "No catalogue widgets installed yet. Find one in Browse.",
                 Section.Updates => state.Error is not null || operation?.State == "failed" ? "Updates could not be checked. Try again when ready." :
                     running && operation?.Kind == "refresh" ? "Checking available updates…" :
                     state.Snapshot.CheckedAtUtc is null ? "Check for updates to see available releases." : "No updates were found at the last check.",
@@ -201,9 +195,16 @@ public sealed class MarketplaceWidget : Widget
         }
         else
         {
-            items.Add(UI.Button("Back to marketplace","marketplace.back","marketplace.back"));
+            header.Add(UI.Button("Back to catalogue","marketplace.back","marketplace.back"));
+            header.Add(ItemBadges(selected, "marketplace.detail"));
             items.Add(UI.Text(selected.Description,"marketplace.description").Classes("diagnostic-line"));
             items.Add(UI.Text(ItemStatus(selected),"marketplace.version").Classes("page-help"));
+            if (selected.SetupRequirements is { Count: > 0 } requirements)
+                items.Add(UI.Stack("marketplace.requirements",
+                    new[] { UI.Text("Before you install", "marketplace.requirements.title").Classes("section-heading", "catalogue-gold") }
+                    .Cast<WidgetElement>().Concat(requirements.Select((text, index) =>
+                        UI.Text("• " + text, "marketplace.requirement." + index).Classes("diagnostic-line"))).ToArray())
+                    .Classes("marketplace-requirements"));
             if (selected.DownloadBytes is { } size) items.Add(UI.Text($"{size / 1048576d:0.0} MiB download" + (selected.IsPrerelease ? " · Preview release" : ""),"marketplace.size").Classes("page-help"));
             if (selected.Screenshots.Count > 0)
             {
@@ -213,11 +214,11 @@ public sealed class MarketplaceWidget : Widget
                     UI.Text($"{index + 1} / {selected.Screenshots.Count}","marketplace.screenshot.count"),UI.Button("Next screenshot","marketplace.screenshot.next","marketplace.screenshot.next")));
             }
             var ready = operation is { State: "review" } && operation.PackageId == selected.Id;
-            if (ready) items.Add(UI.Button("Review installation","marketplace.review.open","marketplace.primary").Busy(state.Busy));
-            else if (selected.InstalledVersion is not null && !UpdateAvailable(selected)) items.Add(Manage(selected,"marketplace.primary"));
-            else items.Add(UI.Button(selected.InstalledVersion is null ? "Download for review" : "Download update for review","marketplace.download","marketplace.primary").Busy(busy).Disabled(selected.AvailableVersion is null));
-            if(selected.AvailableVersion is null) items.Add(UI.Button("Check available releases","marketplace.refresh","marketplace.refresh").Busy(busy));
-            if(selected.InstalledVersion is not null && (UpdateAvailable(selected) || ready)) items.Add(Manage(selected,"marketplace.manage"));
+            if (ready) commands.Add(UI.Button("Review installation","marketplace.review.open","marketplace.primary").Busy(state.Busy));
+            else if (selected.InstalledVersion is not null && !UpdateAvailable(selected)) commands.Add(Manage(selected,"marketplace.primary"));
+            else commands.Add(UI.Button(selected.InstalledVersion is null ? "Download for review" : "Download update for review","marketplace.download","marketplace.primary").Busy(busy).Disabled(selected.AvailableVersion is null));
+            if(selected.AvailableVersion is null) commands.Add(UI.Button("Check available releases","marketplace.refresh","marketplace.refresh").Busy(busy));
+            if(selected.InstalledVersion is not null && (UpdateAvailable(selected) || ready)) commands.Add(Manage(selected,"marketplace.manage"));
             initial = selected.AvailableVersion is null ? "marketplace.refresh" : "marketplace.primary";
         }
         if (operation is { Kind: "download-updates", State: "review" } && state.Snapshot.UpdateBatch is { } readyBatch)
@@ -238,13 +239,25 @@ public sealed class MarketplaceWidget : Widget
             ? operation.State == "review" ? "Discard downloads" : "Cancel remaining updates"
             : operation.State == "review" ? "Discard download" : "Cancel operation", "marketplace.cancel", "marketplace.cancel").Busy(state.Busy || operation.Message == "Cancelling…"));
         if(state.Error is not null) items.Add(UI.Button("Check status","marketplace.status","marketplace.status.retry").Busy(state.Busy));
-        var root = UI.VerticalScroll("marketplace.page",items.ToArray()).InputScope("marketplace.page").Classes("marketplace-widget");
+        var tools = UI.Row("marketplace.commands", commands.ToArray()).Classes("marketplace-commands");
+        header.Add(selected is null && state.Snapshot.CheckedAtUtc is { } checkedAt
+            ? UI.ResponsiveGrid("marketplace.toolbar", 340, 2, tools,
+                UI.Text("Last checked " + checkedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), "marketplace.checked").Classes("page-help"))
+            : tools);
+        var root = UI.Grid("marketplace.page", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+            UI.Stack("marketplace.header", header.ToArray()).Classes("marketplace-header"),
+            UI.VerticalScroll("marketplace.content", items.ToArray()).Classes("marketplace-content").InGrid(row: 1))
+            .Spacing(12, 0).InputScope("marketplace.page").Classes("marketplace-widget");
         if (selected is not null) root = root.Shortcut(ControllerButton.B,"marketplace.back",label: "Catalogue");
         else root = root.Shortcut(ControllerButton.X,"marketplace.tab.updates",label: "Updates");
         if (!busy) root = root.Shortcut(ControllerButton.Y,"marketplace.refresh",label: "Check updates");
         if (selected?.Screenshots.Count > 1) root = root.Shortcut(ControllerButton.LeftBumper,"marketplace.screenshot.previous",label: "Previous screenshot")
             .Shortcut(ControllerButton.RightBumper,"marketplace.screenshot.next",label: "Next screenshot");
-        var view = new WidgetView(root,initial);
+        var view = new WidgetView(root,initial, Surface: new WidgetSurfaceHints
+        {
+            PreferredWidth = 1000, PreferredHeight = 720, MinimumWidth = 520, MinimumHeight = 400,
+            HeightMode = WidgetSurfaceAxisMode.FillAvailable,
+        });
         if(state.ReviewToken is not null && operation?.Review is { } review && review.Token == state.ReviewToken)
             view = view.WithModal(WidgetRail.Internal.MarketplaceReviewPresentation.Create(review));
         else if (state.ReviewToken is not null && operation is { Kind: "download-updates", State: "review" } &&
@@ -252,6 +265,35 @@ public sealed class MarketplaceWidget : Widget
             view = view.WithModal(WidgetRail.Internal.MarketplaceReviewPresentation.CreateBatch(reviewedBatch));
         return view;
     }
+
+    private static WidgetElement BrowseCard(MarketplaceItem item, string id)
+    {
+        var content = new List<WidgetElement> {
+            UI.Text(item.Name, id + ".name").Classes("section-heading"), ItemBadges(item, id),
+            UI.Text(item.Description, id + ".description").Classes("diagnostic-line") };
+        if (item.SetupRequirements is { Count: > 0 }) content.Add(SetupSummary(item, id));
+        content.Add(UI.Text(ItemStatus(item), id + ".status").Classes("page-help"));
+        var label = item.Name + ". " + ItemStatus(item) + ". " + item.Description;
+        if (item.SetupRequirements is { Count: > 0 } setup) label += " Setup: " + setup[0];
+        return UI.ActionSurface("marketplace.select." + Key(item.Id), id, label,
+            ActionSurfaceOrientation.Vertical, content.ToArray()).Classes("marketplace-card");
+    }
+
+    private static WidgetElement ItemBadges(MarketplaceItem item, string id)
+    {
+        var badges = new List<WidgetElement> { UI.StatusBadge(
+            UpdateAvailable(item) ? "Update available" : item.InstalledVersion is not null ? "Installed" : item.AvailableVersion is not null ? "Available" : "Not checked",
+            UpdateAvailable(item) ? StatusTone.Info : item.InstalledVersion is not null ? StatusTone.Success : StatusTone.Neutral,
+            id + ".badge.state") };
+        if (item.IsPrerelease) badges.Add(UI.StatusBadge("Preview", StatusTone.Warning, id + ".badge.preview"));
+        return UI.Row(id + ".badges", badges.ToArray()).Classes("marketplace-badges");
+    }
+
+    private static WidgetElement SetupSummary(MarketplaceItem item, string id) => item.SetupRequirements is { Count: > 0 } requirements
+        ? UI.RichText(id + ".setup",
+            UI.Text("Setup · ", id + ".setup.label").Classes("catalogue-gold"),
+            UI.Text(requirements[0], id + ".setup.value").Classes("page-help")).Classes("marketplace-setup")
+        : UI.Text("", id + ".setup");
 
     private static string BatchItemStatus(string state) => state switch
     {

@@ -26,7 +26,7 @@ internal sealed partial class WidgetStylesValidationPage
             foreach (var width in new[] { 900, 560 })
             {
                 presenter.Width = width;
-                foreach (var name in new[] { "browse", "installed", "updates", "review", "completed" })
+                foreach (var name in new[] { "browse", "details", "installed", "updates", "review", "completed" })
                 {
                     using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, name + ".json")));
                     var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(document.RootElement.GetProperty("snapshot").GetRawText())) with { Sequence = ++sequence };
@@ -44,6 +44,24 @@ internal sealed partial class WidgetStylesValidationPage
                         $"{name} at {width}: initial focus follows the widget declaration");
                     var scrolls = Descendants(presenter).OfType<ScrollViewer>().Where(scroll => scroll.IsLoaded && scroll.ActualHeight > 0).ToArray();
                     Check(scrolls.All(scroll => scroll.ExtentWidth <= scroll.ViewportWidth + 1), $"{name} at {width}: no horizontal content clipping");
+                    if (name == "browse")
+                    {
+                        var cards = Descendants(presenter).OfType<Button>().Where(button =>
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button).StartsWith("Widget.marketplace.item.") &&
+                            button.ActualHeight > 0).ToArray();
+                        Check(cards.Length >= 2, "Browse exposes native interactive cards");
+                        if (width == 900) Check(Math.Abs(cards[0].TransformToVisual(presenter).TransformPoint(new()).Y -
+                            cards[1].TransformToVisual(presenter).TransformPoint(new()).Y) < 1, "Different-height cards share the same top edge");
+                        var header = Find<FrameworkElement>("Widget.marketplace.header")!;
+                        var top = header.TransformToVisual(presenter).TransformPoint(new()).Y;
+                        var content = scrolls.First(scroll => scroll.ScrollableHeight > 0);
+                        content.ChangeView(null, content.ScrollableHeight, null, true);
+                        await Task.Delay(100);
+                        Check(Math.Abs(header.TransformToVisual(presenter).TransformPoint(new()).Y - top) < 1,
+                            "Scrolling cards keeps Catalogue navigation fixed");
+                        content.ChangeView(null, 0, null, true);
+                        await Task.Delay(100);
+                    }
                     if (name == "review")
                     {
                         Check(snapshot.InitialFocusId == "marketplace.batch.review.cancel", "Aggregate review initially focuses Cancel");

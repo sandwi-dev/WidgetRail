@@ -7,8 +7,10 @@ using WidgetRail.WidgetStyling;
 if (args is ["--export-native", var output]) { await ExportNative(output); return 0; }
 var tests = new (string Name,Func<Task> Run)[] {
     ("Catalog navigation filters updates and restores the selected card", Navigation),
+    ("Catalogue setup requirements are visible before download and navigation stays outside scrolling", SetupPresentation),
     ("Reopening checks releases while a slow refresh preserves navigation and existing content", RefreshOnOpening),
     ("Downloads retain focus and installation requires the exact open full-trust review", Review),
+    ("Retained older release availability is labelled in browse and details", RetainedAvailability),
     ("Retained newer versions remain available through normal update actions", RetainedUpdate),
     ("Individual updates are reviewed and installed without leaving the Updates page", UpdateFromList),
     ("Update all uses one explicit bounded review and preserves per-item results", BatchReview),
@@ -25,8 +27,22 @@ static async Task Until(Func<bool> ready) { using var deadline=new CancellationT
 static async Task ExportNative(string directory)
 {
     Directory.CreateDirectory(directory);
-    await using var fixture = new Fixture(); await fixture.Start();
+    await using var fixture = new Fixture();
+    fixture.Snapshot = fixture.Snapshot with { Items = [
+        new(Fixture.Id, "Playnite Library", "Browse and launch your Playnite games from the couch.", [], "2.0.0", "1.0.0", 13421772,
+            SetupRequirements: ["Requires Playnite with the separate Playnite Bridge extension.", "Connect using the bridge address and token in widget settings."]),
+        new("example.second", "PoE2 Path of Building (Beta)", "Plan builds, manage skills and equipment, and compare trade upgrades using Path of Building.", [], "1.0.0", IsPrerelease: true),
+        new("example.spotify", "Spotify", "Browse your library and control music while you play.", [], "1.0.0",
+            SetupRequirements: ["Requires your own Spotify developer app and Client ID.", "Spotify Premium is required for playback."]),
+        new("example.help", "Game Help", "Get game hints using screenshots and clips.", [], "1.0.0",
+            SetupRequirements: ["Requires your own Google Gemini API key; provider usage charges may apply."]),
+        new("example.display", "Display Profiles", "Save and restore monitor layouts, resolutions and refresh rates.", [], "1.0.0"),
+        new("example.music", "YouTube Music", "Browse music and keep playback controls pinned while playing.", [], "1.0.0") ] };
+    await fixture.Start();
     await Write("browse");
+    await fixture.Act(Walk(fixture.View().Root).First(n => n.Kind == ViewNodeKind.ActionSurface).ActionId!);
+    await Write("details");
+    await fixture.Act("marketplace.back");
     await fixture.Act("marketplace.tab.installed"); await Write("installed");
     fixture.Snapshot = fixture.Snapshot with { Revision = 2, Items = Enumerable.Range(0,16).Select(index =>
         new MarketplaceItem("example.batch." + index, "Synthetic widget " + index, "Controller-friendly synthetic add-on", [], "2.0.0", "1.0.0")).ToArray() };
@@ -48,11 +64,31 @@ static async Task ExportNative(string directory)
     async Task Write(string name) => await File.WriteAllBytesAsync(Path.Combine(directory, name + ".snapshot.json"), SnapshotJson.Serialize(fixture.View()));
 }
 
+static async Task SetupPresentation()
+{
+    await using var f = new Fixture();
+    f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(i => i with {
+        SetupRequirements = ["Requires a separate service account.", "Configure the service token inside the widget."], IsPrerelease = true }).ToArray() };
+    await f.Start();
+    var view = f.View();
+    Check(view.Root.Kind == ViewNodeKind.Grid, "Catalogue lacks a bounded fixed header");
+    Check(!Walk(Node(f, "marketplace.content")!).Any(n => n.Id == "marketplace.tabs" || n.Id == "marketplace.refresh"), "Navigation scrolls away");
+    Check(Walk(view.Root).Any(n => n.Text == "Requires a separate service account."), "Discovery omitted setup requirements");
+    Check(Walk(view.Root).Any(n => n.Text == "Preview"), "Preview state omitted");
+    await f.Act(Walk(view.Root).First(n => n.Kind == ViewNodeKind.ActionSurface).ActionId!);
+    Check(Node(f, "marketplace.requirement.1")?.Text?.Contains("service token") == true, "Details omitted complete setup requirements");
+    Check(f.Commands.All(c => c.Action is "status" or "refresh"), "Reading prerequisites downloads or installs a widget");
+    Check(ViewSnapshotValidator.Validate(f.View()).Count == 0 && WinUiPresentationContract.Validate(f.View()).Count == 0, "Setup details invalid");
+}
+
 static async Task Navigation()
 {
     await using var f=new Fixture();await f.Start();
     Check(Node(f,"marketplace.title")?.Text == "WidgetRail Catalogue", "Catalogue heading missing");
     Check(f.Commands.All(c=>c.Action is "status" or "refresh") && f.Commands.Any(c=>c.Action == "refresh"),"Opening did not check releases or unexpectedly mutated packages");
+    Check(f.Commands.Where(c => c.Action == "refresh").All(c => !c.ForceRefresh), "Activation bypassed host freshness");
+    await f.Act("marketplace.refresh");
+    await Until(() => f.Commands.Any(c => c.Action == "refresh" && c.ForceRefresh));
     Check(Walk(f.View().Root).Count(n=>n.Kind==ViewNodeKind.ActionSurface)==2,"Catalog cards missing");
     await f.Act("marketplace.tab.installed");
     Check(Walk(f.View().Root).Count(n=>n.Kind==ViewNodeKind.ActionSurface)==1,"Installed view included an uninstalled widget");
@@ -107,6 +143,18 @@ static async Task RefreshOnOpening()
     await Until(() => f.Commands.Any(c => c.Action == "refresh"));
     Check(f.Commands.All(c => c.Action is "status" or "refresh"), "Reopening mutated a package without user action");
 }
+static async Task RetainedAvailability()
+{
+    await using var f = new Fixture();
+    f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(item => item with { RetainedAvailability = true }).ToArray() };
+    await f.Start();
+    Check(Walk(f.View().Root).Any(node => node.Text?.Contains("Previously checked release") == true), "Browse silently presented retained availability as fresh");
+    var card = Walk(f.View().Root).First(node => node.Kind == ViewNodeKind.ActionSurface);
+    await f.Act(card.ActionId!);
+    Check(Node(f,"marketplace.version")?.Text?.Contains("Previously checked release") == true,
+        "Details lost retained availability provenance");
+}
+
 static async Task RetainedUpdate()
 {
     await using var f = new Fixture();

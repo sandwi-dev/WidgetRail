@@ -18,6 +18,7 @@ internal static class MarketplaceBatchTests
         var stopped = new WidgetStopStateStore(new PlatformSettingsPaths(Path.Combine(f.Root, "profile")));
         await stopped.SetStoppedAsync(Fixture.First, true);
         var review = await f.Review();
+        Check(f.Http.MetadataRequests == 1 && f.Http.DownloadCounts.Values.Sum() == 2, "Batch repeated metadata lookups instead of reusing the catalogue release/checksum data");
         Check(review.UpdateBatch!.Items.All(item => item.State == "review"), "Both packages must be verified before aggregate approval");
         Check((await f.Catalog.DiscoverAsync()).Widgets.All(widget => widget.ActiveVersion.Version.ToString() == "1.0.0"), "Download mutated installations");
         var approve = f.Approve(review);
@@ -46,6 +47,54 @@ internal static class MarketplaceBatchTests
             "Update all failed to reuse retained versions after rollback");
         await f.Service.DisposeAsync();
         Check(!Directory.EnumerateFiles(f.Root, "*.wrwidget", SearchOption.AllDirectories).Any(), "Completed batch retained archives");
+    }
+
+    internal static async Task SharedChecksumManifest()
+    {
+        await using var f = new Fixture();
+        f.Http.OmitDigests = true;
+        await f.Initialize();
+        var review = await f.Review();
+        Check(review.UpdateBatch!.Items.All(item => item.State == "review") && f.Http.ChecksumRequests == 1 &&
+            f.Http.MetadataRequests == 1 && f.Http.DownloadCounts.Values.Sum() == 2,
+            "A two-package batch did not reuse one published checksum manifest while validating both archives");
+        await f.Service.HandleAsync(new("cancel", OperationId: review.Operation!.Id), default);
+        await f.Review();
+        Check(f.Http.ChecksumRequests == 2, "A new review batch reused an old checksum manifest indefinitely");
+    }
+
+    internal static async Task ChecksumFailureDoesNotRetryPerPackage()
+    {
+        await using var f = new Fixture();
+        f.Http.OmitDigests = true;
+        f.Http.FailChecksums = true;
+        await f.Initialize();
+        await f.Service.HandleAsync(new("download-updates", PackageIds: f.Ids), default);
+        var failed = await f.Wait("failed");
+        Check(failed.UpdateBatch!.Items.All(item => item.State == "failed") && f.Http.ChecksumRequests == 1 && f.Http.DownloadCounts.Count == 0,
+            "A failed checksum manifest was retried for each widget or bypassed integrity checks");
+    }
+
+    internal static async Task SharedChecksumsStillValidateEachAsset()
+    {
+        await using var f = new Fixture();
+        f.Http.OmitDigests = true;
+        f.Http.BadChecksumId = Fixture.Second;
+        await f.Initialize();
+        var review = await f.Review();
+        Check(review.UpdateBatch!.Items.Single(item => item.PackageId == Fixture.First).State == "review" &&
+            review.UpdateBatch.Items.Single(item => item.PackageId == Fixture.Second).State == "failed" &&
+            f.Http.ChecksumRequests == 1 && f.Http.DownloadCounts.Values.Sum() == 2,
+            "Shared checksum metadata bypassed per-package SHA-256 verification");
+        Check((await f.Catalog.DiscoverAsync()).Widgets.All(item => item.ActiveVersion.Version == new Version(1,0,0)),
+            "Invalid checksum mutated installed versions");
+        await f.Service.HandleAsync(new("cancel", OperationId: review.Operation!.Id), default);
+        f.Http.BadChecksumId = null;
+        f.Http.DuplicateChecksumId = Fixture.Second;
+        var duplicate = await f.Review();
+        Check(duplicate.UpdateBatch!.Items.Single(item => item.PackageId == Fixture.Second).State == "failed" &&
+            f.Http.ChecksumRequests == 2 && f.Http.DownloadCounts[Fixture.Second] == 1,
+            "Cached manifest accepted duplicate hashes or downloaded an ambiguous asset");
     }
 
     internal static async Task PartialFailureAndRetry()
@@ -246,6 +295,12 @@ internal static class MarketplaceBatchTests
                 .Select(index => "external."+new string('a',108)+index+".read.v1").ToArray() : null;
             packages = ids.ToDictionary(id => id, id => Fixture.Package(id,"2.0.0",id == Fixture.First,permissions));
         }
+        internal int MetadataRequests;
+        internal int ChecksumRequests;
+        internal bool OmitDigests;
+        internal bool FailChecksums;
+        internal string? BadChecksumId;
+        internal string? DuplicateChecksumId;
         internal readonly HashSet<string> Failures = [];
         internal readonly Dictionary<string,int> DownloadCounts = new();
         internal string? BlockId;
@@ -254,8 +309,21 @@ internal static class MarketplaceBatchTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
         {
             if (request.RequestUri!.Host == "api.github.com")
+            {
+                MetadataRequests++;
                 return new(HttpStatusCode.OK) { Content=new StringContent(JsonSerializer.Serialize(new[] { new { draft=false,tag_name="v-batch",prerelease=false,
-                    assets=packages.Select(item => new { name=item.Key+"-2.0.0.wrwidget",size=item.Value.Length,digest="sha256:"+Convert.ToHexString(SHA256.HashData(item.Value)) }).ToArray() } })) };
+                    assets=packages.Select(item => new { name=item.Key+"-2.0.0.wrwidget",size=item.Value.Length,digest=OmitDigests ? null : "sha256:"+Convert.ToHexString(SHA256.HashData(item.Value)) })
+                        .Concat(OmitDigests ? [new { name="SHA256SUMS.txt",size=1,digest=(string?)null }] : []).ToArray() } })) };
+            }
+            if (request.RequestUri.AbsolutePath.EndsWith("/SHA256SUMS.txt",StringComparison.Ordinal))
+            {
+                ChecksumRequests++;
+                if (FailChecksums) return new(HttpStatusCode.ServiceUnavailable);
+                var lines = packages.Select(item => (item.Key == BadChecksumId ? new string('0',64) : Convert.ToHexString(SHA256.HashData(item.Value))) +
+                    "  " + item.Key + "-2.0.0.wrwidget").ToList();
+                if (DuplicateChecksumId is { } duplicate) lines.Add(lines.Single(line => line.EndsWith(duplicate+"-2.0.0.wrwidget",StringComparison.Ordinal)));
+                return new(HttpStatusCode.OK) { Content = new StringContent(string.Join("\n",lines)) };
+            }
             var id = packages.Keys.Single(id => request.RequestUri.AbsolutePath.EndsWith(id+"-2.0.0.wrwidget",StringComparison.Ordinal));
             DownloadCounts[id]=DownloadCounts.GetValueOrDefault(id)+1;
             if (id == BlockId && Gate is not null) { Entered.TrySetResult(); await Gate.Task.WaitAsync(token); }

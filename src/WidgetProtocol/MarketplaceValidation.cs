@@ -11,6 +11,7 @@ public static class MarketplaceValidation
             command.Action != "download" && command.PackageId is not null || command.Action is "install" or "install-updates" or "cancel" && command.OperationId is null ||
             command.Action is not ("install" or "install-updates" or "cancel") && command.OperationId is not null || command.Action is "install" or "install-updates" && command.ReviewToken is null ||
             command.Action is not ("install" or "install-updates") && (command.ReviewToken is not null || command.ApproveFullTrust)) return "invalid_marketplace_command";
+        if (command.ForceRefresh && command.Action != "refresh") return "invalid_marketplace_command";
         if (command.Action == "download-updates")
         {
             if (command.PackageIds is not { Count: > 0 and <= 16 } ids || ids.Any(id => !Token(id,128)) ||
@@ -26,6 +27,8 @@ public static class MarketplaceValidation
                 item.Screenshots is null || item.Screenshots.Count > 4 || item.Screenshots.Any(url => !Uri.TryCreate(url,UriKind.Absolute,out var uri) ||
                     uri.Scheme != "https" || uri.Host != "raw.githubusercontent.com" || uri.Port != 443 || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0 || url.Length > 512) ||
                 item.AvailableVersion is not null && (!Text(item.AvailableVersion,64) || !Version.TryParse(item.AvailableVersion,out _)) ||
+                item.RetainedAvailability && item.AvailableVersion is null ||
+                item.SetupRequirements is { } requirements && (requirements.Count > 8 || requirements.Any(value => !Text(value,320))) ||
                 item.InstalledVersion is not null && (!Text(item.InstalledVersion,64) || !Version.TryParse(item.InstalledVersion,out _)) || item.DownloadBytes < 0) ||
             snapshot.Items.Select(i => i.Id).Distinct(StringComparer.Ordinal).Count() != snapshot.Items.Count) return "invalid_marketplace_snapshot";
         if (snapshot.UpdateBatch is { } batch)

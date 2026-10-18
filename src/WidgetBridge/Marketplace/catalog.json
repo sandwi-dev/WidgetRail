@@ -1,32 +1,38 @@
 [
   {
-    "id": "widgetrail.samples.poe1-companion", "publisher": "widgetrail.samples", "name": "PoE1 Path of Building",
-    "description": "Plan Path of Exile builds, edit skills and equipment, and compare trade upgrades using the pinned Path of Building Community release engine. Full-access add-on.",
+    "id": "widgetrail.samples.poe1-companion", "publisher": "widgetrail.samples", "name": "PoE1 Path of Building (Beta)",
+    "description": "Plan Path of Exile builds, edit skills and equipment, and compare trade upgrades using a pinned Path of Building Community beta engine. Full-access add-on.",
+    "setupRequirements": ["Trade features require signing in to the official Path of Exile trade website. Build planning works without signing in."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/poe1-timeless.png"]
   },
   {
     "id": "widgetrail.samples.poe2-companion", "publisher": "widgetrail.samples", "name": "PoE2 Path of Building (Beta)",
     "description": "Plan Path of Exile 2 builds, manage loadouts and skill groups, and rank trade upgrades using a pinned Path of Building Community beta engine. Full-access add-on.",
+    "setupRequirements": ["Trade features require signing in to the official Path of Exile trade website. Build planning works without signing in."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/calculations.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/trade-ranking.png"]
   },
   {
     "id": "widgetrail.samples.mapgenie", "publisher": "widgetrail.samples", "name": "MapGenie",
     "description": "Explore interactive game maps, find collectibles and track your progress.",
+    "setupRequirements": ["A MapGenie account is needed to save map progress; some website features require a paid plan."],
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
     "description": "Watch Twitch streams with controller navigation and pinnable webapp windows.",
+    "setupRequirements": ["A Twitch account is needed for chat and account features. Twitch controls stream access and subscription requirements."],
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.discord", "publisher": "widgetrail.samples", "name": "Discord",
     "description": "Use Discord's web app with controller input and pinnable pop-outs.",
+    "setupRequirements": ["Sign in with your Discord account in the widget's website view."],
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.game-help", "publisher": "widgetrail.samples", "name": "Game Help",
     "description": "Ask for game hints with screenshots and clips.",
+    "setupRequirements": ["Requires your own Gemini API key. Google's API quotas and any usage charges apply."],
     "screenshots": []
   },
   {
@@ -37,21 +43,25 @@
   {
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
     "description": "Browse and launch your Playnite games.",
+    "setupRequirements": ["Requires Playnite running with the separate Playnite Bridge extension installed.", "Enter the API token from Playnite Bridge settings when connecting the widget."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/home.png"]
   },
   {
     "id": "widgetrail.samples.spotify", "publisher": "widgetrail.samples", "name": "Spotify",
     "description": "Browse your Spotify library and control playback with your controller.",
+    "setupRequirements": ["Requires a Spotify account and your own Spotify developer app Client ID.", "Register http://127.0.0.1:43827/callback/ as the app's redirect URI. Spotify developer-mode access restrictions apply.", "Spotify Premium is required for playback controls and listening through WidgetRail."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/search-player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/pinned-player.png"]
   },
   {
     "id": "widgetrail.samples.youtube-video", "publisher": "widgetrail.samples", "name": "YouTube Video",
     "description": "Search and watch YouTube with a pinnable player.",
+    "setupRequirements": ["Search requires your own Google API key with YouTube Data API v3 enabled. Opening a video link does not require a search key."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/pinned-video.png"]
   },
   {
     "id": "widgetrail.samples.ytmusic", "publisher": "widgetrail.samples", "name": "YouTube Music",
     "description": "Browse music and keep playback controls pinned while playing.",
+    "setupRequirements": ["A Google account is needed for your personal library. Sign-in opens Chrome, or Edge as a fallback.", "Public search and supported playback can work without signing in. No developer app, Python installation or YTMDesktop is required."],
     "screenshots": []
   }
 ]

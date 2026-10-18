@@ -10,7 +10,8 @@ using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
 
 namespace WidgetRail.WidgetBridge;
 
-internal sealed record CuratedWidget(string Id, string Publisher, string Name, string Description, IReadOnlyList<string> Screenshots);
+internal sealed record CuratedWidget(string Id, string Publisher, string Name, string Description, IReadOnlyList<string> Screenshots,
+    IReadOnlyList<string>? SetupRequirements = null);
 
 /// <summary>
 /// Shared trusted-UI jobs. Downloads and mutations never execute in the short
@@ -27,6 +28,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
     private readonly IReadOnlyList<CuratedWidget> _definitions;
     private readonly HttpMessageHandler? _http;
     private readonly TimeProvider _clock;
+    private readonly MarketplaceReleaseCache _releaseCache;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, ReleaseAsset> _assets = new(StringComparer.Ordinal);
     private MarketplaceSnapshot _snapshot;
@@ -46,8 +48,14 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
             using var stream = typeof(BridgeWidgetMarketplace).Assembly.GetManifestResourceStream("WidgetRail.Marketplace.catalog.json")!;
             definitions = JsonSerializer.Deserialize<CuratedWidget[]>(stream, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         }
-        _definitions = definitions;
-        _snapshot = new(0, definitions.Select(d => new MarketplaceItem(d.Id, d.Name, d.Description, d.Screenshots)).ToArray());
+        _releaseCache = new(_http, _clock);
+        _definitions = definitions.Select(d => d with
+        {
+            Screenshots = Array.AsReadOnly(d.Screenshots.ToArray()),
+            SetupRequirements = d.SetupRequirements is { } requirements ? Array.AsReadOnly(requirements.ToArray()) : null
+        }).ToArray();
+        _snapshot = new(0, _definitions.Select(d => new MarketplaceItem(d.Id, d.Name, d.Description, d.Screenshots,
+            SetupRequirements: d.SetupRequirements)).ToArray());
         MarketplaceContract.ValidateSnapshot(_snapshot);
     }
 
@@ -71,7 +79,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
                     if (command.Action == "download" && !_assets.ContainsKey(command.PackageId!))
                         throw new PlatformDiagnosticsException("marketplace_refresh_required");
                     if (command.Action == "download-updates") ValidateUpdateSelection(command.PackageIds!);
-                    Start(command.Action, command.PackageId, ids: command.PackageIds);
+                    Start(command.Action, command.PackageId, ids: command.PackageIds, forceRefresh: command.ForceRefresh);
                 }
             }
             else if (command.Action == "cancel" && _snapshot.Operation is { } active && active.Id == command.OperationId)
@@ -115,7 +123,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         return ValueTask.FromResult(result);
     }
 
-    private void Start(string kind, string? id, PendingPackage? package = null, IReadOnlyList<string>? ids = null, PendingBatch? batch = null)
+    private void Start(string kind, string? id, PendingPackage? package = null, IReadOnlyList<string>? ids = null, PendingBatch? batch = null, bool forceRefresh = false)
     {
         ids = ids?.ToArray();
         var previous = _job?.Task ?? Task.CompletedTask;
@@ -127,17 +135,17 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         { "refresh" => "Checking available widgets…", "inventory" => "Refreshing installed versions…", "download" or "download-updates" => "Downloading for review…", _ => "Installing reviewed packages…" }));
         // A new job cannot clean cache files still owned by the preceding job's
         // disposal or by an expired/cancelled review.
-        job.Task = Task.Run(() => RunAsync(job, package, ids, batch, previous, cleanup));
+        job.Task = Task.Run(() => RunAsync(job, package, ids, batch, previous, cleanup, forceRefresh));
     }
 
-    private async Task RunAsync(OwnedJob job, PendingPackage? package, IReadOnlyList<string>? ids, PendingBatch? batch, Task previous, Task cleanup)
+    private async Task RunAsync(OwnedJob job, PendingPackage? package, IReadOnlyList<string>? ids, PendingBatch? batch, Task previous, Task cleanup, bool forceRefresh)
     {
         try
         {
             await previous.ConfigureAwait(false);
             await cleanup.ConfigureAwait(false);
             job.Cancellation.Token.ThrowIfCancellationRequested();
-            if (job.Kind == "refresh") await RefreshAsync(job).ConfigureAwait(false);
+            if (job.Kind == "refresh") await RefreshAsync(job, forceRefresh).ConfigureAwait(false);
             else if (job.Kind == "inventory")
             {
                 UpdateInstalled((await _catalog.InspectInventoryAsync(job.Cancellation.Token).ConfigureAwait(false)).Widgets);
@@ -165,12 +173,17 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         }
     }
 
-    private async Task RefreshAsync(OwnedJob job)
+    private async Task RefreshAsync(OwnedJob job, bool forceRefresh)
     {
         var installed = await _catalog.InspectInventoryAsync(job.Cancellation.Token).ConfigureAwait(false);
         UpdateInstalled(installed.Widgets);
-        using var client = new GitHubReleaseClient(_http);
-        var releases = await client.ListAsync(Repository, 1, job.Cancellation.Token).ConfigureAwait(false);
+        var metadata = await _releaseCache.GetAsync(forceRefresh, job.Cancellation.Token).ConfigureAwait(false);
+        if (metadata.Failed)
+        {
+            Finish(job, "failed", metadata.Message);
+            return; // Do not replace usable availability with an incomplete traversal.
+        }
+        var releases = metadata.Releases;
         var selected = new Dictionary<string, ReleaseAsset>(StringComparer.Ordinal);
         foreach (var definition in _definitions)
         {
@@ -187,19 +200,33 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         {
             if (!Current(job)) return;
             job.Cancellation.Token.ThrowIfCancellationRequested();
+            // A bounded scan cannot prove an older release was removed. Retain only known curated
+            // packages, never arbitrary releases; a complete scan remains authoritative for removals.
+            var retained = new HashSet<string>(StringComparer.Ordinal);
+            if (metadata.Truncated)
+                foreach (var definition in _definitions)
+                    if (_assets.TryGetValue(definition.Id, out var previous) &&
+                        (!selected.TryGetValue(definition.Id, out var current) || previous.Version > current.Version))
+                    {
+                        selected[definition.Id] = previous with { Release = previous.Release with { Assets = [previous.Asset], Notes = "" } };
+                        retained.Add(definition.Id);
+                    }
             _assets.Clear(); foreach (var pair in selected) _assets.Add(pair.Key, pair.Value);
-            _snapshot = _snapshot with { Revision = _snapshot.Revision + 1, CheckedAtUtc = _clock.GetUtcNow(),
+            _snapshot = _snapshot with { Revision = _snapshot.Revision + 1, CheckedAtUtc = metadata.CheckedAtUtc,
                 Items = _snapshot.Items.Select(item => selected.TryGetValue(item.Id, out var asset)
                     ? item with { AvailableVersion = asset.Version.ToString(), DownloadBytes = asset.Asset.Size, IsPrerelease = asset.Release.Prerelease,
+                        RetainedAvailability = retained.Contains(item.Id),
                         AvailableVersionSaved = installed.Widgets.FirstOrDefault(w => w.Id == item.Id)?.Versions.Contains(asset.Version) == true }
-                    : item with { AvailableVersion = null, DownloadBytes = null, IsPrerelease = false, AvailableVersionSaved = false }).ToArray() };
-            Finish(job, "completed", "Catalogue refreshed. Download a widget to check compatibility and review its permissions.");
+                    : item with { AvailableVersion = null, DownloadBytes = null, IsPrerelease = false, AvailableVersionSaved = false, RetainedAvailability = false }).ToArray() };
+            Finish(job, "completed", metadata.Message + (retained.Count == 0 ? "" :
+                $" {retained.Count} widgets retain previously checked release information outside this window."));
         }
     }
 
     private async Task DownloadAsync(OwnedJob job)
     {
-        var package = await DownloadPackageAsync(job, job.PackageId!, cleanCache: true).ConfigureAwait(false);
+        using var releases = new GitHubReleaseClient(_http);
+        var package = await DownloadPackageAsync(job, job.PackageId!, cleanCache: true, releases).ConfigureAwait(false);
         lock (_gate)
         {
             if (Current(job) && !job.Cancellation.IsCancellationRequested)
@@ -214,13 +241,12 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         job.Cancellation.Token.ThrowIfCancellationRequested();
     }
 
-    private async Task<PendingPackage> DownloadPackageAsync(OwnedJob job, string packageId, bool cleanCache)
+    private async Task<PendingPackage> DownloadPackageAsync(OwnedJob job, string packageId, bool cleanCache, GitHubReleaseClient releases)
     {
         ReleaseAsset asset;
         lock (_gate) asset = _assets[packageId];
         var definition = _definitions.Single(d => d.Id == packageId);
         var source = new GitHubPackageSource(Repository, asset.Release.Tag, asset.Asset.Name);
-        using var releases = new GitHubReleaseClient(_http);
         var hash = await releases.ResolveDigestAsync(source, asset.Release, job.Cancellation.Token).ConfigureAwait(false);
         var downloadRoot = Path.Combine(_catalog.Root, ".marketplace-downloads");
         if (cleanCache) CleanDownloadCache(downloadRoot);
@@ -380,6 +406,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         _lifetime.Cancel();
         if (job is not null) await job.Task.ConfigureAwait(false);
         await cleanup.ConfigureAwait(false);
+        _releaseCache.Dispose();
         _lifetime.Dispose();
     }
     private sealed record ReleaseAsset(GitHubRelease Release, GitHubAsset Asset, Version Version);

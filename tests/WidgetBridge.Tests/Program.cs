@@ -78,13 +78,15 @@ if (args is ["--serve-discovered-validation", var discoveredPipe])
     return 0;
 }
 
-if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var outputPath])
+if (args.Length is 4 or 5 && args[0] == "--export-styled-fixture")
 {
+    var snapshotPath = args[1]; var stylePath = args[2]; var outputPath = args[3];
+    var themeId = args.Length == 5 ? args[4] : ThemeIdentity.BuiltInNeonCircuit;
     var snapshot = SnapshotJson.Deserialize(await File.ReadAllBytesAsync(snapshotPath));
     var package = WrssPackageLoader.LoadFile(Path.GetFullPath(stylePath), Path.GetDirectoryName(Path.GetFullPath(stylePath))!);
     var catalog = new ThemeCatalog(new PlatformSettingsPaths(Path.GetDirectoryName(Path.GetFullPath(outputPath))!));
     var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, package,
-        catalog.Load(ThemeIdentity.BuiltInNeonCircuit, ThemeIdentity.BuiltInNeonCircuitVersion).Package);
+        catalog.Load(themeId, "1.0.0").Package);
     if (!compiled.IsValid) throw new InvalidOperationException(string.Join("\n", compiled.Diagnostics));
     using var document = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
     var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };

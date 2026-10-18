@@ -28,6 +28,9 @@ internal sealed partial class WidgetResponsiveGrid : Grid
             // Native Button styles otherwise default to a content-sized left
             // alignment. An SDK grid cell supplies the finite item width.
             items[index].HorizontalAlignment = HorizontalAlignment.Stretch;
+            // Rows share a top edge even when individual cards have different
+            // content heights; Button's default Center otherwise staggers them.
+            items[index].VerticalAlignment = VerticalAlignment.Top;
         }
     }
 }

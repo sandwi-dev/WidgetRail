@@ -1,10 +1,19 @@
+text { color: var(--text); }
 .marketplace-widget { padding: 16px; gap: 12px; color: var(--text); background: var(--surface); }
+.marketplace-header { gap: 8px; }
+.marketplace-content { gap: 12px; }
+.marketplace-commands { gap: 8px; }
+.marketplace-badges { gap: 8px; align: start; }
 .page-heading { font-size: 24px; font-weight: 600; }
-.section-heading { font-size: 17px; font-weight: 600; text-align: start; }
-.page-help { font-size: 13px; color: var(--text-muted); text-align: start; }
-.marketplace-card { padding: 16px; gap: 8px; align: start; corner-radius: 8px; background: var(--surface-raised); }
+.section-heading { color: var(--data-blue, var(--text)); font-size: 18px; font-weight: 600; text-align: start; }
+.page-help { font-size: 14px; color: var(--text-muted); text-align: start; }
+.marketplace-card { padding: 16px; gap: 10px; align: start; corner-radius: 8px; background: var(--surface-raised); border-width: 1px; border-color: var(--border, var(--surface-muted)); }
+.marketplace-card:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; border-color: var(--focus); }
+.marketplace-requirements { padding: 14px; gap: 8px; corner-radius: 8px; background: var(--surface-raised); border-width: 1px; border-color: var(--border, var(--surface-muted)); }
+.catalogue-gold { color: var(--data-gold, var(--text)); font-weight: 600; }
+.marketplace-setup { font-size: 14px; }
 .marketplace-preview { height: 280px; }
-.diagnostic-line { font-size: 14px; text-align: start; }
-.diagnostic-error { color: var(--danger, #c98181); text-align: start; }
+.diagnostic-line { font-size: 15px; text-align: start; }
+.diagnostic-error { color: var(--danger, var(--text)); text-align: start; }
 .diagnostic-ok { color: var(--text); text-align: start; }
 .marketplace-review-actions { gap: 8px; }

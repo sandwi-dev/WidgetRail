@@ -99,8 +99,10 @@ internal static partial class SettingsPresentation
     private static string ItemStatus(MarketplaceItem item)
     {
         if (item.AvailableVersion is null) return item.InstalledVersion is null ? "Check releases to see available versions" : "Installed " + item.InstalledVersion;
-        if (item.InstalledVersion is null) return "Available " + item.AvailableVersion;
-        return Version.TryParse(item.AvailableVersion, out var available) && Version.TryParse(item.InstalledVersion, out var installed) && available > installed
-            ? $"Update available · {item.InstalledVersion} → {item.AvailableVersion}" : "Installed " + item.InstalledVersion + " · Up to date";
+        var suffix = item.RetainedAvailability ? " · Previously checked release" : "";
+        if (item.InstalledVersion is null) return "Available " + item.AvailableVersion + suffix;
+        return (Version.TryParse(item.AvailableVersion, out var available) && Version.TryParse(item.InstalledVersion, out var installed) && available > installed
+            ? $"Update available · {item.InstalledVersion} → {item.AvailableVersion}" : "Installed " + item.InstalledVersion +
+                (item.RetainedAvailability ? "" : " · Up to date")) + suffix;
     }
 }

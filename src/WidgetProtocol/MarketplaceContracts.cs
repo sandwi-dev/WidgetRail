@@ -2,11 +2,12 @@ namespace WidgetRail.WidgetProtocol;
 
 public sealed record MarketplaceCommand(string Action, string? PackageId = null,
     string? OperationId = null, string? ReviewToken = null, bool ApproveFullTrust = false,
-    IReadOnlyList<string>? PackageIds = null);
+    IReadOnlyList<string>? PackageIds = null, bool ForceRefresh = false);
 
 public sealed record MarketplaceItem(string Id, string Name, string Description,
     IReadOnlyList<string> Screenshots, string? AvailableVersion = null, string? InstalledVersion = null,
-    long? DownloadBytes = null, bool IsPrerelease = false, bool AvailableVersionSaved = false);
+    long? DownloadBytes = null, bool IsPrerelease = false, bool AvailableVersionSaved = false, bool RetainedAvailability = false,
+    IReadOnlyList<string>? SetupRequirements = null);
 
 public sealed record MarketplaceReview(string Token, string PackageId, string Name, string Version,
     string? InstalledVersion, bool FullTrust, bool Compatible, string Compatibility,
