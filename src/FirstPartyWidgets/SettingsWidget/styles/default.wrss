@@ -96,7 +96,11 @@
 .widget-switcher-help { max-lines: 10; }
 .controllers-status { color: var(--accent); font-weight: 600; max-lines: 6; }
 .controllers-warning { color: var(--warning); }
-.app-update-input-warning { color: var(--warning); }
+.app-update-input-warning {
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 400;
+}
 .text-size-warning { color: var(--warning); max-lines: 8; }
 
 .settings-status.is-error,

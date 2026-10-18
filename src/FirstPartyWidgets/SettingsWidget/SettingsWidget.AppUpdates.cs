@@ -89,7 +89,7 @@ internal static partial class SettingsPresentation
         var busy = snapshot.State is "checking" or "downloading";
         var handingOff = snapshot.State == "handoff";
         var installerWarning = UI.Text("Interactive setup needs mouse and keyboard. Windows may request approval for required Microsoft components. WidgetRail closes only when setup is ready.",
-            "app-update.input-warning").Classes("page-help", "app-update-input-warning");
+            "app-update.input-warning").Classes("app-update-input-warning");
         var items = new List<WidgetElement>
         {
             UI.Text("App updates", "app-update.heading").Classes("page-heading"),

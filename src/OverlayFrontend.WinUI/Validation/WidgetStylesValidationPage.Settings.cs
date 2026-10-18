@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
@@ -12,6 +13,17 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 internal sealed partial class WidgetStylesValidationPage
 {
     private async Task SettingsProductionLayoutAsync(string directory)
+    {
+        Exception? failure = null;
+        try { await RunSettingsProductionLayoutAsync(directory); }
+        catch (Exception error) { failure = error; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--settings-layout-result") is { } result)
+            await File.WriteAllTextAsync(result, JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString(),
+                scope = "Native renderer and action dispatch with fixture snapshots; no installer, registration, prerequisite or UAC operations." }));
+        if (failure is not null) throw failure;
+    }
+
+    private async Task RunSettingsProductionLayoutAsync(string directory)
     {
         static IEnumerable<ViewNode> Walk(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Walk));
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -81,11 +93,91 @@ internal sealed partial class WidgetStylesValidationPage
                         descriptor.InstanceId, snapshot.Sequence, snapshot.ActiveInputScopeId), descriptor, snapshot, styles));
                     Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), focused), label + ": unchanged snapshot retains focus");
                 }
+                if (snapshot.ActiveInputScopeId == "app-update.page")
+                    await VerifyUpdateFixtureAsync(snapshot, Path.GetFileNameWithoutExtension(file), label);
             }
         }
         // Leave the final page at ordinary sizing for visual inspection.
         presenter.Width = 880;
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         presenter.UpdateLayout();
+    }
+
+    private async Task VerifyUpdateFixtureAsync(ViewSnapshot snapshot, string name, string label)
+    {
+        var dispatched = new List<string>();
+        // Record the real presenter dispatch; never attach an installer service to native layout fixtures.
+        var previousDispatch = presenter.DispatchActionAsync;
+        presenter.DispatchActionAsync = action => { dispatched.Add(action.Action.ActionId); return Task.CompletedTask; };
+        try
+        {
+            var interactive = name == "interactive-required";
+            var recovery = name is "cancelled" or "failed" or "restart-required" or "startup-warning";
+            var warning = Find<TextBlock>("Widget.app-update.input-warning");
+            Check((warning is not null) == interactive, label + ": interactive guidance appears only for the fallback");
+            if (interactive)
+            {
+                Check(warning!.Text.Contains("mouse and keyboard", StringComparison.OrdinalIgnoreCase),
+                    label + ": fallback clearly names the input requirement");
+                await Reveal(warning!);
+                Check(!warning!.IsTextTrimmed, label + ": fallback warning is fully readable");
+                var primary = Find<Button>("Widget.app-update.primary")!;
+                Check(ContainsText(primary, "Open interactive setup"), label + ": fallback action has explicit setup wording");
+                await Activate("app-update.primary", "app-update.install");
+            }
+            if (recovery)
+            {
+                Check(Find<Button>("Widget.app-update.primary") is null, label + ": recovery cannot invoke an unreviewed installer");
+                var status = Find<TextBlock>("Widget.app-update.status")!;
+                await Reveal(status);
+                Check(status.Text.Length > 0 && !status.IsTextTrimmed, label + ": full recovery guidance is readable");
+                Check(Nodes(snapshot.Root).Any(node => node.Id == "app-update.status" && node.StyleClasses.Contains("diagnostic-error")),
+                    label + ": recovery uses the error presentation");
+            }
+            await Activate("app-update.check", "app-update.check");
+            await Activate("app-update.back", "back");
+            Check(dispatched.Count(action => action == "app-update.install") == (interactive ? 1 : 0),
+                label + ": inspecting recovery and navigation never dispatches installation");
+        }
+        finally { presenter.DispatchActionAsync = previousDispatch; }
+
+        async Task Activate(string id, string expected)
+        {
+            var button = Find<Button>("Widget." + id)!;
+            Check(button is { IsEnabled: true, IsTabStop: true }, label + ": " + id + " remains available");
+            Check(button.Focus(FocusState.Keyboard), label + ": " + id + " accepts controller-style focus");
+            await Reveal(button);
+            var before = dispatched.Count;
+            presenter.ActivateFocused();
+            await Wait(() => dispatched.Count == before + 1);
+            Check(dispatched[^1] == expected && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button),
+                label + ": " + id + " dispatches exactly once without moving focus");
+        }
+        async Task Reveal(FrameworkElement element)
+        {
+            element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+            await Wait(() => InsideViewport(element));
+            Check(true, label + ": " + Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(element) + " is revealed without clipping");
+        }
+        bool InsideViewport(FrameworkElement element)
+        {
+            if (!element.IsLoaded || element.ActualWidth <= 0 || element.ActualHeight <= 0) return false;
+            for (DependencyObject? parent = VisualTreeHelper.GetParent(element); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+            {
+                if (parent is not FrameworkElement ancestor || parent is not ScrollViewer && !ReferenceEquals(parent, presenter)) continue;
+                var bounds = element.TransformToVisual(ancestor).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
+                if (bounds.Left < -1 || bounds.Top < -1 || bounds.Right > ancestor.ActualWidth + 1 || bounds.Bottom > ancestor.ActualHeight + 1) return false;
+                if (ReferenceEquals(parent, presenter)) return true;
+            }
+            return false;
+        }
+        static bool ContainsText(DependencyObject root, string text)
+        {
+            if (root is TextBlock block && block.Text == text) return true;
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+                if (ContainsText(VisualTreeHelper.GetChild(root, index), text)) return true;
+            return false;
+        }
+        static IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
     }
 }

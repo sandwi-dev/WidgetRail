@@ -857,3 +857,18 @@ see `cumulative-candidate-20261018-f/final-running.json` and `final-live-payload
 The earlier invisible-overlay observation is still unresolved. Spotify authentication,
 remaining broader editing/app acceptance, updater environment-specific fallback and
 physical controller/couch/hardware limits remain open; the goal is not complete.
+
+## Update fallback and recovery presentation — 2026-10-18
+
+Native recovery coverage exposed a real narrow-layout defect: the interactive
+setup warning inherited the helper text's two-line limit. The warning now wraps
+fully within the existing scrolling page. No arbitrary line cap was added.
+The focused Settings update scenario passes; the corrected native run passes
+**437 assertions** at 880/520 DIP and ordinary/150% text. It covers ready and
+expanded notes, interactive prerequisites, cancellation, failure, restart-required
+and startup-registration warning states. Check/Back remain reachable and preserve
+focus; recovery navigation never dispatches installation. These use a local
+service fixture and do not claim real UAC/prerequisite failure acceptance.
+Evidence: `updater-recovery-native-fixed-20261018-result.json`; representative
+startup-warning capture visually inspected. Initial clipping failure is retained
+in `updater-recovery-native-20261018-result.json`.

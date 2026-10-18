@@ -10,7 +10,8 @@ internal static class AppUpdateScenarios
     {
         var root = Path.Combine(Path.GetTempPath(), "wrail-update-layout-" + Guid.NewGuid().ToString("N"));
         var service = new Service();
-        service.SetNotes("WidgetRail update\n\nWhat's new\n\nDownload only the new installer. Choose Install and restart to close WidgetRail automatically and open normal Windows Setup.\n\nSettings and sign-ins stay in place.\n\n" +
+        Directory.CreateDirectory(directory);
+        service.SetNotes("WidgetRail update\n\nWhat's new\n\nChoose Install and restart for an unattended update when prerequisites are ready. If interactive setup is required, WidgetRail explains that before closing.\n\nSettings and sign-ins stay in place.\n\n" +
             string.Concat(Enumerable.Repeat("Long release notes remain readable in the page scroll area. There is no two-line helper-text limit.\n\n", 50)));
         service.Ready();
         var widget = new SettingsWidget(new PlatformSettingsStore(new(root)), diagnostics: service);
@@ -23,6 +24,19 @@ internal static class AppUpdateScenarios
             await export(widget.Render().CreateSnapshot("settings-update-layout", 1), Path.Combine(directory, "ready.json"));
             await widget.OnActionAsync(new("app-update.notes", "test"));
             await export(widget.Render().CreateSnapshot("settings-update-layout", 2), Path.Combine(directory, "notes.json"));
+            await widget.OnActionAsync(new("app-update.notes", "test"));
+            service.Interactive();
+            await widget.OnActionAsync(new("open.app-updates", "test"));
+            await export(widget.Render().CreateSnapshot("settings-update-layout", 3), Path.Combine(directory, "interactive-required.json"));
+            foreach (var outcome in new[] { "cancelled", "failed", "restart-required", "startup-warning" })
+            {
+                service.Outcome(outcome);
+                await widget.OnActionAsync(new("open.app-updates", "test"));
+                var snapshot = widget.Render().CreateSnapshot("settings-update-layout", 4);
+                Check(ViewSnapshotValidator.Validate(snapshot).Count == 0 && WinUiPresentationContract.Validate(snapshot).Count == 0);
+                await export(snapshot, Path.Combine(directory, outcome + ".json"));
+            }
+            Check(service.Installs == 0);
         }
         finally { await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default); if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
@@ -87,6 +101,18 @@ internal static class AppUpdateScenarios
             Check(Node("app-update.primary").IsDisabled == true);
             Check(Snapshot().ActiveInputScopeId == "app-update.page");
             await Action("back"); Check(Snapshot().ActiveInputScopeId == "about.page");
+            foreach (var outcome in new[] { "cancelled", "failed", "restart-required", "startup-warning" })
+            {
+                service.Outcome(outcome); await Action("open.app-updates");
+                Check(Node("app-update.status").Text == service.Message);
+                Check(Node("app-update.status").StyleClasses.Contains("diagnostic-error"));
+                Check(!Walk(Snapshot().Root).Any(n => n.Id is "app-update.primary" or "app-update.input-warning"));
+                Check(Node("app-update.check").IsDisabled != true && Node("app-update.back").IsDisabled != true);
+                var checks = service.Checks;
+                await Action("app-update.check");
+                Check(service.Checks == checks + 1 && service.Installs == 1);
+                await Action("back"); Check(Snapshot().ActiveInputScopeId == "about.page");
+            }
         }
         finally { await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default); if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
@@ -95,6 +121,8 @@ internal static class AppUpdateScenarios
     private sealed class Service : IPlatformDiagnosticsService
     {
         internal int Installs;
+        internal int Checks;
+        internal string Message => snapshot.Message;
         internal bool Auto = true;
         internal void SetNotes(string notes) => snapshot = snapshot with { Revision = snapshot.Revision + 1, Notes = notes };
         private AppUpdateSnapshot snapshot = new(1, "available", "0.1.0-preview.29", "0.1.0-preview.30", "Notes", "Ready to download", CanInstall: true);
@@ -105,9 +133,29 @@ internal static class AppUpdateScenarios
             { Auto = command.Action == "auto-enable"; snapshot = snapshot with { Revision = snapshot.Revision + 1, AutomaticallyCheck = Auto }; }
             if (command.Action == "download") snapshot = snapshot with { Revision = 2, State = "downloading" };
             if (command.Action == "install") { Installs++; snapshot = snapshot with { Revision = 4, State = "handoff", ReviewToken = null }; }
+            if (command.Action == "check")
+            {
+                Checks++;
+                if (snapshot.InstallerOutcomePending) snapshot = snapshot with { Revision = snapshot.Revision + 1, State = "available",
+                    InstallerOutcomePending = false, AvailableVersion = "0.1.0-preview.30", Message = "Ready to download" };
+            }
             return ValueTask.FromResult(snapshot);
         }
         internal void Interactive() => snapshot = snapshot with { Revision = snapshot.Revision + 1, RequiresInteractiveSetup = true };
         internal void Ready() => snapshot = snapshot with { Revision = snapshot.Revision + 1, State = "ready", RequiresInteractiveSetup = false, ReviewToken = new string('C', 64) };
+        internal void Outcome(string outcome) => snapshot = snapshot with
+        {
+            Revision = snapshot.Revision + 1, State = "failed", AvailableVersion = null, Notes = "", ReviewToken = null,
+            RequiresInteractiveSetup = false, InstallerOutcomePending = true,
+            // Presentation fixtures mirror the persisted outcomes produced by BridgeAppUpdates.
+            Message = outcome switch
+            {
+                "cancelled" => "Setup was cancelled. Your verified installation reopened. Check for updates to retry when ready.",
+                "failed" => "Setup did not finish. Your verified installation reopened. Check for updates to retry, or run the downloaded installer interactively.",
+                "restart-required" => "Setup requires a Windows restart. Save your work and restart Windows before retrying the update.",
+                "startup-warning" => "The update installed, but startup at sign-in could not be restored. Run setup again and select Start WidgetRail when I sign in.",
+                _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
+            },
+        };
     }
 }
