@@ -6,6 +6,18 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('wrail-update-handoff-test-' + [gu
 New-Item -ItemType Directory -Path $root | Out-Null
 function Check($value, [string]$message) { if (!$value) { throw $message } }
 try {
+  $target = Join-Path $root 'plain'
+  New-Item -ItemType Directory -Path $target | Out-Null
+  $link = Join-Path $root 'linked'
+  New-Item -ItemType Junction -Path $link -Target $target | Out-Null
+  try {
+    Assert-UpdatePlainPath (Join-Path $target 'missing/file.txt')
+    $rejected = $false
+    try { Assert-UpdatePlainPath (Join-Path $link 'missing/file.txt') }
+    catch { $rejected = $_.Exception.Message -like '*linked paths*' }
+    Check $rejected 'A linked ancestor beneath a missing file was accepted'
+    Write-Output 'PASS direct path checks allow absent files but reject linked ancestors'
+  } finally { [IO.Directory]::Delete($link); [IO.Directory]::Delete($target) }
   foreach ($edition in @('production', 'bare')) {
     $installer = Join-Path $root 'update.exe'
     [IO.File]::WriteAllText($installer, 'Inert fixture, never executed')

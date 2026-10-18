@@ -5,9 +5,12 @@ $ErrorActionPreference = 'Stop'
 function Assert-UpdatePlainPath([string]$Path) {
     $cursor = [IO.Path]::GetFullPath($Path)
     while ($cursor) {
-        if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-            throw 'Update files cannot use linked paths.'
-        }
+        # Inventory checks visit every file and ancestor. Avoid PowerShell provider
+        # discovery on each visit, while still checking every existing component.
+        try { $attributes = [IO.File]::GetAttributes($cursor) }
+        catch [IO.FileNotFoundException] { $attributes = 0 }
+        catch [IO.DirectoryNotFoundException] { $attributes = 0 }
+        if ($attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Update files cannot use linked paths.' }
         $cursor = [IO.Path]::GetDirectoryName($cursor)
     }
 }
