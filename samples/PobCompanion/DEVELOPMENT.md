@@ -8,7 +8,7 @@ This document covers the implementation and its compatibility checks. Installati
 
 Two controller-first widgets share one implementation and run pinned Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ. Calculation rules remain upstream; the adapter translates editor actions and presentation.
 
-The widgets are named **PoE1 Path of Building** and **PoE2 Path of Building (Beta)**. The beta label identifies PoE2's pinned upstream beta engine; PoE1 uses an upstream release.
+The widgets are named **PoE1 Path of Building (Beta)** and **PoE2 Path of Building (Beta)**. The beta labels identify the pinned upstream beta engines recorded in `engine-lock.json`.
 
 ### Shared implementation boundaries
 
@@ -108,7 +108,7 @@ Use `--loadouts-only` with a linked-loadout fixture to check independent copies,
 
 ## Engine update pipeline
 
-The weekly/manual `pob-engine-candidates` workflow resolves an exact upstream revision (PoE1 stable and PoE2 beta by default), builds the pinned Lua runtime, and runs real-engine checks before producing a candidate package. Failed checks prevent packaging; structured results, logs and binlogs are retained for diagnosis. Candidate locks do not replace the repository lock or the installed engine. The workflow does not publish releases automatically: review the results, inspect both widgets, and promote a tested package deliberately. The bridge adapter is the compatibility boundary; game calculations remain upstream.
+The weekly/manual `pob-engine-candidates` workflow resolves an exact upstream revision (both games use beta by default), builds the pinned Lua runtime, and runs real-engine checks before producing a candidate package. Failed checks prevent packaging; structured results, logs and binlogs are retained for diagnosis. Candidate locks do not replace the repository lock or the installed engine. The workflow does not publish releases automatically: review the results, inspect both widgets, and promote a tested package deliberately. The bridge adapter is the compatibility boundary; game calculations remain upstream.
 
 ## Credits
 

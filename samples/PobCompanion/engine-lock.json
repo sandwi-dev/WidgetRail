@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "poe1": { "repository": "https://github.com/PathOfBuildingCommunity/PathOfBuilding.git", "release": "v2.67.2", "commit": "b32759ab0f31a1c8499a0d420cb0f0633d4fe478" },
+  "poe1": { "repository": "https://github.com/PathOfBuildingCommunity/PathOfBuilding.git", "release": "2.67.2-16de4b82d (beta)", "commit": "274d129cc1f9ebad68d319e2e3117c9e948f5e10" },
   "poe2": { "repository": "https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2.git", "release": "0.23.1-bb52d6b36 (beta)", "commit": "84a11f1295f67a25f434329197444438514983f1" },
   "luaJit": { "repository": "https://github.com/LuaJIT/LuaJIT.git", "commit": "2a8e017ef1ece6a95b983ffca073d30609dce7c4" },
   "luaUtf8": { "repository": "https://github.com/starwing/luautf8.git", "commit": "a47b1433473a2509d77ad28f59a976716d187927" }

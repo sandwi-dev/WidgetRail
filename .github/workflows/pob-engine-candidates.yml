@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       channel:
-        description: Upstream channel (configured uses PoE1 stable and PoE2 beta)
+        description: Upstream channel (configured uses beta for both games)
         type: choice
         options: [configured, pinned, stable, beta]
         default: configured
@@ -43,7 +43,7 @@ jobs:
           GAME: ${{ matrix.game }}
         run: |
           $channel=$env:REQUESTED_CHANNEL
-          if($channel -eq 'configured'){$channel=if($env:GAME -eq '1'){'stable'}else{'beta'}}
+          if($channel -eq 'configured'){$channel='beta'}
           ./samples/PobCompanion/Prepare-EngineCandidate.ps1 -Game $env:GAME -Channel $channel -OutputDirectory artifacts/pob-ci/upstream
       - name: Build pinned Lua runtime
         shell: pwsh

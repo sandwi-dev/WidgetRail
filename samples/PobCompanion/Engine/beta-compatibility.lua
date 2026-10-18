@@ -1,4 +1,4 @@
--- PoE 2 beta 84a11f1 introduced explicit constructors and parent proxies with
+-- PoE 1 beta 274d129 and PoE 2 beta 84a11f1 use explicit constructors and parent proxies with
 -- _object/_parent fields. Upstream copyTableSafe installs __newindex before
 -- copying, which writes into the source object and can grow attribute-node
 -- graphs on subsequent loads. Keep class metadata shared and attach metatables

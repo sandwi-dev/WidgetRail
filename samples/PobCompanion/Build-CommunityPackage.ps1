@@ -60,7 +60,7 @@ foreach($name in @('luajit.exe','lua51.dll','lua-utf8.dll')){Copy-Item (Join-Pat
 foreach($name in @('LuaJIT-COPYRIGHT','LuaUTF8-LICENSE')){Copy-Item (Join-Path $RuntimeDirectory $name) (Join-Path $payload 'licenses')}
 Copy-Item -LiteralPath $EngineLockPath -Destination (Join-Path $payload 'engine-lock.json')
 $id="widgetrail.samples.poe$Game-companion"
-$widgetName=if($Game -eq 2){'PoE2 Path of Building (Beta)'}else{'PoE1 Path of Building'}
+$widgetName="PoE$Game Path of Building (Beta)"
 $manifest=[ordered]@{
     manifestVersion=1;id=$id;publisher='widgetrail.samples';name=$widgetName;version='0.1.0'
     hostApi=@{minimum='1.0';maximumMajor=1}

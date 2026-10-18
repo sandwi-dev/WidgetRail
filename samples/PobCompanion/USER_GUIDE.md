@@ -2,7 +2,7 @@
 
 [Overview and installation](README.md) | [Screenshots](screenshots/README.md) | [Developer documentation](DEVELOPMENT.md)
 
-Use the widget matching your build: **PoE1 Path of Building** or **PoE2 Path of Building (Beta)**. This guide describes the current source version; installed releases may differ.
+Use the widget matching your build: **PoE1 Path of Building (Beta)** or **PoE2 Path of Building (Beta)**. This guide describes the current source version; installed releases may differ.
 
 [Builds and imports](#builds-and-imports) | [Saving and previews](#saving-undo-and-previews) | [Loadouts and skills](#loadouts-and-skills) | [Passive tree](#passive-tree) | [Calculations and configuration](#calculations-and-configuration) | [Items and trade](#items-and-trade) | [Controller navigation](#controller-navigation) | [Limits and compatibility](#limits-and-compatibility)
 

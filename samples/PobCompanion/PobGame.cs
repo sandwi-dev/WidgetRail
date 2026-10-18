@@ -29,7 +29,7 @@ internal sealed record PobGame
         _ => false
     };
 
-    private static readonly PobGame Poe1 = new(1, "PoE1 Path of Building", "PathOfBuilding", "/trade/", "pc", false, false);
+    private static readonly PobGame Poe1 = new(1, "PoE1 Path of Building (Beta)", "PathOfBuilding", "/trade/", "pc", false, false);
     private static readonly PobGame Poe2 = new(2, "PoE2 Path of Building (Beta)", "PathOfBuilding2", "/trade2/", "poe2", true, true);
     internal static PobGame For(int id) => id switch
     {

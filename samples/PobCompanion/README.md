@@ -2,7 +2,7 @@
 
 Plan and compare Path of Exile builds from your controller, inside the WidgetRail overlay.
 
-Use **PoE1 Path of Building** for Path of Exile or **PoE2 Path of Building (Beta)** for Path of Exile 2. Both use Path of Building Community calculations. The PoE2 widget uses a beta engine; the PoE1 widget uses a release engine.
+Use **PoE1 Path of Building (Beta)** for Path of Exile or **PoE2 Path of Building (Beta)** for Path of Exile 2. Both use pinned Path of Building Community beta engines and their calculations.
 
 ![PoE2 calculations and loadout controls in WidgetRail](screenshots/calculations.png)
 
