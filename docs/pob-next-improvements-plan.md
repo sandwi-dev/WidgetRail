@@ -19,6 +19,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | 5 | Add whole-build and loadout comparison | Agreed; not started |
 | 6 | Add unified search and direct navigation | Agreed; not started |
 | Independent host change | Rename Marketplace to WidgetRail Catalogue | Agreed; not started |
+| Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Agreed; not started |
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
 | Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Agreed; not started |
 
@@ -163,6 +164,21 @@ Rename the user-facing Marketplace to **WidgetRail Catalogue**, using the user's
 - [ ] Test caching, unchanged responses, expiry, rate-limit responses and retry behavior with deterministic fake HTTP/time fixtures. Do not intentionally exhaust GitHub's live limits to test them. Record native workflow and request-count evidence before declaring completion.
 
 This is independent of the PoB architecture work. Technical identifiers and historical records need not be mechanically renamed.
+
+## Release distribution: Bare and Production
+
+From the next release, offer the same application and host capabilities with two initial widget bundles: Bare contains Settings and WidgetRail Catalogue; Production contains those plus a selected set of generally useful widgets. All optional widgets must be available through Catalogue, including first-party widgets currently available only in the bundled installation. Bundle choice must not restrict which widgets a user can install later.
+
+- [ ] Replace Developer edition distribution with Bare. Remove obsolete edition-specific packaging, installer, update-selection and test assumptions. Backward compatibility or automatic migration for Developer edition is not required; keep useful SDK tooling, source samples and validation fixtures independently of a shipping Developer edition.
+- [ ] Publish installable Catalogue packages for all optional widgets, with appropriate descriptions, capabilities, dependencies and review flows. Preserve package identity and trust validation; a Catalogue listing must not grant special host privileges. Verify first-party package admission where currently tied to bundled provenance.
+- [ ] Use the same host binaries and shared capabilities in both bundles. Keep dependencies needed by subsequently installed widgets; do not remove shared services merely because their consuming widget is absent from Bare.
+- [ ] Make first-party and other optional widgets installable, updateable and removable through the normal Catalogue/Settings workflows. Handle existing bundled copies coherently, without duplicate rail entries or competing update identities.
+- [ ] Preserve bundle choice during application updates and retain user-installed widgets. Do not reset a Bare installation to Production or remove added widgets during an app update.
+- [ ] Audit shortcuts, settings links, intents and provider discovery with optional widgets absent. Provide appropriate unavailable/install guidance or supported fallbacks instead of dead actions or crashes.
+- [ ] Verify clean Bare installation, Guide opening, Settings, Catalogue, installing and launching optional widgets, restarting, removing widgets and Bare-to-Bare updates. Verify Production uses the same installation/update behaviour. Check native presentation and controller/mouse flows in both bundles.
+- [ ] Measure package size and startup/resource impact rather than promising proportional savings from the smaller widget count. Finalize the generally useful Production bundle during implementation review.
+
+This records the next-release distribution scope; it does not independently authorize publishing a release. Settings and Catalogue remain the core bootstrap surfaces. Developer edition retirement does not imply removal of development support from the project.
 
 ## Shared host scroll-container edge cues
 
