@@ -23,6 +23,8 @@ local function check(node)
   if node.type=='Mastery'and node.masteryEffects and not build.spec.hashOverrides[node.id]then
     assert(p.icon==((node.alloc and node.activeIcon or node.inactiveIcon)or node.icon or ''),'Mastery state '..node.id)
   end
+  assert(type(p.art)=='table'and type(p.art.radii)=='table','Artwork state '..node.id)
+  if node.overlay and node.type~='Mastery'and not decorative and node.type~='ClassStart'and node.type~='AscendClassStart'then assert(p.art.frame~='','Frame '..node.id)end
   return p
 end
 for _,node in pairs(build.spec.nodes)do

@@ -30,6 +30,7 @@ public static class TreeMapMessages
                 interactive=Flag(n,"interactive",true),decoration=Flag(n,"decoration"),landmark=Flag(n,"landmark"),granted=Flag(n,"granted"),dimmed=Flag(n,"dimmed"),
                 radius=n.TryGetProperty("radius",out var radius)?radius.GetDouble():50,
                 allocationMode=Mode(n),
+                art=n.TryGetProperty("art",out var art)?art:(JsonElement?)null,
                 socketedItem=n.TryGetProperty("socketedItem",out var jewel)?jewel.GetString():"",
                 change = allocated != was ? allocated ? "added" : "removed" : allocated&&
                     ((oldDescriptions is not null&&oldDescriptions.TryGetValue(id,out var oldText)&&oldText!=n.GetProperty("description").GetString())||
@@ -43,6 +44,8 @@ public static class TreeMapMessages
             AddBatches(messages, "nodes", nodes, revision);
             AddBatches(messages, "links", state.GetProperty("links").EnumerateArray().Where(edge=>visibleIds.Contains(edge.GetProperty("a").GetInt32())&&visibleIds.Contains(edge.GetProperty("b").GetInt32())), revision);
         }
+        if(state.TryGetProperty("treeArtwork",out var treeArtwork))
+            AddBatches(messages,"artwork",treeArtwork.EnumerateArray(),revision);
         messages.Add(JsonSerializer.SerializeToElement(new { type = "end", revision, preserve, selected, preview = before.HasValue,
             weaponTreeModes=Flag(state,"weaponTreeModes"),
             ascendancy = state.TryGetProperty("ascendancy",out var ascendancy) ? ascendancy.GetString() : "",
@@ -50,7 +53,7 @@ public static class TreeMapMessages
         return messages;
         bool ChangedLabel(JsonElement node) => previousMapNodes is null || !previousMapNodes.TryGetValue(node.GetProperty("id").GetInt32(),out var old) ||
             old.GetProperty("name").GetString()!=node.GetProperty("name").GetString() || old.GetProperty("kind").GetString()!=node.GetProperty("kind").GetString() ||
-            new[]{"icon","socketedItem","radius","interactive","decoration","landmark","granted","dimmed"}.Any(key=>
+            new[]{"art","icon","socketedItem","radius","interactive","decoration","landmark","granted","dimmed"}.Any(key=>
                 (old.TryGetProperty(key,out var oldValue)?oldValue.GetRawText():null)!=(node.TryGetProperty(key,out var newValue)?newValue.GetRawText():null));
     }
     private static bool Flag(JsonElement node,string key,bool fallback=false)=>node.TryGetProperty(key,out var value)?value.ValueKind==JsonValueKind.True:fallback;

@@ -5,6 +5,7 @@ local adapterDirectory=assert(arg[0]:match('^(.*[/\\])'),'Adapter requires an ab
 local compatibility=dofile(adapterDirectory..'engine-compatibility.lua')
 local treeGeometry=dofile(adapterDirectory..'tree-geometry.lua')
 local treePresentation=dofile(adapterDirectory..'tree-presentation.lua')
+local treeArtwork=dofile(adapterDirectory..'tree-artwork.lua')
 local skillManagement=dofile(adapterDirectory..'skill-management.lua')
 local planningFeatures=dofile(adapterDirectory..'planning-features.lua')
 local gameExport=dofile(adapterDirectory..'build-export.lua')
@@ -301,13 +302,14 @@ local function snapshot()
       result.nodes[#result.nodes+1]={id=id,x=n.x,y=n.y,name=clean(n.dn),allocated=n.alloc==true,kind=n.type,
         description=clean(table.concat(n.sd or {},'\n')),descriptionRuns=textRuns(table.concat(n.sd or {},'\n')),note=build.spec.nodeNotes and build.spec.nodeNotes[id]or '',icon=display.icon,distance=n.pathDist or 0,
         visible=display.visible,interactive=display.interactive,decoration=display.decoration,landmark=display.landmark,granted=display.granted,radius=display.radius,
-        socketedItem=clean(display.socketedItem),dimmed=display.dimmed,allocationMode=n.allocMode or 0,canTattoo=treeEditing.canTattoo(n)==true,isTattoo=n.isTattoo==true,
+        art=display.art,socketedItem=clean(display.socketedItem),dimmed=display.dimmed,allocationMode=n.allocMode or 0,canTattoo=treeEditing.canTattoo(n)==true,isTattoo=n.isTattoo==true,
         ascendancy=n.ascendancyName~=nil,ascendancyName=n.ascendancyName or '',canAllocate=canAllocate,canRefund=n.alloc==true and display.interactive,requiresChoice=requiresChoice==true and display.interactive,
         choiceKind=choiceKind,canChoose=requiresChoice and display.interactive and not display.granted and(n.alloc==true or path~=nil),
         pathCount=path and #path or 0,refundCount=n.depends and #n.depends or 0}
     end
   end
   result.links=treeGeometry(build.spec)
+  result.treeArtwork=treeArtwork(build)
   table.sort(result.nodes,function(a,b)return a.id<b.id end)
   return result
 end

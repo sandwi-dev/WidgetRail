@@ -169,6 +169,16 @@ public sealed partial class MainWindow
         { AppWindow.Resize(new(1600, 1100)); RootFrame.Content = new Validation.ProductionShellValidationPage(); }
         else if (arguments.Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();
         else if (arguments.Contains("--validate-web-sessions")) RootFrame.Content = new Validation.HostedWebSessionValidationPage();
+        else if (Shell.FrontendArguments.Value(arguments, "--tree-artwork-validation-output") is { } treeArtworkOutput)
+        {
+            var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
+            AppWindow.ResizeClient(new((int)Math.Ceiling(1120*scale),(int)Math.Ceiling(820*scale)));
+            ShellCard.Margin = ShellCard.Padding = new(0); ShellHeader.Visibility = Visibility.Collapsed; ShellLayout.RowSpacing = 0;
+            RootFrame.Content = new Validation.TreeArtworkValidationPage(treeArtworkOutput,
+                Shell.FrontendArguments.Value(arguments, "--tree-artwork-source") ?? throw new ArgumentException("Missing tree source directory."),
+                Shell.FrontendArguments.Value(arguments, "--tree-artwork-assets") ?? throw new ArgumentException("Missing tree artwork directory."),
+                Shell.FrontendArguments.Value(arguments, "--tree-artwork-fixture") ?? throw new ArgumentException("Missing tree fixture."));
+        }
         else if (arguments.Contains("--validate-extensions")) RootFrame.Content = new Validation.BrowserExtensionValidationPage();
         else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage(crossRootMediaProbe);
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();

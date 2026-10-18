@@ -5,15 +5,44 @@
   const context = canvas.getContext('2d');
   let nodes = [], links = [], byId = new Map(), incoming = null, revision = -1;
   let currentAscendancy = '';
-  let treeVersion = '', artwork = null;
+  let treeVersion = '', artwork = null, artEpoch=0, backgrounds=[];
   const sheets = new Map(), tooltipCache = new Map(), tooltip = document.getElementById('tooltip');
   const selectionMarker=document.getElementById('selection-marker');
   let hoverId = 0, hoverTimer = null, hoverX = 0, hoverY = 0;
   function loadArtwork(version){
-    artwork=null;sheets.clear();
+    const epoch=++artEpoch;
+    artwork=null;
+    for(const sheet of sheets.values()){sheet.onload=sheet.onerror=null;sheet.src='';}
+    sheets.clear();
     if(!/^[A-Za-z0-9_]+$/.test(version))return;
     fetch(`art/${version}/index.json`).then(r=>{if(!r.ok)throw new Error('No artwork');return r.json();})
-      .then(data=>{if(treeVersion===version){artwork=data;redraw();}}).catch(()=>{});
+      .then(data=>{
+        const atlasValid=a=>a&&Number.isSafeInteger(a.sheets)&&a.sheets>=0&&a.sheets<=10&&Number.isSafeInteger(a.columns)&&Number.isSafeInteger(a.tile)&&a.columns*a.tile<=512&&a.columns>0&&a.tile>0;
+        if(!atlasValid(data)||!atlasValid(data.decorations)||data.layers&&(!Number.isSafeInteger(data.layers.sheets)||data.layers.sheets>8||data.layers.sheets<0||data.layers.size!==1024))return;
+        if(artEpoch===epoch){artwork=data;redraw();}
+      }).catch(()=>{});
+  }
+  function sheetImage(key){
+    let sheet=sheets.get(key);
+    if(!sheet){
+      const epoch=artEpoch;
+      sheet=new Image();sheet.decoding='async';sheets.set(key,sheet);
+      sheet.onload=()=>{if(epoch===artEpoch)redraw();};sheet.onerror=()=>{};
+      sheet.src=`art/${treeVersion}/${key}.webp`;
+    }
+    return sheet.complete&&sheet.naturalWidth?sheet:null;
+  }
+  function layer(image,x,y,width,height,rotation=0,half=false){
+    const sprite=artwork?.layers?.sprites?.[image];
+    if(!sprite||!Number.isSafeInteger(sprite.sheet)||sprite.sheet<0||sprite.sheet>=artwork.layers.sheets)return false;
+    if(![sprite.x,sprite.y,sprite.w,sprite.h].every(Number.isFinite)||sprite.x<0||sprite.y<0||sprite.w<=0||sprite.h<=0||sprite.x+sprite.w>1024||sprite.y+sprite.h>1024)return false;
+    width=width||sprite.width*scale;height=height||sprite.height*scale;
+    if(!(width>0&&height>0))return false;
+    if(x+width<0||x-width>map.clientWidth||y+height*(half?2:1)<0||y-height*(half?2:1)>map.clientHeight)return false;
+    const sheet=sheetImage('layers-'+sprite.sheet);if(!sheet)return false;
+    context.save();context.translate(x,y);if(rotation)context.rotate(rotation);
+    const paint=()=>context.drawImage(sheet,sprite.x,sprite.y,sprite.w,sprite.h,-width,-height*(half?2:1),width*2,height*2);
+    paint();if(half){context.scale(1,-1);paint();}context.restore();return true;
   }
   function nodePath(n,x,y,radius) {
     context.beginPath();
@@ -26,9 +55,8 @@
     const atlas=n.decoration?artwork?.decorations:artwork,index=atlas?.icons?.[n.icon];
     if(!Number.isSafeInteger(index) || index<0 || radius<1.5)return false;
     const perSheet=atlas.columns*atlas.columns, sheetId=Math.floor(index/perSheet),key=(n.decoration?'decorations':'nodes')+'-'+sheetId;
-    let sheet=sheets.get(key);
-    if(!sheet){sheet=new Image();sheets.set(key,sheet);sheet.onload=redraw;sheet.src=`art/${treeVersion}/${key}.webp`;}
-    if(!sheet.complete || !sheet.naturalWidth)return false;
+    if(sheetId>=atlas.sheets)return false;
+    const sheet=sheetImage(key);if(!sheet)return false;
     const offset=index%perSheet;
     context.save();if(!n.decoration){nodePath(n,x,y,Math.max(.5,radius-.5));context.clip();}
     context.globalAlpha*=n.decoration ? .18 :(n.allocated||n.granted?1:.75);
@@ -63,7 +91,7 @@
   function hover(id,x,y) {
     hoverX=x;hoverY=y;
     if(id===hoverId)return;
-    hoverId=id;clearTimeout(hoverTimer);tooltip.hidden=true;
+    hoverId=id;redraw();clearTimeout(hoverTimer);tooltip.hidden=true;
     if(!id)return;
     hoverTimer=setTimeout(()=>{
       if(tooltipCache.has(id))showTooltip(tooltipCache.get(id));
@@ -95,12 +123,23 @@
     const background=getComputedStyle(map).backgroundColor;
     const highContrast=window.matchMedia?.('(forced-colors: active)').matches===true;
     const visible = nodes.map(n => ({ n, p: point(n) })).filter(({ n,p }) => p[0] > -Math.max(30,(n.radius||50)*scale) && p[0] < w+Math.max(30,(n.radius||50)*scale) && p[1] > -Math.max(30,(n.radius||50)*scale) && p[1] < h+Math.max(30,(n.radius||50)*scale));
+    if(!highContrast)for(const bg of backgrounds){
+      const [x,y]=point(bg);context.globalAlpha=bg.dimmed?.18:.32;
+      const sprite=artwork?.layers?.sprites?.[bg.image];
+      if(sprite){
+        const width=(bg.width||sprite.width)*scale*(bg.scale||1),height=(bg.height||sprite.height)*scale*(bg.scale||1);
+        // At overview zoom these textures cannot communicate useful detail.
+        // Keep large class artwork; reveal small group textures as users zoom in.
+        if(Math.max(width,height)>=20)layer(bg.image,x,y,width,height,bg.rotation,bg.half);
+      }
+    }
+    context.globalAlpha=1;
     for(const {n,p:[x,y]}of visible)if(n.decoration)icon(n,x,y,(n.radius||190)*scale);
     const edgeStyle = (a, b) => (a.change === 'removed' || b.change === 'removed') && (active(a) || a.change === 'removed') && (active(b) || b.change === 'removed') ? 'removed'
       : active(a) && active(b) && (!(a.allocationMode||0)||!(b.allocationMode||0)||a.allocationMode===b.allocationMode) ? a.change === 'added' || b.change === 'added' ? 'added' : 'active' : 'base';
     for (const dimmed of [true,false]) for (const style of ['base', 'active', 'removed', 'added']) {
-      context.globalAlpha=(dimmed ? .35 : 1)*(style==='base'&&!highContrast ? .4 : 1);
-      context.strokeStyle=colors[style];context.lineWidth=style==='base' ? .65 : Math.max(1.2,Math.min(2,scale*20));
+      context.globalAlpha=highContrast?1:(dimmed ? .35 : 1)*(style==='base' ? .4 : 1);
+      context.strokeStyle=colors[style];context.lineWidth=style==='base' ? (highContrast?1.25:.65) : Math.max(1.2,Math.min(2,scale*20));
       context.setLineDash(style === 'removed' ? [5, 4] : []); context.beginPath();
       for (const edge of links) {
         const a = byId.get(edge.a), b = byId.get(edge.b);
@@ -118,19 +157,24 @@
     for (const { n, p: [x, y] } of visible) {
       if(n.decoration)continue;
       const emphasized=active(n)||n.id===selected||!!n.change;
-      context.globalAlpha=(n.dimmed?.35:1)*(emphasized||highContrast?1:.65);
+      context.globalAlpha=highContrast?1:(n.dimmed?.35:1)*(emphasized?1:.65);
       const color=colors[n.change||(active(n)?'active':'base')];
       const radius=nodeRadius(n),detailed=radius>=3;
       context.strokeStyle=color;
       context.fillStyle=detailed&&!emphasized?background:color;
-      context.lineWidth=emphasized?1.5:.75;
+      context.lineWidth=highContrast?(emphasized?2:1.5):emphasized?1.5:.75;
       nodePath(n,x,y,radius);context.fill();
       if(detailed)context.stroke();
       const painted=icon(n,x,y,radius);
+      const frameSprite=artwork?.layers?.sprites?.[n.art?.frame];
+      const frameWidth=n.landmark&&frameSprite?Math.min(80,frameSprite.width*scale*(n.art.scale||1)):radius*1.12;
+      const frameHeight=n.landmark&&frameSprite?Math.min(80,frameSprite.height*scale*(n.art.scale||1)):radius*1.12;
+      const framed=detailed&&!highContrast&&n.art?.frame&&layer(n.art.frame,x,y,frameWidth,frameHeight);
+      const socketPainted=detailed&&!highContrast&&n.art?.socket&&layer(n.art.socket,x,y,radius,radius);
       if(detailed&&n.allocated&&n.allocationMode>0){context.fillStyle=colors.active;context.font='bold 11px sans-serif';context.textAlign='left';context.textBaseline='bottom';context.fillText(String(n.allocationMode),x+radius+2,y-radius-2);}
-      if(n.kind==='Notable'&&radius>=5){nodePath(n,x,y,radius+1.5);context.stroke();}
-      if(n.socketedItem&&radius>=3){nodePath({kind:'Keystone'},x,y,radius*.45);context.fillStyle=colors.active;context.fill();}
-      else if(!painted&&n.landmark&&radius>=7){context.fillStyle=color;context.font=`bold ${Math.max(9,radius)}px sans-serif`;context.textAlign='center';context.textBaseline='middle';context.fillText(n.kind==='ClassStart'?'C':'A',x,y);}
+      if(!framed&&n.kind==='Notable'&&radius>=5){nodePath(n,x,y,radius+1.5);context.stroke();}
+      if(!socketPainted&&n.socketedItem&&radius>=3){nodePath({kind:'Keystone'},x,y,radius*.45);context.fillStyle=colors.active;context.fill();}
+      else if(!painted&&!framed&&n.landmark&&radius>=7){context.fillStyle=color;context.font=`bold ${Math.max(9,radius)}px sans-serif`;context.textAlign='center';context.textBaseline='middle';context.fillText(n.kind==='ClassStart'?'C':'A',x,y);}
       if(n.granted&&!n.allocated&&detailed){context.setLineDash([2,2]);nodePath(n,x,y,radius+2);context.stroke();context.setLineDash([]);}
       if (n.id === selected || n.change) {
         context.globalAlpha=1;
@@ -138,6 +182,17 @@
         context.setLineDash(n.change === 'removed' ? [3, 2] : []);
         context.beginPath(); context.arc(x, y, radius+4, 0, Math.PI*2); context.stroke(); context.setLineDash([]);
       }
+    }
+    // Radius is an inspection aid: show only the selected/hovered socket.
+    // Numeric radii and alternative centers are supplied by PoB; no effect rules live here.
+    const inspected=byId.get(hoverId||selected);
+    for(const ring of Array.isArray(inspected?.art?.radii)?inspected.art.radii:[]){
+      if(!Number.isFinite(ring.outer)||ring.outer<=0)continue;
+      const [x,y]=point(ring);
+      if(!highContrast){context.globalAlpha=.3;layer('ShadedOuterRing',x,y,ring.outer*scale,ring.outer*scale);if(ring.inner>0)layer('ShadedInnerRing',x,y,ring.inner*scale,ring.inner*scale);}
+      context.globalAlpha=highContrast?1:.7;context.strokeStyle=colors.selected;context.lineWidth=1.5;
+      context.beginPath();context.arc(x,y,ring.outer*scale,0,Math.PI*2);context.stroke();
+      if(ring.inner>0){context.setLineDash([4,3]);context.beginPath();context.arc(x,y,ring.inner*scale,0,Math.PI*2);context.stroke();context.setLineDash([]);}
     }
     context.globalAlpha=1;
     const target=byId.get(selected),position=target?point(target):null;
@@ -225,16 +280,17 @@
     if(m.type==='begin'){
       if(!Number.isSafeInteger(m.revision)||m.revision<=revision)return;
       revision=m.revision;
-      incoming={revision,nodes:m.reuseGeometry?nodes.map(n=>({...n,allocated:false,granted:false,change:''})):[],links:m.reuseGeometry?links:[]};
+      incoming={revision,backgrounds:[],nodes:m.reuseGeometry?nodes.map(n=>({...n,allocated:false,granted:false,change:''})):[],links:m.reuseGeometry?links:[]};
       incoming.byId=new Map(incoming.nodes.map(n=>[n.id,n]));return;
     }
     if(m.type==='select'){selected=m.id;locateSelected();return;}
     if(!incoming||m.revision!==incoming.revision)return;
+    if(m.type==='artwork'&&Array.isArray(m.items)&&incoming.backgrounds.length+m.items.length<=3000)incoming.backgrounds.push(...m.items);
     if(m.type==='states'&&Array.isArray(m.items))for(const state of m.items){const node=incoming.byId.get(state.id);if(node)Object.assign(node,state);}
     if(m.type==='nodes'&&Array.isArray(m.items)&&incoming.nodes.length+m.items.length<=15000)incoming.nodes.push(...m.items);
     if(m.type==='links'&&Array.isArray(m.items)&&incoming.links.length+m.items.length<=50000)incoming.links.push(...m.items);
     if(m.type==='end'){
-      hasSnapshot=true;nodes=incoming.nodes;links=incoming.links;incoming=null;byId=new Map(nodes.map(n=>[n.id,n]));selected=m.selected||0;preview=!!m.preview;
+      hasSnapshot=true;nodes=incoming.nodes;links=incoming.links;backgrounds=incoming.backgrounds;incoming=null;byId=new Map(nodes.map(n=>[n.id,n]));selected=m.selected||0;preview=!!m.preview;
       currentAscendancy=m.ascendancy||'';
       const weaponLegend=document.getElementById('weapon-legend');if(weaponLegend)weaponLegend.hidden=!m.weaponTreeModes;
       if(treeVersion!==(m.treeVersion||'')){treeVersion=m.treeVersion||'';loadArtwork(treeVersion);}tooltipCache.clear();hover(0,0,0);
@@ -246,5 +302,23 @@
     }
   });
   window.addEventListener('widgetrailthemechange',redraw);
-  new ResizeObserver(()=>{if(hasSnapshot&&autoFit)fit(fitAscendancy);else redraw();}).observe(map);WidgetRailWebSession.post({type:'ready'});
+  // WebView can report a backing-scale/viewport change without changing the
+  // map's CSS box. Use both native viewport and resolution notifications.
+  window.addEventListener('resize',redraw);
+  // Monitor-scale changes need a new canvas backing buffer even if CSS bounds stay put.
+  let resolutionQuery=null;
+  function watchResolution(){
+    resolutionQuery?.removeEventListener?.('change',resolutionChanged);
+    // Chromium can expose values such as 1.0000000149 while CSS resolution
+    // comparison rounds differently. Keep the current ratio inside a tiny band
+    // so this query is true now and reliably changes on the next scale change.
+    const ratio=devicePixelRatio||1;
+    resolutionQuery=window.matchMedia?.(`(min-resolution: ${Math.max(0,ratio-.0001)}dppx) and (max-resolution: ${ratio+.0001}dppx)`);
+    resolutionQuery?.addEventListener?.('change',resolutionChanged);
+  }
+  function resolutionChanged(){watchResolution();redraw();}
+  watchResolution();
+  new ResizeObserver(()=>{if(hasSnapshot&&autoFit)fit(fitAscendancy);else redraw();})
+    .observe(map,{box:'device-pixel-content-box'});
+  WidgetRailWebSession.post({type:'ready'});
 })();

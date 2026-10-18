@@ -320,3 +320,56 @@ after dismissal; confirming even the current option intentionally dispatches onc
 Pre-commit review caught invalid dot-separated indexed child ID segments and corrected
 them to stable hyphenated segments before successful engine/native verification.
 No normal-profile or live-service changes were needed.
+
+## Upstream tree artwork and bounded rendering — 2026-10-18
+
+The exporter and adapter now supply class/ascendancy backgrounds, frame and socket
+state, and static jewel-radius metadata from upstream. Alternative radius centres,
+occupied sockets, half backgrounds, proxies and historical shared-asset locations
+are covered. No maintained passive-effect calculation rules or animated jewel
+textures were introduced. Source/version changes retire late image responses.
+
+All 46 supported tree-version resource audits pass (41 PoE1, five PoE2). Current
+full session resources are 1,052,829 bytes / 15 files for PoE1 and 927,030 / 14 for
+PoE2. Largest files are 254,478 / 250,756 bytes. Current full decoded textures are
+19 / 24 MiB, loaded lazily with a hard atlas ceiling of 52 MiB and release on tree
+change. All-version generated assets are under `tree-art-rich-poe1-all` and
+`tree-art-rich-poe2-all`; preserve these for cumulative packaging.
+
+Real-engine tree/projection checks pass 10/10 (PoE1) and 11/11 (PoE2), including the
+actual generated atlases. Separate upstream oracles resolve 2,557 / 4,361 frames and
+411 / 25 backgrounds with no missing current references. Lua metadata and JS protocol,
+late-image, coalescing, selection, forced-colour and idle regressions pass.
+
+Native WebView checks pass 17 each in `tree-native-poe1-02/result.json` and
+`tree-native-poe2-10/result.json`: local resources only, decoded images, bounded
+accessible targets, selection, constrained layout, themes/forced colours, raster
+sizes at 100/150/200%, and no idle redraw. Representative root/detail/light/high-
+contrast crops were inspected. Visual review fixed faint high-contrast connectors
+and node outlines. Small group backgrounds are omitted below a useful zoom threshold.
+
+Before/after native drawing CPU samples (12 navigation frames, same fixture/viewport):
+
+| Game / view | Previous p50 / p95 | New p50 / p95 |
+| --- | --- | --- |
+| PoE1 overview | 10.6 / 12.6 ms | 11.6 / 14.0 ms |
+| PoE1 detail | 3.9 / 4.8 ms | 4.2 / 4.6 ms |
+| PoE2 overview | 13.3 / 18.1 ms | 13.1 / 16.2 ms |
+| PoE2 detail | 8.0 / 11.1 ms | 6.6 / 9.2 ms |
+
+An initial PoE1 overview measured 18.5 ms p50 before the zoom threshold. These are
+small drawing-callback CPU samples, not GPU frame latency or universal speedup claims.
+Baseline evidence is `tree-native-baseline-poe1/poe2`; no parallel calculation engines
+or idle animation loop was added.
+
+The scale-only CDP experiment changes devicePixelRatio without delivering native
+resize/resolution events. The final fixture distinguishes emulated rendering from
+actual monitor placement. Both connected monitors are at 125%; a physical transition
+between different DPIs remains unverified. The renderer observes device-pixel content
+bounds plus coalesced viewport/resolution changes. Initial fixture setup also needed
+indexed WinRT display enumeration and the existing WinUI environment creation API.
+An explicit empty favicon avoids an unnecessary undeclared-resource request.
+
+These are isolated renderer checks, not complete widget session/controller/couch
+acceptance. Integrated tree edit/inspect/reopen workflows and fresh cumulative
+package admission remain on the final acceptance list.

@@ -19,6 +19,9 @@ internal static class TreePresentationTests
         var ids=projected.Select(n=>n.GetProperty("id").GetInt32()).ToHashSet();
         check(ids.SetEquals(nodes.Where(n=>n.GetProperty("visible").GetBoolean()).Select(n=>n.GetProperty("id").GetInt32())),"Only upstream-visible nodes reach the rendered map");
         check(messages.Where(m=>m.GetProperty("type").GetString()=="links").SelectMany(m=>m.GetProperty("items").EnumerateArray()).All(l=>ids.Contains(l.GetProperty("a").GetInt32())&&ids.Contains(l.GetProperty("b").GetInt32())),"Hidden endpoints never leave orphan connectors");
+        var backgrounds=messages.Where(m=>m.GetProperty("type").GetString()=="artwork").SelectMany(m=>m.GetProperty("items").EnumerateArray()).ToArray();
+        check(backgrounds.Length>0 && backgrounds.Length==result.State.GetProperty("treeArtwork").GetArrayLength(),"Upstream artwork placement is batched with the map transaction");
+        check(projected.All(n=>n.GetProperty("art").ValueKind==JsonValueKind.Object),"Node artwork state reaches the renderer");
         check(messages.All(m=>JsonSerializer.SerializeToUtf8Bytes(m).Length<=WebSessionContract.MaximumMessageBytes),"Full tree respects shared message limits");
         foreach(var node in decorative.Take(1).Concat(nodes.Where(n=>!n.GetProperty("interactive").GetBoolean()).Take(1)))
         {

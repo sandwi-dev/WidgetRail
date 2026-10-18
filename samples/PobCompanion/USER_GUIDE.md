@@ -58,6 +58,11 @@ The core group workflows above follow desktop PoB. Independent skill sets can be
 
 ## Passive tree
 
+The map uses PoB's class and ascendancy backgrounds, node frames and socket artwork.
+Jewel inspection uses upstream radius and centre data. Small background textures
+appear as you zoom in; high-contrast mode keeps clear outlines and hides decorative
+backgrounds. Jewel effects are static so the tree does not redraw continuously.
+
 **Tree** shows upstream passive-tree positions, rendered connections and node artwork, with an adjacent node inspector. Hover or dwell with the controller pointer for modifiers and point costs. At overview zoom, small passives use compact markers and subdued connections; artwork and node outlines become visible as you zoom in. Controller targets stay 40 pixels wide independently of the drawing. Search selection frames the node; Main tree and Ascendancy frame their respective areas. L2/R2 use the same internal map zoom as the minus/plus buttons, keeping the toolbar and surrounding layout at their normal size.
 
 An empty passive search lists **allocated and granted passives**. Entering text searches all interactive nodes in the current tree by name or modifier, including unallocated nodes. The result heading identifies which list is shown.

@@ -7,6 +7,7 @@ const path = require('node:path');
 // The canvas is stubbed; native screenshots validate its actual drawing.
 const elements = new Map(), frames = [], sent = [], windowEvents = new Map(), drawCalls=[];
 let styleReads=0;
+const mediaQueries=[];
 const drawing=new Proxy({}, {get:(target,key)=>key in target?target[key]:(...args)=>drawCalls.push({op:key,args,alpha:target.globalAlpha,width:target.lineWidth})});
 class Element {
   constructor(id,tag='div') { this.id = id; this.tagName=tag; this.children = []; this.style = {}; this.dataset = {}; this.attributes = {}; this.clientWidth = 1000; this.clientHeight = 600; }
@@ -32,7 +33,7 @@ const sandbox = {
   document: { getElementById: id => elements.get(id), createElement: tag => new Element(undefined,tag), activeElement: null, documentElement:{clientWidth:1000,clientHeight:600,dataset:{}} },
   chrome: { webview: { addEventListener: (_, callback) => receive = callback } },
   WidgetRailWebSession: { post: value => sent.push(value) },
-  window: { addEventListener(type, handler) { windowEvents.set(type,handler); } }, ResizeObserver: class { constructor(callback) { resize=callback; } observe() {} },
+  window: { addEventListener(type, handler) { windowEvents.set(type,handler); }, matchMedia(query){const result={query,matches:false,addEventListener(type,handler){this.handler=handler;},removeEventListener(){this.handler=null;}};mediaQueries.push(result);return result;} }, ResizeObserver: class { constructor(callback) { resize=callback; } observe() {} },
   getComputedStyle: () => {styleReads++;return { color: '#fff', backgroundColor: '#000' };}, devicePixelRatio: 1,
   requestAnimationFrame: callback => frames.push(callback),
   fetch:()=>Promise.reject(new Error('No fixture artwork')),setTimeout:callback=>{callback();return 1;},clearTimeout(){},
@@ -177,4 +178,65 @@ assert.equal(canvas.widthWrites,widthWrites,'Panning does not reallocate the can
 map.clientWidth=800;resize();while(frames.length)frames.shift()();
 assert.equal(canvas.width,800,'Real resizes update the drawing buffer');
 assert.equal(frames.length,0,'The map does not schedule a continuous idle render loop');
+sandbox.devicePixelRatio=2;mediaQueries.find(q=>q.handler).handler();while(frames.length)frames.shift()();
+assert.equal(canvas.width,map.clientWidth*2,'Monitor scale reallocates the backing buffer without a CSS resize');
+assert.equal(mediaQueries.filter(q=>q.handler).length,1,'Only one current-resolution listener remains');
+sandbox.devicePixelRatio=1;mediaQueries.find(q=>q.handler).handler();while(frames.length)frames.shift()();
 console.log('PASS overview detail level, bounded targets/style reads, coalesced draws and stable canvas allocation');
+
+(async()=>{
+  const loads=[];
+  sandbox.Image=class {
+    constructor(){this.complete=true;this.naturalWidth=1024;}
+    set src(value){this.source=value;if(value){loads.push(value);this.onload?.();}}
+    get src(){return this.source;}
+  };
+  const artwork={tile:32,columns:16,sheets:1,icons:{test:0},decorations:{tile:64,columns:8,sheets:1,icons:{}},layers:{size:1024,sheets:2,sprites:{Frame:{sheet:0,x:0,y:0,w:64,h:64,width:64,height:64},Background:{sheet:1,x:0,y:0,w:320,h:320,width:1500,height:1500}}}};
+  let resolveOld;
+  sandbox.fetch=()=>new Promise(resolve=>{resolveOld=resolve;});
+  message({type:'begin',revision:100});message({type:'nodes',revision:100,items:[{...node(1,0,'Socket',true),icon:'test',art:{frame:'Frame',socket:'',radii:[{x:0,y:0,outer:500,inner:250}]}}]});
+  message({type:'artwork',revision:100,items:[{image:'Background',x:0,y:0,width:1500,height:1500,scale:1}]});
+  message({type:'end',revision:100,treeVersion:'old',selected:1});
+  sandbox.fetch=()=>Promise.resolve({ok:true,json:()=>Promise.resolve(artwork)});
+  message({type:'begin',revision:101,reuseGeometry:true});
+  message({type:'states',revision:101,items:[{id:1,allocated:true}]});
+  message({type:'artwork',revision:101,items:[{image:'Background',x:0,y:0,width:1500,height:1500,scale:1}]});
+  message({type:'end',revision:101,treeVersion:'current',selected:1,preserve:true});
+  await new Promise(resolve=>setImmediate(resolve));
+  while(frames.length)frames.shift()();
+  assert.ok(loads.includes('art/current/layers-0.webp'),'Node frame loads from current tree');
+  assert.ok(loads.includes('art/current/layers-1.webp'),'Visible upstream background loads');
+  assert.ok(drawCalls.some(c=>c.op==='arc'&&c.args[2]===500*.8),'Selected jewel uses supplied outer radius');
+  const loadCount=loads.length;
+  resolveOld({ok:true,json:()=>Promise.resolve(artwork)});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(frames.length,0,'Late artwork does not redraw the current tree');
+  assert.equal(loads.length,loadCount,'Late artwork never replaces current image resources');
+  windowEvents.get('widgetrailthemechange')();while(frames.length)frames.shift()();
+  assert.equal(loads.length,loadCount,'Theme redraw reuses decoded images');
+  assert.equal(frames.length,0,'Artwork completes without idle animation');
+  const painted=drawCalls.filter(c=>c.op==='drawImage').length;
+  sandbox.window.matchMedia=()=>({matches:true});
+  const highContrastStart=drawCalls.length;
+  windowEvents.get('widgetrailthemechange')();while(frames.length)frames.shift()();
+  assert.equal(drawCalls.filter(c=>c.op==='drawImage').length-painted,1,'High contrast removes decorative backgrounds and frames while retaining the passive icon');
+  assert.ok(drawCalls.slice(highContrastStart).filter(c=>c.op==='stroke').slice(0,8).every(c=>c.alpha===1&&c.width>=1.2),
+    'High-contrast connectors retain opaque readable outlines even for dimmed upstream branches');
+  if(process.env.POB_TREE_BENCH){
+    sandbox.window.matchMedia=()=>({matches:false});
+    const fixture=JSON.parse(fs.readFileSync(process.env.POB_TREE_BENCH,'utf8'));
+    sandbox.fetch=()=>Promise.resolve({ok:true,json:()=>Promise.resolve(JSON.parse(fs.readFileSync(path.join(path.dirname(process.env.POB_TREE_BENCH),fixture.treeVersion,'index.json'),'utf8')))});
+    message({type:'begin',revision:102});message({type:'nodes',revision:102,items:fixture.nodes.map(n=>({...n,allocated:false,granted:false}))});message({type:'links',revision:102,items:fixture.links});message({type:'artwork',revision:102,items:fixture.backgrounds});message({type:'end',revision:102,treeVersion:fixture.treeVersion});
+    await new Promise(resolve=>setImmediate(resolve));while(frames.length)frames.shift()();
+    const results=[];
+    if(process.env.POB_TREE_BENCH_NO_ART){message({type:'begin',revision:103});message({type:'nodes',revision:103,items:fixture.nodes.map(n=>({...n,allocated:false,granted:false,art:null}))});message({type:'links',revision:103,items:fixture.links});message({type:'end',revision:103,treeVersion:fixture.treeVersion});}
+    for(const dpr of [1,1.5,2])for(const zoom of ['overview','detail']){
+      sandbox.devicePixelRatio=dpr;elements.get('fit').onclick();if(zoom==='detail')for(let i=0;i<5;i++)elements.get('in').onclick();while(frames.length)frames.shift()();
+      const ms=[];let operations=0;
+      for(let i=0;i<30;i++){drawCalls.length=0;const start=performance.now();elements.get(i%2?'left':'right').onclick();while(frames.length)frames.shift()();ms.push(performance.now()-start);operations+=drawCalls.length;}
+      ms.sort((a,b)=>a-b);results.push({dpr,zoom,p50:ms[15],p95:ms[28],operations:Math.round(operations/30),targets:elements.get('nodes').children.length});
+    }
+    console.log('HEADLESS_RENDER_BENCH '+JSON.stringify({tree:fixture.treeVersion,art:!process.env.POB_TREE_BENCH_NO_ART,nodes:fixture.nodes.length,results}));
+  }
+  console.log('PASS current-tree artwork, lazy bounded sheets, upstream radius geometry, stale artwork fencing, reuse and no idle animation');
+})().catch(error=>{console.error(error);process.exitCode=1;});

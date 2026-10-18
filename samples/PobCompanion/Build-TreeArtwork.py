@@ -34,29 +34,33 @@ def dds_layers(data):
     header=bytearray(raw[:148]);struct.pack_into('<I',header,140,1)
     return [Image.open(io.BytesIO(header+raw[148+i*stride:148+(i+1)*stride])).convert('RGBA') for i in range(count)]
 
-def build_atlas(metadata, destination, category, tile, columns, directory, quality=50):
-    images, digests, current, by_file = [], {}, {}, {}
-    for key,rect in (metadata or {}).items(): by_file.setdefault(rect['file'],[]).append((key,rect))
+def source_images(metadata, directory):
+    by_file = {}
+    for key,rect in (metadata or {}).items():
+        path=('src/Assets/' if rect.get('source')=='assets' else 'src/TreeData/'+('' if rect.get('shared') else directory.name+'/'))+rect['file']
+        by_file.setdefault(path,[]).append((key,rect))
     for filename,entries in sorted(by_file.items()):
-        raw=git_file('src/TreeData/'+('' if entries[0][1].get('shared') else directory.name+'/')+filename)
+        raw=git_file(filename)
         layers=dds_layers(raw) if filename.endswith('.dds.zst') else None
         sheet=None if layers else Image.open(io.BytesIO(raw)).convert('RGBA')
         for key,rect in sorted(entries):
             if layers:
                 if not 1 <= rect['layer'] <= len(layers): raise ValueError('Invalid DDS layer')
                 image=layers[rect['layer']-1]
-                if 'x' in rect:
-                    x,y,w,h=(rect[k] for k in ('x','y','w','h'))
-                    if min(x,y)<0 or min(w,h)<=0 or x+w>image.width or y+h>image.height: raise ValueError('Sprite outside DDS layer')
-                    image=image.crop((x,y,x+w,y+h))
-            else:
+            else: image=sheet
+            if 'x' in rect:
                 x,y,w,h=(rect[k] for k in ('x','y','w','h'))
-                if min(x,y)<0 or min(w,h)<=0 or x+w>sheet.width or y+h>sheet.height: raise ValueError('Sprite outside atlas')
-                image=sheet.crop((x,y,x+w,y+h))
-            image=image.resize((tile,tile),Image.Resampling.LANCZOS)
-            digest=hashlib.sha256(image.tobytes()).hexdigest()
-            if digest not in digests: digests[digest]=len(images);images.append(image)
-            current[key]=digests[digest]
+                if min(x,y)<0 or min(w,h)<=0 or x+w>image.width or y+h>image.height: raise ValueError('Sprite outside image')
+                image=image.crop((x,y,x+w,y+h))
+            yield key,image
+
+def build_atlas(metadata, destination, category, tile, columns, directory, quality=50):
+    images, digests, current = [], {}, {}
+    for key,image in source_images(metadata,directory):
+        image=image.resize((tile,tile),Image.Resampling.LANCZOS)
+        digest=hashlib.sha256(image.tobytes()).hexdigest()
+        if digest not in digests: digests[digest]=len(images);images.append(image)
+        current[key]=digests[digest]
     per_sheet=columns*columns; count=math.ceil(len(images)/per_sheet)
     if count>10: raise ValueError('Artwork exceeds the packaged-session resource budget')
     for index in range(count):
@@ -66,6 +70,37 @@ def build_atlas(metadata, destination, category, tile, columns, directory, quali
         atlas.save(destination/f'{category}-{index}.webp',quality=quality,method=6)
     return dict(tile=tile,columns=columns,sheets=count,icons=current)
 
+def build_layers(metadata,destination,directory):
+    # Shelf-packed, aspect-preserving sprites. Small frames retain fine edges;
+    # backgrounds need useful detail but never a full 4008px runtime texture.
+    entries=[]
+    for key,image in source_images(metadata,directory):
+        original=image.size
+        limit=320 if max(original)>700 else 96
+        image=image.copy();image.thumbnail((limit,limit),Image.Resampling.LANCZOS)
+        entries.append((key,image,original))
+    entries.sort(key=lambda e:(-e[1].height,-e[1].width,e[0]))
+    pages=[]; sprites={}; digests={}; x=y=row=0
+    for key,image,original in entries:
+        digest=hashlib.sha256(image.tobytes()+str(image.size).encode()).hexdigest()
+        if digest in digests:
+            sprites[key]=dict(digests[digest],width=original[0],height=original[1]);continue
+        if x+image.width+2>1024:x=0;y+=row;row=0
+        if not pages or y+image.height+2>1024:
+            pages.append(Image.new('RGBA',(1024,1024)));x=y=row=0
+        if len(pages)>8:raise ValueError('Layer artwork exceeds 32 MiB decoded budget')
+        pages[-1].paste(image,(x+1,y+1))
+        sprite=dict(sheet=len(pages)-1,x=x+1,y=y+1,w=image.width,h=image.height,width=original[0],height=original[1])
+        sprites[key]=sprite;digests[digest]=sprite
+        x+=image.width+2;row=max(row,image.height+2)
+    for i,page in enumerate(pages):
+        target=destination/f'layers-{i}.webp'
+        page.save(target,quality=50,method=6)
+        for quality in (40,30):
+            if target.stat().st_size<=256*1024:break
+            page.save(target,quality=quality,method=6)
+    return dict(sheets=len(pages),size=1024,sprites=sprites)
+
 for directory in sorted((engine/'src/TreeData').iterdir()):
     if not (directory/'tree.lua').is_file(): continue
     if args.version and directory.name not in args.version: continue
@@ -73,13 +108,16 @@ for directory in sorted((engine/'src/TreeData').iterdir()):
     destination=output/directory.name;destination.mkdir(exist_ok=True)
     atlas=build_atlas(metadata['nodes'],destination,'nodes',32,16,directory)
     atlas['decorations']=build_atlas(metadata['decorations'],destination,'decorations',64,8,directory)
+    atlas['layers']=build_layers(metadata['assets'],destination,directory)
     (destination/'index.json').write_text(json.dumps(atlas,separators=(',',':')),encoding='utf-8')
     files=list(destination.iterdir())
-    if sum(p.stat().st_size for p in files)>450*1024:
+    if sum(p.stat().st_size for p in files if not p.name.startswith('layers-'))>450*1024:
         # Keep full icon coverage on newer trees with more transformed passives.
         # Re-encode from original pixels, never from an already lossy atlas.
         build_atlas(metadata['nodes'],destination,'nodes',32,16,directory,quality=40)
-    if len(files)>12 or any(p.stat().st_size>256*1024 for p in files) or sum(p.stat().st_size for p in files)>450*1024:
+    # Four page/runtime resources leave 28 artwork slots in the 32-resource
+    # WebSession package contract; reserve 148 KiB for those sources.
+    if len(files)>28 or any(p.stat().st_size>256*1024 for p in files) or sum(p.stat().st_size for p in files)>1900*1024:
         raise ValueError('Tree artwork exceeds the bounded web-session transfer')
-    print(directory.name,len(atlas['icons']),'icons;',len(atlas['decorations']['icons']),'decorations;',sum(p.stat().st_size for p in files),'bytes',flush=True)
+    print(directory.name,len(atlas['icons']),'icons;',len(atlas['decorations']['icons']),'decorations;',len(atlas['layers']['sprites']),'layer sprites;',sum(p.stat().st_size for p in files),'bytes',flush=True)
 print('Total bytes',sum(p.stat().st_size for p in output.rglob('*') if p.is_file()),flush=True)
