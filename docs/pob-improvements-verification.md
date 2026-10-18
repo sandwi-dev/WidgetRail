@@ -676,3 +676,48 @@ and records requested HDR instead of indexing a nonexistent record and silently
 ending the logger. A regression verifies subsequent entries still arrive. The 25
 display checks pass, including blocked/failing diagnostics not delaying rollback.
 No native apply, guard deadline or rollback policy changed.
+
+The corrected provider was then published in cumulative candidate `e` from clean
+source `65af1548`. A final 120 Hz preview was left unconfirmed while the overlay
+was hidden. Independent readback returned to the complete original two-monitor
+baseline after expiry. The real guard log now contains the unresolved target,
+stabilization, `decision-timeout`, rollback and `completed-reverted`, with final
+`MatchesBaseline=true`. See `display-hardware-20261018/hidden-timeout-result.json`
+and its event/readback captures. The initial evidence extractor compared a locally
+converted JSON timestamp with UTC; selecting the exact last transaction corrected
+the extractor. This was not a guard timing failure.
+
+## Installed section sweep and current resource checkpoint — 2026-10-18
+
+`installed-pob-sweep-20261018-settled/result.json` records all twelve installed
+PoE1/PoE2 main-section transitions with visible native focus. The harness waits for
+stable geometry; its first attempt sampled Tree during transition animation, which
+correctly had not settled yet. Native inspection caught an empty Notes page showing
+only its heading. `5e44b402` adds a deliberate empty message and an assertion in the
+existing empty-build workflow; both engines pass 23 checks again. PoB packages
+0.1.4.6 were republished with unchanged qualified engine/artwork assets, installed,
+and the message was verified and visually inspected in the actual normal-profile
+PoE2 widget (`cumulative-candidate-20261018-e/empty-notes-native.json/png`). This
+main-section sweep does not substitute for the remaining subpage/controller audit.
+
+Both final `e` bundles passed release inventory/catalog verification: two core
+widgets plus nine/zero optional archives. One fresh-profile observation per edition
+with warm filesystem caches measured internal startup-begin → initial-widget-ready
+at 1332 ms Production and 1328 ms Bare. Eight one-second process-tree samples with
+Settings visible gave median private commit of 267.8/252.8 MiB, with five processes
+in either case. Unpacked payloads were 393.52/393.24 MiB; both include the same
+private runtimes and host services. These are bounded observations, not cold-boot,
+GPU-memory or physical Guide-latency benchmarks. Evidence:
+`final-bundle-resources-20261018/result.json` and per-edition logs/samples. The
+diagnostic writer creates its empty file before first show, so file existence was
+explicitly removed as a claim about startup deferral. The separate native hidden
+startup checks remain the evidence for that behaviour.
+
+One final normal-profile, controller-enabled candidate remains **hidden**, PID
+**51564** at this checkpoint, from `cumulative-candidate-20261018-e`. No child
+processes were present three seconds after hidden launch, and all 138 deployed
+top-level DLLs match its qualified publication. Host source is `65af1548`; PoB
+0.1.4.6 source is `5e44b402`. No validation flags, merge, push, release or CI repair.
+Recheck live PID/path before reusing it. Spotify authentication and the remaining
+integrated application/subpage/physical-controller acceptance and final documentation
+audit remain open; the goal is still active.
