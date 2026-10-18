@@ -917,3 +917,24 @@ closing the inspector. Evidence: `inspection-packaged-final/poe{1,2}-item-inspec
 `modal-keyboard-race-fixed-20261018/result.json`, and
 `inspection-fixed-actions-items/native-result.json`. These are native keyboard and
 synthetic controller assertions, not physical-controller acceptance.
+
+## Preview text scaling and high-contrast palette — 2026-10-18
+
+The constrained native preview check found two host defects. Unstyled text lost
+its inherited font size when moved into the preview layer; the fragment now
+inherits the owner's scaled default, tracks changes while open, and restores its
+original property/subscription on dismissal. Explicitly styled text continues to
+use the existing scaling scope exactly once. Also, native chrome and widget text
+chose different Windows palettes when high contrast was requested in the app.
+Both now use the same Windows window/background-text pair and fallback.
+
+The corrected suite passes **41 native assertions** across Mono Ink, Mineral
+Light and simulated high contrast at 420×320 DIP. It checks default and explicit
+text at 125%, live changes to 150% and back, contrast, bounded passive content,
+unchanged focus/actions and existing lifecycle behaviour. The final high-contrast
+capture was visually inspected; the previously invisible text is readable.
+Evidence: `preview-accessibility-final-20261018/result.json` and
+`high-contrast.png`. The two distinct failures are retained under
+`preview-hc-final-20261018` (scaling) and `preview-hc-fixed-20261018` (palette).
+No Windows contrast setting was changed; actual OS-theme transition and physical
+couch readability are not asserted.

@@ -33,13 +33,23 @@ internal sealed partial class WidgetStylesValidationPage
         page.Failed = error => failure ??= error;
         page.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         var catalog = new ThemeCatalog(new PlatformSettingsPaths(directory));
+        double previewBaseFontSize = 0;
         try
         {
-            foreach (var themeId in new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight })
+            var themeIds = Environment.GetCommandLineArgs().Contains("--preview-high-contrast")
+                ? new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight, "high-contrast" }
+                : new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight };
+            foreach (var themeId in themeIds)
             {
-                var package = WrssParser.Parse(".preview-page { padding: 16px; background: var(--surface); } text { color: var(--text); } .preview-details { gap: 8px; }", "preview-fixture.wrss");
+                var highContrast = themeId == "high-contrast";
+                var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Reduced,
+                    Contrast = highContrast ? ContrastPreference.High : AppearanceSettings.Default.Contrast,
+                    TextScale = highContrast ? 1.25 : 1 };
+                WidgetViewPresenter.SetHighContrastStyleOverride(highContrast);
+                page.ApplyAppearance(appearance, false);
+                var package = WrssParser.Parse(".preview-page { padding: 16px; background: var(--surface); } text { color: var(--text); } .preview-details { gap: 8px; } .preview-explicit { font-size: 16px; }", "preview-fixture.wrss");
                 var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
-                    new((WrssDocument[])[package.Document], []), catalog.Load(themeId, "1.0.0").Package);
+                    new((WrssDocument[])[package.Document], []), catalog.Load(highContrast ? ThemeIdentity.BuiltInMonoInk : themeId, "1.0.0").Package);
                 var theme = compiled.Theme ?? throw new InvalidOperationException("Invalid preview fixture theme");
                 var options = new FocusPreviewOptions(360, 220, DelayMilliseconds: 180);
                 var caption = "Adjust this setting without leaving your current page.";
@@ -51,6 +61,39 @@ internal sealed partial class WidgetStylesValidationPage
                 var first = Find<Button>("Widget.preview.first", root)!;
                 var second = Find<Button>("Widget.preview.second", root)!;
                 first.Focus(FocusState.Keyboard);
+                if (highContrast)
+                {
+                    page.Width = 420; root.Width = 440; page.Height = 320; root.Height = 340;
+                    page.UpdateLayout();
+                    await Wait(() => page.IsFocusPreviewOpen && Inside() && Find<TextBlock>("Widget.preview.first.details", root) is { ActualHeight: > 0 });
+                    var detail = Find<TextBlock>("Widget.preview.first.details", root)!;
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), first) && dispatched == 0,
+                        "High-contrast passive preview preserves focus without dispatching actions");
+                    Check(page.FocusPreviewChrome is { IsHitTestVisible: false } && Inside(),
+                        "High-contrast enlarged preview remains passive and bounded at 420 by 320 DIP");
+                    Check(!detail.IsTextTrimmed, "High-contrast preview text is not truncated");
+                    Check(previewBaseFontSize > 0 && detail.FontSize >= previewBaseFontSize * 1.24,
+                        $"High-contrast preview actually enlarges text to 125 percent (baseline={previewBaseFontSize}, actual={detail.FontSize}, scope={NativeTextScaleScope.Find(detail)?.Value})");
+                    var explicitText = Find<TextBlock>("Widget.preview.first.explicit", root)!;
+                    Check(Math.Abs(explicitText.FontSize - 20) < .1 && NativeTextScaleScope.Find(explicitText)?.Value == 1.25,
+                        "Portaled explicit 16px text uses its existing owner scale exactly once");
+                    page.ApplyAppearance(appearance with { TextScale = 1.5 }, false);
+                    await Wait(() => Math.Abs(detail.FontSize - previewBaseFontSize * 1.5) < .1 && Math.Abs(explicitText.FontSize - 24) < .1);
+                    Check(true, "An open preview follows default and explicit text-scale changes without republishing");
+                    page.ApplyAppearance(appearance, false);
+                    await Wait(() => Math.Abs(detail.FontSize - previewBaseFontSize * 1.25) < .1 && Math.Abs(explicitText.FontSize - 20) < .1);
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), first) && Inside(),
+                        "Restoring preview text scale retains focus and constrained bounds");
+                    var ink = ColorOf(detail.Foreground);
+                    var fill = ColorOf(((Border)page.FocusPreviewChrome!).Background);
+                    var windowColors = Shell.ShellChromePalette.WindowColors();
+                    Check(ink == windowColors.Foreground && fill == windowColors.Background,
+                        "High-contrast preview chrome and content use the same Windows window-color pair");
+                    Check((Math.Max(Luminance(ink), Luminance(fill)) + .05) / (Math.Min(Luminance(ink), Luminance(fill)) + .05) >= 4.5,
+                        "High-contrast preview text contrasts with its native chrome");
+                    await Capture(Path.Combine(directory, "high-contrast.png"));
+                    continue;
+                }
                 await Task.Delay(45);
                 Check(!page.IsFocusPreviewOpen, "Preview waits for selection to settle");
                 for (var index = 0; index < 8; index++)
@@ -70,6 +113,7 @@ internal sealed partial class WidgetStylesValidationPage
                 caption = "Widget-authored details reuse ordinary text, layout and progress controls."; Publish();
                 await Wait(() => Find<TextBlock>("Widget.preview.first.details", root)?.Text == caption);
                 var textInk = ColorOf(Find<TextBlock>("Widget.preview.first.details", root)!.Foreground);
+                previewBaseFontSize = Find<TextBlock>("Widget.preview.first.details", root)!.FontSize;
                 var panelInk = ColorOf(((Border)page.FocusPreviewChrome!).Background);
                 var contrast = (Math.Max(Luminance(textInk), Luminance(panelInk)) + .05) /
                     (Math.Min(Luminance(textInk), Luminance(panelInk)) + .05);
@@ -112,11 +156,13 @@ internal sealed partial class WidgetStylesValidationPage
                     var firstButton = UI.Button("Audio setting", "preview.inspect.first", "preview.first") with { IsBusy = busy };
                     var secondButton = UI.Button("Video setting", "preview.inspect.second", "preview.second");
                     WidgetElement secondElement = secondPreview ? secondButton.PresentOnFocus(UI.Text("Video preview", "preview.second.details")) : secondButton;
+                    var details = highContrast
+                        ? new WidgetElement[] { UI.Text(caption, "preview.first.details"), UI.Text("Explicitly sized details", "preview.first.explicit").Classes("preview-explicit"), UI.Progress(.7, 1, "preview.first.progress") }
+                        : new WidgetElement[] { UI.Text(caption, "preview.first.details"), UI.Progress(.7, 1, "preview.first.progress") };
                     var content = UI.Grid("preview.page", (GridTrackDefinition[])[GridTrack.Pixel(50), GridTrack.Pixel(60), GridTrack.Star()],
                         (GridTrackDefinition[])[GridTrack.Pixel(170), GridTrack.Star(), GridTrack.Pixel(170)],
                         UI.Text("Settings preview", "preview.title").InGrid(columnSpan: 3),
-                        showFirst ? firstButton.PresentOnFocus(UI.Stack("preview.first.content", UI.Text(caption, "preview.first.details"),
-                            UI.Progress(.7, 1, "preview.first.progress")).Classes("preview-details")).InGrid(row: 1) : UI.Spacer("preview.placeholder").InGrid(row: 1),
+                        showFirst ? firstButton.PresentOnFocus(UI.Stack("preview.first.content", details).Classes("preview-details")).InGrid(row: 1) : UI.Spacer("preview.placeholder").InGrid(row: 1),
                         secondElement.InGrid(row: 1, column: 2)).Classes("preview-page");
                     var view = new WidgetView(UI.FocusPresentationSurface(content, UI.Text("Fallback", "preview.default"), "preview.surface")
                         with { Preview = options }, showFirst ? "preview.first" : "preview.second");
@@ -133,7 +179,7 @@ internal sealed partial class WidgetStylesValidationPage
                     // Native chrome consumes the same resolved semantic palette as the fragments.
                     foreach (var role in new[] { "body", "canvas", "panel", "hint", "tray-item" })
                         styles[role] = Compute(theme, role, role, []);
-                    popupTheme.Update(styles, AppearanceSettings.Default);
+                    popupTheme.Update(styles, appearance);
                     var descriptor = new BridgeWidgetDescriptor { Id = "preview", Name = "Preview fixture", InstanceId = snapshot.WidgetInstanceId,
                         RuntimeGeneration = "preview", PresentationGeneration = "preview", Icon = WidgetGlyph.Settings, PackageContentDigest = "" };
                     page.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1,
@@ -143,7 +189,7 @@ internal sealed partial class WidgetStylesValidationPage
             }
         }
         catch (Exception error) { failure ??= error; failureState = page.FocusPreviewDiagnostics(); await Capture(Path.Combine(directory, "failure.png")); }
-        finally { await page.DisposeAsync(); host.Children.Remove(root); }
+        finally { WidgetViewPresenter.SetHighContrastStyleOverride(null); await page.DisposeAsync(); host.Children.Remove(root); }
         await File.WriteAllTextAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(new { passed = failure is null, checks, failureState, error = failure?.ToString() }));
         if (failure is not null) throw failure;
 

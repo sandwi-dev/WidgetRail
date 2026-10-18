@@ -640,14 +640,10 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         if (contrast && color.A != 0)
         {
             var resources = Application.Current.Resources;
-            if (resources.TryGetValue("SystemColorWindowColor", out var window) && window is Color windowColor &&
-                resources.TryGetValue("SystemColorWindowTextColor", out var text) && text is Color textColor)
-            {
-                color = background ? windowColor : textColor;
-                if (!background && element is Control { IsEnabled: false } && resources.TryGetValue("SystemColorGrayTextColor", out var gray) && gray is Color grayColor)
-                    color = grayColor;
-            }
-            else color = background ? Color.FromArgb(255, 0, 0, 0) : Color.FromArgb(255, 255, 255, 255);
+            var window = Shell.ShellChromePalette.WindowColors();
+            color = background ? window.Background : window.Foreground;
+            if (!background && element is Control { IsEnabled: false } && resources.TryGetValue("SystemColorGrayTextColor", out var gray) && gray is Color grayColor)
+                color = grayColor;
         }
         if (brushes.TryGetValue(property, out var previous) && previous.Color == color) return previous.Brush;
         var brush = new SolidColorBrush(color); brushes[property] = (color, brush); return brush;

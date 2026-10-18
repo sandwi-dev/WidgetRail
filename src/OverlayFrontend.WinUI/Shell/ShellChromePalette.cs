@@ -37,11 +37,25 @@ internal sealed record ShellChromePalette(Color Surface, Color Item, Color Text,
         var focus = Value("tray-item:selected:focused", "outline-color", Value("tray-item:focused", "outline-color", selectedText));
         var width = styles?.GetValueOrDefault("tray-item:selected:focused")?.Base.GetValueOrDefault("outline-width")?.Number
             ?? styles?.GetValueOrDefault("tray-item:focused")?.Base.GetValueOrDefault("outline-width")?.Number ?? 2;
-        return contrast
-            ? new(background, background, foreground, SystemColor("SystemColorHighlightColor", ui.GetColorValue(UIColorType.Accent)),
-                SystemColor("SystemColorHighlightTextColor", foreground), foreground, foreground, Math.Max(2, width), true)
-            : new(surface, Background("tray-item", Microsoft.UI.Colors.Transparent), text, selected, selectedText,
+        if (contrast)
+        {
+            var window = WindowColors();
+            return new(window.Background, window.Background, window.Foreground, SystemColor("SystemColorHighlightColor", ui.GetColorValue(UIColorType.Accent)),
+                SystemColor("SystemColorHighlightTextColor", window.Foreground), window.Foreground, window.Foreground, Math.Max(2, width), true);
+        }
+        return new(surface, Background("tray-item", Microsoft.UI.Colors.Transparent), text, selected, selectedText,
                 Value("hint", "color", text), focus, width, false);
+    }
+    // Text and surrounding native chrome must choose one Windows palette pair.
+    // UIColorType follows the desktop light/dark preference, which can differ
+    // from SystemColorWindow* when high contrast is requested within the app.
+    internal static (Color Background, Color Foreground) WindowColors()
+    {
+        var resources = Microsoft.UI.Xaml.Application.Current.Resources;
+        if (resources.TryGetValue("SystemColorWindowColor", out var background) && background is Color window &&
+            resources.TryGetValue("SystemColorWindowTextColor", out var foreground) && foreground is Color text)
+            return (window, text);
+        return (SystemUi.GetColorValue(UIColorType.Background), SystemUi.GetColorValue(UIColorType.Foreground));
     }
     private static Color SystemColor(string key, Color fallback) =>
         Microsoft.UI.Xaml.Application.Current.Resources.TryGetValue(key, out var value) && value is Color color ? color : fallback;

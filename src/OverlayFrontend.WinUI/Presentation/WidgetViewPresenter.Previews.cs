@@ -28,6 +28,8 @@ internal sealed partial class WidgetViewPresenter
     private Border? previewChrome;
     private IDisposable? previewTheme;
     private WidgetPresentationSurface? previewSurface;
+    private long? previewFontSizeSubscription;
+    private object previewOriginalFontSize = DependencyProperty.UnsetValue;
     private readonly List<ScrollViewer> previewScrollers = [];
     private readonly Dictionary<WidgetPresentationSurface, Task> previewSuspensions = [];
     private ViewNode? previewPaintedContent;
@@ -227,6 +229,14 @@ internal sealed partial class WidgetViewPresenter
             previewLayer = new Grid { IsHitTestVisible = false };
             previewLayer.Children.Add(previewChrome);
             previewPortal = new(layers, this, previewLayer, PresentationLayer.ContentPreview, passive: true, followComposition: false);
+            // NativeTextScaleScope follows the portal's logical owner for authored
+            // font sizes. WinUI property inheritance follows its paint parent instead.
+            // Forward the already-scaled default once at the fragment root; explicit
+            // child sizes still use their normal scoped style and do not multiply twice.
+            previewOriginalFontSize = fragment.ReadLocalValue(FontSizeProperty);
+            fragment.FontSize = FontSize;
+            previewFontSizeSubscription = RegisterPropertyChangedCallback(FontSizeProperty,
+                (_, _) => fragment.FontSize = FontSize);
             previewTheme = NativePopupTheme.Preview(previewChrome, this, presentation?.RenderStyles, appearance);
             LayoutUpdated += PreviewLayoutChanged;
         }
@@ -261,12 +271,17 @@ internal sealed partial class WidgetViewPresenter
     private void HideFocusPreview()
     {
         LayoutUpdated -= PreviewLayoutChanged;
+        if (previewFontSizeSubscription is { } subscription)
+            UnregisterPropertyChangedCallback(FontSizeProperty, subscription);
+        previewFontSizeSubscription = null;
         previewPortal?.Dispose(); previewPortal = null;
         previewTheme?.Dispose(); previewTheme = null;
         if (previewChrome is not null) previewChrome.Child = null;
         previewChrome = null; previewLayer = null;
         if (previewSurface is { Fragment: { } fragment } surface)
         {
+            if (ReferenceEquals(previewOriginalFontSize, DependencyProperty.UnsetValue)) fragment.ClearValue(FontSizeProperty);
+            else fragment.SetValue(FontSizeProperty, previewOriginalFontSize);
             var suspended = fragment.SetPresentationActiveAsync(false);
             if (!suspended.IsCompleted)
             {
@@ -274,6 +289,7 @@ internal sealed partial class WidgetViewPresenter
                 _ = ResumePreviewAfterSuspensionAsync(surface, suspended);
             }
         }
+        previewOriginalFontSize = DependencyProperty.UnsetValue;
         previewSurface = null; previewBounds = null; previewPaintedContent = null; previewPaintedPresentation = null;
     }
     private async Task ResumePreviewAfterSuspensionAsync(WidgetPresentationSurface surface, Task task)
