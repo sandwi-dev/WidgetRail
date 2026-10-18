@@ -8,6 +8,15 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 ## Implementation order and tracking
 
+Current acceptance checkpoint (2026-10-18): implementation is present, but the
+goal remains active. Keyboard Escape, preview text scaling/high-contrast colours
+and updater warning wrapping now have targeted native fixes and evidence. The
+additional Bare upgrade case preserves an optional package but its installed
+native launch does not discover it; that finding remains unresolved. Spotify
+authentication, the earlier unreproduced invisible-overlay observation, remaining
+installed editing checks and physical controller/couch acceptance remain distinct
+from completed automated checks. See the latest verification-ledger entries.
+
 | Order | Work item | Status |
 | --- | --- | --- |
 | Foundation | Clean up shared code and game-specific boundaries | Implemented for changed workflows; typed search/skill projections, owned skill-option lifecycle and bounded caches pass both-engine checks |
@@ -21,12 +30,12 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | After host prerequisites | Add whole-build and loadout comparison | Both-engine and native fixture checks pass; installed PoE2 loadout calculation, Compare focus retention, detail and return-to-row flow verified; broader acceptance remains |
 | After host prerequisites | Add unified search and direct navigation | Both-engine and native checks pass; installed PoE2 exact-gem destination and modal return verified; installed fresh PoE1 search verified |
 | Cross-app adoption and verification | Compact layouts and inspect the app for couch readability | Catalogue and music player slices inspected; remaining application audit pending |
-| Independent completed slice | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, setup prerequisites and card styling implemented; focused and native checks passed |
+| Independent completed slice | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, prerequisites and card styling implemented; familiar-store comparison, 22 integrated native workflows and 150 screenshot-browsing assertions pass; physical controller acceptance remains separate |
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Bundles, resources and 22 native end-to-end Catalogue checks pass, including partial retry, permissions, revert/re-update and idle reopening; earlier invisible-overlay observation remains unresolved |
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | YouTube Music live workflows and 381 default/light/high-contrast player assertions pass; Spotify awaits reconnection; populated alternate-theme queues and physical acceptance remain |
 | Display widget expansion | Add trusted reusable display controls, then expose them in the widget | 25 deterministic and 124 native checks pass; real mode Apply/Keep/Revert and HDR preview/revert independently sampled and restored; physical cable disconnection not attempted |
 | App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; six isolated real-Inno upgrade/startup-preservation cases pass; production-registration and prerequisite/UAC variants remain unverified |
-| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Current guides reconciled and 22 superseded plans retired; 756 local file targets valid; final reconciliation against remaining changes still required |
+| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Current guides reconciled and 22 superseded plans retired; latest audit covers 240 Markdown files and 760 valid local targets; final reconciliation against remaining changes still required |
 
 **Dependency order clarified on 2026-10-18:** complete the necessary shared host
 contracts and implementations first. Validate them using generic fixtures for
@@ -63,7 +72,7 @@ Planning sections, Tree and build comparison now share a preferred width of 1320
 - [x] Keep website and other modals within widget bounds while making them large enough for navigation.
 - [ ] Verify smaller displays, display/interface/text scaling, long lists, two-column layouts, controller reachability and focus after resize.
 
-The implementation reuses the host's `FillAvailable` height and preferred-width policies; it does not stretch to an ultrawide display's full width. Small management views remain smaller. Compact/enlarged-text fixtures and the twelve installed main-section transitions are verified; subpages and physical couch acceptance remain open.
+The implementation reuses the host's `FillAvailable` height and preferred-width policies; it does not stretch to an ultrawide display's full width. Small management views remain smaller. Compact/enlarged-text fixtures, twelve installed main-section transitions, website modals, inventory inspection and offline trade flows are verified. Broader installed editing subpages and physical couch acceptance remain open.
 
 ## 2a. Compact layouts and app-wide visual verification
 
@@ -74,9 +83,11 @@ Follow the architecture cleanup and dimension adjustment. Increase useful inform
 - [ ] Preserve readable text, unmistakable focus indicators, comfortable pointer/controller targets and existing text/interface scaling. Do not apply indiscriminate font or target shrinking.
 - [x] Start with one balanced default; do not add a separate density preference or duplicate desktop/couch layouts in this pass.
 - [ ] Walk through the actual app, not only isolated screenshots: shell/rail, Settings, Catalogue, shared dialogs, on-screen keyboard/suggestions, pinned surfaces and available widgets. Exercise each PoB section in both games, including subpages, selectors, expanded details, lists, Notes, trade comparisons and ranked results.
-- [ ] Record a coverage checklist with tested surfaces, display/scaling/theme conditions, findings and evidence. Include dense, empty, loading, disabled, error and long-label states, plus light/dark/high-contrast appearance and representative TV scaling. Mark unavailable surfaces or states as unverified rather than assuming they are good.
+- [x] Record a coverage checklist with tested surfaces, display/scaling/theme conditions, findings and evidence. Include dense, empty, loading, disabled, error and long-label states, plus light/dark/high-contrast appearance and representative TV scaling. Mark unavailable surfaces or states as unverified rather than assuming they are good.
 - [ ] Check scrolling, clipping, alignment, focus visibility, controller reachability, mouse interaction, modal bounds and hide/reopen behavior after shared style changes. Fix problems found and recheck affected workflows before reporting completion.
 - [ ] Native rendering and interaction checks are required. Final readability at the user's actual couch distance remains a physical user acceptance check; screenshots alone cannot establish that.
+
+The [verification ledger](pob-improvements-verification.md) records completed native matrices, inspected renders, corrected defects and explicit limits. Recording that coverage is complete; completing every remaining acceptance condition is not. In particular, simulated high-contrast ink is not a real Windows contrast-theme change, and native automation/synthetic controller frames are not physical controller or couch-distance acceptance.
 
 ## 2b. PoB workflow improvements inspired by Redux
 
@@ -97,7 +108,8 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 - [ ] Inspect the actual cumulative candidate for every changed screen, preview and subview after implementation. Automated tests and screenshots alone are not completion evidence. Exercise opening, browsing, editing, scrolling, expanding/collapsing, dismissing and returning with both controller and mouse/keyboard.
 - [ ] Check coherent spacing, alignment, typography, hierarchy, panel proportions, readable labels, deliberate empty states and clear selected/disabled/loading/error states. Fix awkward gaps, clipped content, unstable layouts, obscured controls and inconsistent styling before delivery; do not merely document these as polish follow-ups.
 - [ ] Verify dense and partially configured builds in both games, long names/descriptions, small and large displays, interface/text scaling and light/dark/high-contrast themes. Ensure focus remains visible and predictable across panels, updates, dismissal, hide/reopen and widget unloading.
-- [ ] Record coverage, findings, corrections and final native visual evidence under the existing app-wide verification checklist. Use local/sanitized fixtures for repeated checks; preserve the minimal-live-GGG constraint. Final couch-distance readability remains physical user acceptance.
+- [x] Record coverage, findings, corrections and native visual evidence for verified workflows under the existing app-wide verification checklist. Use local/sanitized fixtures for repeated checks; preserve the minimal-live-GGG constraint.
+- [ ] Complete the remaining installed editing and native acceptance above, add their final evidence to the same checklist, and retain final couch-distance readability as physical user acceptance.
 
 ## Shared rich previews and anchored popovers
 
@@ -182,13 +194,16 @@ Rename the user-facing Marketplace to **WidgetRail Catalogue**, using the user's
 - [x] Check label fit and navigation in the catalogue and Settings. Update existing name assertions where applicable.
 - [x] Fix the catalogue tests alongside the rename. Replace the stale exact listing-count assertion with meaningful inventory/identity/screenshot contract checks, rather than merely changing 10 to 11. Run the affected service and presentation suites and report genuine remaining failures separately.
 - [x] Correct outdated user documentation about version history, retention and updating again after a rollback.
-- [ ] Compare actual browse, details, install, installed-management and update flows with familiar patterns in popular app stores (for example Microsoft Store, Steam and winget GUI clients). Use those patterns as references, while preserving controller access and clear permission/full-access review.
-- [ ] Use the real widget with controller and mouse/keyboard to exercise browsing, screenshots, Back/focus restoration, install review, cancellation, individual updates, Update all, partial failure/retry, Settings handoff, rollback/re-update and hide/reopen behavior. Use isolated packages/profile where destructive test cases would affect the normal installation. Do not confuse model/snapshot tests with native end-to-end acceptance.
-- [ ] Implement improvements revealed by that comparison and walkthrough: simplify unnecessary steps, clarify labels and primary actions, preserve navigation/focus, and make download/review/install/completion/error states easy to understand. Retest the revised flows; this is an improvement task, not only an audit/report.
+- [x] Compare actual browse, details, install, installed-management and update flows with familiar patterns in popular app stores (for example Microsoft Store, Steam and winget GUI clients). Use those patterns as references, while preserving controller access and clear permission/full-access review.
+- [x] Use the real widget in native automation to exercise browsing, screenshots, Back/focus restoration, install review, cancellation, individual updates, Update all, partial failure/retry, Settings handoff, rollback/re-update and hide/reopen behavior. Use isolated packages/profile where destructive test cases would affect the normal installation. Do not confuse model/snapshot tests with native end-to-end acceptance.
+- [ ] Complete physical controller and mouse/keyboard acceptance of those workflows. Native action dispatch and declared controller bindings do not establish physical controller delivery; screenshot browsing's session-routed B remains unverified.
+- [x] Implement improvements revealed by that comparison and walkthrough: simplify unnecessary steps, clarify labels and primary actions, preserve navigation/focus, and make download/review/install/completion/error states easy to understand. Retest the revised flows; this is an improvement task, not only an audit/report.
 - [x] Review GitHub's current documented limits and API guidance when implementing. Add suitable release-metadata freshness caching and conditional requests where supported, coalesce duplicate checks, and avoid a fresh network request on every reopening. A manual refresh must still respect server-directed cooldowns.
 - [x] Handle primary/secondary rate limits and transient failures using relevant response headers (including Retry-After and rate-limit reset information), bounded backoff and clear retry feedback. Do not use aggressive polling, concurrent retries or credentials as a way around limits. Keep cached content usable and identify stale availability when refreshing fails.
 - [x] Address release discovery beyond the first 20 releases with a bounded, cached strategy so older widget assets do not disappear as newer app releases accumulate. Measure request counts for first open, repeated open, explicit refresh and update batches.
-- [ ] Test caching, unchanged responses, expiry, rate-limit responses and retry behavior with deterministic fake HTTP/time fixtures. Do not intentionally exhaust GitHub's live limits to test them. Record native workflow and request-count evidence before declaring completion.
+- [x] Test caching, unchanged responses, expiry, rate-limit responses and retry behavior with deterministic fake HTTP/time fixtures. Do not intentionally exhaust GitHub's live limits to test them. Record native workflow and request-count evidence before declaring completion.
+
+Evidence is recorded in the ledger: the UniGetUI familiar-store comparison, deterministic cache/request-count checks, 22 native installation/update workflows, 13 screenshot-flow widget tests and 150 native screenshot-browsing assertions. Screenshot images and release responses were locally substituted; these checks do not claim remote image delivery or physical controller acceptance. The earlier invisible-overlay observation remains unresolved despite later successful current Release and fresh Debug reopen checks.
 
 This is independent of the PoB architecture work. Technical identifiers and historical records need not be mechanically renamed.
 

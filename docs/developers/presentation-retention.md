@@ -136,3 +136,13 @@ cancel their pending deadline. Indexed previews inspect resident rows only, with
 fetching, retaining or scrolling. They share placement geometry and scaled host
 presentation layers with interactive inspection, but never take focus or pointer
 input. Leaving `Preview` unset preserves existing inline presentation behaviour.
+
+## Keyboard dismissal
+
+Ordinary and anchored widget modals support keyboard Escape when their active
+scope declares a pressed-B action. The host dispatches that same action through
+the existing presentation admission path. Native child controls receive Escape
+first; browser keyboard focus and transient native controls retain their own
+handling. A repeated key or pending request cannot dismiss another modal instance,
+and late completion cannot block or release a newer modal's dismissal guard.
+Passive focus previews do not consume Escape or change the selected action.

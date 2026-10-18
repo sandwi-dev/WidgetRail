@@ -960,3 +960,36 @@ native readiness probe exits nonzero. PowerShell parsing passes. Evidence:
 `run-6721368e/bare-native-resume`, `bare-discovery-ui.json` and
 `bare-discovery-settings.json`. The isolated installation is retained for diagnosis;
 no production installation or user package was removed.
+
+## Cumulative candidate g checkpoint — 2026-10-18
+
+Both installed 0.1.4.7 widgets pass the bounded item-edit round trip through the
+actual on-screen keyboard: change a roll's text, Cancel, restore the exact control
+and original value, then return to inventory. PoE1 returned 50 after entering 5;
+PoE2 returned 16 after entering 5. The fixture uses each engine's applicable
+range/affix-roll control; an initial fixture assumed the same ID in both engines.
+Evidence: `installed-editing-final-20261018/result.json`. This closes that editing
+slice, not all skill-option mutation or physical-controller acceptance.
+
+The music player/pin matrix passes **381 native regression assertions** after the
+shared palette correction (`music-palette-regression-20261018/native-result.json`).
+The first copied fixture omitted its WRSS files and is excluded. The validation-only
+media window did not terminate after WM_CLOSE, so its exact test process was stopped
+after a bounded wait. That shutdown observation is retained for diagnosis; it does
+not establish the same behaviour in the production shell. The installed PoB test
+shell closed normally.
+
+Production publication succeeds with unique binlogs. Candidate **g**, PID **3692**
+at this checkpoint, is the sole frontend, launched hidden with the normal profile
+and controller input enabled. Its command line contains only `--hidden` and the
+explicit installation root; all **138 deployed DLLs** match the qualified output.
+Both normal-profile PoB packages remain enabled at **0.1.4.7**. The publication
+started at `b1323f7e`; dirty provenance covers only acceptance-script/plan changes,
+not uncommitted production code. Evidence: `cumulative-candidate-20261018-g/publication.json`,
+`normal-launch.json` and `live-payload.json`. Recheck PID before further actions.
+
+The goal remains active. Bare optional-package native discovery is an open failure;
+Spotify authentication, broader installed skill editing, physical controller/couch
+and unavailable prerequisite/security variants remain unverified. The earlier
+invisible-overlay observation is still unreproduced. No merge, push, release or
+CI repair was performed.
