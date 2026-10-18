@@ -103,7 +103,9 @@ internal sealed partial class OverlayShellPage
         heldAction.Reset(); rightStick.Reset();
         foreach (var (mask, button) in Buttons)
             if ((frame.ReleasedButtons & mask) != 0) shellOwnedReleases.Remove(button);
-        if (localInstallDialog is not { } dialog || !foreground || frame.Connected == 0 || frame.Primed != 0) return true;
+        if (localInstallDialog is not { } dialog) return true;
+        if (!foreground || frame.Connected == 0 || frame.Primed != 0)
+        { dialog.ControllerArmed = false; return true; }
         if (frame.State.Buttons == 0 && frame.State.LeftTrigger == 0 && frame.State.RightTrigger == 0) dialog.ControllerArmed = true;
         if (!dialog.ControllerArmed) return true;
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;

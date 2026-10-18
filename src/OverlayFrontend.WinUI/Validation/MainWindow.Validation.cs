@@ -333,6 +333,8 @@ public sealed partial class MainWindow
             page.EnableOpeningValidation(openingResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-menu") is { } pinMenuResult)
             page.EnablePinnedMenuValidation(pinMenuResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-dialog-admission") is { } admissionResult)
+            page.EnableDialogAdmissionValidation(admissionResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pinned-placement") is { } pinPlacementResult)
             page.EnablePinnedPlacementValidation(pinPlacementResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-reference-workflows") is { } referenceResult)
