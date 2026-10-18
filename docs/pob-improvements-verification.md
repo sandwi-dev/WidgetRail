@@ -993,3 +993,27 @@ Spotify authentication, broader installed skill editing, physical controller/cou
 and unavailable prerequisite/security variants remain unverified. The earlier
 invisible-overlay observation is still unreproduced. No merge, push, release or
 CI repair was performed.
+
+## Bare discovery resolved and optional upgrade continuity passed — 2026-10-18
+
+The apparent discovery failure was a test-environment filesystem mismatch, not a
+WidgetRail catalogue defect. `GetFinalPathNameByHandle` on the CLI-created catalogue
+resolved its logical AppData path into `Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/...`.
+The native bridge saw an empty real AppData directory. A short-lived diagnostic
+confirmed the same logical root but no state/package directory in that process;
+a direct bundled-.NET8 probe discovered one package. All diagnostic source edits
+were restored, and the temporarily replaced published catalogue DLL was restored
+and hash-checked against its original. No production behaviour or permissions
+were changed to compensate for this environment.
+
+The optional-package test now uses a worktree profile shared by CLI and native
+launch. `run-a54a29c4/bare-disabled` passes actual Inno update, enabled-version and
+package-byte preservation, and native Performance Monitor loading. The CLI correctly
+rejected uninstalling an enabled widget; the harness now disables it first. The
+native-only continuation `run-b1faa64a/bare-native-resume/optional-continuity.json`
+passes original archive-byte verification, widget loading, disable/uninstall and
+restart with the widget absent. The installer was not repeated for that tail.
+Normal installation registration and shortcut comparisons remain in the harness.
+Evidence is under `installed-update-20261018` and
+`bare-catalog-probe-20261018/executor-identity.json`. This supersedes the earlier
+open Bare discovery finding. Physical Guide/controller acceptance remains separate.

@@ -58,7 +58,7 @@ function CloseAcceptanceApp {
 function OptionalNative([string]$Payload,[string]$Case,[string]$Initial,[bool]$ExpectWidget) {
     $name=if($ExpectWidget){'optional-loaded'}else{'removed-restarted'}
     $shell=Join-Path $Case ($name+'-shell.json')
-    @{InstallationRoot=$Payload;SettingsRoot=$config.dataRoot;InstalledCatalogRoot=(Join-Path $config.dataRoot 'widgets');InitialWidgetId=$Initial}|
+    @{InstallationRoot=$Payload;SettingsRoot=$optionalProfile;InstalledCatalogRoot=(Join-Path $optionalProfile 'widgets');InitialWidgetId=$Initial}|
         ConvertTo-Json|Set-Content -LiteralPath $shell
     $winapp=(Get-Command winapp -ErrorAction Stop).Source
     # Project-mode launch supplies the WinUI runtime environment while selecting
@@ -142,6 +142,9 @@ Require ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($config.installRoot)
 Require ([IO.Path]::GetFileName($config.installRoot) -match '^wri-[a-f0-9]{8}$') 'Invalid isolated installation directory.'
 Require ([IO.Path]::GetFullPath($config.dataRoot) -ceq (Join-Path $env:LOCALAPPDATA $config.name)) 'Invalid isolated data directory.'
 $optionalMode=!([string]::IsNullOrWhiteSpace($BareOptionalPackage))
+# Keep CLI and native launch on the same filesystem view: a packaged command
+# runner can redirect AppData even when the unpackaged native app does not.
+$optionalProfile=Join-Path $output 'optional-profile'
 Require (!$ResumeOptionalNativeCase -or $optionalMode) 'Resume requires the same -BareOptionalPackage archive.'
 if($optionalMode){
     $BareOptionalPackage=[IO.Path]::GetFullPath($BareOptionalPackage)
@@ -155,7 +158,7 @@ if($optionalMode){
     }finally{$archive.Dispose()}
     Require (@($config.editions|Where-Object edition -eq 'bare').Count -eq 1) 'Prepared installer does not identify exactly one Bare edition.'
     $null=Get-Command winapp -ErrorAction Stop
-    if(!$ResumeOptionalNativeCase){Require (!(Test-Path -LiteralPath (Join-Path $config.dataRoot 'widgets/packages/widgetrail.firstparty.performance-monitor'))) 'Optional continuity case requires an isolated profile without Performance Monitor.'}
+    if(!$ResumeOptionalNativeCase){Require (!(Test-Path -LiteralPath (Join-Path $optionalProfile 'widgets/packages/widgetrail.firstparty.performance-monitor'))) 'Optional continuity case requires an isolated profile without Performance Monitor.'}
 }
 Require (!(Get-Process OverlayFrontend.WinUI -ErrorAction SilentlyContinue)) 'Close WidgetRail before native installer acceptance.'
 $normalKey = 'HKCU:\Software\WidgetRail\Installation'
@@ -182,7 +185,7 @@ try {
             [IO.Path]::GetFullPath($installed.ApplicationRoot).StartsWith([IO.Path]::GetFullPath($config.installRoot)+'\versions\',[StringComparison]::OrdinalIgnoreCase)) 'Resume installation does not match the successful case.'
         Require ($before.enabled -and $after.enabled -and $before.id -ceq $optionalManifest.id -and $after.id -ceq $optionalManifest.id) 'Earlier case did not preserve the enabled optional package.'
         $script:newRoot=$installed.ApplicationRoot;Test-ReleaseInventory $script:newRoot
-        $catalogRoot=Join-Path $config.dataRoot 'widgets';$case=Join-Path $attempt 'bare-native-resume';New-Item -ItemType Directory -Path $case|Out-Null
+        $catalogRoot=Join-Path $optionalProfile 'widgets';$case=Join-Path $attempt 'bare-native-resume';New-Item -ItemType Directory -Path $case|Out-Null
         $inventory=@(OptionalInventory $script:newRoot $catalogRoot (Join-Path $case 'optional-inventory.json'))
         Require ($inventory.Count -eq 1 -and $inventory[0].enabled -and $inventory[0].selectedVersion -ceq $optionalManifest.version) 'Resume optional version or enabled state changed.'
         $packageRoot=Join-Path $catalogRoot ('packages/'+$optionalManifest.id+'/'+$inventory[0].selectedVersion)
@@ -198,6 +201,7 @@ try {
             Require ((Get-FileHash -LiteralPath $target).Hash -ceq $expected) 'Resume package differs from its original archive.';$checked++
         }}finally{$archive.Dispose()}
         OptionalNative $script:newRoot $case $optionalManifest.id $true
+        OptionalCli $script:newRoot @('disable',$optionalManifest.id,'--catalog',$catalogRoot) (Join-Path $case 'optional-disable.log')
         OptionalCli $script:newRoot @('uninstall',$optionalManifest.id,'--catalog',$catalogRoot) (Join-Path $case 'optional-uninstall.log')
         Require (@(OptionalState $catalogRoot).Count -eq 0) 'Uninstall retained the optional widget catalogue entry.'
         OptionalNative $script:newRoot $case 'settings' $false
@@ -219,7 +223,7 @@ try {
             New-Item -ItemType Directory -Path $case | Out-Null
             Copy-Item -LiteralPath $entry.installer -Destination (Join-Path $case 'update.exe')
             if($optionalMode){
-                $catalogRoot=Join-Path $config.dataRoot 'widgets'
+                $catalogRoot=Join-Path $optionalProfile 'widgets'
                 OptionalCli $baseline @('install',$BareOptionalPackage,'--catalog',$catalogRoot) (Join-Path $case 'optional-install.log')
                 OptionalCli $baseline @('enable','widgetrail.firstparty.performance-monitor','--catalog',$catalogRoot) (Join-Path $case 'optional-enable.log')
                 $optionalBefore=@(OptionalState $catalogRoot)
@@ -262,7 +266,7 @@ try {
                 param($newRoot)
                 $script:newRoot = $newRoot
                 $script:events.Add('relaunch')
-                $relaunchProfile=if($optionalMode){$config.dataRoot}else{Join-Path $case 'profile'}
+                $relaunchProfile=if($optionalMode){$optionalProfile}else{Join-Path $case 'profile'}
                 $script:app = Start-Process (Join-Path $newRoot 'OverlayFrontend.WinUI.exe') -ArgumentList @('--hidden', ('--settings-root="' + $relaunchProfile + '"')) -WindowStyle Hidden -PassThru
             } -Preflight {
                 $status = Join-Path $case 'preflight.txt'
@@ -301,6 +305,7 @@ try {
                 foreach($file in $packageHashes){Require ((Get-FileHash -LiteralPath $file.path).Hash -ceq $file.hash) 'Bare upgrade changed an optional package file.'}
                 $after|ConvertTo-Json -Depth 10|Set-Content (Join-Path $case 'optional-after-upgrade.json')
                 OptionalNative $script:newRoot $case 'widgetrail.firstparty.performance-monitor' $true
+                OptionalCli $script:newRoot @('disable','widgetrail.firstparty.performance-monitor','--catalog',$catalogRoot) (Join-Path $case 'optional-disable.log')
                 OptionalCli $script:newRoot @('uninstall','widgetrail.firstparty.performance-monitor','--catalog',$catalogRoot) (Join-Path $case 'optional-uninstall.log')
                 Require (@(OptionalState $catalogRoot).Count -eq 0) 'Uninstall retained the optional widget catalogue entry.'
                 OptionalNative $script:newRoot $case 'settings' $false

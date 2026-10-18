@@ -11,8 +11,8 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 Current acceptance checkpoint (2026-10-18): implementation is present, but the
 goal remains active. Keyboard Escape, preview text scaling/high-contrast colours
 and updater warning wrapping now have targeted native fixes and evidence. The
-additional Bare upgrade case preserves an optional package but its installed
-native launch does not discover it; that finding remains unresolved. Spotify
+additional Bare upgrade case now passes optional package preservation, native
+launch, removal and restart; the earlier failure was test-path redirection. Spotify
 authentication, the earlier unreproduced invisible-overlay observation, remaining
 installed editing checks and physical controller/couch acceptance remain distinct
 from completed automated checks. See the latest verification-ledger entries.
