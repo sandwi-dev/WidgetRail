@@ -10,22 +10,32 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 | Order | Work item | Status |
 | --- | --- | --- |
-| 1 | Clean up shared code and game-specific boundaries | In progress |
-| 2 | Adjust widget dimensions and stabilize workspace sizing | Implemented sizing policy; native verification pending |
-| 2a | Compact layouts and inspect the app for couch readability | Agreed; not started |
-| 2b | Improve PoB editing and inspection workflows using Redux as a reference | Agreed; not started |
-| 3 | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; packaging/native inspection pending |
-| 4 | Complete passive-tree artwork and measure rendering improvements | Agreed; not started |
-| 5 | Add whole-build and loadout comparison | Agreed; not started |
-| 6 | Add unified search and direct navigation | Agreed; not started |
-| Independent host change | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, setup prerequisites and card styling implemented; focused and native checks passed |
+| Foundation already started | Clean up shared code and game-specific boundaries | In progress; fixed game contracts, typed changed workflows and compatibility boundary implemented |
+| **Next: host prerequisites** | Extend reusable rich previews / anchored popovers | Existing facilities audited; implement and validate before dependent PoB inspection/editing UI |
+| **Host prerequisites** | Add subtle scroll-container edge cues | Agreed; implement and validate on generic host surfaces before widget adoption |
+| **Host prerequisites** | Finish shared layout, focus, scrolling, sizing and accessibility changes needed by planned widget workflows | Indexed reveal/continuity and busy-focus fixes tested; qualify remaining shared changes before adoption |
+| After host prerequisites | Adjust widget dimensions and stabilize workspace sizing | Sizing policy implemented; integrated native verification pending |
+| After host prerequisites | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; candidate packaging complete; integrated inspection pending |
+| After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Independent gem-tag search and Changed settings implemented; preview-dependent workflows wait for host APIs |
+| After host prerequisites | Complete passive-tree artwork and measure rendering improvements | Agreed; not started |
+| After host prerequisites | Add whole-build and loadout comparison | Agreed; not started |
+| After host prerequisites | Add unified search and direct navigation | Agreed; not started |
+| Cross-app adoption and verification | Compact layouts and inspect the app for couch readability | Catalogue and music player slices inspected; remaining application audit pending |
+| Independent completed slice | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, setup prerequisites and card styling implemented; focused and native checks passed |
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Agreed; not started |
-| Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
-| Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Existing facilities audited; extension pending |
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Implemented; offline and native player checks pass; integrated/live workflows pending |
-| Display widget expansion | Add display controls alongside saved profiles, using Quick Settings as a reference | Agreed direction; feature audit and implementation queued |
+| Display widget expansion | Add trusted reusable display controls, then expose them in the widget | Agreed; provider capability work precedes its dependent widget UI |
 | App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; offline tests/Inno fixture compile pass; real installed upgrade acceptance pending |
-| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Agreed; required before final delivery |
+| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | README/first-use pass implemented; final whole-doc audit required before delivery |
+
+**Dependency order clarified on 2026-10-18:** complete the necessary shared host
+contracts and implementations first. Validate them using generic fixtures for
+focus/hover activation, dismissal/restoration, stale content, unloading, nested
+scrolling, sizing and themes. Only then adopt them in PoB's candidate inspection,
+inline editing and other dependent interfaces. Do not build widget-specific
+preview/popover workarounds while the reusable API is unfinished. Existing
+independent search/filter and music/Catalogue work does not need to be undone.
+The already-tested cumulative candidate may be finalized before this next phase.
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
