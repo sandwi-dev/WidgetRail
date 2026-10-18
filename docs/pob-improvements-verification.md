@@ -243,3 +243,20 @@ focus restoration. This does not establish full live-session or physical accepta
 
 The normal-profile hidden candidate was restored (PID 50256 at this checkpoint).
 It still uses the earlier publication; fresh cumulative publication remains required.
+
+## Packaged web application artwork budgets — 2026-10-18
+
+Current tree measurements exceed the embedded-media adapter's 512 KiB aggregate:
+PoE1 1,026,731 bytes / 15 resources; PoE2 926,203 bytes / 14 resources. Packaged web
+sessions now have a separate bounded contract: 32 resources, 256 KiB per resource,
+2 MiB aggregate. Legacy embedded-media limits remain 16 / 256 KiB / 512 KiB.
+Both sealed bridge resolution and native browser admission enforce their respective
+limits. Inventory, SHA256, path and reparse checks remain in the shared resolver.
+The registry still takes one native session per batch and caps live sessions at eight;
+encoded package resources fit the existing 12 MiB bridge frame without raising it.
+
+Focused sealed-asset checks pass at the exact aggregate/count boundary and reject
+count overflow, aggregate+1, per-file+1 and same-length tampering. The existing two
+provider-neutral media adapters also pass unchanged. Release bridge and Debug
+frontend builds pass with no warnings. Tree decoded cache/raster measurements and
+native all-version qualification are tracked with the artwork implementation.

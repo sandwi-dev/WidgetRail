@@ -221,6 +221,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Test-local BackgroundSurface artwork crosses the worker and Bridge boundary", BackgroundSurfaceArtworkCrossesBridge),
     ("SDK Gallery sealed backgrounds cross the worker and Bridge boundary", SdkGalleryBackgroundArtworkCrossesBridge),
     ("Two provider-neutral media adapters resolve through one sealed contract", EmbeddedMediaAssetsAreProviderNeutral),
+    ("Web session asset budgets preserve sealed bounds independently of media", WebSessionAssetBudgetTests.RunAsync),
     ("Built embedded media sample completes the typed playback loop", BuiltEmbeddedMediaSampleCompletesPlaybackLoop),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
     ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),

@@ -22,6 +22,12 @@ SDK JavaScript library, project and author tests. The SDK ships `WebSessionRunti
 as content; declare and seal it with your own page. Generated packages put these
 files under `payload/web`, so use the generated paths rather than the example above.
 
+Packaged sessions admit at most 32 sealed resources, 256 KiB per file and 2 MiB
+total decoded bytes. The host verifies package inventory and hashes before serving
+them. These transfer bounds are separate from embedded-media adapters (16 resources,
+512 KiB total); neither is a decoded image-memory budget. Applications should load
+artwork on demand, bound their decoded cache and release unused resources.
+
 A session key is unique within one widget worker. Its opaque reference expires with
 that worker; do not persist it. Dispose the session when finished and again safely
 from widget teardown. Removing the view preserves the session. Stop, disable, update,

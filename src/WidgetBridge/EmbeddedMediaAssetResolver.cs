@@ -39,7 +39,19 @@ internal static class EmbeddedMediaAssetResolver
 
     internal static IReadOnlyList<BridgeEmbeddedMediaResource> ResolveResources(ConfiguredWidget configured,
         IReadOnlyList<EmbeddedMediaResource> declarations)
+        => ResolveResources(configured, declarations, ProtocolConstants.MaximumEmbeddedMediaResourceCount,
+            ProtocolConstants.MaximumEmbeddedMediaResourceBytes, ProtocolConstants.MaximumEmbeddedMediaAggregateBytes);
+
+    internal static IReadOnlyList<BridgeEmbeddedMediaResource> ResolveWebSessionResources(ConfiguredWidget configured,
+        IReadOnlyList<EmbeddedMediaResource> declarations)
+        => ResolveResources(configured, declarations, WebSessionContract.MaximumPackageResourceCount,
+            WebSessionContract.MaximumPackageResourceBytes, WebSessionContract.MaximumPackageAggregateBytes);
+
+    private static IReadOnlyList<BridgeEmbeddedMediaResource> ResolveResources(ConfiguredWidget configured,
+        IReadOnlyList<EmbeddedMediaResource> declarations, int maximumCount, int maximumBytes, int maximumAggregate)
     {
+        if (declarations.Count > maximumCount)
+            throw new BridgeProtocolException("Package resources exceed the bounded resource count.");
         if (string.IsNullOrWhiteSpace(configured.PackageRoot) ||
             configured.VerifiedPackageFiles.Count == 0)
             throw new BridgeProtocolException(
@@ -55,11 +67,11 @@ internal static class EmbeddedMediaAssetResolver
                     resource.Path, out var verified))
                 throw new BridgeProtocolException(
                     "An embedded media resource is absent from the sealed package inventory.");
-            if (verified.Length is < 0 or > ProtocolConstants.MaximumEmbeddedMediaResourceBytes)
+            if (verified.Length < 0 || verified.Length > maximumBytes)
                 throw new BridgeProtocolException(
                     "An embedded media resource exceeds the bounded transfer limit.");
             aggregate = checked(aggregate + verified.Length);
-            if (aggregate > ProtocolConstants.MaximumEmbeddedMediaAggregateBytes)
+            if (aggregate > maximumAggregate)
                 throw new BridgeProtocolException(
                     "Embedded media resources exceed the aggregate transfer limit.");
 

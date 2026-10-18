@@ -22,7 +22,7 @@ public sealed record WebSessionSource
     public bool IsWellFormed() => Enum.IsDefined(Kind) && Resources is not null && NetworkOrigins is not null &&
         (Kind == WebSessionSourceKind.Remote
             ? WebBrowserDocument.IsWebUrl(Location) && Resources.Count == 0 && NetworkOrigins.Count == 0 && !AllowAutoplay
-            : WebSessionContract.IsAssetPath(Location) && Resources.Count is > 0 and <= 16 &&
+            : WebSessionContract.IsAssetPath(Location) && Resources.Count is > 0 and <= WebSessionContract.MaximumPackageResourceCount &&
               Resources.All(r => r is not null && WebSessionContract.IsAssetPath(r.Path) &&
                   r.ContentType is "text/html" or "text/javascript" or "application/javascript" or "text/css" or
                       "application/json" or "image/png" or "image/jpeg" or "image/webp" or "image/svg+xml" or "font/woff2") &&
@@ -68,6 +68,12 @@ public sealed record WebSessionReply
 
 public static class WebSessionContract
 {
+    // Package applications include local scripts, fonts and artwork. Keep these
+    // separate from the smaller embedded-media adapter budget. A host batch
+    // carries one session; base64 plus envelopes fits the existing bridge frame.
+    public const int MaximumPackageResourceCount = 32;
+    public const int MaximumPackageResourceBytes = 256 * 1024;
+    public const int MaximumPackageAggregateBytes = 2 * 1024 * 1024;
     public const int MaximumMessageBytes = 64 * 1024;
     public const int MaximumMessageDepth = 16;
     // Two base64 messages plus their envelopes fit the 256 KiB broker frame.

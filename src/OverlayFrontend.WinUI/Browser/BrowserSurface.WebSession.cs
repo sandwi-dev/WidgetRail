@@ -143,15 +143,16 @@ internal sealed partial class BrowserSurface
         var origin = new Uri(document.Url).GetLeftPart(UriPartial.Authority);
         var assets = new Dictionary<string, (byte[] Bytes, string ContentType)>(StringComparer.Ordinal);
         long total = 0;
-        if (hostedResources.Count != definition.Source.Resources.Count) throw new InvalidOperationException("Session resources are incomplete.");
+        if (hostedResources.Count > WebSessionContract.MaximumPackageResourceCount ||
+            hostedResources.Count != definition.Source.Resources.Count) throw new InvalidOperationException("Session resources are incomplete.");
         foreach (var resource in hostedResources)
         {
             if (!definition.Source.Resources.Any(r => r.Path == resource.Path && r.ContentType == resource.ContentType) ||
-                resource.ContentBase64.Length > (ProtocolConstants.MaximumEmbeddedMediaResourceBytes + 2) / 3 * 4)
+                resource.ContentBase64.Length > (WebSessionContract.MaximumPackageResourceBytes + 2) / 3 * 4)
                 throw new InvalidOperationException("Invalid session resource.");
             var bytes = Convert.FromBase64String(resource.ContentBase64);
-            if (bytes.Length > ProtocolConstants.MaximumEmbeddedMediaResourceBytes ||
-                (total += bytes.Length) > ProtocolConstants.MaximumEmbeddedMediaAggregateBytes ||
+            if (bytes.Length > WebSessionContract.MaximumPackageResourceBytes ||
+                (total += bytes.Length) > WebSessionContract.MaximumPackageAggregateBytes ||
                 !Convert.ToHexString(SHA256.HashData(bytes)).Equals(resource.Sha256, StringComparison.OrdinalIgnoreCase) ||
                 !assets.TryAdd(resource.Path, (bytes, resource.ContentType)))
                 throw new InvalidOperationException("Invalid session resource digest or size.");
