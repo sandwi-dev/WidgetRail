@@ -123,6 +123,7 @@ public sealed partial class PobWidget
             else if(parts[0]=="config-section"&&parts.Length==2&&int.TryParse(parts[1],out var category)&&category>=0&&category<ConfigurationSections().Length)
             {configSection=ConfigurationSections()[category];filter="";passiveReturnKey=null;}
             else if(id=="config-help")configHelp=!configHelp;
+            else if(id=="config-changed"&&ConfigurationCatalog.SupportsChangedFilter)configChangedOnly=!configChangedOnly;
             else if(id=="config-clear-search"){filter="";passiveReturnKey=null;}
             else if(parts[0] is "node" or "skill" or "item" && parts.Length==2 && int.TryParse(parts[1],out var detail))
             {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail&&(parts[0]!="node"||B(x,"interactive")))){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);ReadAttributeChoices(detail);}}}

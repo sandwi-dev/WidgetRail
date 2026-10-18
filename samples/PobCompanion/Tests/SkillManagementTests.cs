@@ -58,7 +58,7 @@ internal static class SkillManagementTests
             check((await widget.OnSuggestTextAsync(suggestionQuery,default)).Unavailable,"Changing the picker filter retires the old suggestion source");
             suggestionField=Nodes(View().Root).Single(n=>n.Id=="pob.gem-search");
             suggested=await widget.OnSuggestTextAsync(suggestionQuery with{SourceKey=suggestionField.TextEntrySuggestions!.Key,Text="a",Revision=2},default);
-            check(suggested.Items.Count>0&&suggested.Items.All(i=>i.Description=="Support gem"),"Suggestion names respect the current support-only catalog");
+            check(suggested.Items.Count>0&&suggested.Items.All(i=>i.Description?.StartsWith("Support gem",StringComparison.Ordinal)==true),"Suggestion names respect the current support-only catalog");
             await Action("gem-type.all");
             using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"gem-catalog-test",500))
             {
@@ -66,6 +66,40 @@ internal static class SkillManagementTests
                 var visible=Nodes(host.CurrentSnapshot.Root).Single(n=>n.Id=="pob.gems").IndexedCollection!.Count;
                 using var later=await host.AcquireAsync("pob.gems",visible/2,12);
                 check(first.Range.Items.Count==12&&later.Range.Items.Count==12,"Gem identities materialize into valid native rows at the start and middle of the catalog");
+            }
+            check(catalog.Any(g=>g.GetProperty("tagString").GetString()!.Contains("Projectile",StringComparison.OrdinalIgnoreCase)),"Catalog carries upstream human-readable gem tags");
+            await Action("gem-search","projectile");
+            var expectedTags=catalog.Where(g=>g.GetProperty("name").GetString()!.Contains("projectile",StringComparison.OrdinalIgnoreCase)||
+                g.GetProperty("tagString").GetString()!.Contains("projectile",StringComparison.OrdinalIgnoreCase)||
+                g.GetProperty("searchTags").GetString()!.Contains("projectile",StringComparison.OrdinalIgnoreCase)).ToArray();
+            check(expectedTags.Length>0&&Nodes(View().Root).Single(n=>n.Id=="pob.gems").IndexedCollection!.Count==expectedTags.Length,
+                "Tag search retains precisely the eligible upstream catalog matches");
+            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"gem-tags-test",500))
+            {
+                using var range=await host.AcquireAsync("pob.gems",0,Math.Min(12,expectedTags.Length));
+                var labels=range.Range.Items.SelectMany(item=>Nodes(item.Root)).Where(n=>n.Kind==ViewNodeKind.Button).Select(n=>n.Text).ToArray();
+                check(labels.Select((label,i)=>label!.StartsWith(expectedTags[i].GetProperty("name").GetString()+" ·",StringComparison.Ordinal)).All(ok=>ok),
+                    "Tag filtering retains upstream order and indexed gem identity");
+            }
+            suggestionField=Nodes(View().Root).Single(n=>n.Id=="pob.gem-search");
+            suggested=await widget.OnSuggestTextAsync(suggestionQuery with{SourceKey=suggestionField.TextEntrySuggestions!.Key,Text="AoE",Revision=3},default);
+            var tagsExplained=suggested.Items.Count>0&&suggested.Items.Any(i=>!i.Value.Contains("AoE",StringComparison.OrdinalIgnoreCase)&&i.Description!.Contains("AoE",StringComparison.OrdinalIgnoreCase));
+            if(!tagsExplained)Console.WriteLine("Tag suggestions: "+JsonSerializer.Serialize(suggested));
+            check(tagsExplained,
+                "Tag-only suggestions insert a complete gem name and explain its upstream tags");
+            check(Result().Xml==xmlBeforeSuggestions,"Tag browsing and suggestions leave the saved build unchanged");
+            var optionalTags=new PobGemSearchCatalog([JsonSerializer.SerializeToElement(new{name="Fixture",support=false})]);
+            check(optionalTags.Entries.Single().Matches("fixture")&&!optionalTags.Entries.Single().Matches("projectile"),"Absent optional tags retain name search without invented metadata");
+            var rankedSearch=new PobGemSearchCatalog([
+                JsonSerializer.SerializeToElement(new{name="Z first",support=true,tagString="Projectile"}),
+                JsonSerializer.SerializeToElement(new{name="A second",support=true,tagString="Projectile"})]);
+            check(rankedSearch.Entries.Where(e=>e.Matches("projectile")).Select(e=>e.Index).SequenceEqual(new[]{0,1}),
+                "Gem search never alphabetizes or recomputes an upstream ranked catalog");
+            foreach(var invalid in new[]{"{\"name\":\"Fixture\",\"support\":false,\"tagString\":3}","{\"name\":\"Fixture\",\"support\":false,\"searchTags\":null}"})
+            {
+                var rejectedMetadata=false;
+                try{_ = new PobGemSearchCatalog([JsonSerializer.Deserialize<JsonElement>(invalid)]);}catch(InvalidDataException){rejectedMetadata=true;}
+                check(rejectedMetadata,"Malformed declared gem search metadata is rejected");
             }
             await Action("gem-search","Fireball");
             check(Nodes(View().Root).Single(n=>n.Id=="pob.gems").IndexedCollection!.Count>0,"Gem search retains matching results without pagination");

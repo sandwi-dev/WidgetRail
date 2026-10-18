@@ -269,7 +269,7 @@ local function snapshot()
         local options={}; if type(d.list)=='table' then for _,o in ipairs(d.list) do if type(o)=='table' then options[#options+1]={label=clean(o.label),value=o.val} end end end
         local description=d.tooltip
         if type(description)=='function' then local valid,text=pcall(description,build.configTab.modList,build);description=valid and text or '' end
-        result.conditions[#result.conditions+1]={id=d.var,title=clean(d.label or d.var),section=configSection,applicable=ok and shown==true,
+        result.conditions[#result.conditions+1]={id=d.var,title=clean(d.label or d.var),section=configSection,applicable=ok and shown==true,changed=authored==true,
           kind=d.type or 'text',value=value,options=options,description=type(description)=='string' and clean(description) or '',descriptionRuns=type(description)=='string' and textRuns(description) or {}}
       end
     end

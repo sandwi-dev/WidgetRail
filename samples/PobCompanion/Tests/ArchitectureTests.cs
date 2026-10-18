@@ -40,6 +40,21 @@ internal static class ArchitectureTests
         try { PobResult.Read(JsonSerializer.SerializeToElement(new { ok = false, error = "Expected rejection" })); check(false, "Engine command errors stay distinct"); }
         catch (PobCommandException error) { check(error.Message == "Expected rejection", "Engine command errors stay distinct"); }
 
+        var configuration=PobConfigurationCatalog.Read(JsonSerializer.SerializeToElement(new{conditions=new[]{
+            new{id="default",title="Default",section="General",value=false,changed=false},
+            new{id="authored",title="Authored",section="General",value=true,changed=true}}}));
+        check(configuration.SupportsChangedFilter&&configuration.ChangedCount==1&&configuration.ChangedBySection["General"]==1&&
+            configuration.Match("General","",true).Single().Id=="authored","Configuration counts and filtering use upstream changed flags");
+        var unavailable=PobConfigurationCatalog.Read(JsonSerializer.SerializeToElement(new{conditions=new[]{new{id="legacy",value=true}}}));
+        check(!unavailable.SupportsChangedFilter&&unavailable.Options.Single().Changed is null,"Missing optional default metadata stays unknown rather than becoming false");
+        foreach(var json in new[]{"{\"conditions\":null}","{\"conditions\":[{\"id\":\"x\"}]}",
+            "{\"conditions\":[{\"id\":\"x\",\"value\":false,\"changed\":\"yes\"}]}",
+            "{\"conditions\":[{\"id\":\"x\",\"value\":false},{\"id\":\"x\",\"value\":true}]}"})
+        {
+            try { using var document=JsonDocument.Parse(json);PobConfigurationCatalog.Read(document.RootElement);check(false,"Invalid configuration metadata rejected"); }
+            catch(IOException){check(true,"Invalid configuration metadata rejected");}
+        }
+
         var directory = Path.Combine(Path.GetTempPath(), "pob-library-contract-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try

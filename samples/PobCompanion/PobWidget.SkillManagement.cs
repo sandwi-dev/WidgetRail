@@ -7,6 +7,16 @@ namespace WidgetRail.Samples.PobCompanion;
 public sealed partial class PobWidget
 {
     private JsonElement[] gemCatalog=[];
+    private PobGemSearchCatalog gemSearchCatalog=new([]);
+
+    private void SetGemCatalog(JsonElement state)
+    {
+        if (!state.TryGetProperty("gemCatalog", out var value) || value.ValueKind != JsonValueKind.Array)
+            throw new InvalidDataException("PoB returned an invalid gem catalog.");
+        var items=value.EnumerateArray().ToArray();
+        var search=new PobGemSearchCatalog(items);
+        gemCatalog=items;gemSearchCatalog=search;
+    }
     private string gemSearch="",gemType="all";
     private string gemSort="name";
     private int pickerGem;
@@ -48,7 +58,7 @@ public sealed partial class PobWidget
                 {
                     var count=A(A(State,"skills").First(g=>I(g,"id")==targetGroup),"gems").Length;
                     var sorted=await engine.ExecuteAsync(new{op="gem-catalog",group=targetGroup,gem=targetGem==0?count+1:targetGem,sort=metric},token,result!.Xml);
-                    lock(gate){gemCatalog=A(sorted.State,"gemCatalog");gemSort=metric;RefreshGemSuggestions();}
+                    lock(gate){SetGemCatalog(sorted.State);gemSort=metric;RefreshGemSuggestions();}
                 },"Comparing gems with PoB…");return true;
             }
             if(parts is ["gem-type",var type]&&type is "all" or "active" or "support"){gemType=type;RefreshGemSuggestions();return true;}
@@ -90,7 +100,7 @@ public sealed partial class PobWidget
         var group=detailId;
         var count=A(A(State,"skills").First(g=>I(g,"id")==group),"gems").Length;
         var response=await engine.ExecuteAsync(new{op="gem-catalog",group,gem=gem==0?count+1:gem},token,result!.Xml);
-        lock(gate){gemCatalog=A(response.State,"gemCatalog");gemSearch="";gemType=count==0?"active":"all";gemSort="name";pickerGem=gem;detailKind="gem-picker";RefreshGemSuggestions();focusRequestSequence++;}
+        lock(gate){SetGemCatalog(response.State);gemSearch="";gemType=count==0?"active":"all";gemSort="name";pickerGem=gem;detailKind="gem-picker";RefreshGemSuggestions();focusRequestSequence++;}
     },"Loading gems…");
 
     private WidgetElement SkillManagementWorkspace()
@@ -170,7 +180,8 @@ public sealed partial class PobWidget
             OnAction=(query,entry,action,token)=>
             {lock(gate){if(!ReferenceEquals(query,gemQuery)||detailKind!="gem-picker"||busy||action.ActionId!="choose")return ValueTask.CompletedTask;return OnActionAsync(action with{ActionId=entry.Action},token);}},
         });
-        var entries=gemCatalog.Select((gem,i)=>(gem,i)).Where(x=>(gemType=="all"||B(x.gem,"support")== (gemType=="support"))&&S(x.gem,"name").Contains(gemSearch,StringComparison.OrdinalIgnoreCase))
+        var entries=gemSearchCatalog.Entries.Where(entry=>(gemType=="all"||entry.Support==(gemType=="support"))&&entry.Matches(gemSearch))
+            .Select(entry=>(gem:gemCatalog[entry.Index],i:entry.Index))
             .Select(x=>new GemEntry(WidgetIds.Scope("gem").KeyedId("entry",S(x.gem,"id")),S(x.gem,"name")+(B(x.gem,"support")?" · Support":" · Active skill")+
                 (gemSort!="name"&&x.gem.TryGetProperty("comparison",out var value)?" · "+value.GetDouble().ToString("N0",System.Globalization.CultureInfo.InvariantCulture):""),"gem-pick."+x.i)).ToArray();
         if(!gemQuery.Entries.SequenceEqual(entries)){gemQuery=new(entries);gemCollection.PublishQuery(gemQuery,entries.Length);}
@@ -180,7 +191,7 @@ public sealed partial class PobWidget
         return UI.Stack("pob.gem-picker",
             QuickControls(UI.Stack("pob.gem-picker.tools",UI.Row("pob.gem-picker.header",Button("Back to group","back"),Text(pickerGem==0?"Add gem":"Replace gem","gem-picker.title","pob-heading")).Classes("pob-toolbar"),
                 UI.Grid("pob.gem-picker.search-row",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
-                    Field("Search gems",UI.TextEntry(gemSearch,"Gem name","gem-search","pob.gem-search",100).Suggest(gemSuggestionSource).Classes("pob-input"),"gem-search"),
+                    Field("Search gems",UI.TextEntry(gemSearch,"Name or tag","gem-search","pob.gem-search",100).Suggest(gemSuggestionSource).Classes("pob-input"),"gem-search"),
                     UI.Select("Type",new[]{("all","All gems"),("active","Active skills"),("support","Support gems")}.Select(x=>new SelectOption(x.Item1,x.Item2,"gem-type."+x.Item1,x.Item1==gemType)).ToArray(),"pob.gem-type").Classes("pob-select").InGrid(column:1)).Spacing(0,12),
                 UI.Select("Sort",new[]{new SelectOption("name","Name","gem-sort.name",gemSort=="name")}.Concat(A(State,"gemSortMetrics").Select(m=>new SelectOption(S(m,"id"),S(m,"title"),"gem-sort."+S(m,"id"),gemSort==S(m,"id")))).ToArray(),"pob.gem-sort").Classes("pob-select"),
                 Text(gemSort=="name"?$"{entries.Length} gems · Defaults and compatibility follow the current PoB engine.":$"{entries.Length} gems · PoB ranks supports first, then the chosen total. Main skill: {S(State,"mainSkill")}. This is a comparison, not a recommendation.","gem-picker.count","pob-muted")),"pob.gem-search","pob.gem-picker.results","Gems",NeedsQuickControls(entries.Length)),

@@ -11,11 +11,13 @@ public sealed record PobResult
         State = state;
         Xml = xml;
         Capabilities = PobEngineCapabilities.Read(state);
+        Configuration = PobConfigurationCatalog.Read(state);
     }
 
     public JsonElement State { get; }
     public string Xml { get; }
     internal PobEngineCapabilities Capabilities { get; }
+    internal PobConfigurationCatalog Configuration { get; }
 
     internal static PobResult Read(JsonElement envelope)
     {

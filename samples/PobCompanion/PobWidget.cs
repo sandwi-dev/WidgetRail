@@ -263,10 +263,11 @@ public sealed partial class PobWidget : Widget
         if (detailKind == "skill-options") return SkillOptionsContent();
         return rows;
     }
-    private WidgetElement Condition(JsonElement c)
+    private WidgetElement Condition(PobConfigurationOption option)
     {
-        var key=Array.FindIndex(A(State,"conditions"),v=>S(v,"id")==S(c,"id")).ToString(CultureInfo.InvariantCulture); var value=c.GetProperty("value");
-        var title=InlineLabel(S(c,"title"),S(c,"id"));
+        var c=option.Raw;
+        var key=option.Index.ToString(CultureInfo.InvariantCulture); var value=c.GetProperty("value");
+        var title=InlineLabel(option.Title,option.Id)+(option.Changed==true?" · Changed":"");
         var categoryTarget="pob.config.category."+Math.Max(0,Array.IndexOf(ConfigurationSections(),configSection));
         if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
             return UI.Switch(title,value.GetBoolean(),"condition."+key,"pob.condition."+key).FocusLeft(categoryTarget).Shortcut(ControllerButton.X,"Compare toggle",actionId:"config-compare."+key).Classes("pob-toggle");

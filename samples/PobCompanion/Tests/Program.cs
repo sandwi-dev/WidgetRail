@@ -26,7 +26,7 @@ if(args is ["--note-links-only"])
     Console.WriteLine($"Note links: {passed} passed, {failed} failed");return failed==0?0:1;
 }
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only" or "--trade-improvements-only" or "--trade-menu-only" or "--tree-editing-only" or "--currency-ranking-only" or "--calculation-context-only" or "--suggestions-only" or "--empty-build-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only" or "--trade-improvements-only" or "--trade-menu-only" or "--tree-editing-only" or "--currency-ranking-only" or "--calculation-context-only" or "--suggestions-only" or "--empty-build-only" or "--configuration-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -64,6 +64,7 @@ if(args.Length==5)
     else if(args[4]=="--planning-features-only")await PlanningFeatureTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--loadouts-only")await LoadoutTests.RunAsync(engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--suggestions-only")await SearchSuggestionTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--configuration-only")await ConfigurationWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--empty-build-only")
     {
         await EmptyInventoryTests.RunAsync(game,engineRoot,runtime,adapter,Check);

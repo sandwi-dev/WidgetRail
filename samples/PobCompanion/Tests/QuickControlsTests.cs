@@ -79,7 +79,7 @@ internal static class QuickControlsTests
                 Set("result",new PobResult(JsonSerializer.SerializeToElement(state),xml));Set("section","Configuration");Set("detailKind","");
                 check(Shortcut(View(),"pob.config.categories")== (count>8),"Configuration shortcut uses section count: "+count);
                 if(count>8){await Jump("pob.config.tools");await Jump("pob.config.footer");await Jump("pob.config.categories");}
-                Set("savedBuilds",Enumerable.Range(1,count).Select(i=>(i.ToString("x32"),"Build "+i)).ToArray());Set("detailKind","library");
+                Set("librarySnapshot",PobLibrarySnapshot.Empty with {Entries=Enumerable.Range(1,count).Select(i=>(i.ToString("x32"),"Build "+i)).ToArray()});Set("detailKind","library");
                 check(Shortcut(View(),"pob.library.results")== (count>8),"Library shortcut depends on long results: "+count);
                 if(count>8){await Jump("pob.library.tools");await Jump("pob.library.results");}
             }

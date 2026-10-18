@@ -37,7 +37,16 @@ local function catalog(group,gemIndex,sort)
       (not picker.FilterSupport or picker:FilterSupport(gem.id,gem)) then
       seen[gem.id]=true
       keys[gem.id]=key
+      assert(gem.tagString==nil or type(gem.tagString)=='string','Invalid upstream gem tag text')
+      assert(gem.tags==nil or type(gem.tags)=='table','Invalid upstream gem tags')
+      local tags={}
+      for tag,enabled in pairs(gem.tags or {})do
+        assert(type(tag)=='string' and type(enabled)=='boolean','Invalid upstream gem tag')
+        if enabled then tags[#tags+1]=tag end
+      end
+      table.sort(tags)
       result[#result+1]={id=gem.id,name=gem.name,support=gem.grantedEffect.support==true,
+        tagString=gem.tagString or '',searchTags=table.concat(tags,', '),
         description=type(gem.grantedEffect.description)=='string' and gem.grantedEffect.description or ''}
     end
   end
