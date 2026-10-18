@@ -220,6 +220,6 @@ internal static class SettingsInstalledWidgetPolicy
     }
 
     public static InstalledWidgetVersion? BackupVersion(CatalogWidget widget) =>
-        widget.Versions.Where(item => item.Version != widget.ActiveVersion.Version)
+        widget.Versions.Where(item => item.Version < widget.ActiveVersion.Version)
             .OrderByDescending(item => item.Version).FirstOrDefault();
 }

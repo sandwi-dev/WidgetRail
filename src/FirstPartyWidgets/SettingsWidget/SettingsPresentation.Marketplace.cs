@@ -56,8 +56,7 @@ internal static partial class SettingsPresentation
                         UI.Button("Next screenshot", "marketplace.screenshot.next", "marketplace.screenshot.next")));
             }
             var ready = operation is { State: "review" } && operation.PackageId == selected.Id;
-            var upToDate = selected.AvailableVersionSaved ||
-                Version.TryParse(selected.AvailableVersion, out var available) && Version.TryParse(selected.InstalledVersion, out var installed) && available <= installed;
+            var upToDate = Version.TryParse(selected.AvailableVersion, out var available) && Version.TryParse(selected.InstalledVersion, out var installed) && available <= installed;
             items.Add(UI.Button(ready ? "Review installation" : upToDate ? "Manage in Widgets" : selected.InstalledVersion is null ? "Download for review" : "Download update for review",
                 ready ? "marketplace.review.open" : upToDate ? "marketplace.manage" : "marketplace.download", "marketplace.primary")
                 .Busy((running || operation?.State == "review" && !ready) && !upToDate).Disabled(!ready && selected.AvailableVersion is null).Classes("primary-button"));
@@ -101,8 +100,6 @@ internal static partial class SettingsPresentation
     {
         if (item.AvailableVersion is null) return item.InstalledVersion is null ? "Check releases to see available versions" : "Installed " + item.InstalledVersion;
         if (item.InstalledVersion is null) return "Available " + item.AvailableVersion;
-        if (item.AvailableVersionSaved && item.AvailableVersion != item.InstalledVersion)
-            return $"Selected {item.InstalledVersion} · {item.AvailableVersion} already saved in Versions";
         return Version.TryParse(item.AvailableVersion, out var available) && Version.TryParse(item.InstalledVersion, out var installed) && available > installed
             ? $"Update available · {item.InstalledVersion} → {item.AvailableVersion}" : "Installed " + item.InstalledVersion + " · Up to date";
     }

@@ -32,7 +32,7 @@ internal sealed partial class BridgeWidgetMarketplace
         foreach (var id in ids)
         {
             var item = _snapshot.Items.FirstOrDefault(item => item.Id == id);
-            if (item is null || item.AvailableVersionSaved || !_assets.TryGetValue(id, out var asset) ||
+            if (item is null || !_assets.TryGetValue(id, out var asset) ||
                 !Version.TryParse(item.InstalledVersion, out var installed) || asset.Version <= installed)
                 throw new PlatformDiagnosticsException("marketplace_refresh_required");
         }

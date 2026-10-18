@@ -62,19 +62,21 @@ public sealed class WidgetPackageInstaller
         Stream packageStream,
         Func<WidgetPackageInspection, CancellationToken, Task> prePublish,
         CancellationToken cancellationToken = default,
-        Func<InstalledWidgetVersion, CancellationToken, Task>? beforePublication = null)
+        Func<InstalledWidgetVersion, CancellationToken, Task>? beforePublication = null,
+        bool reuseExistingVersion = false)
     {
         ArgumentNullException.ThrowIfNull(packageStream);
         ArgumentNullException.ThrowIfNull(prePublish);
         using var archive = OpenArchive(packageStream);
-        return await InstallArchiveAsync(archive, prePublish, cancellationToken, beforePublication);
+        return await InstallArchiveAsync(archive, prePublish, cancellationToken, beforePublication, reuseExistingVersion);
     }
 
     private async Task<InstalledWidgetVersion> InstallArchiveAsync(
         ZipArchive archive,
         Func<WidgetPackageInspection, CancellationToken, Task>? prePublish,
         CancellationToken cancellationToken,
-        Func<InstalledWidgetVersion, CancellationToken, Task>? beforePublication = null)
+        Func<InstalledWidgetVersion, CancellationToken, Task>? beforePublication = null,
+        bool reuseExistingVersion = false)
     {
         Directory.CreateDirectory(_root);
         Directory.CreateDirectory(_packagesRoot);
@@ -117,10 +119,19 @@ public sealed class WidgetPackageInstaller
             Directory.CreateDirectory(idParent);
             FileSystemSafety.EnsureNoReparsePoints(_root, idParent);
             var destination = Path.Combine(idParent, stagedInspection.Manifest.Version);
-            if (Directory.Exists(destination) || File.Exists(destination))
+            var reuse = reuseExistingVersion && Directory.Exists(destination);
+            if (!reuse && (Directory.Exists(destination) || File.Exists(destination)))
                 throw new WidgetPackageException(
                     "version_already_installed",
                     $"{stagedInspection.Id} {stagedInspection.Manifest.Version} is already installed; installed versions are immutable.");
+
+            if (reuse)
+            {
+                var existing = InstalledPackageIntegrity.Verify(_root, destination, _options, cancellationToken.ThrowIfCancellationRequested);
+                if (!string.Equals(existing.ContentDigest, contentDigest, StringComparison.Ordinal))
+                    throw new WidgetPackageException("retained_version_mismatch",
+                        "The saved version differs from the reviewed update. Existing package files were not changed.");
+            }
 
             var installed = new InstalledWidgetVersion(
                 stagedInspection.Id,
@@ -137,7 +148,7 @@ public sealed class WidgetPackageInstaller
                 await beforePublication(installed, cancellationToken).ConfigureAwait(false);
             // Once final preparation has committed, finish publication. A late
             // cancellation must not strand a successfully prepared settings copy.
-            Directory.Move(stage, destination);
+            if (!reuse) Directory.Move(stage, destination);
             return installed;
         }
         finally

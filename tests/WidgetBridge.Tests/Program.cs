@@ -4720,6 +4720,13 @@ static async Task LocalPackageUpdateFlow()
     Assert.Equal(2, updated.Versions.Count);
     Assert.True(result.Message.Contains("settings and enabled state were kept"), "Update did not explain that preferences are preserved.");
     await catalog.SetEnabledAsync(id, false);
+    await catalog.RollbackAsync(id);
+    var reused = await Run(update);
+    Assert.Equal("installed", reused.Status);
+    var selectedAgain = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.Equal("2.0.0", selectedAgain.ActiveVersion.Version.ToString());
+    Assert.Equal(2, selectedAgain.Versions.Count);
+    Assert.False(selectedAgain.Enabled, "Reusing a saved update changed disabled state.");
     var disabledUpdate = await Run(await CreateWidgetPackageAsync(root.Path, id, "3.0.0"));
     Assert.Equal("installed", disabledUpdate.Status);
     var disabled = (await catalog.DiscoverAsync()).Widgets.Single();

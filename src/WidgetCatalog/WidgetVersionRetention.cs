@@ -28,6 +28,13 @@ public sealed partial class WidgetCatalog
         var state = await _stateStore.LoadAsync(token).ConfigureAwait(false);
         var saved = state.Widgets.SingleOrDefault(item => item.Id == incoming.Id)?.ActiveVersion;
         var selected = saved is null ? versions.OrderByDescending(item => item.Version).FirstOrDefault()?.Version : Version.Parse(saved);
+        if (versions.Any(item => item.Version == incoming.Version))
+        {
+            // Reuse was verified against the reviewed archive before this hook.
+            // Retain both authorities until settings transfer and selection finish.
+            await WriteRetentionReceiptAsync(new(incoming.Id, incoming.Version.ToString(), selected?.ToString()), token).ConfigureAwait(false);
+            return;
+        }
         var retained = RetainedBeforeInstall(versions, selected);
         // This hook runs after archive extraction/sealing and policy approval.
         // Keep both the selected version and its existing backup until commit.

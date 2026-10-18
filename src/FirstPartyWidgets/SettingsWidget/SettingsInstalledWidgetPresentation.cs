@@ -361,10 +361,8 @@ internal static class SettingsInstalledWidgetPresentation
                             : "Install a version that supports this host API and architecture before enabling. Capability consent is a separate decision.",
                     "installed.details.status", "Package enabled status").Classes("page-help"),
         };
-        var restoreNewer = previous is not null && previous.Version > package.ActiveVersion.Version;
         details.Add(UI.Button(previous is null ? "No previous version available" :
-                package.Enabled ? $"Use saved version {previous.Version} \u00b7 disable widget first" :
-                restoreNewer ? $"Restore newer version ({previous.Version})" :
+                package.Enabled ? $"Revert to {previous.Version} \u00b7 disable widget first" :
                 $"Revert to previous version ({previous.Version})",
                 "installed.revert", "installed.details.revert")
             .Disabled(!canRevert).Busy(busy).Classes("setting-row"));

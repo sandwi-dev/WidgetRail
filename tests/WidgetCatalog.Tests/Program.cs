@@ -8,6 +8,7 @@ using WidgetRail.WidgetProtocol;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Reviewed updates reuse retained bytes after rollback and reject conflicting archives", RetainedUpdateReuse),
     ("Malformed retention receipts cannot delete packages or block catalog use", RetentionMalformedReceipts),
     ("Updates retain current and previous versions across repeated publication", RetentionUpdates),
     ("Retention preserves selected versions and failed updates at legacy capacity", RetentionFailures),
@@ -92,6 +93,39 @@ static async Task<InstalledWidgetVersion> RetentionUpdate(WidgetCatalog catalog,
     var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("dev.test.retention")));
     return await catalog.UpdateFromFileAsync(input, hash, WidgetPackageTrustApproval.None,
         (_, _) => Task.CompletedTask, token, transfer ?? ((_, _, _) => Task.CompletedTask));
+}
+
+static async Task RetainedUpdateReuse()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    const string id = "dev.test.retention";
+    await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0"));
+    var archive = CreatePackage(temp.Path, id, "dev.test", "2.0.0");
+    var saved = await RetentionUpdate(catalog, archive);
+    var payload = Path.Combine(saved.InstallPath, "payload", "Widget.dll");
+    var stamp = File.GetLastWriteTimeUtc(payload);
+    await catalog.RollbackAsync(id);
+    var copies = 0;
+    using var cancelled = new CancellationTokenSource();
+    await Assert.ThrowsAsync<OperationCanceledException>(() => RetentionUpdate(catalog, archive,
+        (_, _, _) => { cancelled.Cancel(); cancelled.Token.ThrowIfCancellationRequested(); return Task.CompletedTask; }, cancelled.Token));
+    Assert.Equal(new Version(1, 0, 0), (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version);
+    var conflict = CreatePackage(temp.Path, id, "dev.test", "2.0.0", [new("payload/changed.txt", "different package")]);
+    var rejected = await Assert.ThrowsAsync<WidgetPackageException>(() => RetentionUpdate(catalog, conflict,
+        (_, _, _) => { copies++; return Task.CompletedTask; }));
+    Assert.Equal("retained_version_mismatch", rejected.Code);
+    Assert.Equal(0, copies);
+    Assert.True(!File.Exists(Path.Combine(saved.InstallPath, "payload", "changed.txt")), "Conflicting bytes overwrote the retained version.");
+    await catalog.SetEnabledAsync(id, true);
+    var reused = await RetentionUpdate(catalog, archive, (_, _, _) => { copies++; return Task.CompletedTask; });
+    var current = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.True(current.Enabled && current.ActiveVersion.Version == new Version(2, 0, 0), "Retained update did not preserve enabled state and select the reviewed version.");
+    Assert.Equal(saved.ContentDigest, reused.ContentDigest);
+    Assert.Equal(saved.InstallPath, reused.InstallPath);
+    Assert.Equal(stamp, File.GetLastWriteTimeUtc(payload));
+    Assert.Equal(1, copies);
+    Assert.Equal(2, current.Versions.Count);
 }
 
 static async Task RetentionMalformedReceipts()

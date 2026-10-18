@@ -187,8 +187,8 @@ public sealed partial class WidgetCatalog
                 throw new WidgetPackageException("update_publisher_changed", "The update has a different publisher.");
             if (WidgetManifestTrust.Resolve(incoming.Manifest) != WidgetManifestTrust.Resolve(current.ActiveVersion.Manifest))
                 throw new WidgetPackageException("update_trust_changed", "The update changes how this widget runs.");
-            if (incoming.Version <= current.ActiveVersion.Version || current.Versions.Any(item => item.Version == incoming.Version))
-                throw new WidgetPackageException("update_not_newer", "Choose a newer version that is not already installed.");
+            if (incoming.Version <= current.ActiveVersion.Version)
+                throw new WidgetPackageException("update_not_newer", "Choose a version newer than the currently selected version.");
             if (!WidgetHostCompatibility.Evaluate(incoming.Manifest).IsSupported)
                 throw new WidgetPackageException("update_incompatible", "The update is not compatible with this WidgetRail version.");
             EnforceProspectiveInstallLimits(all, current.Versions.ToArray(), incoming, current.ActiveVersion.Version);
@@ -207,7 +207,7 @@ public sealed partial class WidgetCatalog
         {
             await PrepareRetentionAsync(sealedVersion, token).ConfigureAwait(false);
             await keepSettings(previous!, sealedVersion, token).ConfigureAwait(false);
-        }).ConfigureAwait(false);
+        }, reuseExistingVersion: true).ConfigureAwait(false);
         // Publication is durable. Finish with a non-cancellable state commit;
         // if storage fails, the old explicit pin still prevents activation.
         try
@@ -220,7 +220,7 @@ public sealed partial class WidgetCatalog
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or WidgetPackageException)
         {
-            throw new WidgetPackageException("update_selection_failed", $"The new version was saved, but could not be selected. The previous version is still selected. After checking storage access, disable the widget and run: wrail version select {installed.Id} {installed.Version}.", exception);
+            throw new WidgetPackageException("update_selection_failed", "The update was saved, but could not be selected. The previous version is still selected. Check storage access, then retry the update.", exception);
         }
         return await FinishRetentionAsync(installed).ConfigureAwait(false);
     }

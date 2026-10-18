@@ -114,7 +114,14 @@ static async Task UpdateReview()
     await fixture.Service.HandleAsync(new("inventory"), default);
     var inventory = await Wait(fixture.Service, "completed");
     Check(inventory.Items.Single().InstalledVersion == "1.0.0" && inventory.Items.Single().AvailableVersionSaved,
-        "Rollback did not refresh the selected version or offered a duplicate download");
+        "Rollback did not distinguish the selected and saved versions");
+    var again = await fixture.Review();
+    Check(again.Operation!.Review!.Compatible, "A retained newer version was incorrectly treated as up to date");
+    await fixture.Service.HandleAsync(new("install", OperationId: again.Operation.Id, ReviewToken: again.Operation.Review.Token), default);
+    await Wait(fixture.Service, "completed");
+    var restored = (await fixture.Catalog.DiscoverAsync()).Widgets.Single();
+    Check(restored.ActiveVersion.Version == new Version(2, 0, 0) && restored.Versions.Count == 2,
+        "Normal Marketplace update did not reselect the retained newer version");
 }
 static async Task FullTrust()
 {

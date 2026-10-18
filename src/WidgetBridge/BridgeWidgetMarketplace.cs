@@ -247,8 +247,8 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
             if (installed is not null && (installed.ActiveVersion.Manifest.Publisher != definition.Publisher ||
                 WidgetManifestTrust.Resolve(installed.ActiveVersion.Manifest) != WidgetManifestTrust.Resolve(inspection.Manifest)))
             { compatible = false; explanation = "The installed widget has a different publisher or execution model. Manage it in Widgets first."; }
-            if (installed is not null && (inspection.Version <= installed.ActiveVersion.Version || installed.Versions.Any(v => v.Version == inspection.Version)))
-            { compatible = false; explanation = "This version is already saved, or an installed version is newer. Use Widgets to manage existing versions."; }
+            if (installed is not null && (inspection.Version <= installed.ActiveVersion.Version))
+            { compatible = false; explanation = "This version is already selected, or the selected version is newer."; }
             var previous = installed?.ActiveVersion.Manifest;
             var known = (previous?.Permissions ?? []).Concat(previous?.OptionalPermissions ?? []).ToHashSet(StringComparer.Ordinal);
             var review = new MarketplaceReview(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), definition.Id, definition.Name,
@@ -336,9 +336,10 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         DistributionOperationException e when e.Message.Contains("download limit", StringComparison.Ordinal) => "This package exceeds the marketplace download limit. Obtain a smaller compatible package from its author.",
         DistributionUsageException => "This release has no usable checksum or package source. It cannot be installed from the marketplace.",
         DistributionOperationException => "The download or release check failed. Check your connection and try again.",
-        WidgetPackageException { Code: "update_selection_failed" } => "The new version was saved, but could not be selected. The previous version remains selected. After resolving storage access, disable the widget and use Restore newer version in its Technical details.",
+        WidgetPackageException { Code: "update_selection_failed" } => "The new version was saved, but could not be selected. The previous version remains selected. Check storage access, then retry the update.",
         WidgetPackageException { Code: "install_activation_failed" } => "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.",
         WidgetPackageException { Code: "package_incompatible" } => "This widget is not compatible with this WidgetRail version.",
+        WidgetPackageException { Code: "retained_version_mismatch" } => "The saved version differs from the reviewed update. Its files were not changed.",
         WidgetPackageException { Code: "update_not_newer" } => "The installed version changed. Refresh the marketplace and review again.",
         WidgetPackageException { Code: "marketplace_review_changed" } => "The selected widget version changed after review. Refresh and download again to review its current permissions.",
         WidgetPackageException => "The package could not be installed or validated. Review its compatibility and your installed versions.",

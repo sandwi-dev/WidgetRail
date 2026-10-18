@@ -2104,10 +2104,7 @@ static async Task InstalledWidgetVersionRollback()
     Assert.True(!current.Enabled, "Rollback bypassed enablement review.");
     Assert.SequenceEqual(["3.0.0", "2.0.0"], current.Versions.Select(item => item.Version.ToString()));
     Assert.Equal(SettingsPage.InstalledWidgetTechnical, widget.CurrentPage);
-    Assert.Contains("Restore newer version (3.0.0)", Button(Snapshot(widget).Root, "installed.details.revert").Text!);
-    await Action(widget, "installed.revert");
-    Assert.Equal("3.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
-    Assert.Contains("Revert to previous version (2.0.0)", Button(Snapshot(widget).Root, "installed.details.revert").Text!);
+    Assert.Equal(true, Button(Snapshot(widget).Root, "installed.details.revert").IsDisabled);
     Assert.Valid(enabled);
     Assert.Valid(technical);
     Assert.Valid(Snapshot(widget));

@@ -128,10 +128,10 @@ public sealed class MarketplaceWidget : Widget
             ReviewToken = snapshot.Operation?.Review?.Token == s.ReviewToken || snapshot.UpdateBatch?.ReviewToken == s.ReviewToken ? s.ReviewToken : null });
     }
     private static string Key(string id) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id)));
-    private static bool UpdateAvailable(MarketplaceItem item) => !item.AvailableVersionSaved && Version.TryParse(item.AvailableVersion,out var available) &&
+    private static bool UpdateAvailable(MarketplaceItem item) => Version.TryParse(item.AvailableVersion,out var available) &&
         Version.TryParse(item.InstalledVersion,out var installed) && available > installed;
     private static string ItemStatus(MarketplaceItem item) => UpdateAvailable(item) ? $"Update available · {item.InstalledVersion} → {item.AvailableVersion}" :
-        item.InstalledVersion is not null ? item.AvailableVersionSaved && item.AvailableVersion != item.InstalledVersion ? "Update already saved · manage in Settings" : "Installed " + item.InstalledVersion :
+        item.InstalledVersion is not null ? "Installed " + item.InstalledVersion :
         item.AvailableVersion is not null ? "Available " + item.AvailableVersion : "Check releases for available versions";
     private static WidgetElement Manage(MarketplaceItem item,string id) => UI.Button("Manage in Settings","unused",id)
         .OpenIntent(WidgetIntentContracts.WidgetSettings,JsonSerializer.SerializeToElement(new { packageId = item.Id }),WidgetIntentPresentation.OpenWidget);
@@ -214,7 +214,7 @@ public sealed class MarketplaceWidget : Widget
             }
             var ready = operation is { State: "review" } && operation.PackageId == selected.Id;
             if (ready) items.Add(UI.Button("Review installation","marketplace.review.open","marketplace.primary").Busy(state.Busy));
-            else if (selected.AvailableVersionSaved || selected.InstalledVersion is not null && !UpdateAvailable(selected)) items.Add(Manage(selected,"marketplace.primary"));
+            else if (selected.InstalledVersion is not null && !UpdateAvailable(selected)) items.Add(Manage(selected,"marketplace.primary"));
             else items.Add(UI.Button(selected.InstalledVersion is null ? "Download for review" : "Download update for review","marketplace.download","marketplace.primary").Busy(busy).Disabled(selected.AvailableVersion is null));
             if(selected.AvailableVersion is null) items.Add(UI.Button("Check available releases","marketplace.refresh","marketplace.refresh").Busy(busy));
             if(selected.InstalledVersion is not null && (UpdateAvailable(selected) || ready)) items.Add(Manage(selected,"marketplace.manage"));

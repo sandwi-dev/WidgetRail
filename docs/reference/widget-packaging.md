@@ -62,8 +62,9 @@ The larger internal discovery ceiling permits legacy catalogs and cleanup retrie
 Marketplace and Settings updates preserve enabled state; CLI updates require the
 widget to be disabled first. Settings exposes **Revert to previous version** in
 its existing **Technical details** section. Disable the widget before reverting,
-then review permissions and enable it again. After reverting, the same button
-offers **Restore newer version** for the retained package. Rollback changes package selection;
+then review permissions and enable it again. After reverting, use the normal Marketplace, file or CLI update flow
+to return to a newer version. A retained package is verified against the reviewed
+archive and reused without overwriting its immutable files. Rollback changes package selection;
 it does not restore a snapshot of saved widget data.
 
 Raw CLI installation keeps an existing explicit selection and retains it with

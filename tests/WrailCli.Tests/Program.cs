@@ -445,9 +445,11 @@ static async Task SampleInstallWorkflow()
     var catalog = new WidgetCatalog(root);
     Task<CliResult> Install(string package) => RunProcessAsync("pwsh",
         ["-NoProfile", "-NonInteractive", "-File", script, "-CliDll", cli, "-Package", package, "-Catalog", root], TimeSpan.FromSeconds(30));
+    var lastPackage = "";
     for (var major = 1; major <= 3; major++)
     {
         var package = await CreatePackedPackageAsync(temp.Path, id, $"{major}.0.0");
+        lastPackage = package;
         var installed = await Install(package);
         Assert.True(installed.Code == 0, installed.Output + installed.Error);
         var selected = (await catalog.DiscoverAsync()).Widgets.Single();
@@ -457,6 +459,11 @@ static async Task SampleInstallWorkflow()
         Assert.True(duplicate.Code != 0, "Duplicate sample version was overwritten.");
         Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Duplicate install disabled the widget.");
     }
+    await catalog.SetEnabledAsync(id, false);
+    await catalog.RollbackAsync(id);
+    var repeated = await Install(lastPackage);
+    Assert.True(repeated.Code == 0, repeated.Output + repeated.Error);
+    Assert.Equal(new Version(3, 0, 0), (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version);
     if (OperatingSystem.IsWindows())
     {
         var selected = (await catalog.DiscoverAsync()).Widgets.Single();
@@ -482,11 +489,13 @@ static async Task CliRetentionWorkflow()
         var bytes = await File.ReadAllBytesAsync(package);
         var sha = Convert.ToHexString(SHA256.HashData(bytes));
         using var handler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, bytes)));
-        var result = major % 2 == 0
-            ? await RunCli("update", id, "--file", package, "--sha256", sha, "--apply", "--catalog", root)
-            : await RunCliWithHandler(handler, "update", id, "--repo", "sample/repo", "--tag", $"v{major}",
+        Task<CliResult> Apply() => major % 2 == 0
+            ? RunCli("update", id, "--file", package, "--sha256", sha, "--apply", "--catalog", root)
+            : RunCliWithHandler(handler, "update", id, "--repo", "sample/repo", "--tag", $"v{major}",
                 "--asset", "sample.wrwidget", "--sha256", sha, "--apply", "--catalog", root);
-        Assert.Equal(0, result.Code);
+        Assert.Equal(0, (await Apply()).Code);
+        Assert.Equal(0, (await RunCli("version", "rollback", id, "--catalog", root)).Code);
+        Assert.Equal(0, (await Apply()).Code);
         var list = await RunCli("list", "--json", "--catalog", root);
         Assert.Equal(0, list.Code);
         using var report = JsonDocument.Parse(list.Output);

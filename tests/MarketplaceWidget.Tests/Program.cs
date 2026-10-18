@@ -9,6 +9,7 @@ var tests = new (string Name,Func<Task> Run)[] {
     ("Catalog navigation filters updates and restores the selected card", Navigation),
     ("Reopening checks releases while a slow refresh preserves navigation and existing content", RefreshOnOpening),
     ("Downloads retain focus and installation requires the exact open full-trust review", Review),
+    ("Retained newer versions remain available through normal update actions", RetainedUpdate),
     ("Individual updates are reviewed and installed without leaving the Updates page", UpdateFromList),
     ("Update all uses one explicit bounded review and preserves per-item results", BatchReview),
     ("Marketplace intent resets the page through the ordinary receiver contract", Intent),
@@ -105,6 +106,18 @@ static async Task RefreshOnOpening()
     await Until(() => f.Commands.Any(c => c.Action == "refresh"));
     Check(f.Commands.All(c => c.Action is "status" or "refresh"), "Reopening mutated a package without user action");
 }
+static async Task RetainedUpdate()
+{
+    await using var f = new Fixture();
+    f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(item => item.Id == Fixture.Id ? item with { AvailableVersionSaved = true } : item).ToArray() };
+    await f.Start();
+    await f.Act("marketplace.tab.updates");
+    var update = Walk(f.View().Root).Single(node => node.ActionId?.StartsWith("marketplace.update.", StringComparison.Ordinal) == true);
+    await f.Act(update.ActionId!);
+    await Until(() => f.Commands.Any(command => command.Action == "download-updates"));
+    Check(ViewSnapshotValidator.Validate(f.View()).Count == 0, "Retained update presentation is invalid");
+}
+
 static async Task UpdateFromList()
 {
     await using var f = new Fixture(); await f.Start();

@@ -32,6 +32,18 @@ internal static class MarketplaceBatchTests
         Check(widgets.Single(widget => widget.Id == Fixture.First).Enabled && !widgets.Single(widget => widget.Id == Fixture.Second).Enabled, "Batch changed enabled/disabled preferences");
         Check((await new WidgetStopStateStore(new PlatformSettingsPaths(Path.Combine(f.Root, "profile"))).LoadAsync()).SequenceEqual(new[] { Fixture.First }), "Package update erased persistent stopped state.");
         await Rejected(() => f.Service.HandleAsync(approve, default));
+        foreach (var id in f.Ids)
+        {
+            await f.Catalog.SetEnabledAsync(id, false);
+            await f.Catalog.RollbackAsync(id);
+        }
+        await f.Service.HandleAsync(new("inventory"), default);
+        await f.Wait("completed");
+        var restoredReview = await f.Review();
+        await f.Service.HandleAsync(f.Approve(restoredReview), default);
+        await f.Wait("completed");
+        Check((await f.Catalog.DiscoverAsync()).Widgets.All(widget => widget.ActiveVersion.Version == new Version(2, 0, 0) && widget.Versions.Count == 2),
+            "Update all failed to reuse retained versions after rollback");
         await f.Service.DisposeAsync();
         Check(!Directory.EnumerateFiles(f.Root, "*.wrwidget", SearchOption.AllDirectories).Any(), "Completed batch retained archives");
     }
@@ -72,6 +84,7 @@ internal static class MarketplaceBatchTests
         var review = await f.Review();
         await f.Service.HandleAsync(new("cancel", OperationId: review.Operation!.Id), default);
         await Rejected(() => f.Service.HandleAsync(f.Approve(review), default));
+
         Check((await f.Catalog.DiscoverAsync()).Widgets.All(widget => widget.ActiveVersion.Version.ToString() == "1.0.0"), "Cancelled review changed a widget");
         await f.WaitForArchiveCleanup();
     }

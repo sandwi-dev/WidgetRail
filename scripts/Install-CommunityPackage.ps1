@@ -25,7 +25,7 @@ $previous = @($inventory.widgets | Where-Object id -eq $inspection.id) | Select-
 if ($inspection.executionModel -eq 'full-trust-current-user' -and !$AcceptFullTrust) {
     throw 'This package requires explicit -AcceptFullTrust approval.'
 }
-if ($previous -and ([version]$inspection.version -le [version]$previous.selectedVersion -or $previous.versions -contains $inspection.version)) {
+if ($previous -and ([version]$inspection.version -le [version]$previous.selectedVersion)) {
     throw 'Choose a newer package version. For repeated same-version development builds, use wrail dev.'
 }
 
