@@ -13,12 +13,14 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | 1 | Clean up shared code and game-specific boundaries | Agreed; not started |
 | 2 | Adjust widget dimensions and stabilize workspace sizing | Agreed; not started |
 | 2a | Compact layouts and inspect the app for couch readability | Agreed; not started |
+| 2b | Improve PoB editing and inspection workflows using Redux as a reference | Agreed; not started |
 | 3 | Bring PoE1 to a tested beta candidate and audit new features | Planned; not started |
 | 4 | Complete passive-tree artwork and measure rendering improvements | Planned; not started |
 | 5 | Add whole-build and loadout comparison | Planned; not started |
 | 6 | Add unified search and direct navigation | Planned; not started |
 | Independent host change | Rename Marketplace to WidgetRail Catalogue | Agreed; not started |
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
+| Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Agreed; not started |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
@@ -60,6 +62,40 @@ Follow the architecture cleanup and dimension adjustment. Increase useful inform
 - [ ] Record a coverage checklist with tested surfaces, display/scaling/theme conditions, findings and evidence. Include dense, empty, loading, disabled, error and long-label states, plus light/dark/high-contrast appearance and representative TV scaling. Mark unavailable surfaces or states as unverified rather than assuming they are good.
 - [ ] Check scrolling, clipping, alignment, focus visibility, controller reachability, mouse interaction, modal bounds and hide/reopen behavior after shared style changes. Fix problems found and recheck affected workflows before reporting completion.
 - [ ] Native rendering and interaction checks are required. Final readability at the user's actual couch distance remains a physical user acceptance check; screenshots alone cannot establish that.
+
+## 2b. PoB workflow improvements inspired by Redux
+
+Improve frequent build decisions without copying Redux's desktop layout. These changes follow architecture cleanup and workspace sizing. Reuse existing controls, list/detail layouts, navigation and calculation capabilities; do not turn every presentation pattern into a new public framework element.
+
+- [ ] Extend gem search beyond name matching to upstream-provided tags such as projectile. Show upstream compatibility and clearly labelled calculation differences where available. Preserve existing ranking; do not describe it as a missing feature or add a worker-engine pool.
+- [ ] Bring commonly used skill choices, such as skill part and stat set, beside the selected group when applicable. Keep routine gem add/replace/enable and group editing within the skill workspace where practical, retaining the group list and selection. Put uncommon controls in contextual details rather than permanently crowding every row.
+- [ ] Let users inspect gem, inventory and unique-library candidates while retaining the candidate list, target group/slot, search and scroll position. Use the shared rich-preview capability where it improves the flow. Browsing or focus changes must not edit the build; explicit Add, Replace or Equip performs the change.
+- [ ] Make explicitly changed configuration settings identifiable, with a Changed settings filter and section counts. Obtain default values and applicability from PoB. Preserve the existing filtering of irrelevant defaults and visibility of authored settings; do not introduce maintained gameplay rules or new boss presets.
+- [ ] Use collapsible sections with useful summaries where appropriate: key totals remain visible when collapsed, with detailed rows available on expansion. Apply selectively to calculations and secondary settings. Reuse existing framework facilities first; preserve stable ordering and predictable controller navigation rather than adopting a shifting masonry layout.
+- [ ] Make existing build warnings and unmodelled item modifiers actionable. Provide compact counts and navigation to the affected item, skill or setting when its identity is known. Preserve exact affected lines and distinguish calculation limitations from invalid settings. Do not guess a target from ambiguous warning text or adopt Redux's custom build-health heuristics.
+- [ ] Keep calculation context clear beside editing and inspection: relevant skill/component, loadout and weapon set where applicable. Preserve the distinction between main-skill damage, Full DPS and a separately inspected calculation context. Coordinate warning destinations with the planned unified navigation rather than building a second navigation mechanism.
+
+Redux references include its Overview, Skills, Items, Config and Calcs views at the revision recorded below. The rich-preview proposal came from the user; Redux supplies examples of content and workflows, not the definition of the shared component. Attribute actual adopted ideas/code accurately.
+
+### Native visual and workflow acceptance
+
+- [ ] Inspect the actual cumulative candidate for every changed screen, preview and subview after implementation. Automated tests and screenshots alone are not completion evidence. Exercise opening, browsing, editing, scrolling, expanding/collapsing, dismissing and returning with both controller and mouse/keyboard.
+- [ ] Check coherent spacing, alignment, typography, hierarchy, panel proportions, readable labels, deliberate empty states and clear selected/disabled/loading/error states. Fix awkward gaps, clipped content, unstable layouts, obscured controls and inconsistent styling before delivery; do not merely document these as polish follow-ups.
+- [ ] Verify dense and partially configured builds in both games, long names/descriptions, small and large displays, interface/text scaling and light/dark/high-contrast themes. Ensure focus remains visible and predictable across panels, updates, dismissal, hide/reopen and widget unloading.
+- [ ] Record coverage, findings, corrections and final native visual evidence under the existing app-wide verification checklist. Use local/sanitized fixtures for repeated checks; preserve the minimal-live-GGG constraint. Final couch-distance readability remains physical user acceptance.
+
+## Shared rich previews and anchored popovers
+
+Provide reusable widget-authored content anchored to an existing element. Content is composed from the normal widget UI elements; it is not restricted to item descriptions, artwork or statistics and does not require another layout language.
+
+- [ ] Audit existing native flyout/tooltip facilities, widget declarations, modal/navigation support and controller input handling before designing an API. Tooltips, widget context menus and controller menu navigation already exist; do not list them as missing features or build competing replacements. Extend existing facilities only where the audit establishes a gap.
+- [ ] Support a passive preview and explicit interactive inspection using a common foundation. Passive previews never take focus or change the build. Interactive inspection accepts supported controls/scrolling, owns an appropriate focus scope and restores focus to the opener on dismissal, or a valid fallback if it has disappeared.
+- [ ] Allow authors to supply content and bounded options for supported activation modes: mouse hover, settled controller focus or an explicit action. The host owns consistent timing defaults, placement, bounds, dismissal, input admission and focus behaviour. Final API/options and shortcut assignment follow the audit; do not assume an unused controller button.
+- [ ] Anchor placement must respect widget bounds and scaling, avoid obscuring the anchor or important controls where possible, and constrain long content. Do not reproduce desktop hover windows that cover much of the usable couch interface.
+- [ ] Reuse loaded data and valid caches. Delay expensive inspection work until selection settles; cancel or disregard superseded requests. Bind updates to the current anchor, request and widget lifetime. Late results must not replace a newer preview, reopen a dismissed popover or steal focus.
+- [ ] Bound content/resource use through the existing protocol and host safeguards. Handle rapid navigation, repeated activation, removed/recycled anchors, build switches, errors, nested-surface conflicts and unload safely. No continuous polling or calculation engine per preview.
+- [ ] Verify pointer travel between anchor and interactive content, controller entry/Back/scrolling, keyboard access, accessible names and reduced motion. Keep essential information available through an explicit inspect/help path rather than relying solely on a timed hover.
+- [ ] Exercise the shared component with PoB and a representative non-PoB example or validation fixture. Perform native visual and workflow acceptance using the checklist above before declaring it ready for widget authors.
 
 ## 3. PoE1 beta migration
 
