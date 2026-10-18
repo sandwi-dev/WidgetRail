@@ -60,6 +60,8 @@ public static class PlatformCapabilities
     public const string PerformanceDisableFps = "performance.fps.disable";
     public const string DisplaysReadV1 = BrokerTransportOperations.DisplaysReadV1;
     public const string DisplaysControlV1 = BrokerTransportOperations.DisplaysControlV1;
+    public const string DisplayControlsGet = BrokerTransportOperations.DisplayControlsGet;
+    public const string DisplayControlsApply = BrokerTransportOperations.DisplayControlsApply;
     public const string DisplayProfilesGet = BrokerTransportOperations.DisplayProfilesGet;
     public const string DisplayProfilesSave = "display-profiles.save";
     public const string DisplayProfilesRename = "display-profiles.rename";
@@ -206,11 +208,11 @@ public static class PlatformCapabilities
     private static readonly IReadOnlyDictionary<string, BrokerCapabilityDefinition> Definitions =
         new Dictionary<string, BrokerCapabilityDefinition>(StringComparer.Ordinal)
         {
-            [DisplaysReadV1] = new(DisplaysReadV1, 1, BrokerCapabilityKind.Read, Set(DisplayProfilesGet), Set(DisplayProfilesChanged)),
+            [DisplaysReadV1] = new(DisplaysReadV1, 1, BrokerCapabilityKind.Read, Set(DisplayProfilesGet, DisplayControlsGet), Set(DisplayProfilesChanged)),
             [DisplaysControlV1] = new(DisplaysControlV1, 1, BrokerCapabilityKind.Control,
                 Set(DisplayProfilesSave, DisplayProfilesRename, DisplayProfilesReplace, DisplayProfilesDelete,
-                    DisplayProfilesApply, DisplayProfilesKeep, DisplayProfilesRevert), Set(),
-                InFlightContinuationOperations: Set(DisplayProfilesApply, DisplayProfilesKeep, DisplayProfilesRevert)),
+                    DisplayProfilesApply, DisplayProfilesKeep, DisplayProfilesRevert, DisplayControlsApply), Set(),
+                InFlightContinuationOperations: Set(DisplayProfilesApply, DisplayProfilesKeep, DisplayProfilesRevert, DisplayControlsApply)),
             [PowerReadV1] = new(PowerReadV1, 1, BrokerCapabilityKind.Read, Set(PowerGet), Set()),
             [PowerControlV1] = new(PowerControlV1, 1, BrokerCapabilityKind.Control,
                 Set(PowerShutDown, PowerRestart, PowerSleep), Set()),

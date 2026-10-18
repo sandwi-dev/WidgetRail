@@ -14,6 +14,10 @@ public enum DisplayProfileCommand { Save, Rename, Replace, Delete, Apply, Keep, 
 
 public interface IDisplayProfilesPlatformBackend : IPlatformBrokerEventSource
 {
+    Task<DisplayControlsState> GetDisplayControlsAsync(CancellationToken token) =>
+        Task.FromException<DisplayControlsState>(new BrokerException("display_unavailable", "Display controls are unavailable."));
+    Task<DisplayProfilesState> ApplyDisplayControlAsync(DisplayControlRequest request, BrokerWidgetIdentity identity, CancellationToken token) =>
+        Task.FromException<DisplayProfilesState>(new BrokerException("display_unavailable", "Display controls are unavailable."));
     Task<DisplayProfilesState> GetDisplayProfilesAsync(CancellationToken token) =>
         Task.FromException<DisplayProfilesState>(new BrokerException("display_unavailable", "Display profiles are unavailable."));
     Task<DisplayProfilesState> ChangeDisplayProfileAsync(DisplayProfileCommand command,
@@ -34,6 +38,17 @@ internal sealed class DisplayProfilesCapabilityDomain(IPlatformBrokerBackend bac
     internal async Task<JsonElement> ExecuteAsync(string operation, JsonElement payload,
         BrokerWidgetIdentity identity, CancellationToken token)
     {
+        if (operation == PlatformCapabilities.DisplayControlsGet)
+        {
+            BrokerCapabilityDomains.DemandEmptyPayload(payload);
+            return BrokerJson.ToElement(await backend.GetDisplayControlsAsync(token).ConfigureAwait(false));
+        }
+        if (operation == PlatformCapabilities.DisplayControlsApply)
+        {
+            var control = BrokerJson.ParsePayload<DisplayControlRequest>(payload);
+            DisplayControlValidation.Validate(control);
+            return BrokerJson.ToElement(await backend.ApplyDisplayControlAsync(control, identity, token).ConfigureAwait(false));
+        }
         if (operation == PlatformCapabilities.DisplayProfilesGet)
         {
             BrokerCapabilityDomains.DemandEmptyPayload(payload);

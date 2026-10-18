@@ -14,7 +14,12 @@ public sealed partial class DisplayProfilesWidget : Widget
     private string _editorText = "";
     private ToastTone _tone;
     private string _focus = "display.save";
-    private bool _busy;
+    private long _busyOwner, _nextBusyOwner;
+    private bool _busy => _busyOwner != 0 || Operations.IsBusy("display.restore");
+    // Caller holds _gate. Ownership survives asynchronous completion, while a
+    // lifecycle transition retires reads without letting them clear newer work.
+    private long BeginBusy() => _busyOwner = ++_nextBusyOwner;
+    private void EndBusy(long owner) { if (_busyOwner == owner) _busyOwner = 0; }
     private long _generation;
     private Task _watch = Task.CompletedTask;
     private string? _deadlineRefreshId;
@@ -28,7 +33,7 @@ public sealed partial class DisplayProfilesWidget : Widget
     protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         long generation;
-        lock (_gate) { generation = ++_generation; _editor = _confirm = null; _busy = Operations.IsBusy("display.restore"); }
+        lock (_gate) { generation = ++_generation; _editor = _confirm = null; _busyOwner = 0; }
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _watch = WatchAsync(generation, activeLifetime, ready);
         // Reopening during an admitted restore may await the provider's transaction
@@ -81,7 +86,27 @@ public sealed partial class DisplayProfilesWidget : Widget
         try
         {
             var state = await HostServices.DisplayProfiles.GetAsync(token).ConfigureAwait(false);
-            lock (_gate) if (generation == _generation) Adopt(state);
+            bool readControls;
+            lock (_gate)
+            {
+                readControls = generation == _generation && _controlsOpen && state.PendingRestore is null;
+                if (generation == _generation) Adopt(state);
+            }
+            if (readControls)
+            {
+                long readSequence;
+                lock (_gate) readSequence = ++_controlsReadSequence;
+                try
+                {
+                    var controls = await HostServices.DisplayProfiles.GetControlsAsync(token).ConfigureAwait(false);
+                    lock (_gate) if (CurrentControlsRead(generation, readSequence)) AdoptControls(controls);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    lock (_gate) if (CurrentControlsRead(generation, readSequence)) { _controls = null; Toast(Message(error), ToastTone.Danger); }
+                }
+            }
             Invalidate();
         }
         finally { _refresh.Release(); }
@@ -100,7 +125,11 @@ public sealed partial class DisplayProfilesWidget : Widget
         else
         {
             _countdown.Cancel();
-            if (priorPending is not null) _focus = ProfileFocus(_selected);
+            if (priorPending is not null)
+            {
+                if (_controlsOpen) { _controls = null; _modeId = null; ++_controlsReadSequence; }
+                _focus = _controlsOpen ? "display.control.refresh" : ProfileFocus(_selected);
+            }
         }
         if (state.Outcome is { } outcome && outcome != _outcome)
         {
@@ -136,7 +165,7 @@ public sealed partial class DisplayProfilesWidget : Widget
     }
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        lock (_gate) { ++_generation; _toastExpiry.Cancel(); _countdown.Cancel(); _toast = null; }
+        lock (_gate) { ++_generation; _busyOwner = 0; _toastExpiry.Cancel(); _countdown.Cancel(); _toast = null; }
         await _watch.ConfigureAwait(false);
     }
     public override ValueTask<bool> OnControllerInputAsync(ControllerInputEvent input, CancellationToken cancellationToken = default)
@@ -150,8 +179,10 @@ public sealed partial class DisplayProfilesWidget : Widget
 
     private async ValueTask OnAuthorizedActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if (await HandleControlsAsync(action, cancellationToken).ConfigureAwait(false)) return;
         string? id, editor, confirmation;
-        long generation;
+        WidgetDisplayControlRequest? controlRequest;
+        long generation, busyOwner;
         lock (_gate)
         {
             if (_busy || Operations.IsBusy("display.restore")) return;
@@ -181,25 +212,31 @@ public sealed partial class DisplayProfilesWidget : Widget
                 if (action.CommittedText is not { } text) return;
                 _editorText = text;
             }
-            _busy = true;
+            controlRequest = action.ActionId is "controls-apply" or "controls-hdr" ? ControlRequest(action.ActionId) : null;
+            if (action.ActionId is "controls-apply" or "controls-hdr")
+            {
+                if (controlRequest is null) return;
+                ++_controlsReadSequence; // Retire capability observations predating this admitted choice.
+            }
+            busyOwner = BeginBusy();
         }
         Invalidate();
-        if (action.ActionId.StartsWith("apply.", StringComparison.Ordinal) || action.ActionId is "keep" or "revert")
+        if (action.ActionId.StartsWith("apply.", StringComparison.Ordinal) || action.ActionId is "keep" or "revert" or "controls-apply" or "controls-hdr")
         {
             var operation = Operations.RunSingleFlight("display.restore",
-                context => ExecuteActionAsync(action, id, editor, confirmation, generation, context.CancellationToken),
+                context => ExecuteActionAsync(action, id, editor, confirmation, controlRequest, generation, busyOwner, context.CancellationToken),
                 WidgetOperationLifetime.Widget);
             if (!operation.IsAccepted)
             {
-                lock (_gate) { _busy = false; Toast("The display change couldn't start. Try again.", ToastTone.Danger); }
+                lock (_gate) { EndBusy(busyOwner); if (generation == _generation) Toast("The display change couldn't start. Try again.", ToastTone.Danger); }
                 Invalidate();
             }
             return;
         }
-        await ExecuteActionAsync(action, id, editor, confirmation, generation, cancellationToken);
+        await ExecuteActionAsync(action, id, editor, confirmation, controlRequest, generation, busyOwner, cancellationToken);
     }
     private async ValueTask ExecuteActionAsync(WidgetActionEvent action, string? id, string? editor,
-        string? confirmation, long generation, CancellationToken cancellationToken)
+        string? confirmation, WidgetDisplayControlRequest? controlRequest, long generation, long busyOwner, CancellationToken cancellationToken)
     {
         string? restoreRequested = null;
         try
@@ -215,6 +252,11 @@ public sealed partial class DisplayProfilesWidget : Widget
                     return;
                 }
                 state = await HostServices.DisplayProfiles.GetAsync(cancellationToken);
+            }
+            else if (action.ActionId is "controls-apply" or "controls-hdr")
+            {
+                if (controlRequest is null) return;
+                state = await HostServices.DisplayProfiles.ApplyControlAsync(controlRequest, cancellationToken);
             }
             else if (action.ActionId == "commit-name")
                 state = editor == "save"
@@ -252,6 +294,15 @@ public sealed partial class DisplayProfilesWidget : Widget
                         confirmation == "delete" ? "Profile deleted." : "Profile replaced with the current setup.", ToastTone.Info);
                 }
             }
+            bool refreshControls;
+            lock (_gate) refreshControls = generation == _generation && _controlsOpen && state.PendingRestore is null && _controls is null;
+            if (refreshControls)
+            {
+                long readSequence;
+                lock (_gate) readSequence = ++_controlsReadSequence;
+                var controls = await HostServices.DisplayProfiles.GetControlsAsync(cancellationToken).ConfigureAwait(false);
+                lock (_gate) if (CurrentControlsRead(generation, readSequence)) AdoptControls(controls);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (WidgetCapabilityException error) when (error.ErrorCode == "display_restore_expired" &&
@@ -268,7 +319,7 @@ public sealed partial class DisplayProfilesWidget : Widget
         { lock (_gate) if (generation == _generation) Toast(Message(error), ToastTone.Danger); }
         finally
         {
-            lock (_gate) _busy = false;
+            lock (_gate) EndBusy(busyOwner);
             Invalidate();
         }
     }
@@ -282,7 +333,7 @@ public sealed partial class DisplayProfilesWidget : Widget
     private static string Message(Exception error) => (error as WidgetCapabilityException)?.ErrorCode switch
     {
         "permission_denied" or "capability_revoked" =>
-            "Allow display access in Settings → Widgets → Display Profiles, then reopen this widget.",
+            "Allow display access in Settings → Widgets → Display Controls, then reopen this widget.",
         "invalid_payload" => "Enter a profile name of 1 to 60 characters.",
         "display_profile_name_exists" => "A profile with this name already exists. Choose another name.",
         "display_profile_limit" => "You can save up to 24 profiles. Delete one before saving another.",
@@ -291,6 +342,8 @@ public sealed partial class DisplayProfilesWidget : Widget
         "display_monitor_ambiguous" => "Windows cannot identify a saved monitor reliably. Reconnect it or save a new profile.",
         "display_topology_unavailable" or "display_mode_unavailable" =>
             "The connected displays do not support this setup. Check Windows Display settings and save the profile again.",
+        "display_layout_unavailable" => "This arrangement needs Windows Display settings for resolution changes. Refresh rate and HDR controls remain available.",
+        "display_control_unavailable" => "This control is not available for the current display setup.",
         "display_busy" => "Another display change is still finishing. Keep or revert it, then try again.",
         "display_restore_expired" => "This display confirmation has ended.",
         "display_guard_unavailable" => "Windows couldn't start the restore safety check. Start WidgetRail normally and try again.",
@@ -325,6 +378,11 @@ public sealed partial class DisplayProfilesWidget : Widget
                 if (_error is not null)
                     children.Add(UI.Button("Refresh status", "retry", "display.retry").Busy(_busy));
             }
+            else if (_controlsOpen)
+            {
+                scope = "display.controls";
+                children.Add(ControlsView());
+            }
             else if (_editor is not null)
             {
                 scope = "display.editor." + _editor;
@@ -346,7 +404,7 @@ public sealed partial class DisplayProfilesWidget : Widget
             else
             {
                 children.Add(UI.Row("display.header",
-                    UI.Text("Display Profiles", "display.title").Classes("display-title"),
+                    UI.Text("Display Controls", "display.title").Classes("display-title"),
                     UI.ActionSurface("name-new", "display.save", "Save current display setup", ActionSurfaceOrientation.Horizontal,
                         UI.ControllerHint(ControllerButton.Y, "Save current setup", "display.save.hint"))
                         .Busy(_busy).Disabled(_state is null).Classes("display-save")).Classes("display-header"));
@@ -362,6 +420,7 @@ public sealed partial class DisplayProfilesWidget : Widget
                             "display.current.title").Classes("display-section-title"),
                         MonitorStrip(state.Displays, "display.current.monitors"),
                         UI.Text(Summary(state.Displays), "display.current.summary").Classes("display-summary")).Classes("display-current"));
+                    children.Add(UI.Button("Adjust displays", "controls-open", "display.adjust").Busy(_busy));
                     children.Add(state.Profiles.Count == 0
                         ? UI.Stack("display.empty", UI.Text("Your setups, one press away", "display.empty.title").Classes("display-profile-name"),
                             UI.Text("Set up your displays in Windows, then save them here as Desk, TV gaming or another profile.", "display.empty.help").Classes("display-summary")).Classes("display-empty")
@@ -372,9 +431,10 @@ public sealed partial class DisplayProfilesWidget : Widget
                 children.Add(UI.Text("Windows manages scaling. Monitor VRR changes can make saved profiles incompatible.",
                     "display.warning").Classes("display-help", "display-warning"));
             }
-            if (_toast is not null) children.Add(UI.Toast("Display Profiles", _toast, _tone, "display.toast"));
+            if (_toast is not null) children.Add(UI.Toast("Display Controls", _toast, _tone, "display.toast"));
             var root = UI.Stack("display.root", children.ToArray()).InputScope(scope).Classes("display-widget");
             if (_state?.PendingRestore is not null) root = root.Shortcut(ControllerButton.B, "revert", "Revert");
+            else if (_controlsOpen) root = root.Shortcut(ControllerButton.B, "controls-back", "Back");
             else if (_editor is not null || _confirm is not null) root = root.Shortcut(ControllerButton.B, "cancel", "Cancel");
             else if (_state is not null) root = root.Shortcut(ControllerButton.Y, "name-new", "Save current setup");
             return new(root.TransitionContent("display.pages", scope,

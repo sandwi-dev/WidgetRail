@@ -532,7 +532,7 @@ static Task CapabilityVocabularyIsClosed()
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.TaskWindowsSwitch]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.DisplaysControlV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.DisplayProfilesApply,
-            PlatformCapabilities.DisplayProfilesKeep, PlatformCapabilities.DisplayProfilesRevert]));
+            PlatformCapabilities.DisplayProfilesKeep, PlatformCapabilities.DisplayProfilesRevert, PlatformCapabilities.DisplayControlsApply]));
     var defaultControl = new BrokerCapabilityDefinition(
         "test.future.control.v1",
         1,

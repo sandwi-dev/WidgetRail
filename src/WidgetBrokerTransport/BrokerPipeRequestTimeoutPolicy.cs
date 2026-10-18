@@ -36,10 +36,10 @@ internal static class BrokerPipeRequestTimeoutPolicy
         // Reads can wait behind that transaction; unrelated display edits and
         // other capabilities keep their ordinary deadline on both pipe ends.
         if ((request.CapabilityId == BrokerTransportOperations.DisplaysControlV1 &&
-             request.Operation is BrokerTransportOperations.DisplayProfilesApply or
+             request.Operation is BrokerTransportOperations.DisplayControlsApply or BrokerTransportOperations.DisplayProfilesApply or
                  BrokerTransportOperations.DisplayProfilesKeep or BrokerTransportOperations.DisplayProfilesRevert) ||
             (request.CapabilityId == BrokerTransportOperations.DisplaysReadV1 &&
-             request.Operation == BrokerTransportOperations.DisplayProfilesGet))
+             request.Operation is BrokerTransportOperations.DisplayProfilesGet or BrokerTransportOperations.DisplayControlsGet))
             return options.RequestTimeout > TimeSpan.FromSeconds(30) ? options.RequestTimeout : TimeSpan.FromSeconds(30);
 
         if (!BrokerTransportOperations.TryGetLoopbackPort(request.CapabilityId, out _) ||

@@ -36,8 +36,8 @@
     "screenshots": []
   },
   {
-    "id": "widgetrail.samples.display-profiles", "publisher": "widgetrail.samples", "name": "Display Profiles",
-    "description": "Save and restore monitor layouts, resolutions and refresh rates. Display changes use a timed confirmation with automatic rollback.",
+    "id": "widgetrail.samples.display-profiles", "publisher": "widgetrail.samples", "name": "Display Controls",
+    "description": "Adjust supported resolutions, refresh rates and HDR, or save and restore monitor setups. Display changes use a timed confirmation with automatic rollback.",
     "screenshots": []
   },
   {

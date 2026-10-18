@@ -77,6 +77,12 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
+    public Task<DisplayControlsState> GetDisplayControlsAsync(CancellationToken token) =>
+        _displays?.GetDisplayControlsAsync(token) ?? Task.FromException<DisplayControlsState>(
+            new BrokerException("display_unavailable", "Display controls are unavailable."));
+    public Task<DisplayProfilesState> ApplyDisplayControlAsync(DisplayControlRequest request, BrokerWidgetIdentity identity, CancellationToken token) =>
+        _displays?.ApplyDisplayControlAsync(request, identity, token) ?? Task.FromException<DisplayProfilesState>(
+            new BrokerException("display_unavailable", "Display controls are unavailable."));
     public Task<DisplayProfilesState> GetDisplayProfilesAsync(CancellationToken token) =>
         _displays?.GetDisplayProfilesAsync(token) ?? Task.FromException<DisplayProfilesState>(
             new BrokerException("display_unavailable", "Display profiles are unavailable."));

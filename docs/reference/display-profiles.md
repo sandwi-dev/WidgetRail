@@ -1,11 +1,25 @@
-# Display Profiles
+# Display Controls
 
 Save a Windows display setup once, then restore it from the overlay.
-Install **Display Profiles** from Catalogue. It is a community widget and is not included in either installer.
+Install **Display Controls** from Catalogue. Its package identity remains `widgetrail.samples.display-profiles`; existing saved profiles are retained.
+
+## Adjust a display
+
+Choose **Adjust displays**, then select the monitor. Resolution and refresh rate use the modes reported by the Windows graphics driver. Refresh rates keep their rational precision internally: 59.94 Hz and 60 Hz are distinct modes. Select both before choosing **Apply resolution and refresh**. The same independent timed Keep/Revert guard used by profiles verifies the actual resulting mode; Windows silently substituting another mode is treated as a failed preview.
+
+Supported monitors also offer **Turn HDR on/off**. Status distinguishes HDR enabled by the user from HDR currently active. This uses the Windows advanced-color API that explicitly distinguishes HDR from wide color gamut. Windows versions/drivers that do not expose that API show HDR control as unavailable rather than treating generic advanced-color support as HDR.
+
+Adjacent horizontal or vertical monitor strips keep their order and primary origin when resolution changes; neighboring positions move only enough to retain touching edges. Other arrangements keep their positions when safe. A resize that would overlap or disconnect an irregular arrangement is rejected before changing the display, with Windows Settings offered as the place to adjust it.
+
+Direct mode selection is unavailable for cloned displays, where several monitors share one source. Use the existing saved-profile workflow to switch topology, orientation or primary display. Mode and HDR actions do not overwrite a saved profile. The mode list is read on entering controls and after Windows display-change notifications; there is no continuous discovery polling.
+
+Hardware backlight brightness, a software dimming overlay and GPU color adjustment are different features. This widget does not substitute one for another. WMI backlight control is limited mainly to integrated panels; external-monitor DDC/CI support and native-call latency vary. Software dimming adds another window with HDR/capture/input implications. The reference's AMD ADLX colors are vendor-specific. These controls are not exposed until a provider with suitable hardware coverage and failure bounds is available. Windows scaling and color-profile management remain in Windows Settings.
+
+The display-control workflow was informed by [Quick Settings](https://github.com/LoZazaMastro/Quick-Settings) (MIT). No source code or bundled dependencies were copied; native access uses documented Windows APIs.
 
 ## Save and use a profile
 
-Arrange your displays in Windows Settings first. Open **Display Profiles** and
+Arrange your displays in Windows Settings first. Open **Display Controls** and
 choose **Save current setup**, or press **Y**. Select the name field to open
 WidgetRail's keyboard. Committing the name saves the profile.
 If access is missing, the selected action opens WidgetRail's permission dialog and continues only after approval. Read access can be requested with Retry. Save, rename, replace, delete and apply request display control; timed Keep/Revert controls never insert another permission prompt.
@@ -49,7 +63,7 @@ before the initial fetch to receive display and profile changes.
 
 The optional `system.displays.control.v1` permission authorizes
 `SaveAsync`, `RenameAsync`, `ReplaceAsync`, `DeleteAsync`, `ApplyAsync`,
-`KeepAsync` and `RevertAsync`. These requests must begin while Interactive.
+`KeepAsync`, `RevertAsync` and `ApplyControlAsync`. `GetControlsAsync` uses the read permission and returns opaque display/mode IDs, exact rational refresh rates and HDR capabilities. `ApplyControlAsync` accepts exactly one selected mode or HDR state and returns the ordinary pending confirmation state. These requests must begin while Interactive.
 An admitted restore or confirmation may finish after a lifecycle transition.
 Raw Windows display structures stay inside the trusted provider.
 
@@ -61,8 +75,8 @@ The helper is outside WidgetRail's worker containment. No display change is sent
 until it acknowledges readiness. An external launcher's outer process job can
 still supervise the whole application.
 A per-user guard lock prevents overlapping restores across bridge restarts.
-Changes are saved to the
-Windows display database only after Keep is confirmed.
+Mode changes are saved to the
+Windows display database only after Keep is confirmed. Windows applies HDR preferences immediately; the independent guard records the baseline first and restores it on Revert, timeout or parent loss. The API does not offer a separate nonpersistent HDR preview.
 
 The first temporary apply also wakes sleeping monitors. Before offering Keep,
 the guard requires the requested setup to remain stable for three seconds. If
@@ -106,7 +120,7 @@ decisions or block rollback; a stalled worker gets only a bounded final flush.
 These observations cannot identify which external process or driver changed
 the topology, and changes shorter than the sampling interval may be missed.
 Normal automated tests use a fake display backend for every apply and rollback.
-The optional test-runner argument `--native-read` reads and validates the
+The optional test-runner argument `--controls-read` enumerates modes and HDR capabilities without writes; `--native-read` reads and validates the
 current configuration. It is separate from the normal suite so CI does not
 depend on a physical desktop.
 After building the complete host and test project, maintainers can run

@@ -28,3 +28,6 @@
 button { padding: 12px 22px; min-height: 48px; corner-radius: 10px; }
 .display-countdown { color: var(--warning); font-size: 18px; }
 .display-empty { padding: 22px; gap: 10px; }
+
+.display-controls { flex-grow: 1; min-height: 0; gap: 14px; }
+.display-control-copy { flex-grow: 1; min-width: 0; font-size: 16px; }

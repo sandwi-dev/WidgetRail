@@ -260,3 +260,35 @@ count overflow, aggregate+1, per-file+1 and same-length tampering. The existing 
 provider-neutral media adapters also pass unchanged. Release bridge and Debug
 frontend builds pass with no warnings. Tree decoded cache/raster measurements and
 native all-version qualification are tracked with the artwork implementation.
+
+## Display Controls — 2026-10-18
+
+Display Profiles is now presented as Display Controls while retaining its package
+identity. The reusable SDK/broker exposes host-enumerated rational resolution/refresh
+modes and HDR capability/state. Both changes reuse the independent timed Keep/Revert
+guard. Saved profiles retain their earlier meaning; no implicit HDR migration.
+Unsupported HDR APIs, cloned sources and unsafe irregular resize layouts return
+clear unavailability. Adjacent rows/columns resize around the primary origin while
+preserving other displays' modes; refresh-only changes never move displays.
+
+Review found and fixed late-completion busy ownership, notification refresh replacing
+an uncommitted selection, mutable request rereads, and overlapping rectangles after
+resolution growth. Additional empty/loading-state checks caught an initial focus
+request for a missing monitor selector; focus now names an available control.
+25/25 deterministic checks pass in `display-controls-tests06.log`, including guard
+rollback/disconnect, exact 59.94 vs 60, draft preservation and lifecycle races.
+Broker authority/vocabulary 4/4 and extended display timeout 1/1 passed earlier.
+Public API baseline reviewed; the two compatibility/baseline tests pass.
+
+The read-only native probe recognized 103 modes on Odyssey G93SC and 36 on P27h-20,
+including each current mode; HDR was available only on the former. No display writes
+were made. `display-controls-native03/native-result.json` passes 124 native checks:
+selectors, cancellation, busy focus, duplicate admission, explicit navigation during
+completion, Keep/Revert entry/return, scrolling and bounds at 780x700/640x420 in Mono
+Ink and Mineral Light. Representative crops were inspected. Fixture corrections used
+production snapshot serialization and distinct restore scopes for each transaction;
+replaying the same restore scope correctly recalled its prior focus.
+
+Native checks use real widget declarations and local action completions. Actual
+hardware Apply/Keep/Revert and the integrated cumulative candidate remain unverified.
+Brightness/DDC, dimmer overlays and vendor color controls are not falsely exposed.

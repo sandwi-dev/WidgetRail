@@ -32,6 +32,15 @@ public sealed class WidgetDisplayProfilesService
 {
     private readonly IWidgetCapabilityClient _client;
     internal WidgetDisplayProfilesService(IWidgetCapabilityClient client) => _client = client;
+    /// <summary>Enumerates current monitors and supported controls on demand. No periodic polling is required.</summary>
+    public async ValueTask<WidgetDisplayControlsState> GetControlsAsync(CancellationToken cancellationToken = default) =>
+        await _client.InvokeAsync(WidgetDisplayControlsCapabilities.Get, new(), cancellationToken).ConfigureAwait(false)
+        ?? throw new WidgetCapabilityException("malformed_response", "Display controls are unavailable.");
+    /// <summary>Starts the same guarded Keep/Revert transaction used by saved profiles.</summary>
+    public async ValueTask<WidgetDisplayProfilesState> ApplyControlAsync(WidgetDisplayControlRequest request,
+        CancellationToken cancellationToken = default) =>
+        await _client.InvokeAsync(WidgetDisplayControlsCapabilities.Apply, request, cancellationToken).ConfigureAwait(false)
+        ?? throw new WidgetCapabilityException("malformed_response", "The display request was not acknowledged.");
     public async ValueTask<WidgetDisplayProfilesState> GetAsync(CancellationToken cancellationToken = default) =>
         await _client.InvokeAsync(WidgetDisplayProfilesCapabilities.Get, new(), cancellationToken).ConfigureAwait(false)
         ?? throw new WidgetCapabilityException("malformed_response", "Display profiles are unavailable.");

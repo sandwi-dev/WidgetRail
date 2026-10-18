@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "widgetrail.samples.display-profiles",
   "publisher": "widgetrail.samples",
-  "name": "Display Profiles",
+  "name": "Display Controls",
   "version": "0.1.1",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/DisplayProfilesWidget.dll", "type": "WidgetRail.Samples.DisplayProfiles.DisplayProfilesWidget" },

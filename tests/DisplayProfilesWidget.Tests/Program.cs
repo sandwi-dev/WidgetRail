@@ -9,6 +9,18 @@ using WidgetRail.Samples.DisplayProfiles;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetStyling;
 
+if (args is ["--controls-read"])
+{
+    var controls = new WindowsDisplayNative().ReadControls();
+    foreach (var display in controls.Displays)
+    {
+        Check(display.Modes.Count <= 128 && display.Modes.All(mode => mode.RefreshDenominator > 0));
+        Console.WriteLine($"Display: {display.Name}; modes={display.Modes.Count}; current mode recognized={display.CurrentModeId is not null}; HDR supported={display.HdrSupported}; enabled={display.HdrEnabled}; active={display.HdrActive}");
+    }
+    Console.WriteLine("PASS read-only DXGI/CCD capability enumeration; no display changes.");
+    return;
+}
+
 if (args is ["--identity-read"] && OperatingSystem.IsWindows())
 {
     var native = new WindowsDisplayNative();
@@ -58,6 +70,13 @@ if (args is ["--guard-parent-exit", var bridgeExecutable])
 
 var checks = new (string Name, Func<Task> Run)[]
 {
+    ("Exact direct modes preserve unaffected monitor modes and reject cloned sources", DirectModes),
+    ("Direct resolution changes keep adjacent layouts anchored and reject unsafe irregular layouts", DirectLayouts),
+    ("Late display reads and saves cannot clear newer busy ownership", DisplayBusyOwnership),
+    ("Display observations preserve drafts and admitted immutable requests", DisplayDraftContinuity),
+    ("HDR guard rejects external changes and restores the captured baseline", HdrGuard),
+    ("Direct controls use independent restore ownership and preserve profile meaning", DirectControlsBackend),
+    ("Direct controls remain focusable while busy and coalesce duplicate changes", DirectControlsWidget),
     ("Native structures and configuration serialization preserve display modes", Layout),
     ("Window monitor context preserves canonical bounded connection identity", WindowContexts),
     ("VRR product changes use unique physical serial identities", HardwareIdentities),
@@ -85,6 +104,272 @@ static async Task<T> Throws<T>(Func<Task> action) where T : Exception
 {
     try { await action(); } catch (T error) { return error; }
     throw new Exception("Expected " + typeof(T).Name);
+}
+static Task DirectModes()
+{
+    var baseline = Fixture.Setup(1920, 2) with { Hdr = [false, true] };
+    var target = DisplayControlConfiguration.WithMode(baseline, 0, new("exact", 2560, 1440, 60000, 1001));
+    target.Validate();
+    Check(target.SelectMode && target.ReadPaths()[0].Target.ModeIndex == uint.MaxValue && target.ReadPaths()[0].Target.ScanLine == 1);
+    Check(target.Summaries()[0].RefreshRate == 60000d / 1001 && target.Summaries()[0].Width == 2560);
+    Check(target.Summaries()[1] == (baseline.Summaries()[1] with { X = 2560 }), "Direct mode changed another monitor beyond adjacent placement");
+    Check(target.Hdr is null, "Mode selection unexpectedly changed HDR policy");
+    var remapped = DisplayProfileMatching.Remap(target, baseline.ReadPaths().Select((path, index) => new DisplayPathTarget(path, baseline.Targets[index])).ToArray());
+    Check(remapped.SelectMode && remapped.Matches(target));
+    var readbackPaths = target.ReadPaths();
+    readbackPaths[0].Target.ModeIndex = 1;
+    var readback = DisplayConfiguration.Create(readbackPaths, target.ReadModes(), target.Targets);
+    Check(target.Matches(readback), "Resolved signal timings did not match exact mode selection");
+    readbackPaths[0].Target.ScanLine = 2;
+    Check(!target.Matches(DisplayConfiguration.Create(readbackPaths, target.ReadModes(), target.Targets)), "Interlaced substitution accepted");
+    readbackPaths[0].Target.ScanLine = 1;
+    readbackPaths[0].Target.Refresh = new() { Numerator = 60, Denominator = 1 };
+    Check(!target.Matches(DisplayConfiguration.Create(readbackPaths, target.ReadModes(), target.Targets)), "Rounded refresh incorrectly accepted");
+    try { DisplayControlConfiguration.WithMode(Fixture.Setup(1920, 2, clone: true), 0, new("x", 1280, 720, 60, 1)); throw new Exception("Clone accepted"); }
+    catch (BrokerException error) { Check(error.Code == "display_control_unavailable"); }
+    Check(Marshal.SizeOf<WindowsDisplayNative.AdvancedColorInfo>() == 36 && Marshal.SizeOf<WindowsDisplayNative.HdrState>() == 24);
+    Check(Marshal.SizeOf<DxgiDisplayModes.Mode>() == 28);
+    var remaining = Fixture.Setup() with { Hdr = [true] };
+    var restoreHdr = DisplayHdrRestoration.ForAvailable(baseline, remaining);
+    Check(restoreHdr.Count == 1 && !restoreHdr[0].Enabled && restoreHdr[0].Target.Id == remaining.ReadPaths()[0].Target.Id,
+        "Disconnecting another monitor dropped the surviving monitor's HDR rollback");
+    return Task.CompletedTask;
+}
+static Task DirectLayouts()
+{
+    var row = Fixture.Setup(1920, 3);
+    var enlarged = DisplayControlConfiguration.WithMode(row, 0, new("large", 2560, 1440, 60, 1));
+    Check(enlarged.Summaries().Select(display => display.X).SequenceEqual(new[] { 0, 2560, 4480 }));
+    Check(enlarged.Summaries()[0].IsPrimary && enlarged.Summaries()[2].Width == 1920);
+    var centeredModes = row.ReadModes();
+    foreach (var path in row.ReadPaths()) centeredModes[path.Source.ModeIndex].Source.X -= 1920;
+    var centered = DisplayConfiguration.Create(row.ReadPaths(), centeredModes, row.Targets);
+    var shrunkLeft = DisplayControlConfiguration.WithMode(centered, 0, new("smaller", 1280, 720, 60, 1));
+    Check(shrunkLeft.Summaries().Select(display => display.X).SequenceEqual(new[] { -1280, 0, 1920 }));
+    Check(shrunkLeft.Summaries()[1].IsPrimary, "Resize moved the primary origin");
+    var columnModes = row.ReadModes();
+    foreach (var (path, index) in row.ReadPaths().Select((path, index) => (path, index)))
+    { columnModes[path.Source.ModeIndex].Source.X = 0; columnModes[path.Source.ModeIndex].Source.Y = (index - 1) * 1080; }
+    var column = DisplayConfiguration.Create(row.ReadPaths(), columnModes, row.Targets);
+    var taller = DisplayControlConfiguration.WithMode(column, 0, new("taller", 1920, 1440, 60, 1));
+    Check(taller.Summaries().Select(display => display.Y).SequenceEqual(new[] { -1440, 0, 1080 }));
+    var irregularModes = row.ReadModes();
+    irregularModes[4].Source.X = 0; irregularModes[4].Source.Y = 1080;
+    var irregular = DisplayConfiguration.Create(row.ReadPaths(), irregularModes, row.Targets);
+    try { DisplayControlConfiguration.WithMode(irregular, 0, new("overlap", 2560, 1440, 60, 1)); throw new Exception("Overlapping resize accepted"); }
+    catch (BrokerException error) { Check(error.Code == "display_layout_unavailable"); }
+    var safeIrregular = DisplayControlConfiguration.WithMode(irregular, 2, new("safe", 1280, 720, 60, 1));
+    Check(safeIrregular.Summaries()[0] == irregular.Summaries()[0] && safeIrregular.Summaries()[1] == irregular.Summaries()[1]);
+    var refresh = DisplayControlConfiguration.WithMode(irregular, 0, new("refresh", 1920, 1080, 60000, 1001));
+    Check(refresh.Summaries().Select(display => (display.X, display.Y)).SequenceEqual(irregular.Summaries().Select(display => (display.X, display.Y))));
+    Check(row.Summaries()[1].X == 1920 && centered.Summaries()[0].X == -1920, "Planning mutated the captured baseline");
+    return Task.CompletedTask;
+}
+static async Task DisplayBusyOwnership()
+{
+    foreach (var oldKind in new[] { "read", "save" })
+    {
+        var state = new WidgetDisplayProfilesState("Single display", [], [], null, null);
+        var control = new WidgetDisplayControlMonitor(new string('A', 24), "TV",
+            [new("1920-1080-60-1", 1920, 1080, 60, 1)], "1920-1080-60-1", true, false, false, null);
+        var controls = new WidgetDisplayControlsState([control]);
+        var oldRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var oldEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var startNew = false; var reads = 0;
+        var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(new WidgetPermissionStatuses(
+                query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
+            .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) => ValueTask.FromResult(state))
+            .WithHandler(WidgetDisplayProfilesCapabilities.Save, async (_, _) =>
+            { oldEntered.TrySetResult(); await oldRelease.Task; return state; })
+            .WithHandler(WidgetDisplayControlsCapabilities.Get, async (_, _) =>
+            {
+                var read = Interlocked.Increment(ref reads);
+                if (startNew) { newEntered.TrySetResult(); await newRelease.Task; }
+                else if (oldKind == "read" && read == 1) { oldEntered.TrySetResult(); await oldRelease.Task; }
+                return controls; // Deliberately ignores cancellation to exercise late completion.
+            })
+            .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>());
+        var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        Task? oldAction = null, newAction = null;
+        try
+        {
+            if (oldKind == "save") await widget.OnActionAsync(new("name-new", "display.save"));
+            oldAction = widget.OnActionAsync(oldKind == "read" ? new("controls-open", "display.adjust") :
+                new WidgetActionEvent("commit-name", "display.name") { CommittedText = "Desk" }).AsTask();
+            await oldEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            if (oldKind == "read") await Until(() => Volatile.Read(ref reads) >= 2);
+            startNew = true;
+            newAction = widget.OnActionAsync(new("controls-open", "display.adjust")).AsTask();
+            await newEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            oldRelease.TrySetResult(); await oldAction.WaitAsync(TimeSpan.FromSeconds(2));
+            var before = Volatile.Read(ref reads);
+            await widget.OnActionAsync(new("controls-open", "display.control.refresh"));
+            Check(reads == before && !newAction.IsCompleted, oldKind + " completion cleared newer read admission");
+            IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+            try { Check(Nodes(widget.Render().CreateSnapshot("display.test", 1).Root).Any(node => node.IsBusy == true), oldKind + " completion cleared newer busy presentation"); } catch (ProtocolValidationException error) { Console.WriteLine(JsonSerializer.Serialize(error.Errors)); throw; }
+            newRelease.TrySetResult(); await newAction.WaitAsync(TimeSpan.FromSeconds(2));
+            Check(!Nodes(widget.Render().CreateSnapshot("display.test", 1).Root).Any(node => node.IsBusy == true));
+        }
+        finally
+        {
+            oldRelease.TrySetResult(); newRelease.TrySetResult();
+            if (oldAction is not null) await oldAction;
+            if (newAction is not null) await newAction;
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        }
+    }
+}
+static async Task DisplayDraftContinuity()
+{
+    var events = System.Threading.Channels.Channel.CreateUnbounded<WidgetCapabilityAcknowledgement>();
+    var state = new WidgetDisplayProfilesState("Single display", [], [], null, null);
+    var id = new string('A', 24);
+    var monitor = new WidgetDisplayControlMonitor(id, "TV", [new("current", 1920, 1080, 60, 1), new("draft", 2560, 1440, 60, 1)],
+        "current", true, false, false, null);
+    var controls = new WidgetDisplayControlsState([monitor]);
+    var observationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var observation = new TaskCompletionSource<WidgetDisplayControlsState>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var applied = new TaskCompletionSource<WidgetDisplayControlRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var appliedResult = new TaskCompletionSource<WidgetDisplayProfilesState>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var reads = 0;
+    var builder = new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(new WidgetPermissionStatuses(
+            query.CapabilityIds.Select(cap => new WidgetPermissionStatus(cap, WidgetPermissionState.Granted)).ToArray())))
+        .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) => ValueTask.FromResult(state))
+        .WithHandler(WidgetDisplayControlsCapabilities.Get, async (_, token) =>
+        {
+            if (Interlocked.Increment(ref reads) == 2) { observationStarted.TrySetResult(); return await observation.Task.WaitAsync(token); }
+            return controls;
+        })
+        .WithHandler(WidgetDisplayControlsCapabilities.Apply, async (request, token) =>
+        { applied.TrySetResult(request); return await appliedResult.Task.WaitAsync(token); })
+        .WithEventStream(WidgetDisplayProfilesCapabilities.Changed, token => events.Reader.ReadAllAsync(token));
+    var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    try
+    {
+        await widget.OnActionAsync(new("controls-open", "display.adjust"));
+        events.Writer.TryWrite(new(true));
+        await observationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await widget.OnActionAsync(new("controls-mode.draft", "display.control.refresh-rate"));
+        observation.TrySetResult(new([monitor with { Name = "Observed TV" }]));
+        IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("display.test", 1).Root).Any(node => node.SelectOptions.Any(option => option.Label == "Observed TV")));
+        var resolution = Nodes(widget.Render().CreateSnapshot("display.test", 1).Root).Single(node => node.Id == "display.control.resolution");
+        Check(resolution.SelectOptions.Single(option => option.IsSelected).Label == "2560 × 1440", "Observation discarded the uncommitted mode choice");
+        await widget.OnActionAsync(new("controls-apply", "display.control.apply"));
+        Check((await applied.Task.WaitAsync(TimeSpan.FromSeconds(2))).ModeId == "draft", "Apply did not retain the admitted mode");
+        controls = new([monitor with { Modes = [monitor.Modes[0]], Name = "Changed during apply" }]);
+        events.Writer.TryWrite(new(true));
+        await Until(() => Volatile.Read(ref reads) >= 3);
+        Check(applied.Task.Result.ModeId == "draft", "Observation altered an admitted request");
+        appliedResult.TrySetResult(state);
+    }
+    finally
+    {
+        observation.TrySetResult(controls); appliedResult.TrySetResult(state);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    }
+}
+static async Task HdrGuard()
+{
+    foreach (var drift in new[] { false, true })
+    {
+        var baseline = Fixture.Setup() with { Hdr = [false] };
+        var target = baseline with { Hdr = [true] };
+        var native = new FakeNative { Current = baseline };
+        var id = Guid.NewGuid().ToString("N");
+        var input = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, target)));
+        var output = new GuardWriter();
+        var clock = new ManualClock();
+        var run = DisplayRestoreGuard.RunCoreAsync(input, output, native, clock, TimeSpan.FromSeconds(15));
+        await AdvanceUntil(output.Applied.Task, run, clock);
+        if (drift) native.Current = baseline;
+        input.Decision.SetResult((drift ? "keep:" : "revert:") + id);
+        Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == (drift ? 1 : 0));
+        Check(native.Current.Hdr is [false] && native.AppliedConfigurations.Count == 2, "HDR baseline was not restored");
+        if (drift) Check(output.ToString().Contains("preview-changed"), "HDR drift escaped guarded confirmation");
+    }
+}
+static async Task DirectControlsBackend()
+{
+    using var temp = new TemporaryDirectory();
+    var native = new FakeNative { Current = Fixture.Setup() with { Hdr = [true] } };
+    var launcher = new FakeLauncher();
+    await using var provider = new WindowsDisplayProfilesBackend(temp.Path, native, launcher);
+    var saved = await provider.ChangeDisplayProfileAsync(DisplayProfileCommand.Save, new(Name: "Desk"), Fixture.Identity, default);
+    var document = JsonSerializer.Deserialize<DisplayProfileDocument>(File.ReadAllText(Path.Combine(temp.Path, "profiles.json")))!;
+    Check(document.Profiles[0].Configuration.Hdr is null, "New controls silently changed saved-profile semantics");
+    var controls = await provider.GetDisplayControlsAsync(default);
+    var monitor = controls.Displays.Single();
+    var state = await provider.ApplyDisplayControlAsync(new(monitor.Id, monitor.Modes[0].Id), Fixture.Identity, default);
+    Check(state.PendingRestore is not null && launcher.Target?.SelectMode == true);
+    await Throws<BrokerException>(() => provider.ApplyDisplayControlAsync(new(monitor.Id, HdrEnabled: false), Fixture.Identity, default));
+    await Throws<BrokerException>(() => provider.ChangeDisplayProfileAsync(DisplayProfileCommand.Keep,
+        new(RestoreId: state.PendingRestore!.Id), new("other", "other", "default"), default));
+    await provider.ChangeDisplayProfileAsync(DisplayProfileCommand.Revert, new(RestoreId: state.PendingRestore!.Id), Fixture.Identity, default);
+    Check(launcher.Session.Decision == false);
+    native.ControlsDisconnected = true;
+    var missing = await Throws<BrokerException>(() => provider.ApplyDisplayControlAsync(new(monitor.Id, monitor.Modes[0].Id), Fixture.Identity, default));
+    Check(missing.Code == "display_monitor_missing");
+}
+static async Task DirectControlsWidget()
+{
+    var id = new string('A', 24);
+    var monitor = new WidgetDisplayProfileMonitor(id, "Test TV", 1920, 1080, 0, 0, 60, "Landscape", true);
+    var state = new WidgetDisplayProfilesState("Single display", [monitor], [], null, null);
+    var controls = new WidgetDisplayControlsState([new(id, "Test TV",
+        [new("1920-1080-60-1", 1920, 1080, 60, 1), new("2560-1440-60000-1001", 2560, 1440, 60000, 1001)],
+        "1920-1080-60-1", true, false, false, null)]);
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource<WidgetDisplayProfilesState>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var applies = 0;
+    var builder = new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(new WidgetPermissionStatuses(
+            query.CapabilityIds.Select(cap => new WidgetPermissionStatus(cap, WidgetPermissionState.Granted)).ToArray())))
+        .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) => ValueTask.FromResult(state))
+        .WithHandler(WidgetDisplayControlsCapabilities.Get, (_, _) => ValueTask.FromResult(controls))
+        .WithHandler(WidgetDisplayControlsCapabilities.Apply, async (request, token) =>
+        { ++applies; Check(request.ModeId == "2560-1440-60000-1001"); entered.TrySetResult(); return await release.Task.WaitAsync(token); })
+        .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>());
+    var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    try
+    {
+        await widget.OnActionAsync(new("controls-open", "display.adjust"));
+        await widget.OnActionAsync(new("controls-apply", "display.control.apply"));
+        Check(applies == 0, "Already-active mode unnecessarily started a display transaction");
+        await widget.OnActionAsync(new("controls-resolution.2560-1440", "display.control.resolution"));
+        Export("controls", widget.Render().CreateSnapshot("display.test", 1));
+        var action = new WidgetActionEvent("controls-apply", "display.control.apply");
+        await widget.OnActionAsync(action).AsTask().WaitAsync(TimeSpan.FromMilliseconds(500));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await widget.OnActionAsync(action);
+        Check(applies == 1);
+        var snapshot = widget.Render().CreateSnapshot("display.test", 1);
+        Check(ViewSnapshotValidator.Validate(snapshot).Count == 0, string.Join("; ", ViewSnapshotValidator.Validate(snapshot)));
+        IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+        Export("controls-busy", snapshot);
+        var button = Nodes(snapshot.Root).Single(node => node.Id == "display.control.apply");
+        Check(button.IsDisabled != true && button.IsBusy == true, "Busy display action lost focusability");
+        release.TrySetResult(state with { PendingRestore = new(Guid.NewGuid().ToString("N"), "Test TV", DateTimeOffset.UtcNow.AddSeconds(15)) });
+        await Until(() => ConfirmationVisible(widget));
+        Check(widget.Render().CreateSnapshot("display.test", 1).InitialFocusId == "display.revert");
+        Export("controls-confirmation", widget.Render().CreateSnapshot("display.test", 1));
+    }
+    finally { release.TrySetResult(state); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background); }
+    static void Export(string name, ViewSnapshot snapshot)
+    {
+        if (Environment.GetEnvironmentVariable("DISPLAY_CONTROLS_FIXTURES") is not { Length: > 0 } directory) return;
+        Directory.CreateDirectory(directory);
+        File.WriteAllBytes(Path.Combine(directory, name + ".json"), SnapshotJson.Serialize(snapshot));
+    }
 }
 static Task Layout()
 {
@@ -459,6 +744,19 @@ static async Task Authority()
     broker.SetLifecycle(BrokerLifecycleState.Interactive);
     await Throws<BrokerException>(() => Send(new { name = "Desk", resolution = "custom" }));
     await Send(new { name = "Desk" });
+    Task Control(object payload) => broker.ExecuteAsync(new(BrokerJson.ProtocolVersion, ++sequence, Fixture.Identity,
+        PlatformCapabilities.DisplaysControlV1, PlatformCapabilities.DisplayControlsApply, BrokerJson.ToElement(payload)));
+    var display = native.Current.Summaries()[0].Id;
+    foreach (var payload in new object[] { new { displayId = display }, new { displayId = display, modeId = "x", hdrEnabled = true },
+        new { displayId = display, hdrEnabled = true, nativeHandle = 42 }, new { displayId = "invalid", hdrEnabled = true } })
+    {
+        var error = await Throws<BrokerException>(() => Control(payload));
+        Check(error.Code == "invalid_payload");
+    }
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    await Throws<BrokerException>(() => Control(new { displayId = display, hdrEnabled = true }));
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    await Control(new { displayId = display, hdrEnabled = true });
     Check(native.Applies.Count == 0);
 }
 static async Task Widget()
@@ -676,6 +974,16 @@ file sealed class FakeNative : IDisplayNative
     public Func<DisplayConfiguration>? CaptureOverride;
     public Func<IReadOnlyList<DisplayPathTarget>>? ConnectedOverride;
     public int FailApply;
+    public bool ControlsDisconnected;
+    public DisplayControlsState ReadControls() => new(ControlsDisconnected ? [] :
+        [new(Current.Summaries()[0].Id, "Test", [new("2560-1440-60000-1001", 2560, 1440, 60000, 1001)], null, true, Current.Hdr?[0] == true, false, null)]);
+    public DisplayConfiguration PrepareControl(DisplayControlRequest request)
+    {
+        var control = ReadControls().Displays.FirstOrDefault(display => display.Id == request.DisplayId)
+            ?? throw new BrokerException("display_monitor_missing", "Disconnected");
+        return request.HdrEnabled is { } hdr ? Current with { Hdr = [hdr] }
+            : DisplayControlConfiguration.WithMode(Current, 0, control.Modes.Single(mode => mode.Id == request.ModeId));
+    }
     public DisplayConfiguration Capture() => CaptureOverride?.Invoke() ?? Current;
     public IReadOnlyList<DisplayPathTarget> ConnectedPaths() => ConnectedOverride?.Invoke() ?? Current.ReadPaths().Select((path, index) => new DisplayPathTarget(path, Current.Targets[index])).ToArray();
     public void Validate(DisplayConfiguration configuration) => configuration.Validate();
@@ -690,7 +998,9 @@ file sealed class FakeNative : IDisplayNative
 file sealed class FakeLauncher : IDisplayRestoreLauncher
 {
     public FakeSession Session = new();
-    public Task<IDisplayRestoreSession> StartAsync(DisplayConfiguration configuration, CancellationToken token) => Task.FromResult<IDisplayRestoreSession>(Session);
+    public DisplayConfiguration? Target;
+    public Task<IDisplayRestoreSession> StartAsync(DisplayConfiguration configuration, CancellationToken token)
+    { Target = configuration; return Task.FromResult<IDisplayRestoreSession>(Session); }
 }
 file sealed class FakeSession : IDisplayRestoreSession
 {

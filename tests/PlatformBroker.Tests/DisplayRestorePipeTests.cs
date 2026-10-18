@@ -25,12 +25,14 @@ internal static class DisplayRestorePipeTests
             await client.ConnectAsync();
             server.SetLifecycle(BrokerLifecycleState.Interactive);
             foreach (var operation in new[] { PlatformCapabilities.DisplayProfilesGet, PlatformCapabilities.DisplayProfilesApply,
-                         PlatformCapabilities.DisplayProfilesKeep, PlatformCapabilities.DisplayProfilesRevert })
+                         PlatformCapabilities.DisplayProfilesKeep, PlatformCapabilities.DisplayProfilesRevert,
+                         PlatformCapabilities.DisplayControlsGet, PlatformCapabilities.DisplayControlsApply })
             {
-                object payload = operation == PlatformCapabilities.DisplayProfilesGet ? new { } :
+                object payload = operation is PlatformCapabilities.DisplayProfilesGet or PlatformCapabilities.DisplayControlsGet ? new { } :
+                    operation == PlatformCapabilities.DisplayControlsApply ? new DisplayControlRequest(new string('A', 24), HdrEnabled: true) :
                     operation == PlatformCapabilities.DisplayProfilesApply ? new DisplayProfileRequest(ProfileId: Guid.NewGuid().ToString("N")) :
                     new DisplayProfileRequest(RestoreId: Guid.NewGuid().ToString("N"));
-                var result = await client.RequestAsync(operation == PlatformCapabilities.DisplayProfilesGet
+                var result = await client.RequestAsync(operation is PlatformCapabilities.DisplayProfilesGet or PlatformCapabilities.DisplayControlsGet
                     ? PlatformCapabilities.DisplaysReadV1 : PlatformCapabilities.DisplaysControlV1, operation, payload);
                 if (!result.Succeeded) throw new Exception("Slow display operation failed: " + result.ErrorCode);
             }
@@ -78,6 +80,9 @@ internal static class DisplayRestorePipeTests
             EventPublished?.Invoke(this, new(PlatformCapabilities.DisplaysReadV1, PlatformCapabilities.DisplayProfilesChanged,
                 new { acknowledged = true, privateDevicePath = "must-not-cross-broker" }));
         }
+        public async Task<DisplayControlsState> GetDisplayControlsAsync(CancellationToken token)
+        { await Task.Delay(200, token); return new([]); }
+        public Task<DisplayProfilesState> ApplyDisplayControlAsync(DisplayControlRequest request, BrokerWidgetIdentity identity, CancellationToken token) => GetDisplayProfilesAsync(token);
         public async Task<DisplayProfilesState> GetDisplayProfilesAsync(CancellationToken token)
         { await Task.Delay(200, token); return State; }
         public Task<DisplayProfilesState> ChangeDisplayProfileAsync(DisplayProfileCommand command, DisplayProfileRequest request,

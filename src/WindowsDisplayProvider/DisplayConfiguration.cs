@@ -10,7 +10,7 @@ using WidgetRail.PlatformBroker;
 namespace WidgetRail.WindowsDisplayProvider;
 
 internal sealed record DisplayIdentity(string DevicePath, string Name, string? HardwareKey = null);
-internal sealed record DisplayConfiguration(byte[] Paths, byte[] Modes, DisplayIdentity[] Targets)
+internal sealed record DisplayConfiguration(byte[] Paths, byte[] Modes, DisplayIdentity[] Targets, bool SelectMode = false, bool?[]? Hdr = null)
 {
     internal NativePath[] ReadPaths() => Read<NativePath>(Paths, 16);
     internal NativeMode[] ReadModes() => Read<NativeMode>(Modes, 64);
@@ -30,10 +30,14 @@ internal sealed record DisplayConfiguration(byte[] Paths, byte[] Modes, DisplayI
             string.IsNullOrWhiteSpace(target.Name) || target.Name.Length > 128 || !MonitorHardwareIdentity.IsValid(target.HardwareKey)) ||
             Targets.Select(target => target.DevicePath).Distinct(StringComparer.OrdinalIgnoreCase).Count() != Targets.Length)
             throw new BrokerException("display_profile_invalid", "This display profile has invalid monitors.");
+        if (Hdr is not null && Hdr.Length != paths.Length)
+            throw new BrokerException("display_profile_invalid", "This display configuration has invalid HDR state.");
         foreach (var path in paths)
         {
-            if ((path.Flags & 1) == 0 || path.Source.ModeIndex >= modes.Length || path.Target.ModeIndex >= modes.Length ||
-                modes[path.Source.ModeIndex].Type != 1 || modes[path.Target.ModeIndex].Type != 2 ||
+            if ((path.Flags & 1) == 0 || path.Source.ModeIndex >= modes.Length || (!SelectMode && path.Target.ModeIndex >= modes.Length) ||
+                (SelectMode && path.Target.ModeIndex != uint.MaxValue && path.Target.ModeIndex >= modes.Length) ||
+                modes[path.Source.ModeIndex].Type != 1 ||
+                (path.Target.ModeIndex != uint.MaxValue && modes[path.Target.ModeIndex].Type != 2) ||
                 path.Target.Rotation is < 1 or > 4 || path.Target.Refresh.Denominator == 0)
                 throw new BrokerException("display_profile_invalid", "This display profile has invalid modes.");
             var source = modes[path.Source.ModeIndex].Source;
@@ -68,7 +72,25 @@ internal sealed record DisplayConfiguration(byte[] Paths, byte[] Modes, DisplayI
         }
     }
     internal bool Matches(DisplayConfiguration other) => Mode == other.Mode &&
-        Summaries().OrderBy(display => display.Id).SequenceEqual(other.Summaries().OrderBy(display => display.Id));
+        Summaries().OrderBy(display => display.Id).SequenceEqual(other.Summaries().OrderBy(display => display.Id)) &&
+        MatchesRequestedScanLine(other) &&
+        (Hdr is null || Targets.Select((target, index) => (target.DevicePath, Value: Hdr[index]))
+            .Where(item => item.Value.HasValue).All(item => other.Hdr is not null &&
+                Array.FindIndex(other.Targets, target => target.DevicePath.Equals(item.DevicePath, StringComparison.OrdinalIgnoreCase)) is var index &&
+                index >= 0 && other.Hdr[index] == item.Value));
+    private bool MatchesRequestedScanLine(DisplayConfiguration other)
+    {
+        if (!SelectMode) return true;
+        var requested = ReadPaths(); var observed = other.ReadPaths();
+        for (var index = 0; index < requested.Length; ++index)
+        {
+            if (requested[index].Target.ModeIndex != uint.MaxValue) continue;
+            var match = Array.FindIndex(other.Targets, target =>
+                target.DevicePath.Equals(Targets[index].DevicePath, StringComparison.OrdinalIgnoreCase));
+            if (match < 0 || requested[index].Target.ScanLine != observed[match].Target.ScanLine) return false;
+        }
+        return true;
+    }
     internal static DisplayConfiguration Create(NativePath[] paths, NativeMode[] modes, DisplayIdentity[] targets) =>
         new(MemoryMarshal.AsBytes(paths.AsSpan()).ToArray(), MemoryMarshal.AsBytes(modes.AsSpan()).ToArray(), targets);
 }
@@ -102,6 +124,9 @@ internal interface IDisplayNative
 {
     DisplayConfiguration Capture();
     IReadOnlyList<DisplayPathTarget> ConnectedPaths();
+    DisplayControlsState ReadControls() => new([]);
+    DisplayConfiguration PrepareControl(DisplayControlRequest request) =>
+        throw new BrokerException("display_unavailable", "Display controls are unavailable.");
     void Validate(DisplayConfiguration configuration);
     void Apply(DisplayConfiguration configuration, bool persist);
     void Restore(DisplayConfiguration configuration) => Apply(configuration, persist: false);
@@ -168,10 +193,13 @@ internal static class DisplayProfileMatching
             path.Target.Available = 1;
             modes[path.Source.ModeIndex].Adapter = path.Source.Adapter;
             modes[path.Source.ModeIndex].Id = path.Source.Id;
-            modes[path.Target.ModeIndex].Adapter = path.Target.Adapter;
-            modes[path.Target.ModeIndex].Id = path.Target.Id;
+            if (path.Target.ModeIndex != uint.MaxValue)
+            {
+                modes[path.Target.ModeIndex].Adapter = path.Target.Adapter;
+                modes[path.Target.ModeIndex].Id = path.Target.Id;
+            }
         }
-        return DisplayConfiguration.Create(paths, modes, selected.Select(target => target.Identity).ToArray());
+        return DisplayConfiguration.Create(paths, modes, selected.Select(target => target.Identity).ToArray()) with { SelectMode = saved.SelectMode, Hdr = saved.Hdr };
     }
 }
 
@@ -184,7 +212,7 @@ internal sealed unsafe partial class WindowsDisplayNative : IDisplayNative
         var (paths, modes) = Query(2); // Desktop compatibility view: no per-monitor DPI writes.
         var result = DisplayConfiguration.Create(paths, modes, paths.Select(path => Name(path.Target)).ToArray());
         result.Validate();
-        return result;
+        return result with { Hdr = paths.Select(path => ReadHdr(path.Target).Enabled).ToArray() };
     }
     public IReadOnlyList<DisplayPathTarget> ConnectedPaths()
     {
@@ -204,7 +232,17 @@ internal sealed unsafe partial class WindowsDisplayNative : IDisplayNative
         return result;
     }
     public void Validate(DisplayConfiguration configuration) => Set(configuration, 0x20 | 0x40);
-    public void Apply(DisplayConfiguration configuration, bool persist) => Set(configuration, 0x20 | 0x80 | (persist ? 0x200u : 0));
+    public void Apply(DisplayConfiguration configuration, bool persist)
+    {
+        Set(configuration, 0x20 | 0x80 | (persist ? 0x200u : 0));
+        if (configuration.Hdr is not null)
+        {
+            var paths = configuration.ReadPaths();
+            for (var index = 0; index < paths.Length; ++index)
+                if (configuration.Hdr[index] is { } enabled && ReadHdr(paths[index].Target).Enabled != enabled)
+                    SetHdr(paths[index].Target, enabled);
+        }
+    }
     public void Restore(DisplayConfiguration configuration)
     {
         try { Apply(DisplayProfileMatching.Remap(configuration, ConnectedPaths()), persist: false); }
@@ -217,10 +255,24 @@ internal sealed unsafe partial class WindowsDisplayNative : IDisplayNative
             Diagnostics?.Record("set-0000008F-result", error: result == 0 ? null : new Win32Exception(result));
             Check(result);
         }
+        // The saved-topology fallback cannot restore HDR. Reconcile remaining
+        // physical monitors explicitly and never report a topology-only success
+        // when a requested HDR rollback failed.
+        if (configuration.Hdr is not null)
+        {
+            var available = Capture();
+            foreach (var restore in DisplayHdrRestoration.ForAvailable(configuration, available))
+            {
+                if (ReadHdr(restore.Target).Enabled != restore.Enabled) SetHdr(restore.Target, restore.Enabled);
+                if (ReadHdr(restore.Target).Enabled != restore.Enabled)
+                    throw new BrokerException("display_rollback_failed", "Windows did not restore the previous HDR state.");
+            }
+        }
     }
     private void Set(DisplayConfiguration configuration, uint flags)
     {
         configuration.Validate();
+        if (configuration.SelectMode) flags |= 0x400; // Windows resolves native signal timings; exact readback is still required.
         var paths = configuration.ReadPaths(); var modes = configuration.ReadModes();
         Diagnostics?.Record($"set-{flags:X8}-begin");
         int result;

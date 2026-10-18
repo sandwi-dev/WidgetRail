@@ -92,6 +92,10 @@ ctor WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>(WidgetRail.WidgetS
 ctor WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>(string ScrollId, System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> ItemKey, System.Func<TItem,string> ItemFocusId, string? EmptyFocusId = null)
 ctor WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>()
 ctor WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>(System.Collections.Generic.IReadOnlyList<TItem> Items, string? Continuation)
+ctor WidgetRail.WidgetSdk.WidgetDisplayControlMode(string Id, int Width, int Height, uint RefreshNumerator, uint RefreshDenominator)
+ctor WidgetRail.WidgetSdk.WidgetDisplayControlMonitor(string Id, string Name, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMode> Modes, string? CurrentModeId, bool HdrSupported, bool HdrEnabled, bool HdrActive, string? UnavailableReason, bool ModesTruncated = false)
+ctor WidgetRail.WidgetSdk.WidgetDisplayControlRequest(string DisplayId, string? ModeId = null, bool? HdrEnabled = null)
+ctor WidgetRail.WidgetSdk.WidgetDisplayControlsState(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMonitor> Displays)
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor(string Id, string Name, int Width, int Height, int X, int Y, double RefreshRate, string Orientation, bool IsPrimary)
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfileRequest(string? ProfileId = null, string? Name = null, string? RestoreId = null)
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfileRestore(string Id, string ProfileName, System.DateTimeOffset Deadline)
@@ -1223,6 +1227,26 @@ method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Deconstruct(out System.C
 method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetDisplayControlMode.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDisplayControlMode
+method WidgetRail.WidgetSdk.WidgetDisplayControlMode.Deconstruct(out string Id, out int Width, out int Height, out uint RefreshNumerator, out uint RefreshDenominator) -> void
+method WidgetRail.WidgetSdk.WidgetDisplayControlMode.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetDisplayControlMode.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetDisplayControlMode.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDisplayControlMonitor
+method WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.Deconstruct(out string Id, out string Name, out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMode> Modes, out string? CurrentModeId, out bool HdrSupported, out bool HdrEnabled, out bool HdrActive, out string? UnavailableReason, out bool ModesTruncated) -> void
+method WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetDisplayControlRequest.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDisplayControlRequest
+method WidgetRail.WidgetSdk.WidgetDisplayControlRequest.Deconstruct(out string DisplayId, out string? ModeId, out bool? HdrEnabled) -> void
+method WidgetRail.WidgetSdk.WidgetDisplayControlRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetDisplayControlRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetDisplayControlRequest.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetDisplayControlsState.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDisplayControlsState
+method WidgetRail.WidgetSdk.WidgetDisplayControlsState.Deconstruct(out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMonitor> Displays) -> void
+method WidgetRail.WidgetSdk.WidgetDisplayControlsState.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetDisplayControlsState.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetDisplayControlsState.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor
 method WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Deconstruct(out string Id, out string Name, out int Width, out int Height, out int X, out int Y, out double RefreshRate, out string Orientation, out bool IsPrimary) -> void
 method WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Equals(object? obj) -> bool
@@ -1244,8 +1268,10 @@ method WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Equals(object? obj) -> b
 method WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.ApplyAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
+method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.ApplyControlAsync(WidgetRail.WidgetSdk.WidgetDisplayControlRequest request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
 method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.DeleteAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
 method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.GetAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
+method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.GetControlsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayControlsState>
 method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.KeepAsync(string restoreId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
 method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.RenameAsync(string id, string name, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
 method WidgetRail.WidgetSdk.WidgetDisplayProfilesService.ReplaceAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
@@ -2057,6 +2083,14 @@ method static WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TIte
 method static WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? left, WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? left, WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? left, WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlMode.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayControlMode? left, WidgetRail.WidgetSdk.WidgetDisplayControlMode? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlMode.op_Inequality(WidgetRail.WidgetSdk.WidgetDisplayControlMode? left, WidgetRail.WidgetSdk.WidgetDisplayControlMode? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayControlMonitor? left, WidgetRail.WidgetSdk.WidgetDisplayControlMonitor? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.op_Inequality(WidgetRail.WidgetSdk.WidgetDisplayControlMonitor? left, WidgetRail.WidgetSdk.WidgetDisplayControlMonitor? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlRequest.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayControlRequest? left, WidgetRail.WidgetSdk.WidgetDisplayControlRequest? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlRequest.op_Inequality(WidgetRail.WidgetSdk.WidgetDisplayControlRequest? left, WidgetRail.WidgetSdk.WidgetDisplayControlRequest? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlsState.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayControlsState? left, WidgetRail.WidgetSdk.WidgetDisplayControlsState? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDisplayControlsState.op_Inequality(WidgetRail.WidgetSdk.WidgetDisplayControlsState? left, WidgetRail.WidgetSdk.WidgetDisplayControlsState? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? left, WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.op_Inequality(WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? left, WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayProfileRequest? left, WidgetRail.WidgetSdk.WidgetDisplayProfileRequest? right) -> bool
@@ -2378,6 +2412,10 @@ method virtual WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Equals(W
 method virtual WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.Equals(WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Equals(WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetDisplayControlMode.Equals(WidgetRail.WidgetSdk.WidgetDisplayControlMode? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.Equals(WidgetRail.WidgetSdk.WidgetDisplayControlMonitor? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetDisplayControlRequest.Equals(WidgetRail.WidgetSdk.WidgetDisplayControlRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetDisplayControlsState.Equals(WidgetRail.WidgetSdk.WidgetDisplayControlsState? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Equals(WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.Equals(WidgetRail.WidgetSdk.WidgetDisplayProfileRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDisplayProfileRestore.Equals(WidgetRail.WidgetSdk.WidgetDisplayProfileRestore? other) -> bool
@@ -2476,6 +2514,8 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAud
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork> WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks.Networks { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetBluetoothDevice> WidgetRail.WidgetSdk.WidgetBluetoothSnapshot.Devices { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Viewports { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMode> WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.Modes { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMonitor> WidgetRail.WidgetSdk.WidgetDisplayControlsState.Displays { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor> WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Displays { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor> WidgetRail.WidgetSdk.WidgetDisplayProfilesState.Displays { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayProfileSummary> WidgetRail.WidgetSdk.WidgetDisplayProfilesState.Profiles { get; set; }
@@ -2845,6 +2885,10 @@ property bool WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.Sh
 property bool WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.IsBusy { get; }
 property bool WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.HasAfter { get; }
 property bool WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.HasBefore { get; }
+property bool WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.HdrActive { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.HdrEnabled { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.HdrSupported { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.ModesTruncated { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.IsPrimary { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Available { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.MatchesCurrent { get; set; }
@@ -2907,6 +2951,7 @@ property bool? WidgetRail.WidgetSdk.SelectElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.SelectElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsDisabled { get; set; }
+property bool? WidgetRail.WidgetSdk.WidgetDisplayControlRequest.HdrEnabled { get; set; }
 property bool? WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.AutoConnect { get; set; }
 property double WidgetRail.WidgetSdk.GridElement.MinimumColumnWidth { get; set; }
 property double WidgetRail.WidgetSdk.ProgressElement.Maximum { get; set; }
@@ -2921,6 +2966,7 @@ property double WidgetRail.WidgetSdk.SliderElement.Value { get; set; }
 property double WidgetRail.WidgetSdk.WidgetAudioInput.Volume { get; set; }
 property double WidgetRail.WidgetSdk.WidgetAudioOutput.Volume { get; set; }
 property double WidgetRail.WidgetSdk.WidgetAudioSession.Volume { get; set; }
+property double WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshRate { get; }
 property double WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.RefreshRate { get; set; }
 property double WidgetRail.WidgetSdk.WidgetMediaSession.PlaybackRate { get; set; }
 property double WidgetRail.WidgetSdk.WindowPreviewElement.AspectRatio { get; set; }
@@ -2941,6 +2987,8 @@ property int WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.PageSize { 
 property int WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.PaginationThreshold { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.MaximumItems { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.PageSize { get; set; }
+property int WidgetRail.WidgetSdk.WidgetDisplayControlMode.Height { get; set; }
+property int WidgetRail.WidgetSdk.WidgetDisplayControlMode.Width { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Height { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Width { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.X { get; set; }
@@ -3099,6 +3147,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPowerCapabilities.Restart { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPowerCapabilities.ShutDown { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPowerCapabilities.Sleep { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetDisplayControlsState> WidgetRail.WidgetSdk.WidgetDisplayControlsCapabilities.Get { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetDisplayProfilesState> WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities.Get { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetConnectionDetails { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetNetworkStatus> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetStatus { get; }
@@ -3107,6 +3156,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetPowerAvailability> WidgetRail.WidgetSdk.WidgetPowerCapabilities.Get { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetRunningAppObservation> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ObserveRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetWifiRadio> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetWifiRadio { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetDisplayControlRequest,WidgetRail.WidgetSdk.WidgetDisplayProfilesState> WidgetRail.WidgetSdk.WidgetDisplayControlsCapabilities.Apply { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetDisplayProfileRequest,WidgetRail.WidgetSdk.WidgetDisplayProfilesState> WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities.Apply { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetDisplayProfileRequest,WidgetRail.WidgetSdk.WidgetDisplayProfilesState> WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities.Delete { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetDisplayProfileRequest,WidgetRail.WidgetSdk.WidgetDisplayProfilesState> WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities.Keep { get; }
@@ -3232,6 +3282,10 @@ property string WidgetRail.WidgetSdk.WidgetCollectionItemKey.Value { get; }
 property string WidgetRail.WidgetSdk.WidgetCommandError.Code { get; }
 property string WidgetRail.WidgetSdk.WidgetCommandError.Message { get; }
 property string WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ScrollId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetDisplayControlMode.Id { get; set; }
+property string WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.Id { get; set; }
+property string WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.Name { get; set; }
+property string WidgetRail.WidgetSdk.WidgetDisplayControlRequest.DisplayId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Id { get; set; }
 property string WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Name { get; set; }
 property string WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Orientation { get; set; }
@@ -3336,6 +3390,9 @@ property string? WidgetRail.WidgetSdk.WidgetAppLibraryQuery.SourceAttribution { 
 property string? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.RequestedFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.EmptyFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Continuation { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.CurrentModeId { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.UnavailableReason { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetDisplayControlRequest.ModeId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.Name { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.ProfileId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.RestoreId { get; set; }
@@ -3362,6 +3419,8 @@ property string? WidgetRail.WidgetSdk.WidgetScenarioStepResult.Message { get; se
 property string? WidgetRail.WidgetSdk.WidgetTestPrivateState.Json { get; }
 property string? WidgetRail.WidgetSdk.WidgetView.ActiveInputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetView.InitialFocusId { get; set; }
+property uint WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshDenominator { get; set; }
+property uint WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshNumerator { get; set; }
 type abstract class WidgetRail.WidgetSdk.ContainerElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type abstract class WidgetRail.WidgetSdk.Widget
 type abstract class WidgetRail.WidgetSdk.WidgetElement : System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>
@@ -3553,6 +3612,10 @@ type sealed class WidgetRail.WidgetSdk.WidgetCursorViewport<TItem> : System.IEqu
 type sealed class WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
 type sealed class WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetDisplayControlMode : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayControlMode>
+type sealed class WidgetRail.WidgetSdk.WidgetDisplayControlMonitor : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayControlMonitor>
+type sealed class WidgetRail.WidgetSdk.WidgetDisplayControlRequest : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayControlRequest>
+type sealed class WidgetRail.WidgetSdk.WidgetDisplayControlsState : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayControlsState>
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor>
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfileRequest : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayProfileRequest>
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfileRestore : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayProfileRestore>
@@ -3664,6 +3727,7 @@ type static class WidgetRail.WidgetSdk.WidgetAudioCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits
+type static class WidgetRail.WidgetSdk.WidgetDisplayControlsCapabilities
 type static class WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities
 type static class WidgetRail.WidgetSdk.WidgetDocumentCapabilities
 type static class WidgetRail.WidgetSdk.WidgetFocusTargetLookup

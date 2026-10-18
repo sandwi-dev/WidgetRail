@@ -9,6 +9,8 @@ internal static class BrokerTransportOperations
     internal const string AppLibraryLaunchObserved = "apps.library.launch-observed";
     internal const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
     internal const string CaptureLibraryManageV1 = "media.capture-library.manage.v1";
+    internal const string DisplayControlsGet = "display-controls.get";
+    internal const string DisplayControlsApply = "display-controls.apply";
     internal const string DisplayProfilesApply = "display-profiles.apply";
     internal const string DisplayProfilesGet = "display-profiles.get";
     internal const string DisplayProfilesKeep = "display-profiles.keep";

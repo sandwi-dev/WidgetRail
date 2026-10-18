@@ -10,7 +10,7 @@ internal sealed record SavedDisplayProfile(string Id, string Name, DisplayConfig
 internal sealed record DisplayProfileDocument(int Version, SavedDisplayProfile[] Profiles);
 
 [SupportedOSPlatform("windows")]
-public sealed class WindowsDisplayProfilesBackend : IDisplayProfilesPlatformBackend, IAsyncDisposable
+public sealed partial class WindowsDisplayProfilesBackend : IDisplayProfilesPlatformBackend, IAsyncDisposable
 {
     private readonly string _directory;
     private readonly IDisplayNative _native;
@@ -79,10 +79,10 @@ public sealed class WindowsDisplayProfilesBackend : IDisplayProfilesPlatformBack
             {
                 case DisplayProfileCommand.Save:
                     if (profiles.Count >= 24) throw new BrokerException("display_profile_limit", "You can save up to 24 profiles. Remove one first.");
-                    profiles.Add(new(Guid.NewGuid().ToString("N"), name!, _native.Capture()));
+                    profiles.Add(new(Guid.NewGuid().ToString("N"), name!, _native.Capture() with { Hdr = null }));
                     break;
                 case DisplayProfileCommand.Rename: profiles[index] = profiles[index] with { Name = name! }; break;
-                case DisplayProfileCommand.Replace: profiles[index] = profiles[index] with { Configuration = _native.Capture() }; break;
+                case DisplayProfileCommand.Replace: profiles[index] = profiles[index] with { Configuration = _native.Capture() with { Hdr = null } }; break;
                 case DisplayProfileCommand.Delete: profiles.RemoveAt(index); break;
                 case DisplayProfileCommand.Apply:
                     var profile = profiles[index];
