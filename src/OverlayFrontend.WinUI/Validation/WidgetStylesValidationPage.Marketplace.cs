@@ -26,7 +26,8 @@ internal sealed partial class WidgetStylesValidationPage
             foreach (var width in new[] { 900, 560 })
             {
                 presenter.Width = width;
-                foreach (var name in new[] { "browse", "details", "installed", "updates", "review", "completed" })
+                foreach (var name in new[] { "browse", "details", "installed", "updates", "review", "completed",
+                    "empty", "loading", "stale-error", "requirements-long", "requirements-absent" })
                 {
                     using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, name + ".json")));
                     var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(document.RootElement.GetProperty("snapshot").GetRawText())) with { Sequence = ++sequence };
@@ -44,6 +45,62 @@ internal sealed partial class WidgetStylesValidationPage
                         $"{name} at {width}: initial focus follows the widget declaration");
                     var scrolls = Descendants(presenter).OfType<ScrollViewer>().Where(scroll => scroll.IsLoaded && scroll.ActualHeight > 0).ToArray();
                     Check(scrolls.All(scroll => scroll.ExtentWidth <= scroll.ViewportWidth + 1), $"{name} at {width}: no horizontal content clipping");
+                    if (name is "empty" or "loading" or "stale-error" or "requirements-long" or "requirements-absent")
+                    {
+                        var initial = Find<Button>("Widget." + snapshot.InitialFocusId)!;
+                        Check(initial.IsEnabled && initial.IsTabStop && InsidePresenter(initial), $"{name} at {width}: declared focus is visible and reachable");
+                        var header = Find<FrameworkElement>("Widget.marketplace.header")!;
+                        Check(InsidePresenter(header), $"{name} at {width}: fixed navigation fits inside the widget");
+                    }
+                    if (name is "empty" or "loading")
+                    {
+                        var empty = Find<TextBlock>("Widget.marketplace.empty");
+                        Check(empty is { ActualHeight: > 0, IsTextTrimmed: false } && InsidePresenter(empty),
+                            $"{name} at {width}: state message is visible without clipping");
+                        var refresh = Find<Button>("Widget.marketplace.refresh");
+                        Check(refresh is { IsEnabled: true, IsTabStop: true } && InsidePresenter(refresh),
+                            $"{name} at {width}: refresh remains reachable while state is displayed");
+                    }
+                    if (name == "stale-error")
+                    {
+                        Check(Descendants(presenter).OfType<Button>().Count(button =>
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button).StartsWith("Widget.marketplace.item.") && button.ActualHeight > 0) == 2,
+                            $"Stale error at {width}: cached cards remain available");
+                        Check(Find<TextBlock>("Widget.marketplace.checked") is { ActualHeight: > 0 }, "Stale error keeps its last-check context");
+                        var refresh = Find<Button>("Widget.marketplace.refresh")!;
+                        refresh.Focus(FocusState.Programmatic);
+                        var before = dispatched.Count;
+                        presenter.ActivateFocused();
+                        await Wait(() => dispatched.Count == before + 1);
+                        Check(dispatched[^1] == "marketplace.refresh", "Stale error retry dispatches the normal bounded refresh action");
+                        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), refresh), "Retry dispatch does not displace focus");
+                        var status = Find<TextBlock>("Widget.marketplace.status")!;
+                        var content = scrolls.OrderByDescending(scroll => scroll.ScrollableHeight).First();
+                        content.ChangeView(null, content.ScrollableHeight, null, true);
+                        await Task.Delay(100);
+                        Check(status.ActualHeight > 0 && !status.IsTextTrimmed && InsidePresenter(status),
+                            $"Stale error at {width}: full recovery message is reachable by scrolling");
+                    }
+                    if (name == "requirements-long")
+                    {
+                        var requirements = Enumerable.Range(0, 4).Select(index => Find<TextBlock>("Widget.marketplace.requirement." + index)).ToArray();
+                        Check(requirements.All(text => text is { ActualHeight: > 0, IsTextTrimmed: false } && text.TextWrapping != TextWrapping.NoWrap),
+                            $"Long prerequisites at {width}: all requirements wrap without truncation");
+                        var content = scrolls.OrderByDescending(scroll => scroll.ScrollableHeight).First();
+                        if (width == 560) Check(content.ScrollableHeight > 0, "Constrained prerequisites exercise overflowing content");
+                        var opener = FocusManager.GetFocusedElement(XamlRoot);
+                        content.ChangeView(null, content.ScrollableHeight, null, true);
+                        await Task.Delay(100);
+                        Check(InsidePresenter(requirements[^1]!), $"Long prerequisites at {width}: final requirement is reachable");
+                        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener), "Scrolling prerequisites preserves action focus");
+                        Check(InsidePresenter(Find<Button>("Widget.marketplace.back")!) && InsidePresenter(Find<Button>("Widget.marketplace.primary")!),
+                            "Long prerequisites keep Back and Download visible");
+                    }
+                    if (name == "requirements-absent")
+                    {
+                        Check(Find<FrameworkElement>("Widget.marketplace.requirements") is null, "Absent prerequisites leave no empty panel");
+                        Check(InsidePresenter(Find<TextBlock>("Widget.marketplace.description")!), "Description stays visible without prerequisites");
+                    }
                     if (name == "browse")
                     {
                         var cards = Descendants(presenter).OfType<Button>().Where(button =>
@@ -81,6 +138,13 @@ internal sealed partial class WidgetStylesValidationPage
         catch (Exception error) { failure = error; }
         await File.WriteAllTextAsync(Path.Combine(directory, "native-result.json"), JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
         if (failure is not null) throw failure;
+
+        bool InsidePresenter(FrameworkElement element)
+        {
+            var origin = element.TransformToVisual(presenter).TransformPoint(new());
+            return element.ActualWidth > 0 && element.ActualHeight > 0 && origin.X >= -1 && origin.Y >= -1 &&
+                origin.X + element.ActualWidth <= presenter.ActualWidth + 1 && origin.Y + element.ActualHeight <= presenter.ActualHeight + 1;
+        }
 
         async Task CaptureAsync(string path)
         {

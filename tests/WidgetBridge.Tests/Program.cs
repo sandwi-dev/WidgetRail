@@ -108,6 +108,7 @@ if (args.Length is 4 or 5 && args[0] == "--export-styled-fixture")
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Catalogue integrated widget review update revert retry and permission workflow", MarketplaceIntegratedWorkflow.RunAsync),
     ("Text suggestions preserve authority, cancellation and bounded admission", BridgeClientRegistryScenarios.TextSuggestions),
     ("Background browser retention is bounded worker-scoped and never grants input", BridgeClientRegistryScenarios.BackgroundBrowserRetention),
     ("Background browser retention crosses the real pipe without reviving workers", BridgeClientRegistryScenarios.BrowserRetentionPipe),

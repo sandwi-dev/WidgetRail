@@ -8,6 +8,7 @@ if (args is ["--export-native", var output]) { await ExportNative(output); retur
 var tests = new (string Name,Func<Task> Run)[] {
     ("Catalog navigation filters updates and restores the selected card", Navigation),
     ("Catalogue setup requirements are visible before download and navigation stays outside scrolling", SetupPresentation),
+    ("Catalogue empty loading stale and prerequisite states keep navigation usable", () => ExportEdgeStates(null)),
     ("Reopening checks releases while a slow refresh preserves navigation and existing content", RefreshOnOpening),
     ("Downloads retain focus and installation requires the exact open full-trust review", Review),
     ("Retained older release availability is labelled in browse and details", RetainedAvailability),
@@ -62,7 +63,72 @@ static async Task ExportNative(string directory)
     await fixture.Act("marketplace.batch.install");
     await Until(() => Node(fixture,"marketplace.batch.review.cancel") is null && fixture.Commands.Any(command => command.Action == "install-updates"));
     await Write("completed");
+    await ExportEdgeStates(directory);
     async Task Write(string name) => await File.WriteAllBytesAsync(Path.Combine(directory, name + ".snapshot.json"), SnapshotJson.Serialize(fixture.View()));
+}
+
+static async Task ExportEdgeStates(string? directory)
+{
+    await using (var empty = new Fixture())
+    {
+        empty.Snapshot = empty.Snapshot with { Items = [] };
+        await empty.Start();
+        await Until(() => Node(empty, "marketplace.refresh") is { IsBusy: not true });
+        await empty.Act("marketplace.tab.installed");
+        Check(Node(empty, "marketplace.empty")?.Text == "No catalogue widgets installed yet. Find one in Browse.", "Empty installed state lacks useful recovery copy");
+        Check(empty.View().InitialFocusId == "marketplace.tab.installed", "Empty state lost its navigation target");
+        await Write("empty", empty);
+    }
+    await using (var loading = new Fixture())
+    {
+        loading.Snapshot = loading.Snapshot with { Items = [], CheckedAtUtc = null };
+        loading.RefreshGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await loading.Start();
+        await Until(() => Node(loading, "marketplace.refresh")?.IsBusy == true);
+        Check(Node(loading, "marketplace.refresh")?.IsDisabled != true, "Loading disabled the focused refresh control");
+        Check(Node(loading, "marketplace.empty")?.Text == "Loading the catalogue…", "Initial loading state is missing");
+        await Write("loading", loading);
+        await loading.Act("marketplace.tab.installed");
+        Check(loading.View().InitialFocusId == "marketplace.tab.installed", "Loading prevented section navigation");
+        loading.RefreshGate.SetResult();
+        await Until(() => Node(loading, "marketplace.refresh") is { IsBusy: not true });
+    }
+    await using (var stale = new Fixture())
+    {
+        stale.Snapshot = stale.Snapshot with { Operation = new(new string('e', 32), "refresh", "failed", null,
+            Message: "Could not refresh releases. Saved availability may be out of date. Try again later.") };
+        await stale.Start();
+        await Until(() => Node(stale, "marketplace.refresh") is { IsBusy: not true });
+        Check(Walk(stale.View().Root).Count(n => n.Kind == ViewNodeKind.ActionSurface) == 2, "Refresh failure discarded cached cards");
+        Check(Node(stale, "marketplace.status")?.StyleClasses.Contains("diagnostic-error") == true, "Failed refresh lacks error styling");
+        Check(Node(stale, "marketplace.checked") is not null && Node(stale, "marketplace.refresh")?.IsDisabled != true, "Stale content lost last-check context or retry action");
+        await Write("stale-error", stale);
+    }
+    await using (var details = new Fixture())
+    {
+        var requirement = "Requires a separate desktop application, an active service account and a developer application configured for this widget. Complete the service's setup guide before downloading, then enter the connection information in the widget's own Settings.";
+        details.Snapshot = details.Snapshot with { Items = [new(Fixture.Id,
+            "Example integration with detailed setup requirements", "A synthetic listing for prerequisite layout validation.", [], "1.0.0",
+            SetupRequirements: [requirement, requirement, requirement, requirement])] };
+        await details.Start();
+        await Until(() => Node(details, "marketplace.refresh") is { IsBusy: not true });
+        await details.Act(Walk(details.View().Root).Single(n => n.Kind == ViewNodeKind.ActionSurface).ActionId!);
+        Check(Walk(details.View().Root).Count(n => n.Id?.StartsWith("marketplace.requirement.", StringComparison.Ordinal) == true) == 4, "Long prerequisites were dropped");
+        await Write("requirements-long", details);
+        await details.Act("marketplace.back");
+        details.Snapshot = details.Snapshot with { Revision = 2, Items = details.Snapshot.Items.Select(i => i with { SetupRequirements = null }).ToArray() };
+        await details.Act("marketplace.refresh");
+        await Until(() => !Walk(details.View().Root).Any(n => n.Text?.Contains("Requires a separate desktop") == true) && Node(details, "marketplace.refresh") is { IsBusy: not true });
+        await details.Act(Walk(details.View().Root).Single(n => n.Kind == ViewNodeKind.ActionSurface).ActionId!);
+        Check(Node(details, "marketplace.requirements") is null, "Absent prerequisites left an empty panel");
+        await Write("requirements-absent", details);
+    }
+    async Task Write(string name, Fixture fixture)
+    {
+        var snapshot = fixture.View();
+        Check(ViewSnapshotValidator.Validate(snapshot).Count == 0 && WinUiPresentationContract.Validate(snapshot).Count == 0, name + " is not a valid native presentation");
+        if (directory is not null) await File.WriteAllBytesAsync(Path.Combine(directory, name + ".snapshot.json"), SnapshotJson.Serialize(snapshot));
+    }
 }
 
 static async Task SetupPresentation()

@@ -8,6 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/FirstPartyWidgets/MarketplaceWidget/MarketplaceWidget.csproj" />
     <Content Include="../../src/FirstPartyWidgets/SettingsWidget/styles/default.wrss" Link="fixture/settings-default.wrss" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\PlayniteLibraryApplicationFixture\PlayniteLibraryApplicationFixture.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
