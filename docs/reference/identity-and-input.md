@@ -27,6 +27,14 @@ a fallback; do not treat “an element with this ID exists” as proof it can re
 Containers can use `RememberChildFocus` for stable child restoration. Keep it
 separate from collection refresh, which has its own position-reset signal.
 
+Left/Right first uses explicit neighbors and normal spatial navigation. If no
+control qualifies, the host can enter a neighboring scroll panel whose visible
+bounds overlap the focused control vertically. It chooses the nearest visible,
+enabled control in that panel; it does not jump to a hidden child. A panel with
+only offscreen controls or overflowing reading content keeps the existing
+container focus and scroll-settling behavior. Fitted text-only panels, inactive
+input scopes, stacked panels, and diagonal headers add no new destinations.
+
 ## Text and selection controls
 
 Use the SDK's `TextEntryElement` for host-managed text entry and `SelectElement`

@@ -7,6 +7,41 @@ namespace WinUiShell.Tests;
 public sealed class DirectionalFocusPolicyTests
 {
     [TestMethod]
+    public void AdjacentPanelFallbackUsesPanelGeometryAndNearestEntry()
+    {
+        var origin = new FocusRectangle(25, 480, 415, 44);
+        var panel = new FocusRectangle(486, 20, 470, 705);
+        var entries = new FocusPanelCandidate[] { new("details", panel, new("top", new(507, 85, 427, 54))),
+            new("details", panel, new("nearer", new(507, 300, 427, 44))) };
+        Assert.IsNull(DirectionalFocusPolicy.Choose(origin, FocusDirection.Right, entries.Select(entry => entry.Entry)));
+        Assert.AreEqual("nearer", DirectionalFocusPolicy.ChooseAdjacentPanel(origin, FocusDirection.Right, entries));
+        Assert.AreEqual("nearer", DirectionalFocusPolicy.ChooseAdjacentPanel(origin, FocusDirection.Right, entries.Reverse()));
+        Assert.AreEqual("top", DirectionalFocusPolicy.ChooseAdjacentPanel(origin, FocusDirection.Right, entries.Take(1)));
+        Assert.IsNull(DirectionalFocusPolicy.ChooseAdjacentPanel(origin, FocusDirection.Up, entries));
+    }
+
+    [TestMethod]
+    public void AdjacentPanelFallbackRejectsHeadersStackedAndOverlappingRegions()
+    {
+        var origin = new FocusRectangle(100, 300, 200, 44);
+        foreach (var panel in new[] { new FocusRectangle(320, 0, 200, 60), new(100, 400, 200, 300),
+            new(120, 0, 600, 600), new(320, 344, 200, 200), new(320, 0, 0, 600) })
+            Assert.IsNull(DirectionalFocusPolicy.ChooseAdjacentPanel(origin, FocusDirection.Right,
+                [new("panel", panel, new("button", new(320, 20, 200, 44)))]));
+        Assert.AreEqual("left", DirectionalFocusPolicy.ChooseAdjacentPanel(origin, FocusDirection.Left,
+            [new("panel", new(0, 0, 80, 600), new("left", new(0, 20, 80, 44)))]));
+    }
+
+    [TestMethod]
+    public void AdjacentPanelFallbackDoesNotSkipNearerPanelsForCloserChildren()
+    {
+        var origin = new FocusRectangle(0, 300, 200, 44);
+        Assert.AreEqual("near-panel", DirectionalFocusPolicy.ChooseAdjacentPanel(origin, FocusDirection.Right,
+            [new("near", new(220, 0, 200, 600), new("near-panel", new(220, 20, 200, 44))),
+             new("far", new(440, 0, 200, 600), new("far-panel", new(440, 250, 200, 44)))]));
+    }
+
+    [TestMethod]
     public void OffscreenTargetsRemainEligibleWithoutInventingViewportClipping()
     {
         var origin = new FocusRectangle(0, 50, 300, 44);

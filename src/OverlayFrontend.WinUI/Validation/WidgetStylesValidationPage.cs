@@ -53,7 +53,17 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gamehelp-citation-fixtures") is { } citationFixtures)
         { await GameHelpCitationsAsync(citationFixtures); return; }
         if (Environment.GetCommandLineArgs().Contains("--directional-navigation-only"))
-        { await DirectionalNavigationAsync(); return; }
+        {
+            Exception? failure = null;
+            try { await DirectionalNavigationAsync(); }
+            catch (Exception error) { failure = error; throw; }
+            finally
+            {
+                if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--directional-navigation-result") is { } result)
+                    System.IO.File.WriteAllText(result, System.Text.Json.JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
+            }
+            return;
+        }
         if (Environment.GetCommandLineArgs().Contains("--local-install-only"))
         { await LocalInstallDialogAsync(); return; }
         await AuthoringAdmissionAsync();

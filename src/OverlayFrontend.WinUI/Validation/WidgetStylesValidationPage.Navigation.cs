@@ -12,6 +12,7 @@ internal sealed partial class WidgetStylesValidationPage
 {
     private async Task DirectionalNavigationAsync()
     {
+        await AdjacentScrollPanelNavigationAsync();
         await DirectionalScrollingAsync();
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         presenter.Width = 600; presenter.Height = 320;

@@ -7,10 +7,29 @@ internal readonly record struct FocusRectangle(double X, double Y, double Width,
         double.IsFinite(Height) && Width > 0 && Height > 0;
 }
 internal readonly record struct FocusCandidate(string Id, FocusRectangle Bounds);
+internal readonly record struct FocusPanelCandidate(string PanelId, FocusRectangle PanelBounds, FocusCandidate Entry);
 
 /// <summary>Directional policy only. WinUI supplies geometry and performs focus/scrolling.</summary>
 internal static class DirectionalFocusPolicy
 {
+    // Used only after ordinary control navigation fails. The panel, rather than
+    // a diagonal child, must be a genuine side-by-side neighbor of the origin.
+    internal static string? ChooseAdjacentPanel(FocusRectangle origin, FocusDirection direction,
+        IEnumerable<FocusPanelCandidate> candidates)
+    {
+        if (!origin.IsUsable || direction is not (FocusDirection.Left or FocusDirection.Right)) return null;
+        var eligible = candidates.Where(candidate => candidate.Entry.Bounds.IsUsable && candidate.PanelBounds.IsUsable &&
+            (direction == FocusDirection.Right ? candidate.PanelBounds.X >= origin.X + origin.Width - .5 :
+                candidate.PanelBounds.X + candidate.PanelBounds.Width <= origin.X + .5)).ToArray();
+        var panel = Choose(origin, direction, eligible.Select(candidate => new FocusCandidate(candidate.PanelId, candidate.PanelBounds)));
+        return eligible.Where(candidate => candidate.PanelId == panel)
+            .OrderBy(candidate => Math.Max(0, Math.Max(candidate.Entry.Bounds.Y - origin.Y - origin.Height,
+                origin.Y - candidate.Entry.Bounds.Y - candidate.Entry.Bounds.Height)))
+            .ThenBy(candidate => Math.Abs(candidate.Entry.Bounds.Y + candidate.Entry.Bounds.Height / 2 - origin.Y - origin.Height / 2))
+            .ThenBy(candidate => candidate.Entry.Id, StringComparer.Ordinal)
+            .Select(candidate => candidate.Entry.Id).FirstOrDefault();
+    }
+
     internal static string? Choose(FocusRectangle origin, FocusDirection direction, IEnumerable<FocusCandidate> candidates)
     {
         if (!origin.IsUsable) return null;

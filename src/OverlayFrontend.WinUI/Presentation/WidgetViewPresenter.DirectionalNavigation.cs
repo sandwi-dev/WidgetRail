@@ -129,6 +129,9 @@ internal sealed partial class WidgetViewPresenter
         }
         if (deferredExit is not null) { Commit(deferredExit); return true; }
         if (Choose(null) is { } outside) { Commit(outside); return true; }
+        if (AdjacentScrollPanelTarget(origin, originBounds, policyDirection.Value,
+            candidates.Values.Select(candidate => candidate.Target)) is { } panelEntry)
+        { Commit(panelEntry); return true; }
         return false;
 
         FocusRectangle ExitBounds(FocusRectangle viewport) => direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down
