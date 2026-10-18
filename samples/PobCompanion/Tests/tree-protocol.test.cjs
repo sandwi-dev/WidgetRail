@@ -5,7 +5,9 @@ const path = require('node:path');
 
 // Exercise the real page's message handler and resulting accessible node labels.
 // The canvas is stubbed; native screenshots validate its actual drawing.
-const elements = new Map(), frames = [], sent = [], windowEvents = new Map();
+const elements = new Map(), frames = [], sent = [], windowEvents = new Map(), drawCalls=[];
+let styleReads=0;
+const drawing=new Proxy({}, {get:(target,key)=>key in target?target[key]:(...args)=>drawCalls.push({op:key,args,alpha:target.globalAlpha,width:target.lineWidth})});
 class Element {
   constructor(id,tag='div') { this.id = id; this.tagName=tag; this.children = []; this.style = {}; this.dataset = {}; this.attributes = {}; this.clientWidth = 1000; this.clientHeight = 600; }
   get textContent(){return this.children.length?this.children.map(c=>c.textContent).join(''):(this.text||'');}
@@ -17,7 +19,11 @@ class Element {
   remove() { this.parent.children = this.parent.children.filter(child => child !== this); elements.delete(this.id); }
   setAttribute(name, value) { this.attributes[name] = value; }
   addEventListener(type,handler) { (this.events ??= {})[type]=handler; }
-  getContext() { return new Proxy({}, { get: () => () => {} }); }
+  getContext() { return drawing; }
+  get width(){return this.pixelWidth;}
+  set width(value){this.pixelWidth=value;this.widthWrites=(this.widthWrites||0)+1;}
+  get height(){return this.pixelHeight;}
+  set height(value){this.pixelHeight=value;this.heightWrites=(this.heightWrites||0)+1;}
   getBoundingClientRect() { return {left:0,top:0}; }
 }
 for (const id of ['map','lines','nodes','status','added','removed','selected','fit','ascendancy','locate','in','out','left','right','up','down','tooltip','tooltip-name','tooltip-kind','tooltip-copy','tooltip-cost','selection-marker','selection-label']) elements.set(id, new Element(id));
@@ -27,7 +33,7 @@ const sandbox = {
   chrome: { webview: { addEventListener: (_, callback) => receive = callback } },
   WidgetRailWebSession: { post: value => sent.push(value) },
   window: { addEventListener(type, handler) { windowEvents.set(type,handler); } }, ResizeObserver: class { constructor(callback) { resize=callback; } observe() {} },
-  getComputedStyle: () => ({ color: '#fff', backgroundColor: '#000' }), devicePixelRatio: 1,
+  getComputedStyle: () => {styleReads++;return { color: '#fff', backgroundColor: '#000' };}, devicePixelRatio: 1,
   requestAnimationFrame: callback => frames.push(callback),
   fetch:()=>Promise.reject(new Error('No fixture artwork')),setTimeout:callback=>{callback();return 1;},clearTimeout(){},
 };
@@ -153,3 +159,23 @@ message({type:'nodes',revision:8,items:[node(11,0,'Remaining passive',true)]});
 message({type:'end',revision:8});
 assert.equal(label(12),undefined,'Visibility replacement removes old hit targets');
 console.log('PASS decorations, landmarks, real masteries, occupied sockets, item grants and visibility replacement');
+
+// A large overview must not inflate every node into a screen-sized outline.
+const dense=Array.from({length:400},(_,i)=>({...node(1000+i,(i%20)*1000,'Passive '+i,false),y:Math.floor(i/20)*1000,radius:50}));
+message({type:'begin',revision:9});message({type:'nodes',revision:9,items:dense});
+drawCalls.length=0;styleReads=0;
+message({type:'end',revision:9});
+const overviewArcs=drawCalls.filter(call=>call.op==='arc');
+assert.ok(overviewArcs.length>100,'Overview continues to render its visible nodes');
+assert.ok(overviewArcs.every(call=>call.args[2]<2),'Overview nodes scale down instead of accumulating minimum-sized rings');
+assert.ok(styleReads<=10,'Style lookups are per frame, not per node');
+assert.ok(elements.get('nodes').children.length<=100,'Accessible hit targets remain bounded');
+const canvas=elements.get('lines'),widthWrites=canvas.widthWrites;
+for(let i=0;i<8;i++)elements.get('right').onclick();
+assert.equal(frames.length,1,'Rapid navigation coalesces into one redraw');
+while(frames.length)frames.shift()();
+assert.equal(canvas.widthWrites,widthWrites,'Panning does not reallocate the canvas backing buffer');
+map.clientWidth=800;resize();while(frames.length)frames.shift()();
+assert.equal(canvas.width,800,'Real resizes update the drawing buffer');
+assert.equal(frames.length,0,'The map does not schedule a continuous idle render loop');
+console.log('PASS overview detail level, bounded targets/style reads, coalesced draws and stable canvas allocation');

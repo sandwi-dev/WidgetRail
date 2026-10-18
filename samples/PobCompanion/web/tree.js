@@ -24,14 +24,14 @@
   }
   function icon(n,x,y,radius) {
     const atlas=n.decoration?artwork?.decorations:artwork,index=atlas?.icons?.[n.icon];
-    if(!Number.isSafeInteger(index) || index<0 || radius<5)return false;
+    if(!Number.isSafeInteger(index) || index<0 || radius<1.5)return false;
     const perSheet=atlas.columns*atlas.columns, sheetId=Math.floor(index/perSheet),key=(n.decoration?'decorations':'nodes')+'-'+sheetId;
     let sheet=sheets.get(key);
     if(!sheet){sheet=new Image();sheets.set(key,sheet);sheet.onload=redraw;sheet.src=`art/${treeVersion}/${key}.webp`;}
     if(!sheet.complete || !sheet.naturalWidth)return false;
     const offset=index%perSheet;
-    context.save();if(!n.decoration){nodePath(n,x,y,radius-1);context.clip();}
-    context.globalAlpha*=n.decoration ? .15 :(n.allocated||n.granted?1:.5);
+    context.save();if(!n.decoration){nodePath(n,x,y,Math.max(.5,radius-.5));context.clip();}
+    context.globalAlpha*=n.decoration ? .18 :(n.allocated||n.granted?1:.75);
     context.drawImage(sheet,(offset%atlas.columns)*atlas.tile,Math.floor(offset/atlas.columns)*atlas.tile,atlas.tile,atlas.tile,x-radius,y-radius,radius*2,radius*2);
     context.restore();return true;
   }
@@ -74,8 +74,10 @@
   const point = n => [(n.x - cx) * scale + map.clientWidth / 2, (n.y - cy) * scale + map.clientHeight / 2];
   const cssColor = id => getComputedStyle(document.getElementById(id)).color;
   const kindLabel=n=>({Normal:'Small passive',Notable:'Notable passive',Socket:n.socketedItem?'Occupied jewel socket':'Empty jewel socket',Mastery:'Mastery passive',AscendClassStart:'Ascendancy start',ClassStart:'Class start'}[n.kind]||n.kind);
-  const nodeRadius=n=>Math.max(['Notable','Keystone','ClassStart','AscendClassStart'].includes(n.kind)?4:2,
-    Math.min(n.kind==='Keystone'?26:['Notable','ClassStart','AscendClassStart'].includes(n.kind)?20:12,scale*(n.kind==='Keystone'?140:['Notable','ClassStart','AscendClassStart'].includes(n.kind)?90:50)));
+  // Visible geometry scales with the tree. The independent 40px hit targets
+  // below remain usable; minimum-size outlines must not turn an overview into rings.
+  const nodeRadius=n=>Math.max(.45,Math.min(n.kind==='Keystone'?30:n.kind==='Notable'?22:16,
+    scale*(Number.isFinite(n.radius)&&n.radius>0?n.radius:n.kind==='Keystone'?120:n.kind==='Notable'?80:50)));
   function redraw() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
   function pick(id) {
     if (preview || byId.get(id)?.interactive===false || !byId.has(id)) return;
@@ -84,17 +86,21 @@
   function draw() {
     queued = false;
     const w = map.clientWidth, h = map.clientHeight, dpr = devicePixelRatio || 1;
-    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    const pixelWidth=Math.round(w*dpr),pixelHeight=Math.round(h*dpr);
+    if(canvas.width!==pixelWidth || canvas.height!==pixelHeight){canvas.width=pixelWidth;canvas.height=pixelHeight;}
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0,0,w,h);
     const colors = { base: cssColor('lines'), active: cssColor('nodes'), added: cssColor('added'), removed: cssColor('removed'), changed: cssColor('selected'), selected: cssColor('selected') };
     const active=n=>n.allocated||n.granted;
+    const background=getComputedStyle(map).backgroundColor;
+    const highContrast=window.matchMedia?.('(forced-colors: active)').matches===true;
     const visible = nodes.map(n => ({ n, p: point(n) })).filter(({ n,p }) => p[0] > -Math.max(30,(n.radius||50)*scale) && p[0] < w+Math.max(30,(n.radius||50)*scale) && p[1] > -Math.max(30,(n.radius||50)*scale) && p[1] < h+Math.max(30,(n.radius||50)*scale));
     for(const {n,p:[x,y]}of visible)if(n.decoration)icon(n,x,y,(n.radius||190)*scale);
     const edgeStyle = (a, b) => (a.change === 'removed' || b.change === 'removed') && (active(a) || a.change === 'removed') && (active(b) || b.change === 'removed') ? 'removed'
       : active(a) && active(b) && (!(a.allocationMode||0)||!(b.allocationMode||0)||a.allocationMode===b.allocationMode) ? a.change === 'added' || b.change === 'added' ? 'added' : 'active' : 'base';
     for (const dimmed of [true,false]) for (const style of ['base', 'active', 'removed', 'added']) {
-      context.globalAlpha=dimmed ? .35 : 1;
-      context.strokeStyle = colors[style]; context.lineWidth = style === 'base' ? 1 : 2;
+      context.globalAlpha=(dimmed ? .35 : 1)*(style==='base'&&!highContrast ? .4 : 1);
+      context.strokeStyle=colors[style];context.lineWidth=style==='base' ? .65 : Math.max(1.2,Math.min(2,scale*20));
       context.setLineDash(style === 'removed' ? [5, 4] : []); context.beginPath();
       for (const edge of links) {
         const a = byId.get(edge.a), b = byId.get(edge.b);
@@ -111,18 +117,23 @@
     context.globalAlpha=1;
     for (const { n, p: [x, y] } of visible) {
       if(n.decoration)continue;
-      context.globalAlpha=n.dimmed ? .35 : 1;
-      const color = colors[n.change || (active(n) ? 'active' : 'base')];
-      const radius = nodeRadius(n);
-      context.strokeStyle = color; context.fillStyle = active(n) ? color : getComputedStyle(map).backgroundColor;
-      context.lineWidth = active(n) ? 2 : 1;nodePath(n,x,y,radius);context.fill();context.stroke();
+      const emphasized=active(n)||n.id===selected||!!n.change;
+      context.globalAlpha=(n.dimmed?.35:1)*(emphasized||highContrast?1:.65);
+      const color=colors[n.change||(active(n)?'active':'base')];
+      const radius=nodeRadius(n),detailed=radius>=3;
+      context.strokeStyle=color;
+      context.fillStyle=detailed&&!emphasized?background:color;
+      context.lineWidth=emphasized?1.5:.75;
+      nodePath(n,x,y,radius);context.fill();
+      if(detailed)context.stroke();
       const painted=icon(n,x,y,radius);
-      if(n.allocated&&n.allocationMode>0){context.fillStyle=colors.active;context.font='bold 11px sans-serif';context.textAlign='left';context.textBaseline='bottom';context.fillText(String(n.allocationMode),x+radius+2,y-radius-2);}
-      if(n.kind==='Notable'){nodePath(n,x,y,radius+2);context.stroke();}
-      if(n.socketedItem){nodePath({kind:'Keystone'},x,y,radius*.45);context.fillStyle=colors.active;context.fill();}
-      else if(!painted&&n.landmark&&radius>=5){context.fillStyle=colors.base;context.font=`bold ${Math.max(9,radius)}px sans-serif`;context.textAlign='center';context.textBaseline='middle';context.fillText(n.kind==='ClassStart'?'C':'A',x,y);}
-      if(n.granted&&!n.allocated){context.setLineDash([2,2]);nodePath(n,x,y,radius+3);context.stroke();context.setLineDash([]);}
+      if(detailed&&n.allocated&&n.allocationMode>0){context.fillStyle=colors.active;context.font='bold 11px sans-serif';context.textAlign='left';context.textBaseline='bottom';context.fillText(String(n.allocationMode),x+radius+2,y-radius-2);}
+      if(n.kind==='Notable'&&radius>=5){nodePath(n,x,y,radius+1.5);context.stroke();}
+      if(n.socketedItem&&radius>=3){nodePath({kind:'Keystone'},x,y,radius*.45);context.fillStyle=colors.active;context.fill();}
+      else if(!painted&&n.landmark&&radius>=7){context.fillStyle=color;context.font=`bold ${Math.max(9,radius)}px sans-serif`;context.textAlign='center';context.textBaseline='middle';context.fillText(n.kind==='ClassStart'?'C':'A',x,y);}
+      if(n.granted&&!n.allocated&&detailed){context.setLineDash([2,2]);nodePath(n,x,y,radius+2);context.stroke();context.setLineDash([]);}
       if (n.id === selected || n.change) {
+        context.globalAlpha=1;
         context.strokeStyle = n.id === selected ? colors.selected : color;
         context.setLineDash(n.change === 'removed' ? [3, 2] : []);
         context.beginPath(); context.arc(x, y, radius+4, 0, Math.PI*2); context.stroke(); context.setLineDash([]);
