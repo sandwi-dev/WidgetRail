@@ -68,7 +68,7 @@ internal sealed partial class WidgetIndexedCollectionView
         allowEntryFallback = entry.AllowFallback;
         QueueNavigation();
     }
-    internal bool IsEntryPending => entering;
+    internal bool IsEntryPending => entering || pendingContinuity?.Focus is not null;
     internal bool IsFocusParked => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is { } focused &&
         (ReferenceEquals(focused, this) || ReferenceEquals(focused, view));
     private void ParkFocusForQueryReplacement()
@@ -97,6 +97,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool Enter(IndexedCollectionFocusTarget? target = null, bool allowFallback = false)
     {
+        CancelContinuity();
         if (disposed || source is null || view is null || !CanReceiveInput) return false;
         if (source.Items.Count == 0 && source.Declaration.IndexedCollection?.Discovery is not
             { HasMore: true, Status: DiscoveredCollectionStatus.Ready or DiscoveredCollectionStatus.Loading }) return false;
@@ -112,6 +113,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool Reveal(IndexedCollectionFocusTarget target)
     {
+        CancelContinuity();
         // An explicit or restoring focus handoff wins over a passive scroll.
         if (disposed || source is null || view is null || !CanReceiveInput || pendingIndex is not null || !MatchesQuery(target)) return false;
         scrollOnly = true;
@@ -134,7 +136,7 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         if (entering) CancelNavigation();
     }
-    internal void CancelHostNavigation() => CancelNavigation();
+    internal void CancelHostNavigation() { CancelContinuity(); CancelNavigation(); }
 
     internal IEnumerable<Control> ScrollFocusCandidates() => containers
         .Where(pair => pair.Value.Slot.Value?.Lease.IsCurrent == true && !pair.Value.Slot.Failed)
@@ -155,6 +157,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
+        CancelContinuity();
         CancelReveal();
         CancelPendingActivation();
         if (view is null || source is null || !CanReceiveInput || view.Items.Count == 0) return false;
@@ -347,6 +350,7 @@ internal sealed partial class WidgetIndexedCollectionView
         if (entering && pendingIndex is not null && CanReceiveInput && args.Direction == FocusNavigationDirection.None &&
             args.InputDevice == FocusInputDeviceKind.Keyboard && args.OldFocusedElement is Control { IsEnabled: false } &&
             args.NewFocusedElement is FrameworkElement replacement && ReferenceEquals(replacement.XamlRoot, view?.XamlRoot)) return;
+        CancelContinuity();
         CancelNavigation();
     }
     partial void TraceFocusDeparture(LosingFocusEventArgs args);

@@ -39,6 +39,7 @@ public sealed record IndexedCollectionRange(
 public static class IndexedCollectionLimits
 {
     public const int MaximumGroups = 256;
+    public const int MaximumContinuityItems = 512;
     public const int MaximumRangeItems = 64;
     public const int MaximumRangeNodes = ProtocolConstants.MaximumNodeCount;
 }
@@ -49,6 +50,35 @@ public static class IndexedCollectionLimits
 /// </summary>
 public static class IndexedCollectionContract
 {
+    /// <summary>Optional complete occurrence order for bounded local collections. It grants no action authority.</summary>
+    public static void ValidateOccurrenceKeys(IReadOnlyList<string> keys, IndexedCollectionDescriptor source)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ValidateDescriptor(source);
+        if (source.Discovery is not null || keys.Count != source.Count || keys.Count > IndexedCollectionLimits.MaximumContinuityItems)
+            throw new ArgumentException("Continuity requires a complete bounded occurrence order.", nameof(keys));
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var key in keys)
+        {
+            RequireId(key);
+            if (!seen.Add(key)) throw new ArgumentException("Continuity keys must identify unique occurrences.", nameof(keys));
+        }
+    }
+
+    /// <summary>Find the same surviving occurrence, falling back to the next old neighbour then the preceding one.</summary>
+    public static int RebaseOccurrence(IReadOnlyList<string> previous, IReadOnlyList<string> next, string key)
+    {
+        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < next.Count; ++i) positions.Add(next[i], i);
+        if (positions.TryGetValue(key, out var exact)) return exact;
+        var old = -1;
+        for (var i = 0; i < previous.Count; ++i) if (previous[i] == key) { old = i; break; }
+        if (old < 0) return -1;
+        for (var i = old + 1; i < previous.Count; ++i) if (positions.TryGetValue(previous[i], out var after)) return after;
+        for (var i = old - 1; i >= 0; --i) if (positions.TryGetValue(previous[i], out var before)) return before;
+        return -1;
+    }
+
     /// <summary>Groups partition one vertical flat source; they do not create scopes or data sources.</summary>
     public static void ValidateGroups(IReadOnlyList<IndexedCollectionGroup> groups,
         IndexedCollectionDescriptor source, ScrollAxis axis)
@@ -151,10 +181,14 @@ public static class IndexedCollectionContract
             throw new ArgumentException("Indexed response authority does not match its request.", nameof(range));
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var nodes = 0;
+        var itemIndex = request.StartIndex;
         foreach (var item in range.Items)
         {
             ArgumentNullException.ThrowIfNull(item);
             RequireId(item.Key);
+            if (binding.Node.IndexedOccurrenceKeys is { } order && order[itemIndex] != item.Key)
+                throw new ArgumentException("Indexed range does not match declared occurrence order.", nameof(range));
+            ++itemIndex;
             if (!keys.Add(item.Key) || item.Root is null || item.Root.CollectionItemKey != item.Key
                 || item.Root.Kind is not (ViewNodeKind.Button or ViewNodeKind.ActionSurface))
                 throw new ArgumentException("Indexed items require unique keys and keyed button/action-surface roots.", nameof(range));

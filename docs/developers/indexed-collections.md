@@ -50,6 +50,35 @@ Their query objects freeze filtering/order before exposing the count.
   placeholders during startup, render them disabled and replace them with a live
   query before enabling actions. Playnite's indexed Home test covers this handoff.
 
+## Preserving local membership changes
+
+For a complete local collection of up to 512 items, optionally provide
+`OccurrenceKeys` on `WidgetIndexedCollectionOptions`. Return the immutable
+query's complete ordered occurrence keys (including distinct keys for duplicate
+songs/items). Return `null` for queries that do not opt in. This metadata does
+not fetch or render all rows.
+
+```csharp
+OccurrenceKeys = query => query.IsLocalQueue
+    ? query.Items.Select(item => new WidgetCollectionItemKey(item.OccurrenceId)).ToArray()
+    : null,
+```
+
+Continue calling `PublishQuery` for insertion, removal or reordering. The host
+rebases focused and visible occurrences onto the new order and preserves their
+position in the viewport. If the focused occurrence was removed, it prefers the
+next surviving occurrence in the old order, then the preceding one. An update
+never moves focus into a collection from another control. User navigation or
+scrolling cancels pending restoration; loading responses cannot take it back.
+
+The SDK copies and validates the metadata, rejects duplicates or incomplete
+orders, and checks demanded rows against it. `UpdateContent` must leave that
+order and participation unchanged. Old rendered content may remain visible
+while new ranges arrive, but every input still requires the new query's live
+lease; keys are continuity hints, never permission to reuse retired actions.
+This opt-in requires protocol 91. Large/remote collections retain normal lazy
+query replacement and need no complete key inventory.
+
 ## Forward-discovered providers
 
 Use `CreateDiscoveredCollection(sourceId, initialQuery, options)` when the provider

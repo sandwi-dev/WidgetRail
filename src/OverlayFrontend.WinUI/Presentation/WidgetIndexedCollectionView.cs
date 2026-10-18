@@ -29,7 +29,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal async Task SetPresentationActiveAsync(bool active)
     {
         presentationActive = active;
-        if (!active) { CancelNavigation(); CancelPendingActivation(); }
+        if (!active) { CancelContinuity(); CancelNavigation(); CancelPendingActivation(); }
         if (view is not null)
         {
             view.IsHitTestVisible = active && inputActive;
@@ -81,7 +81,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         LosingFocus += OnLosingFocus;
         Unloaded += (_, _) => { if (!IsLoaded) CancelPendingActivation(); };
         GotFocus += (_, _) => PresentationChanged?.Invoke();
-        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelNavigation()), true);
+        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { CancelContinuity(); CancelNavigation(); }), true);
+        AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, _) => CancelContinuity()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
             // The presenter already handled directional keys during tunneling;
@@ -90,7 +91,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.Left or
                 Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Home or
                 Windows.System.VirtualKey.End or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown)
-                CancelNavigation();
+                { CancelContinuity(); CancelNavigation(); }
         }), true);
     }
 
@@ -103,6 +104,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         var layout = declaration.CollectionLayout ?? throw new InvalidDataException("Indexed collection layout is missing.");
         var replaceView = view is null || layoutKind != layout.Kind || axis != declaration.ScrollAxis;
         var replaceSource = source is null || !source.CanUpdate(binding, declaration);
+        var continuity = replaceSource && !replaceView ? CaptureContinuity(binding, declaration) : null;
+        if (replaceSource || replaceView) CancelContinuity();
         // Protect current row focus before either native view or source retires.
         // Default entry and same-request query refresh need this just as much as
         // exact-item requests; WinUI otherwise focuses the empty ListView itself.
@@ -148,8 +151,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             CancelNavigation();
             DetachItems();
             DetachContainers();
+            var replacement = new WidgetIndexedRows(session, binding, declaration, DispatcherQueue) { Failed = failed };
+            if (continuity is not null && source is not null && declaration.IndexedOccurrenceKeys is { } keys)
+                replacement.Items.SeedPresentation(source.Items, keys);
             if (source is not null) RetireSource(source);
-            source = new(session, binding, declaration, DispatcherQueue) { Failed = failed };
+            source = replacement;
             if (!presentationActive) _ = source.SetPresentationActiveAsync(false);
             source.DiscoveryChanged += UpdateDiscoveryFooter;
             source.StylesChanged += IndexedStylesChanged;
@@ -186,6 +192,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         // Native controls may be rebuilt for presentation changes. Logical entry
         // belongs to the unchanged query, not that discarded control instance.
         if (ReferenceEquals(previousSource, source)) RestoreEntry(entry);
+        if (continuity is not null) BeginContinuity(continuity);
         ValidatePendingActivation();
         ContextChanged?.Invoke();
     }
@@ -264,6 +271,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     internal void SuspendForTransition()
     {
+        CancelContinuity();
         inputActive = false;
         CancelNavigation();
         CancelPendingActivation();
@@ -374,6 +382,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         LosingFocus -= OnLosingFocus;
         view?.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
         view?.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
+        CancelContinuity();
         CancelPendingActivation();
         CancelNavigation();
         RetireViewRows();

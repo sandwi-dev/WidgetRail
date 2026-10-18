@@ -295,7 +295,8 @@ internal static class WidgetPresentationDiff
         List<PresentationUpdateOperation> operations)
     {
         if (previous.Kind != current.Kind || previous.IndexedCollection != current.IndexedCollection ||
-            !SameJson(previous.IndexedGroups, current.IndexedGroups))
+            !SameJson(previous.IndexedGroups, current.IndexedGroups) ||
+            !SameJson(previous.IndexedOccurrenceKeys, current.IndexedOccurrenceKeys))
         {
             operations.Add(new()
             {

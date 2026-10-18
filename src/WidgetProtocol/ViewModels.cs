@@ -390,6 +390,8 @@ public sealed record ViewNode
     public IndexedCollectionDescriptor? IndexedCollection { get; init; }
     /// <summary>Display-only contiguous groups over the existing flat query; null means ungrouped.</summary>
     public IReadOnlyList<IndexedCollectionGroup>? IndexedGroups { get; init; }
+    /// <summary>Optional complete ordered occurrence keys, bounded to 512, for membership-change continuity.</summary>
+    public IReadOnlyList<string>? IndexedOccurrenceKeys { get; init; }
     /// <summary>Optional host-owned, coordinated section motion.</summary>
     public WidgetTransition? Transition { get; init; }
     public required string Id { get; init; }

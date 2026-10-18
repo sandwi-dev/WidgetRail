@@ -11,7 +11,7 @@ internal sealed record PresentationMemoryOwner(string WidgetId, string Instance,
 internal sealed record GroupFocusMemento(WidgetElementIdentity Group, WidgetElementIdentity Child);
 internal sealed record IndexedFocusMemento(WidgetElementIdentity Element, IndexedCollectionFocusTarget Target);
 internal sealed record IndexedViewportMemento(WidgetElementIdentity Element, string Source, long Query,
-    CollectionLayoutKind Layout, ScrollAxis Axis, int Index, string Key, double ClippedFraction);
+    CollectionLayoutKind Layout, ScrollAxis Axis, int Index, string Key, double ClippedFraction, double? LeadingPosition = null);
 internal sealed record ScrollViewportMemento(WidgetElementIdentity Element, WidgetElementIdentity Anchor,
     ScrollAxis Axis, double ClippedFraction);
 

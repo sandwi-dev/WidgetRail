@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$OutputDirectory, [ValidateSet("reveal", "continuity")][string]$Scenario = "reveal")
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -15,7 +15,7 @@ $owned = 0
 try {
     $launch = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') `
         -c Debug --no-build --arch x64 -p Platform=x64 --detach --json `
-        --args "--indexed-validation-pipe=$pipe --validation-platform-activation --indexed-reveal-validation=`"$resultPath`"" | ConvertFrom-Json
+        --args "--indexed-validation-pipe=$pipe --validation-platform-activation --indexed-$Scenario-validation=`"$resultPath`"" | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $launch.ProcessId -le 0) { throw 'Indexed reveal fixture failed to launch.' }
     $owned = [int]$launch.ProcessId
     $launch | ConvertTo-Json | Set-Content (Join-Path $output 'launch.json')

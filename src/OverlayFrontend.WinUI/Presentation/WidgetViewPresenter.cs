@@ -500,6 +500,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is WidgetIndexedCollectionView indexed)
         {
             if (!presentationActive) _ = indexed.SetPresentationActiveAsync(false);
+            if (node.IndexedCollection is { } nextQuery)
+            {
+                var rememberedItem = collectionMemory.LastOrDefault(pair => pair.Key.Identity == binding.Identity &&
+                    pair.Value.SourceId == nextQuery.SourceId).Value;
+                if (rememberedItem is not null && indexed.RebaseRememberedFocus(rememberedItem, node) is { } rebased)
+                    RememberCollectionFocus(binding.Identity, rebased);
+            }
             indexed.Apply(presentation!, node, binding.Identity.Scope);
         }
         if (element is WidgetArtworkView image) UpdateImage(binding, image, node);

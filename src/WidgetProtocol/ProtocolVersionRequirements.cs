@@ -188,6 +188,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.Kind == ViewNodeKind.IndexedCollection || node.IndexedCollection is not null)
                 Add("indexed-collection", ProtocolConstants.IndexedCollectionVersion, path,
                     "Indexed collection sources require protocol version 60 or later.");
+            if (node.IndexedOccurrenceKeys is not null)
+                Add("indexed-continuity", ProtocolConstants.IndexedContinuityVersion, path + ".indexedOccurrenceKeys",
+                    "Indexed occurrence continuity requires protocol version 91 or later.");
             if (node.IndexedGroups is not null)
                 Add("indexed-collection-groups", ProtocolConstants.IndexedCollectionGroupsVersion, path,
                     "Grouped indexed collections require protocol v62.");

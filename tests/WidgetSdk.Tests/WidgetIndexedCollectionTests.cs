@@ -41,6 +41,45 @@ internal static class WidgetIndexedCollectionTests
         await WidgetTestHost.DestroyAsync(widget);
     }
 
+    public static async Task OccurrenceContinuity()
+    {
+        var keys = new[] { new WidgetCollectionItemKey("key-0"), new WidgetCollectionItemKey("key-1"), new WidgetCollectionItemKey("key-2") };
+        var widget = new Fixture(Options() with { OccurrenceKeys = _ => keys }, 3);
+        var before = widget.RenderSnapshot("indexed-widget", 1);
+        var oldRequest = widget.Request(0, 1);
+        Equal(0, ViewSnapshotValidator.Validate(before).Count, "continuity declaration valid");
+        True(ViewSnapshotValidator.Validate(before with { ProtocolVersion = 90 }).Count > 0, "continuity requires explicit protocol support");
+        var node = before.Root.Children[1];
+        Equal("key-1", node.IndexedOccurrenceKeys![1], "exact ordered key metadata");
+        foreach (var badKeys in new IReadOnlyList<string>[] { [], ["same", "same", "other"], ["key-0", "unsafe key", "key-2"] })
+            True(ViewSnapshotValidator.Validate(before with { Root = before.Root with { Children = [before.Root.Children[0], node with { IndexedOccurrenceKeys = badKeys }] } }).Count > 0,
+                "host rejects incomplete duplicate and unsafe occurrence maps");
+        var roundtrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(before));
+        Equal("key-1", roundtrip.Root.Children[1].IndexedOccurrenceKeys![1], "continuity wire roundtrip");
+        await widget.ReadIndexedRangeAsync(oldRequest, default);
+        keys[1] = new("other");
+        Equal("key-1", node.IndexedOccurrenceKeys[1], "provider key array is copied");
+        Throws<InvalidOperationException>(() => widget.Source.UpdateContent("changed"));
+        widget.Source.PublishQuery("changed", 3);
+        var after = widget.RenderSnapshot("indexed-widget", 2);
+        True(after.Root.Children[1].IndexedCollection!.QueryGeneration > node.IndexedCollection!.QueryGeneration, "membership never reuses query generation");
+        await ThrowsAsync<ArgumentException>(async () => await widget.ReadIndexedRangeAsync(oldRequest, default));
+        await ThrowsAsync<InvalidOperationException>(async () => await widget.ReadIndexedRangeAsync(widget.Request(1, 1), default));
+        var publication = WidgetPresentationDiff.Create(before, after, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", before.Sequence,
+            PresentationUpdateCapabilities.Current, WidgetPresentationTransactionKind.IncrementalUpdate);
+        True(publication.Update?.Operations.Count > 0, "continuity/order changes are transported");
+        Throws<ArgumentException>(() => new Fixture(Options() with { OccurrenceKeys = _ => [new("same"), new("same")] }, 2));
+        Throws<ArgumentException>(() => new Fixture(Options() with { OccurrenceKeys = _ => [] }, 1));
+        Throws<ArgumentException>(() => new Fixture(Options() with { OccurrenceKeys = _ => Enumerable.Range(0, 513).Select(i => new WidgetCollectionItemKey("key-" + i)).ToArray() }, 513));
+        Equal(2, IndexedCollectionContract.RebaseOccurrence(["a", "b", "c"], ["x", "a", "b", "c"], "b"), "insert preserves exact occurrence");
+        Equal(0, IndexedCollectionContract.RebaseOccurrence(["a", "b", "c"], ["c", "a"], "b"), "removal follows old next surviving occurrence");
+        Equal(0, IndexedCollectionContract.RebaseOccurrence(["a", "b"], ["a"], "b"), "tail removal uses preceding occurrence");
+        Equal(0, IndexedCollectionContract.RebaseOccurrence(["a", "b", "c"], ["b", "c", "a"], "b"), "shuffle follows identity");
+        Equal(-1, IndexedCollectionContract.RebaseOccurrence(["a"], ["b"], "a"), "unrelated replacement has no inherited target");
+        Equal(-1, IndexedCollectionContract.RebaseOccurrence(["a"], [], "a"), "empty collection has no target");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
     public static async Task LogicalFocus()
     {
         var widget = new Fixture(Options(), 100_000);

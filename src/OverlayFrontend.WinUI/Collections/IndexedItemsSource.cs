@@ -133,6 +133,17 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         ContentRevision = contentRevision;
     }
 
+    /// <summary>Copies only already-resident pixels by exact occurrence into a new query.
+    /// This transfers no leases, retained indices, outstanding requests or input authority.</summary>
+    internal void SeedPresentation(IndexedItemsSource<T> previous, IReadOnlyList<string> keys)
+    {
+        CheckAccess();
+        var positions = keys.Select((key, index) => (key, index)).ToDictionary(pair => pair.key, pair => pair.index, StringComparer.Ordinal);
+        foreach (var old in previous.slots.Values)
+            if (old.Key is { } key && old.Value is { } value && positions.TryGetValue(key, out var index))
+                GetSlot(index).SetValue(key, value);
+    }
+
     /// <summary>Refresh payloads without replacing logical slots, focus or scroll position.</summary>
     public void RefreshContent(long revision)
     {

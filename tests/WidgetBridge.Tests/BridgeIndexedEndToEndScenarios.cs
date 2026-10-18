@@ -213,11 +213,13 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         {
             ReadRange = async (query, start, count, token) =>
             {
+                if (query == 605 && Volatile.Read(ref activationReadGate) is { } continuityGate) await continuityGate.Task.WaitAsync(token);
                 if (query == 500) throw new InvalidOperationException("Native theme fixture provider failure.");
                 if ((query is >= 300 and <= 303 or 97) && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task.WaitAsync(token);
                 await Task.Delay(query == 99 ? 500 : 80, token);
-                return Enumerable.Range(start, count).ToArray();
+                return query >= 600 ? ContinuityOrder(query).Skip(start).Take(count).ToArray() : Enumerable.Range(start, count).ToArray();
             },
+            OccurrenceKeys = query => query >= 600 ? ContinuityOrder(query).Select(item => new WidgetCollectionItemKey("item." + item)).ToArray() : null,
             ItemKey = item => new("item." + item),
             RenderItem = (query, item, context) =>
             {
@@ -232,7 +234,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                 if (query == 303) tile = ((ActionSurfaceElement)tile).Disabled();
                 if (query is 304 or 305) tile = ((ActionSurfaceElement)tile).Selected();
                 if (query == 305) tile = ((ActionSurfaceElement)tile).Busy();
-                return query >= 100 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
+                return query is >= 100 and < 600 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
             },
             OnAction = (query, item, action, _) =>
             {
@@ -267,6 +269,15 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             },
         });
     }
+    private static int[] ContinuityOrder(int query) => query switch
+    {
+        601 => new[] { 999 }.Concat(Enumerable.Range(0, 100)).ToArray(),
+        602 => Enumerable.Range(0, 100).Where(item => item != 40).ToArray(),
+        603 => Enumerable.Range(0, 100).Reverse().ToArray(),
+        604 => [],
+        606 => Enumerable.Range(0, 100).Where(item => item != 75).ToArray(),
+        _ => Enumerable.Range(0, 100).ToArray(),
+    };
     private WidgetView RenderParent() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
         UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
         UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces")),
@@ -367,6 +378,19 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             source.PublishQuery(3, 100);
         }
         if (action.ActionId == "focus-clear") entry = null;
+        if (action.ActionId.StartsWith("continuity-", StringComparison.Ordinal))
+        {
+            entry = null; reveal = null; grid = grouped = surfaces = modalMode = false; modalItem = null;
+            activationReadGate?.TrySetResult();
+            var query = action.ActionId switch
+            {
+                "continuity-insert" => 601, "continuity-remove-before" => 602,
+                "continuity-shuffle" => 603, "continuity-empty" => 604,
+                "continuity-delayed" => 605, "continuity-remove-focused" => 606, _ => 600,
+            };
+            activationReadGate = query == 605 ? new(TaskCreationOptions.RunContinuationsAsynchronously) : null;
+            source.PublishQuery(query, ContinuityOrder(query).Length);
+        }
         if (action.ActionId is "reveal-exact" or "reveal-wrong" or "reveal-delayed")
         {
             entry = null; grid = grouped = surfaces = modalMode = false; modalItem = null;

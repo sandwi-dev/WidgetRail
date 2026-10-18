@@ -13,6 +13,10 @@ public sealed record WidgetIndexedCollectionOptions<TQuery, TItem> where TQuery 
     public required Func<TQuery, TItem, WidgetActionEvent, CancellationToken, ValueTask> OnAction { get; init; }
     /// <summary>Resolves opaque artwork declared by this row; HTTPS images remain host-owned.</summary>
     public Func<TQuery, TItem, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork { get; init; }
+    /// <summary>Opt-in complete ordered unique occurrence keys for local queries of at most 512 items.
+    /// Preserve occurrence keys across insertions/removals/reordering. Membership changes still require PublishQuery.
+    /// Return null for queries that do not opt in. The host retains surviving focus and viewport; this never authorizes stale row actions.</summary>
+    public Func<TQuery, IReadOnlyList<WidgetCollectionItemKey>?>? OccurrenceKeys { get; init; }
     public TimeSpan ReadTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }
 
@@ -46,8 +50,9 @@ internal interface IWidgetIndexedCollection
 /// </summary>
 public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedCollection where TQuery : notnull where TItem : notnull
 {
-    private sealed class Query(TQuery value, IndexedCollectionDescriptor descriptor, CancellationTokenSource lifetime)
+    private sealed class Query(TQuery value, IndexedCollectionDescriptor descriptor, CancellationTokenSource lifetime, IReadOnlyList<string>? keys = null)
     {
+        internal IReadOnlyList<string>? Keys { get; } = keys;
         internal TQuery Value { get; } = value;
         internal IndexedCollectionDescriptor Descriptor { get; set; } = descriptor;
         internal CancellationTokenSource Lifetime { get; } = lifetime;
@@ -73,8 +78,23 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         if (options.ReadTimeout < TimeSpan.FromMilliseconds(100) || options.ReadTimeout > TimeSpan.FromSeconds(30))
             throw new ArgumentOutOfRangeException(nameof(options.ReadTimeout));
         this.options = options; this.changed = changed; this.widgetLifetime = widgetLifetime;
-        current = new(query, new(sourceId, 1, 0, count), new());
+        current = new(query, new(sourceId, 1, 0, count), new(), CaptureKeys(query, count));
     }
+
+    private IReadOnlyList<string>? CaptureKeys(TQuery query, int count)
+    {
+        if (options.OccurrenceKeys is not { } getKeys) return null;
+        var keys = getKeys(query);
+        if (keys is null) return null; // This query does not opt into continuity.
+        if (keys.Count != count || count > IndexedCollectionLimits.MaximumContinuityItems)
+            throw new ArgumentException("Continuity requires all occurrence keys within its 512-item bound.");
+        var frozen = Array.AsReadOnly(keys.Select(key => key.Value).ToArray());
+        IndexedCollectionContract.ValidateOccurrenceKeys(frozen, new("validation", 0, 0, count));
+        return frozen;
+    }
+
+    internal (IndexedCollectionDescriptor Source, IReadOnlyList<string>? Keys) CaptureDeclaration()
+    { lock (gate) return (current.Descriptor, current.Keys); }
 
     public IndexedCollectionDescriptor Descriptor { get { lock (gate) return current.Descriptor; } }
 
@@ -112,12 +132,13 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
+        var keys = CaptureKeys(query, count);
         Query previous;
         lock (gate)
         {
             widgetLifetime.ThrowIfCancellationRequested();
             previous = current;
-            current = new(query, current.Descriptor with { QueryGeneration = checked(current.Descriptor.QueryGeneration + 1), ContentRevision = 0, Count = count, Discovery = discovery }, new());
+            current = new(query, current.Descriptor with { QueryGeneration = checked(current.Descriptor.QueryGeneration + 1), ContentRevision = 0, Count = count, Discovery = discovery }, new(), keys);
         }
         try { Retire(previous); }
         finally { changed(); }
@@ -148,7 +169,10 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         {
             widgetLifetime.ThrowIfCancellationRequested();
             previous = current;
-            current = new(query, current.Descriptor with { ContentRevision = checked(current.Descriptor.ContentRevision + 1) }, new());
+            var keys = CaptureKeys(query, current.Descriptor.Count);
+            if ((current.Keys is null) != (keys is null) || current.Keys is { } previousKeys && !previousKeys.SequenceEqual(keys!))
+                throw new InvalidOperationException("UpdateContent cannot change occurrence keys or order; use PublishQuery.");
+            current = new(query, current.Descriptor with { ContentRevision = checked(current.Descriptor.ContentRevision + 1) }, new(), keys);
         }
         try { Retire(previous); }
         finally { changed(); }
@@ -211,6 +235,8 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
             ArgumentNullException.ThrowIfNull(item);
             var key = options.ItemKey(item);
             StableIdentifier.Validate(key.Value, nameof(options.ItemKey));
+            if (captured.Keys is { } order && order[request.StartIndex + index] != key.Value)
+                throw new InvalidOperationException("Indexed reader returned an occurrence different from its declared order.");
             if (!keys.Add(key.Value)) throw new InvalidOperationException("Indexed ranges require unique occurrence keys.");
             var context = new WidgetIndexedItemContext(captured.Descriptor.SourceId, request.CollectionId, request.StartIndex + index, key);
             var element = options.RenderItem(captured.Value, item, context)
@@ -238,7 +264,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
 public sealed record IndexedCollectionElement : ContainerElement
 {
     internal IndexedCollectionElement(string id, IndexedCollectionDescriptor source, CollectionLayout layout,
-        ScrollAxis axis, string accessibilityLabel) : base(id, [])
+        ScrollAxis axis, string accessibilityLabel, IReadOnlyList<string>? occurrenceKeys = null) : base(id, [])
     {
         IndexedCollectionContract.ValidateDescriptor(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(accessibilityLabel);
@@ -253,9 +279,12 @@ public sealed record IndexedCollectionElement : ContainerElement
              width < ProtocolConstants.MinimumGridColumnWidth || width > ProtocolConstants.MaximumGridColumnWidth ||
              layout.MaximumColumns is < 1 or > ProtocolConstants.MaximumGridColumns))
             throw new ArgumentOutOfRangeException(nameof(layout));
+        if (occurrenceKeys is not null) IndexedCollectionContract.ValidateOccurrenceKeys(occurrenceKeys, source);
+        OccurrenceKeys = occurrenceKeys;
         Source = source; Layout = layout; Axis = axis; AccessibilityLabel = accessibilityLabel;
     }
     public IndexedCollectionDescriptor Source { get; }
+    internal IReadOnlyList<string>? OccurrenceKeys { get; }
     public CollectionLayout Layout { get; }
     public ScrollAxis Axis { get; }
     public string AccessibilityLabel { get; }
@@ -277,7 +306,7 @@ public sealed record IndexedCollectionElement : ContainerElement
     }
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.IndexedCollection) with
     {
-        IndexedCollection = Source, IndexedGroups = Groups, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
+        IndexedCollection = Source, IndexedGroups = Groups, IndexedOccurrenceKeys = OccurrenceKeys, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
     };
 }
 
@@ -285,12 +314,19 @@ public static partial class UI
 {
     public static IndexedCollectionElement CollectionList<TQuery, TItem>(string id, WidgetIndexedCollection<TQuery, TItem> source,
         double estimatedItemExtent, string accessibilityLabel, ScrollAxis axis = ScrollAxis.Vertical) where TQuery : notnull where TItem : notnull =>
-        new(id, (source ?? throw new ArgumentNullException(nameof(source))).Descriptor, new() { Kind = CollectionLayoutKind.List, EstimatedItemExtent = estimatedItemExtent }, axis, accessibilityLabel);
+        CreateCollection(id, source, new() { Kind = CollectionLayoutKind.List, EstimatedItemExtent = estimatedItemExtent }, axis, accessibilityLabel);
 
     public static IndexedCollectionElement CollectionGrid<TQuery, TItem>(string id, WidgetIndexedCollection<TQuery, TItem> source,
         double minimumColumnWidth, double estimatedItemExtent, string accessibilityLabel, int? maximumColumns = null) where TQuery : notnull where TItem : notnull =>
-        new(id, (source ?? throw new ArgumentNullException(nameof(source))).Descriptor, new() { Kind = CollectionLayoutKind.AdaptiveGrid, EstimatedItemExtent = estimatedItemExtent,
+        CreateCollection(id, source, new() { Kind = CollectionLayoutKind.AdaptiveGrid, EstimatedItemExtent = estimatedItemExtent,
             MinimumColumnWidth = minimumColumnWidth, MaximumColumns = maximumColumns }, ScrollAxis.Vertical, accessibilityLabel);
+
+    private static IndexedCollectionElement CreateCollection<TQuery, TItem>(string id, WidgetIndexedCollection<TQuery, TItem> source,
+        CollectionLayout layout, ScrollAxis axis, string accessibilityLabel) where TQuery : notnull where TItem : notnull
+    {
+        var captured = (source ?? throw new ArgumentNullException(nameof(source))).CaptureDeclaration();
+        return new(id, captured.Source, layout, axis, accessibilityLabel, captured.Keys);
+    }
 }
 
 public abstract partial class Widget

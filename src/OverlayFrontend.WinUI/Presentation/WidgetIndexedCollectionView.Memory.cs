@@ -35,7 +35,7 @@ internal sealed partial class WidgetIndexedCollectionView
             view is null ? null : FindNativeScroll(view), changed);
         retention.Subscribe(); return retention;
     }
-    internal IndexedViewportMemento? CaptureViewport(WidgetElementIdentity identity)
+    internal IndexedViewportMemento? CaptureViewport(WidgetElementIdentity identity, bool preferFocused = false)
     {
         if (source is null || view is null || !view.IsLoaded || FindNativeScroll(view) is not { } scroll) return null;
         var horizontal = axis == ScrollAxis.Horizontal;
@@ -48,26 +48,27 @@ internal sealed partial class WidgetIndexedCollectionView
                 (horizontal ? pair.Bounds.X : pair.Bounds.Y) < extent)
             .OrderBy(pair => horizontal ? pair.Bounds.X : pair.Bounds.Y).ThenBy(pair => pair.Slot.Index).ToArray();
         if (candidates.Length == 0) return null;
-        var first = candidates[0];
+        var first = preferFocused && FocusedIndex() is { } focus && candidates.Any(pair => pair.Slot.Index == focus)
+            ? candidates.First(pair => pair.Slot.Index == focus) : candidates[0];
         var size = horizontal ? first.Bounds.Width : first.Bounds.Height;
         var position = horizontal ? first.Bounds.X : first.Bounds.Y;
         var query = source.Declaration.IndexedCollection!;
         return new(identity, query.SourceId, query.QueryGeneration, layoutKind!.Value, axis!.Value,
-            first.Slot.Index, first.Slot.Key!, size > 0 ? Math.Clamp(-position / size, -1, 1) : 0);
+            first.Slot.Index, first.Slot.Key!, size > 0 ? Math.Clamp(-position / size, -1, 1) : 0, preferFocused ? position : null);
     }
 
     // true means completed or no longer applicable; false waits for native readiness.
-    internal bool RestoreViewport(IndexedViewportMemento memory, ref bool requested, ref double? pendingOffset)
+    internal bool RestoreViewport(IndexedViewportMemento memory, ref bool requested, ref double? pendingOffset, bool allowRetainedPixels = false)
     {
         if (source is null || view is null || source.Declaration.IndexedCollection is not { } query ||
             query.SourceId != memory.Source || query.QueryGeneration != memory.Query ||
             layoutKind != memory.Layout || axis != memory.Axis || memory.Index < 0 || memory.Index >= query.Count) return true;
-        if (!presentationActive || !view.IsLoaded || IsEntryPending || FindNativeScroll(view) is not { } scroll ||
+        if (!presentationActive || !view.IsLoaded || entering || FindNativeScroll(view) is not { } scroll ||
             scroll.ViewportWidth <= 0 || scroll.ViewportHeight <= 0) return false;
         if (measurementRetention is { Slot.Failed: false } measure && measure.Slot.Value?.Lease.IsCurrent != true) return false;
         var slot = (IndexedItem<WidgetIndexedRow>)source.Items[memory.Index];
         if (slot.Failed) return true;
-        if (slot.Value is not { Lease.IsCurrent: true }) return false;
+        if (slot.Value is null || !allowRetainedPixels && !slot.Value.Lease.IsCurrent) return false;
         if (slot.Key != memory.Key) return true;
         if (view.ContainerFromIndex(memory.Index) is not FrameworkElement { IsLoaded: true } container)
         {
@@ -78,7 +79,7 @@ internal sealed partial class WidgetIndexedCollectionView
         var horizontal = axis == ScrollAxis.Horizontal;
         var size = horizontal ? bounds.Width : bounds.Height;
         var position = horizontal ? bounds.X : bounds.Y;
-        var delta = position + Math.Clamp(memory.ClippedFraction, -1, 1) * size;
+        var delta = memory.LeadingPosition is { } leading ? position - leading : position + Math.Clamp(memory.ClippedFraction, -1, 1) * size;
         var current = horizontal ? scroll.HorizontalOffset : scroll.VerticalOffset;
         var desired = Math.Clamp(current + delta, 0, horizontal ? scroll.ScrollableWidth : scroll.ScrollableHeight);
         if (Math.Abs(desired - current) <= 1 / (view.XamlRoot?.RasterizationScale ?? 1)) return true;
