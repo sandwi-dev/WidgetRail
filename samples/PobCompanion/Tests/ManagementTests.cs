@@ -32,9 +32,18 @@ internal static class ManagementTests
             check(!Has("pob.main-group")&&!Has("pob.main-skill.explanation")&&!Has("pob.full-dps.explanation")&&Has("pob.inspector.title"),"Life inspector excludes unrelated skill and Full DPS context");
             await Action("stat.CombinedDPS");check(Has("pob.main-group"),"Main-skill DPS retains the skill selector and relevant context");
             await Action("stat.FullDPS");check(!Has("pob.main-group")&&!Has("pob.main-skill.explanation"),"Full DPS has group context rather than the selected skill's description");
-            await Action("section.1");var treeWidth=widget!.Render().Surface!.PreferredWidth;
+            await Action("section.1");var treeSurface=widget!.Render().Surface!;var treeWidth=treeSurface.PreferredWidth;
+            var stableWorkspace=true;
+            foreach(var section in new[]{0,2,3,4,5,1})
+            {
+                await Action("section."+section);
+                stableWorkspace&=widget.Render().Surface==treeSurface;
+            }
+            check(stableWorkspace&&treeSurface.HeightMode==WidgetSurfaceAxisMode.FillAvailable&&treeSurface.WidthMode==WidgetSurfaceAxisMode.Preferred,
+                "Every planning section uses the same bounded width and available-height policy");
             await Action("menu");
             check(widget.Render().Surface!.PreferredWidth<treeWidth&&!Has("pob.navigation")&&Has("pob.field.label.name")&&Has("pob.field.label.level"),"Build menu has its own compact size and persistent field labels");
+            check(widget.Render().Surface!.HeightMode==WidgetSurfaceAxisMode.Preferred,"Management does not inherit the planning workspace height");
             check(Has("pob.manage.character")&&Has("pob.manage.import")&&Has("pob.manage.export")&&Has("pob.new"),"Build menu groups character, import, export and new-build actions");
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import").TextEntryMaximumLength==2048&&Has("pob.import.example.link")&&Has("pob.import.example.file"),"Import field supports long paths and provides nearby link and file examples");
             var linkHelp=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.import.example.link").Text!;

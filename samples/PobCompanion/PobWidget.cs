@@ -209,7 +209,17 @@ public sealed partial class PobWidget : Widget
                 if(!busy&&CanReplaceTradeComparison)root=root.Shortcut(ControllerButton.B,"website-resume","Listings");
             }
             var view=new WidgetView(websiteVisible?root.InputScope(scope):WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
-                Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = ManagementView?(detailKind=="library"?1040:840):section == "Tree" ? 1320 : 1180, PreferredHeight = ManagementView?(detailKind=="library"&&savedBuilds.Length<=5?680:800):section == "Tree" ? 900 : 820, MinimumWidth = ManagementView?680:820, MinimumHeight = 600 })
+                Surface: new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Standard,
+                    // Keep planning sections stable, including the tree and trade modals.
+                    // Preferred width bounds ultrawide layouts; the host still clamps to the display.
+                    PreferredWidth = ManagementView ? (detailKind == "library" ? 1040 : 840) : 1320,
+                    PreferredHeight = ManagementView ? (detailKind == "library" && savedBuilds.Length <= 5 ? 680 : 800) : 900,
+                    HeightMode = ManagementView ? WidgetSurfaceAxisMode.Preferred : WidgetSurfaceAxisMode.FillAvailable,
+                    MinimumWidth = ManagementView ? 680 : 820,
+                    MinimumHeight = 600
+                })
             {
                 FocusGroupEntryRequest = ContentFocusRequest(),
             };
