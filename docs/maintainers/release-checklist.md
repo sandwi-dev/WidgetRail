@@ -24,6 +24,12 @@ their previous revisions remain available through Git.
 
 ## Build the editions
 
+Build Bare (Settings and Catalogue) and Production (the generally useful starting
+selection declared in `eng/release-content.json`). Both include identical host
+capabilities, shared runtimes and CLI. Developer edition is no longer shipped;
+source samples remain usable with the SDK. Bundle choice must not limit later
+widget installation.
+
 From a clean committed checkout with the [development tools](building.md):
 
 ```powershell
@@ -60,7 +66,7 @@ cleanup boundaries before describing uninstall as removing every possible sign-i
 
 ## Publish deliberately
 
-Discord, Game Help, Display Profiles, Twitch and MapGenie are marketplace-only; neither edition may include their runtime folders or catalog entries. Build their release assets separately:
+Publish every optional widget as a Catalogue package, including widgets preinstalled by Production. Discord, Game Help, Display Profiles, Twitch and MapGenie remain separate downloads. Build their release assets separately:
 
 ```powershell
 ./samples/DiscordWidget/Build-CommunityPackage.ps1
@@ -70,7 +76,20 @@ Discord, Game Help, Display Profiles, Twitch and MapGenie are marketplace-only; 
 ./samples/MapGenieWidget/Build-CommunityPackage.ps1
 ```
 
-Publish the resulting immutable `.wrwidget` archives alongside the release. GitHub's asset digests are supported; when publishing a checksum manifest, combine the generated `SHA256SUMS.txt` entries into one release-wide file with each asset listed once. A shared `-OutputDirectory` accumulates that file automatically. Individual `.sha256` sidecars are also generated for manual verification. The curated marketplace selects compatible published assets; a catalog entry alone is not a downloadable package. Review installation/enablement and permission requests with a fresh widget catalog before release.
+The common builder also packages the first-party optional widgets and Browser:
+
+```powershell
+foreach ($widget in @('AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions',
+    'GamesApps','TaskSwitcher','NetworkControls','Power','RecentApps','Browser')) {
+    ./scripts/Build-MarketplacePackage.ps1 -Widget $widget -OutputDirectory ./artifacts/catalogue-addons/release
+}
+```
+
+PoB, Spotify, YouTube Music and Playnite retain their package builders because their
+payloads have additional requirements. Check Catalogue inventory against actual
+published assets; do not publish a new listing without its validated package.
+
+Publish the resulting immutable `.wrwidget` archives alongside the release. GitHub's asset digests are supported; when publishing a checksum manifest, combine the generated `SHA256SUMS.txt` entries into one release-wide file with each asset listed once. A shared `-OutputDirectory` accumulates that file automatically. Individual `.sha256` sidecars are also generated for manual verification. The Catalogue selects compatible published assets; a catalog entry alone is not a downloadable package. Review installation/enablement and permission requests with a fresh widget catalog before release.
 
 Choose the executable-signing and distribution policy. Application signing is
 optional for this installer path. Test the download/install experience

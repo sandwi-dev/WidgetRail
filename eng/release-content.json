@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "architecture": "x64",
   "rootFiles": [
     "OverlayFrontend.WinUI.exe",
@@ -29,35 +29,6 @@
     "network-controls",
     "power",
     "browser"
-  ],
-  "developerWidgets": [
-    {
-      "id": "browser",
-      "project": "samples/BrowserWidget",
-      "assembly": "BrowserWidget",
-      "runtime": "Browser"
-    },
-    {
-      "id": "sdk-gallery",
-      "project": "samples/SdkGalleryWidget",
-      "assembly": "SdkGalleryWidget",
-      "runtime": "SdkGallery"
-    },
-    {
-      "id": "clock-sample",
-      "project": "samples/ClockWidget",
-      "assembly": "ClockWidget",
-      "runtime": "Clock"
-    },
-    {
-      "id": "full-application-reference",
-      "project": "samples/FullApplicationWidget",
-      "assembly": "FullApplicationWidget",
-      "runtime": "FullApplication"
-    }
-  ],
-  "developerExistingWidgets": [
-    "embedded-media-sample"
   ],
   "runtimeRequirements": [
     {
@@ -96,5 +67,16 @@
     "dotnet",
     "prerequisites"
   ],
-  "frontendDirectory": "frontend"
+  "frontendDirectory": "frontend",
+  "bareWidgets": [
+    "marketplace"
+  ],
+  "supplementalWidgets": [
+    {
+      "id": "browser",
+      "project": "samples/BrowserWidget",
+      "assembly": "BrowserWidget",
+      "runtime": "Browser"
+    }
+  ]
 }

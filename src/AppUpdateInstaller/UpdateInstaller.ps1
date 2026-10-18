@@ -14,7 +14,7 @@ function Assert-UpdatePlainPath([string]$Path) {
 
 function Open-UpdateInstaller([string]$Root, [object]$Plan) {
     Assert-UpdatePlainPath $Root
-    if ($Plan.schema -ne 1 -or $Plan.edition -notin @('production','developer') -or
+    if ($Plan.schema -ne 1 -or $Plan.edition -notin @('production','bare') -or
         $Plan.updateSha256 -notmatch '^[a-fA-F0-9]{64}$' -or
         $Plan.previousVersion -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?$' -or
         $Plan.updateVersion -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?$') { throw 'Invalid update plan.' }

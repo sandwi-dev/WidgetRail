@@ -28,7 +28,7 @@ $manifests = @{}
 foreach ($root in $roots) {
     Test-ReleaseInventory $root.FullName
     $manifest = Get-Content -LiteralPath (Join-Path $root.FullName 'release.json') -Raw | ConvertFrom-Json
-    if ($manifest.edition -notin @('production', 'developer') -or $manifests.ContainsKey($manifest.edition) -or
+    if ($manifest.edition -notin @('production', 'bare') -or $manifests.ContainsKey($manifest.edition) -or
         $manifest.version -notmatch '^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?$' -or
         $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $manifest.packagingCommit -notmatch '^[0-9a-f]{40}$' -or $manifest.architecture -ne 'x64') {
@@ -37,9 +37,9 @@ foreach ($root in $roots) {
     $manifests[$manifest.edition] = @{ Root = $root.FullName; Manifest = $manifest }
 }
 $production = $manifests.production.Manifest
-$developer = $manifests.developer.Manifest
-if ($production.version -cne $developer.version -or $production.sourceCommit -cne $developer.sourceCommit -or
-    $production.packagingCommit -cne $developer.packagingCommit) {
+$bare = $manifests.bare.Manifest
+if ($production.version -cne $bare.version -or $production.sourceCommit -cne $bare.sourceCommit -or
+    $production.packagingCommit -cne $bare.packagingCommit) {
     throw 'Both editions must come from the same release source.'
 }
 $final = Assert-ReleasePath (Join-Path $OutputRoot $production.version) -Within $OutputRoot
@@ -54,7 +54,7 @@ function Quoted([string]$Value) {
     if ($Value.Contains('"') -or $Value.Contains("`r") -or $Value.Contains("`n")) { throw 'Unsupported installer value.' }
     return '"' + $Value + '"'
 }
-foreach ($edition in @('production', 'developer')) {
+foreach ($edition in @('production', 'bare')) {
     $entry = $manifests[$edition]
     $manifest = $entry.Manifest
     $editionWork = Join-Path $work $edition
@@ -62,7 +62,7 @@ foreach ($edition in @('production', 'developer')) {
     $payload = Join-Path $editionWork 'payload'
     Copy-ReleaseTree $entry.Root $payload $editionWork
     Test-ReleaseInventory $payload
-    $display = if ($edition -eq 'developer') { 'WidgetRail Developer' } else { 'WidgetRail' }
+    $display = if ($edition -eq 'bare') { 'WidgetRail Bare' } else { 'WidgetRail' }
     $name = $display.Replace(' ', '-') + '-' + $manifest.version + '-win-x64-setup'
     # Distinct inventories retain separate version directories during upgrades.
     $inventoryId = (Get-FileHash -LiteralPath (Join-Path $payload 'release.json') -Algorithm SHA256).Hash.Substring(0, 16).ToLowerInvariant()

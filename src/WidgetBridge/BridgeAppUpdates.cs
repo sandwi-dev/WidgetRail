@@ -56,7 +56,7 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\WidgetRail\Installation");
-            if (key?.GetValue("ApplicationRoot") is string root && key.GetValue("Edition") is string edition && edition is "production" or "developer")
+            if (key?.GetValue("ApplicationRoot") is string root && key.GetValue("Edition") is string edition && edition is "production" or "bare")
             {
                 var info = Path.Combine(root, "release.json");
                 if (File.Exists(info) && new FileInfo(info).Length <= 8 * 1024 * 1024)
@@ -209,7 +209,12 @@ internal sealed partial class BridgeAppUpdates : IAsyncDisposable
         return Convert.ToHexString(hash);
     }
 
-    internal static string InstallerName(string version, string edition) => $"WidgetRail{(edition == "developer" ? "-Developer" : "")}-{version}-win-x64-setup.exe";
+    internal static string InstallerName(string version, string edition) => edition switch
+    {
+        "production" => $"WidgetRail-{version}-win-x64-setup.exe",
+        "bare" => $"WidgetRail-Bare-{version}-win-x64-setup.exe",
+        _ => throw new InvalidOperationException("Unsupported installation bundle."),
+    };
     internal static int VersionCompare(string left, string right)
     {
         static (Version? Core, string[] Pre) Split(string value)

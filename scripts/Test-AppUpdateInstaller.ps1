@@ -6,15 +6,16 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('wrail-update-handoff-test-' + [gu
 New-Item -ItemType Directory -Path $root | Out-Null
 function Check($value, [string]$message) { if (!$value) { throw $message } }
 try {
+  foreach ($edition in @('production', 'bare')) {
     $installer = Join-Path $root 'update.exe'
     [IO.File]::WriteAllText($installer, 'Inert fixture, never executed')
-    $plan = [pscustomobject]@{ schema=1; edition='production'; previousVersion='0.1.0-preview.33'; updateVersion='0.1.0-preview.34'; previousRoot=(Join-Path $root 'old-app'); updateSha256=(Get-FileHash $installer).Hash }
-    $script:installed = [pscustomobject]@{ ApplicationRoot=$plan.previousRoot; Edition='production'; version=$plan.previousVersion }
+    $plan = [pscustomobject]@{ schema=1; edition=$edition; previousVersion='0.1.0-preview.33'; updateVersion='0.1.0-preview.34'; previousRoot=(Join-Path $root 'old-app'); updateSha256=(Get-FileHash $installer).Hash }
+    $script:installed = [pscustomobject]@{ ApplicationRoot=$plan.previousRoot; Edition=$edition; version=$plan.previousVersion }
     function Payload($path, $version) {
         New-Item -ItemType Directory -Path $path -Force | Out-Null
         $exe = Join-Path $path 'OverlayFrontend.WinUI.exe'
         [IO.File]::WriteAllText($exe, 'Inert application, never launched')
-        [IO.File]::WriteAllText((Join-Path $path 'release.json'), (@{ version=$version; edition='production'; files=@(@{path='OverlayFrontend.WinUI.exe';bytes=(Get-Item $exe).Length;sha256=(Get-FileHash $exe).Hash}) } | ConvertTo-Json -Depth 4))
+        [IO.File]::WriteAllText((Join-Path $path 'release.json'), (@{ version=$version; edition=$edition; files=@(@{path='OverlayFrontend.WinUI.exe';bytes=(Get-Item $exe).Length;sha256=(Get-FileHash $exe).Hash}) } | ConvertTo-Json -Depth 4))
     }
     Payload $plan.previousRoot $plan.previousVersion
     Payload (Join-Path $root 'new-app') $plan.updateVersion
@@ -25,7 +26,7 @@ try {
         $writeDenied = $false
         try { $stream = [IO.File]::Open($path, 'Open', 'Write', 'ReadWrite'); $stream.Dispose() } catch [IO.IOException] { $writeDenied = $true }
         Check $writeDenied 'Verified installer was not protected against modification'
-        $script:installed = [pscustomobject]@{ ApplicationRoot=(Join-Path $root 'new-app'); Edition='production'; version=$plan.updateVersion }
+        $script:installed = [pscustomobject]@{ ApplicationRoot=(Join-Path $root 'new-app'); Edition=$edition; version=$plan.updateVersion }
         $events.Add('installer'); return 0
     } { param($path) Check ($path -eq $script:installed.ApplicationRoot) 'Wrong app relaunched'; $events.Add('relaunch') }
     Check (($events -join ',') -eq 'ready,closed,installer,relaunch') 'Incorrect handoff order'
@@ -33,7 +34,7 @@ try {
     Write-Output 'PASS verification, readiness, graceful-exit ordering, locked installer, successful relaunch; no profile work'
 
     foreach ($code in @(2,3010,5)) {
-        $script:installed = [pscustomobject]@{ ApplicationRoot=$plan.previousRoot; Edition='production'; version=$plan.previousVersion }
+        $script:installed = [pscustomobject]@{ ApplicationRoot=$plan.previousRoot; Edition=$edition; version=$plan.previousVersion }
         $events.Clear()
         $script:fixtureCode = $code
         Invoke-UpdateHandoff $root $plan { $script:installed } {} {} { return $script:fixtureCode } { $events.Add('relaunch') } -RecordOutcome { param($outcome) $events.Add($outcome) }
@@ -82,7 +83,8 @@ try {
     finally { $fake.Dispose() }
     Check $rejected 'Host-close deadline was not enforced'
     Wait-UpdateHostClosed $mutexName 0.1
-    Write-Output 'PASS bounded wait blocks running host and proceeds after exit'
+    Write-Output "PASS bounded wait blocks running host and proceeds after exit ($edition)"
+  }
 } finally {
     $full=[IO.Path]::GetFullPath($root)
     $parent=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'

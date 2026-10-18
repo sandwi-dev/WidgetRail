@@ -33,7 +33,7 @@ try {
     $payload=Get-Content -LiteralPath (Join-Path $work 'payload.json') -Raw | ConvertFrom-Json
     if($payload.dirty -or $payload.sourceCommit -cne $commit -or (Get-SourceCommit) -cne $commit){throw 'Release source changed during publication.'}
     $verifier=$payload.verifier
-    $result=New-WidgetRailReleaseFolders -BuildRoot $payload.buildRoot -DeveloperRoot $payload.developerRoot -RepositoryRoot $repository `
+    $result=New-WidgetRailReleaseFolders -BuildRoot $payload.buildRoot -SupplementalRoot $payload.supplementalRoot -RepositoryRoot $repository `
         -OutputRoot $OutputRoot -Version $version -SourceCommit $commit -SdkVersion $sdkVersion -Content $content -VerifyCatalog {
             param($folder)
             & $verifier $folder | Out-Host

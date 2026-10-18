@@ -1,7 +1,7 @@
 # Hosted browser
 
 The protocol, SDK declaration, Browser intent receiver and host-owned WebView2
-surface are implemented. Browser ships in both Production and Developer editions.
+surface are implemented. Browser is preinstalled in Production and available through Catalogue in Bare.
 It is also a reusable SDK element; widgets do not implement their own WebView.
 
 ```csharp

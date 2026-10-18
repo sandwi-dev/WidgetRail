@@ -189,3 +189,32 @@ High-contrast passive content, physical input and the cumulative app-wide walk
 remain unverified. PoB adoption has not started. The running hidden normal-profile
 candidate still uses the earlier published payload; these changes are not yet
 deployed to it. Native fixtures restore that candidate after each run.
+
+## Bare/Production and ordinary optional widgets — 2026-10-18
+
+`9106d4bc` implements bounded one-time seeding of ordinary sandboxed packages from
+the application bundle. Receipts preserve uninstall and existing selections;
+preinstallation gives no first-party authority or capability grants. The protected
+Wi-Fi password path now rechecks package/content-scoped read/connect consent before
+using the secret. Settings calls optional packages Widgets; only Settings/Catalogue
+remain built-in. Catalogue inventory admits 32 entries while each update batch stays
+at 16. Metadata/review payload bounds remain separate and enforced.
+
+188 focused checks pass: Catalog 49, Settings 93, Catalogue service 31, Catalogue
+widget 11, initial bundle 1, protected Wi-Fi 3. Source builds report no warnings.
+No user package catalogue or permissions were changed by these fixture checks.
+
+Bare/Production packaging now ships two core widgets in both bundles. Production
+includes nine optional archives plus a bounded hash index; Bare has an empty index.
+Both retain shared runtimes/services and CLI. Developer shipping edition is removed.
+App updater bundle selection and persisted plans support Bare: all 13 update tests
+pass. ReleaseVerifier builds. PowerShell packaging selftests, deterministic archive,
+tamper/path/reparse checks, inert handoff scenarios for both bundles and Bare Inno
+syntax compilation pass. No real installer ran.
+
+Fresh assembled-payload qualification remains required. An attempt to reuse the
+older cumulative publication stopped because its Developer staging has no new
+`supplemental-widgets.json`; no compatibility workaround was added. Use a fresh
+publication with the new Supplemental layout for final structural/native acceptance.
+Actual first launch, permission onboarding, remove/restart/update, size/startup
+measurements, Catalogue asset publication and final documentation audit remain open.

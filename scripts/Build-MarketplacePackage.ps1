@@ -1,15 +1,17 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Discord','GameHelp','DisplayProfiles','Twitch','MapGenie')][string]$Widget,
+    [Parameter(Mandatory)][ValidateSet('Discord','GameHelp','DisplayProfiles','Twitch','MapGenie','Browser',
+        'AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','TaskSwitcher','NetworkControls','Power','RecentApps')][string]$Widget,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Release',
     [string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$source = Join-Path $repository "samples/${Widget}Widget"
+$firstParty = $Widget -in @('AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','TaskSwitcher','NetworkControls','Power','RecentApps')
+$source = Join-Path $repository $(if ($firstParty) { "src/FirstPartyWidgets/${Widget}Widget" } else { "samples/${Widget}Widget" })
 $manifest = Get-Content -LiteralPath (Join-Path $source 'manifest.json') -Raw | ConvertFrom-Json
-$output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $repository "artifacts/community-addons/$Widget" }
+$output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $repository "artifacts/catalogue-addons/$Widget" }
 # Each invocation owns a fresh staging directory; never erase a caller's output tree.
 $work = Join-Path $output ([guid]::NewGuid().ToString('N'))
 $stage = Join-Path $work 'package-root'
@@ -24,7 +26,7 @@ $project = if ($application) { Join-Path $source "Application/$assembly.csproj" 
 if ($LASTEXITCODE -ne 0) { throw "$Widget publication failed." }
 foreach ($file in Get-ChildItem -LiteralPath $published -File -Recurse) {
     $relative = [IO.Path]::GetRelativePath($published, $file.FullName)
-    if ($file.Extension -in @('.pdb','.xml') -or $relative -match '^(assets|styles)[\\/]' -or $relative -eq 'manifest.json') { continue }
+    if ((!$application -and $file.Name -in @('WidgetSdk.dll','WidgetProtocol.dll')) -or $file.Extension -in @('.pdb','.xml') -or $relative -match '^(assets|styles)[\\/]' -or $relative -eq 'manifest.json') { continue }
     $target = Join-Path "$stage/payload" $relative
     New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
     Copy-Item -LiteralPath $file.FullName -Destination $target
@@ -49,5 +51,5 @@ $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvar
 Get-ChildItem -LiteralPath $output -File -Filter '*.wrwidget' | Sort-Object Name | ForEach-Object {
     "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
 } | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding utf8NoBOM
-Write-Output "Community package: $archive"
+Write-Output "Catalogue package: $archive"
 Write-Output 'No installation, enabling, permission grant, or publication was performed.'

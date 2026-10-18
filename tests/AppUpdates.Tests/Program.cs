@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Version ordering handles previews numerically and stable promotion", Versions),
     ("Release check selects matching edition and preserves notes", Check),
+    ("Bare updates select their own installer and preserve bundle identity", Bare),
     ("Stable installations do not select preview releases", Stable),
     ("Candidate cannot install or prepare downloads", Candidate),
     ("Preparation verifies one installer and waits for helper readiness before closing", Prepare),
@@ -38,6 +39,19 @@ static async Task Check()
     await fixture.Service.HandleAsync(new("check"), default);
     var result = await Wait(fixture.Service);
     Assert(!result.InstallerOutcomePending && result.State == "available" && result.AvailableVersion == "0.1.0-preview.30" && result.Notes == "Release notes\nFixed things");
+}
+static async Task Bare()
+{
+    await using var fixture = new Fixture(edition: "bare");
+    await fixture.Service.HandleAsync(new("check"), default); await Wait(fixture.Service);
+    await fixture.Service.HandleAsync(new("download"), default);
+    var ready = await Wait(fixture.Service);
+    Assert(ready.State == "ready" && fixture.Api.LastDownload!.EndsWith("/WidgetRail-Bare-0.1.0-preview.30-win-x64-setup.exe", StringComparison.Ordinal));
+    fixture.LaunchReady.SetResult();
+    await fixture.Service.HandleAsync(new("install", ready.ReviewToken), default);
+    await fixture.Exited.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    using var plan = JsonDocument.Parse(File.ReadAllText(Directory.GetFiles(fixture.Root, "plan.json", SearchOption.AllDirectories).Single()));
+    Assert(plan.RootElement.GetProperty("edition").GetString() == "bare");
 }
 static async Task Stable()
 {
@@ -184,17 +198,17 @@ sealed class Fixture : IAsyncDisposable
     public TaskCompletionSource Launched = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource LaunchReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public Fixture(bool canInstall = true, string version = "0.1.0-preview.29") => Service = new(new(version, "production", "", canInstall), Root, Api,
+    public Fixture(bool canInstall = true, string version = "0.1.0-preview.29", string edition = "production") => Service = new(new(version, edition, "", canInstall), Root, Api,
         async (_, token) => { Interlocked.Increment(ref Launches); Launched.TrySetResult(); await LaunchReady.Task.WaitAsync(token); },
         () => { Interlocked.Increment(ref Exits); Exited.TrySetResult(); });
     public async ValueTask DisposeAsync() { await Service.DisposeAsync(); Api.Dispose(); if (Directory.Exists(Root)) Directory.Delete(Root, true); }
 }
 sealed class FakeApi : HttpMessageHandler
 {
-    public bool Corrupt, MissingPrevious, Delay; public int Downloads; public int Checks;
+    public bool Corrupt, MissingPrevious, Delay; public int Downloads; public int Checks; public string? LastDownload;
     private static readonly byte[] Bytes = Encoding.UTF8.GetBytes("fixture executable is never launched");
-    private static object Release(string version) => new { tag_name = "v" + version, draft = false, prerelease = true, body = "Release notes\nFixed things", assets = new[] {
-        new { name = BridgeAppUpdates.InstallerName(version, "production"), size = Bytes.Length, digest = "sha256:" + Convert.ToHexString(SHA256.HashData(Bytes)) } } };
+    private static object Release(string version) => new { tag_name = "v" + version, draft = false, prerelease = true, body = "Release notes\nFixed things", assets = new[] { "production", "bare" }.Select(edition =>
+        new { name = BridgeAppUpdates.InstallerName(version, edition), size = Bytes.Length, digest = "sha256:" + Convert.ToHexString(SHA256.HashData(Bytes)) }).ToArray() };
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
         if (Delay) await Task.Delay(Timeout.Infinite, token);
@@ -206,6 +220,6 @@ sealed class FakeApi : HttpMessageHandler
             var json = path.Contains("/tags/") ? JsonSerializer.Serialize(Release("0.1.0-preview.29")) : JsonSerializer.Serialize(new[] { Release("0.1.0-preview.30") });
             return new(HttpStatusCode.OK) { Content = new StringContent(json) };
         }
-        Downloads++; return new(HttpStatusCode.OK) { Content = new ByteArrayContent(Corrupt ? [0, 1] : Bytes) };
+        LastDownload = request.RequestUri.AbsoluteUri; Downloads++; return new(HttpStatusCode.OK) { Content = new ByteArrayContent(Corrupt ? [0, 1] : Bytes) };
     }
 }

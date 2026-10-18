@@ -38,6 +38,9 @@ notes for what is available in each download.
 4. **Carry on.** Press **View + Menu** again to hide WidgetRail and return to your
    game or desktop.
 
+**Bare** starts with Settings and Catalogue; install Audio Mixer from Catalogue
+before following the volume example above. Both bundles support the same widgets.
+
 To make it available each session, enable **Settings → General → Start WidgetRail
 when I sign in**. It starts quietly; the shortcut opens it when you need it.
 

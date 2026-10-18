@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$CompilerPath, [Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$CompilerPath, [Parameter(Mandatory)][string]$OutputDirectory,
+    [ValidateSet("production", "bare")][string]$Edition = "production")
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -20,7 +21,7 @@ $include = @"
 #define OutputDirectory "$output"
 #define InstallerName "DO-NOT-RUN-syntax-fixture"
 #define PayloadId "syntax-fixture"
-#define Edition "production"
+#define Edition "$Edition"
 #define GameInputVersionMS 196611
 #define GameInputVersionLS 14483456
 [Files]
@@ -34,4 +35,4 @@ if ($LASTEXITCODE -ne 0) { throw "Installer syntax compilation failed; see $outp
 # Never launch the fixture: source and output are retained solely as compile evidence.
 @{ compiled=$true; executed=$false; syntheticPayload=$true; fixture=$fixture } |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'result.json')
-'PASS production installer Pascal syntax with synthetic payload; installer was not executed.'
+"PASS $Edition installer Pascal syntax with synthetic payload; installer was not executed."

@@ -14,8 +14,10 @@ $version=[string]$properties.Project.PropertyGroup.WidgetRailReleaseVersion
 $fileVersion=[string]$properties.Project.PropertyGroup.WidgetRailFileVersion
 $content=Get-Content -LiteralPath (Join-Path $repository 'eng/release-content.json') -Raw | ConvertFrom-Json
 $catalog=Get-Content -LiteralPath (Join-Path $repository 'eng/widget-catalog.json') -Raw | ConvertFrom-Json
-$build=Join-Path $output 'build';$developer=Join-Path $output 'developer';$logs=Join-Path $output 'logs'
-New-Item -ItemType Directory -Path $build,$developer,$logs -Force | Out-Null
+# Source-only samples are not prerequisites of a shipping application payload.
+$catalog.bundledWidgets=@($catalog.bundledWidgets | Where-Object { $_.id -cin @($content.productionWidgets) })
+$build=Join-Path $output 'build';$supplemental=Join-Path $output 'supplemental';$logs=Join-Path $output 'logs'
+New-Item -ItemType Directory -Path $build,$supplemental,$logs -Force | Out-Null
 $sourceCommit=(& git -C $repository rev-parse HEAD).Trim()
 $dirty=@(& git -C $repository status --porcelain --untracked-files=normal).Count -ne 0
 Write-ReleaseJson (Join-Path $output 'provenance.json') @{schemaVersion=1;sourceCommit=$sourceCommit;dirty=$dirty;version=$version;registered=$false;launched=$false;trustStoreChanged=$false}
@@ -138,23 +140,23 @@ foreach($widget in $catalog.bundledWidgets){
     $null=Package $sources[$widget.packageId] $build $widget.packageRoot $widget.id
 }
 Write-ReleaseJson (Join-Path $build 'widget-catalog.json') $catalog
-$extras=@(foreach($widget in $content.developerWidgets){
-    $manifest=Package (Join-Path $repository $widget.project) $developer "runtime/$($widget.runtime)" $widget.id
+$extras=@(foreach($widget in $content.supplementalWidgets){
+    $manifest=Package (Join-Path $repository $widget.project) $supplemental "runtime/$($widget.runtime)" $widget.id
     [ordered]@{id=$widget.id;packageId=$manifest.id;instanceId="$($widget.id).default";packageRoot="runtime/$($widget.runtime)";icon=$manifest.presentation.icon;quickActions=@()}
 })
-Write-ReleaseJson (Join-Path $developer 'developer-widgets.json') $extras
-Publish 'tools/WrailCli/WrailCli.csproj' (Join-Path $developer 'tools/wrail') 'cli'
-& (Join-Path $PSScriptRoot 'Get-ReleaseRuntimes.ps1') -Destination $developer *> (Join-Path $logs 'runtimes.txt')
+Write-ReleaseJson (Join-Path $supplemental 'supplemental-widgets.json') $extras
+Publish 'tools/WrailCli/WrailCli.csproj' (Join-Path $supplemental 'tools/wrail') 'cli'
+& (Join-Path $PSScriptRoot 'Get-ReleaseRuntimes.ps1') -Destination $supplemental *> (Join-Path $logs 'runtimes.txt')
 if($LASTEXITCODE -ne 0){throw 'Runtime preparation failed.'}
 $nuget=if($env:NUGET_PACKAGES){$env:NUGET_PACKAGES}else{Join-Path $env:USERPROFILE '.nuget/packages'}
 $sdkProject=[xml](Get-Content -LiteralPath (Join-Path $repository 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') -Raw)
 $sdkVersion=[string]$sdkProject.SelectSingleNode('//PackageReference[@Include="Microsoft.WindowsAppSDK"]').Version
-$licenses=Join-Path $developer 'licenses';New-Item -ItemType Directory -Path $licenses -Force | Out-Null
+$licenses=Join-Path $supplemental 'licenses';New-Item -ItemType Directory -Path $licenses -Force | Out-Null
 $runtimeLock=Get-Content -LiteralPath (Join-Path $repository 'eng/runtime-dependencies.json') -Raw | ConvertFrom-Json
 foreach($name in @('LICENSE.txt','NOTICE.txt')){Copy-Item -LiteralPath (Join-Path $nuget "microsoft.gameinput/$($runtimeLock.gameInput.version)/$name") -Destination (Join-Path $licenses "Microsoft.GameInput-$name")}
 foreach($name in @('license.txt','NOTICE.txt')){Copy-Item -LiteralPath (Join-Path $nuget "microsoft.windowsappsdk/$sdkVersion/$name") -Destination (Join-Path $licenses "Microsoft.WindowsAppSDK-$name")}
 Copy-Publication $frontend (Join-Path $build 'frontend')
-$publication=[ordered]@{schemaVersion=1;buildRoot=$build;developerRoot=$developer;frontendDirectory=$frontend;sourceCommit=$sourceCommit;dirty=$dirty;version=$version;fileVersion=$fileVersion;verifier=(Join-Path $output 'verify/ReleaseVerifier.exe');packaging='winui-unpackaged';registered=$false;launched=$false}
+$publication=[ordered]@{schemaVersion=1;buildRoot=$build;supplementalRoot=$supplemental;frontendDirectory=$frontend;sourceCommit=$sourceCommit;dirty=$dirty;version=$version;fileVersion=$fileVersion;verifier=(Join-Path $output 'verify/ReleaseVerifier.exe');packaging='winui-unpackaged';registered=$false;launched=$false}
 Write-ReleaseJson (Join-Path $output 'publication.json') $publication
 return [pscustomobject]$publication
 }

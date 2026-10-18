@@ -14,12 +14,24 @@ package identity, trust-store change, application registration, or launch.
 `scripts/Test-WinUiInstallerSyntax.ps1` compiles the actual Inno script with
 placeholder inputs and never executes its installer.
 
-Production and Developer installers use one per-user Inno Setup AppId. Installing
+Production and Bare installers use one per-user Inno Setup AppId. Installing
 either edition updates the same Start menu entry and uninstall entry. Files live
 under `%LOCALAPPDATA%\Programs\WidgetRail\versions\<version-edition-inventoryHash>`.
 The active application root is recorded in
 `HKCU\Software\WidgetRail\Installation`. Setup preserves existing user data.
 Uninstall keeps data by default and offers an explicit option to delete it.
+
+Bare starts with Settings and WidgetRail Catalogue. Production adds the selected
+ordinary widgets in `eng/release-content.json`; it has the same host and shared
+services. Production carries immutable `initial-widgets/*.wrwidget` archives with
+a bounded hash index. First startup seeds them through normal sandbox package
+admission, without granting capabilities. A durable per-package receipt means
+removal, disabling and user-selected versions survive subsequent app upgrades.
+Bare has an empty initial-widget index. Settings and Catalogue alone stay in the
+trusted shipping catalog. All optional widgets can be added through Catalogue in either bundle.
+Developer edition is retired; SDK tooling and source samples remain available.
+Application update selection keeps the installed bundle (`production` or `bare`),
+and update plans verify that bundle again before and after setup.
 
 Previous version payloads remain installed until uninstall. This avoids deleting
 working binaries during an interrupted upgrade and keeps file removal restricted
@@ -102,7 +114,7 @@ default; Cancel stops uninstall. Silent uninstall always keeps data. Explicit Ye
 removes data only after payload removal and only when this uninstaller owns the
 active installation registration:
 
-- `%LOCALAPPDATA%\WidgetRail`: installed community widgets, settings, permissions,
+- `%LOCALAPPDATA%\WidgetRail`: installed widgets, settings, permissions,
   artwork caches, diagnostic logs and other local application data.
 - `%TEMP%\WidgetRail`: WidgetRail temporary files.
 - WidgetRail's isolated-worker profiles: only names with the exact
