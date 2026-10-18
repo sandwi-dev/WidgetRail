@@ -57,5 +57,15 @@
   "src/WidgetSdk/ProviderDocuments.cs": "docs/reference/widget-capture-and-game-help.md",
   "src/WidgetSdk/RichTextElement.cs": "docs/reference/widget-rich-text.md",
   "src/WidgetSdk/WebBrowserElement.cs": "docs/reference/widget-web-browser.md",
-  "src/WidgetSdk/WindowCapture.cs": "docs/reference/widget-capture-and-game-help.md"
+  "src/WidgetSdk/WindowCapture.cs": "docs/reference/widget-capture-and-game-help.md",
+  "src/WidgetSdk/Marketplace.cs": "docs/reference/widget-marketplace.md",
+  "src/WidgetSdk/Notifications.cs": "docs/reference/widget-notifications.md",
+  "src/WidgetSdk/Performance.cs": "docs/reference/performance-monitor.md",
+  "src/WidgetSdk/WebSessionMessageBatcher.cs": "docs/developers/hosted-web-sessions.md",
+  "src/WidgetSdk/CaptureLibrary.cs": "docs/reference/capture-library.md",
+  "src/WidgetSdk/WebSessionPageActionBatchReader.cs": "docs/developers/hosted-web-sessions.md",
+  "src/WidgetSdk/Permissions.cs": "docs/reference/widget-permissions.md",
+  "src/WidgetSdk/Activity.cs": "docs/reference/widget-activity.md",
+  "src/WidgetSdk/WebSessions.cs": "docs/developers/hosted-web-sessions.md",
+  "src/WidgetSdk/LineGraphElement.cs": "docs/reference/line-graphs.md"
 }

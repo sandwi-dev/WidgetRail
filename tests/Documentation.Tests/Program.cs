@@ -221,6 +221,10 @@ foreach (var root in coreDomainRoots)
             if (Path.GetFileName(file) == "ConsentStore.cs" &&
                 marker == "external.spotify.")
                 continue;
+            // A curated package identity is discovery metadata, not a product-owned host API.
+            if (Relative(file) == "src/WidgetBridge/Marketplace/catalog.json" &&
+                marker == "widgetrail.samples.spotify")
+                continue;
             if (source.Contains(marker, StringComparison.Ordinal))
                 failures.Add($"{Relative(file)} retains retired product domain '{marker}'.");
         }

@@ -35,7 +35,13 @@ public sealed class BrowserAddressInputTests
     public void InvalidAddressesDoNotNavigateOrSearch(string input) => Assert.IsNull(BrowserAddressInput.Resolve(input));
 
     [TestMethod]
-    public void LongEncodedSearchIsRejected() => Assert.IsNull(BrowserAddressInput.Resolve(new string('界', 300)));
+    public void EncodedSearchHonorsCurrentUrlLimit()
+    {
+        const string prefix = "https://www.google.com/search?q=";
+        var fitting = new string('界', (WidgetRail.WidgetProtocol.WebBrowserDocument.MaximumUrlLength - prefix.Length) / 9);
+        Assert.AreEqual(prefix + Uri.EscapeDataString(fitting), BrowserAddressInput.Resolve(fitting));
+        Assert.IsNull(BrowserAddressInput.Resolve(fitting + "界"));
+    }
 
     [TestMethod]
     public void InitialEditorIsEmptyButExistingAddressIsPreserved()

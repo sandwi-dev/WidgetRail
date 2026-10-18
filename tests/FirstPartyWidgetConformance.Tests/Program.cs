@@ -2771,6 +2771,13 @@ file sealed class Deployment : IDisposable
                 !destination.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException(
                     $"{workerName} dependency closure escaped its deployment root.");
+            // NuGet runtime assets are flattened in the RID-specific build output.
+            // Resolve only after validating the original dependency path above.
+            if (!File.Exists(source) && File.Exists(Path.Combine(sourceRoot, Path.GetFileName(relative))))
+            {
+                source = Path.Combine(sourceRoot, Path.GetFileName(relative));
+                destination = Path.Combine(destinationRoot, Path.GetFileName(relative));
+            }
             if (!File.Exists(source))
                 throw new FileNotFoundException(
                     $"{workerName} dependency '{asset}' was absent from the build output.",
@@ -2850,7 +2857,14 @@ file sealed class Deployment : IDisposable
             throw new InvalidOperationException(
                 $"WidgetWorkerHost dependency group '{property}' was malformed.");
         foreach (var asset in group.EnumerateObject())
+        {
+            // This fixture targets the current Windows RID, not every platform
+            // advertised by a portable dependency such as SQLite.
+            if (property == "runtimeTargets" && asset.Value.TryGetProperty("rid", out var rid) &&
+                rid.GetString() != System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier)
+                continue;
             assets.Add(asset.Name);
+        }
     }
 
     private static string FindRepositoryRoot()

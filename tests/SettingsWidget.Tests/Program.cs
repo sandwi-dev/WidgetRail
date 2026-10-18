@@ -1635,8 +1635,10 @@ static async Task LocalWidgetInstallationAction()
     Assert.Equal("installed.filter.all", initial.InitialFocusId);
     Assert.Equal(1, Buttons(initial.Root).Count(button =>
         button.ActionId == "host.install-local-widget"));
-    Assert.Equal("installed.filter.builtin", install.Focus!.Down);
-    Assert.Equal("installed.filter.community", Button(initial.Root, "installed.retry").Focus!.Down);
+    Assert.Equal("installed.manage-webapps", install.Focus!.Down);
+    Assert.Equal("installed.manage-webapps", Button(initial.Root, "installed.retry").Focus!.Down);
+    Assert.Equal("installed.filter.all", Button(initial.Root, "installed.add-webapp").Focus!.Down);
+    Assert.Equal("installed.filter.builtin", Button(initial.Root, "installed.manage-webapps").Focus!.Down);
     Assert.Equal("settings.back", Button(initial.Root, "installed.retry").Focus!.Up);
     Assert.Contains("enabled after installation and request permissions when a feature needs them",
         Text(initial.Root, "installed.install-local.help").Text!);
