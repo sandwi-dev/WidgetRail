@@ -16,8 +16,8 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | **Host prerequisites** | Finish shared layout, focus, scrolling, sizing and accessibility changes needed by planned widget workflows | Indexed reveal/continuity and busy-focus fixes tested; qualify remaining shared changes before adoption |
 | After host prerequisites | Adjust widget dimensions and stabilize workspace sizing | Sizing policy implemented; integrated native verification pending |
 | After host prerequisites | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; candidate packaging complete; integrated inspection pending |
-| After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Independent gem-tag search and Changed settings implemented; preview-dependent workflows wait for host APIs |
-| After host prerequisites | Complete passive-tree artwork and measure rendering improvements | Agreed; not started |
+| After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Gem search, Changed settings and gem inspection implemented and qualified; inventory/unique inspection and remaining editing workflows in progress |
+| After host prerequisites | Complete passive-tree artwork and measure rendering improvements | In progress; both-engine artwork and bounded renderer verification underway |
 | After host prerequisites | Add whole-build and loadout comparison | Agreed; not started |
 | After host prerequisites | Add unified search and direct navigation | Agreed; not started |
 | Cross-app adoption and verification | Compact layouts and inspect the app for couch readability | Catalogue and music player slices inspected; remaining application audit pending |

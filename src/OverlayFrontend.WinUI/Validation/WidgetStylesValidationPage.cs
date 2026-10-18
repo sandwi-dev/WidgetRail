@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pob-gem-inspection-fixtures") is { } gemFixtures)
+        { await PobGemInspectionAsync(gemFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--focus-previews-output") is { } previewsOutput)
         { await FocusPreviewsAsync(previewsOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--scroll-edge-cues-output") is { } scrollCuesOutput)

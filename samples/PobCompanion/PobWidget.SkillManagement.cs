@@ -7,6 +7,8 @@ namespace WidgetRail.Samples.PobCompanion;
 public sealed partial class PobWidget
 {
     private JsonElement[] gemCatalog=[];
+    private long gemCatalogRevision;
+    private GemInspectionData[] gemInspectionCatalog=[];
     private PobGemSearchCatalog gemSearchCatalog=new([]);
 
     private void SetGemCatalog(JsonElement state)
@@ -15,15 +17,16 @@ public sealed partial class PobWidget
             throw new InvalidDataException("PoB returned an invalid gem catalog.");
         var items=value.EnumerateArray().ToArray();
         var search=new PobGemSearchCatalog(items);
-        gemCatalog=items;gemSearchCatalog=search;
+        var inspection=items.Select(ReadGemInspection).ToArray();
+        gemCatalog=items;gemSearchCatalog=search;gemInspectionCatalog=inspection;gemCatalogRevision++;gemInspection=null;
     }
     private string gemSearch="",gemType="all";
     private string gemSort="name";
     private int pickerGem;
     private bool skillOrderFocusRequested;
     private (int Group,int Gem,string Name)? skillRemoval;
-    private sealed record GemEntry(string Key,string Name,string Action,string Description="");
-    private sealed record GemQuery(GemEntry[] Entries);
+    private sealed record GemEntry(string Key,string Name,string Action,string Description="",GemInspectionData? Inspection=null);
+    private sealed record GemQuery(GemEntry[] Entries,GemPickerContext? Context=null);
     private GemQuery gemQuery=new([]);
     private WidgetIndexedCollection<GemQuery,GemEntry>? gemCollection;
 
@@ -176,17 +179,21 @@ public sealed partial class PobWidget
         {
             ReadRange=(query,start,count,token)=>ValueTask.FromResult<IReadOnlyList<GemEntry>>(query.Entries.Skip(start).Take(count).ToArray()),
             ItemKey=entry=>new(entry.Key),
-            RenderItem=(_,entry,context)=>UI.Button(entry.Name,"choose",context.Id("gem")).Classes("pob-button"),
+            RenderItem=RenderGemCandidate,
             OnAction=(query,entry,action,token)=>
-            {lock(gate){if(!ReferenceEquals(query,gemQuery)||detailKind!="gem-picker"||busy||action.ActionId!="choose")return ValueTask.CompletedTask;return OnActionAsync(action with{ActionId=entry.Action},token);}},
+            {lock(gate){if(!GemQueryIsCurrent(query)||busy||gemInspection is not null)return ValueTask.CompletedTask;
+                if(action.ActionId=="inspect"){OpenGemInspection(query,entry);Invalidate();return ValueTask.CompletedTask;}
+                return action.ActionId=="choose"?OnActionAsync(action with{ActionId=entry.Action},token):ValueTask.CompletedTask;}},
         });
         var entries=gemSearchCatalog.Entries.Where(entry=>(gemType=="all"||entry.Support==(gemType=="support"))&&entry.Matches(gemSearch))
             .Select(entry=>(gem:gemCatalog[entry.Index],i:entry.Index))
             .Select(x=>new GemEntry(WidgetIds.Scope("gem").KeyedId("entry",S(x.gem,"id")),S(x.gem,"name")+(B(x.gem,"support")?" · Support":" · Active skill")+
-                (gemSort!="name"&&x.gem.TryGetProperty("comparison",out var value)?" · "+value.GetDouble().ToString("N0",System.Globalization.CultureInfo.InvariantCulture):""),"gem-pick."+x.i)).ToArray();
-        if(!gemQuery.Entries.SequenceEqual(entries)){gemQuery=new(entries);gemCollection.PublishQuery(gemQuery,entries.Length);}
+                (gemSort!="name"&&x.gem.TryGetProperty("comparison",out var value)?" · "+value.GetDouble().ToString("N0",System.Globalization.CultureInfo.InvariantCulture):""),"gem-pick."+x.i,Inspection:gemInspectionCatalog[x.i])).ToArray();
+        var context=CaptureGemPickerContext();
+        if(!gemQuery.Entries.SequenceEqual(entries)||gemQuery.Context!=context){gemQuery=new(entries,context);gemCollection.PublishQuery(gemQuery,entries.Length);}
         ContainerElement results=UI.Stack("pob.gem-picker.results",entries.Length==0?Text("No matching gems.","gem-picker.empty","pob-muted"):
-            UI.CollectionList("pob.gems",gemCollection,64,"Available gems").Classes("pob-scroll")).Classes("pob-workspace");
+            UI.FocusPresentationSurface(UI.CollectionList("pob.gems",gemCollection,64,"Available gems").Classes("pob-scroll"),
+                UI.Text("","pob.gem-preview.empty"),"pob.gem-preview") with{Preview=new(Width:420,Height:280)}).Classes("pob-workspace");
         if(entries.Length>0)results=QuickControls(results,"pob.gems","pob.gem-picker.tools","Search / type",NeedsQuickControls(entries.Length));
         return UI.Stack("pob.gem-picker",
             QuickControls(UI.Stack("pob.gem-picker.tools",UI.Row("pob.gem-picker.header",Button("Back to group","back"),Text(pickerGem==0?"Add gem":"Replace gem","gem-picker.title","pob-heading")).Classes("pob-toolbar"),
@@ -200,7 +207,7 @@ public sealed partial class PobWidget
 
     private WidgetView WithSkillConfirmation(WidgetView view)
     {
-        if(skillRemoval is not {} removal)return view;
+        if(skillRemoval is not {} removal)return WithGemInspection(view);
         var what=removal.Group==0?"all editable groups":removal.Gem==0?"group":"gem";
         return view.WithModal(new("pob.skill-remove-confirmation","Remove "+what+"?",UI.Stack("pob.skill-remove.content",
             Text(removal.Name,"skill-remove.name","pob-heading"),Text("This change is saved immediately. You can Undo it.","skill-remove.help"),

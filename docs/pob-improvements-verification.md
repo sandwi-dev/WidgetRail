@@ -218,3 +218,28 @@ older cumulative publication stopped because its Developer staging has no new
 publication with the new Supplemental layout for final structural/native acceptance.
 Actual first launch, permission onboarding, remove/restart/update, size/startup
 measurements, Catalogue asset publication and final documentation audit remain open.
+
+## Gem candidate inspection — 2026-10-18
+
+Shared passive previews and explicit X/context-menu Inspect now serve gem candidates.
+A retains immediate selection; inspection's explicit Add/Replace uses the existing
+edit path. Bounded typed upstream metadata is parsed once per catalogue. Inspection
+is fenced by query, build/document, group/target, filters, sort and catalogue revision;
+focus/inspection performs no engine or network work.
+
+Real-engine skill-management checks pass: PoE1 68/68, PoE2 70/70. They cover indexed
+A/X routing, preview non-mutation, stale actions and explicit Add/Replace. Evidence:
+`artifacts/pob/gem-inspection-poe1-02.log` and `gem-inspection-poe2.log`.
+
+`artifacts/pob/gem-inspection-native02/native-result.json` passes 56 native assertions
+across both games, Mono Ink/Mineral Light and 1320x900/820x600 layouts. Actual exported
+rows/modal content and package styles are used; indexed demand is materialized for
+presentation testing, with real indexed routing qualified separately. Focus return,
+passive non-mutation, modal bounds, horizontal overflow, scroll reachability and A
+selection after closing pass. Representative dark/light captures were inspected.
+An initial fixture failure used different export widget identities for picker and
+modal; normalizing that test-only identity fixed the fixture without changing host
+focus restoration. This does not establish full live-session or physical acceptance.
+
+The normal-profile hidden candidate was restored (PID 50256 at this checkpoint).
+It still uses the earlier publication; fresh cumulative publication remains required.
