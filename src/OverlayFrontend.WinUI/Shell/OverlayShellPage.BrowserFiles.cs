@@ -20,7 +20,7 @@ internal sealed partial class OverlayShellPage
         presenter?.SetAutomaticFocusEnabled(false);
         presenter?.SetPresentationInputEnabled(false);
         pin?.SetInput(false);
-        shellOwnedReleases.Add(ControllerButton.A);
+        shellGestures.Claim(ControllerButton.A);
         ResetInputPresentation(); PublishControllerGuide();
         try
         {
@@ -45,16 +45,9 @@ internal sealed partial class OverlayShellPage
     {
         if (!SystemFilePickerOpen) return false;
         heldAction.Reset(); rightStick.Reset();
-        if (frame.Connected == 0 || frame.Primed != 0) { shellOwnedReleases.Clear(); return true; }
-        foreach (var (mask, button) in Buttons)
-        {
-            if ((frame.PressedButtons & mask) != 0) shellOwnedReleases.Add(button);
-            if ((frame.ReleasedButtons & mask) != 0 || (frame.State.Buttons & mask) == 0) shellOwnedReleases.Remove(button);
-        }
-        if (frame.LeftTriggerPressed != 0) shellOwnedReleases.Add(ControllerButton.LeftTrigger);
-        if (frame.RightTriggerPressed != 0) shellOwnedReleases.Add(ControllerButton.RightTrigger);
-        if (frame.LeftTriggerReleased != 0 || frame.State.LeftTrigger == 0) shellOwnedReleases.Remove(ControllerButton.LeftTrigger);
-        if (frame.RightTriggerReleased != 0 || frame.State.RightTrigger == 0) shellOwnedReleases.Remove(ControllerButton.RightTrigger);
+        if (frame.Connected == 0 || frame.Primed != 0) { shellGestures.Reset(); return true; }
+        shellGestures.CaptureFrame(frame);
+        shellGestures.ReconcileReleasedState(frame.State);
         return true;
     }
 }

@@ -12,14 +12,7 @@ internal sealed partial class OverlayShellPage
 {
     private readonly RightStickScroll rightStick = new();
     private Browser.BrowserSurface? dpadBrowser;
-    private static readonly (ushort Mask, ControllerButton Button)[] Buttons =
-    [
-        (0x1000, ControllerButton.A), (0x2000, ControllerButton.B),
-        (0x4000, ControllerButton.X), (0x8000, ControllerButton.Y),
-        (0x100, ControllerButton.LeftBumper), (0x200, ControllerButton.RightBumper),
-        (0x40, ControllerButton.LeftStick), (0x80, ControllerButton.RightStick),
-        (0x10, ControllerButton.Menu), (0x20, ControllerButton.View),
-    ];
+    private static ReadOnlySpan<(ushort Mask, ControllerButton Button)> Buttons => Input.ControllerGestureOwnership.DigitalButtons;
 
     internal void Receive(ControllerFrame frame)
     {
@@ -49,7 +42,7 @@ internal sealed partial class OverlayShellPage
         if (ReceiveHostChoice(frame)) return;
         if (nativeBrowserPickerActive) { heldAction.Reset(); rightStick.Reset(); return; }
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
-        if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); radialInput.Reset(); }
+        if (frame.Connected == 0) { trayHold.Reset(); shellGestures.Reset(); radialInput.Reset(); }
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
         if (startupPresentationPending)
         {
@@ -70,16 +63,16 @@ internal sealed partial class OverlayShellPage
             // still finish. Otherwise a short B/A tap leaves its ownership latch
             // set and every subsequent press of that button is discarded.
             foreach (var (mask, button) in Buttons)
-                if ((frame.ReleasedButtons & mask) != 0 && shellOwnedReleases.Contains(button))
+                if ((frame.ReleasedButtons & mask) != 0 && shellGestures.Owns(button))
                     _ = RouteButtonAsync(button, ControllerEventPhase.Released);
             heldAction.Reset(); rightStick.Reset(); return;
         }
         if (trayHold.Capturing && (frame.State.Buttons & 0x8000) == 0 && (frame.ReleasedButtons & 0x8000) == 0)
-        { trayHold.Reset(); shellOwnedReleases.Remove(ControllerButton.Y); }
+        { trayHold.Reset(); shellGestures.Release(ControllerButton.Y); }
         _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
         Presentation.WidgetControllerPrompts.Set(frame.LastInputFamily);
         if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
-        { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
+        { shellGestures.Claim(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var radialNavigation = ReceiveRadialNavigation(frame);
         var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
         var activeBrowser = radialNavigation ? null : expandedBrowser?.Surface?.ActiveSurface ??
@@ -179,8 +172,8 @@ internal sealed partial class OverlayShellPage
         // A host-owned gesture stays owned until release, even if it moved focus
         // between the pin and main window. A queued duplicate press must not
         // become a fresh Back/View action in the newly active surface.
-        if (phase == ControllerEventPhase.Pressed && shellOwnedReleases.Contains(button)) return;
-        if (phase == ControllerEventPhase.Released && shellOwnedReleases.Remove(button))
+        if (phase == ControllerEventPhase.Pressed && shellGestures.Owns(button)) return;
+        if (phase == ControllerEventPhase.Released && shellGestures.Release(button))
         {
             if (button == ControllerButton.Y)
                 await RunTrayHoldAsync(trayHold.Release(TrayGestureIdentity, !reordering, Environment.TickCount64));
@@ -189,7 +182,7 @@ internal sealed partial class OverlayShellPage
         if (retired || !visible) return;
         if (preparingIntent && button == ControllerButton.B)
         {
-            if (phase == ControllerEventPhase.Pressed) { shellOwnedReleases.Add(button); intentCancellation?.Cancel(); }
+            if (phase == ControllerEventPhase.Pressed) { shellGestures.Claim(button); intentCancellation?.Cancel(); }
             return;
         }
         if (webAppEditor is { } editor) { editor.Handle(button, phase); return; }
@@ -207,7 +200,7 @@ internal sealed partial class OverlayShellPage
             {
                 if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed)
                 {
-                    shellOwnedReleases.Add(button);
+                    shellGestures.Claim(button);
                     if (PinnedInputActive) ExitPinnedInteraction(restoreMain: true);
                     else await EnterPinnedAsync();
                     return;
@@ -217,7 +210,7 @@ internal sealed partial class OverlayShellPage
                     var accepted = pin.Popup is { } popup ? popup.Slot.HandleButton(button, phase) : pin.Media is not null ? RouteCompactButton(pin, button, phase) :
                         await pin.Presenter!.HandleControllerButtonAsync(button, phase, origin, cancellationToken: lifetime.Token);
                     if (!accepted && button == ControllerButton.B && phase == ControllerEventPhase.Pressed && ReferenceEquals(pinned, pin))
-                    { shellOwnedReleases.Add(button); ExitPinnedInteraction(restoreMain: true); }
+                    { shellGestures.Claim(button); ExitPinnedInteraction(restoreMain: true); }
                     return;
                 }
             }
@@ -230,9 +223,9 @@ internal sealed partial class OverlayShellPage
             if (RecoveryVisible)
             {
                 if (phase == ControllerEventPhase.Pressed && (button == ControllerButton.A || showingStoppedWidget && button == ControllerButton.X) && Retry.Visibility == Visibility.Visible)
-                { shellOwnedReleases.Add(button); await RetryPresentationAsync(); }
+                { shellGestures.Claim(button); await RetryPresentationAsync(); }
                 else if (phase == ControllerEventPhase.Pressed && button == ControllerButton.B)
-                { shellOwnedReleases.Add(button); PrepareRadialBackEntry(); SetInteractive(false); FocusTray(); }
+                { shellGestures.Claim(button); PrepareRadialBackEntry(); SetInteractive(false); FocusTray(); }
                 return;
             }
             if (surface is null) return;
@@ -242,7 +235,7 @@ internal sealed partial class OverlayShellPage
             if (!handled && button == ControllerButton.B && phase == ControllerEventPhase.Pressed &&
                 !retired && visible && version == selectionVersion && ReferenceEquals(target, surface))
             {
-                shellOwnedReleases.Add(button);
+                shellGestures.Claim(button);
                 PrepareRadialBackEntry();
                 SetInteractive(false);
                 ResetInputPresentation();

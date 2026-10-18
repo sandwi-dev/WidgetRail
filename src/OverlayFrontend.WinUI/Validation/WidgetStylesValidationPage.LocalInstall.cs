@@ -24,14 +24,14 @@ internal sealed partial class WidgetStylesValidationPage
             primary.Focus(FocusState.Keyboard);
             dialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
             Check(!review.IsCompleted, "held opening A cannot approve the new trust dialog");
-            dialog.ControllerArmed = true;
+            dialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
             dialog.Handle(ControllerButton.A, ControllerEventPhase.Repeated);
             Check(!review.IsCompleted, "repeat cannot approve full trust");
             dialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
             Check(await review.WaitAsync(TimeSpan.FromSeconds(2)), "fresh A invokes the focused full-trust decision");
             dialog.Complete(new("installed", "test.widget", "1.0.0", "Widget installed and enabled. Permissions will be requested when needed."));
             Check(dialog.CloseButtonText == "Done" && dialog.PrimaryButtonText == "", "completion replaces approval with a single Done action");
-            dialog.ControllerArmed = true;
+            dialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
             dialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
             await showing;
             Check(true, "B dismisses completion");
@@ -43,7 +43,7 @@ internal sealed partial class WidgetStylesValidationPage
         {
             await Wait(() => cancelDialog.IsLoaded);
             var review = cancelDialog.ReviewAsync(new("approval-required", "test.widget", "1.0.0", ""), CancellationToken.None);
-            cancelDialog.ControllerArmed = true;
+            cancelDialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
             cancelDialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
             Check(!await review.WaitAsync(TimeSpan.FromSeconds(2)), "B denies full-trust installation");
             await cancelled;

@@ -19,7 +19,7 @@ internal sealed partial class OverlayShellPage
         try { await WebAppUntil(() => notificationBanner?.IsVisible == true && notificationCard?.TitleText.Text == "Synthetic track"); }
         catch (TimeoutException error)
         {
-            throw new InvalidOperationException($"Widget notification did not show: command={(FindControl<Button>(surface!, "Widget.notify")?.Content as TextBlock)?.Text}, focus={Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name}, ownedA={shellOwnedReleases.Contains(ControllerButton.A)}, mode={center.Mode("webapp-a")}, active={activeWidget}, interactive={interactive}", error);
+            throw new InvalidOperationException($"Widget notification did not show: command={(FindControl<Button>(surface!, "Widget.notify")?.Content as TextBlock)?.Text}, focus={Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name}, ownedA={shellGestures.Owns(ControllerButton.A)}, mode={center.Mode("webapp-a")}, active={activeWidget}, interactive={interactive}", error);
         }
         check(visible && center.Inbox.Entries.Count == 0 && notificationBadge.Visibility == Visibility.Collapsed,
             "Ordinary widget SDK notification traverses the broker and bridge while the overlay is visible without adding pending entries");

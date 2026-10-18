@@ -94,7 +94,7 @@ internal sealed partial class OverlayShellPage
         if (retired || !visible || !foreground || frame.Connected == 0 ||
             pinnedAdjustment is { } pending && (!ReferenceEquals(pinned, pending.Surface) || !pending.Surface.IsCurrent))
         {
-            if (frame.Connected == 0) { shellOwnedReleases.Clear(); trayHold.Reset(); radialInput.Reset(); }
+            if (frame.Connected == 0) { shellGestures.Reset(); trayHold.Reset(); radialInput.Reset(); }
             CancelPinnedAdjustment(); return true;
         }
         // This route runs before ReceiveCore's ordinary priming/gesture guards.
@@ -104,24 +104,12 @@ internal sealed partial class OverlayShellPage
             var primed = frame.State;
             pinnedPlacementInput.Prime(primed.Buttons, primed.LeftThumbX, primed.LeftThumbY,
                 primed.RightThumbX, primed.RightThumbY, Environment.TickCount64);
-            foreach (var (mask, button) in Buttons)
-            {
-                if ((primed.Buttons & mask) != 0) shellOwnedReleases.Add(button);
-                else shellOwnedReleases.Remove(button);
-            }
+            shellGestures.PrimeDigitalButtons(primed.Buttons);
             return true;
         }
-        var savePressed = (frame.PressedButtons & 0x1000) != 0 && !shellOwnedReleases.Contains(ControllerButton.A);
-        var cancelPressed = (frame.PressedButtons & 0x2000) != 0 && !shellOwnedReleases.Contains(ControllerButton.B);
-        foreach (var (mask, button) in Buttons)
-        {
-            if ((frame.PressedButtons & mask) != 0) shellOwnedReleases.Add(button);
-            if ((frame.ReleasedButtons & mask) != 0) shellOwnedReleases.Remove(button);
-        }
-        if (frame.LeftTriggerPressed != 0) shellOwnedReleases.Add(ControllerButton.LeftTrigger);
-        if (frame.RightTriggerPressed != 0) shellOwnedReleases.Add(ControllerButton.RightTrigger);
-        if (frame.LeftTriggerReleased != 0) shellOwnedReleases.Remove(ControllerButton.LeftTrigger);
-        if (frame.RightTriggerReleased != 0) shellOwnedReleases.Remove(ControllerButton.RightTrigger);
+        var savePressed = (frame.PressedButtons & 0x1000) != 0 && !shellGestures.Owns(ControllerButton.A);
+        var cancelPressed = (frame.PressedButtons & 0x2000) != 0 && !shellGestures.Owns(ControllerButton.B);
+        shellGestures.CaptureFrame(frame);
         if (savingPinnedAdjustment) return true;
         var sample = frame.State;
         var changes = pinnedPlacementInput.Sample(sample.Buttons, sample.LeftThumbX, sample.LeftThumbY,
@@ -146,7 +134,7 @@ internal sealed partial class OverlayShellPage
     {
         if (pinnedAdjustment is null && !savingPinnedAdjustment) return false;
         if (phase != ControllerEventPhase.Pressed) return true;
-        shellOwnedReleases.Add(button);
+        shellGestures.Claim(button);
         if (savingPinnedAdjustment) return true;
         if (button == ControllerButton.A) await FinishPinnedAdjustmentAsync(save: true);
         else if (button == ControllerButton.B) CancelPinnedAdjustment();

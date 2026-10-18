@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetPresentationSession;
@@ -64,6 +66,37 @@ internal sealed partial class OverlayShellPage
                     }
                     finally { dialog.Hide(); localInstallDialog = null; localInstallCancellation = null; }
                 }
+                foreach (var kind in new[] { "host choice", "webapp editor" })
+                {
+                    var originalWidget = activeWidget;
+                    var originalInteractive = interactive;
+                    Task showing = kind == "host choice"
+                        ? ShowHostChoiceAsync("Admission fixture", "No external action is performed.", (HostDialogChoice[])[new("test", "Test")], lifetime.Token)
+                        : EditUserWebAppAsync(url: "https://example.invalid", title: "Admission fixture");
+                    await Until(() => kind == "host choice" ? hostChoiceDialog is { IsLoaded: true } : webAppEditor is not null);
+                    Receive(Sample(0x2000, pressed: 0x2000));
+                    Check(!showing.IsCompleted, kind + " consumes the opening gesture while unarmed");
+                    Receive(Sample(released: 0x2000));
+                    var primed = Sample(); primed.Primed = 1; primed.State.RightTrigger = 255;
+                    Receive(primed);
+                    var held = Sample(0x2000, pressed: 0x2000); held.State.RightTrigger = 255;
+                    Receive(held);
+                    Check(!showing.IsCompleted, kind + " waits for release after priming");
+                    var neutral = Sample(released: 0x2000); neutral.RightTriggerReleased = 1;
+                    Receive(neutral);
+                    Receive(Sample(0x2000, pressed: 0x2000));
+                    await showing.WaitAsync(TimeSpan.FromSeconds(2));
+                    Receive(Sample(released: 0x2000));
+                    Check(activeWidget == originalWidget && interactive == originalInteractive,
+                        kind + " closes on fresh B without replay into the underlying widget");
+                }
+                var automationChoice = ShowHostChoiceAsync("Automation fixture", "No controller is required.",
+                    (HostDialogChoice[])[new("selected", "Select")], lifetime.Token, directDecisionButtons: true);
+                await Until(() => hostChoiceDialog is { IsLoaded: true } choice && FindPrimary(choice) is not null);
+                var action = FindPrimary(hostChoiceDialog!)!;
+                ((IInvokeProvider)FrameworkElementAutomationPeer.CreatePeerForElement(action).GetPattern(PatternInterface.Invoke)).Invoke();
+                Check(await automationChoice.WaitAsync(TimeSpan.FromSeconds(2)) == "selected",
+                    "native button invocation bypasses controller-only arming without requiring a controller");
             }
             catch (Exception error) { failure = error; }
             finally

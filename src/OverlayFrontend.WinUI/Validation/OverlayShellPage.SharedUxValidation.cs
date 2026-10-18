@@ -194,7 +194,7 @@ internal sealed partial class OverlayShellPage
                 PrepareRadialBackEntry(); SetInteractive(false); FocusTray();
                 await Until(() => RadialOpen && FocusedTrayWidget()?.Id == widgetId);
                 await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
-                Check(shellOwnedReleases.Contains(ControllerButton.B), label + " radial return owns the closing B release");
+                Check(shellGestures.Owns(ControllerButton.B), label + " radial return owns the closing B release");
                 await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
                 try { await Until(() => interactive && !RadialOpen && FocusId() == "Widget." + id); }
                 catch (TimeoutException error) { throw new InvalidOperationException(label + " radial cancel: " + surface?.FocusDiagnostics(), error); }

@@ -52,7 +52,7 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                     var bounds = primary.TransformToVisual(this).TransformBounds(new(0,0,primary.ActualWidth,primary.ActualHeight));
                     Check(bounds.Top >= 0 && bounds.Bottom <= ActualHeight && bounds.Left >= 0 && bounds.Right <= ActualWidth,
                         $"Confirmation remains within {ActualWidth:0}×{ActualHeight:0} viewport: {choice}");
-                    active.ControllerArmed = true;
+                    active.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                     if (choice == "cancel") active.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                     else
                     {
@@ -76,7 +76,7 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                 var pinShowing = active.ShowAsync().AsTask();
                 await Until(() => active.IsLoaded && Walk(active).OfType<Button>().Any(b => b.Content is "Cancel"));
                 Check(pinForeground,"Pinned window keeps foreground ownership during its native dialog");
-                active.ControllerArmed = true; active.Handle(ControllerButton.B,ControllerEventPhase.Pressed);
+                active.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); active.Handle(ControllerButton.B,ControllerEventPhase.Pressed);
                 await pinShowing.WaitAsync(TimeSpan.FromSeconds(3),lifetime.Token);
                 Check(pinForeground && pin.Interactive,"Pinned interaction survives native dialog cancellation");
                 active = null;
@@ -107,7 +107,7 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                     active.SampleScroll(0, -32767, 1040);
                     await Until(() => viewport.VerticalOffset > offset);
                     Check(true, "Right stick scrolls the permission message");
-                    active.ControllerArmed = true;
+                    active.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                     active.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                     await pinShowing.WaitAsync(TimeSpan.FromSeconds(3), lifetime.Token);
                     active = null;

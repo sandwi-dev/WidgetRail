@@ -17,7 +17,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private readonly TrayHoldGesture trayHold = new();
-    private readonly HashSet<ControllerButton> shellOwnedReleases = [];
+    private readonly Input.ControllerGestureOwnership shellGestures = new();
     private bool reordering;
     private long quickActionSequence;
     private TrayMenu? trayMenu;
@@ -368,7 +368,7 @@ internal sealed partial class OverlayShellPage
         if (phase == ControllerEventPhase.Repeated && trayMenu is null && !reordering && FocusedTrayWidget() is { } repeatedWidget)
         { await InvokeDashboardButtonAsync(repeatedWidget, button, origin, phase); return; }
         if (phase != ControllerEventPhase.Pressed) return;
-        shellOwnedReleases.Add(button);
+        shellGestures.Claim(button);
         if (trayMenu is { } menu)
         {
             if (button == ControllerButton.Menu || button == ControllerButton.B && menu.Navigation?.Back() != true) CloseTrayMenu(true);
@@ -392,7 +392,7 @@ internal sealed partial class OverlayShellPage
         {
             // The shell owns the entire gesture even after focus returns to the
             // widget. Its release must not cancel the newly requested entry.
-            shellOwnedReleases.Add(button);
+            shellGestures.Claim(button);
             await BackFromTrayAsync();
         }
         else if (FocusedTrayWidget() is { } widget)

@@ -59,7 +59,7 @@ internal sealed partial class OverlayShellPage
         var originalFocus = FocusManager.GetFocusedElement(XamlRoot) as Control;
         originalSurface?.SetAutomaticFocusEnabled(false);
         originalSurface?.SetPresentationInputEnabled(false);
-        shellOwnedReleases.Add(ControllerButton.A);
+        shellGestures.Claim(ControllerButton.A);
         ResetInputPresentation();
         UserWebApp? saved = null;
         try
@@ -113,11 +113,8 @@ internal sealed partial class OverlayShellPage
     {
         if (webAppEditor is not { } editor) return false;
         heldAction.Reset(); rightStick.Reset();
-        foreach (var (mask, button) in Buttons)
-            if ((frame.ReleasedButtons & mask) != 0) shellOwnedReleases.Remove(button);
-        if (!visible || !foreground || frame.Connected == 0 || frame.Primed != 0) { editor.ControllerArmed = false; return true; }
-        if (frame.State.Buttons == 0 && frame.State.LeftTrigger == 0 && frame.State.RightTrigger == 0) editor.ControllerArmed = true;
-        if (!editor.ControllerArmed) return true;
+        shellGestures.ReleaseDigitalButtons(frame);
+        if (editor.ControllerAdmission.Observe(frame, visible && foreground) != Input.DialogControllerAdmissionResult.Ready) return true;
         editor.SampleScroll(frame.State.RightThumbX,frame.State.RightThumbY,Environment.TickCount64);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
@@ -129,7 +126,7 @@ internal sealed partial class OverlayShellPage
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None) editor.MoveFocus(next);
         foreach (var (mask, button) in Buttons)
         {
-            if ((frame.PressedButtons & mask) != 0) { shellOwnedReleases.Add(button); editor.Handle(button, ControllerEventPhase.Pressed); }
+            if ((frame.PressedButtons & mask) != 0) { shellGestures.Claim(button); editor.Handle(button, ControllerEventPhase.Pressed); }
             if ((frame.ReleasedButtons & mask) != 0) editor.Handle(button, ControllerEventPhase.Released);
         }
         if (frame.LeftTriggerPressed != 0) editor.Handle(ControllerButton.LeftTrigger, ControllerEventPhase.Pressed);

@@ -120,7 +120,7 @@ internal sealed partial class OverlayShellPage
                         await TapBackAsync();
                         await Until(() => MainFocusEnabled && !switching && !RadialOpen &&
                             collection.CaptureFocusedItem()?.ItemKey == expected.ItemKey);
-                        if (shellOwnedReleases.Contains(ControllerButton.B))
+                        if (shellGestures.Owns(ControllerButton.B))
                             throw new InvalidOperationException("B release was lost during entry on cycle " + cycle);
                         // A frame being correct once is not success: sample the
                         // interval through the next fast user gesture as well.

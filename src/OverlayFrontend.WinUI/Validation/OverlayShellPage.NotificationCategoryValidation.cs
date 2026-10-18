@@ -39,10 +39,10 @@ internal sealed partial class OverlayShellPage
             await Choose(category, 1);
             var restoredOpacity = await Dialog("Banner opacity");
             await FocusedOption(restoredOpacity, 6); // Current 70% must scroll into view and own focus.
-            restoredOpacity.ControllerArmed = true; restoredOpacity.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+            restoredOpacity.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); restoredOpacity.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
             category = await Dialog("Song changes");
             await FocusedOption(category, 1);
-            category.ControllerArmed = true; category.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+            category.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); category.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
             await preferences.WaitAsync(TimeSpan.FromSeconds(3));
             if (center.Preferences.Category(descriptor.Id, "songs") != new NotificationCategoryPreference(NotificationPresentation.BannerAndList, 70))
                 throw new InvalidOperationException("Controller category choices did not persist.");
@@ -54,14 +54,14 @@ internal sealed partial class OverlayShellPage
             await CaptureSettingsListAsync(categories, Path.Combine(output, "notification-preferences.png"));
             var list = FindList(categories);
             if (list.Items.Count != 3) throw new InvalidOperationException("Missing master, general or named category.");
-            categories.ControllerArmed = true; categories.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+            categories.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); categories.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
             await menu.WaitAsync(TimeSpan.FromSeconds(3));
             checks.Add("Tray preferences expose master, General and declared category through the shared dialog");
             var pending = ChooseNotificationModeAsync("Pending example", NotificationPresentation.ListOnly, null);
             var pendingOptions = await Dialog("Notification delivery");
             await FocusedOption(pendingOptions, 1);
             if (FindList(pendingOptions).Items.Count != 3) throw new InvalidOperationException("Pending notices lost a delivery choice.");
-            pendingOptions.ControllerArmed = true; pendingOptions.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+            pendingOptions.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); pendingOptions.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
             if (await pending is not null) throw new InvalidOperationException("B changed the saved delivery choice.");
             var confirm = ShowHostChoiceAsync("Synthetic confirmation", "A decision keeps its safe default.",
                 (HostDialogChoice[])[new("yes", "Proceed"), new("no", "Keep current")], lifetime.Token);
@@ -70,7 +70,7 @@ internal sealed partial class OverlayShellPage
             while (Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) is not Control control ||
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control) != "Host.Choice.Close")
             { if (Environment.TickCount64 > deadline) throw new InvalidOperationException("Confirmation lost safe Cancel focus."); await Task.Delay(16); }
-            decision.ControllerArmed = true; decision.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+            decision.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); decision.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
             await confirm;
             checks.Add("Preference lists focus options and current values; confirmation dialogs retain Cancel");
             return checks;
@@ -101,7 +101,7 @@ internal sealed partial class OverlayShellPage
             var list = FindList(dialog); list.SelectedIndex = index;
             list.ScrollIntoView(list.Items[index]); await Task.Delay(50);
             ((ListViewItem)list.Items[index]).Focus(FocusState.Keyboard);
-            dialog.ControllerArmed = true; dialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+            dialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); dialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
             var end = Environment.TickCount64 + 4000;
             while (ReferenceEquals(hostChoiceDialog, dialog))
             { if (Environment.TickCount64 > end) throw new TimeoutException("Controller choice did not close dialog"); await Task.Delay(16); }

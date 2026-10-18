@@ -61,7 +61,7 @@ internal sealed partial class DialogInputValidationPage : Page
         {
             if (args.Key != Windows.System.VirtualKey.F6) return;
             args.Handled = true;
-            if (dialog is HostChoiceDialog choice) { choice.ControllerArmed = true; choice.Handle(ControllerButton.A, ControllerEventPhase.Pressed); }
+            if (dialog is HostChoiceDialog choice) { choice.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); choice.Handle(ControllerButton.A, ControllerEventPhase.Pressed); }
             else ((BrowserLibraryDialog)dialog).Handle(ControllerButton.A, ControllerEventPhase.Pressed);
         };
         dialog.Opened += (_, _) =>

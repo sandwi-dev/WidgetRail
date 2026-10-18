@@ -52,9 +52,9 @@ internal sealed partial class OverlayShellPage
                 await InvokeAsync(new(source, new("open", "open", ControllerButton.A, InputScopeId: "root")));
                 await Until(() => activeWidget == "intent-target" && surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/guide");
                 Check(interactive && !switching, "Intent opens its destination through normal widget selection");
-                Check(shellOwnedReleases.Contains(ControllerButton.A), "Opening A remains owned until release");
+                Check(shellGestures.Owns(ControllerButton.A), "Opening A remains owned until release");
                 await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
-                Check(!shellOwnedReleases.Contains(ControllerButton.A), "Release clears opening gesture ownership");
+                Check(!shellGestures.Owns(ControllerButton.A), "Release clears opening gesture ownership");
                 await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
                 Check(!interactive && activeWidget == "intent-target", "B opens the tray without returning to the sender");
                 await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
@@ -69,7 +69,7 @@ internal sealed partial class OverlayShellPage
                 var dialog = hostChoiceDialog!;
                 dialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
                 Check(!choice.IsCompleted, "Opening gesture cannot accept an unarmed dialog");
-                dialog.ControllerArmed = true;
+                dialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                 var list = Walk(dialog).OfType<ListView>().Single();
                 list.SelectedIndex = 1;
                 ((ListViewItem)list.Items[1]).Focus(FocusState.Keyboard);
@@ -90,7 +90,7 @@ internal sealed partial class OverlayShellPage
                         new("unsupported", "unsupported", ControllerButton.A, InputScopeId: "root")));
                     await Until(() => hostChoiceDialog is { IsLoaded: true });
                     Check(externalCalls == 0, "Receiver rejection offers fallback without opening a second destination");
-                    hostChoiceDialog!.ControllerArmed = true;
+                    hostChoiceDialog!.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                     hostChoiceDialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                     await failedRequest;
                     Check(externalCalls == 0 && activeWidget == "intent-target", "Cancelling fallback keeps the ordinary destination and opens nothing");
@@ -164,7 +164,7 @@ internal sealed partial class OverlayShellPage
                 var replacing = pinCommands[0].Action();
                 await Until(() => hostChoiceDialog is { IsLoaded: true });
                 Check(hostChoiceDialog!.PrimaryButtonText == "Replace pin", "Multiple layouts use a clearly labelled replacement chooser");
-                hostChoiceDialog.ControllerArmed = true;
+                hostChoiceDialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                 hostChoiceDialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                 await replacing;
                 Check(ReferenceEquals(pinned, oldPin) && oldPin.IsCurrent, "Cancelling a replacement preserves the live original pin");
@@ -194,7 +194,7 @@ internal sealed partial class OverlayShellPage
                 var confirmReplacement = Walk(hostChoiceDialog).OfType<Button>().Single(button =>
                     AutomationProperties.GetAutomationId(button) == "Host.Choice.Primary");
                 confirmReplacement.Focus(FocusState.Keyboard);
-                hostChoiceDialog.ControllerArmed = true;
+                hostChoiceDialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                 hostChoiceDialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
                 await singleReplacement;
                 Check(pinned is { WidgetId: "intent-target", IsCurrent: true } && !HostChoiceActive && !replacement!.IsCurrent,
@@ -220,7 +220,7 @@ internal sealed partial class OverlayShellPage
                     SetForeground(false);
                     var neutral = new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1 };
                     Receive(neutral);
-                    Check(hostChoiceDialog.ControllerArmed, "Neutral controller frame arms a pinned host dialog");
+                    Check(hostChoiceDialog.ControllerAdmission.IsArmed, "Neutral controller frame arms a pinned host dialog");
                     var allow = Walk(hostChoiceDialog).OfType<Button>().Single(b => AutomationProperties.GetAutomationId(b) == "Host.Choice.Primary");
                     allow.Focus(FocusState.Keyboard);
                     var accept = neutral; accept.State.Buttons = accept.PressedButtons = 0x1000;
@@ -245,7 +245,7 @@ internal sealed partial class OverlayShellPage
                     var items = Walk(picker).OfType<ListView>().Single();
                     items.SelectedIndex = 0;
                     ((ListViewItem)items.Items[0]).Focus(FocusState.Keyboard);
-                    picker.ControllerArmed = true;
+                    picker.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                     picker.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
                 }
             }

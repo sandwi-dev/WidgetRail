@@ -28,7 +28,7 @@ internal sealed partial class OverlayShellPage
         var originalFocus = FocusManager.GetFocusedElement(XamlRoot) as Control;
         originalSurface?.SetAutomaticFocusEnabled(false);
         originalSurface?.SetPresentationInputEnabled(false);
-        shellOwnedReleases.Add(ControllerButton.A);
+        shellGestures.Claim(ControllerButton.A);
         ResetInputPresentation();
         try
         {
@@ -101,13 +101,9 @@ internal sealed partial class OverlayShellPage
     {
         if (!LocalInstallActive) return false;
         heldAction.Reset(); rightStick.Reset();
-        foreach (var (mask, button) in Buttons)
-            if ((frame.ReleasedButtons & mask) != 0) shellOwnedReleases.Remove(button);
+        shellGestures.ReleaseDigitalButtons(frame);
         if (localInstallDialog is not { } dialog) return true;
-        if (!foreground || frame.Connected == 0 || frame.Primed != 0)
-        { dialog.ControllerArmed = false; return true; }
-        if (frame.State.Buttons == 0 && frame.State.LeftTrigger == 0 && frame.State.RightTrigger == 0) dialog.ControllerArmed = true;
-        if (!dialog.ControllerArmed) return true;
+        if (dialog.ControllerAdmission.Observe(frame, foreground) != Input.DialogControllerAdmissionResult.Ready) return true;
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
         {
@@ -117,7 +113,7 @@ internal sealed partial class OverlayShellPage
         };
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None) dialog.MoveFocus(next);
         foreach (var (mask, button) in Buttons)
-            if ((frame.PressedButtons & mask) != 0) { shellOwnedReleases.Add(button); dialog.Handle(button, ControllerEventPhase.Pressed); }
+            if ((frame.PressedButtons & mask) != 0) { shellGestures.Claim(button); dialog.Handle(button, ControllerEventPhase.Pressed); }
         return true;
     }
 }

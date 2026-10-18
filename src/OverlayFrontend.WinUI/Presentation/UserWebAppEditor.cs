@@ -35,7 +35,7 @@ internal sealed class UserWebAppEditor : IDisposable
     private bool busy, closed, confirmRemove;
     internal UIElement InputRoot => cover;
     internal WidgetTextEntryDialog? Keyboard { get; private set; }
-    internal bool ControllerArmed { get; set; }
+    internal Input.DialogControllerAdmission ControllerAdmission { get; } = new();
     internal event Action? Changed;
 
     internal UserWebAppEditor(UserWebAppStore store, FrameworkElement origin, UserWebApp? existing, string? url, string? title)

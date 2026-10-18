@@ -17,7 +17,7 @@ internal sealed partial class OverlayShellPage
         var previousWidget = activeWidget;
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
-        check(startupPresentationPending && activeWidget == previousWidget && !shellOwnedReleases.Contains(ControllerButton.A),
+        check(startupPresentationPending && activeWidget == previousWidget && !shellGestures.Owns(ControllerButton.A),
             "startup consumes activation without retaining its release or dispatching to the widget");
         CompleteStartupPresentation();
         check(!startupPresentationPending && StartupContentStage.Opacity == 1 && StartupContentStage.IsHitTestVisible,

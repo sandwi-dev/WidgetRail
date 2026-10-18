@@ -100,7 +100,7 @@ internal sealed partial class OverlayShellPage
         if (!startupPresentationPending) return false;
         if (phase == ControllerEventPhase.Pressed)
         {
-            shellOwnedReleases.Add(button);
+            shellGestures.Claim(button);
             if (button == ControllerButton.B) HideRequested?.Invoke();
         }
         return true;

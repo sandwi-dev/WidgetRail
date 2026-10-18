@@ -92,7 +92,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     private bool choiceScrollPending;
     internal bool SupportsScroll => messageViewport is not null || content.Children.Contains(choices);
     internal string? SelectedId { get; private set; }
-    internal bool ControllerArmed { get; set; }
+    internal Input.DialogControllerAdmission ControllerAdmission { get; } = new();
 
     internal HostChoiceDialog(string title, string message, IReadOnlyList<HostDialogChoice> entries, bool directDecisionButtons = false)
     {
@@ -410,7 +410,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         if (index < 0 || index >= entries.Count) return;
         if (KeepOpenOnChoice?.Invoke(entries[index].Id) == true) return;
         SelectedId = entries[index].Id;
-        ControllerArmed = false;
+        ControllerAdmission.Reset();
         Hide();
     }
 
@@ -429,7 +429,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     internal void ConstrainMessageViewport(double rootHeight)
     { if (messageViewport is not null) messageViewport.MaxHeight = Math.Clamp(rootHeight - 200, 40, 360); }
     internal void ResetController()
-    { ControllerArmed = false; messageScroll.Reset(); choiceScrollPending = false; }
+    { ControllerAdmission.Reset(); messageScroll.Reset(); choiceScrollPending = false; }
     internal void SampleScroll(short x, short y, long timestamp)
     {
         var delta = messageScroll.Sample(x, y, timestamp);
@@ -480,9 +480,9 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
 
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
     {
-        if (closing || !ControllerArmed || phase != ControllerEventPhase.Pressed) return;
+        if (closing || !ControllerAdmission.IsArmed || phase != ControllerEventPhase.Pressed) return;
         initialFocusRequired = false;
-        if (button == ControllerButton.B) { ControllerArmed = false; Hide(); }
+        if (button == ControllerButton.B) { ControllerAdmission.Reset(); Hide(); }
         else if (button == ControllerButton.X && SupportsDismissChoice && FocusedChoice() is { Tag: string id })
             DismissChoiceRequested?.Invoke(id);
         else if (button == ControllerButton.A)

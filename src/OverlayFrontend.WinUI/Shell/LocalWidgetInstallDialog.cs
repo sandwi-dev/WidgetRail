@@ -16,7 +16,7 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
     private TaskCompletionSource<bool>? approval;
     internal bool Finished { get; private set; }
     internal event Action? StateChanged;
-    internal bool ControllerArmed { get; set; }
+    internal Input.DialogControllerAdmission ControllerAdmission { get; } = new();
 
     internal LocalWidgetInstallDialog()
     {
@@ -42,7 +42,7 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
         progress.IsActive = false; progress.Visibility = Visibility.Collapsed;
         PrimaryButtonText = "Install widget";
         IsPrimaryButtonEnabled = true;
-        ControllerArmed = false;
+        ControllerAdmission.Reset();
         FocusCancel(); StateChanged?.Invoke();
         try { return await approval.Task.WaitAsync(cancellationToken); }
         finally { approval = null; }
@@ -55,7 +55,7 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
         PrimaryButtonText = "";
         message.Text = "Installing the widget…";
         progress.Visibility = Visibility.Visible; progress.IsActive = true;
-        ControllerArmed = false; FocusCancel(); StateChanged?.Invoke();
+        ControllerAdmission.Reset(); FocusCancel(); StateChanged?.Invoke();
     }
 
     internal void Complete(LocalWidgetInstallResult result)
@@ -65,7 +65,7 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
         message.Text = result.Message;
         PrimaryButtonText = ""; CloseButtonText = "Done";
         progress.IsActive = false; progress.Visibility = Visibility.Collapsed;
-        ControllerArmed = false; FocusCancel(); StateChanged?.Invoke();
+        ControllerAdmission.Reset(); FocusCancel(); StateChanged?.Invoke();
     }
 
     internal void FocusCancel() => (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
@@ -73,12 +73,12 @@ internal sealed partial class LocalWidgetInstallDialog : Presentation.FrameworkD
         FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = this });
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
     {
-        if (!ControllerArmed || phase != ControllerEventPhase.Pressed) return;
-        if (button == ControllerButton.B) { ControllerArmed = false; Hide(); }
+        if (!ControllerAdmission.IsArmed || phase != ControllerEventPhase.Pressed) return;
+        if (button == ControllerButton.B) { ControllerAdmission.Reset(); Hide(); }
         else if (button == ControllerButton.A && FocusManager.GetFocusedElement(XamlRoot) is Button focused &&
             (ReferenceEquals(focused, GetTemplateChild("PrimaryButton")) || ReferenceEquals(focused, GetTemplateChild("CloseButton"))))
         {
-            ControllerArmed = false;
+            ControllerAdmission.Reset();
             (FrameworkElementAutomationPeer.CreatePeerForElement(focused)?.GetPattern(PatternInterface.Invoke) as IInvokeProvider)?.Invoke();
         }
     }

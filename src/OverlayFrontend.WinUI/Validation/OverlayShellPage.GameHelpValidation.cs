@@ -47,7 +47,7 @@ internal sealed partial class OverlayShellPage
                 await Act("capture.image", "help.capture-image");
                 await Until(() => hostChoiceDialog is not null && Find(hostChoiceDialog, "Host.Choice.Primary") is Control);
                 Check(hostChoiceDialog!.Title?.ToString() == "Capture game context?", "Capture request reaches host confirmation");
-                hostChoiceDialog.ControllerArmed = true;
+                hostChoiceDialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                 hostChoiceDialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                 await Until(() => hostChoiceDialog is null && !Has("help.capture-cancel"));
                 Check(visible && !Has("help.preview-send"), "Cancelling host confirmation keeps overlay open and creates no preview");
@@ -58,7 +58,7 @@ internal sealed partial class OverlayShellPage
                     await Act(video ? "capture.video" : "capture.image", video ? "help.add-video" : "help.add-image");
                     await Until(() => hostChoiceDialog is not null && Find(hostChoiceDialog, "Host.Choice.Primary") is Control);
                     ((Control)Find(hostChoiceDialog, "Host.Choice.Primary")!).Focus(FocusState.Keyboard);
-                    hostChoiceDialog!.ControllerArmed = true;
+                    hostChoiceDialog!.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                     hostChoiceDialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
                     // Logical visibility changes at the start of the close transition.
                     // Moving foreground then would cancel the release-aware handoff.

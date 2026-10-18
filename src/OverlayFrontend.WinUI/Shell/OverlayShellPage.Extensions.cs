@@ -197,7 +197,7 @@ internal sealed partial class OverlayShellPage
         var focus = FocusManager.GetFocusedElement(root) as Control;
         SystemFilePickerOpen = true;
         presenter?.SetAutomaticFocusEnabled(false); presenter?.SetPresentationInputEnabled(false); pin?.SetInput(false);
-        shellOwnedReleases.Add(WidgetRail.WidgetProtocol.ControllerButton.A);
+        shellGestures.Claim(WidgetRail.WidgetProtocol.ControllerButton.A);
         ResetInputPresentation(); PublishControllerGuide();
         try
         {

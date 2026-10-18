@@ -43,7 +43,7 @@ internal sealed partial class OverlayShellPage
         WidgetIntentPreparation? prepared = null;
         // Notification activation follows a dialog's asynchronous close. That
         // dialog already owns the release, which may have arrived before here.
-        if (prepareNotification is null) shellOwnedReleases.Add(ControllerButton.A);
+        if (prepareNotification is null) shellGestures.Claim(ControllerButton.A);
         try
         {
             preparingIntent = true;
@@ -314,12 +314,10 @@ internal sealed partial class OverlayShellPage
         if (hostChoicePin is { } pin && (!visible || !HostChoiceHasForeground))
         { DismissPinnedHostChoice(pin); return true; }
         heldAction.Reset(); rightStick.Reset();
-        foreach (var (mask, button) in Buttons)
-            if ((frame.ReleasedButtons & mask) != 0) shellOwnedReleases.Remove(button);
-        if (!visible || !HostChoiceHasForeground || frame.Connected == 0 || frame.Primed != 0)
-        { dialog.ResetController(); return true; }
-        if (frame.State.Buttons == 0 && frame.State.LeftTrigger == 0 && frame.State.RightTrigger == 0) dialog.ControllerArmed = true;
-        if (!dialog.ControllerArmed) return true;
+        shellGestures.ReleaseDigitalButtons(frame);
+        var admission = dialog.ControllerAdmission.Observe(frame, visible && HostChoiceHasForeground);
+        if (admission == Input.DialogControllerAdmissionResult.Unavailable) dialog.ResetController();
+        if (admission != Input.DialogControllerAdmissionResult.Ready) return true;
         dialog.SampleScroll(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
@@ -330,7 +328,7 @@ internal sealed partial class OverlayShellPage
         };
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None) dialog.MoveFocus(next);
         foreach (var (mask, button) in Buttons)
-            if ((frame.PressedButtons & mask) != 0) { shellOwnedReleases.Add(button); HandleHostChoiceButton(dialog, button, ControllerEventPhase.Pressed); }
+            if ((frame.PressedButtons & mask) != 0) { shellGestures.Claim(button); HandleHostChoiceButton(dialog, button, ControllerEventPhase.Pressed); }
         return true;
     }
 }
