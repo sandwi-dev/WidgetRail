@@ -35,7 +35,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     }
     private async Task RefreshStyleAsync(long current)
     {
-        try{await Evaluate("globalThis.__widgetRailStyle?.("+JsonSerializer.Serialize(buttonStyle)+")",current);}
+        try{await Evaluate("globalThis.__widgetRailStyle?.("+JsonSerializer.Serialize(buttonStyle, BrowserJsonContext.Default.String)+")",current);}
         catch(Exception error)when(error is not OutOfMemoryException){/* Navigation retires this style target. */}
     }
 
@@ -91,7 +91,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
             context=world.RootElement.GetProperty("executionContextId").GetInt32();
             await Call("Runtime.addBinding",new(){["name"]=binding,["executionContextId"]=context.Value});
             if(!Current(current))return;
-            var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding)+"];delete globalThis["+JsonSerializer.Serialize(binding)+"];"+Prelude+"\n"+RequestsPrelude+"\n"+script+"\n})()";
+            var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];delete globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];"+Prelude+"\n"+RequestsPrelude+"\n"+script+"\n})()";
             await Evaluate(source,current);
             await RefreshStyleAsync(current);
         }

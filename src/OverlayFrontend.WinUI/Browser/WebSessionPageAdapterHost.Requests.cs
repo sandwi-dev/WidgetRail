@@ -36,7 +36,7 @@ internal sealed partial class WebSessionPageAdapterHost
         if(!canRequest())
         {
             CancelRequests();requests.Remove(id);
-            publish(JsonSerializer.Serialize(new{widgetRail=1,kind="response",id,error="page_hidden"}));return;
+            publish(new System.Text.Json.Nodes.JsonObject{["widgetRail"]=1,["kind"]="response",["id"]=id,["error"]="page_hidden"}.ToJsonString());return;
         }
         // Only replies to outstanding host requests can leave the isolated world.
         publish(reply.GetRawText());
