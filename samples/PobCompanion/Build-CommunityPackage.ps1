@@ -6,9 +6,14 @@ param(
     [Parameter(Mandatory)][string]$Cli,
     [string]$OutputDirectory,
     [string]$EngineLockPath = (Join-Path $PSScriptRoot 'engine-lock.json'),
-    [string]$Python = 'python'
+    [string]$Python = 'python',
+    [string]$Version = '0.1.0'
 )
 $ErrorActionPreference='Stop'
+$parsedVersion = $null
+if (-not [version]::TryParse($Version, [ref]$parsedVersion) -or $parsedVersion.ToString() -cne $Version) {
+    throw 'Version must use canonical dotted numeric notation.'
+}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $locks=Get-Content -LiteralPath $EngineLockPath -Raw | ConvertFrom-Json
 $engineLock=$locks."poe$Game"
@@ -62,7 +67,7 @@ Copy-Item -LiteralPath $EngineLockPath -Destination (Join-Path $payload 'engine-
 $id="widgetrail.samples.poe$Game-companion"
 $widgetName="PoE$Game Path of Building (Beta)"
 $manifest=[ordered]@{
-    manifestVersion=1;id=$id;publisher='widgetrail.samples';name=$widgetName;version='0.1.0'
+    manifestVersion=1;id=$id;publisher='widgetrail.samples';name=$widgetName;version=$Version
     hostApi=@{minimum='1.0';maximumMajor=1}
     entrypoint=@{runtime='full-trust-application-v1';executable="payload/Poe${Game}Companion.exe"}
     presentation=@{icon='connection';packageIcon=@{assetId='companion.mark';colorMode='themeTint'}}
@@ -80,7 +85,7 @@ $manifest|ConvertTo-Json -Depth 8|Set-Content (Join-Path $stage 'manifest.json')
 Get-ChildItem -LiteralPath $payload -Filter '*.pdb' -File -Recurse | ForEach-Object {Remove-Item -LiteralPath $_.FullName}
 & $Cli validate $stage
 if($LASTEXITCODE -ne 0){throw 'Package validation failed.'}
-$archive=Join-Path $out ($id+'-0.1.0.wrwidget')
+$archive=Join-Path $out ($id+'-'+$Version+'.wrwidget')
 & $Cli pack $stage --output $archive
 if($LASTEXITCODE -ne 0){throw 'Package packing failed.'}
 Get-FileHash -LiteralPath $archive -Algorithm SHA256
