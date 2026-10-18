@@ -12,6 +12,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | --- | --- | --- |
 | 1 | Clean up shared code and game-specific boundaries | Agreed; not started |
 | 2 | Adjust widget dimensions and stabilize workspace sizing | Agreed; not started |
+| 2a | Compact layouts and inspect the app for couch readability | Agreed; not started |
 | 3 | Bring PoE1 to a tested beta candidate and audit new features | Planned; not started |
 | 4 | Complete passive-tree artwork and measure rendering improvements | Planned; not started |
 | 5 | Add whole-build and loadout comparison | Planned; not started |
@@ -46,6 +47,19 @@ Current preferred dimensions are approximately 1180 × 820 for planning sections
 - [ ] Verify smaller displays, display/interface/text scaling, long lists, two-column layouts, controller reachability and focus after resize.
 
 The host already has independent `Preferred`, `Content` and `FillAvailable` axis policies. Reuse those before proposing host API changes. Exact width policy and numeric limits remain to be decided during layout work. Small management views need not become full-size merely because planning views do.
+
+## 2a. Compact layouts and app-wide visual verification
+
+Follow the architecture cleanup and dimension adjustment. Increase useful information per page and reduce navigation without making the interface difficult to read from a couch. Apply the same principles to subsequent new screens, then repeat the affected visual checks.
+
+- [ ] Improve shared host layouts and PoB screens by reducing excess padding/gaps, redundant headings/descriptions and unnecessary navigation. Keep meaningful explanations and distinctions; do not remove information solely to fit more rows.
+- [ ] Use the larger workspace, appropriate two-column layouts and compact rows for related values. Keep reading-line lengths reasonable and group related controls clearly.
+- [ ] Preserve readable text, unmistakable focus indicators, comfortable pointer/controller targets and existing text/interface scaling. Do not apply indiscriminate font or target shrinking.
+- [ ] Start with one balanced default; do not add a separate density preference or duplicate desktop/couch layouts in this pass.
+- [ ] Walk through the actual app, not only isolated screenshots: shell/rail, Settings, Catalogue, shared dialogs, on-screen keyboard/suggestions, pinned surfaces and available widgets. Exercise each PoB section in both games, including subpages, selectors, expanded details, lists, Notes, trade comparisons and ranked results.
+- [ ] Record a coverage checklist with tested surfaces, display/scaling/theme conditions, findings and evidence. Include dense, empty, loading, disabled, error and long-label states, plus light/dark/high-contrast appearance and representative TV scaling. Mark unavailable surfaces or states as unverified rather than assuming they are good.
+- [ ] Check scrolling, clipping, alignment, focus visibility, controller reachability, mouse interaction, modal bounds and hide/reopen behavior after shared style changes. Fix problems found and recheck affected workflows before reporting completion.
+- [ ] Native rendering and interaction checks are required. Final readability at the user's actual couch distance remains a physical user acceptance check; screenshots alone cannot establish that.
 
 ## 3. PoE1 beta migration
 
@@ -137,6 +151,7 @@ The conversation mockup is a design reference only; native visual acceptance is 
 - Retain the official trade-website approach: browser-profile sign-in, normal page loading, comparison actions and evaluation of received listings. Loading additional listings still causes normal website requests.
 - Preserve widget-specific persistent web profiles, retained-session return flow and existing host idle unloading. Do not reintroduce temporary-page machinery.
 - Website purchase/contact controls remain the purchasing path. No copying session cookies into widget backend state.
+- **Minimize live GGG website/API use during development and acceptance.** Use local fixtures, synthetic pages and sanitized previously captured responses for repeated layout, navigation, extraction and failure tests. Reuse existing sessions/results for the small number of necessary live checks. Do not repeatedly refresh/search/load batches, deliberately trigger throttling or run automated stress tests against GGG. Respect Retry-After and relevant limit headers when available; stop live retries on throttling/challenge responses and continue independent local checks. Record what was locally simulated versus live-verified; do not claim this guarantees freedom from account flags.
 
 ## Deferred or excluded
 
