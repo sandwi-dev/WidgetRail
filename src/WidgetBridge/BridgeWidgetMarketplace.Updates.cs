@@ -158,7 +158,8 @@ internal sealed partial class BridgeWidgetMarketplace
             var items = _snapshot.UpdateBatch!.Items;
             var completed = items.Count(item => item.State == "completed");
             var failed = items.Count(item => item.State == "failed");
-            var message = $"{completed} widgets updated" + (failed == 0 ? "." : $"; {failed} need attention. Review the results and retry.");
+            var message = $"{completed} {(completed == 1 ? "widget" : "widgets")} updated" +
+                (failed == 0 ? "." : $"; {failed} {(failed == 1 ? "needs" : "need")} attention. Review the results and retry.");
             _notification = (new(message), _clock.GetUtcNow().AddSeconds(30));
             Finish(job, completed == 0 ? "failed" : "completed", message);
         }

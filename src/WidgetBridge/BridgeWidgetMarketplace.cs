@@ -10,6 +10,10 @@ using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
 
 namespace WidgetRail.WidgetBridge;
 
+// Internal composition inputs only. Production uses the bundled catalogue and
+// ordinary HTTP/time defaults; callers cannot replace review or install admission.
+internal sealed record BridgeMarketplaceSources(IReadOnlyList<CuratedWidget> Definitions, HttpMessageHandler Http, TimeProvider Clock);
+
 internal sealed record CuratedWidget(string Id, string Publisher, string Name, string Description, IReadOnlyList<string> Screenshots,
     IReadOnlyList<string>? SetupRequirements = null);
 

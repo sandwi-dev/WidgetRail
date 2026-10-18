@@ -88,7 +88,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null,
         string? workerDiagnosticRoot = null,
         PlatformSettingsStore? settingsStore = null,
-        BridgeAppUpdates? appUpdates = null)
+        BridgeAppUpdates? appUpdates = null,
+        BridgeMarketplaceSources? marketplaceSources = null)
     {
         _pipeName = ValidatePipeName(pipeName);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <=
@@ -140,6 +141,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             _catalogMonitor);
         _marketplace = packageCatalog is null || _catalogMonitor is null ? null :
             new BridgeWidgetMarketplace(packageCatalog, async token => { await _catalogMonitor.ReloadNowAsync(token).ConfigureAwait(false); },
+                definitions: marketplaceSources?.Definitions, http: marketplaceSources?.Http, clock: marketplaceSources?.Clock,
                 stateRoot: Path.Combine(_settingsRoot ?? Path.GetDirectoryName(packageCatalog.Root)!, "widget-state"), registry: _registry);
         _localPackageImport = _catalogMonitor is null
             ? null
