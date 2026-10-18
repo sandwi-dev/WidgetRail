@@ -129,8 +129,8 @@ public sealed partial class PobWidget
         }
         var close="gem-inspection-close."+inspection.Token;
         var apply="gem-inspection-apply."+inspection.Token;
-        rows.Add(UI.Row("pob.gem-inspection.actions",Button("Back to gems",close),Button(context.Gem==0?"Add gem":"Replace gem",apply)).Classes("pob-toolbar"));
-        return view.WithModal(new("pob.gem-inspection",data.Name,UI.Stack("pob.gem-inspection.content",rows.ToArray()).Classes("pob-card"),
-            "pob."+close,close){AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:560,Height:440)});
+        var controls=UI.Row("pob.gem-inspection.actions",Button("Back to gems",close),Button(context.Gem==0?"Add gem":"Replace gem",apply)).Classes("pob-toolbar");
+        return view.WithModal(new("pob.gem-inspection",data.Name,InspectionWorkspace("pob.gem-inspection",rows,controls),
+            "pob."+close,close){ScrollContent=false,AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:560,Height:440)});
     }
 }

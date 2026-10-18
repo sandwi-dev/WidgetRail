@@ -39,6 +39,7 @@ internal sealed partial class WidgetStylesValidationPage
                 var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
                     new((WrssDocument[])[package.Document], []), catalog.Load(themeId, "1.0.0").Package).Theme!;
                 var inspection = SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-{kind}-inspection.json")));
+                if(size.Width==820)inspection=inspection with{Root=WithInspectionOverflow(inspection.Root,"pob.candidate-inspection.body")};
                 var row = JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-{kind}-row.json")))!;
                 var collectionId = inspection.Root.AnchoredPresentation!.Anchor.IndexedItem!.CollectionId;
                 // Real exported declarations, tooltip and demanded row. Indexed lease/provider
@@ -97,16 +98,20 @@ internal sealed partial class WidgetStylesValidationPage
                     $"PoE{game} {kind} inspection fits {size.Width}x{size.Height} in {themeId}");
                 var scrolls = Descendants(panel).OfType<ScrollViewer>().ToArray();
                 Check(scrolls.Length > 0 && scrolls.All(scroll => scroll.ExtentWidth <= scroll.ViewportWidth + 1), "Item tooltip uses vertical scrolling without horizontal overflow");
+                var details=Find<ScrollViewer>("Widget.pob.candidate-inspection.details",root)!;
+                Check(details.VerticalOffset<1,"Item inspection opens at the first detail while its return action has focus");
+                if(size.Width==820)Check(details.ScrollableHeight>0,"Long item fixture exercises a scrollable description");
                 var choose = Descendants(panel).OfType<Button>().Single(button =>
                     AutomationProperties.GetAutomationId(button).Contains("candidate-inspection-choose.", StringComparison.Ordinal));
-                choose.StartBringIntoView();
-                await Wait(() => scrolls.All(scroll => scroll.ScrollableHeight <= 0 || WidgetReadingScrollFocus.IsVisible(choose, scroll)));
+                details.ChangeView(null,details.ScrollableHeight,null,true);await Task.Delay(80);
+                var chooseBounds=choose.TransformToVisual(panel).TransformBounds(new(0,0,choose.ActualWidth,choose.ActualHeight));
+                Check(chooseBounds.Top>=0&&chooseBounds.Bottom<=panel.ActualHeight,"Item actions remain fixed while reading the end of the description");
                 Check(choose.IsEnabled && choose.Focus(FocusState.Keyboard), "Select item or Open item draft stays reachable after scrolling");
                 if (kind == "inventory")
                 {
                     var slot = Find<Button>("Widget.pob.candidate-inspection.slot", root)!;
-                    slot.StartBringIntoView();
-                    await Wait(() => scrolls.All(scroll => scroll.ScrollableHeight <= 0 || WidgetReadingScrollFocus.IsVisible(slot, scroll)));
+                    var slotBounds=slot.TransformToVisual(panel).TransformBounds(new(0,0,slot.ActualWidth,slot.ActualHeight));
+                    Check(slotBounds.Top>=0&&slotBounds.Bottom<=panel.ActualHeight,"Equipment target remains fixed outside the description scroll region");
                     Check(slot.Focus(FocusState.Keyboard), "Inventory equipment slot control accepts focus");
                     page.ActivateFocused(); await Wait(() => page.HasTransientControl);
                     await page.HandleControllerButtonAsync(ControllerButton.B);
@@ -122,8 +127,8 @@ internal sealed partial class WidgetStylesValidationPage
                     Check(slotChanges == 1 && equipped == 0, "Confirming the slot dispatches once and preserves focus without equipping");
                     var equip = Descendants(panel).OfType<Button>().Single(button =>
                         AutomationProperties.GetAutomationId(button).Contains("candidate-inspection-equip.", StringComparison.Ordinal));
-                    equip.StartBringIntoView();
-                    await Wait(() => scrolls.All(scroll => scroll.ScrollableHeight <= 0 || WidgetReadingScrollFocus.IsVisible(equip, scroll)));
+                    var equipBounds=equip.TransformToVisual(panel).TransformBounds(new(0,0,equip.ActualWidth,equip.ActualHeight));
+                    Check(equipBounds.Top>=0&&equipBounds.Bottom<=panel.ActualHeight,"Equip remains fixed outside the description scroll region");
                     Check(equip.Focus(FocusState.Keyboard) && equip.IsEnabled, "Explicit Equip remains independently reachable");
                 }
                 else Check(!Descendants(panel).OfType<Button>().Any(button => AutomationProperties.GetAutomationId(button)
@@ -178,4 +183,9 @@ internal sealed partial class WidgetStylesValidationPage
             using var output = File.Create(path); await stream.AsStreamForRead().CopyToAsync(output);
         }
     }
+
+    private static ViewNode WithInspectionOverflow(ViewNode node,string bodyId)=>node.Id==bodyId
+        ?node with{Children=node.Children.Concat(Enumerable.Range(0,24).Select(index=>new ViewNode
+            {Id=bodyId+".overflow."+index,Kind=ViewNodeKind.Text,Text="Long inspection detail "+index,StyleClasses=(string[])["pob-small"]})).ToArray()}
+        :node with{Children=node.Children.Select(child=>WithInspectionOverflow(child,bodyId)).ToArray()};
 }

@@ -39,6 +39,7 @@ internal sealed partial class WidgetStylesValidationPage
                     new((WrssDocument[])[package.Document], []), catalog.Load(themeId, "1.0.0").Package).Theme!;
                 var picker = SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-gem-picker.json")));
                 var inspection = SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-gem-inspection.json")));
+                if(size.Width==820)inspection=inspection with{Root=WithInspectionOverflow(inspection.Root,"pob.gem-inspection.body")};
                 var row = JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-gem-row.json")))!;
                 // Use the real demanded row/content and styles. Worker/lease routing
                 // is qualified separately; this fixture measures native presentation.
@@ -74,10 +75,14 @@ internal sealed partial class WidgetStylesValidationPage
                     $"PoE{game} inspection fits {size.Width}x{size.Height} in {themeId}");
                 var scrolls = Descendants(panel).OfType<ScrollViewer>().ToArray();
                 Check(scrolls.All(scroll => scroll.ExtentWidth <= scroll.ViewportWidth + 1), "Inspection has no horizontal content overflow");
+                var details=Find<ScrollViewer>("Widget.pob.gem-inspection.details",root)!;
+                Check(details.VerticalOffset<1,"Gem inspection opens at its first detail while its return action has focus");
+                if(size.Width==820)Check(details.ScrollableHeight>0,"Long gem fixture exercises a scrollable description");
                 var apply = Descendants(panel).OfType<Button>().Single(button =>
                     AutomationProperties.GetAutomationId(button).Contains("gem-inspection-apply.", StringComparison.Ordinal));
-                apply.StartBringIntoView();
-                await Wait(() => scrolls.All(scroll => scroll.ScrollableHeight <= 0 || WidgetReadingScrollFocus.IsVisible(apply, scroll)));
+                details.ChangeView(null,details.ScrollableHeight,null,true);await Task.Delay(80);
+                var applyBounds=apply.TransformToVisual(panel).TransformBounds(new(0,0,apply.ActualWidth,apply.ActualHeight));
+                Check(applyBounds.Top>=0&&applyBounds.Bottom<=panel.ActualHeight,"Gem actions remain fixed while reading the end of the description");
                 Check(apply.IsEnabled && apply.Focus(FocusState.Keyboard), "Explicit Add/Replace remains reachable after scrolling");
                 if (size.Width == 1320)
                     await Capture(Path.Combine(directory, $"native-poe{game}-{themeId}.png"));

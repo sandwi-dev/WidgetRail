@@ -92,7 +92,9 @@ internal static class ItemWorkflowTests
             check(WorkStateTests.SameBuild(Work().CommittedXml,beforeDelete),"Deleted inventory item is recoverable through Undo after unloading");
             await Action("section.3");
             var equippedState=await engine!.ExecuteAsync(new{op="snapshot"},default,Work().CommittedXml);
-            var equippedItem=equippedState.State.GetProperty("items").EnumerateArray().First();
+            // Exercise the helmet this workflow crafted and equipped. The input
+            // build's first item may be a unique weapon with no eligible affixes.
+            var equippedItem=equippedState.State.GetProperty("items").EnumerateArray().Single(item=>item.GetProperty("slot").GetString()=="Helmet");
             await Action("item."+equippedItem.GetProperty("id").GetInt32());await Action("item-manage");await Action("equipped-author");
             var beforeModifier=Work().CommittedXml;var beforeHistory=Work().Undo.Length;
             await Action("author-add-modifier");
