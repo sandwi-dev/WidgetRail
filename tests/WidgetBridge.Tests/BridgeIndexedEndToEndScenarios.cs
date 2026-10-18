@@ -206,6 +206,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private long calls;
     private long focusRequest;
     private FocusGroupEntryRequest? entry;
+    private ScrollRevealRequest? reveal;
     internal IndexedOwnedBridgeProbeWidget()
     {
         source = CreateIndexedCollection<int, int>("owned", 0, 100, new()
@@ -278,7 +279,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         .Shortcut(ControllerButton.RightStick, actionId: "focus-disabled")
         .Shortcut(ControllerButton.LeftStick, actionId: "group-label")
         .Shortcut(ControllerButton.X, actionId: "group-partition")
-        .Shortcut(ControllerButton.B, actionId: "focus-clear"), "items") { FocusGroupEntryRequest = entry };
+        .Shortcut(ControllerButton.B, actionId: "focus-clear"), "items") { FocusGroupEntryRequest = entry, ScrollRevealRequest = reveal };
     public override WidgetView Render()
     {
         var parent = RenderParent();
@@ -366,6 +367,17 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             source.PublishQuery(3, 100);
         }
         if (action.ActionId == "focus-clear") entry = null;
+        if (action.ActionId is "reveal-exact" or "reveal-wrong" or "reveal-delayed")
+        {
+            entry = null; grid = grouped = surfaces = modalMode = false; modalItem = null;
+            activationReadGate?.TrySetResult();
+            activationReadGate = action.ActionId == "reveal-delayed" ? new(TaskCreationOptions.RunContinuationsAsynchronously) : null;
+            source.PublishQuery(action.ActionId == "reveal-delayed" ? 97 : 0, 100);
+            reveal = source.Reveal("items", ++focusRequest, source.FocusTarget("items", new(action.ActionId == "reveal-wrong" ? "wrong-key" : "item.75"), 75));
+        }
+        if (action.ActionId == "reveal-clear") { reveal = null; entry = null; source.PublishQuery(0, 100); }
+        if (action.ActionId == "reveal-republish") source.UpdateContent(0);
+        if (action.ActionId == "reveal-replace") source.PublishQuery(0, 100);
         if (action.ActionId == "focus-delayed")
         {
             source.PublishQuery(99, 100);

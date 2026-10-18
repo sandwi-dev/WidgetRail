@@ -16,6 +16,7 @@ internal sealed partial class WidgetIndexedCollectionView
     private bool navigationQueued;
     private bool navigationNeedsScroll;
     private bool viewportRevealQueued;
+    private bool scrollOnly;
 
     private void NativeViewportSizeChanged(object sender, SizeChangedEventArgs args)
     {
@@ -109,6 +110,22 @@ internal sealed partial class WidgetIndexedCollectionView
         return true;
     }
 
+    internal bool Reveal(IndexedCollectionFocusTarget target)
+    {
+        // An explicit or restoring focus handoff wins over a passive scroll.
+        if (disposed || source is null || view is null || !CanReceiveInput || pendingIndex is not null || !MatchesQuery(target)) return false;
+        scrollOnly = true;
+        pendingEntry = target;
+        pendingIndex = target.Index;
+        QueueNavigation();
+        return true;
+    }
+
+    internal void CancelReveal()
+    {
+        if (scrollOnly) CancelNavigation();
+    }
+
     private bool MatchesQuery(IndexedCollectionFocusTarget target) => source?.Declaration is { IndexedCollection: { } query } node &&
         target.CollectionId == node.Id && target.SourceId == query.SourceId && target.QueryGeneration == query.QueryGeneration &&
         target.Index >= 0 && target.Index < query.Count;
@@ -138,6 +155,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
+        CancelReveal();
         CancelPendingActivation();
         if (view is null || source is null || !CanReceiveInput || view.Items.Count == 0) return false;
         CancelEntry();
@@ -203,6 +221,16 @@ internal sealed partial class WidgetIndexedCollectionView
             {
                 navigationQueued = false;
                 if (pendingIndex is not { } index || view is null || index >= view.Items.Count) return;
+                if (scrollOnly)
+                {
+                    if (!CanReceiveInput || pendingEntry is not { } target || !MatchesQuery(target) ||
+                        source?.Items[index] is not IndexedItem<WidgetIndexedRow> slot || slot.Failed)
+                    { CancelNavigation(); return; }
+                    // Resolve the key before changing scroll position. An index alone
+                    // is not authority to reveal a replaced or unrelated occurrence.
+                    if (slot.Value is not { Lease.IsCurrent: true }) return;
+                    if (slot.Key != target.ItemKey) { CancelNavigation(); return; }
+                }
                 // One native request for the newest logical target. A run of
                 // controller frames never creates a backlog of layout work.
                 if (navigationNeedsScroll)
@@ -262,7 +290,7 @@ internal sealed partial class WidgetIndexedCollectionView
         // They are not current navigation availability. Wait for the requested
         // row lease rather than skipping every old disabled item to the far end.
         if (slot.Value is not { } row || !row.Lease.IsCurrent) return;
-        if (entering)
+        if (entering || scrollOnly)
         {
             if (pendingEntry is { } queryTarget && !MatchesQuery(queryTarget)) { CancelNavigation(); return; }
             // An index is a location, not identity. Never silently focus another
@@ -270,6 +298,7 @@ internal sealed partial class WidgetIndexedCollectionView
             if (pendingEntry is { } entry && slot.Key != entry.ItemKey) { CancelNavigation(); return; }
         }
         if (view.ContainerFromIndex(index) is not Control { IsLoaded: true } target) return;
+        if (scrollOnly) { CancelNavigation(); return; }
         if (!target.IsEnabled)
         {
             TraceNavigation("disabled-target", index, row, target);
@@ -300,6 +329,7 @@ internal sealed partial class WidgetIndexedCollectionView
         pendingIndex = null;
         pendingEntry = null;
         entering = false;
+        scrollOnly = false;
         navigationNeedsScroll = false;
         if (view is not null) view.LayoutUpdated -= FinishNavigation;
         if (wasPending) NavigationSettled?.Invoke();

@@ -99,6 +99,15 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
     public void PublishQuery(TQuery query, int count)
         => PublishQuery(query, count, null);
 
+    /// <summary>Reveals an exact occurrence without selecting it or moving focus. Issue once for a navigation event, not on every render.</summary>
+    public ScrollRevealRequest Reveal(string collectionId, long requestId, IndexedCollectionFocusTarget item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (requestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId) throw new ArgumentOutOfRangeException(nameof(requestId));
+        IndexedCollectionContract.ValidateFocusTarget(item, collectionId, Descriptor);
+        return new(requestId, collectionId) { IndexedItem = item };
+    }
+
     internal void PublishQuery(TQuery query, int count, DiscoveredCollectionState? discovery)
     {
         ArgumentNullException.ThrowIfNull(query);

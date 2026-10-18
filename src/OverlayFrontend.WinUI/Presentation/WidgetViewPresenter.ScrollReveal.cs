@@ -9,13 +9,20 @@ internal sealed partial class WidgetViewPresenter
 {
     private sealed record PendingScrollReveal(ScrollRevealRequest Request, Binding Scroll, Binding Target);
     private PendingScrollReveal? pendingScrollReveal;
+    private sealed record PendingIndexedScrollReveal(ScrollRevealRequest Request, Binding Collection);
+    private PendingIndexedScrollReveal? pendingIndexedScrollReveal;
     private long lastScrollRevealRequest;
 
     private void UpdateScrollReveal(ViewSnapshot snapshot)
     {
+        if (snapshot.ScrollRevealRequest is { IndexedItem: not null } indexedRequest)
+        {
+            UpdateIndexedScrollReveal(indexedRequest);
+            return;
+        }
         if (snapshot.ScrollRevealRequest is not { } request || presentationOnly || !presentationActive ||
             !bindings.TryGetValue(request.ScrollId, out var scroll) || scroll.Element is not ScrollViewer ||
-            !bindings.TryGetValue(request.TargetId, out var target) || scroll.Identity.Scope != activeScope ||
+            request.TargetId is null || !bindings.TryGetValue(request.TargetId, out var target) || scroll.Identity.Scope != activeScope ||
             target.Identity.Scope != activeScope || !IsDescendant(request.TargetId, request.ScrollId))
         { CancelScrollReveal(); return; }
         if (pendingScrollReveal is { } old && (old.Request != request || !ReferenceEquals(old.Scroll, scroll) || !ReferenceEquals(old.Target, target)))
@@ -33,6 +40,31 @@ internal sealed partial class WidgetViewPresenter
         });
     }
 
+    private void UpdateIndexedScrollReveal(ScrollRevealRequest request)
+    {
+        if (presentationOnly || !presentationActive || HasTransientControl ||
+            !bindings.TryGetValue(request.ScrollId, out var binding) || binding.Element is not WidgetIndexedCollectionView ||
+            binding.Identity.Scope != activeScope)
+        { CancelScrollReveal(); return; }
+        if (pendingIndexedScrollReveal is { } old && (old.Request != request || !ReferenceEquals(old.Collection, binding)))
+            CancelScrollReveal();
+        if (request.RequestId <= lastScrollRevealRequest) return;
+        CancelScrollReveal();
+        lastScrollRevealRequest = request.RequestId;
+        var pending = new PendingIndexedScrollReveal(request, binding);
+        pendingIndexedScrollReveal = pending;
+        // Focus restoration is queued first. The collection rejects stale query
+        // identities and waits for the exact row payload before scrolling.
+        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (!ReferenceEquals(pendingIndexedScrollReveal, pending)) return;
+            if (disposed || !presentationActive || presentationOnly || HasTransientControl ||
+                !bindings.TryGetValue(request.ScrollId, out var current) || !ReferenceEquals(current, binding) ||
+                current.Identity.Scope != activeScope ||
+                !((WidgetIndexedCollectionView)binding.Element).Reveal(request.IndexedItem!)) CancelScrollReveal();
+        })) CancelScrollReveal();
+    }
+
     private void ScrollRevealLayoutUpdated(object? sender, object args) => ApplyScrollReveal();
 
     private void ApplyScrollReveal()
@@ -40,7 +72,7 @@ internal sealed partial class WidgetViewPresenter
         if (pendingScrollReveal is not { } pending || applying) return;
         if (disposed || !presentationActive || presentationOnly || HasTransientControl ||
             !bindings.TryGetValue(pending.Request.ScrollId, out var scroll) || !ReferenceEquals(scroll, pending.Scroll) ||
-            !bindings.TryGetValue(pending.Request.TargetId, out var target) || !ReferenceEquals(target, pending.Target) ||
+            pending.Request.TargetId is null || !bindings.TryGetValue(pending.Request.TargetId, out var target) || !ReferenceEquals(target, pending.Target) ||
             scroll.Identity.Scope != activeScope || target.Identity.Scope != activeScope)
         { CancelScrollReveal(); return; }
         var viewport = (ScrollViewer)scroll.Element;
@@ -66,6 +98,8 @@ internal sealed partial class WidgetViewPresenter
 
     private void CancelScrollReveal()
     {
+        if (pendingIndexedScrollReveal?.Collection.Element is WidgetIndexedCollectionView collection) collection.CancelReveal();
+        pendingIndexedScrollReveal = null;
         pendingScrollReveal = null;
         LayoutUpdated -= ScrollRevealLayoutUpdated;
     }

@@ -47,6 +47,19 @@ internal static class WidgetIndexedCollectionTests
         var snapshot = widget.RenderSnapshot("indexed-widget", 1);
         var target = widget.Source.FocusTarget("collection", new("key-75000"), 75000);
         var request = widget.Source.Enter("collection", 1, target);
+        var reveal = widget.Source.Reveal("collection", 1, target);
+        var revealed = snapshot with { ScrollRevealRequest = reveal };
+        Equal(0, ViewSnapshotValidator.Validate(revealed).Count, "exact indexed scroll-only reveal");
+        Equal(snapshot.InitialFocusId, revealed.InitialFocusId, "reveal preserves declared initial focus");
+        Equal<FocusGroupEntryRequest?>(null, revealed.FocusGroupEntryRequest, "reveal never creates a focus-entry request");
+        Equal(reveal, SnapshotJson.Deserialize(SnapshotJson.Serialize(revealed)).ScrollRevealRequest, "indexed reveal round trip");
+        True(ViewSnapshotValidator.Validate(revealed with { ProtocolVersion = ProtocolConstants.IndexedScrollRevealVersion - 1 }).Count > 0,
+            "older hosts reject indexed reveal instead of ignoring its occurrence");
+        foreach (var invalid in new[] { reveal with { TargetId = "collection" }, reveal with { ScrollId = "missing" },
+                     reveal with { IndexedItem = target with { Index = -1 } }, reveal with { IndexedItem = target with { CollectionId = "other" } } })
+            True(ViewSnapshotValidator.Validate(revealed with { ScrollRevealRequest = invalid }).Count > 0, "malformed or ambiguous reveal rejected");
+        Throws<ArgumentOutOfRangeException>(() => widget.Source.Reveal("collection", 0, target));
+        Throws<ArgumentException>(() => widget.Source.Reveal("collection", 1, target with { SourceId = "other" }));
         var focused = snapshot with { ProtocolVersion = ProtocolConstants.IndexedCollectionFocusVersion, FocusGroupEntryRequest = request };
         Equal(0, ViewSnapshotValidator.Validate(focused).Count, "exact indexed entry");
         Equal(request, SnapshotJson.Deserialize(SnapshotJson.Serialize(focused)).FocusGroupEntryRequest, "focus round trip");
@@ -59,8 +72,12 @@ internal static class WidgetIndexedCollectionTests
         Throws<ArgumentOutOfRangeException>(() => widget.Source.Enter("collection", 0));
         widget.Source.UpdateContent("refreshed");
         Equal(request, widget.Source.Enter("collection", 1, target), "content revision preserves logical identity");
+        Equal(reveal, widget.Source.Reveal("collection", 1, target), "content revision preserves reveal identity");
         widget.Source.PublishQuery("new-query", 5);
         Throws<ArgumentException>(() => widget.Source.Enter("collection", 3, target));
+        Throws<ArgumentException>(() => widget.Source.Reveal("collection", 3, target));
+        Equal(0, ViewSnapshotValidator.Validate(widget.RenderSnapshot("indexed-widget", 2) with { ScrollRevealRequest = reveal }).Count,
+            "consumed reveal can remain declared after membership changes without replay");
         var replaced = widget.RenderSnapshot("indexed-widget", 2) with
         { ProtocolVersion = ProtocolConstants.IndexedCollectionFocusVersion, FocusGroupEntryRequest = request };
         Equal(0, ViewSnapshotValidator.Validate(replaced).Count, "previously consumed request can remain on a new query");

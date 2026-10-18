@@ -137,6 +137,31 @@ item can be removed or changed. Action admission is not execution completion.
 
 ## Validation and bounds
 
+### Scroll without moving focus
+
+Use the existing `WidgetView.ScrollRevealRequest` for both ordinary scrolling
+containers and indexed collections. For a lazy row, use its exact occurrence:
+
+```csharp
+var item = source.FocusTarget("queue", new(currentOccurrenceKey), currentIndex);
+var request = source.Reveal("queue", ++queueEntryRequestId, item);
+return view with { ScrollRevealRequest = request };
+```
+
+The target type names the occurrence; `Reveal` does not select, activate or focus
+it. `Enter` remains the explicit focus-navigation operation. Indexed reveal
+requires protocol 90. The SDK validates the source/query/index; the native host
+also resolves the row key before scrolling, so a stale position cannot reveal an
+unrelated item.
+
+Issue a new request for the navigation event that needs it, such as entering a
+queue. Retain the same request through harmless renders. Do not increment it on
+every update or track change. Pointer/controller scrolling, keyboard navigation,
+query replacement, hiding and dismissal cancel pending work; late row delivery
+cannot restart it. A pending focus handoff takes precedence. Ordinary container
+requests keep using their declared `TargetId`; do not also supply an indexed
+target.
+
 Use `WidgetTestHost.CreateIndexedCollectionHost`, acquire ranges, and route actions
 through those leases. Test deep items, duplicate occurrences, empty results,
 query replacement, cancellation, content changes, stale actions, modal return,

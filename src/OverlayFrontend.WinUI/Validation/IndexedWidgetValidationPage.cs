@@ -123,6 +123,8 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             await session.EstablishPresentationAsync(session.GetTarget("indexed-owned"), WidgetLifecycleState.Interactive, lifetime.Token);
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-entry-validation") is { } entryResult)
                 await ValidateEntryReplacementAsync(entryResult);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-reveal-validation") is { } revealResult)
+                await ValidateScrollRevealAsync(revealResult);
             if (Environment.GetCommandLineArgs().Contains("--indexed-state-validation"))
             {
                 activationResult = "pending"; Observe();

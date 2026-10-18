@@ -27,6 +27,9 @@ internal sealed class ProtocolVersionRequirements
         if (snapshot.ScrollRevealRequest is not null)
             Add("scroll-reveal", ProtocolConstants.ScrollRevealVersion, "$.scrollRevealRequest",
                 "Scroll reveal requires protocol version 70 or later.");
+        if (snapshot.ScrollRevealRequest?.IndexedItem is not null)
+            Add("indexed-scroll-reveal", ProtocolConstants.IndexedScrollRevealVersion, "$.scrollRevealRequest.indexedItem",
+                "Scroll-only reveal of an indexed occurrence requires protocol version 90 or later.");
 
         if (snapshot.FocusGroupEntryRequest is not null)
         {

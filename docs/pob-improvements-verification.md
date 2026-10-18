@@ -25,6 +25,12 @@ Two initial planning-test invocations used unsuitable fixtures: PoE1 against a h
 
 ## Shared native coverage queue
 
+### Indexed scroll-only reveal (2026-10-18)
+
+Implemented as an extension of `ScrollRevealRequest`, using the existing indexed occurrence identity and navigation/retention machinery. No second scroll API or music-specific host behavior. SDK indexed suites passed **16/16**. Native fixture passed **10/10** checks covering deep reveal with unchanged focus/selection, consumed requests, wrong keys, delayed payloads, manual scrolling, query replacement and hide/reopen. Evidence: `artifacts/pob/indexed-reveal-native01/result.json`. No screenshots or live service traffic were used. The normal-profile candidate was restored hidden afterward (PID 27588 at that time; recheck before acting).
+
+The validation harness is a Debug build; a first attempt to enable its reflection-heavy fixtures in trimmed Release produced IL2026 diagnostics. Production Release built cleanly. No unrelated validation/CI code was changed to suppress these diagnostics. Widget adoption and queue-membership viewport continuity are still pending; this check only proves the scroll-only primitive.
+
 Batch these checks into the integrated candidate pass; repeat only affected cases after fixes:
 
 - PoB section transitions, planning/management size changes, modal bounds and hide/reopen focus.

@@ -204,12 +204,28 @@ public static class ViewSnapshotValidator
             if (reveal.RequestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId)
                 Add("$.scrollRevealRequest.requestId", "out_of_range", "Scroll reveal requires a positive bounded request ID.");
             CheckIdentifier(reveal.ScrollId, "$.scrollRevealRequest.scrollId", "scroll ID", ProtocolValidationIdentifierKind.ElementReference);
-            CheckIdentifier(reveal.TargetId, "$.scrollRevealRequest.targetId", "target ID", ProtocolValidationIdentifierKind.ElementReference);
-            if (errors.Count == 0 &&
+            if (reveal.IndexedItem is { } indexedReveal)
+            {
+                if (reveal.TargetId is not null)
+                    Add("$.scrollRevealRequest.targetId", "ambiguous_scroll_reveal", "Supply either a declared child or an indexed occurrence.");
+                if (!ids.TryGetValue(reveal.ScrollId, out var collection) || collection.Node.Kind != ViewNodeKind.IndexedCollection ||
+                    !hasActiveScope || collection.ScopeKey != activeScopeKey)
+                    Add("$.scrollRevealRequest", "invalid_scroll_reveal", "Indexed reveal requires a collection in the active input scope.");
+                try { IndexedCollectionContract.ValidateFocusTargetShape(indexedReveal, reveal.ScrollId); }
+                catch (ArgumentException)
+                { Add("$.scrollRevealRequest.indexedItem", "invalid_indexed_reveal_target", "Indexed occurrence identity is invalid."); }
+                // As with focus entry, a consumed request can outlive its query.
+                // The host ignores stale generations instead of rejecting the updated view.
+            }
+            else
+            {
+                CheckIdentifier(reveal.TargetId, "$.scrollRevealRequest.targetId", "target ID", ProtocolValidationIdentifierKind.ElementReference);
+                if (errors.Count == 0 &&
                 (!ids.TryGetValue(reveal.ScrollId, out var scroll) || scroll.Node.Kind != ViewNodeKind.Scroll || scroll.Node.CollectionLayout is not null || scroll.Node.VirtualCollectionWindow is not null ||
-                 !ids.TryGetValue(reveal.TargetId, out var target) || !hasActiveScope || scroll.ScopeKey != activeScopeKey || target.ScopeKey != activeScopeKey ||
+                 reveal.TargetId is null || !ids.TryGetValue(reveal.TargetId, out var target) || !hasActiveScope || scroll.ScopeKey != activeScopeKey || target.ScopeKey != activeScopeKey ||
                  !WithinScroll(scroll.Node, reveal.TargetId)))
                 Add("$.scrollRevealRequest", "invalid_scroll_reveal", "Reveal must target a declared child of an ordinary scroll container in the active scope.");
+            }
         }
         if (snapshot.FocusGroupEntryRequest is { } groupEntry)
         {

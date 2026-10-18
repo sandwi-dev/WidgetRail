@@ -626,7 +626,11 @@ public sealed record FocusGroupEntryRequest
     public IndexedCollectionFocusTarget? IndexedItem { get; init; }
 }
 
-public sealed record ScrollRevealRequest(long RequestId, string ScrollId, string TargetId);
+/// <summary>One scroll-only request. Supply a declared TargetId or an exact lazy IndexedItem, never both.</summary>
+public sealed record ScrollRevealRequest(long RequestId, string ScrollId, string? TargetId = null)
+{
+    public IndexedCollectionFocusTarget? IndexedItem { get; init; }
+}
 
 public enum EmbeddedMediaCommand
 {
