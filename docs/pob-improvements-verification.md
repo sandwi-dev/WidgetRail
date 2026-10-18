@@ -401,3 +401,70 @@ navigation, unified search/direct navigation, read-only whole-build/loadout comp
 fresh integrated packages, live music checks at human pace, actual guarded update and
 display workflows, app-wide compact/high-contrast/scaling acceptance and final docs
 reconciliation. The goal remains active; these commits are a checkpoint, not completion.
+
+## Search, inline skills and whole-build comparison — 2026-10-18 continuation
+
+`0689da36` implements a typed local search index with exact content destinations, whole-entry
+suggestions and known-warning navigation. Catalog preparation happens on explicit
+opening and is reused for an unchanged build/context. Search and navigation do not
+edit the build. A section-animation wrapper initially prevented the focus decorator
+from reaching gem/configuration controls; composition now happens before that wrapper.
+
+Inline skill editing retains the group rail through gem selection and contextual
+settings. Common controls share one scrolling editor so the fixed header cannot
+consume the compact viewport. Option reads coalesce before entering the existing
+engine, cache at most 32 groups for exact document/XML, and discard superseded
+responses without repeatedly restarting the engine. Same-control edits retain focus.
+
+Whole-build/loadout comparison uses one serialized read-only transaction, restores
+the baseline on success and retains the baseline restart state after cancellation
+or failure. Typed projections/cache are bounded; differences use the shared indexed
+list, preserve upstream ordering and expose full read-only details. Compare stays
+focusable during work and completion does not request a focus move. The view uses
+the full planning dimensions. User/developer guides and Redux inspiration credits
+describe the new workflows.
+
+Latest real-engine runs (`visual-fix-poe*-*.log`) pass:
+
+| Suite | PoE1 | PoE2 |
+| --- | --- | --- |
+| Skill management / gem inspection | 74 | 76 |
+| Skill options | 35 | 24 |
+| Whole-build comparison | 40 | 40 |
+| Unified search / exact navigation | 37 | 37 |
+
+Fresh/empty-build checks pass 23 per engine; item workflow checks pass 81/79
+(`final-workflows-poe*-*.log`). They exposed the missing zero-match unique-list
+focus target, fixed separately in `e6d0b2f4`. Native workflow validation passes
+**272 assertions** across both games, Mono Ink/Mineral Light, and 1320×900 / 820×600
+logical layouts at 125% desktop scale. It checks declared focus, modal bounds,
+busy control identity, and full visibility inside actual content viewport bounds
+after scrolling settles. Evidence: `workflow-native-20261018-e/native-result.json`.
+Representative compact/dense and wide skill/search/comparison states were inspected;
+fixed skill headers that consumed compact editor height were removed. Fixtures explicitly materialize
+real exported rows for presentation; provider routing is qualified by the separate
+engine/SDK checks. This is not physical controller or couch-distance acceptance.
+
+The native fixture previously lowercased multiword roles such as `textEntry`,
+bypassing standard theme styling. Its shared style helper now preserves bridge role
+spelling and selected/disabled/busy semantics. Earlier fixture screenshots with
+incorrect text-entry styling are superseded, not evidence of a production theme defect.
+
+## Actual bundle first-start / package lifecycle — 2026-10-18 continuation
+
+Using assembled `cumulative-candidate-20261018-b` folders and isolated profiles:
+Bare contains exactly Settings/Catalogue and seeds no optional packages. Production
+seeds all nine ordinary packages. Native Settings workflows disabled Capture Library,
+canceled and confirmed Performance Monitor uninstall, restarted, and reinstalled
+Performance Monitor from the bundled archive through the native file picker. Disabled
+state and removal survived restart; explicit reinstall enabled the package. Cancel
+returned focus to Uninstall. These operations did not affect the normal profile.
+
+Catalogue Technical details correctly reports unload-after-idle, 120 seconds.
+The first Bare process produced one UIA/pixel mismatch (current controls but an older
+visible page). A same-profile restart and another fresh profile rendered correctly;
+technical/back/technical navigation also rendered correctly. No production change
+is claimed to fix this unreproduced observation. Evidence:
+`cumulative-candidate-20261018-b/acceptance/distribution-native-result.json`.
+Permission-request flows, installed update/rollback/re-update and normal-profile
+integrated acceptance remain separate unfinished checks.

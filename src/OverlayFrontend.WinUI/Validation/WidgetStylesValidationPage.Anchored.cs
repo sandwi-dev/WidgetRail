@@ -129,7 +129,7 @@ internal sealed partial class WidgetStylesValidationPage
                         var styles = new Dictionary<string, BridgeNodeRenderStyles>();
                         void Visit(ViewNode node)
                         {
-                            styles[node.Id] = Compute(theme, node.Id, node.Kind.ToString().ToLowerInvariant(), node.StyleClasses.ToArray());
+                            styles[node.Id] = Compute(theme, node);
                             foreach (var child in node.Children) Visit(child);
                         }
                         Visit(snapshot.Root);

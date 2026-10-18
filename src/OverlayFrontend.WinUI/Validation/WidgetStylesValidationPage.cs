@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pob-workflow-fixtures") is { } workflowFixtures)
+        { await PobWorkflowsAsync(workflowFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pob-item-inspection-fixtures") is { } itemFixtures)
         { await PobItemInspectionAsync(itemFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--display-controls-fixtures") is { } displayFixtures)
@@ -297,6 +299,22 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         var result = WrssThemeCompiler.Compile(new[] { WrssParser.Parse(css, "native-style-check.wrss").Document });
         var theme = result.Theme ?? throw new InvalidOperationException("Style fixture failed compilation.");
         return Compute(theme, id, role, []);
+    }
+    private static BridgeNodeRenderStyles Compute(WrssTheme theme, ViewNode node)
+    {
+        // Match bridge role spelling and semantic states; lowercasing textEntry
+        // or actionSurface silently bypasses the theme's standard control rules.
+        var role = node.Kind switch
+        {
+            ViewNodeKind.RichText => "text",
+            ViewNodeKind.IndexedCollection => "scroll",
+            _ => System.Text.Json.JsonNamingPolicy.CamelCase.ConvertName(node.Kind.ToString()),
+        };
+        var states = new List<WrssPseudoState>();
+        if (node.IsSelected is true) states.Add(WrssPseudoState.Selected);
+        if (node.IsDisabled is true) states.Add(WrssPseudoState.Disabled);
+        if (node.IsBusy is true) states.Add(WrssPseudoState.Busy);
+        return Compute(theme, node.Id, role, node.StyleClasses.ToArray(), states.ToArray());
     }
     private static BridgeNodeRenderStyles Compute(WrssTheme theme, string id, string role, string[] classes,
         params WrssPseudoState[] persistent)
