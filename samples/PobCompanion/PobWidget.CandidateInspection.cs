@@ -80,10 +80,12 @@ public sealed partial class PobWidget
             SearchField(UI.TextEntry(choiceSearch,"Search unique names or bases","choice-search","pob.choice-search",100),choices,
                 ()=>choices.Select(c=>(Plain(S(c,"title")),Plain(S(c,"title")+" "+S(c,"description")),Plain(S(c,"description"))))).Classes("pob-input"),
             Text($"{entries.Length} unique items","choice.count","pob-muted")),"pob.choice-search","pob.choice-results","Items",NeedsQuickControls(entries.Length));
-        var list=entries.Length==0?Text("No matching items.","choice.empty"):
-            ItemCandidatePreview(UI.CollectionList("pob.choices",uniqueCandidateCollection,64,"Unique item library").Classes("pob-scroll"),"pob.unique.preview");
+        var list=ItemCandidatePreview(UI.CollectionList("pob.choices",uniqueCandidateCollection,64,"Unique item library").Classes("pob-scroll"),"pob.unique.preview");
+        var results=entries.Length==0
+            ? UI.Stack("pob.choice-results",Text("No matching items.","choice.empty"),list)
+            : UI.Stack("pob.choice-results",list);
         return UI.Stack("pob.choice-picker",tools,
-            QuickControls(UI.Stack("pob.choice-results",list).Classes("pob-workspace"),"pob.choices","pob.choice-tools","Search",NeedsQuickControls(entries.Length))).Classes("pob-workspace");
+            QuickControls(results.Classes("pob-workspace"),"pob.choices","pob.choice-tools","Search",NeedsQuickControls(entries.Length))).Classes("pob-workspace");
     }
 
     private void OpenItemCandidateInspection(ItemCandidateQuery query,ItemCandidateEntry entry,string collectionId)
