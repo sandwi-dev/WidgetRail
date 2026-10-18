@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-18
 
-**Status: scope recorded; discussion is ongoing.** Creating this document does not start implementation. Keep it updated as decisions are made and work is verified. Do not treat a checkbox or an implementation note as user acceptance.
+**Status: all implementation scope listed below is agreed; implementation has not started.** All rows in the implementation tracking table have the same scope approval. Deferred, excluded and explicitly out-of-scope discussion items remain outside that approval. Scope approval is distinct from acceptance of the finished implementation. Keep this document updated as work is verified; this status clarification does not itself start implementation.
 
 This plan covers the next round of PoE1 and PoE2 widget improvements discussed after reviewing PoB Redux. It supplements the [existing trade plan](pob-trade-completion-plan.md); it does not restart completed work or reopen deferred CI repairs.
 
@@ -14,10 +14,10 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | 2 | Adjust widget dimensions and stabilize workspace sizing | Agreed; not started |
 | 2a | Compact layouts and inspect the app for couch readability | Agreed; not started |
 | 2b | Improve PoB editing and inspection workflows using Redux as a reference | Agreed; not started |
-| 3 | Bring PoE1 to a tested beta candidate and audit new features | Planned; not started |
-| 4 | Complete passive-tree artwork and measure rendering improvements | Planned; not started |
-| 5 | Add whole-build and loadout comparison | Planned; not started |
-| 6 | Add unified search and direct navigation | Planned; not started |
+| 3 | Bring PoE1 to a tested beta candidate and audit new features | Agreed; not started |
+| 4 | Complete passive-tree artwork and measure rendering improvements | Agreed; not started |
+| 5 | Add whole-build and loadout comparison | Agreed; not started |
+| 6 | Add unified search and direct navigation | Agreed; not started |
 | Independent host change | Rename Marketplace to WidgetRail Catalogue | Agreed; not started |
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
 | Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Agreed; not started |
