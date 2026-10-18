@@ -53,6 +53,36 @@ internal static class TextSuggestionLaneTests
         await lane.CloseAsync();
         Check(faults.IsEmpty, "Throwing cancellation callback poisoned the worker");
     }
+
+    internal static async Task ProcessBoundary()
+    {
+        await using var client = new WidgetProcessClient(new WidgetProcessOptions
+        {
+            ExecutablePath = Environment.ProcessPath!, Arguments = ["--text-suggestion-probe"],
+            WidgetInstanceId = "suggestions.process",
+        }); // Deliberately retains the ordinary two-second RPC default.
+        var query = new TextSuggestionQuery("search", "catalog", Guid.NewGuid().ToString("N"), 1, "slow")
+            { TimeoutMilliseconds = 5000 };
+        Check((await client.SuggestTextAsync(query, 0, default)).Unavailable && client.Starts == 0,
+            "Suggestions started an unloaded worker");
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+        var result = await client.SuggestTextAsync(query, client.Starts, default);
+        Check(result.Items.Single().Value == "slow", "The ordinary RPC deadline cut off configured suggestion timing");
+        using (var cancelled = new CancellationTokenSource(100))
+        {
+            try { await client.SuggestTextAsync(query with { Revision = 2, Text = "wait" }, client.Starts, cancelled.Token);
+                throw new Exception("Expected exact query cancellation"); }
+            catch (OperationCanceledException) when (cancelled.IsCancellationRequested) { }
+        }
+        Check(client.IsRunning && client.Starts == 1, "Cancellation killed or restarted the worker");
+        for (var retry = 0; retry < 20; retry++)
+        {
+            result = await client.SuggestTextAsync(query with { Revision = 3 + retry, Text = "new" }, client.Starts, default);
+            if (!result.Unavailable) break;
+            await Task.Delay(25);
+        }
+        Check(result.Items.Single().Value == "new", "Cancelled response corrupted the next query");
+    }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
     private sealed class Probe : Widget
     {
@@ -75,5 +105,17 @@ internal static class TextSuggestionLaneTests
             Release.Wait(); // Also blocks before returning a ValueTask.
             return ValueTask.FromResult(TextSuggestionResult.Empty);
         }
+    }
+}
+
+internal sealed class TextSuggestionProcessProbe : Widget
+{
+    public override WidgetView Render() => new(UI.TextEntry("", "Search", "commit", "search", 100)
+        .Suggest(new TextSuggestionSource("catalog") { TimeoutMilliseconds = 5000 }));
+    public override async ValueTask<TextSuggestionResult> OnSuggestTextAsync(TextSuggestionQuery query, CancellationToken token)
+    {
+        if (query.Text == "slow") await Task.Delay(2250, token);
+        if (query.Text == "wait") await Task.Delay(Timeout.Infinite, token);
+        return new([new("result", query.Text, query.Text)]);
     }
 }

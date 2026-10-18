@@ -90,6 +90,7 @@ if (expectedRuntime is not null && !RuntimeEnvironment.GetRuntimeDirectory().Sta
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Text suggestions isolate timeout cancellation and late providers", TextSuggestionLaneTests.Run),
+    ("Text suggestions preserve configured deadlines and cancellation across the process boundary", TextSuggestionLaneTests.ProcessBoundary),
     ("Data package leases pin larger inventories and enforce the shared ceiling", DataPackageLeaseTests.Run),
     ("Intent delivery rejects duplicate and inactive requests", IntentDeliveryScenarios.DuplicateAndLifecycle),
     ("Intent delivery does not replay cancelled or failed handlers", IntentDeliveryScenarios.CancellationAndFailure),
@@ -254,7 +255,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal) ||
         arguments.Contains("--gesture-adversarial-probe", StringComparer.Ordinal);
     var gestureProbe = usesGestureProbe ? new GestureProbeCapabilityClient() : null;
-    Widget widget = arguments.Contains("--intent-probe", StringComparer.Ordinal)
+    Widget widget = arguments.Contains("--text-suggestion-probe", StringComparer.Ordinal)
+        ? new TextSuggestionProcessProbe()
+        : arguments.Contains("--intent-probe", StringComparer.Ordinal)
         ? new IntentProbeWidget()
         : arguments.Contains("--indexed-lease-probe", StringComparer.Ordinal)
         ? new IndexedLeaseProbeWidget()

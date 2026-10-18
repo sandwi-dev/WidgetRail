@@ -20,7 +20,8 @@ public sealed partial class WidgetProcessClient
         }
         RuntimeEnvelope response;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, session.CancellationToken);
-        deadline.CancelAfter(_options.RequestTimeout);
+        // Ordinary RPC defaults can be shorter than a remote suggestion provider's deadline.
+        deadline.CancelAfter(TimeSpan.FromMilliseconds(query.TimeoutMilliseconds + TextSuggestionContract.TransportGraceMilliseconds));
         try { response = await pending.Response.WaitAsync(deadline.Token).ConfigureAwait(false); }
         catch (OperationCanceledException)
         {

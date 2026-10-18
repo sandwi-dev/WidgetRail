@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 88;
+    public const int CurrentVersion = 89;
+    public const int TextSuggestionTimingVersion = 89;
     public const int TextSuggestionsVersion = 88;
     public const int ActionSurfaceRichTextBudgetVersion = 87;
     public const int WebSessionPageAdapterVersion = 86;

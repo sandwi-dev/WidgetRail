@@ -14,10 +14,13 @@ internal sealed partial class TextEntryValidationPage
         sensitive = false; value = ""; maximumLength = 100; Apply(); await Open();
         var count = actions.Count;
         var dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
-        var node = new ViewNode { Id = "entry", Kind = ViewNodeKind.TextEntry, TextEntrySuggestions = new("fixture"), TextEntryMaximumLength = 100 };
+        var node = new ViewNode { Id = "entry", Kind = ViewNodeKind.TextEntry,
+            TextEntrySuggestions = new("fixture") { DebounceMilliseconds = 300, MinimumRequestIntervalMilliseconds = 500, TimeoutMilliseconds = 3000 },
+            TextEntryMaximumLength = 100 };
         var calls = 0;
         dialog.EnableSuggestions(node, (query, _) =>
         {
+            if (query.TimeoutMilliseconds != 3000) throw new InvalidOperationException("Configured suggestion deadline was lost");
             calls++;
             return Task.FromResult(query.Text.StartsWith("fi", StringComparison.Ordinal)
                 ? new TextSuggestionResult((TextSuggestion[])[new("fireball", "Fireball", "Fireball"), new("firetrap", "Fire Trap", "Fire Trap")])
@@ -45,7 +48,7 @@ internal sealed partial class TextEntryValidationPage
         await Open(); dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
         dialog.EnableSuggestions(node, (_, _) => Task.FromResult(TextSuggestionResult.Empty));
         ((TextBox)Editor()).Text = "no match";
-        await Task.Delay(500);
+        await Task.Delay(600);
         Check(((TextBlock)FindDialog("Widget.TextEntry.SuggestionStatus")!).Text == "No matches" && ((TextBox)Editor()).Text == "no match",
             "no results leaves typed text intact");
         await presenter.HandleControllerButtonAsync(ControllerButton.B); await Closed();

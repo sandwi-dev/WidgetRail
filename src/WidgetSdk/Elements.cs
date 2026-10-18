@@ -760,10 +760,12 @@ public sealed record TextEntryElement : WidgetElement
     public TextSuggestionSource? SuggestionSource { get; init; }
 
     public TextEntryElement Suggest(string sourceKey, int minimumLength = 1, int maximumResults = 6)
+        => Suggest(new TextSuggestionSource(sourceKey, minimumLength, maximumResults));
+
+    public TextEntryElement Suggest(TextSuggestionSource source)
     {
-        var source = new TextSuggestionSource(sourceKey, minimumLength, maximumResults);
         if (InputKind == TextEntryInputKind.Sensitive || !TextSuggestionContract.IsValid(source))
-            throw new ArgumentException("Suggestions require an ordinary text entry and valid options.", nameof(sourceKey));
+            throw new ArgumentException("Suggestions require an ordinary text entry and valid options.", nameof(source));
         return this with { SuggestionSource = source };
     }
     public string? AccessibilityLabel { get; init; }

@@ -873,6 +873,7 @@ method WidgetRail.WidgetSdk.TextEntryElement.FocusLeft(string id) -> WidgetRail.
 method WidgetRail.WidgetSdk.TextEntryElement.FocusRight(string id) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.FocusUp(string id) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.TextEntryElement.Suggest(WidgetRail.WidgetProtocol.TextSuggestionSource source) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.Suggest(string sourceKey, int minimumLength = 1, int maximumResults = 6) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.ToString() -> string
 method WidgetRail.WidgetSdk.TextSuggestionCatalog.Search(WidgetRail.WidgetProtocol.TextSuggestionQuery query, System.Threading.CancellationToken cancellationToken = null) -> WidgetRail.WidgetProtocol.TextSuggestionResult

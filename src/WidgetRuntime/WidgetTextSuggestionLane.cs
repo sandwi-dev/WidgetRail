@@ -55,7 +55,7 @@ internal sealed class WidgetTextSuggestionLane
         try
         {
             // The deadline must not depend on author cancellation callbacks returning.
-            result = await provider.WaitAsync(TimeSpan.FromMilliseconds(TextSuggestionContract.TimeoutMilliseconds), demand).ConfigureAwait(false);
+            result = await provider.WaitAsync(TimeSpan.FromMilliseconds(query.TimeoutMilliseconds), demand).ConfigureAwait(false);
             if (!TextSuggestionContract.IsValid(result, query.MaximumResults, TextSuggestionContract.MaximumQueryLength))
                 result = TextSuggestionResult.NotAvailable;
             else result = result with { Items = result.Items.ToArray() };

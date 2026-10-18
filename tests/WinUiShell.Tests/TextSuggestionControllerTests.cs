@@ -117,4 +117,90 @@ public sealed class TextSuggestionControllerTests
         var starts = times.ToArray();
         for (var i = 1; i < starts.Length; i++) Assert.IsTrue(starts[i] - starts[i - 1] >= 240, "Host request rate exceeded its default cap.");
     }
+
+    [TestMethod]
+    public async Task ConfiguredTimingIsUsedWithoutPermittingOldUiStates()
+    {
+        var source = new TextSuggestionSource("remote")
+            { DebounceMilliseconds = 300, MinimumRequestIntervalMilliseconds = 500, TimeoutMilliseconds = 5000 };
+        var views = new ConcurrentQueue<TextSuggestionView>();
+        var calls = new ConcurrentQueue<(long Time, TextSuggestionQuery Query)>();
+        using var owner = new TextSuggestionController("search", source, 100, (query, _) =>
+        { calls.Enqueue((Environment.TickCount64, query)); return Task.FromResult(Result(query.Text)); }, views.Enqueue);
+        var start = Environment.TickCount64;
+        owner.Update("first");
+        await Until(() => views.Any(view => view.Items.Count > 0));
+        Assert.IsTrue(calls.First().Time - start >= 290);
+        Assert.AreEqual(5000, calls.First().Query.TimeoutMilliseconds);
+        var ready = views.Last();
+        var loading = views.Single(view => view.Loading);
+        Assert.AreEqual(ready.Revision, loading.Revision);
+        Assert.IsFalse(owner.IsCurrent(loading), "A delayed loading notification must not replace ready results for the same revision.");
+        Assert.IsTrue(owner.IsCurrent(ready));
+        owner.Update("second");
+        await Until(() => calls.Count == 2);
+        Assert.IsTrue(calls.Last().Time - calls.First().Time >= 490);
+    }
+
+    [TestMethod]
+    public async Task ClosingDuringConcurrentEditsAndRepliesDrainsWithoutPublishingAfterRetirement()
+    {
+        // Repeatedly race edits, cancellation and completion rather than relying on one lucky ordering.
+        for (var iteration = 0; iteration < 100; iteration++)
+        {
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var reply = new TaskCompletionSource<TextSuggestionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var views = new ConcurrentQueue<TextSuggestionView>();
+            var owner = new TextSuggestionController("search", new("catalog"), 100, (_, token) =>
+            {
+                entered.TrySetResult();
+                token.Register(() => { if (iteration % 2 == 0) reply.TrySetCanceled(token); });
+                return reply.Task;
+            }, views.Enqueue, 0, 0);
+            owner.Update("initial"); await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.WhenAll(Task.Run(() => { for (var i = 0; i < 8; i++) owner.Update("edit" + i); }),
+                Task.Run(() => reply.TrySetResult(Result("result"))), Task.Run(owner.Dispose));
+            owner.Dispose();
+            var afterClose = views.Count;
+            await owner.Completion.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.AreEqual(afterClose, views.Count);
+            Assert.IsFalse(views.Any(owner.IsCurrent));
+            Assert.IsNull(owner.Accept(1, "match"));
+        }
+    }
+
+    [TestMethod]
+    public async Task OldEditorCannotPublishIntoReopenedEditorWithTheSameField()
+    {
+        var reply = new TaskCompletionSource<TextSuggestionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TextSuggestionQuery? oldQuery = null, newQuery = null;
+        var oldViews = new ConcurrentQueue<TextSuggestionView>();
+        var old = new TextSuggestionController("search", new("catalog"), 100, (query, _) =>
+        { oldQuery = query; entered.TrySetResult(); return reply.Task; }, oldViews.Enqueue, 0, 0);
+        old.Update("old"); await entered.Task; old.Dispose();
+        var newViews = new ConcurrentQueue<TextSuggestionView>();
+        using var reopened = new TextSuggestionController("search", new("catalog"), 100, (query, _) =>
+        { newQuery = query; return Task.FromResult(Result("new")); }, newViews.Enqueue, 0, 0);
+        reopened.Update("new"); await Until(() => newViews.Any(view => view.Items.Count > 0));
+        reply.TrySetResult(Result("old")); await old.Completion.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.AreNotEqual(oldQuery!.SessionId, newQuery!.SessionId);
+        Assert.IsFalse(oldViews.Any(view => view.Items.Count > 0));
+        Assert.AreEqual("new", newViews.Last().Items.Single().Value);
+    }
+
+    [TestMethod]
+    public async Task EmptyEntryCanRequestRecentSuggestionsOnlyWhenExplicitlyEnabled()
+    {
+        var defaultsCalled = false;
+        var views = new ConcurrentQueue<TextSuggestionView>();
+        using var defaults = new TextSuggestionController("search", new("default"), 100,
+            (_, _) => { defaultsCalled = true; return Task.FromResult(Result("unexpected")); }, _ => { }, 0, 0);
+        using var recent = new TextSuggestionController("search", new("recent", MinimumLength: 0), 100,
+            (query, _) => { Assert.AreEqual("", query.Text); return Task.FromResult(Result("Recent search")); }, views.Enqueue, 0, 0);
+        defaults.Update(""); recent.Update("");
+        await Until(() => views.Any(view => view.Items.Count > 0));
+        Assert.IsFalse(defaultsCalled);
+        Assert.AreEqual("Recent search", views.Last().Items.Single().Value);
+    }
 }

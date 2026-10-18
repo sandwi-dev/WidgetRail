@@ -7,7 +7,7 @@ internal static partial class BridgeClientRegistryScenarios
     internal static async Task TextSuggestions()
     {
         var configured = Widget("suggestions", 's', 's');
-        var source = new TextSuggestionSource("gems");
+        var source = new TextSuggestionSource("gems") { TimeoutMilliseconds = 5000 };
         var field = new ViewNode { Id = "entry", Kind = ViewNodeKind.TextEntry, ActionId = "commit",
             TextEntryValue = "", TextEntryMaximumLength = 100, TextEntrySuggestions = source };
         var calls = 0;
@@ -28,7 +28,8 @@ internal static partial class BridgeClientRegistryScenarios
         await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
         await fixture.GetSnapshotAsync(configured.Id);
         var descriptor = configured.PublicDescriptor();
-        var query = new TextSuggestionQuery("entry", source.Key, Guid.NewGuid().ToString("N"), 1, "fi", 6, 100);
+        var query = new TextSuggestionQuery("entry", source.Key, Guid.NewGuid().ToString("N"), 1, "fi", 6, 100)
+            { TimeoutMilliseconds = source.TimeoutMilliseconds };
         var request = new BridgeTextSuggestionsRequest(configured.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, query);
         var operation = fixture.Registry.SuggestTextAsync(request, default);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -49,10 +50,12 @@ internal static partial class BridgeClientRegistryScenarios
             request with { Query = query with { MaximumValueLength = 512 } }, default));
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => fixture.Registry.SuggestTextAsync(
             request with { RuntimeGeneration = "retired" }, default));
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => fixture.Registry.SuggestTextAsync(
+            request with { Query = query with { TimeoutMilliseconds = 2000 } }, default));
 
         reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var stale = fixture.Registry.SuggestTextAsync(request, default);
-        field = field with { TextEntrySuggestions = new("replacement") };
+        field = field with { TextEntrySuggestions = source with { TimeoutMilliseconds = 3000 } };
         await fixture.GetSnapshotAsync(configured.Id);
         reply.SetResult(TextSuggestionResult.Empty);
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => stale);

@@ -51,6 +51,13 @@ field, keeps the keyboard open, and requires Done. There is no instructional tex
 inside the suggestion area. Native buttons retain mouse, keyboard and controller
 activation, theme resources, accessible labels and full-label tooltips.
 
+Protocol 89 adds bounded field timing: debounce, minimum request interval, and
+provider deadline. The deadline travels through the worker RPC rather than being
+cut short by the ordinary RPC default. A queued UI update must match the exact
+current state object, not just its query revision: loading and results can share
+a revision, but delayed loading must never replace ready results. Publication is
+serialized with retirement, and closing suppresses all later UI callbacks.
+
 The runtime executes at most one author suggestion callback per worker outside
 the action lane. Its independent deadline cannot be blocked by synchronous author
 code or cancellation callbacks. A timed-out callback retains capacity until it
@@ -70,6 +77,15 @@ Cancel, no matches, password exclusion, paste, and replies after closure. Instal
 PoE2 mouse checks cover opening the picker, receiving real upstream suggestions,
 clicking a suggestion, Done, and cancelling a changed query. These are automated
 native/controller-routing checks; a physical gamepad acceptance run is separate.
+
+The configurable-timing follow-up is recorded in `artifacts/pob/suggestion-options-*`:
+270 shell tests (including 100 edit/reply/dispose races, same-revision delayed UI
+updates, close/reopen identity, and opt-in empty queries), 17 compatibility tests,
+SDK and bridge contract checks, two runtime scenarios, and 135 native keyboard
+checks with custom timing. The process-boundary regression uses a 2.25-second
+provider with a five-second suggestion deadline and the ordinary two-second RPC
+default, then cancels another request and verifies that the same worker handles
+the next query. Protocol/native constants are generated and checked for parity.
 
 ## Validation
 

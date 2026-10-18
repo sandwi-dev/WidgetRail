@@ -5,7 +5,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed record TextSuggestionView(long Revision, string Text, IReadOnlyList<TextSuggestion> Items,
     bool Loading = false, bool Unavailable = false, bool Queried = false);
 
-/// <summary>One active query and one replaceable pending value. No widget can change host pacing or focus.</summary>
+/// <summary>One active query and one replaceable pending value, with bounded field timing and host-owned focus.</summary>
 internal sealed class TextSuggestionController : IDisposable
 {
     private sealed record Work(long Revision, string Text, long ChangedAt);
@@ -17,6 +17,7 @@ internal sealed class TextSuggestionController : IDisposable
     private readonly string fieldId, sessionId = Guid.NewGuid().ToString("N");
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? demand;
+    private Task? pump;
     private Work? pending;
     private TextSuggestionView view = new(0, "", []);
     private long revision, lastStart;
@@ -24,15 +25,18 @@ internal sealed class TextSuggestionController : IDisposable
 
     internal TextSuggestionController(string fieldId, TextSuggestionSource source, int maximumLength,
         Func<TextSuggestionQuery, CancellationToken, Task<TextSuggestionResult>> query, Action<TextSuggestionView> publish,
-        int debounce = TextSuggestionContract.DebounceMilliseconds,
-        int interval = TextSuggestionContract.MinimumRequestIntervalMilliseconds,
-        int timeout = TextSuggestionContract.TimeoutMilliseconds + 1000)
+        int? debounce = null, int? interval = null, int? timeout = null)
     {
+        if (!TextSuggestionContract.IsValid(source)) throw new ArgumentException("Invalid suggestion options.", nameof(source));
         this.fieldId = fieldId; this.source = source; this.maximumLength = maximumLength;
-        this.query = query; this.publish = publish; this.debounce = debounce; this.interval = interval; this.timeout = timeout;
+        this.query = query; this.publish = publish;
+        this.debounce = debounce ?? source.DebounceMilliseconds;
+        this.interval = interval ?? source.MinimumRequestIntervalMilliseconds;
+        this.timeout = timeout ?? source.TimeoutMilliseconds + TextSuggestionContract.TransportGraceMilliseconds;
     }
 
-    internal bool IsCurrent(long value) { lock (gate) return !disposed && revision == value; }
+    internal bool IsCurrent(TextSuggestionView state) { lock (gate) return !disposed && ReferenceEquals(view, state); }
+    internal Task Completion { get { lock (gate) return pump ?? Task.CompletedTask; } }
 
     internal void Update(string text)
     {
@@ -44,7 +48,7 @@ internal sealed class TextSuggestionController : IDisposable
             state = view = new(++revision, text, []);
             pending = text.Length >= source.MinimumLength && text.Length <= Math.Min(maximumLength, TextSuggestionContract.MaximumQueryLength)
                 ? new(revision, text, Environment.TickCount64) : null;
-            if (!running && pending is not null) { running = true; _ = Task.Run(PumpAsync); }
+            if (!running && pending is not null) { running = true; pump = Task.Run(PumpAsync); }
         }
         Publish(state);
     }
@@ -93,7 +97,8 @@ internal sealed class TextSuggestionController : IDisposable
                 Task<TextSuggestionResult>? operation = null;
                 try
                 {
-                    operation = query(new(fieldId, source.Key, sessionId, work.Revision, work.Text, source.MaximumResults, Math.Min(maximumLength, TextSuggestionContract.MaximumQueryLength)), request.Token);
+                    operation = query(new(fieldId, source.Key, sessionId, work.Revision, work.Text, source.MaximumResults, Math.Min(maximumLength, TextSuggestionContract.MaximumQueryLength))
+                        { TimeoutMilliseconds = source.TimeoutMilliseconds }, request.Token);
                     var result = await operation.WaitAsync(TimeSpan.FromMilliseconds(timeout), lifetime.Token).ConfigureAwait(false);
                     if (!TextSuggestionContract.IsValid(result, source.MaximumResults, maximumLength)) result = TextSuggestionResult.NotAvailable;
                     Complete(work, result);
@@ -124,7 +129,7 @@ internal sealed class TextSuggestionController : IDisposable
             lock (gate)
             {
                 running = false;
-                if (!disposed && pending is not null) { running = true; _ = Task.Run(PumpAsync); }
+                if (!disposed && pending is not null) { running = true; pump = Task.Run(PumpAsync); }
                 if (disposed) lifetime.Dispose();
             }
         }
@@ -143,9 +148,10 @@ internal sealed class TextSuggestionController : IDisposable
 
     private void Publish(TextSuggestionView state)
     {
-        Action<TextSuggestionView>? callback;
-        lock (gate) callback = !disposed && revision == state.Revision ? publish : null;
-        callback?.Invoke(state);
+        // The host callback only posts/applies a bounded UI update. Serialize it
+        // with retirement so Dispose cannot return before a new callback starts.
+        lock (gate)
+            if (!disposed && ReferenceEquals(view, state)) publish?.Invoke(state);
     }
 
     private void CancelDemand()

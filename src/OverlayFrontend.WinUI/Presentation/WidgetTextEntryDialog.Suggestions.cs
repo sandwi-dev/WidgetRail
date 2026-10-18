@@ -44,7 +44,7 @@ internal sealed partial class WidgetTextEntryDialog
         body.Children.Insert(body.Children.IndexOf(keys), suggestionGrid);
         suggestions = new(node.Id, source, maximumLength, query, state =>
         {
-            void Apply() { if (!completed && suggestions?.IsCurrent(state.Revision) == true) ApplySuggestions(state); }
+            void Apply() { if (!completed && suggestions?.IsCurrent(state) == true) ApplySuggestions(state); }
             if (DispatcherQueue.HasThreadAccess) Apply(); else DispatcherQueue.TryEnqueue(Apply);
         });
         text.TextChanged += SuggestionsTextChanged;

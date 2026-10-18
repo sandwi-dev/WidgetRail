@@ -341,6 +341,8 @@ internal sealed class ProtocolVersionRequirements
                 case ViewNodeKind.TextEntry:
                     if (node.TextEntrySuggestions is not null)
                         Add("text-suggestions", ProtocolConstants.TextSuggestionsVersion, path, "Text suggestions require protocol 88 or later.");
+                    if (node.TextEntrySuggestions is { } suggestions && TextSuggestionContract.UsesCustomTiming(suggestions))
+                        Add("text-suggestion-timing", ProtocolConstants.TextSuggestionTimingVersion, path, "Configurable suggestion timing requires protocol 89 or later.");
                     if (node.TextEntryMaximumLength > ProtocolConstants.MaximumTextEntryLength)
                         Add("extended-text-entry", ProtocolConstants.ExtendedTextEntryVersion, path,
                             $"Extended text entry requires protocol version {ProtocolConstants.ExtendedTextEntryVersion} or later.");

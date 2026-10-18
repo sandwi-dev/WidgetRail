@@ -23,6 +23,27 @@ internal static class TextSuggestionTests
         Check(!TextSuggestionContract.Matches(before.Root, query with { SourceKey = "old" }), "Old source accepted");
         Check(!TextSuggestionContract.Matches(before.Root, query with { MaximumValueLength = 512 }), "Caller expanded field length");
         Check(!TextSuggestionContract.IsValid(query with { Text = "\ud800" }), "Invalid Unicode accepted");
+        var options = new TextSuggestionSource("remote", MinimumLength: 2, MaximumResults: 4)
+            { DebounceMilliseconds = 350, MinimumRequestIntervalMilliseconds = 750, TimeoutMilliseconds = 5000 };
+        var configured = new WidgetView(UI.TextEntry("", "Search", "search", "search", 100).Suggest(options))
+            .CreateSnapshot("suggestion-test", 2);
+        Check(configured.ProtocolVersion == ProtocolConstants.TextSuggestionTimingVersion, "Custom timing did not raise the required protocol");
+        var timedQuery = query with { SourceKey = options.Key, MaximumResults = 4, TimeoutMilliseconds = 5000 };
+        Check(TextSuggestionContract.Matches(configured.Root, timedQuery), "Configured deadline did not match the source");
+        Check(!TextSuggestionContract.Matches(configured.Root, timedQuery with { TimeoutMilliseconds = 2000 }), "Caller changed the source deadline");
+        var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(configured));
+        Check(roundTrip.Root.TextEntrySuggestions == options, "Timing options lost during serialization");
+        foreach (var invalid in new[] { options with { DebounceMilliseconds = -1 }, options with { DebounceMilliseconds = 1001 },
+            options with { MinimumRequestIntervalMilliseconds = 0 }, options with { MinimumRequestIntervalMilliseconds = 2001 },
+            options with { TimeoutMilliseconds = 0 }, options with { TimeoutMilliseconds = 5001 } })
+            Check(!TextSuggestionContract.IsValid(invalid) && ViewSnapshotValidator.Validate(configured with
+                { Root = configured.Root with { TextEntrySuggestions = invalid } }).Count > 0, "Unsafe timing accepted");
+        var timedAfter = configured with { Sequence = 3, Root = configured.Root with { TextEntrySuggestions = options with { TimeoutMilliseconds = 3000 } } };
+        var timedUpdate = WidgetPresentationDiff.Create(configured, timedAfter, generation, 2, PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).Update!;
+        Check(SnapshotJson.Serialize(PresentationUpdateMaterializer.Apply(configured,
+            PresentationUpdateJson.Deserialize(PresentationUpdateJson.Serialize(timedUpdate)), generation)).SequenceEqual(SnapshotJson.Serialize(timedAfter)),
+            "Timing-only update lost its authority-changing configuration");
         var catalog = new TextSuggestionCatalog([
             new("a", "Vaal Fireball", "Vaal Fireball"), new("b", "Fireball", "Fireball"),
             new("c", "Ice Tipped Spear", "Ice Tipped Spear"), new("d", "Firestorm", "Firestorm")]);
