@@ -18,15 +18,15 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | After host prerequisites | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; candidate packaging complete; integrated inspection pending |
 | After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Gem search, Changed settings, gem/inventory/unique inspection, inline skill editing and known-warning navigation implemented; both-engine checks pass; cumulative acceptance remains |
 | After host prerequisites | Complete passive-tree artwork and measure rendering improvements | Implemented; 46 version resource audits, both-engine checks and 34 native renderer assertions pass; integrated widget acceptance pending |
-| After host prerequisites | Add whole-build and loadout comparison | Read-only serialized projection, bounded cache and indexed differences implemented; both-engine checks pass; cumulative acceptance remains |
-| After host prerequisites | Add unified search and direct navigation | Local typed index, exact destinations and warning navigation implemented; both-engine checks pass; cumulative acceptance remains |
+| After host prerequisites | Add whole-build and loadout comparison | Both-engine and native fixture checks pass; installed PoE2 loadout calculation, Compare focus retention, detail and return-to-row flow verified; broader acceptance remains |
+| After host prerequisites | Add unified search and direct navigation | Both-engine and native checks pass; installed PoE2 exact-gem destination and modal return verified; installed fresh PoE1 search verified |
 | Cross-app adoption and verification | Compact layouts and inspect the app for couch readability | Catalogue and music player slices inspected; remaining application audit pending |
 | Independent completed slice | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, setup prerequisites and card styling implemented; focused and native checks passed |
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Structural and isolated native first-start checks pass; Production disable/remove/restart/reinstall verified; update/permission workflows and one earlier unreproduced visual mismatch remain |
-| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Implemented; offline and native player checks pass; integrated/live workflows pending |
-| Display widget expansion | Add trusted reusable display controls, then expose them in the widget | Implemented; 25 deterministic and 124 native presentation checks pass; real guarded hardware acceptance pending |
+| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | YouTube Music live playback, like/unlike, queue reveal/manual scroll, removal and ordered playlist Play next pass; Spotify awaits reconnection; broader acceptance remains |
+| Display widget expansion | Add trusted reusable display controls, then expose them in the widget | 25 deterministic and 124 native checks pass; native consent and timed refresh-change flow returns to original 240 Hz; HDR/Keep/disconnection hardware coverage remains |
 | App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; offline tests/Inno fixture compile pass; real installed upgrade acceptance pending |
-| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | README/first-use pass implemented; final whole-doc audit required before delivery |
+| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Current guides reconciled and 22 superseded plans retired; 756 local file targets valid; final reconciliation against remaining changes still required |
 
 **Dependency order clarified on 2026-10-18:** complete the necessary shared host
 contracts and implementations first. Validate them using generic fixtures for

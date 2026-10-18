@@ -511,3 +511,40 @@ URLs and fragment anchors were not checked. Details:
 `documentation-audit-20261018.json`. Final review against the launched cumulative
 candidate remains required; older architecture histories with live operational
 guidance were not indiscriminately deleted.
+
+## Cumulative installed candidate — 2026-10-18 final checkpoint
+
+Publication `cumulative-candidate-20261018-c` succeeded from clean application source
+`fccef292`; later commits update documentation only. Production and Bare folders
+both passed the real release verifier (two core widgets; nine/zero optional archives).
+PoE1/PoE2 `0.1.4.4` packages include all-version artwork and were installed/enabled
+through the ordinary verified CLI update path. Display Controls is `0.1.1.1`.
+
+Live final-host YouTube Music context-menu retest passed: right-click opened the
+exact row, Remove deleted only the upcoming song, current playback stayed selected,
+focus reached the successor, and Play next restored the removed test song. Playlist
+Play next inserted its first tracks (Dingus, Hot One) in source order while preserving
+the current song. Playback was paused; test likes were removed. This modifies the
+temporary playback queue, not the saved playlist. Evidence:
+`music-live-20261018-final.json` and `music-context-fixed-ui.json`.
+
+Installed PoE2 Search opened with the search field focused, Gems → first result
+focused `pob.gem.1level`, and reopening/closing restored the Search opener.
+Whole-loadout comparison displayed both contexts, retained Compare focus on
+completion and restored the inspected indexed row after Back. Its new tree rendered
+with packaged artwork. Installed PoE1 had no saved build; a new default Scion build
+was created, Search opened, and its tree rendered. No GGG requests were needed.
+These native checks complement fixture evidence rather than replace the unfinished
+full application/high-contrast/scaling/controller walkthrough.
+
+One controller-enabled normal-profile frontend remains running **hidden**, PID
+`30684` at this checkpoint, from `cumulative-candidate-20261018-c/frontend-published`
+with its `build` installation root. All 138 top-level deployed DLLs match the
+qualified publication (`final-live-payload.json`). No validation flags, test profile,
+merge, push or release. Recheck the PID/path before later interaction.
+
+The goal remains active. Still open: Spotify authentication/live workflows, actual
+installed unattended-updater acceptance, remaining guarded display variants, broader
+app/Catalogue permission/update/rollback workflows, complete requirement-by-requirement
+architecture and layout audit, and final documentation reconciliation. Keep the
+initial unreproduced Bare pixel/UIA divergence visible in the audit.
