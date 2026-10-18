@@ -129,7 +129,8 @@ internal static class PackageUpdateCommand
                     throw new CliOperationException("The selected widget changed while the update was being prepared. Disable it and review the update again.");
             }, token, settings.PrepareAsync);
         await PackageSources.SaveAsync(root, "widget", new(id, installedWidget.Version.ToString(), publisher, source.ToString(), hash, installedWidget.ContentDigest), output, token);
-        await output.WriteLineAsync($"Selected {id} {installedWidget.Version} (disabled). Widget settings were kept. Permissions are requested when needed. Previous versions remain available through wrail version rollback.");
+        await output.WriteLineAsync($"Selected {id} {installedWidget.Version} (disabled). Widget settings were kept. Permissions are requested when needed. The previous version remains available through wrail version rollback. Older versions are cleaned up automatically.");
+        if (installedWidget.RetentionCleanupPending) await output.WriteLineAsync("Older files are still in use. Cleanup will retry on the next catalog change.");
         return 0;
     }
 

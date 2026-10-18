@@ -255,6 +255,7 @@ internal static class InstallCommand
         TextWriter output,
         CancellationToken cancellationToken)
     {
+        if (installed.RetentionCleanupPending) await output.WriteLineAsync("Older files are still in use. Cleanup will retry on the next catalog change.");
         var widget = (await catalog.DiscoverAsync(cancellationToken)).Widgets
             .Single(candidate => candidate.Id == installed.Id);
         if (widget.ActiveVersion.Version == installed.Version) return;
@@ -269,11 +270,25 @@ internal static class ListCommand
 {
     public static async Task<int> RunAsync(string[] args, TextWriter output, CancellationToken cancellationToken = default)
     {
-        var parsed = new CommandArguments(args, "--catalog");
+        var parsed = new CommandArguments(args, ["--catalog"], ["--json"]);
         if (parsed.Positionals.Count != 0)
-            throw new CliUsageException("Usage: wrail list [--catalog <root>]");
+            throw new CliUsageException("Usage: wrail list [--catalog <root>] [--json]");
 
         var snapshot = await new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog"))).InspectInventoryAsync(cancellationToken);
+        if (parsed.HasFlag("--json"))
+        {
+            await output.WriteLineAsync(JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                widgets = snapshot.Widgets.Select(widget => new
+                {
+                    widget.Id, widget.Name, widget.Enabled,
+                    selectedVersion = widget.SelectedVersion.ToString(),
+                    versions = widget.Versions.Select(version => version.ToString()).ToArray(),
+                }).ToArray(),
+            }, DiagnosticJson.Options));
+            return 0;
+        }
         if (snapshot.Widgets.Count == 0)
         {
             await output.WriteLineAsync("No widgets installed.");

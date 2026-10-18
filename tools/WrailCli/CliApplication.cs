@@ -126,7 +126,7 @@ public static class CliApplication
           wrail repair remove <widget-id> <version> [--catalog <root>]
           wrail authority-recovery list
           wrail authority-recovery retry <confirmation-token>
-          wrail list [--catalog <root>]
+          wrail list [--catalog <root>] [--json]
           wrail enable <widget-id> [--catalog <root>] [--accept-full-trust]
           wrail disable <widget-id> [--catalog <root>]
           wrail version list <widget-id> [--catalog <root>]

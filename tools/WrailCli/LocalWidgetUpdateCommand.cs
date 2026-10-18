@@ -56,6 +56,7 @@ internal static class LocalWidgetUpdateCommand
                     throw new CliOperationException("The selected widget changed. Review the update again.");
             }, token, settings.PrepareAsync);
         await output.WriteLineAsync($"Selected {id} {installed.Version} (disabled). Widget settings were kept. Enable the widget when ready.");
+        if (installed.RetentionCleanupPending) await output.WriteLineAsync("Older files are still in use. Cleanup will retry on the next catalog change.");
         return 0;
     }
 }

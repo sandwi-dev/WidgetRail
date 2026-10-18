@@ -110,6 +110,8 @@ if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Sample installation helper selects updates and restores enabled state after failure", SampleInstallWorkflow),
+    ("Repeated local and remote CLI updates retain only the current and previous versions", CliRetentionWorkflow),
     ("Local reviewed updates keep widget settings without inheriting authority", LocalReviewedSettingsUpdate),
     ("Help describes the complete workflow", HelpWorks),
     ("Inspector startup requires exact host capability acknowledgement", InspectorHandshake),
@@ -427,6 +429,72 @@ static async Task GitHubWidgetUpdateWorkflow()
     Assert.True(!updated.Enabled && updated.Versions.Count == 2, "Update activated the widget or removed rollback bytes.");
     Assert.Equal(0, (await RunCli("version", "rollback", id, "--catalog", root)).Code);
     Assert.Equal("1.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
+}
+
+static async Task SampleInstallWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var repository = new DirectoryInfo(AppContext.BaseDirectory);
+    while (repository is not null && !File.Exists(Path.Combine(repository.FullName, "scripts", "Install-CommunityPackage.ps1")))
+        repository = repository.Parent;
+    if (repository is null) throw new InvalidOperationException("Sample installer script was not found.");
+    var script = Path.Combine(repository.FullName, "scripts", "Install-CommunityPackage.ps1");
+    var cli = typeof(CliApplication).Assembly.Location;
+    var root = Path.Combine(temp.Path, "catalog with spaces");
+    const string id = "dev.test.sample-install";
+    var catalog = new WidgetCatalog(root);
+    Task<CliResult> Install(string package) => RunProcessAsync("pwsh",
+        ["-NoProfile", "-NonInteractive", "-File", script, "-CliDll", cli, "-Package", package, "-Catalog", root], TimeSpan.FromSeconds(30));
+    for (var major = 1; major <= 3; major++)
+    {
+        var package = await CreatePackedPackageAsync(temp.Path, id, $"{major}.0.0");
+        var installed = await Install(package);
+        Assert.True(installed.Code == 0, installed.Output + installed.Error);
+        var selected = (await catalog.DiscoverAsync()).Widgets.Single();
+        Assert.True(selected.Enabled && selected.ActiveVersion.Version == new Version(major, 0, 0), "Sample install did not select and enable the new version.");
+        Assert.Equal(Math.Min(major, 2), selected.Versions.Count);
+        var duplicate = await Install(package);
+        Assert.True(duplicate.Code != 0, "Duplicate sample version was overwritten.");
+        Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Duplicate install disabled the widget.");
+    }
+    if (OperatingSystem.IsWindows())
+    {
+        var selected = (await catalog.DiscoverAsync()).Widgets.Single();
+        using var liveLease = File.Open(Path.Combine(selected.ActiveVersion.InstallPath, "manifest.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        var blocked = await Install(await CreatePackedPackageAsync(temp.Path, id, "4.0.0"));
+        Assert.True(blocked.Code != 0, "Helper bypassed a running generation lease.");
+        var after = (await catalog.DiscoverAsync()).Widgets.Single();
+        Assert.True(after.Enabled && after.ActiveVersion.Version == new Version(3, 0, 0), "Failed sample update left the old widget disabled or changed its selection.");
+        Assert.Equal(2, after.Versions.Count);
+    }
+}
+
+static async Task CliRetentionWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    const string id = "dev.test.retention";
+    var root = Path.Combine(temp.Path, "catalog");
+    var package = await CreatePackedPackageAsync(temp.Path, id, "1.0.0");
+    Assert.Equal(0, (await RunCli("install", package, "--catalog", root)).Code);
+    for (var major = 2; major <= 10; major++)
+    {
+        package = await CreatePackedPackageAsync(temp.Path, id, $"{major}.0.0");
+        var bytes = await File.ReadAllBytesAsync(package);
+        var sha = Convert.ToHexString(SHA256.HashData(bytes));
+        using var handler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, bytes)));
+        var result = major % 2 == 0
+            ? await RunCli("update", id, "--file", package, "--sha256", sha, "--apply", "--catalog", root)
+            : await RunCliWithHandler(handler, "update", id, "--repo", "sample/repo", "--tag", $"v{major}",
+                "--asset", "sample.wrwidget", "--sha256", sha, "--apply", "--catalog", root);
+        Assert.Equal(0, result.Code);
+        var list = await RunCli("list", "--json", "--catalog", root);
+        Assert.Equal(0, list.Code);
+        using var report = JsonDocument.Parse(list.Output);
+        var row = report.RootElement.GetProperty("widgets")[0];
+        Assert.Equal($"{major}.0.0", row.GetProperty("selectedVersion").GetString()!);
+        Assert.Equal(2, row.GetProperty("versions").GetArrayLength());
+        Assert.True(!row.GetProperty("enabled").GetBoolean(), "CLI update enabled a new authority.");
+    }
 }
 
 static async Task LocalReviewedSettingsUpdate()
@@ -3159,6 +3227,7 @@ static async Task CatalogRepairWorkflow()
     var permissive = new WidgetCatalog(catalogRoot, new WidgetCatalogOptions
     {
         MaximumVersionsPerWidget = 10,
+        RetainedVersionsPerWidget = 10,
     });
     for (var major = 1; major <= 9; major++)
     {
@@ -3173,7 +3242,7 @@ static async Task CatalogRepairWorkflow()
 
     var normalList = await RunCli("list", "--catalog", catalogRoot);
     Assert.Equal(1, normalList.Code);
-    Assert.Contains("installed_widget_version_limit", normalList.Error);
+    Assert.Contains("installed_repair_limit", normalList.Error);
     var repairList = await RunCli("repair", "list", "--catalog", catalogRoot);
     Assert.Equal(0, repairList.Code);
     Assert.Contains("Catalog directory quotas: exceeded (installed_widget_version_limit)",
@@ -3312,6 +3381,7 @@ static async Task VersionSelectionAndRollback()
     {
         var package = await CreatePackedPackageAsync(temp.Path, "dev.test.rollback", version);
         Assert.Equal(0, (await RunCli("install", package, "--catalog", catalog)).Code);
+        Assert.Equal(0, (await RunCli("version", "select", "dev.test.rollback", version, "--catalog", catalog)).Code);
     }
     Assert.Equal(0, (await RunCli(
         "version", "select", "dev.test.rollback", "3.0.0", "--catalog", catalog)).Code);
@@ -3336,8 +3406,8 @@ static async Task VersionSelectionAndRollback()
 
     var explicitRollback = await RunCli(
         "version", "rollback", "dev.test.rollback", "--to", "1.0.0", "--catalog", catalog);
-    Assert.Equal(0, explicitRollback.Code);
-    Assert.Contains("from 2.0.0 to 1.0.0 (disabled)", explicitRollback.Output);
+    Assert.Equal(1, explicitRollback.Code);
+    Assert.Contains("is not installed", explicitRollback.Error);
 
     var forward = await RunCli(
         "version", "select", "dev.test.rollback", "3.0.0", "--catalog", catalog);

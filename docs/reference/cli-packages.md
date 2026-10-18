@@ -31,6 +31,14 @@ it does not prove publisher identity or runtime behavior.
 Installation publishes a package version; enablement is separate. Review the
 widget and requested permissions before enabling it in an ordinary user catalog.
 
+Ordinary installs and updates retain the selected version and one backup. Older
+package versions are cleaned automatically; a failed incoming package leaves a
+usable selection. Locked files can remain until a later catalog change retries
+cleanup. `wrail list --json` exposes version and enabled-state metadata for scripts.
+Sample `Build-CommunityPackage.ps1 -Install` flows share the reviewed update helper:
+they select the update, keep settings, and restore the old enabled state if the
+update fails before selection. Same-version changes should use `wrail dev`.
+
 ## Select or roll back a version
 
 First change the test project's manifest version to `0.2.0`, pack it again,

@@ -53,11 +53,24 @@ authority simply by reusing a name or version string.
 
 The catalog records the selected version separately from the versions on disk.
 An invalid or missing selected version should not silently execute some other
-version. A successful manual update selects the new version disabled for review,
-while preserving the previous installed version.
+version. Updates automatically keep the current version and one previous version.
+Older package versions are removed after publication and selection succeed;
+locked files are retried on a later catalog change. Existing longer histories
+are trimmed when that widget is next installed or updated, not during startup.
+The larger internal discovery ceiling permits legacy catalogs and cleanup retries.
 
-Users can remove unused versions and uninstall a community widget through Settings.
-These operations protect the current selection and preserve saved widget data.
+Marketplace and Settings updates preserve enabled state; CLI updates require the
+widget to be disabled first. Settings exposes **Revert to previous version** in
+its existing **Technical details** section. Disable the widget before reverting,
+then review permissions and enable it again. After reverting, the same button
+offers **Restore newer version** for the retained package. Rollback changes package selection;
+it does not restore a snapshot of saved widget data.
+
+Raw CLI installation keeps an existing explicit selection and retains it with
+the incoming version until selection. Package versions remain immutable.
+`wrail dev` uses isolated generations and is unaffected by normal retention.
+Users can uninstall a community widget through Settings. Saved widget data is
+preserved; cleanup never grants permissions or copies credentials.
 See [Package and share](../developers/publishing-and-installation.md).
 
 ## Runtime boundary

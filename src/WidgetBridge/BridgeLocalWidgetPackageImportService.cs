@@ -269,7 +269,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
                 "update_publisher_changed" or "update_trust_changed" => "This update changes the publisher or execution permissions. It was not installed.",
                 "update_incompatible" => "This update needs a different WidgetRail version. Your current widget is unchanged.",
                 "settings_transfer_failed" or "settings_transfer_busy" => "Widget settings could not be kept. The current version is still selected. Try again, or check local-data diagnostics.",
-                "update_selection_failed" => "The new version was installed. Open Manage versions to finish selecting it.",
+                "update_selection_failed" => "The new version was saved, but could not be selected. The previous version remains selected. After resolving storage access, disable the widget and use Restore newer version in its Technical details.",
                 "install_activation_failed" => "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.",
                 "package_incompatible" => "This widget needs a different WidgetRail version. Nothing was installed.",
                 _ => $"Local widget package install failed ({safeCode}).",

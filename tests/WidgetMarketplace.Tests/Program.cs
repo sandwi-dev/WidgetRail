@@ -45,6 +45,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Batch expiry and changed installed baselines cannot reuse approval", MarketplaceBatchTests.ExpiryAndChangedBaseline),
     ("Batch inputs are bounded and shutdown disposes retained packages", MarketplaceBatchTests.BoundsAndDisposal),
     ("Large batch reviews fit the broker transport without omitting permissions", MarketplaceBatchTests.ReviewTransportBound),
+    ("Marketplace updates trim a full legacy history without manual cleanup", LegacyHistoryUpdate),
     ("Download review and approved update preserve enabled state and previous versions", UpdateReview),
     ("Updates preserve a disabled widget and feature permission decisions", DisabledUpdate),
     ("Full-access installation requires exact reviewed approval and rejects replay", FullTrust),
@@ -62,6 +63,27 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} tests passed.");
 return failures == 0 ? 0 : 1;
+
+static async Task LegacyHistoryUpdate()
+{
+    await using var fixture = new Fixture("9.0.0");
+    var legacy = new Catalog(fixture.Root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 });
+    for (var major = 1; major <= 8; major++)
+    {
+        using var input = new MemoryStream(Fixture.Package($"{major}.0.0"));
+        await legacy.InstallAsync(input);
+    }
+    await legacy.SetActiveVersionAsync(Fixture.Id, new Version(8, 0, 0));
+    await legacy.SetEnabledAsync(Fixture.Id, true);
+    var review = await fixture.Review();
+    await fixture.Service.HandleAsync(new("install", OperationId: review.Operation!.Id,
+        ReviewToken: review.Operation.Review!.Token), default);
+    await Wait(fixture.Service, "completed");
+    var updated = (await fixture.Catalog.DiscoverAsync()).Widgets.Single();
+    Check(updated.Enabled && updated.ActiveVersion.Version == new Version(9, 0, 0), "Legacy-capacity update did not activate normally");
+    Check(updated.Versions.Select(item => item.Version).SequenceEqual([new Version(9, 0, 0), new Version(8, 0, 0)]),
+        "Marketplace kept obsolete history or discarded the previous selection");
+}
 
 static async Task UpdateReview()
 {

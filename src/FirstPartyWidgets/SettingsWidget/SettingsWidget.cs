@@ -27,8 +27,6 @@ public enum SettingsPage
     Controllers,
     InstalledWidgets,
     InstalledWidgetDetails,
-    InstalledWidgetVersions,
-    InstalledWidgetVersionRemoval,
     InstalledWidgetUpdate,
     InstalledWidgetRecovery,
     InstalledWidgetLocalData,
@@ -51,7 +49,6 @@ public enum SettingsPage
 public sealed partial class SettingsWidget : Widget
 {
     public const int InstalledRecoveryItemsPerPage = 5;
-    public const int InstalledVersionsPerPage = 5;
     private const int MaximumBundledDirectories = 64;
     private const int MaximumManifestBytes = 1024 * 1024;
 
@@ -237,10 +234,6 @@ public sealed partial class SettingsWidget : Widget
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetDetails(
                     header, busy, installedState, permissionState, settings, page == SettingsPage.InstalledWidgetTechnical),
             SettingsPage.InstalledWidgetUpdate => SettingsUpdatePresentation.Render(header, busy, installedState),
-            SettingsPage.InstalledWidgetVersionRemoval => SettingsVersionRemovalPresentation.Render(header, busy, installedState),
-            SettingsPage.InstalledWidgetVersions =>
-                SettingsInstalledWidgetPresentation.RenderInstalledWidgetVersions(
-                    header, busy, installedState),
             SettingsPage.InstalledWidgetRecovery =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetRecovery(
                     header, busy, installedState),
@@ -437,11 +430,6 @@ public sealed partial class SettingsWidget : Widget
         {
             if (await HandleAppUpdateActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
             if (await HandleMarketplaceActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
-            if (action.ActionId == "back" && CurrentPage == SettingsPage.InstalledWidgetVersionRemoval)
-            {
-                CancelVersionRemoval();
-                return;
-            }
             if (action.ActionId == "installed.uninstall.cancel" ||
                 action.ActionId == "back" && CurrentPage == SettingsPage.InstalledWidgetUninstall)
             {
@@ -522,19 +510,15 @@ public sealed partial class SettingsWidget : Widget
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.repair.previous-page": ChangeInstalledRecoveryPage(-1); break;
                 case "installed.repair.next-page": ChangeInstalledRecoveryPage(1); break;
-                case "installed.versions.open": OpenInstalledWidgetVersions(); break;
-                case "installed.versions.previous-page": ChangeInstalledVersionPage(-1); break;
-                case "installed.versions.next-page": ChangeInstalledVersionPage(1); break;
                 case "installed.repair.remove": await RemoveSelectedRepairCandidateAsync(
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.local-data.open": OpenInstalledWidgetLocalData(); break;
                 case "installed.local-data.clear": await ClearSelectedWidgetLocalDataAsync(
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.uninstall.open": await OpenInstalledWidgetUninstallAsync(cancellationToken).ConfigureAwait(false); break;
+                case "installed.revert": await SelectBackupVersionAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.update.open": OpenWidgetUpdate(); break;
                 case "installed.update.review": await ReviewWidgetUpdateAsync(cancellationToken).ConfigureAwait(false); break;
-                case "installed.version-removal.cancel": CancelVersionRemoval(); break;
-                case "installed.version-removal.confirm": await RemoveSelectedVersionAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.uninstall.confirm": await UninstallSelectedWidgetAsync(
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
@@ -556,10 +540,7 @@ public sealed partial class SettingsWidget : Widget
                 default:
                     if (TryThemeIndex(action.ActionId, out var index))
                         OpenThemeVersion(index);
-                    else if (TryIndexedAction(action.ActionId, "installed.version.select.", out index))
-                        await SelectInstalledVersionAsync(index, cancellationToken).ConfigureAwait(false);
-                    else if (TryIndexedAction(action.ActionId, "installed.version.remove.", out index))
-                        OpenVersionRemoval(index);
+
                     else if (TryIndexedAction(action.ActionId, "installed.repair.select.", out index))
                         SelectRepairCandidate(index);
                     else if (TryIndexedAction(action.ActionId, "permission.select.", out index))
@@ -1934,101 +1915,15 @@ public sealed partial class SettingsWidget : Widget
         SetOperation(warning ?? $"Version {current.ActiveVersion.Version} is selected. Review permissions, then enable the widget from its details.", false, warning is not null);
     }
 
-    private void OpenVersionRemoval(int index)
-    {
-        lock (_stateLock)
-        {
-            var package = _installedState.CatalogValid ? _installedState.SelectedInstalled : null;
-            if (_page != SettingsPage.InstalledWidgetVersions || package is null || index < 0 || index >= package.Versions.Count) return;
-            var version = package.Versions[index];
-            if (version.Version == package.ActiveVersion.Version) return;
-            _installedState = _installedState with
-            {
-                VersionRemoval = new(package.Id, package.Name, version.Version, version.ContentDigest),
-                VersionFocusId = $"installed.version.remove.{index}",
-            };
-            _page = SettingsPage.InstalledWidgetVersionRemoval;
-        }
-        PublishSettingsChanged();
-    }
-
-    private void CancelVersionRemoval()
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.InstalledWidgetVersionRemoval) return;
-            _installedState = _installedState with { VersionRemoval = null };
-            _page = SettingsPage.InstalledWidgetVersions;
-        }
-        PublishSettingsChanged();
-    }
-
-    private async Task RemoveSelectedVersionAsync(CancellationToken cancellationToken)
-    {
-        SettingsVersionRemoval? selected;
-        lock (_stateLock) selected = _page == SettingsPage.InstalledWidgetVersionRemoval && _installedState.CatalogValid
-            ? _installedState.VersionRemoval : null;
-        if (selected is null) return;
-        SetOperation($"Removing version {selected.Version}…", true, false);
-        try
-        {
-            var result = await _widgetCatalog.RemoveInactiveVersionConfirmedAsync(selected.WidgetId, selected.Version,
-                selected.Digest, cancellationToken).ConfigureAwait(false);
-            var warning = await ReloadInstalledWidgetsAsync(CancellationToken.None).ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _installedState = _installedState with { VersionRemoval = null, VersionFocusId = null };
-                _page = _installedState.SelectedInstalled is null ? SettingsPage.InstalledWidgets : SettingsPage.InstalledWidgetVersions;
-            }
-            SetOperation(warning ?? (result.CleanupPending ? "Version removed. Windows will finish deleting its files later." : $"Version {selected.Version} removed"), false, warning is not null);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        { SetOperation("Version removal cancelled", false, false); }
-        catch (Exception exception) when (exception is WidgetPackageException or IOException or UnauthorizedAccessException or KeyNotFoundException)
-        {
-            await ReloadInstalledWidgetsAsync(CancellationToken.None).ConfigureAwait(false);
-            SetOperation(exception is WidgetPackageException { Code: "selected_version" or "version_changed" }
-                ? "This version changed or is now in use. Review the version list and try again."
-                : "This version could not be removed. It may still be in use; try again shortly.", false, true);
-        }
-    }
-
-    private void OpenInstalledWidgetVersions()
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.InstalledWidgetDetails ||
-                !SettingsInstalledWidgetPolicy.TryOpenVersions(
-                    _installedState, out var transition))
-                return;
-            _installedState = transition.State;
-            _page = transition.Page;
-        }
-        PublishSettingsChanged();
-    }
-
-    private void ChangeInstalledVersionPage(int delta)
-    {
-        lock (_stateLock)
-        {
-            if (_page != SettingsPage.InstalledWidgetVersions) return;
-            if (_installedState.SelectedInstalled is null) return;
-            _installedState = SettingsInstalledWidgetPolicy.ChangeVersionPage(
-                _installedState, delta);
-        }
-        PublishSettingsChanged();
-    }
-
-    private async Task SelectInstalledVersionAsync(int index, CancellationToken cancellationToken)
+    private async Task SelectBackupVersionAsync(CancellationToken cancellationToken)
     {
         CatalogWidget? selected;
         InstalledWidgetVersion? requested;
         lock (_stateLock)
         {
-            selected = _installedState.CatalogValid ? _installedState.SelectedInstalled : null;
-            requested = selected is not null && index >= 0 && index < selected.Versions.Count
-                ? selected.Versions[index]
-                : null;
+            selected = _page == SettingsPage.InstalledWidgetTechnical && _installedState.CatalogValid
+                ? _installedState.SelectedInstalled : null;
+            requested = selected is null ? null : SettingsInstalledWidgetPolicy.BackupVersion(selected);
         }
         if (selected is null || requested is null) return;
         if (selected.Enabled)
@@ -2036,19 +1931,19 @@ public sealed partial class SettingsWidget : Widget
             SetOperation("Disable the widget before changing versions", busy: false, error: true);
             return;
         }
-        if (requested.Version == selected.ActiveVersion.Version) return;
+        if (!WidgetHostCompatibility.Evaluate(requested.Manifest).IsSupported) return;
 
         SetOperation($"Selecting {requested.Version}…", busy: true, error: false);
         try
         {
             await _widgetCatalog.SetActiveVersionAsync(
                 selected.Id, requested.Version, cancellationToken).ConfigureAwait(false);
-            var refreshed = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            var refreshed = await _widgetCatalog.DiscoverAsync(CancellationToken.None).ConfigureAwait(false);
             // Version changes can replace declarations and always replace the
             // installed package authority. Refresh the permission projection
             // before reporting success so this still-visible Settings worker
             // can never grant against the previously selected version.
-            var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
+            var permissionWarning = await ReloadPermissionsAsync(CancellationToken.None)
                 .ConfigureAwait(false);
             lock (_stateLock)
             {

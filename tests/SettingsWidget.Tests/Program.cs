@@ -114,7 +114,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
     ("Enabled widget uninstall confirms before disabling and preserves data", EnabledWidgetUninstall),
     ("Update file flow binds target and reviews the newly selected version", WidgetUpdateReviewFlow),
-    ("Unused version removal confirms exact content and protects the selected version", UnusedVersionRemoval),
+    ("Technical details expose one rollback action and reject obsolete version actions", CompactVersionManagement),
     ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
     ("Built-in widgets remain available and can be disabled without removing files", BuiltInWidgetInventory),
     ("Installed copies cannot shadow built-in widget management", InstalledBuiltInCopy),
@@ -146,6 +146,17 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Manifest and default WRSS validate", ShippedAssetsValidate),
 };
 
+if (args is ["--test", var exactName])
+{
+    tests = tests.Where(test => test.Name == exactName).ToArray();
+    if (tests.Length == 0) { Console.Error.WriteLine($"Unknown Settings test: {exactName}"); return 2; }
+}
+else if (args.Length != 0)
+{
+    Console.Error.WriteLine("Usage: SettingsWidget.Tests [--test <exact-name>]");
+    return 2;
+}
+
 var failures = new List<string>();
 foreach (var test in tests)
 {
@@ -158,6 +169,7 @@ foreach (var test in tests)
     {
         failures.Add($"FAIL {test.Name}: {exception.Message}");
         Console.Error.WriteLine(failures[^1]);
+        Console.Error.WriteLine(exception);
     }
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
@@ -1773,44 +1785,28 @@ static async Task WidgetUpdateReviewFlow()
     Assert.Valid(Snapshot(widget));
 }
 
-static async Task UnusedVersionRemoval()
+static async Task CompactVersionManagement()
 {
     using var temp = new TemporaryDirectory();
     var root = Path.Combine(temp.Path, "catalog");
-    const string id = "dev.test.remove-version";
-    foreach (var version in new[] { "1.0.0", "2.0.0", "3.0.0" })
-        WriteInstalledWidget(root, id, "dev.publisher.remove-version", "Versions", [], [], version: version);
+    const string id = "dev.test.versions";
+    WriteInstalledWidget(root, id, "dev.publisher.versions", "Versions", [], []);
     var catalog = new WidgetCatalog(root);
     var widget = CreateWithPermissions(temp.Path, root, new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     await Action(widget, "installed.select.0");
+    Assert.True(!Buttons(Snapshot(widget).Root).Any(button => button.ActionId == "installed.versions.open"), "Obsolete history UI remains.");
     await Action(widget, "installed.versions.open");
-    var snapshot = Snapshot(widget);
-    Assert.True(Nodes(snapshot.Root).Any(node => node.Id == "installed.versions" && node.ScrollAxis == ScrollAxis.Vertical), "Versions must scroll.");
-    Assert.True(!Buttons(snapshot.Root).Any(button => button.Id == "installed.version.remove.0"), "Selected version exposed removal.");
-    await Action(widget, "installed.version.remove.1");
-    Assert.Equal("installed.version-removal.cancel", Snapshot(widget).InitialFocusId);
-    await Action(widget, "back");
-    Assert.Equal("installed.version.remove.1", Snapshot(widget).InitialFocusId);
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    await Action(widget, "open.widget-technical");
+    var technical = Snapshot(widget);
+    Assert.Equal(true, Button(technical.Root, "installed.details.revert").IsDisabled);
+    await Action(widget, "installed.revert");
+    await Action(widget, "installed.version.remove.0");
     await Action(widget, "installed.version-removal.confirm");
-    Assert.Equal(3, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
-    await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.RemoveInactiveVersionConfirmedAsync(id, new Version(2, 0, 0), "wrong-digest"));
-    await Action(widget, "installed.version.remove.1");
-    await catalog.SetActiveVersionAsync(id, new Version(2, 0, 0));
-    await Action(widget, "installed.version-removal.confirm");
-    Assert.Equal(3, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
-    Assert.Contains("now in use", Text(Snapshot(widget).Root, "settings.toast.message").Text!);
-    await catalog.SetEnabledAsync(id, true);
-    await Action(widget, "refresh");
-    await Action(widget, "installed.version.remove.2");
-    await Action(widget, "installed.version-removal.confirm");
-    var remaining = (await catalog.DiscoverAsync()).Widgets.Single();
-    Assert.Equal(2, remaining.Versions.Count);
-    Assert.True(remaining.Enabled, "Removing an unused version disabled the current version.");
-    Assert.Equal("2.0.0", remaining.ActiveVersion.Version.ToString());
-    Assert.Equal(SettingsPage.InstalledWidgetVersions, widget.CurrentPage);
-    Assert.Valid(Snapshot(widget));
+    Assert.Equal(1, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+    Assert.Valid(technical);
 }
 
 static async Task InstalledWidgetPackageUninstall()
@@ -2082,55 +2078,39 @@ static async Task InstalledWidgetVersionRollback()
     var catalogRoot = Path.Combine(temp.Path, "catalog");
     const string widgetId = "dev.test.versions";
     foreach (var version in new[] { "1.0.0", "2.0.0", "3.0.0" })
-        WriteInstalledWidget(catalogRoot, widgetId, "dev.publisher.versions", "Versions",
-            [], [], version: version);
-
+        WriteInstalledWidget(catalogRoot, widgetId, "dev.publisher.versions", "Versions", [], [], version: version);
     var catalog = new WidgetCatalog(catalogRoot);
-    var widget = CreateWithPermissions(temp.Path, catalogRoot,
-        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     await Action(widget, "installed.select.0");
-    var details = Snapshot(widget);
-    Assert.Contains("Manage versions (3)", Button(details.Root, "installed.details.versions").Text!);
-
-    await Action(widget, "installed.versions.open");
-    var versions = Snapshot(widget);
-    var catalogSnapshot = await catalog.DiscoverAsync();
-    var rollbackDigest = catalogSnapshot.Widgets.Single().Versions[1].ContentDigest[..12]
-        .ToLowerInvariant();
-    Assert.Equal(SettingsPage.InstalledWidgetVersions, widget.CurrentPage);
-    Assert.Equal("installed.versions", versions.ActiveInputScopeId);
-    Assert.HasShortcut(versions.Root, "installed.versions", ControllerButton.B, "back");
-    Assert.Equal("installed.version.item.1", versions.InitialFocusId);
-    Assert.Equal(true, Button(versions.Root, "installed.version.item.0").IsSelected);
-    Assert.Equal(true, Button(versions.Root, "installed.version.item.0").IsDisabled);
-    Assert.Contains("Rollback · 2.0.0", Button(versions.Root, "installed.version.item.1").Text!);
-    Assert.True(!Button(versions.Root, "installed.version.item.1").Text!.Contains(rollbackDigest), "Version action should not be dominated by a digest.");
-
-    await Action(widget, "installed.version.select.1");
-    Assert.Equal("2.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
-    var rolledBack = Snapshot(widget);
-    Assert.Equal(true, Button(rolledBack.Root, "installed.version.item.1").IsSelected);
-    Assert.Contains("Select newer · 3.0.0", Button(rolledBack.Root, "installed.version.item.0").Text!);
-    Assert.Contains("2.0.0 selected; review its permissions before enabling",
-        Text(rolledBack.Root, "settings.toast.message").Text!);
-
+    await Action(widget, "installed.toggle");
+    await Action(widget, "open.widget-technical");
+    var enabled = Snapshot(widget);
+    Assert.Equal(true, Button(enabled.Root, "installed.details.revert").IsDisabled);
+    Assert.Contains("disable widget first", Button(enabled.Root, "installed.details.revert").Text!);
+    await Action(widget, "installed.revert");
+    Assert.Equal("3.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
     await Action(widget, "back");
     await Action(widget, "installed.toggle");
-    await Action(widget, "installed.versions.open");
-    var enabled = Snapshot(widget);
-    Assert.Equal("installed.version.remove.0", enabled.InitialFocusId);
-    Assert.True(ActionControls(enabled.Root)
-        .Where(button => button.Id.StartsWith("installed.version.item.", StringComparison.Ordinal))
-        .All(button => button.IsDisabled is true), "Enabled widget exposed a version-selection action.");
-    await Action(widget, "installed.version.select.2");
-    Assert.Equal("2.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
-    Assert.Contains("Disable the widget", Text(Snapshot(widget).Root, "settings.toast.message").Text!);
-    Assert.Valid(details);
-    Assert.Valid(versions);
-    Assert.Valid(rolledBack);
+    await Action(widget, "open.widget-technical");
+    var technical = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetTechnical, widget.CurrentPage);
+    Assert.Equal("installed.details.revert", technical.InitialFocusId);
+    Assert.Contains("Revert to previous version (2.0.0)", Button(technical.Root, "installed.details.revert").Text!);
+    await Action(widget, "installed.revert");
+    var current = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.Equal("2.0.0", current.ActiveVersion.Version.ToString());
+    Assert.True(!current.Enabled, "Rollback bypassed enablement review.");
+    Assert.SequenceEqual(["3.0.0", "2.0.0"], current.Versions.Select(item => item.Version.ToString()));
+    Assert.Equal(SettingsPage.InstalledWidgetTechnical, widget.CurrentPage);
+    Assert.Contains("Restore newer version (3.0.0)", Button(Snapshot(widget).Root, "installed.details.revert").Text!);
+    await Action(widget, "installed.revert");
+    Assert.Equal("3.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
+    Assert.Contains("Revert to previous version (2.0.0)", Button(Snapshot(widget).Root, "installed.details.revert").Text!);
     Assert.Valid(enabled);
+    Assert.Valid(technical);
+    Assert.Valid(Snapshot(widget));
 }
 
 static async Task InstalledVersionRefreshesPermissions()
@@ -2148,8 +2128,8 @@ static async Task InstalledVersionRefreshesPermissions()
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     await Action(widget, "installed.select.0");
-    await Action(widget, "installed.versions.open");
-    await Action(widget, "installed.version.select.1");
+    await Action(widget, "open.widget-technical");
+    await Action(widget, "installed.revert");
 
     await Action(widget, "back");
     await Action(widget, "back");
@@ -3294,9 +3274,6 @@ static IEnumerable<ViewNode> Nodes(ViewNode node)
     foreach (var descendant in Nodes(child))
         yield return descendant;
 }
-
-static IEnumerable<ViewNode> ActionControls(ViewNode root) =>
-    Nodes(root).Where(node => node.Kind is ViewNodeKind.Button or ViewNodeKind.ActionSurface);
 
 static IEnumerable<ViewNode> Buttons(ViewNode root) =>
     Nodes(root).Where(node => node.Kind == ViewNodeKind.Button);

@@ -45,12 +45,13 @@ public sealed class WidgetPackageInstaller
     internal async Task<InstalledWidgetVersion> InstallAsync(
         string packagePath,
         Func<WidgetPackageInspection, CancellationToken, Task> prePublish,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<InstalledWidgetVersion, CancellationToken, Task>? beforePublication = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packagePath);
         ArgumentNullException.ThrowIfNull(prePublish);
         using var archive = OpenArchive(packagePath);
-        return await InstallArchiveAsync(archive, prePublish, cancellationToken);
+        return await InstallArchiveAsync(archive, prePublish, cancellationToken, beforePublication);
     }
 
     /// <summary>
@@ -126,7 +127,12 @@ public sealed class WidgetPackageInstaller
                 stagedInspection.Version,
                 destination,
                 stagedManifest,
-                contentDigest);
+                contentDigest)
+            {
+                VerifiedEntryCount = checked(stagedInspection.EntryCount + 1),
+                VerifiedTotalBytes = checked(stagedInspection.TotalUncompressedBytes + InstalledPackageIntegrity.MaximumMetadataBytes),
+                VerificationOptions = _options,
+            };
             if (beforePublication is not null)
                 await beforePublication(installed, cancellationToken).ConfigureAwait(false);
             // Once final preparation has committed, finish publication. A late

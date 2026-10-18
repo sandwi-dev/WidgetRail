@@ -14,15 +14,12 @@ internal sealed record SettingsInstalledWidgetState(
     bool CatalogValid,
     string? Diagnostic,
     int RecoveryPage,
-    int VersionPage,
     string? SelectedInstalledId,
     string? SelectedBuiltInId,
     WidgetCatalogRepairCandidate? SelectedRepair)
 {
     public SettingsWidgetFilter Filter { get; init; }
     public Version? UpdateFromVersion { get; init; }
-    public SettingsVersionRemoval? VersionRemoval { get; init; }
-    public string? VersionFocusId { get; init; }
     public PlatformWidgetLocalDataInspection? LocalData { get; init; }
     public PlatformWidgetPackageUninstallInspection? PackageUninstall { get; init; }
     public string? DetailsFocusId { get; init; }
@@ -33,7 +30,6 @@ internal sealed record SettingsInstalledWidgetState(
         CatalogValid: true,
         Diagnostic: null,
         RecoveryPage: 0,
-        VersionPage: 0,
         SelectedInstalledId: null,
         SelectedBuiltInId: null,
         SelectedRepair: null);
@@ -69,23 +65,16 @@ internal static class SettingsInstalledWidgetPolicy
         ArgumentNullException.ThrowIfNull(builtIns);
         var selectedInstalled = current.SelectedInstalledId;
         var selectedBuiltIn = current.SelectedBuiltInId;
-        var versionPage = current.VersionPage;
         if (selectedInstalled is not null &&
             !catalog.Widgets.Any(widget => string.Equals(
                 widget.Id, selectedInstalled, StringComparison.Ordinal)))
         {
             selectedInstalled = null;
-            versionPage = 0;
             if (page is SettingsPage.InstalledWidgetDetails or
-                SettingsPage.InstalledWidgetVersions or
+                SettingsPage.InstalledWidgetTechnical or
                 SettingsPage.InstalledWidgetUpdate or
-                SettingsPage.InstalledWidgetVersionRemoval or
                 SettingsPage.InstalledWidgetRecovery)
                 page = SettingsPage.InstalledWidgets;
-        }
-        else if (page == SettingsPage.InstalledWidgetVersionRemoval)
-        {
-            page = SettingsPage.InstalledWidgetVersions;
         }
         else if (page == SettingsPage.InstalledWidgetRecovery)
         {
@@ -106,7 +95,6 @@ internal static class SettingsInstalledWidgetPolicy
             CatalogValid: true,
             Diagnostic: null,
             RecoveryPage: 0,
-            VersionPage: versionPage,
             SelectedInstalledId: selectedInstalled,
             SelectedBuiltInId: selectedBuiltIn,
             SelectedRepair: null)
@@ -136,8 +124,7 @@ internal static class SettingsInstalledWidgetPolicy
         ArgumentException.ThrowIfNullOrWhiteSpace(diagnostic);
         ArgumentNullException.ThrowIfNull(health);
         if (page is SettingsPage.InstalledWidgetDetails or
-            SettingsPage.InstalledWidgetVersions or
-            SettingsPage.InstalledWidgetVersionRemoval or
+            SettingsPage.InstalledWidgetTechnical or
             SettingsPage.InstalledWidgetRecovery or
             SettingsPage.InstalledWidgetLocalData)
             page = SettingsPage.InstalledWidgets;
@@ -147,7 +134,6 @@ internal static class SettingsInstalledWidgetPolicy
             CatalogValid = false,
             Diagnostic = diagnostic,
             RecoveryPage = 0,
-            VersionPage = 0,
             SelectedInstalledId = null,
             SelectedBuiltInId = null,
             SelectedRepair = null,
@@ -186,7 +172,6 @@ internal static class SettingsInstalledWidgetPolicy
                 LocalData = null,
                 PackageUninstall = null,
                 DetailsFocusId = null,
-                VersionPage = 0,
             },
             SettingsPage.InstalledWidgetDetails);
         return true;
@@ -211,7 +196,6 @@ internal static class SettingsInstalledWidgetPolicy
                 LocalData = null,
                 PackageUninstall = null,
                 DetailsFocusId = null,
-                VersionPage = 0,
             },
             SettingsPage.InstalledWidgetDetails);
         return true;
@@ -235,35 +219,7 @@ internal static class SettingsInstalledWidgetPolicy
         return true;
     }
 
-    public static bool TryOpenVersions(
-        SettingsInstalledWidgetState state,
-        out SettingsInstalledWidgetTransition transition)
-    {
-        if (!state.CatalogValid || state.SelectedInstalled is null ||
-            state.SelectedBuiltIn is not null)
-        {
-            transition = default;
-            return false;
-        }
-        transition = new(state, SettingsPage.InstalledWidgetVersions);
-        return true;
-    }
-
-    public static SettingsInstalledWidgetState ChangeVersionPage(
-        SettingsInstalledWidgetState state,
-        int delta)
-    {
-        var selected = state.SelectedInstalled;
-        if (selected is null) return state;
-        return state with
-        {
-            VersionPage = Math.Clamp(
-                state.VersionPage + delta,
-                0,
-                LastVersionPage(selected)),
-        };
-    }
-
-    public static int LastVersionPage(CatalogWidget widget) =>
-        Math.Max(0, (widget.Versions.Count - 1) / SettingsWidget.InstalledVersionsPerPage);
+    public static InstalledWidgetVersion? BackupVersion(CatalogWidget widget) =>
+        widget.Versions.Where(item => item.Version != widget.ActiveVersion.Version)
+            .OrderByDescending(item => item.Version).FirstOrDefault();
 }

@@ -154,20 +154,9 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
 }
 
 if ($Install) {
-    $catalogArguments = if ([string]::IsNullOrWhiteSpace($Catalog)) {
-        @()
-    } else {
-        @('--catalog', [System.IO.Path]::GetFullPath($Catalog))
-    }
-    & dotnet run --project $cliProject --configuration $Configuration `
-        --no-launch-profile -- install $packagePath --accept-full-trust @catalogArguments
-    if ($LASTEXITCODE -ne 0) { throw 'Playnite Library install failed.' }
-    & dotnet run --project $cliProject --configuration $Configuration `
-        --no-launch-profile -- version select $manifest.id $manifest.version @catalogArguments
-    if ($LASTEXITCODE -ne 0) { throw 'Playnite Library version selection failed.' }
-    & dotnet run --project $cliProject --configuration $Configuration `
-        --no-launch-profile -- enable $manifest.id --accept-full-trust @catalogArguments
-    if ($LASTEXITCODE -ne 0) { throw 'Playnite Library enable failed.' }
+    & (Join-Path $repositoryRoot 'scripts/Install-CommunityPackage.ps1') `
+        -CliDll (Join-Path $repositoryRoot "tools/WrailCli/bin/$Configuration/net8.0/wrail.dll") `
+        -Package $packagePath -Catalog $Catalog -AcceptFullTrust
 }
 
 Write-Host "Community Playnite Library package: $packagePath"

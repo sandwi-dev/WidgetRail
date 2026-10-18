@@ -10,6 +10,8 @@ public sealed record WidgetCatalogOptions
     public int MaximumPathLength { get; init; } = 240;
     public int MaximumInstalledWidgetIds { get; init; } = 256;
     public int MaximumVersionsPerWidget { get; init; } = 8;
+    /// <summary>Normal retention is current plus previous. The larger discovery ceiling admits legacy catalogs and bounded cleanup retries.</summary>
+    public int RetainedVersionsPerWidget { get; init; } = 2;
     public int MaximumInstalledVersions { get; init; } = 512;
     public int MaximumInstalledEntries { get; init; } = 32_768;
     public long MaximumInstalledBytes { get; init; } = 2L * 1024 * 1024 * 1024;
@@ -29,6 +31,8 @@ public sealed record WidgetCatalogOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumInstalledWidgetIds));
         if (MaximumVersionsPerWidget is < 1 or > 100)
             throw new ArgumentOutOfRangeException(nameof(MaximumVersionsPerWidget));
+        if (RetainedVersionsPerWidget is < 1 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(RetainedVersionsPerWidget));
         if (MaximumInstalledVersions is < 1 or > 10_000)
             throw new ArgumentOutOfRangeException(nameof(MaximumInstalledVersions));
         if (MaximumInstalledEntries < checked(MaximumArchiveEntries + 1) ||
@@ -50,6 +54,7 @@ public sealed record InstalledWidgetVersion(
     WidgetManifest Manifest,
     string ContentDigest)
 {
+    public bool RetentionCleanupPending { get; init; }
     internal IReadOnlyDictionary<string, string> VerifiedWrssDigests { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
     internal IReadOnlyDictionary<string, VerifiedPackageFile> VerifiedFiles { get; init; } =

@@ -8,6 +8,10 @@ using WidgetRail.WidgetProtocol;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Malformed retention receipts cannot delete packages or block catalog use", RetentionMalformedReceipts),
+    ("Updates retain current and previous versions across repeated publication", RetentionUpdates),
+    ("Retention preserves selected versions and failed updates at legacy capacity", RetentionFailures),
+    ("Retention retries locked cleanup and recovers interrupted publication", RetentionRecovery),
     ("Startup admission skips inactive payloads and yields the requested enabled selection first", StartupActiveSelections),
     ("Startup admission rejects changed selections and cancelled enumeration", StartupSelectionRaces),
     ("Package SVG icons normalize a bounded static subset and reject active content",
@@ -78,6 +82,122 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+
+static async Task<InstalledWidgetVersion> RetentionUpdate(WidgetCatalog catalog, string package,
+    Func<InstalledWidgetVersion, InstalledWidgetVersion, CancellationToken, Task>? transfer = null,
+    CancellationToken token = default)
+{
+    await using var input = File.OpenRead(package);
+    var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("dev.test.retention")));
+    return await catalog.UpdateFromFileAsync(input, hash, WidgetPackageTrustApproval.None,
+        (_, _) => Task.CompletedTask, token, transfer ?? ((_, _, _) => Task.CompletedTask));
+}
+
+static async Task RetentionMalformedReceipts()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    const string id = "dev.test.retention";
+    var catalog = new WidgetCatalog(root);
+    await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0"));
+    await RetentionUpdate(catalog, CreatePackage(temp.Path, id, "dev.test", "2.0.0"));
+    var path = Path.Combine(root, "retention", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))) + ".json");
+    foreach (var malformed in new[] { "{", "{}", new string('x', 4097),
+        "{\"Id\":\"../outside\",\"Incoming\":\"2.0.0\"}",
+        "{\"Id\":\"dev.test.retention\",\"Incoming\":\"../outside\"}" })
+    {
+        await File.WriteAllTextAsync(path, malformed);
+        await catalog.SetEnabledAsync(id, false);
+        var current = (await catalog.DiscoverAsync()).Widgets.Single();
+        Assert.Equal(2, current.Versions.Count);
+        Assert.Equal(new Version(2, 0, 0), current.ActiveVersion.Version);
+    }
+    // A valid install replaces a malformed maintenance receipt safely.
+    await RetentionUpdate(catalog, CreatePackage(temp.Path, id, "dev.test", "3.0.0"));
+    Assert.SequenceEqual(["3.0.0", "2.0.0"], (await catalog.DiscoverAsync()).Widgets.Single().Versions.Select(item => item.Version.ToString()));
+}
+
+static async Task RetentionUpdates()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    const string id = "dev.test.retention";
+    await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0"));
+    await catalog.SetEnabledAsync(id, true);
+    for (var major = 2; major <= 12; major++)
+    {
+        var result = await RetentionUpdate(catalog, CreatePackage(temp.Path, id, "dev.test", $"{major}.0.0"));
+        Assert.True(!result.RetentionCleanupPending, "Unlocked retention remained pending.");
+        var current = (await catalog.DiscoverAsync()).Widgets.Single();
+        Assert.True(current.Enabled, "Retention disabled the widget.");
+        Assert.Equal(new Version(major, 0, 0), current.ActiveVersion.Version);
+        Assert.SequenceEqual([$"{major}.0.0", $"{major - 1}.0.0"], current.Versions.Select(item => item.Version.ToString()));
+    }
+    await catalog.SetEnabledAsync(id, false);
+    await catalog.RollbackAsync(id);
+    Assert.Equal(new Version(11, 0, 0), (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version);
+    await catalog.SetActiveVersionAsync(id, new Version(12, 0, 0));
+    Assert.Equal(2, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+}
+
+static async Task RetentionFailures()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    const string id = "dev.test.retention";
+    var legacy = new WidgetCatalog(root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 });
+    for (var major = 1; major <= 8; major++)
+        await legacy.InstallAsync(CreatePackage(temp.Path, id, "dev.test", $"{major}.0.0"));
+    await legacy.SetActiveVersionAsync(id, new Version(3, 0, 0));
+    await legacy.SetEnabledAsync(id, true);
+    var catalog = new WidgetCatalog(root);
+    var incoming = CreatePackage(temp.Path, id, "dev.test", "9.0.0");
+    using (var cancelled = new CancellationTokenSource())
+    {
+        cancelled.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => RetentionUpdate(catalog, incoming, token: cancelled.Token));
+    }
+    Assert.Equal(8, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+    await Assert.ThrowsAsync<IOException>(() => RetentionUpdate(catalog, incoming,
+        (_, _, _) => throw new IOException("simulated settings failure")));
+    var failed = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.True(failed.Enabled && failed.ActiveVersion.Version == new Version(3, 0, 0), "Failed update changed selection or enabled state.");
+    Assert.SequenceEqual(["8.0.0", "3.0.0"], failed.Versions.Select(item => item.Version.ToString()));
+    await RetentionUpdate(catalog, incoming);
+    Assert.SequenceEqual(["9.0.0", "3.0.0"], (await catalog.DiscoverAsync()).Widgets.Single().Versions.Select(item => item.Version.ToString()));
+}
+
+static async Task RetentionRecovery()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    const string id = "dev.test.retention";
+    var catalog = new WidgetCatalog(root);
+    var first = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0"));
+    await RetentionUpdate(catalog, CreatePackage(temp.Path, id, "dev.test", "2.0.0"));
+    // Windows prevents retirement while a running generation pins its files.
+    if (OperatingSystem.IsWindows())
+    {
+        using var lease = File.Open(Path.Combine(first.InstallPath, "manifest.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+        var updated = await RetentionUpdate(catalog, CreatePackage(temp.Path, id, "dev.test", "3.0.0"));
+        Assert.True(updated.RetentionCleanupPending, "Locked generation was not reported pending.");
+        Assert.Equal(new Version(3, 0, 0), (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version);
+    }
+    else await RetentionUpdate(catalog, CreatePackage(temp.Path, id, "dev.test", "3.0.0"));
+    await catalog.SetEnabledAsync(id, false);
+    Assert.SequenceEqual(["3.0.0", "2.0.0"], (await catalog.DiscoverAsync()).Widgets.Single().Versions.Select(item => item.Version.ToString()));
+    // Simulate process exit after publication, before selection and cleanup.
+    await new WidgetCatalog(root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 })
+        .InstallAsync(CreatePackage(temp.Path, id, "dev.test", "4.0.0"));
+    var receipt = Path.Combine(root, "retention", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))) + ".json");
+    await File.WriteAllTextAsync(receipt, "{\"Id\":\"dev.test.retention\",\"Incoming\":\"4.0.0\",\"Previous\":\"3.0.0\"}");
+    await new WidgetCatalog(root).SetEnabledAsync(id, false);
+    var recovered = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.Equal(new Version(3, 0, 0), recovered.ActiveVersion.Version);
+    Assert.SequenceEqual(["4.0.0", "3.0.0"], recovered.Versions.Select(item => item.Version.ToString()));
+    Assert.True(!File.Exists(receipt), "Completed recovery retained its receipt.");
+}
 
 static async Task StartupActiveSelections()
 {
@@ -327,14 +447,14 @@ static async Task ConcurrentRollbacksAreLinearizable()
 {
     using var temp = new TemporaryDirectory();
     var root = Path.Combine(temp.Path, "catalog");
-    var catalog = new WidgetCatalog(root);
+    var catalog = new WidgetCatalog(root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 });
     foreach (var version in new[] { "1.0.0", "2.0.0", "3.0.0" })
         await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.concurrent-rollback", "dev.test", version));
     await catalog.SetActiveVersionAsync("dev.test.concurrent-rollback", new Version(3, 0, 0));
 
     var changes = await Task.WhenAll(
-        new WidgetCatalog(root).RollbackAsync("dev.test.concurrent-rollback"),
-        new WidgetCatalog(root).RollbackAsync("dev.test.concurrent-rollback"));
+        new WidgetCatalog(root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 }).RollbackAsync("dev.test.concurrent-rollback"),
+        new WidgetCatalog(root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 }).RollbackAsync("dev.test.concurrent-rollback"));
     Assert.SequenceEqual(["2.0.0", "3.0.0"],
         changes.Select(change => change.PreviousVersion.ToString()).Order(StringComparer.Ordinal));
     Assert.SequenceEqual(["1.0.0", "2.0.0"],
@@ -388,7 +508,7 @@ static async Task UninstallRemovesAllVersions()
 {
     using var temp = new TemporaryDirectory();
     var root = Path.Combine(temp.Path, "catalog");
-    var catalog = new WidgetCatalog(root);
+    var catalog = new WidgetCatalog(root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 });
     foreach (var version in new[] { "1.0.0", "2.0.0" })
         await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.remove", "dev.test", version));
     await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.keep", "dev.test", "1.0.0"));
@@ -433,7 +553,7 @@ static async Task UninstallRemovesAllVersions()
         "Uninstall retained immutable package versions.");
     Assert.True(!Directory.EnumerateDirectories(Path.Combine(root, "staging"), ".uninstall-*").Any(),
         "Uninstall retained a retired package tree.");
-    var remaining = (await new WidgetCatalog(root).DiscoverAsync()).Widgets.Single();
+    var remaining = (await new WidgetCatalog(root, new WidgetCatalogOptions { RetainedVersionsPerWidget = 8 }).DiscoverAsync()).Widgets.Single();
     Assert.Equal("dev.test.keep", remaining.Id);
     Assert.Equal(0, remaining.Order);
     var state = await File.ReadAllTextAsync(Path.Combine(root, "catalog-state.json"));
@@ -966,6 +1086,7 @@ static WidgetCatalogOptions AggregateOptions(
     MaximumTotalBytes = maximumTotalBytes,
     MaximumInstalledWidgetIds = maximumIds,
     MaximumVersionsPerWidget = maximumVersionsPerWidget,
+    RetainedVersionsPerWidget = maximumVersionsPerWidget,
     MaximumInstalledVersions = maximumVersions,
     MaximumInstalledEntries = maximumInstalledEntries,
     MaximumInstalledBytes = maximumInstalledBytes,

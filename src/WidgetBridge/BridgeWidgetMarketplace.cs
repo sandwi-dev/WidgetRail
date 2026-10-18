@@ -336,7 +336,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         DistributionOperationException e when e.Message.Contains("download limit", StringComparison.Ordinal) => "This package exceeds the marketplace download limit. Obtain a smaller compatible package from its author.",
         DistributionUsageException => "This release has no usable checksum or package source. It cannot be installed from the marketplace.",
         DistributionOperationException => "The download or release check failed. Check your connection and try again.",
-        WidgetPackageException { Code: "update_selection_failed" } => "The new version was saved. Open Widgets → Versions to finish reviewing it.",
+        WidgetPackageException { Code: "update_selection_failed" } => "The new version was saved, but could not be selected. The previous version remains selected. After resolving storage access, disable the widget and use Restore newer version in its Technical details.",
         WidgetPackageException { Code: "install_activation_failed" } => "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.",
         WidgetPackageException { Code: "package_incompatible" } => "This widget is not compatible with this WidgetRail version.",
         WidgetPackageException { Code: "update_not_newer" } => "The installed version changed. Refresh the marketplace and review again.",

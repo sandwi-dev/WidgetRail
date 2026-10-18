@@ -134,21 +134,9 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
 }
 
 if ($Install) {
-    $catalogArguments = if ([string]::IsNullOrWhiteSpace($Catalog)) {
-        @()
-    } else {
-        @('--catalog', [System.IO.Path]::GetFullPath($Catalog))
-    }
-    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-        --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        install $packagePath --accept-full-trust @catalogArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw 'wrail install failed. Installed versions are immutable; bump manifest.json before replacing one.'
-    }
-    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-        --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        enable $manifest.id @catalogArguments
-    if ($LASTEXITCODE -ne 0) { throw "wrail enable failed for $($manifest.id)." }
+    & (Join-Path $repositoryRoot 'scripts/Install-CommunityPackage.ps1') `
+        -CliDll (Join-Path $repositoryRoot "tools/WrailCli/bin/$Configuration/net8.0/wrail.dll") `
+        -Package $packagePath -Catalog $Catalog -AcceptFullTrust
 }
 
 Write-Host "Community addon package: $packagePath"

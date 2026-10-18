@@ -72,11 +72,12 @@ public sealed partial class WidgetCatalog
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
             .ConfigureAwait(false);
-        return await CreateInstaller().InstallAsync(
+        var installed = await CreateInstaller().InstallAsync(
             packagePath,
             (inspection, token) => PreparePackageInstallUnderLockAsync(
                 inspection, trustApproval, token),
-            cancellationToken);
+            cancellationToken, PrepareRetentionAsync).ConfigureAwait(false);
+        return await FinishRetentionAsync(installed).ConfigureAwait(false);
     }
 
     public async Task<InstalledWidgetVersion> InstallAsync(
@@ -94,11 +95,12 @@ public sealed partial class WidgetCatalog
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
             .ConfigureAwait(false);
-        return await CreateInstaller().InstallAsync(
+        var installed = await CreateInstaller().InstallAsync(
             packageStream,
             (inspection, token) => PreparePackageInstallUnderLockAsync(
                 inspection, trustApproval, token),
-            cancellationToken);
+            cancellationToken, PrepareRetentionAsync).ConfigureAwait(false);
+        return await FinishRetentionAsync(installed).ConfigureAwait(false);
     }
 
     // Trusted interactive installation. Low-level/CLI staging still uses the
@@ -130,7 +132,7 @@ public sealed partial class WidgetCatalog
                     .ConfigureAwait(false);
                 await trustedPrePublish(inspection, token).ConfigureAwait(false);
             },
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken, PrepareRetentionAsync).ConfigureAwait(false);
         if (enableNew)
         {
             // Publication has committed. Do not let late cancellation turn a
@@ -152,7 +154,7 @@ public sealed partial class WidgetCatalog
                 throw new WidgetPackageException("install_activation_failed", "The widget was saved, but could not be enabled. Open Widgets in Settings to finish installation.", error);
             }
         }
-        return installed;
+        return await FinishRetentionAsync(installed).ConfigureAwait(false);
     }
 
     // Called by trusted Settings/CLI update flows after explicit review.
@@ -189,7 +191,7 @@ public sealed partial class WidgetCatalog
                 throw new WidgetPackageException("update_not_newer", "Choose a newer version that is not already installed.");
             if (!WidgetHostCompatibility.Evaluate(incoming.Manifest).IsSupported)
                 throw new WidgetPackageException("update_incompatible", "The update is not compatible with this WidgetRail version.");
-            EnforceProspectiveInstallLimits(all, current.Versions.ToArray(), incoming);
+            EnforceProspectiveInstallLimits(all, current.Versions.ToArray(), incoming, current.ActiveVersion.Version);
             await trustedPrePublish(incoming, token).ConfigureAwait(false);
             previous = current.ActiveVersion;
             await _stateStore.MutateAsync(state =>
@@ -203,6 +205,7 @@ public sealed partial class WidgetCatalog
             }, token).ConfigureAwait(false);
         }, cancellationToken, async (sealedVersion, token) =>
         {
+            await PrepareRetentionAsync(sealedVersion, token).ConfigureAwait(false);
             await keepSettings(previous!, sealedVersion, token).ConfigureAwait(false);
         }).ConfigureAwait(false);
         // Publication is durable. Finish with a non-cancellable state commit;
@@ -217,9 +220,9 @@ public sealed partial class WidgetCatalog
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or WidgetPackageException)
         {
-            throw new WidgetPackageException("update_selection_failed", "The new version was installed. Review installed versions to finish the update.", exception);
+            throw new WidgetPackageException("update_selection_failed", $"The new version was saved, but could not be selected. The previous version is still selected. After checking storage access, disable the widget and run: wrail version select {installed.Id} {installed.Version}.", exception);
         }
-        return installed;
+        return await FinishRetentionAsync(installed).ConfigureAwait(false);
     }
 
     public async Task<WidgetCatalogSnapshot> DiscoverAsync(CancellationToken cancellationToken = default)
@@ -764,6 +767,8 @@ public sealed partial class WidgetCatalog
     private async Task RecoverPendingAndCleanupRetiredTreesAsync(
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        await RecoverRetentionAsync().ConfigureAwait(false);
         var stagingRoot = Path.Combine(_root, "staging");
         if (!Directory.Exists(stagingRoot)) return;
         try
@@ -899,6 +904,14 @@ public sealed partial class WidgetCatalog
             ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
         if (!widget.Versions.Any(candidate => candidate.Version == version))
             throw new KeyNotFoundException($"Widget '{widgetId}' version {canonicalVersion} is not installed.");
+        if (widget.Enabled)
+            throw new WidgetPackageException("widget_enabled", $"Widget '{widgetId}' is enabled. Disable it before selecting another version.");
+
+        // Persist the pair before selection so interrupted cleanup cannot lose
+        // either the requested version or the version the user is leaving.
+        if (version != widget.ActiveVersion.Version)
+            await WriteRetentionReceiptAsync(new(widgetId, canonicalVersion,
+                widget.ActiveVersion.Version.ToString()), cancellationToken).ConfigureAwait(false);
 
         await _stateStore.MutateAsync(state =>
         {
@@ -924,6 +937,7 @@ public sealed partial class WidgetCatalog
             }
             return state with { Version = 2, Widgets = entries.OrderBy(entry => entry.Order).ToArray() };
         }, cancellationToken);
+        await RecoverRetentionAsync(widgetId).ConfigureAwait(false);
     }
 
     private async Task PreparePackageInstallUnderLockAsync(
@@ -939,7 +953,10 @@ public sealed partial class WidgetCatalog
             .Where(version => version.Id == inspection.Id)
             .OrderByDescending(version => version.Version)
             .ToArray();
-        EnforceProspectiveInstallLimits(allInstalled, installed, inspection);
+        var selectedState = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var selectedText = selectedState.Widgets.SingleOrDefault(item => item.Id == inspection.Id)?.ActiveVersion;
+        var selectedVersion = selectedText is null ? installed.FirstOrDefault()?.Version : Version.Parse(selectedText);
+        EnforceProspectiveInstallLimits(allInstalled, installed, inspection, selectedVersion);
         var reviewedVersion = installed.FirstOrDefault()?.Version.ToString();
         var incomingVersion = inspection.Version.ToString();
 
@@ -1240,20 +1257,26 @@ public sealed partial class WidgetCatalog
     private void EnforceProspectiveInstallLimits(
         IReadOnlyList<InstalledWidgetVersion> allInstalled,
         IReadOnlyList<InstalledWidgetVersion> sameId,
-        WidgetPackageInspection inspection)
+        WidgetPackageInspection inspection, Version? selected = null, bool projectRetention = true)
     {
         if (sameId.Any(version => version.Version == inspection.Version)) return;
+        if (projectRetention)
+        {
+            var retained = RetainedBeforeInstall(sameId, selected);
+            allInstalled = allInstalled.Except(sameId).Concat(retained).ToArray();
+            sameId = retained;
+        }
         if (sameId.Count == 0 &&
             allInstalled.Select(version => version.Id).Distinct(StringComparer.Ordinal).Count() ==
             _options.MaximumInstalledWidgetIds)
             throw new WidgetPackageException(
                 "installed_widget_id_limit",
                 "Installing this package would exceed the installed widget ID limit.");
-        if (sameId.Count == _options.MaximumVersionsPerWidget)
+        if (sameId.Count >= _options.MaximumVersionsPerWidget)
             throw new WidgetPackageException(
                 "installed_widget_version_limit",
                 "Installing this package would exceed the per-widget version limit.");
-        if (allInstalled.Count == _options.MaximumInstalledVersions)
+        if (allInstalled.Count >= _options.MaximumInstalledVersions)
             throw new WidgetPackageException(
                 "installed_version_limit",
                 "Installing this package would exceed the installed version limit.");

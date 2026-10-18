@@ -231,48 +231,9 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
 }
 
 if ($Install) {
-    $catalogRoot = if ([string]::IsNullOrWhiteSpace($Catalog)) {
-        Join-Path ([Environment]::GetFolderPath(
-            [Environment+SpecialFolder]::LocalApplicationData)) 'WidgetRail\widgets'
-    } else {
-        [System.IO.Path]::GetFullPath($Catalog)
-    }
-    $catalogArguments = if ([string]::IsNullOrWhiteSpace($Catalog)) {
-        @()
-    } else {
-        @('--catalog', $catalogRoot)
-    }
-    $installedPackageRoot = Join-Path (Join-Path $catalogRoot 'packages') $manifest.id
-    if (Test-Path -LiteralPath $installedPackageRoot -PathType Container) {
-        & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-            "-bl:$buildLogRoot/disable-{}.binlog" `
-            --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-            disable $manifest.id @catalogArguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "wrail disable failed for the installed $($manifest.id) update."
-        }
-    }
-    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-        "-bl:$buildLogRoot/install-{}.binlog" `
-        --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        install $packagePath --accept-full-trust @catalogArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "wrail install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
-    }
-    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-        "-bl:$buildLogRoot/select-{}.binlog" `
-        --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        version select $manifest.id $manifest.version @catalogArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "wrail version select failed for $($manifest.id) $($manifest.version)."
-    }
-    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-        "-bl:$buildLogRoot/enable-{}.binlog" `
-        --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        enable $manifest.id --accept-full-trust @catalogArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "wrail enable failed for $($manifest.id)."
-    }
+    & (Join-Path $repositoryRoot 'scripts/Install-CommunityPackage.ps1') `
+        -CliDll (Join-Path $repositoryRoot "tools/WrailCli/bin/$Configuration/net8.0/wrail.dll") `
+        -Package $packagePath -Catalog $Catalog -AcceptFullTrust
 }
 
 Write-Host "Community addon package: $packagePath"

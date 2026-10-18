@@ -205,19 +205,16 @@ internal static class SettingsPolicyScenarios
         var state = SettingsInstalledWidgetState.Empty with
         {
             SelectedInstalledId = "dev.test.removed",
-            VersionPage = 4,
         };
         var reconciled = SettingsInstalledWidgetPolicy.Reconcile(
             state,
             new WidgetCatalogSnapshot([]),
             [],
-            SettingsPage.InstalledWidgetVersions);
+            SettingsPage.InstalledWidgetTechnical);
         Equal(SettingsPage.InstalledWidgets, reconciled.Page,
             "Removed selection did not return to the catalog list.");
         Require(reconciled.State.SelectedInstalledId is null,
             "Removed catalog identity survived reconciliation.");
-        Equal(0, reconciled.State.VersionPage,
-            "Removed catalog identity retained a stale version page.");
 
         var failed = SettingsInstalledWidgetPolicy.Failure(
             state,

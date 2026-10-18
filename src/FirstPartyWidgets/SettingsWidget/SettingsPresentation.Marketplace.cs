@@ -64,7 +64,7 @@ internal static partial class SettingsPresentation
             if (selected.AvailableVersion is null)
                 items.Add(UI.Button("Check available releases", "marketplace.refresh", "marketplace.refresh").Busy(running || operation?.State == "review").Classes("setting-row"));
             if (selected.InstalledVersion is not null && (!upToDate || ready))
-                items.Add(UI.Button("Manage versions and permissions in Widgets", "marketplace.manage", "marketplace.manage").Classes("setting-row"));
+                items.Add(UI.Button("Manage widget and permissions", "marketplace.manage", "marketplace.manage").Classes("setting-row"));
         }
         if (operation is { Kind: "download-updates" or "install-updates", State: "running" or "review" })
             items.Add(UI.Button("Manage updates in Marketplace", "open.marketplace", "marketplace.batch.open")

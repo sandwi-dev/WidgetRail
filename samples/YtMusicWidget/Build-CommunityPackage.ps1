@@ -58,12 +58,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Package validation failed.' }
 & dotnet $cliDll pack $staging --output $package
 if ($LASTEXITCODE -ne 0) { throw 'Package creation failed.' }
 if ($Install) {
-    $catalogArgs = if ($Catalog) { @('--catalog', [IO.Path]::GetFullPath($Catalog)) } else { @() }
-    & dotnet $cliDll install $package --accept-full-trust @catalogArgs
-    if ($LASTEXITCODE -ne 0) { throw 'Installation failed.' }
-    & dotnet $cliDll version select $manifest.id $manifest.version @catalogArgs
-    if ($LASTEXITCODE -ne 0) { throw 'Version selection failed.' }
-    & dotnet $cliDll enable $manifest.id --accept-full-trust @catalogArgs
-    if ($LASTEXITCODE -ne 0) { throw 'Enable failed.' }
+    & (Join-Path $repository 'scripts/Install-CommunityPackage.ps1') `
+        -CliDll (Join-Path $repository "tools/WrailCli/bin/$Configuration/net8.0/wrail.dll") `
+        -Package $package -Catalog $Catalog -AcceptFullTrust
 }
+
 Write-Host "Community addon package: $package"

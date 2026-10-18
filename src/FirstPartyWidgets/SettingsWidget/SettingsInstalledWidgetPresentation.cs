@@ -273,16 +273,15 @@ internal static class SettingsInstalledWidgetPresentation
         var canToggleNow = valid && canToggle;
         var hasPermissions = permissionCatalogValid &&
             permissionPackageIds.Contains(manifest.Id, StringComparer.Ordinal);
-        var versionsButton = UI.Button(
-                $"Manage versions ({package.Versions.Count})", "installed.versions.open",
-                "installed.details.versions")
-            .Disabled(!valid).Busy(busy).Classes("setting-row");
+        var previous = SettingsInstalledWidgetPolicy.BackupVersion(package);
+        var canRevert = valid && !package.Enabled && previous is not null &&
+            WidgetHostCompatibility.Evaluate(previous.Manifest).IsSupported;
         var permissionsButton = UI.Button(
                 hasPermissions
                     ? "Permissions & configuration"
                     : "No host permissions requested",
                 "installed.permissions.open", "installed.details.permissions")
-            .FocusUp("installed.details.versions")
+            .FocusUp("installed.details.update")
             .FocusDown(canToggleNow ? "installed.details.toggle" : "installed.details.back")
             .Disabled(!valid || !hasPermissions).Busy(busy).Classes("setting-row");
         var actionButton = EnabledActionButton(action, "installed.toggle", canToggleNow, busy)
@@ -299,7 +298,6 @@ internal static class SettingsInstalledWidgetPresentation
             .FocusUp("installed.details.local-data")
             .FocusDown("installed.details.back")
             .Disabled(!valid).Busy(busy).Classes("danger-button");
-        versionsButton = versionsButton.FocusDown("installed.details.permissions");
         var back = UI.Button("Back", "back", "installed.details.back")
             .FocusUp(canUninstall ? SettingsInstalledWidgetUninstallPolicy.FocusId :
                 "installed.details.local-data")
@@ -307,7 +305,7 @@ internal static class SettingsInstalledWidgetPresentation
         var controls = new List<WidgetElement>
         {
             UI.Button("Update from file", "installed.update.open", "installed.details.update").Disabled(!valid).Busy(busy).Classes("primary-button"),
-            versionsButton, permissionsButton,
+            permissionsButton,
             actionButton, localDataButton,
         };
         controls.Add(uninstallButton);
@@ -363,10 +361,17 @@ internal static class SettingsInstalledWidgetPresentation
                             : "Install a version that supports this host API and architecture before enabling. Capability consent is a separate decision.",
                     "installed.details.status", "Package enabled status").Classes("page-help"),
         };
+        var restoreNewer = previous is not null && previous.Version > package.ActiveVersion.Version;
+        details.Add(UI.Button(previous is null ? "No previous version available" :
+                package.Enabled ? $"Use saved version {previous.Version} \u00b7 disable widget first" :
+                restoreNewer ? $"Restore newer version ({previous.Version})" :
+                $"Revert to previous version ({previous.Version})",
+                "installed.revert", "installed.details.revert")
+            .Disabled(!canRevert).Busy(busy).Classes("setting-row"));
         details.AddRange(controls);
         return SettingsPresentation.View(header,
             DetailsContent(details, technical),
-            technical ? "settings.back" : canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
+            technical ? canRevert ? "installed.details.revert" : "settings.back" : canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
                 ? SettingsInstalledWidgetUninstallPolicy.FocusId
                 : canToggleNow ? "installed.details.toggle" : "installed.details.back",
             "installed.details");
@@ -377,7 +382,8 @@ internal static class SettingsInstalledWidgetPresentation
         var items = content.ToList();
         string[] technicalIds = ["installed.details.id", "installed.details.publisher", "installed.details.digest-label",
             "installed.details.digest", "installed.details.runtime", "installed.details.host-api", "installed.details.architectures",
-            "installed.details.residency", "installed.details.required-permissions", "installed.details.optional-permissions"];
+            "installed.details.residency", "installed.details.required-permissions", "installed.details.optional-permissions",
+            "installed.details.revert"];
         if (technical)
             return SettingsPresentation.PageScope("installed.details", [
                 UI.Text("Technical details", "installed.technical.heading").Classes("page-heading"),
@@ -406,8 +412,6 @@ internal static class SettingsInstalledWidgetPresentation
             controls.Add(UI.Button("Disable unused copy", "installed.toggle", "installed.details.toggle")
                 .Disabled(!state.CatalogValid).Busy(busy).Classes("secondary-button"));
         controls.Add(LocalDataButton(state, busy));
-        controls.Add(UI.Button($"Manage versions ({package.Versions.Count})", "installed.versions.open", "installed.details.versions")
-            .Disabled(!state.CatalogValid).Busy(busy).Classes("setting-row"));
         controls.Add(UI.Button("Uninstall unused copy", "installed.uninstall.open", SettingsInstalledWidgetUninstallPolicy.FocusId)
             .Disabled(!state.CatalogValid).Busy(busy).Classes("danger-button"));
         controls.Add(UI.Button("Back", "back", "installed.details.back").Classes("secondary-button"));
@@ -527,76 +531,4 @@ internal static class SettingsInstalledWidgetPresentation
             .Busy(busy).Classes(data is { Exists: true } ? "danger-button" : "setting-row");
     }
 
-    public static WidgetView RenderInstalledWidgetVersions(
-        StackElement header,
-        bool busy,
-        SettingsInstalledWidgetState state)
-    {
-        var package = state.CatalogValid ? state.SelectedInstalled : null;
-        var page = state.VersionPage;
-        if (package is null)
-            return SettingsPresentation.View(header,
-                SettingsPresentation.PageScope("installed.versions",
-                    UI.Text("Versions unavailable", "installed.versions.heading", "Versions unavailable")
-                        .Classes("page-heading"),
-                    UI.Button("Back", "back", "installed.versions.back").Classes("secondary-button")),
-                "installed.versions.back", "installed.versions");
-
-        var lastPage = SettingsInstalledWidgetPolicy.LastVersionPage(package);
-        page = Math.Clamp(page, 0, lastPage);
-        var start = page * SettingsWidget.InstalledVersionsPerPage;
-        var visible = package.Versions.Skip(start).Take(SettingsWidget.InstalledVersionsPerPage).ToArray();
-        var children = new List<WidgetElement>
-        {
-            UI.Text($"{package.Name} versions", "installed.versions.heading", "Installed versions")
-                .Classes("page-heading"),
-            UI.Text(package.Enabled
-                    ? "Disable this widget to switch versions. You can still remove versions you are not using."
-                    : "Choose a version to use, or remove one you no longer need. Your current version cannot be removed.",
-                "installed.versions.help", "Version selection help").Classes("page-help"),
-            UI.Text($"Page {page + 1} of {lastPage + 1}", "installed.versions.page-label",
-                "Installed version page").Classes("page-counter"),
-        };
-        for (var offset = 0; offset < visible.Length; offset++)
-        {
-            var index = start + offset;
-            var installed = visible[offset];
-            var isActive = installed.Version == package.ActiveVersion.Version;
-            var compatibility = WidgetHostCompatibility.Evaluate(installed.Manifest);
-            var direction = isActive
-                ? "Active"
-                : installed.Version < package.ActiveVersion.Version ? "Rollback" : "Select newer";
-            children.Add(UI.Button(
-                    $"{direction} · {installed.Version} · " +
-                    (compatibility.IsSupported ? "Compatible" : "Incompatible"),
-                    $"installed.version.select.{index}", $"installed.version.item.{index}")
-                .Disabled(package.Enabled || isActive).Busy(busy).Selected(isActive)
-                .Classes("setting-row", isActive ? "is-enabled" : "is-disabled"));
-            if (!isActive)
-                children.Add(UI.Button($"Remove version {installed.Version}", $"installed.version.remove.{index}",
-                    $"installed.version.remove.{index}").Busy(busy).Classes("danger-button"));
-        }
-        if (page > 0)
-            children.Add(UI.Button("Previous page", "installed.versions.previous-page", "installed.versions.previous-page")
-                .Classes("secondary-button"));
-        if (page < lastPage)
-            children.Add(UI.Button("Next page", "installed.versions.next-page", "installed.versions.next-page")
-                .Classes("secondary-button"));
-        children.Add(UI.Button("Back", "back", "installed.versions.back").Classes("secondary-button"));
-        SettingsPresentation.LinkVertical(children);
-
-        var scope = UI.VerticalScroll("installed.versions", children.ToArray())
-            .InputScope("installed.versions")
-            .Shortcut(ControllerButton.B, "back")
-            .Classes("settings-page");
-        var initialFocus = package.Enabled
-            ? visible.Select((version, offset) => (version, offset)).Where(item => item.version.Version != package.ActiveVersion.Version)
-                .Select(item => $"installed.version.remove.{start + item.offset}").FirstOrDefault() ?? "installed.versions.back"
-            : visible.Select((version, offset) => (version, offset))
-                .Where(item => item.version.Version != package.ActiveVersion.Version)
-                .Select(item => $"installed.version.item.{start + item.offset}")
-                .FirstOrDefault() ?? "installed.versions.back";
-        if (state.VersionFocusId is { } remembered && children.OfType<ButtonElement>().Any(button => button.Id == remembered && button.IsDisabled != true)) initialFocus = remembered;
-        return SettingsPresentation.View(header, scope, initialFocus, "installed.versions");
-    }
 }
