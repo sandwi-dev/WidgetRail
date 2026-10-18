@@ -28,11 +28,10 @@ internal sealed partial class WidgetTextEntryDialog
             Visibility = Visibility.Collapsed };
         AutomationProperties.SetAutomationId(suggestionStatus, "Widget.TextEntry.SuggestionStatus");
         AutomationProperties.SetLiveSetting(suggestionStatus, AutomationLiveSetting.Polite);
-        suggestionGrid = new Grid { ColumnSpacing = 4, RowSpacing = 4 };
+        suggestionGrid = new Grid { ColumnSpacing = 4, RowSpacing = 4, Visibility = Visibility.Collapsed };
+        AutomationProperties.SetAutomationId(suggestionGrid, "Widget.TextEntry.Suggestions");
         for (var column = 0; column < 3; column++) suggestionGrid.ColumnDefinitions.Add(new());
-        for (var row = 0; row < (source.MaximumResults + 2) / 3; row++) suggestionGrid.RowDefinitions.Add(new() { Height = new(40) });
         Grid.SetColumnSpan(suggestionStatus, 3);
-        Grid.SetRowSpan(suggestionStatus, suggestionGrid.RowDefinitions.Count);
         suggestionGrid.Children.Add(suggestionStatus);
         for (var index = 0; index < source.MaximumResults; index++)
         {
@@ -91,9 +90,20 @@ internal sealed partial class WidgetTextEntryDialog
             }
             else button.Visibility = Visibility.Collapsed;
         }
-        // The reserved rows keep the keyboard keys in place during asynchronous results.
+        UpdateSuggestionRows();
         RefreshSuggestionPrompt();
         GuideChanged?.Invoke();
+    }
+
+    private void UpdateSuggestionRows()
+    {
+        if (suggestionGrid is null) return;
+        var count = suggestionView?.Items.Count ?? 0;
+        var rows = count > 0 ? (count + 2) / 3 : suggestionStatus?.Visibility == Visibility.Visible ? 1 : 0;
+        while (suggestionGrid.RowDefinitions.Count > rows) suggestionGrid.RowDefinitions.RemoveAt(suggestionGrid.RowDefinitions.Count - 1);
+        while (suggestionGrid.RowDefinitions.Count < rows) suggestionGrid.RowDefinitions.Add(new());
+        foreach (var row in suggestionGrid.RowDefinitions) row.Height = count > 0 ? new(40 * interfaceScale) : GridLength.Auto;
+        suggestionGrid.Visibility = rows > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RefreshSuggestionPrompt()
@@ -180,7 +190,7 @@ internal sealed partial class WidgetTextEntryDialog
     {
         if (suggestionGrid is null) return;
         suggestionGrid.ColumnSpacing = suggestionGrid.RowSpacing = 4 * interfaceScale;
-        foreach (var row in suggestionGrid.RowDefinitions) row.Height = new(40 * interfaceScale);
+        UpdateSuggestionRows();
         suggestionStatus!.FontSize = size * .85;
         suggestionStatus.FontWeight = weight;
         if (family is not null) suggestionStatus.FontFamily = family; else suggestionStatus.ClearValue(TextBlock.FontFamilyProperty);

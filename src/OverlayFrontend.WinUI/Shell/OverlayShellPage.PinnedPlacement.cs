@@ -97,6 +97,22 @@ internal sealed partial class OverlayShellPage
             if (frame.Connected == 0) { shellOwnedReleases.Clear(); trayHold.Reset(); radialInput.Reset(); }
             CancelPinnedAdjustment(); return true;
         }
+        // This route runs before ReceiveCore's ordinary priming/gesture guards.
+        // A capture-source handoff must not turn the menu-opening A into Save.
+        if (frame.Primed != 0)
+        {
+            var primed = frame.State;
+            pinnedPlacementInput.Prime(primed.Buttons, primed.LeftThumbX, primed.LeftThumbY,
+                primed.RightThumbX, primed.RightThumbY, Environment.TickCount64);
+            foreach (var (mask, button) in Buttons)
+            {
+                if ((primed.Buttons & mask) != 0) shellOwnedReleases.Add(button);
+                else shellOwnedReleases.Remove(button);
+            }
+            return true;
+        }
+        var savePressed = (frame.PressedButtons & 0x1000) != 0 && !shellOwnedReleases.Contains(ControllerButton.A);
+        var cancelPressed = (frame.PressedButtons & 0x2000) != 0 && !shellOwnedReleases.Contains(ControllerButton.B);
         foreach (var (mask, button) in Buttons)
         {
             if ((frame.PressedButtons & mask) != 0) shellOwnedReleases.Add(button);
@@ -121,8 +137,8 @@ internal sealed partial class OverlayShellPage
             StepPinnedPlacement(changes.Move, resize: false);
             StepPinnedPlacement(changes.Resize, resize: true);
         }
-        if ((frame.PressedButtons & 0x1000) != 0) _ = FinishPinnedAdjustmentAsync(save: true);
-        else if ((frame.PressedButtons & 0x2000) != 0) CancelPinnedAdjustment();
+        if (savePressed) _ = FinishPinnedAdjustmentAsync(save: true);
+        else if (cancelPressed) CancelPinnedAdjustment();
         return true;
     }
 

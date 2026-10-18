@@ -10,6 +10,10 @@ Its controller glyph appears on the first suggestion and in the controller guide
 only while a result is available. Selecting any suggestion with mouse or A has
 the same behavior; **RT/Done** still confirms the entry.
 
+The suggestion area collapses when idle or after accepting a result. It uses
+only populated result rows; loading, unavailable, and no-match states use a
+compact status line. Resizing this area preserves the focused keyboard key.
+
 ![PoB gem suggestions in the host keyboard](../images/text-suggestions.png)
 
 ```csharp

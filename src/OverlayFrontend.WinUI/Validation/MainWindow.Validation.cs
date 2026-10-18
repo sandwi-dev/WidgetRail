@@ -331,6 +331,8 @@ public sealed partial class MainWindow
             page.EnableSettingsRefreshFocusValidation(settingsFocusResult, () => input?.IsForeground == true);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-opening") is { } openingResult)
             page.EnableOpeningValidation(openingResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-menu") is { } pinMenuResult)
+            page.EnablePinnedMenuValidation(pinMenuResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pinned-placement") is { } pinPlacementResult)
             page.EnablePinnedPlacementValidation(pinPlacementResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-reference-workflows") is { } referenceResult)
