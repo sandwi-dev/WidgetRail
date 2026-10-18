@@ -12,6 +12,7 @@
     <Compile Remove="WidgetWorkerNotificationLane.cs" />
     <Compile Remove="WidgetWorkerServer.cs" />
     <Compile Remove="WidgetIndexedRangeLane.cs" />
+    <Compile Remove="WidgetTextSuggestionLane.cs" />
     <Compile Remove="WidgetIndexedArtworkLane.cs" />
     <Compile Remove="WidgetWorkerAsyncLane.cs" />
   </ItemGroup>

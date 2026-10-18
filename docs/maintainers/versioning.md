@@ -24,7 +24,7 @@ published release's bytes: advance its version before distributing a correction.
 ## The version a widget author builds against
 
 The **SDK and CLI** are a coordinated developer release unit. Their source is
-`eng/WidgetSdkRelease.props`; the current unit is `0.4.4-dev`. It includes matching
+`eng/WidgetSdkRelease.props`; the current unit is `0.4.5-dev`. It includes matching
 templates and the author-facing application bootstrap.
 
 The scaffold bundles an exact SDK package in a local feed. Its version adds a

@@ -49,6 +49,9 @@ internal static class MessageTypes
     public const string DeliverIntent = "deliver-intent-v1";
     public const string CancelIntent = "cancel-intent-v1";
     public const string IntentResult = "intent-result-v1";
+    public const string CancelTextSuggestions = "cancel-text-suggestions";
+    public const string SuggestText = "suggest-text";
+    public const string TextSuggestions = "text-suggestions";
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
     public const string DashboardGestureActivationRequested = "dashboard-gesture-activation-requested";

@@ -39,6 +39,8 @@ internal sealed partial class WidgetViewPresenter
         dialog.ThemeLease = NativePopupTheme.Dialog(dialog, this);
         var popup = new TextEntryPopup(binding, presentation!, node, dialog);
         textEntryPopup = popup;
+        if (Session is { } session && popup.Presentation.Projection is null)
+            dialog.EnableSuggestions(node, (query, cancellation) => session.SuggestTextAsync(popup.Presentation.Frame, query, cancellation));
         NotifyControllerGuideChanged();
         textEntryLifetime = ShowTextEntryAsync(popup, textEntryLifetime);
     }
@@ -66,7 +68,7 @@ internal sealed partial class WidgetViewPresenter
         bindings.TryGetValue(popup.Owner.Identity.Id, out var binding) && ReferenceEquals(binding, popup.Owner) && Eligible(binding) &&
         declarations[binding.Identity.Id].Node is { } node && node.ActionId == popup.Declaration.ActionId &&
         node.TextEntryValue == popup.Declaration.TextEntryValue && node.TextEntryMaximumLength == popup.Declaration.TextEntryMaximumLength &&
-        node.TextEntryInputKind == popup.Declaration.TextEntryInputKind;
+        node.TextEntryInputKind == popup.Declaration.TextEntryInputKind && node.TextEntrySuggestions == popup.Declaration.TextEntrySuggestions;
 
     private bool DismissTextEntry()
     {

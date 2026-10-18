@@ -24,6 +24,10 @@ internal sealed partial class TextEntryValidationPage
             {
                 sensitive = secret; value = ""; Apply(); await Open();
                 var dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
+                if (!secret)
+                    dialog.EnableSuggestions(new ViewNode { Id = "entry", Kind = ViewNodeKind.TextEntry,
+                        TextEntrySuggestions = new("paste-fixture"), TextEntryMaximumLength = maximumLength },
+                        (query, _) => Task.FromResult(new TextSuggestionResult((TextSuggestion[])[new("pasted", query.Text, query.Text)])));
                 var paste = (Button)FindDialog("Widget.TextEntry.Paste")!;
                 paste.Focus(FocusState.Keyboard);
                 await presenter.HandleControllerButtonAsync(ControllerButton.A);
@@ -31,6 +35,12 @@ internal sealed partial class TextEntryValidationPage
                 while (dialog.TakeValue() != "past" && Environment.TickCount64 < pasteDeadline) await Task.Delay(25);
                 Check(dialog.TakeValue() == "past" && FocusedId == "Widget.TextEntry.Paste",
                     secret ? "Sensitive Paste button respects MaxLength and retains controller focus" : "Paste button respects MaxLength and retains controller focus");
+                if (!secret)
+                {
+                    await WaitForSuggestions();
+                    Check(FocusedId == "Widget.TextEntry.Paste" && actions.Count == 0,
+                        "Pasted text requests suggestions without stealing focus or committing");
+                }
                 await presenter.HandleControllerButtonAsync(ControllerButton.A, ControllerEventPhase.Repeated);
                 Check(dialog.TakeValue() == "past", "Holding Paste does not repeat the clipboard insertion");
                 if (secret)

@@ -381,6 +381,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.SelectOptions, before.SelectOptions, after.SelectOptions);
         Add(PresentationProperty.TextEntryValue, before.TextEntryValue, after.TextEntryValue);
         Add(PresentationProperty.TextEntryInputKind, before.TextEntryInputKind, after.TextEntryInputKind);
+        Add(PresentationProperty.TextEntrySuggestions, before.TextEntrySuggestions, after.TextEntrySuggestions);
         Add(PresentationProperty.TextEntryPlaceholder, before.TextEntryPlaceholder, after.TextEntryPlaceholder);
         Add(PresentationProperty.TextEntryMaximumLength, before.TextEntryMaximumLength, after.TextEntryMaximumLength);
         Add(PresentationProperty.Value, before.Value, after.Value);

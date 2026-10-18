@@ -418,6 +418,7 @@ public sealed record ViewNode
     public string? TextEntryPlaceholder { get; init; }
     public int? TextEntryMaximumLength { get; init; }
     public TextEntryInputKind? TextEntryInputKind { get; init; }
+    public TextSuggestionSource? TextEntrySuggestions { get; init; }
     public double? Value { get; init; }
     public double? Minimum { get; init; }
     public double? Maximum { get; init; }

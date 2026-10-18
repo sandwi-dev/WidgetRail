@@ -757,6 +757,15 @@ public sealed record TextEntryElement : WidgetElement
     public int MaximumLength { get; init; }
     public string ActionId { get; init; }
     public TextEntryInputKind InputKind { get; init; }
+    public TextSuggestionSource? SuggestionSource { get; init; }
+
+    public TextEntryElement Suggest(string sourceKey, int minimumLength = 1, int maximumResults = 6)
+    {
+        var source = new TextSuggestionSource(sourceKey, minimumLength, maximumResults);
+        if (InputKind == TextEntryInputKind.Sensitive || !TextSuggestionContract.IsValid(source))
+            throw new ArgumentException("Suggestions require an ordinary text entry and valid options.", nameof(sourceKey));
+        return this with { SuggestionSource = source };
+    }
     public string? AccessibilityLabel { get; init; }
     public bool IsDisabled { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
@@ -785,6 +794,7 @@ public sealed record TextEntryElement : WidgetElement
         TextEntryPlaceholder = Placeholder,
         TextEntryMaximumLength = MaximumLength,
         TextEntryInputKind = InputKind == TextEntryInputKind.Ordinary ? null : InputKind,
+        TextEntrySuggestions = SuggestionSource,
         IsDisabled = IsDisabled,
         Focus = FocusNeighbors,
         StyleClasses = StyleClasses,

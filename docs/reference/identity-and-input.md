@@ -34,6 +34,10 @@ for a choice among options. These elements participate in normal focus and
 action routing. A sensitive text-entry declaration cannot contain a prefilled
 secret value; the supported host flow owns sensitive input.
 
+Ordinary fields can opt into [whole-entry suggestions](text-suggestions.md).
+The host keyboard displays bounded choices while typing; choosing one fills the
+field and Done submits it. Passwords never use suggestion providers.
+
 ## Action queue and numeric helpers
 
 The widget runtime serializes admitted actions and exposes `ActionFailed` when

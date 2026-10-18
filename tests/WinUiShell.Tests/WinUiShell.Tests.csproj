@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\TextSuggestionController.cs" Link="TextSuggestionController.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionTypes.cs" Link="ExtensionTypes.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionPackage.cs" Link="ExtensionPackage.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionStore.cs" Link="ExtensionStore.cs" />

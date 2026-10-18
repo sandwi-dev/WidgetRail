@@ -627,6 +627,10 @@ public abstract partial class Widget
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>Read-only, concurrent whole-entry suggestions. Observe cancellation; do not commit text or mutate a build here.</summary>
+    public virtual ValueTask<TextSuggestionResult> OnSuggestTextAsync(TextSuggestionQuery query, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(TextSuggestionResult.Empty);
+
     /// <summary>
     /// Resolves one exact artwork handle declared by the current snapshot.
     /// The runtime validates format, size, and current-handle authority before

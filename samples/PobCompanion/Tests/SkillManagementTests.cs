@@ -48,6 +48,18 @@ internal static class SkillManagementTests
             await Action("gem-add");
             var catalog=(JsonElement[])Get("gemCatalog")!;
             check(catalog.Length>50&&Nodes(View().Root).Any(n=>n.Id=="pob.gems"&&n.IndexedCollection is not null),"Gem picker exposes the upstream catalog as a virtualized list");
+            var suggestionField=Nodes(View().Root).Single(n=>n.Id=="pob.gem-search");
+            var suggestionQuery=new TextSuggestionQuery(suggestionField.Id,suggestionField.TextEntrySuggestions!.Key,Guid.NewGuid().ToString("N"),1,"fire",6,100);
+            var xmlBeforeSuggestions=Result().Xml;
+            var suggested=await widget.OnSuggestTextAsync(suggestionQuery,default);
+            check(suggested.Items.Any(i=>i.Value=="Fireball")&&suggested.Items.Count<=6,"Live gem suggestions use real upstream names and bounded whole-entry matches");
+            check(Result().Xml==xmlBeforeSuggestions&&(string)Get("gemSearch")! == "","Typing suggestions does not mutate build XML or committed gem search");
+            await Action("gem-type.support");
+            check((await widget.OnSuggestTextAsync(suggestionQuery,default)).Unavailable,"Changing the picker filter retires the old suggestion source");
+            suggestionField=Nodes(View().Root).Single(n=>n.Id=="pob.gem-search");
+            suggested=await widget.OnSuggestTextAsync(suggestionQuery with{SourceKey=suggestionField.TextEntrySuggestions!.Key,Text="a",Revision=2},default);
+            check(suggested.Items.Count>0&&suggested.Items.All(i=>i.Description=="Support gem"),"Suggestion names respect the current support-only catalog");
+            await Action("gem-type.all");
             using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"gem-catalog-test",500))
             {
                 using var first=await host.AcquireAsync("pob.gems",0,12);

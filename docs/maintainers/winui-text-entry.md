@@ -1,8 +1,9 @@
 # WinUI host-owned text entry
 
-`UI.TextEntry` and `UI.SensitiveTextEntry` retain the existing SDK contract. Widgets
-publish a bounded value/placeholder and final-value action; they never receive
-keystrokes or intermediate edits. No SDK, protocol or trust-level fork is added.
+`UI.TextEntry` and `UI.SensitiveTextEntry` publish a bounded value/placeholder and
+final-value action. Ordinary fields can explicitly opt into protocol 88
+[whole-entry suggestions](../reference/text-suggestions.md), receiving transient
+queries through a bounded read lane. Other fields remain commit-only.
 
 The trusted presenter renders a focusable opener. Activation creates a native
 `ContentDialog` with `TextBox` or protected `PasswordBox`, plus native buttons in a
@@ -34,11 +35,41 @@ a late native close cannot commit or steal focus from a newer edit. Reopening
 waits for the previous native dialog to close.
 
 Sensitive declarations start empty, use PasswordBox's protected UIA semantics,
-never permit reveal/paste and never copy intermediate values into snapshots or
+allow user-requested paste and reveal, and never copy intermediate values into snapshots or
 widget state. Commit transfers one bounded string and clears the editor. Cancel
 transfers nothing. Callback failures are replaced with a fixed diagnostic without
 the original exception or inner exception, because callbacks could echo a secret.
 Managed/native string allocation is not represented as guaranteed memory zeroing.
+
+## Optional suggestion lane
+
+Protocol 88 carries an ordinary field's source key and result limits. The host
+debounces transient queries, rejects stale session/revision/owner responses, and
+keeps fixed native button slots above the keys. Only result/status content changes;
+arrival cannot move focus or resize the keyboard. Selection replaces the whole
+field, keeps the keyboard open, and requires Done. There is no instructional text
+inside the suggestion area. Native buttons retain mouse, keyboard and controller
+activation, theme resources, accessible labels and full-label tooltips.
+
+The runtime executes at most one author suggestion callback per worker outside
+the action lane. Its independent deadline cannot be blocked by synchronous author
+code or cancellation callbacks. A timed-out callback retains capacity until it
+drains. The bridge/session revalidate the active ordinary field and never start a
+worker just for suggestions. Password and browser live-edit keyboards are excluded.
+
+Main-window deactivation must distinguish transferring activation to an owned
+keyboard PopupHost from leaving the process. Resetting input unconditionally
+closes the popup before pointer activation can reach its buttons. Owned transfers
+now retain transient UI; external process transfers keep the existing reset rule.
+
+Validation for this addition is recorded in `artifacts/pob/text-suggestions-*`:
+SDK contract/catalog and runtime/bridge admission regressions, 266 shell tests,
+17 API compatibility tests, and PoB skill-management checks (PoE1: 40; PoE2: 42).
+The native fixture passes 135 checks covering stable focus/geometry, whole-field selection, one Done,
+Cancel, no matches, password exclusion, paste, and replies after closure. Installed
+PoE2 mouse checks cover opening the picker, receiving real upstream suggestions,
+clicking a suggestion, Done, and cancelling a changed query. These are automated
+native/controller-routing checks; a physical gamepad acceptance run is separate.
 
 ## Validation
 

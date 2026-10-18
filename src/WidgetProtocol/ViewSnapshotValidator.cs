@@ -1328,6 +1328,9 @@ public static class ViewSnapshotValidator
                     Add(path, "slider_property_not_allowed",
                         "Minimum, step, value-change action, accessible value, and interaction mode apply only to sliders.");
             }
+            if (node.TextEntrySuggestions is not null && (node.Kind != ViewNodeKind.TextEntry ||
+                node.TextEntryInputKind == TextEntryInputKind.Sensitive || !TextSuggestionContract.IsValid(node.TextEntrySuggestions)))
+                Add(path, "invalid_text_suggestions", "Suggestions require an ordinary text entry and bounded source options.");
             if (node.Kind is ViewNodeKind.TextEntry)
             {
                 if (node.TextEntryInputKind is { } inputKind && !Enum.IsDefined(inputKind))
@@ -1855,7 +1858,7 @@ public static class ViewSnapshotValidator
                 aggregateStrings += StringLength(node.Id) + StringLength(node.Text) +
                     StringLength(node.AccessibilityLabel) + StringLength(node.AccessibilityValue) +
                     StringLength(node.ActionId) + StringLength(node.TextEntryValue) +
-                    StringLength(node.TextEntryPlaceholder) + StringLength(node.ValueChangedActionId) +
+                    StringLength(node.TextEntryPlaceholder) + StringLength(node.TextEntrySuggestions?.Key) + StringLength(node.ValueChangedActionId) +
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
                     StringLength(node.FocusBackgroundArtworkHandle) +
                     StringLength(node.MediaSessionId) +

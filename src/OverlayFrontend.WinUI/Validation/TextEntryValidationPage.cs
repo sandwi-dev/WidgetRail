@@ -177,6 +177,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
             await VerifyKeyboardActivationAsync();
             if (!Environment.GetCommandLineArgs().Contains("--text-entry-no-clipboard")) await VerifyPasteAsync();
             await VerifyControllerEditingAsync();
+            await VerifySuggestionsAsync();
             await Open(); await presenter.DisposeAsync(); await Closed(); Check(!presenter.HasTransientControl, "disposal retires keyboard");
             status.Text = $"Passed {checks.Count} TextEntry checks"; Write(new { result = "passed", checks });
         }

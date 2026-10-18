@@ -17,6 +17,8 @@ internal enum BridgeRequestKind
     Permissions,
     GetSnapshot,
     ReadIndexedRange,
+    SuggestText,
+    CancelTextSuggestions,
     CancelIndexedRange,
     AcquireIndexedRange,
     ReleaseIndexedLease,
@@ -61,21 +63,21 @@ internal readonly record struct BridgeRequestKey
     internal string? WidgetId { get; }
     internal BridgeIndexedRangeRequest? IndexedRange { get; private init; }
     internal BridgeIndexedArtworkRequest? IndexedArtwork { get; private init; }
-    internal bool IsIndependent => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.CancelIndexedRange or
+    internal bool IsIndependent => Kind is BridgeRequestKind.CancelTextSuggestions or BridgeRequestKind.SuggestText or BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.CancelIndexedRange or
         // Preparation validates source authority under the registry operation gate,
         // then awaits author code on its own bounded lane. Do not hold the widget
         // FIFO while it runs: progress snapshots and cancellation must stay live.
         BridgeRequestKind.PrepareIntent or BridgeRequestKind.CancelIntent or
         BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or
         BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork;
-    internal bool IsIndexedProvider => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ResolveIndexedArtwork;
+    internal bool IsIndexedProvider => Kind is BridgeRequestKind.SuggestText or BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ResolveIndexedArtwork;
     internal bool IsKnown => Kind is not (BridgeRequestKind.Malformed or
         BridgeRequestKind.Unknown);
 
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
         if (kind is BridgeRequestKind.CompleteTaskActivation or BridgeRequestKind.GetSnapshot or
-            BridgeRequestKind.ReadIndexedRange or
+            BridgeRequestKind.CancelTextSuggestions or BridgeRequestKind.SuggestText or BridgeRequestKind.ReadIndexedRange or
             BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
             BridgeRequestKind.RefreshIndexedStyles or BridgeRequestKind.RefreshPresentationStyles or
@@ -97,7 +99,7 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
         if (kind is not (BridgeRequestKind.CompleteTaskActivation or BridgeRequestKind.GetSnapshot or
-            BridgeRequestKind.ReadIndexedRange or
+            BridgeRequestKind.CancelTextSuggestions or BridgeRequestKind.SuggestText or BridgeRequestKind.ReadIndexedRange or
             BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
             BridgeRequestKind.RefreshIndexedStyles or BridgeRequestKind.RefreshPresentationStyles or
@@ -170,6 +172,8 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.TakePermission or BridgeMessageTypes.CheckPermission or BridgeMessageTypes.CompletePermission => BridgeRequestKey.Global(BridgeRequestKind.Permissions),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
+                BridgeMessageTypes.CancelTextSuggestions => Widget(BridgeJson.FromElement<BridgeTextSuggestionsRequest>(request.Payload).WidgetId, BridgeRequestKind.CancelTextSuggestions),
+                BridgeMessageTypes.SuggestText => Widget(BridgeJson.FromElement<BridgeTextSuggestionsRequest>(request.Payload).WidgetId, BridgeRequestKind.SuggestText),
                 BridgeMessageTypes.ReadIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.ReadIndexedRange),
                 BridgeMessageTypes.CancelIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.CancelIndexedRange),
                 BridgeMessageTypes.AcquireIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.AcquireIndexedRange),

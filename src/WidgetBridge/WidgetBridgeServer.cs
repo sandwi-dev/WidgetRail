@@ -545,6 +545,18 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.CancelTextSuggestions:
+        {
+            await _registry.CancelTextSuggestionsAsync(BridgeJson.FromElement<BridgeTextSuggestionsRequest>(request.Payload)).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.SuggestText:
+        {
+            using var suggestions = await _registry.SuggestTextAsync(BridgeJson.FromElement<BridgeTextSuggestionsRequest>(request.Payload), cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.TextSuggestions, request.RequestId, suggestions.Value, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.ResolvePinnedArtwork:
         case BridgeMessageTypes.ResolveArtwork:
         {

@@ -2744,6 +2744,9 @@ internal sealed class RegistryTestClient(
         return Task.FromResult(RevalidatedHandled);
     }
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
+    internal Func<TextSuggestionQuery, CancellationToken, Task<TextSuggestionResult>>? TextSuggestions { get; set; }
+    public Task<TextSuggestionResult> SuggestTextAsync(TextSuggestionQuery query, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        TextSuggestions?.Invoke(query, cancellationToken) ?? Task.FromResult(TextSuggestionResult.Empty);
     internal Func<WidgetIntentRequest, WidgetIntentFeedback?, CancellationToken, Task<bool>>? IntentQuery { get; set; }
     internal List<WidgetIntentFeedback> IntentFeedback { get; } = [];
     internal int AvailabilityQueries { get; private set; }

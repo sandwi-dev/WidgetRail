@@ -339,6 +339,8 @@ internal sealed class ProtocolVersionRequirements
                             $"Slider interaction modes require protocol version {ProtocolConstants.SliderActivationVersion} or later.");
                     break;
                 case ViewNodeKind.TextEntry:
+                    if (node.TextEntrySuggestions is not null)
+                        Add("text-suggestions", ProtocolConstants.TextSuggestionsVersion, path, "Text suggestions require protocol 88 or later.");
                     if (node.TextEntryMaximumLength > ProtocolConstants.MaximumTextEntryLength)
                         Add("extended-text-entry", ProtocolConstants.ExtendedTextEntryVersion, path,
                             $"Extended text entry requires protocol version {ProtocolConstants.ExtendedTextEntryVersion} or later.");

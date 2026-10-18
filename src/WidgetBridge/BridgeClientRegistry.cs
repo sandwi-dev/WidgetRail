@@ -289,6 +289,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         Task.FromResult(WidgetIntentResult.Rejected);
     Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         Task.FromException<WidgetOperationAdmission?>(new NotSupportedException("Pinned action v1 is unavailable."));
+    Task<TextSuggestionResult> SuggestTextAsync(TextSuggestionQuery query, int startOrdinal, CancellationToken token) =>
+        Task.FromResult(TextSuggestionResult.NotAvailable);
     Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,
         CancellationToken cancellationToken) =>
@@ -377,6 +379,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         client.DeliverIntentAsync(intent, expectedStartOrdinal, cancellationToken);
     public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         client.AdmitPinnedActionAsync(input, cancellationToken, expectedStartOrdinal);
+    public Task<TextSuggestionResult> SuggestTextAsync(TextSuggestionQuery query, int startOrdinal, CancellationToken token) =>
+        client.SuggestTextAsync(query, startOrdinal, token);
     public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,
         CancellationToken cancellationToken) =>

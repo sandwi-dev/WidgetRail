@@ -42,6 +42,8 @@ namespace WidgetRail.WidgetBridge;
 [JsonSerializable(typeof(BridgeDisplayIdentity))]
 [JsonSerializable(typeof(BridgeAppearanceRequest))]
 [JsonSerializable(typeof(BridgePresentationRequest))]
+[JsonSerializable(typeof(BridgeTextSuggestionsRequest))]
+[JsonSerializable(typeof(WidgetRail.WidgetProtocol.TextSuggestionResult))]
 [JsonSerializable(typeof(BridgeArtworkRequest))]
 [JsonSerializable(typeof(BridgePackageIconRequest))]
 [JsonSerializable(typeof(BridgeEmbeddedMediaRequest))]

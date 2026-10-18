@@ -134,8 +134,8 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         var lane = type switch
         {
-            BridgeMessageTypes.ReadIndexedRange or BridgeMessageTypes.AcquireIndexedRange or BridgeMessageTypes.ResolveIndexedArtwork => _providerCapacity,
-            BridgeMessageTypes.CancelIntent or BridgeMessageTypes.CancelIndexedRange or BridgeMessageTypes.CancelIndexedArtwork => _cancellationCapacity,
+            BridgeMessageTypes.SuggestText or BridgeMessageTypes.ReadIndexedRange or BridgeMessageTypes.AcquireIndexedRange or BridgeMessageTypes.ResolveIndexedArtwork => _providerCapacity,
+            BridgeMessageTypes.CancelTextSuggestions or BridgeMessageTypes.CancelIntent or BridgeMessageTypes.CancelIndexedRange or BridgeMessageTypes.CancelIndexedArtwork => _cancellationCapacity,
             _ => _controlCapacity,
         };
         await lane.WaitAsync(admission.Token).ConfigureAwait(false);

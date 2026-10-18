@@ -34,6 +34,7 @@ ctor WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest(bool Enabled)
 ctor WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest(string ProfileId, bool Enabled)
 ctor WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest(bool Enabled)
 ctor WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest(string ProfileId)
+ctor WidgetRail.WidgetSdk.TextSuggestionCatalog(System.Collections.Generic.IEnumerable<WidgetRail.WidgetProtocol.TextSuggestion> suggestions)
 ctor WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest(string DeviceId)
 ctor WidgetRail.WidgetSdk.WebSessionPageActionBatchReader()
 ctor WidgetRail.WidgetSdk.WidgetActionEvent(string ActionId, string SourceElementId, WidgetRail.WidgetProtocol.ControllerButton? ControllerButton = null, WidgetRail.WidgetProtocol.ControllerEventPhase Phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, double? RequestedValue = null, string? InputScopeId = null)
@@ -413,6 +414,7 @@ event System.EventHandler<WidgetRail.WidgetSdk.WidgetModelChangedEventArgs<TStat
 event System.EventHandler<WidgetRail.WidgetSdk.WidgetOperationBusyChangedEventArgs>? WidgetRail.WidgetSdk.WidgetOperations.BusyChanged
 event System.EventHandler<WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs>? WidgetRail.WidgetSdk.WidgetOperations.OperationFailed
 event System.EventHandler<WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs>? WidgetRail.WidgetSdk.WidgetTimedMutation.Failed
+field const int WidgetRail.WidgetSdk.TextSuggestionCatalog.MaximumEntries = 10000
 field const int WidgetRail.WidgetSdk.UI.MaximumActionSheetItems = 32
 field const int WidgetRail.WidgetSdk.UI.MaximumCodeTextCharacters = 4096
 field const int WidgetRail.WidgetSdk.UI.MaximumNavigationShellDestinations = 8
@@ -871,7 +873,10 @@ method WidgetRail.WidgetSdk.TextEntryElement.FocusLeft(string id) -> WidgetRail.
 method WidgetRail.WidgetSdk.TextEntryElement.FocusRight(string id) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.FocusUp(string id) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.TextEntryElement.Suggest(string sourceKey, int minimumLength = 1, int maximumResults = 6) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.ToString() -> string
+method WidgetRail.WidgetSdk.TextSuggestionCatalog.Search(WidgetRail.WidgetProtocol.TextSuggestionQuery query, System.Threading.CancellationToken cancellationToken = null) -> WidgetRail.WidgetProtocol.TextSuggestionResult
+method WidgetRail.WidgetSdk.TextSuggestionCatalog.Search(string text, int maximumResults = 6, System.Threading.CancellationToken cancellationToken = null) -> WidgetRail.WidgetProtocol.TextSuggestionResult
 method WidgetRail.WidgetSdk.ToastElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.ToastElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ToastElement.GetHashCode() -> int
@@ -2316,6 +2321,7 @@ method virtual WidgetRail.WidgetSdk.Widget.OnIntentCompletedAsync(WidgetRail.Wid
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnPrepareIntentAsync(string key, WidgetRail.WidgetProtocol.WidgetIntentRequest request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Text.Json.JsonElement?>
 method virtual WidgetRail.WidgetSdk.Widget.OnResolveArtworkAsync(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
+method virtual WidgetRail.WidgetSdk.Widget.OnSuggestTextAsync(WidgetRail.WidgetProtocol.TextSuggestionQuery query, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.TextSuggestionResult>
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetActionFailedEventArgs? other) -> bool
@@ -2616,6 +2622,7 @@ property WidgetRail.WidgetProtocol.ScrollRevealRequest? WidgetRail.WidgetSdk.Wid
 property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.ScrubberElement.ControllerInteractionMode { get; set; }
 property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.SliderElement.ControllerInteractionMode { get; set; }
 property WidgetRail.WidgetProtocol.TextEntryInputKind WidgetRail.WidgetSdk.TextEntryElement.InputKind { get; set; }
+property WidgetRail.WidgetProtocol.TextSuggestionSource? WidgetRail.WidgetSdk.TextEntryElement.SuggestionSource { get; set; }
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.CurrentSnapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.CurrentSnapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
@@ -3477,6 +3484,7 @@ type sealed class WidgetRail.WidgetSdk.StackElement : System.IEquatable<WidgetRa
 type sealed class WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest : System.IEquatable<WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest>
 type sealed class WidgetRail.WidgetSdk.TextElement : System.IEquatable<WidgetRail.WidgetSdk.TextElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.TextEntryElement : System.IEquatable<WidgetRail.WidgetSdk.TextEntryElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.TextSuggestionCatalog
 type sealed class WidgetRail.WidgetSdk.TileArtwork
 type sealed class WidgetRail.WidgetSdk.ToastElement : System.IEquatable<WidgetRail.WidgetSdk.ToastElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest : System.IEquatable<WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest>

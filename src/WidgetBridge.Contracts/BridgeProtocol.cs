@@ -61,6 +61,9 @@ internal static class BridgeMessageTypes
     public const string ResolveIndexedArtwork = "resolve-indexed-artwork";
     public const string CancelIndexedArtwork = "cancel-indexed-artwork";
     public const string IndexedArtwork = "indexed-artwork";
+    public const string CancelTextSuggestions = "cancel-text-suggestions";
+    public const string SuggestText = "suggest-text";
+    public const string TextSuggestions = "text-suggestions";
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
     public const string ResolvePackageIcon = "resolve-package-icon";

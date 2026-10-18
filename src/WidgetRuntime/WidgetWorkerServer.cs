@@ -72,6 +72,7 @@ internal sealed class WidgetWorkerServer
     {
         WidgetWorkerNotificationLane? notifications = null;
         WidgetIndexedRangeLane? indexedRanges = null;
+        WidgetTextSuggestionLane? textSuggestions = null;
         WidgetIndexedArtworkLane? indexedArtwork = null;
         WidgetIntentLane? intents = null;
         await using var pipe = new NamedPipeClientStream(
@@ -116,6 +117,7 @@ internal sealed class WidgetWorkerServer
                 requestLoopCancellation.Cancel();
             }
             indexedRanges = new(_widget, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
+            textSuggestions = new(_widget, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
             indexedArtwork = new(_widget, SendEncodedArtworkAsync, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
             intents = new(_widget, SendAsync, ReadLaneFailed, requestLoopCancellation.Token);
             var pendingRequests = 0;
@@ -162,6 +164,26 @@ internal sealed class WidgetWorkerServer
                                 new ErrorPayload("worker_stopping", "Worker shutdown is already queued."),
                                 requestLoopCancellation.Token)
                             .ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (request.Type == MessageTypes.CancelTextSuggestions)
+                    {
+                        var cancel = RuntimeJson.FromElement<TextSuggestionQuery>(request.Payload);
+                        await ReplyAsync(MessageTypes.Acknowledged, request.RequestId, new { cancelled = textSuggestions.Cancel(cancel) }, requestLoopCancellation.Token).ConfigureAwait(false);
+                        continue;
+                    }
+                    if (request.Type == MessageTypes.SuggestText)
+                    {
+                        try
+                        {
+                            if (!textSuggestions.TryRead(request.RequestId, RuntimeJson.FromElement<TextSuggestionQuery>(request.Payload)))
+                                await ReplyAsync(MessageTypes.TextSuggestions, request.RequestId, TextSuggestionResult.NotAvailable, requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
+                        catch (Exception error) when (error is ArgumentException or JsonException)
+                        {
+                            await ReplyAsync(MessageTypes.TextSuggestions, request.RequestId, TextSuggestionResult.NotAvailable, requestLoopCancellation.Token).ConfigureAwait(false);
+                        }
                         continue;
                     }
 
@@ -302,7 +324,7 @@ internal sealed class WidgetWorkerServer
                     {
                         if (request.Type == MessageTypes.Stop)
                         {
-                            await Task.WhenAll(indexedRanges.CloseAsync(), indexedArtwork.CloseAsync(), intents.CloseAsync()).ConfigureAwait(false);
+                            await Task.WhenAll(indexedRanges.CloseAsync(), indexedArtwork.CloseAsync(), intents.CloseAsync(), textSuggestions.CloseAsync()).ConfigureAwait(false);
                             await ReplyAsync(
                                     MessageTypes.Acknowledged, request.RequestId, new { },
                                     loopCancellation.Token)
@@ -343,7 +365,7 @@ internal sealed class WidgetWorkerServer
             try
             {
                 await Task.WhenAll(indexedRanges?.CloseAsync() ?? Task.CompletedTask, indexedArtwork?.CloseAsync() ?? Task.CompletedTask,
-                    intents?.CloseAsync() ?? Task.CompletedTask).ConfigureAwait(false);
+                    intents?.CloseAsync() ?? Task.CompletedTask, textSuggestions?.CloseAsync() ?? Task.CompletedTask).ConfigureAwait(false);
             }
             catch (Exception exception) { indexedDrainFailure = exception; }
             try

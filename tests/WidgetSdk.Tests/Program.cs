@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Text suggestions are whole-entry bounded versioned and reusable", TextSuggestionTests.Run),
     ("Web session shared batching preserves Unicode envelopes and bounds", WebSessionBatchTests.Run),
     ("Activity sources coalesce preserve ownership and stay bounded", ActivityServiceTests.Contract),
     ("Permission requests wait for consent and clean up abandoned prompts", PermissionServiceTests.Contract),

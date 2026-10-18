@@ -136,7 +136,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         CharacterReceived += (_, args) =>
         {
             // Space is handled once on key-down, never as virtual-key activation.
-            if (!completed && args.Character > 32 && (IsLive || FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key)))
+            if (!completed && args.Character > 32 && (IsLive || FocusManager.GetFocusedElement(XamlRoot) is Button key && (commands.ContainsKey(key) || suggestionButtons.Contains(key))))
             { Insert(char.ConvertFromUtf32((int)args.Character)); args.Handled = true; }
         };
     }
@@ -148,6 +148,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         repeat.Reset();
         if (key == Windows.System.VirtualKey.Escape) { Complete(false); return true; }
         if (HandleLiveKey(key, control, shift)) return true;
+        if (HandleSuggestionKey(key)) return true;
         var editorFocused = ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
         if (key == Windows.System.VirtualKey.Space && !editorFocused) { Insert(" "); return true; }
         // The controller keyboard owns initial focus. A physical paste shortcut
@@ -234,11 +235,13 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         ConstrainWidth();
         if (IsFloating) { floatingWidth = 0; ArrangeKeyboard(); }
         ApplyCaretMetrics();
+        ApplySuggestionMetrics(size, weight, family);
     }
     internal string TakeValue() => text?.Text ?? password?.Password ?? string.Empty;
     internal void Erase()
     {
         repeat.Reset();
+        RetireSuggestions();
         RetireCaret();
         ThemeLease?.Dispose(); ThemeLease = null;
         completed = true;
@@ -253,7 +256,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     internal void RestoreFocus()
     {
         if (completed) return;
-        if (FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key)) key.Focus(FocusState.Keyboard);
+        if (FocusManager.GetFocusedElement(XamlRoot) is Button key && (commands.ContainsKey(key) || suggestionButtons.Contains(key))) key.Focus(FocusState.Keyboard);
         else characters[10].Focus(FocusState.Keyboard);
     }
     private void FocusInitialKey()
@@ -267,6 +270,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     {
         if (completed) return;
         keyboardInputStarted = true;
+        if (NavigateSuggestions(direction)) return;
         if (FocusManager.GetFocusedElement(XamlRoot) is not Button key || !commands.ContainsKey(key))
         { (rememberedKey ?? characters[10]).Focus(FocusState.Keyboard); return; }
         var row = Grid.GetRow(key);
@@ -290,6 +294,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     internal void Activate()
     {
         keyboardInputStarted = true;
+        if (!completed && ActivateSuggestion()) return;
         if (!completed && FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.TryGetValue(key, out var action)) action();
     }
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
@@ -392,6 +397,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     private void Clear()
     {
         repeat.Reset();
+        RestoreKeyFromSuggestion();
         if (IsLive) { SendLive(new(KeyboardEditKind.Clear)); return; }
         if (text is not null) text.Text = string.Empty;
         if (password is not null) password.Password = string.Empty;
@@ -405,6 +411,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     }
     private void Insert(string value)
     {
+        RestoreKeyFromSuggestion();
         if (IsLive) { SendLive(new(KeyboardEditKind.Insert, value)); return; }
         if (text is not null)
         {
@@ -422,6 +429,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     }
     private void Backspace()
     {
+        RestoreKeyFromSuggestion();
         if (IsLive) { SendLive(new(KeyboardEditKind.Key, Key: "Backspace", KeyCode: 8)); return; }
         if (text is not null)
         {

@@ -89,6 +89,7 @@ if (expectedRuntime is not null && !RuntimeEnvironment.GetRuntimeDirectory().Sta
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Text suggestions isolate timeout cancellation and late providers", TextSuggestionLaneTests.Run),
     ("Data package leases pin larger inventories and enforce the shared ceiling", DataPackageLeaseTests.Run),
     ("Intent delivery rejects duplicate and inactive requests", IntentDeliveryScenarios.DuplicateAndLifecycle),
     ("Intent delivery does not replay cancelled or failed handlers", IntentDeliveryScenarios.CancellationAndFailure),

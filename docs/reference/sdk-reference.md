@@ -20,6 +20,7 @@ Use this index to find one API family at a time. For a first project, start with
 | Buttons, sliders, settings rows, and menus | [Controller components](controller-ui-components.md) |
 | Actions, shortcuts, and Back | [Controller input](controller-input.md) |
 | Stable IDs, focus lookup, text entry | [Identity and input helpers](identity-and-input.md) |
+| Whole-entry keyboard suggestions | [Text suggestions](text-suggestions.md) |
 | Scrolling and responsive collections | [Collections](collections.md) |
 | Artwork, toasts, and backgrounds | [Visual content](visual-content.md) |
 | Window size and display scale | [Display and layout](display-and-resolution.md) |

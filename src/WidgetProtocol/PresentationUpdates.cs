@@ -34,6 +34,7 @@ public enum PresentationProperty
     TextEntryPlaceholder,
     TextEntryMaximumLength,
     TextEntryInputKind,
+    TextEntrySuggestions,
     Value,
     Minimum,
     Maximum,
@@ -275,7 +276,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
-        PresentationProperty.TextEntryInputKind =>
+        PresentationProperty.TextEntryInputKind or PresentationProperty.TextEntrySuggestions =>
             PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,

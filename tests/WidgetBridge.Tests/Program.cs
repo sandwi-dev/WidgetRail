@@ -99,6 +99,7 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Text suggestions preserve authority, cancellation and bounded admission", BridgeClientRegistryScenarios.TextSuggestions),
     ("Background browser retention is bounded worker-scoped and never grants input", BridgeClientRegistryScenarios.BackgroundBrowserRetention),
     ("Background browser retention crosses the real pipe without reviving workers", BridgeClientRegistryScenarios.BrowserRetentionPipe),
     ("Media player source crosses both pipes for inline and pinned projections", MediaPlayerScenarios.ThroughPipes),
