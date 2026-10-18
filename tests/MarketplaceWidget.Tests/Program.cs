@@ -7,6 +7,7 @@ using WidgetRail.WidgetStyling;
 if (args is ["--export-native", var output]) { await ExportNative(output); return 0; }
 var tests = new (string Name,Func<Task> Run)[] {
     ("Catalog navigation filters updates and restores the selected card", Navigation),
+    ("Catalogue screenshot actions preserve image identity and return to the exact card", () => ScreenshotNavigation(null)),
     ("Catalogue setup requirements are visible before download and navigation stays outside scrolling", SetupPresentation),
     ("Catalogue empty loading stale and prerequisite states keep navigation usable", () => ExportEdgeStates(null)),
     ("Reopening checks releases while a slow refresh preserves navigation and existing content", RefreshOnOpening),
@@ -64,7 +65,46 @@ static async Task ExportNative(string directory)
     await Until(() => Node(fixture,"marketplace.batch.review.cancel") is null && fixture.Commands.Any(command => command.Action == "install-updates"));
     await Write("completed");
     await ExportEdgeStates(directory);
+    await ScreenshotNavigation(directory);
     async Task Write(string name) => await File.WriteAllBytesAsync(Path.Combine(directory, name + ".snapshot.json"), SnapshotJson.Serialize(fixture.View()));
+}
+
+// Real widget actions produce these snapshots. The native validation consumer
+// substitutes only these exact HTTPS identities with local PNGs before rendering;
+// no bridge or production image transport is replaced by this fixture.
+static async Task ScreenshotNavigation(string? directory)
+{
+    const string first="https://raw.githubusercontent.com/sandwi-dev/WidgetRail/native-fixture/screenshot-1.png";
+    const string second="https://raw.githubusercontent.com/sandwi-dev/WidgetRail/native-fixture/screenshot-2.png";
+    const string package="widgetrail.firstparty.performance-monitor";
+    await using var f=new Fixture();
+    f.Snapshot=f.Snapshot with {Items=[f.Snapshot.Items[0],new(package,"Performance Monitor","Local screenshot navigation fixture.",[first,second],"1.0.0")]};
+    Check(MarketplaceValidation.SnapshotError(f.Snapshot)is null,"Screenshot fixture bypasses catalogue image URL admission");
+    await f.Start();await Until(()=>Node(f,"marketplace.refresh") is {IsBusy:not true});
+    var card=Walk(f.View().Root).Where(n=>n.Kind==ViewNodeKind.ActionSurface).Last();
+    await Write("screenshots-browse");await f.Act(card.ActionId!);
+    CheckImage(first,"1 / 2","Performance Monitor, screenshot 1");await Write("screenshots-first");
+    Check(f.View().Root.Shortcuts.Any(s=>s.Button==ControllerButton.RightBumper&&s.ActionId=="marketplace.screenshot.next")&&
+        f.View().Root.Shortcuts.Any(s=>s.Button==ControllerButton.LeftBumper&&s.ActionId=="marketplace.screenshot.previous"),"Screenshot bumper shortcuts are missing");
+    await f.Act("marketplace.screenshot.next");CheckImage(second,"2 / 2","Performance Monitor, screenshot 2");await Write("screenshots-next");
+    await f.Act("marketplace.screenshot.previous");CheckImage(first,"1 / 2","Performance Monitor, screenshot 1");await Write("screenshots-previous");
+    Check(f.View().Root.Shortcuts.Any(s=>s.Button==ControllerButton.B&&s.ActionId=="marketplace.back"),"Screenshot details lost the declared B Back shortcut");
+    await f.Act("marketplace.back");
+    Check(f.View().InitialFocusId==card.Id&&Node(f,"marketplace.screenshot")is null,"Screenshot Back lost the exact non-first catalogue card");
+    await Write("screenshots-back");
+    Check(f.Commands.All(c=>c.Action is "status" or "refresh"),"Screenshot browsing downloaded or changed a package");
+    void CheckImage(string source,string count,string label)
+    {
+        var image=Node(f,"marketplace.screenshot")!;
+        Check(image.ImageSource==source&&image.AccessibilityLabel==label&&Node(f,"marketplace.screenshot.count")?.Text==count,
+            "Screenshot identity, accessible label and count diverged");
+    }
+    async Task Write(string name)
+    {
+        var snapshot=f.View();
+        Check(ViewSnapshotValidator.Validate(snapshot).Count==0&&WinUiPresentationContract.Validate(snapshot).Count==0,"Screenshot workflow snapshot invalid");
+        if(directory is not null)await File.WriteAllBytesAsync(Path.Combine(directory,name+".snapshot.json"),SnapshotJson.Serialize(snapshot));
+    }
 }
 
 static async Task ExportEdgeStates(string? directory)

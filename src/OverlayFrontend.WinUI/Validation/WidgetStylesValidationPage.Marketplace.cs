@@ -4,6 +4,9 @@ using System.Text.Json.Serialization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 
@@ -133,11 +136,117 @@ internal sealed partial class WidgetStylesValidationPage
                     }
                     await CaptureAsync(Path.Combine(directory, $"{name}-{width}.png"));
                 }
+                await ScreenshotFlowAsync(width,options,dispatched);
             }
         }
         catch (Exception error) { failure = error; }
-        await File.WriteAllTextAsync(Path.Combine(directory, "native-result.json"), JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
+        await File.WriteAllTextAsync(Path.Combine(directory, "native-result.json"), JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString(),
+            scope = "Exported real widget actions plus native dispatch/focus/rendering; screenshot HTTPS identities are replaced with local PNGs before admission. Separate from the full real-Bridge workflow." }));
         if (failure is not null) throw failure;
+
+        async Task ScreenshotFlowAsync(int width,JsonSerializerOptions options,List<string> dispatched)
+        {
+            const string firstUrl="https://raw.githubusercontent.com/sandwi-dev/WidgetRail/native-fixture/screenshot-1.png";
+            const string secondUrl="https://raw.githubusercontent.com/sandwi-dev/WidgetRail/native-fixture/screenshot-2.png";
+            var firstPng=await LocalPngAsync(32,18,240,40,30);
+            var secondPng=await LocalPngAsync(48,20,20,60,230);
+            var frames=new Dictionary<string,(ViewSnapshot Snapshot,Dictionary<string,BridgeNodeRenderStyles> Styles)>();
+            foreach(var name in new[]{"browse","first","next","previous","back"})
+            {
+                using var document=JsonDocument.Parse(File.ReadAllText(Path.Combine(directory,"screenshots-"+name+".json")));
+                var snapshot=SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(document.RootElement.GetProperty("snapshot").GetRawText()));
+                var styles=document.RootElement.GetProperty("renderStyles").Deserialize<Dictionary<string,BridgeNodeRenderStyles>>(options)!;
+                var image=Walk(snapshot.Root).SingleOrDefault(node=>node.Id=="marketplace.screenshot");
+                if(name is "first" or "next" or "previous")
+                    Check(image?.ImageSource==(name=="next"?secondUrl:firstUrl),$"Screenshot {name} retains the real widget's expected URL identity");
+                // This substitution is confined to the validation boundary. Reject
+                // every unexpected image rather than accidentally issuing HTTP.
+                ViewNode Local(ViewNode node)
+                {
+                    var source=node.ImageSource;
+                    if(source is not null)
+                    {
+                        if(node.Id!="marketplace.screenshot"||source!=firstUrl&&source!=secondUrl)
+                            throw new InvalidDataException("Unexpected image in local Catalogue screenshot fixture.");
+                        source=source==firstUrl?firstPng:secondPng;
+                    }
+                    return node with {ImageSource=source,Children=node.Children.Select(Local).ToArray()};
+                }
+                frames.Add(name,(snapshot with{Root=Local(snapshot.Root)},styles));
+            }
+            var cardId=frames["back"].Snapshot.InitialFocusId!;
+            var cardAction=Walk(frames["browse"].Snapshot.Root).Single(node=>node.Id==cardId).ActionId!;
+            Apply("browse");presenter.Enter(restoreNativeFocus:false);
+            await Activate("Widget."+cardId,cardAction);
+            Apply("first");await ImageReady(false);
+            var imageView=Find<WidgetArtworkView>("Widget.marketplace.screenshot")!;
+            await Activate("Widget.marketplace.screenshot.next","marketplace.screenshot.next");
+            Apply("next");await ImageReady(true);
+            Check(ReferenceEquals(imageView,Find<WidgetArtworkView>("Widget.marketplace.screenshot")),"Next updates the existing native image control");
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.marketplace.screenshot.next")),"Next keeps focus on its screenshot control");
+            await Activate("Widget.marketplace.screenshot.previous","marketplace.screenshot.previous");
+            Apply("previous");await ImageReady(false);
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.marketplace.screenshot.previous")),"Previous keeps focus on its screenshot control");
+            await Activate("Widget.marketplace.back","marketplace.back");
+            Apply("back");
+            await Wait(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused&&
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(focused)=="Widget."+cardId);
+            Check(InsidePresenter(Find<Button>("Widget."+cardId)!)&&VisibleInScrolls(Find<Button>("Widget."+cardId)!),"Screenshot Back restores the exact visible catalogue card");
+
+            void Apply(string name)
+            {
+                var frame=frames[name];var snapshot=frame.Snapshot with {Sequence=++sequence};
+                var descriptor=new BridgeWidgetDescriptor{Id="marketplace",Name="Catalogue screenshot fixture",InstanceId=snapshot.WidgetInstanceId,
+                    RuntimeGeneration="screenshots-"+width,PresentationGeneration="screenshots-"+width,Icon=WidgetGlyph.Connection,PackageContentDigest=""};
+                presenter.Apply(new(new(descriptor.Id,descriptor.RuntimeGeneration,descriptor.PresentationGeneration,1,
+                    snapshot.WidgetInstanceId,snapshot.Sequence,snapshot.ActiveInputScopeId),descriptor,snapshot,frame.Styles));
+                presenter.UpdateLayout();
+            }
+            async Task Activate(string id,string expected)
+            {
+                await Wait(()=>Find<Button>(id)is {IsLoaded:true});var button=Find<Button>(id)!;
+                button.StartBringIntoView();await Wait(()=>InsidePresenter(button)&&VisibleInScrolls(button));
+                Check(button.Focus(FocusState.Keyboard),"Screenshot workflow accepts focus on "+id);
+                var before=dispatched.Count;presenter.ActivateFocused();await Wait(()=>dispatched.Count==before+1);
+                Check(dispatched[^1]==expected,"Screenshot native action dispatches "+expected);
+            }
+            async Task ImageReady(bool second)
+            {
+                await Wait(()=>Find<WidgetArtworkView>("Widget.marketplace.screenshot")?.Source is BitmapImage image&&
+                    image.PixelWidth==(second?48:32)&&image.PixelHeight==(second?20:18));
+                Check(Find<TextBlock>("Widget.marketplace.screenshot.count")?.Text==(second?"2 / 2":"1 / 2"),"Native screenshot count follows its decoded image");
+                var view=Find<WidgetArtworkView>("Widget.marketplace.screenshot")!;
+                var bitmap=new RenderTargetBitmap();await bitmap.RenderAsync(view);
+                var pixels=(await bitmap.GetPixelsAsync()).ToArray();var offset=((bitmap.PixelHeight/2)*bitmap.PixelWidth+bitmap.PixelWidth/2)*4;
+                Check(pixels.Length>offset+3&&(second?pixels[offset]>200&&pixels[offset+2]<80:pixels[offset+2]>200&&pixels[offset]<80),
+                    second?"Second screenshot paints the local blue PNG":"First screenshot paints the local red PNG");
+            }
+            static bool VisibleInScrolls(FrameworkElement control)
+            {
+                for(DependencyObject? parent=VisualTreeHelper.GetParent(control);parent is not null;parent=VisualTreeHelper.GetParent(parent))
+                    if(parent is ScrollViewer scroll)
+                    {
+                        var bounds=control.TransformToVisual(scroll).TransformBounds(new(0,0,control.ActualWidth,control.ActualHeight));
+                        var viewport=WidgetScrollViewport.ContentBounds(scroll);
+                        if(bounds.Top<viewport.Top-1||bounds.Bottom>viewport.Bottom+1||bounds.Left<viewport.Left-1||bounds.Right>viewport.Right+1)return false;
+                    }
+                return true;
+            }
+            static IEnumerable<ViewNode> Walk(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Walk));
+        }
+
+        static async Task<string> LocalPngAsync(uint width,uint height,byte red,byte green,byte blue)
+        {
+            var pixels=new byte[checked((int)(width*height*4))];
+            for(var offset=0;offset<pixels.Length;offset+=4){pixels[offset]=blue;pixels[offset+1]=green;pixels[offset+2]=red;pixels[offset+3]=255;}
+            using var stream=new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            var encoder=await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId,stream);
+            encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,width,height,96,96,pixels);
+            await encoder.FlushAsync();stream.Seek(0);
+            using var reader=new Windows.Storage.Streams.DataReader(stream.GetInputStreamAt(0));await reader.LoadAsync((uint)stream.Size);
+            var bytes=new byte[(int)stream.Size];reader.ReadBytes(bytes);
+            return "data:image/png;base64,"+Convert.ToBase64String(bytes);
+        }
 
         bool InsidePresenter(FrameworkElement element)
         {

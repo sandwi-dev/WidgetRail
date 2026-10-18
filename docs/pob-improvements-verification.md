@@ -872,3 +872,26 @@ service fixture and do not claim real UAC/prerequisite failure acceptance.
 Evidence: `updater-recovery-native-fixed-20261018-result.json`; representative
 startup-warning capture visually inspected. Initial clipping failure is retained
 in `updater-recovery-native-20261018-result.json`.
+
+## Catalogue screenshot browsing and familiar-store review — 2026-10-18
+
+The real widget's Next/Previous/Back screenshot workflow passes within **13 widget
+tests**. Native rendering passes **150 assertions** at 900/560 DIP: decoded local
+images, matching count/accessibility identity, stable image/navigation controls,
+focus and exact non-first-card restoration. Only the fixture's two exact image
+URLs are replaced with local PNGs at the presentation boundary. This does not
+claim remote image delivery or session-routed controller B; declared B and native
+Back-button dispatch are checked separately. Evidence:
+`catalogue-screenshots-native-20261018/native-result.json`.
+
+A read-only comparison with the [UniGetUI feature overview](https://github.com/Devolutions/UniGetUI#features)
+confirms the relevant familiar-store flow: discover/filter, inspect details,
+install, review installed packages and update. Catalogue now follows that flow,
+adds service prerequisites before installation, retains explicit trust review and
+supports partial-update retry. Management links reuse Settings. UniGetUI's
+arbitrary installer switches, scheduled installations and broad package-manager
+configuration are outside this controller-first scope. Reference retrieved once
+on 2026-10-18 in `catalogue-store-comparison-20261018/UniGetUI-README.md`; no live
+GitHub throttling or repeated service calls were used for acceptance. Existing
+local cache/request-count and 22 native install/update workflow checks cover the
+network and installation boundary separately.
