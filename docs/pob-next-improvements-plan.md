@@ -22,6 +22,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Agreed; not started |
 | Independent host change | Add subtle scroll-container edge cues | Agreed; not started |
 | Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Agreed; not started |
+| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Agreed for planning; implementation explicitly on hold |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
@@ -181,6 +182,37 @@ From the next release, offer the same application and host capabilities with two
 - [ ] Measure package size and startup/resource impact rather than promising proportional savings from the smaller widget count. Finalize the generally useful Production bundle during implementation review.
 
 This records the next-release distribution scope; it does not independently authorize publishing a release. Settings and Catalogue remain the core bootstrap surfaces. Developer edition retirement does not imply removal of development support from the project.
+
+## YouTube Music and Spotify workflow follow-up
+
+Requested on 2026-10-18. Investigation and planning only for now: the user explicitly said not to fix these yet. These widget changes are independent of the PoB cleanup. Service limitations below constrain delivery; do not simulate unsupported remote operations or silently replace the user's remote queue.
+
+### Verified current behaviour
+
+- Both queue presentations use indexed collections, not adjacent cursor pagination. YouTube Music replaces every occurrence key with a generation/index key on queue membership changes. Spotify presents an indexed collection backed by a one-page cursor resource with no adjacent cursors; it already has occurrence identity reconciliation and content-only updates, but queue invalidation/loading publication still needs workflow inspection.
+- Game Help uses `ScrollRevealRequest`, currently validated only for declared children of ordinary scroll containers. It cannot directly target an unrealized indexed row. Indexed collections already provide `FocusTarget` and `Enter` for explicit reveal-and-focus navigation.
+- YouTube Music owns its playback queue locally, currently capped at 500. Playlist Play next already reads the playlist in provider order and inserts the leading songs immediately after the current occurrence. Its service interface exposes neither queue removal nor rating/library mutations. The existing ytmusicapi dependency provides authenticated `rate_song` and separate library-status operations; those are distinct actions, and dependency support is not an official Google API guarantee.
+- Spotify currently caps its observed upcoming queue at 50. Currently playing is returned separately and is not a queue row. The widget exposes Add to queue for tracks but no saved-song action; library read/modify scope identifiers exist but are not requested by the current connection flow. The documented Web API exposes queue reading and appending tracks/episodes, not removing arbitrary queued occurrences, inserting next, or submitting a playlist as one queue addition.
+
+### Requested implementation scope, when resumed
+
+- [ ] Add an explicit, controller- and mouse-accessible Jump to playing action. Reveal the actual playing occurrence in YouTube Music; for Spotify, clearly present the separate current track rather than labelling the first upcoming item as playing. Opening Queue may reveal the current item once, but playback ticks, likes and queue changes must not repeatedly steal focus or scroll users away from what they are browsing.
+- [ ] Reuse indexed reveal-and-focus for an explicit jump where suitable. If a non-focus-moving reveal is needed while retaining virtualization, assess a narrow shared extension to the existing reveal contract rather than widget-specific scrolling. Do not claim the Game Help request already supports indexed lists. A normal bounded list remains an option only after measuring update cost, declared-node limits and controller behaviour.
+- [ ] Diagnose full-list refreshes and preserve occurrence identity, selection, scroll position and usable old content during updates. Fix YouTube Music's key churn; inspect Spotify's invalidation/loading transitions separately. Use existing content-only updates for metadata/playing/liked-state changes. Membership changes must still reject stale actions safely. Do not replace the list type solely because a cursor wrapper exists.
+- [ ] Reduce the local YouTube Music queue cap to 100 consistently across playback, insertion, shuffle/original-order handling, service limits and user messages. Bound Spotify's consumed/displayed observation to at most 100 where returned, without promising 100 entries from its non-paginated endpoint or changing the remote queue's capacity. Separate queue bounds from unrelated library/search limits. Define truncation visibly and preserve the current occurrence.
+- [ ] Add Remove from queue for YouTube Music using occurrence identity, including repeated song IDs. Keep shuffled and original order consistent. Define current-track removal explicitly and verify next/end/repeat/empty-queue behaviour without accidental playback changes. For Spotify, do not offer a misleading local-only Remove action; retain this as provider-limited unless a documented supported operation becomes available. Replacing playback with a filtered snapshot is not equivalent and is outside this approval.
+- [ ] Add YouTube Music Like/Unlike and Spotify Save/Remove from liked songs, with visible current state on the player and appropriate row/context actions. Distinguish YouTube Music liking from Add to library; do not treat them as interchangeable. Reuse existing authenticated adapters and verify pinned dependency/account support. Spotify needs the appropriate library read/modify consent and a clear reconnect path for existing accounts; avoid unrelated scopes.
+- [ ] Use Spotify's current library save/remove/contains endpoints rather than building on deprecated saved-track APIs. Batch visible-track state checks where supported, cache per account, invalidate affected entries after writes, coalesce duplicate clicks and reject late results after account/song switches. Report success only after acknowledgement; preserve a usable state on failure.
+- [ ] Ensure playlist Play next in YouTube Music uses the first playable songs in provider playlist order, bounded by the 100-entry policy, rather than the visible page, current selection or a random subset. Preserve their relative order even when shuffle is enabled and clarify any truncation. Verify album handling too. Spotify's available operation is Add to queue, not guaranteed Play next; playlist expansion would require bounded individual additions and must not be presented as an atomic or insert-next API. Do not add bulk Spotify queue traffic without resolving that separate workflow.
+- [ ] Test duplicate occurrences, removing before/after/current, natural track changes, shuffle/repeat, maximum-size queues, playlist beginnings, partial/empty playlists, slow/failing responses, cancellation, rapid repeated actions, account switches, hide/reopen and restart. Use deterministic service fakes for repetition; avoid live playlist/rating/queue mutations during investigation. Perform native visual and controller/mouse workflow checks before completion when implementation resumes.
+
+### Additional shared API opportunities to evaluate, not automatically approved feature expansion
+
+- Reuse whole-entry keyboard suggestions for recent searches or already-loaded music names, without a network search on every keystroke.
+- Reuse existing context actions, toasts and busy/disabled states for removal and save feedback; these APIs already exist. Keep playback controls responsive during unrelated browsing/account writes.
+- Evaluate shared rich previews after that capability is available for long titles, album details and metadata; do not build a music-only popover or make it a dependency of queue fixes.
+
+Read-only references checked: [Spotify queue](https://developer.spotify.com/documentation/web-api/reference/get-queue), [add to queue](https://developer.spotify.com/documentation/web-api/reference/add-to-queue), [save library items](https://developer.spotify.com/documentation/web-api/reference/save-library-items), [check saved state](https://developer.spotify.com/documentation/web-api/reference/check-library-contains), and [ytmusicapi library operations](https://github.com/sigma67/ytmusicapi/blob/main/ytmusicapi/mixins/library.py). Recheck provider/dependency compatibility when implementing.
 
 ## Shared host scroll-container edge cues
 
