@@ -65,7 +65,10 @@ public sealed partial class PobWidget
         lock (gate)
         {
             if (busy) return ValueTask.FromResult(TextSuggestionResult.NotAvailable);
-            if (query.FieldId == "pob.gem-search" && detailKind == "gem-picker" && query.SourceKey == gemSuggestionSource)
+            if (query.FieldId == "pob.unified.search" && unifiedSearchOpen && UnifiedCacheCurrent(unifiedCache) &&
+                LifecycleState == WidgetLifecycleState.Interactive && query.SourceKey == unifiedSuggestionSource)
+                search = unifiedSuggestions;
+            else if (query.FieldId == "pob.gem-search" && detailKind == "gem-picker" && query.SourceKey == gemSuggestionSource)
                 search = gemSuggestions;
             else if (activeSearchSuggestions.Contains(query.FieldId) && searchSuggestions.TryGetValue(query.FieldId, out var cache) &&
                 cache.Context == SuggestionContext(query.FieldId) && cache.Source == query.SourceKey && Equals(cache.Owner, SuggestionOwner(query.FieldId)))

@@ -94,7 +94,7 @@ public sealed partial class PobWidget
             gemInspection=null;
             var context=inspection.Query.Context!;
             Edit(new{op="gem-manage",mode=context.Gem==0?"add":"replace",group=context.Group,gem=context.Gem,
-                gemId=inspection.Entry.Inspection!.Id},skillDestination:"skill-manage");
+                gemId=inspection.Entry.Inspection!.Id},skillDestination:"skill");
         }
         // Inspection owns its scope. Background/superseded callbacks cannot alter its picker or build.
         return true;

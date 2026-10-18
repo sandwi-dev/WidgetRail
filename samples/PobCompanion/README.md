@@ -39,4 +39,4 @@ These widgets cover build planning and comparison, with some desktop PoB feature
 
 Calculations and editing tools come from **Path of Building Community**, building on **Openarl's** original project. Path of Exile, its data, and its artwork belong to **Grinding Gear Games**. The planning screenshots use **Ghost Activity's** public Martial Artist guide. See [full credits and licensing](DEVELOPMENT.md#credits).
 
-[PoB Redux](https://github.com/pobredux/pob-redux) inspired the gem-tag search and changed-configuration filtering workflows. WidgetRail adapts those ideas for controller use; calculations and eligibility continue to come from PoB.
+[PoB Redux](https://github.com/pobredux/pob-redux) inspired the gem-tag search, changed-configuration filtering, inline skill editing, unified search and build-comparison workflows. WidgetRail adapts those ideas for controller use; calculations and eligibility continue to come from PoB.

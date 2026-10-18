@@ -86,11 +86,15 @@ public sealed partial class PobWidget
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
         if(busy||focusRequestSequence==0)return null;
+        if(detailKind=="build-comparison")return BuildComparisonFocusRequest();
+        if(UnifiedIndexedFocusRequest() is {} unified)return unified;
         if(CanReplaceTradeComparison&&pendingBefore is not null)return new(){RequestId=focusRequestSequence,GroupId="pob.item.compare.controls"};
         if(detailKind=="library"&&libraryOpenFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.library.open-action"};
         if(modifierFocusRequested&&section=="Configuration"&&configSection=="Custom modifiers"&&string.IsNullOrWhiteSpace(filter))return new(){RequestId=focusRequestSequence,GroupId="pob.custom.edit-tools"};
         if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};
         if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.history"};
+        if(detailKind=="skill"&&skillWorkspaceFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.detail.scroll"};
+        if(detailKind=="skill-options")return new(){RequestId=focusRequestSequence,GroupId="pob.skill-options.content"};
         if(detailKind=="skill-manage"&&skillOrderFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.group-order.actions"};
         if(detailKind is "skill-manage" or "gem-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="gem-picker"?"pob.gem-picker.tools":"pob.skill-manage.tools"};
         if(detailKind is "item-manage" or "feature-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="feature-picker"?"pob.choice-tools":"pob.item-edit.controls"};

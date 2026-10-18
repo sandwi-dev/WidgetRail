@@ -50,11 +50,26 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
     public long WorkingSet { get { if (process is not { HasExited: false } p) return 0; p.Refresh(); return p.WorkingSet64; } }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task<PobResult> ExecuteAsync(object command, CancellationToken token, string? expectedState = null, bool compare = false)
+    public Task<PobResult> ExecuteAsync(object command, CancellationToken token, string? expectedState = null, bool compare = false) =>
+        ExecuteCoreAsync(command, token, expectedState, compare, readOnly: false);
+
+    /// <summary>Calculate another build inside the existing serialized engine, then restore the caller's exact baseline.
+    /// Interrupted projections retire the process and retain only that baseline for the next operation.</summary>
+    internal Task<PobResult> ProjectReadOnlyAsync(object command, CancellationToken token, string expectedState, bool compare = false)
+    {
+        var request = JsonSerializer.SerializeToElement(command, Json);
+        if (request.ValueKind != JsonValueKind.Object || !request.TryGetProperty("op", out var operation) ||
+            operation.ValueKind != JsonValueKind.String || operation.GetString() is not ("load" or "loadout"))
+            throw new IOException("Read-only comparison supports build and loadout projections only.");
+        return ExecuteCoreAsync(command, token, expectedState, compare, readOnly: true);
+    }
+
+    private async Task<PobResult> ExecuteCoreAsync(object command, CancellationToken token, string? expectedState, bool compare, bool readOnly)
     {
         await serial.WaitAsync(token);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(CommandTimeout);
+        var baselineRejected = false;
         try
         {
             var started = await EnsureStartedAsync(deadline.Token);
@@ -64,10 +79,11 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
             if (restore is not null && (started || restore != lastXml))
             {
                 try { await ExchangeAsync(new { op = "load", xml = restore, name = "Working build" }, deadline.Token); }
-                catch (PobCommandException error) when (started)
+                catch (PobCommandException error) when (started || readOnly)
                 {
                     // Do not keep retrying a failed cached session ahead of a
                     // caller's explicit saved-build recovery attempt.
+                    baselineRejected = true;
                     lastXml = null; Retire();
                     throw new IOException("The previous engine session could not be restored. Reopen the saved build to continue.", error);
                 }
@@ -77,15 +93,23 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
                 var request = JsonSerializer.SerializeToNode(command, Json)!.AsObject();
                 request["compare"] = true; command = request;
             }
-            return await ExchangeAsync(command, deadline.Token);
+            var projected = await ExchangeAsync(command, deadline.Token);
+            if (readOnly)
+            {
+                await ExchangeAsync(new { op = "load", xml = expectedState!, name = "Working build" }, deadline.Token);
+                deadline.Token.ThrowIfCancellationRequested();
+                lastXml = expectedState;
+            }
+            return projected;
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
+            if (readOnly) lastXml = baselineRejected ? null : expectedState;
             Retire();
             throw new IOException("The build engine did not respond in time. Retry the action; completed changes remain saved.");
         }
-        catch (PobCommandException) { throw; }
-        catch { Retire(); throw; }
+        catch (PobCommandException) { if (readOnly) { lastXml = baselineRejected ? null : expectedState; Retire(); } throw; }
+        catch { if (readOnly) lastXml = baselineRejected ? null : expectedState; Retire(); throw; }
         finally { serial.Release(); }
     }
 

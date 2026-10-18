@@ -42,7 +42,7 @@ internal static class SkillManagementTests
                 check(ReferenceEquals(Result(),before),"Inspecting a candidate performs no engine edit");
                 var apply=Nodes(View().Root).Single(n=>n.ActionId?.StartsWith("gem-inspection-apply.",StringComparison.Ordinal)==true).ActionId!;
                 await Action(apply);
-                check(Get("gemInspection") is null&&(string)Get("detailKind")! == "skill-manage","Explicit inspector apply returns to the existing skill management workflow");
+                check(Get("gemInspection") is null&&(string)Get("detailKind")! == "skill","Explicit inspector apply returns to inline group editing");
             }
             else {await Until(()=>!ReferenceEquals(Result(),before));await Idle();}
         }
@@ -55,6 +55,8 @@ internal static class SkillManagementTests
             check(Main()==main,"Creating a group preserves the main calculation skill");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.group-name")&&Nodes(View().Root).Any(n=>n.Id=="pob.gem-add"),"New group immediately offers label and Add gem controls");
             await Action("group-name","Controller group");check(Group().GetProperty("title").GetString()=="Controller group","Rename applies the authored label");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.inventory.rows"),"Creating and renaming retain the group rail");
+            await Action("group-manage");
             if(Result().State.GetProperty("skillWeaponSets").GetBoolean())
             {
                 check(!Nodes(View().Root).Any(n=>n.Id=="pob.group-slot")&&Nodes(View().Root).Count(n=>n.Id.StartsWith("pob.group-weapon-set."))==2,"Beta exposes weapon sets instead of removed equipment slot control");
@@ -67,6 +69,7 @@ internal static class SkillManagementTests
             var slots=Result().State.GetProperty("skillSlots").EnumerateArray().ToArray();
             var equipmentSlot=Array.FindIndex(slots,s=>s.GetProperty("name").GetString()=="Weapon 1");
             if(equipmentSlot>=0){await Action("group-slot."+equipmentSlot);check(Group().GetProperty("slot").GetString()=="Weapon 1","Equipment assignment uses the upstream slot selector");}
+            await Action("back");
             await Action("gem-add");
             var catalog=(JsonElement[])Get("gemCatalog")!;
             check(catalog.Length>50&&Nodes(View().Root).Any(n=>n.Id=="pob.gems"&&n.IndexedCollection is not null),"Gem picker exposes the upstream catalog as a virtualized list");
@@ -190,6 +193,11 @@ internal static class SkillManagementTests
                 check(rejectedMetadata,"Malformed declared gem search metadata is rejected");
             }
             await Action("gem-search","Fireball");
+            var retainedQuery=Get("gemQuery");_ = View();retainedQuery=Get("gemQuery");
+            await Action("back");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.inventory.rows")&&Nodes(View().Root).Any(n=>n.Id=="pob.gem-add"),"Picker Back returns to inline editing with the group list retained");
+            await Action("gem-add");_ = View();
+            check((string)Get("gemSearch")! == "Fireball"&&ReferenceEquals(retainedQuery,Get("gemQuery")),"Reopening the unchanged picker retains search and indexed scroll ownership");
             check(Nodes(View().Root).Single(n=>n.Id=="pob.gems").IndexedCollection!.Count>0,"Gem search retains matching results without pagination");
             var active=Array.FindIndex(catalog,g=>g.GetProperty("name").GetString()=="Fireball"&&!g.GetProperty("support").GetBoolean());
             if(active<0)active=Array.FindIndex(catalog,g=>!g.GetProperty("support").GetBoolean());
@@ -199,7 +207,13 @@ internal static class SkillManagementTests
             await Action("gem-add");catalog=(JsonElement[])Get("gemCatalog")!;
             var support=Array.FindIndex(catalog,g=>g.GetProperty("support").GetBoolean());
             await PickIndexedGem(support,inspect:false);check(Group().GetProperty("gems").GetArrayLength()==2,"Support gem is added to the existing group");
-            await Action("gem-enabled.2");check(!Group().GetProperty("gems")[1].GetProperty("enabled").GetBoolean(),"Gem enable toggle edits the selected gem");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.gem-replace.1")&&Nodes(View().Root).Any(n=>n.Id=="pob.inventory.rows"),"Routine replace and enable actions are beside the selected group");
+            var workspaceFixtures=Environment.GetEnvironmentVariable("POB_GEM_INSPECTION_FIXTURES");
+            if(!string.IsNullOrWhiteSpace(workspaceFixtures))File.WriteAllBytes(Path.Combine(workspaceFixtures,"poe"+game+"-skill-workspace.json"),SnapshotJson.Serialize(View()));
+            var focusBeforeEnable=View().FocusGroupEntryRequest?.RequestId;
+            await Action("gem-enabled.2");
+            check(View().FocusGroupEntryRequest?.RequestId==focusBeforeEnable,"Inline gem toggle does not introduce a new focus transfer");
+            check(!Group().GetProperty("gems")[1].GetProperty("enabled").GetBoolean(),"Gem enable toggle edits the selected gem");
             await Action("undo");check(Group().GetProperty("gems")[1].GetProperty("enabled").GetBoolean(),"Undo restores gem enable state");
             await Action("redo");check(!Group().GetProperty("gems")[1].GetProperty("enabled").GetBoolean(),"Redo reapplies gem enable state");
             await Action("gem-replace.1");catalog=(JsonElement[])Get("gemCatalog")!;

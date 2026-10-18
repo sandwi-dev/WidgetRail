@@ -14,6 +14,8 @@ public sealed partial class PobWidget
         {
             if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
+            skillWorkspaceFocusRequested=false;
+            if(HandleUnifiedSearchAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleItemCandidateInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleGemInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleWebsiteAction(action))return ValueTask.CompletedTask;
@@ -48,6 +50,7 @@ public sealed partial class PobWidget
                 return ValueTask.CompletedTask;
             }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
+            if(HandleBuildComparisonAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleGameExportAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleWebsitePreference(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleSetAction(action)){Invalidate();return ValueTask.CompletedTask;}
@@ -109,9 +112,6 @@ public sealed partial class PobWidget
             else if(id=="skill-options" && detailKind=="skill") OpenSkillOptions();
             else if(parts[0]=="main-group"&&parts.Length==2&&int.TryParse(parts[1],out var mainGroup)&&A(State,"skills").Any(s=>I(s,"id")==mainGroup))
                 Edit(new{op="skill",id=mainGroup,field="main"});
-            else if(parts[0]=="skill-option"&&parts.Length==4&&detailKind=="skill-options"&&
-                int.TryParse(parts[1],out var group)&&group==detailId&&group==inspectedSkillGroup&&int.TryParse(parts[3],out var optionValue))
-                Edit(new{op="skill-option",group,control=parts[2],value=optionValue});
             else if(parts is ["skill-number",var numberGroup,var numberControl]&&detailKind=="skill-options"&&
                 int.TryParse(numberGroup,out var numericGroup)&&numericGroup==detailId&&numericGroup==inspectedSkillGroup&&
                 inspectedSkillOptions.EnumerateArray().Any(o=>S(o,"id")==numberControl&&S(o,"kind")=="number"))
@@ -309,6 +309,9 @@ public sealed partial class PobWidget
                 await Task.WhenAll(messages.Skip(offset).Take(Math.Min(4,messages.Count-1-offset))
                     .Select(message=>session.PostMessageAsync(message,token).AsTask()));
             await session.PostMessageAsync(messages[^1],token);
+            int? searchNode;lock(gate)searchNode=unifiedMapNode;
+            if(searchNode is {} target&&target==selected)
+            {await session.PostMessageAsync(new{type="select",id=target},token);lock(gate)if(unifiedMapNode==target)unifiedMapNode=null;}
             sentMapSession=session;sentMapGeometry=geometry;sentMapState=snapshot;
         }
         catch(Exception error) when(error is WidgetCapabilityException or IOException or ObjectDisposedException)

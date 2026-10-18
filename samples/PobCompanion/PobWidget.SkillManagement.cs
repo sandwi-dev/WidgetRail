@@ -23,7 +23,10 @@ public sealed partial class PobWidget
     private string gemSearch="",gemType="all";
     private string gemSort="name";
     private int pickerGem;
+    private int gemPickerGroup;
+    private string? gemPickerXml;
     private bool skillOrderFocusRequested;
+    private bool skillWorkspaceFocusRequested;
     private (int Group,int Gem,string Name)? skillRemoval;
     private sealed record GemEntry(string Key,string Name,string Action,string Description="",GemInspectionData? Inspection=null);
     private sealed record GemQuery(GemEntry[] Entries,GemPickerContext? Context=null);
@@ -33,6 +36,7 @@ public sealed partial class PobWidget
     private bool HandleSkillManagementAction(WidgetActionEvent action)
     {
         if(result is null)return false;
+        if(HandleInlineSkillOption(action))return true;
         var id=action.ActionId;var parts=id.Split('.');
         if(skillRemoval is {} removal)
         {
@@ -42,15 +46,15 @@ public sealed partial class PobWidget
                 skillRemoval=null;
                 if(removal.Group==0)Edit(new{op="skill-group",mode="delete-all"},skillDestination:"skill");
                 else if(removal.Gem==0)Edit(new{op="skill-group",mode="delete",group=removal.Group},skillDestination:"skill");
-                else Edit(new{op="gem-manage",mode="delete",group=removal.Group,gem=removal.Gem},skillDestination:"skill-manage");
+                else Edit(new{op="gem-manage",mode="delete",group=removal.Group,gem=removal.Gem},skillDestination:"skill");
             }
             return true;
         }
-        if(id=="group-create"){Edit(new{op="skill-group",mode="create"},skillDestination:"skill-manage");return true;}
-        if(id=="group-paste"){Edit((Func<object>)(()=>new{op="skill-group",mode="paste",text=readClipboard()}),skillDestination:"skill-manage");return true;}
+        if(id=="group-create"){Edit(new{op="skill-group",mode="create"},skillDestination:"skill");return true;}
+        if(id=="group-paste"){Edit((Func<object>)(()=>new{op="skill-group",mode="paste",text=readClipboard()}),skillDestination:"skill");return true;}
         if(id=="group-delete-all"){skillRemoval=(0,0,"All editable groups in this skill set. Automatically granted groups are kept.");return true;}
-        if(id=="back"&&detailKind is "skill-manage" or "gem-picker")
-        {detailKind=detailKind=="gem-picker"?"skill-manage":"skill";focusRequestSequence++;return true;}
+        if(id=="back"&&detailKind is "skill-manage" or "gem-picker" or "skill-options")
+        {detailKind="skill";skillWorkspaceFocusRequested=true;focusRequestSequence++;return true;}
         if(detailKind=="gem-picker")
         {
             if(id=="gem-search"){gemSearch=action.CommittedText??"";return true;}
@@ -66,17 +70,17 @@ public sealed partial class PobWidget
             }
             if(parts is ["gem-type",var type]&&type is "all" or "active" or "support"){gemType=type;RefreshGemSuggestions();return true;}
             if(parts is ["gem-pick",var choice]&&int.TryParse(choice,out var option)&&option>=0&&option<gemCatalog.Length)
-            {Edit(new{op="gem-manage",mode=pickerGem==0?"add":"replace",group=detailId,gem=pickerGem,gemId=S(gemCatalog[option],"id")},skillDestination:"skill-manage");return true;}
+            {Edit(new{op="gem-manage",mode=pickerGem==0?"add":"replace",group=detailId,gem=pickerGem,gemId=S(gemCatalog[option],"id")},skillDestination:"skill");return true;}
         }
         var group=A(State,"skills").FirstOrDefault(g=>I(g,"id")==detailId);
         if(group.ValueKind!=JsonValueKind.Object)return false;
         if(id=="group-manage"){detailKind="skill-manage";focusRequestSequence++;return true;}
-        if(id=="group-name"){Edit(new{op="skill-group",mode="rename",group=detailId,name=action.CommittedText??""},skillDestination:"skill-manage");return true;}
+        if(id=="group-name"){Edit(new{op="skill-group",mode="rename",group=detailId,name=action.CommittedText??""},skillDestination:detailKind=="skill-manage"?"skill-manage":"skill");return true;}
         if(id=="group-count"&&double.TryParse(action.CommittedText,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out var count))
-        {Edit(new{op="skill-group",mode="count",group=detailId,value=count},skillDestination:"skill-manage");return true;}
-        if(id=="group-duplicate"){Edit(new{op="skill-group",mode="duplicate",group=detailId},skillDestination:"skill-manage");return true;}
+        {Edit(new{op="skill-group",mode="count",group=detailId,value=count},skillDestination:detailKind=="skill-manage"?"skill-manage":"skill");return true;}
+        if(id=="group-duplicate"){Edit(new{op="skill-group",mode="duplicate",group=detailId},skillDestination:detailKind=="skill-manage"?"skill-manage":"skill");return true;}
         if(parts is ["group-weapon-set",var setValue]&&int.TryParse(setValue,out var weaponSet)&&weaponSet is 1 or 2)
-        {Edit(new{op="skill-group",mode="weapon-set",group=detailId,set=weaponSet},skillDestination:"skill-manage");return true;}
+        {Edit(new{op="skill-group",mode="weapon-set",group=detailId,set=weaponSet},skillDestination:detailKind=="skill-manage"?"skill-manage":"skill");return true;}
         if(id=="group-copy")
         {
             var target=detailId;
@@ -85,26 +89,31 @@ public sealed partial class PobWidget
         }
         if(id=="group-delete"){if(!B(group,"generated"))skillRemoval=(detailId,0,S(group,"title"));return true;}
         if(id is "group-up" or "group-down")
-        {skillOrderFocusRequested=true;Edit(new{op="skill-group",mode="move",group=detailId,direction=id=="group-up"?-1:1},skillDestination:"skill-manage");return true;}
+        {skillOrderFocusRequested=true;Edit(new{op="skill-group",mode="move",group=detailId,direction=id=="group-up"?-1:1},skillDestination:detailKind=="skill-manage"?"skill-manage":"skill");return true;}
         if(parts is ["group-slot",var slotValue]&&int.TryParse(slotValue,out var slot)&&slot>=0&&slot<A(State,"skillSlots").Length)
-        {Edit(new{op="skill-group",mode="slot",group=detailId,slot=S(A(State,"skillSlots")[slot],"name")},skillDestination:"skill-manage");return true;}
-        if(id=="gem-add"){OpenGemPicker(0);return true;}
+        {Edit(new{op="skill-group",mode="slot",group=detailId,slot=S(A(State,"skillSlots")[slot],"name")},skillDestination:detailKind=="skill-manage"?"skill-manage":"skill");return true;}
+        if(id=="gem-add"){if(!B(group,"generated"))OpenGemPicker(0);return true;}
         if(parts.Length==2&&int.TryParse(parts[1],out var gemId)&&A(group,"gems").Any(g=>I(g,"id")==gemId))
         {
-            if(parts[0]=="gem-replace"){OpenGemPicker(gemId);return true;}
+            if(parts[0]=="gem-replace"){if(!B(group,"generated"))OpenGemPicker(gemId);return true;}
             if(parts[0]=="gem-remove"){if(!B(group,"generated"))skillRemoval=(detailId,gemId,S(A(group,"gems").First(g=>I(g,"id")==gemId),"name"));return true;}
-            if(parts[0]=="gem-enabled"){Edit(new{op="gem-manage",mode="enabled",group=detailId,gem=gemId},skillDestination:"skill-manage");return true;}
+            if(parts[0]=="gem-enabled"){Edit(new{op="gem-manage",mode="enabled",group=detailId,gem=gemId},skillDestination:"skill");return true;}
         }
         return false;
     }
 
-    private void OpenGemPicker(int gem)=>Work(async token=>
+    private void OpenGemPicker(int gem)
     {
-        var group=detailId;
-        var count=A(A(State,"skills").First(g=>I(g,"id")==group),"gems").Length;
-        var response=await engine.ExecuteAsync(new{op="gem-catalog",group,gem=gem==0?count+1:gem},token,result!.Xml);
-        lock(gate){SetGemCatalog(response.State);gemSearch="";gemType=count==0?"active":"all";gemSort="name";pickerGem=gem;detailKind="gem-picker";RefreshGemSuggestions();focusRequestSequence++;}
-    },"Loading gems…");
+        if(gemPickerGroup==detailId&&pickerGem==gem&&gemPickerXml==result!.Xml&&gemCatalog.Length>0)
+        {detailKind="gem-picker";focusRequestSequence++;return;}
+        var group=detailId;var xml=result!.Xml;
+        Work(async token=>
+        {
+            var count=A(A(State,"skills").First(g=>I(g,"id")==group),"gems").Length;
+            var response=await engine.ExecuteAsync(new{op="gem-catalog",group,gem=gem==0?count+1:gem},token,xml);
+            lock(gate){SetGemCatalog(response.State);gemSearch="";gemType=count==0?"active":"all";gemSort="name";pickerGem=gem;gemPickerGroup=group;gemPickerXml=xml;detailKind="gem-picker";RefreshGemSuggestions();focusRequestSequence++;}
+        },"Loading gems…");
+    }
 
     private WidgetElement SkillManagementWorkspace()
     {
@@ -142,36 +151,8 @@ public sealed partial class PobWidget
         }
         if(A(State,"skills").Any(g=>!B(g,"generated")))properties.Add(Button("Delete all editable groups…","group-delete-all"));
         properties.Add(Text("Changes save immediately. Undo and Redo are available above.","group-save-hint","pob-small pob-muted"));
-        var cards=SkillDetails().Skip(5).ToArray();var rows=new List<WidgetElement>();
-        for(var i=0;i<gems.Length;i++)
-        {
-            var gem=gems[i];var gemId=I(gem,"id");
-            var actions=new List<WidgetElement>{UI.Switch("Enabled",B(gem,"enabled"),"gem-enabled."+gemId,"pob.gem-enabled."+gemId).Classes("pob-toggle")};
-            if(!generated){actions.Add(Button("Replace gem","gem-replace."+gemId));actions.Add(Button("Remove…","gem-remove."+gemId));}
-            var card=(ContainerElement)cards[i];
-            rows.Add(card with{Children=card.Children.Append(UI.Row("pob.gem-actions."+gemId,actions.ToArray()).Classes("pob-toolbar")).ToArray()});
-        }
-        if(gems.Length==0)rows.Add(Text("No gems yet. Add an active skill, then its support gems.","group-empty","pob-muted"));
-        var heading=generated?Text("Granted skills","group-gems-title","pob-heading"):Button("Add gem","gem-add");
-        var quick=NeedsQuickControls(gems.Length*3);
-        var first=gems.Length>0?"pob.gem."+I(gems[0],"id")+(B(gems[0],"levelReadOnly")?"quality":"level"):"pob.gem-add";
-        ContainerElement tools=UI.Stack("pob.skill-manage.gem-tools",heading);
-        ContainerElement gemRows=UI.VerticalScroll("pob.skill-manage.gems",rows.Select(row=>LinkLeft(row,"pob.skill-manage.tools")).ToArray()).Classes("pob-scroll");
-        if(!generated)tools=QuickControls(tools,"pob.gem-add","pob.skill-manage.gems","Gems",quick);
-        if(gems.Length>0)gemRows=QuickControls(gemRows,first,"pob.skill-manage.gem-tools","Add gem",quick&&!generated);
-        var right=UI.Stack("pob.skill-manage.right",
-            tools,gemRows).RememberChildFocus(generated?first:"pob.gem-add").Classes("pob-panel","pob-tree-main");
-        return Split("skill-manage",UI.VerticalScroll("pob.skill-manage.tools",properties.Select(LinkToGems).ToArray()).RememberChildFocus("pob.group-name").Classes("pob-scroll","pob-panel"),right,1,2);
+        return UI.VerticalScroll("pob.skill-manage.tools",properties.ToArray()).RememberChildFocus("pob.group-name").Classes("pob-scroll");
     }
-
-    private static WidgetElement LinkToGems(WidgetElement element)=>element switch
-    {
-        ButtonElement button=>button.FocusRight("pob.skill-manage.right"),
-        TextEntryElement field=>field.FocusRight("pob.skill-manage.right"),
-        SelectElement select=>select.FocusRight("pob.skill-manage.right"),
-        ContainerElement container=>container with{Children=container.Children.Select(LinkToGems).ToArray()},
-        _=>element,
-    };
 
     private WidgetElement GemPickerWorkspace()
     {
@@ -196,7 +177,7 @@ public sealed partial class PobWidget
                 UI.Text("","pob.gem-preview.empty"),"pob.gem-preview") with{Preview=new(Width:420,Height:280)}).Classes("pob-workspace");
         if(entries.Length>0)results=QuickControls(results,"pob.gems","pob.gem-picker.tools","Search / type",NeedsQuickControls(entries.Length));
         return UI.Stack("pob.gem-picker",
-            QuickControls(UI.Stack("pob.gem-picker.tools",UI.Row("pob.gem-picker.header",Button("Back to group","back"),Text(pickerGem==0?"Add gem":"Replace gem","gem-picker.title","pob-heading")).Classes("pob-toolbar"),
+            QuickControls(UI.Stack("pob.gem-picker.tools",UI.Row("pob.gem-picker.header",Button("Back to group","back"),Text((pickerGem==0?"Add gem · ":"Replace gem · ")+S(A(State,"skills").FirstOrDefault(g=>I(g,"id")==detailId),"title"),"gem-picker.title","pob-heading")).Classes("pob-toolbar"),
                 UI.Grid("pob.gem-picker.search-row",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
                     Field("Search gems",UI.TextEntry(gemSearch,"Name or tag","gem-search","pob.gem-search",100).Suggest(gemSuggestionSource).Classes("pob-input"),"gem-search"),
                     UI.Select("Type",new[]{("all","All gems"),("active","Active skills"),("support","Support gems")}.Select(x=>new SelectOption(x.Item1,x.Item2,"gem-type."+x.Item1,x.Item1==gemType)).ToArray(),"pob.gem-type").Classes("pob-select").InGrid(column:1)).Spacing(0,12),

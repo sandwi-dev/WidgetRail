@@ -11,7 +11,7 @@ public sealed partial class PobWidget
     private sealed record BuildImport(string TargetId,string OriginalXml,PobResult Loaded,int Renamed);
     private BuildImport? pendingImport;
     private const string OnlineImportHelp="Find a build on poe.ninja, or use pob.cool to import your character. Copy its PoB code, then return here and choose Paste build from clipboard.";
-    private bool ManagementView=>detailKind is "menu" or "library" or "game-export" or "sets";
+    private bool ManagementView=>detailKind is "menu" or "library" or "game-export" or "sets" or "build-comparison";
 
     private WidgetElement OnlineBuildLinks()=>UI.Stack("pob.import.websites",
         WebsitePreference(),
@@ -60,7 +60,7 @@ public sealed partial class PobWidget
         return UI.Stack("pob.build-menu",ManagementHeader("Build & import"),
             UI.VerticalScroll("pob.manage.scroll",
                 ManagementSection("Your builds","library",UI.Row("pob.manage.library.actions",
-                    Button($"Saved builds ({savedBuilds.Length})","library"),Button("New build","new"),Button("Manage sets…","sets")).Classes("pob-toolbar")),
+                    Button($"Saved builds ({savedBuilds.Length})","library"),Button("New build","new"),Button("Manage sets…","sets"),Button("Compare builds & loadouts","build-comparison").Disabled(pastedItem is not null)).Classes("pob-toolbar")),
                 ManagementSection("Current build","character",character.ToArray()),
                 ManagementSection("Import a build","import",
                     OnlineBuildLinks(),
@@ -85,6 +85,7 @@ public sealed partial class PobWidget
             UI.Stack("pob.library.open-action",Button("Open build","saved."+selected.Id,"library.open").FocusLeft("pob.saved-builds")).RememberChildFocus("pob.library.open"),
             Field("Build name",UI.TextEntry(selected.Name,"Build name","library-rename","pob.library.rename",100).FocusLeft("pob.saved-builds").Classes("pob-input"),"library-name"),
             Button("Duplicate build","library-duplicate").FocusLeft("pob.saved-builds"),
+            Button("Compare builds & loadouts","build-comparison").Disabled(result is null||pendingBefore is not null||pastedItem is not null).FocusLeft("pob.saved-builds"),
             Button("Delete build…","library-delete").FocusLeft("pob.saved-builds"))
             .RememberChildFocus("pob.library.open").Classes("pob-panel","pob-library-detail");
     }

@@ -19,7 +19,7 @@ public sealed partial class PobWidget
     {
         var before=result!;
         var next=await engine.ExecuteAsync(command is Func<object> create?create():command,token,before.Xml);
-        var options=await ReadVisibleSkillOptionsAsync(next,token);
+        var options=await ReadVisibleSkillOptionsAsync(next,token,skillDestination);
         var gem=await ReadVisibleGemOptionsAsync(next,token);
         await RefreshItemEditorAsync(next,token);
         var inventory=detailKind=="inventory"||detailKind=="item-author"&&authoringId>0
@@ -46,11 +46,14 @@ public sealed partial class PobWidget
             if(detailKind=="sets" && I(next.State,"editedSetId")>0){managedSetId=I(next.State,"editedSetId");newSetName="";}
             if(skillDestination is not null)
             {
-                detailId=I(next.State,"editedSkillGroup");selections["skill"]=detailId;
-                detailKind=detailId>0?skillDestination:"";focusRequestSequence++;
+                var editedGroup=I(next.State,"editedSkillGroup");
+                var changedTarget=detailId!=editedGroup||detailKind!=skillDestination;
+                detailId=editedGroup;selections["skill"]=detailId;
+                detailKind=detailId>0?skillDestination:"";
+                if(changedTarget||skillOrderFocusRequested){focusRequestSequence++;skillWorkspaceFocusRequested=detailKind=="skill";}
             }
             else if(closeDetail)detailKind="";
-            else PublishVisibleSkillOptions(options);
+            PublishVisibleSkillOptions(options);
         }
         await RefreshCommittedMapAsync(token);
     },"Updating build…");
@@ -84,18 +87,21 @@ public sealed partial class PobWidget
         await RefreshCommittedMapAsync(token);
     },backwards?"Undoing change…":"Redoing change…");
 
-    private async Task<JsonElement?> ReadVisibleSkillOptionsAsync(PobResult next,CancellationToken token)
+    private async Task<JsonElement?> ReadVisibleSkillOptionsAsync(PobResult next,CancellationToken token,string? skillDestination=null)
     {
-        if(detailKind!="skill-options")return null;
-        if(!A(next.State,"skills").Any(s=>I(s,"id")==detailId))return null;
-        return await ReadSkillOptionsAsync(detailId,next.Xml,token);
+        var kind=skillDestination??detailKind;
+        if(section!="Skills"||kind is not ("skill" or "skill-options" or "skill-manage"))return null;
+        var group=skillDestination is null?detailId:I(next.State,"editedSkillGroup");
+        if(!A(next.State,"skills").Any(s=>I(s,"id")==group))return null;
+        if(I(next.State,"skillOptionsGroup")==group&&next.State.TryGetProperty("skillOptions",out var options))return options;
+        return await ReadSkillOptionsAsync(group,next.Xml,token);
     }
 
     private void PublishVisibleSkillOptions(JsonElement? options)
     {
-        if(detailKind!="skill-options")return;
-        if(options is {} value){inspectedSkillOptions=value;inspectedSkillGroup=detailId;}
-        else detailKind="";
+        if(section!="Skills"||detailKind is not ("skill" or "skill-options" or "skill-manage"))return;
+        if(options is {} value){inspectedSkillOptions=value;inspectedSkillGroup=detailId;inspectedSkillXml=result!.Xml;inspectedSkillDocument=documentId;}
+        else {inspectedSkillGroup=0;inspectedSkillXml=null;if(detailKind=="skill-options")detailKind="";}
     }
 
     private async Task RefreshCommittedMapAsync(CancellationToken token)

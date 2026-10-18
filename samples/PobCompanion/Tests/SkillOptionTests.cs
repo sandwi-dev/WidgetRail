@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using System.Xml.Linq;
 using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetProtocol;
@@ -71,13 +72,26 @@ internal static class SkillOptionTests
         try
         {
             await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);await Idle();await Action("section.2");await Action("skill."+stages);await Action("skill-options");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.inventory.rows"),"Uncommon skill options retain the group list");
             var input=Nodes(View().Root).Single(n=>n.Id=="pob.option.mainSkillStageCount");
             check(input.Kind==ViewNodeKind.TextEntry,"Stages uses a real text-entry control in the selected skill's options");
             await Action($"skill-number.{stages}.mainSkillStageCount","4");
             check(Nodes(View().Root).Single(n=>n.Id==input.Id).TextEntryValue=="4","Committed stage count refreshes from the upstream skill context");
             await Action("undo");
             check(Nodes(View().Root).Single(n=>n.Id==input.Id).TextEntryValue!="4","Undo restores the prior stage count and refreshes the option");
-            await Action("back");await Action("gem-options.1");
+            await Action("back");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.gem-replace.1")&&Nodes(View().Root).Any(n=>n.Id=="pob.gem-enabled.1"),"Common gem operations are inline beside the selected group");
+            var beforeInspection=PobWorkStore.Read(directory,buildId,game)!.CommittedXml;
+            var inspectionProcess=engine.ProcessId;
+            await Action("skill."+main);await Action("skill."+stages);await Action("skill."+main);
+            var stop=DateTime.UtcNow.AddSeconds(15);
+            while((int)typeof(PobWidget).GetField("inspectedSkillGroup",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(widget)! !=main)
+            {if(DateTime.UtcNow>stop)throw new TimeoutException("Inline skill context did not settle");_ = View();await Task.Delay(20);}
+            check(engine.ProcessId==inspectionProcess,"Coalesced group inspection retains the existing single engine process");
+            check(WorkStateTests.SameBuild(PobWorkStore.Read(directory,buildId,game)!.CommittedXml,beforeInspection),"Rapid skill inspection never changes the saved main group or build");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.skill.context"&&n.Text=="Main calculation skill"),"Inline context distinguishes the real main group");
+            await Action("skill."+stages);await Action("skill-options");await Action("back");
+            await Action("gem-options.1");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.gem-extra.enabled"),"Gem options exposes the selected gem's upstream enabled control");
             var beforeToggle=PobWorkStore.Read(directory,buildId,game)!.CommittedXml;
             await Action("gem-extra.enabled");await Action("undo");
