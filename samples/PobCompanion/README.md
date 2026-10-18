@@ -34,6 +34,13 @@ Native WidgetRail captures from 17 October 2026 in Velvet Dusk. The PoE2 plannin
 
 ## Using a build
 
+Search fields offer whole-entry suggestions for gems, passives, inventory items,
+saved builds, configuration, calculation sections, and item/modifier pickers.
+Suggestions use the currently eligible choices and loaded PoB catalogs; typing
+does not run calculations or contact a website. Passive names can also match
+their modifier text. **LS/L3** fills the first suggestion; mouse or **A** selects
+any suggestion. **RT/Done** confirms the search, and Cancel leaves it unchanged.
+
 Paste a PoB share code or supported public build link, or enter the path to an exported XML file. The widget keeps the original import and a separate working copy. It reopens the selected working copy after restart.
 
 Standard PoB codes copied from poe.ninja or pob.cool use the same import path and require no site-specific sign-in or integration. Direct downloads support pobb.in share links. For poe.ninja, open the website, copy the build's PoB code, and choose **Paste build from clipboard**. Direct poe.ninja URLs are rejected before any network request: its [API documentation](https://poe.ninja/docs/api) reserves character and PoB endpoints for internal use. Choose the widget for the build's game. Older codes can be migrated by newer engines, but reverse compatibility is not guaranteed. A beta export may contain fields an older engine does not understand, and different engine versions can calculate different totals. Import validation preserves authored gems, including supports attached to item-granted skills, while allowing upstream to merge duplicate generated base-skill groups.

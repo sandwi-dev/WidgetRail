@@ -34,6 +34,16 @@ internal sealed partial class TextEntryValidationPage
         await WaitForSuggestions();
         Check(FocusedId == focus && key.TransformToVisual(dialog).TransformPoint(new Point()) == keyPosition,
             "suggestions arrive without moving keyboard focus or key positions");
+        Check(WidgetViewPresenter.CaptureKeyboardGuide(dialog).Any(h=>h.Button==ControllerButton.LeftStick),
+            "first-suggestion shortcut is advertised when results arrive");
+        await presenter.HandleControllerButtonAsync(ControllerButton.LeftStick, ControllerEventPhase.Released);
+        await presenter.HandleControllerButtonAsync(ControllerButton.LeftStick, ControllerEventPhase.Repeated);
+        Check(((TextBox)Editor()).Text == "fi", "release and repeat cannot accept the first suggestion");
+        await presenter.HandleControllerButtonAsync(ControllerButton.LeftStick);
+        Check(((TextBox)Editor()).Text == "Fireball" && actions.Count == count && presenter.HasTransientControl && !dialog.CanAcceptFirstSuggestion,
+            "left-stick press fills the first suggestion without committing or retaining an obsolete shortcut");
+        ((TextBox)Editor()).Text = "fir";
+        await WaitForSuggestions();
         ((Control)FindDialog("Widget.TextEntry.Key.0")!).Focus(FocusState.Keyboard);
         presenter.MoveFocus(Microsoft.UI.Xaml.Input.FocusNavigationDirection.Up);
         Check(FocusedId == "Widget.TextEntry.Suggestion.0", "controller can enter suggestions from keyboard");
@@ -41,7 +51,7 @@ internal sealed partial class TextEntryValidationPage
         Check(((TextBox)Editor()).Text == "Fireball" && actions.Count == count && presenter.HasTransientControl,
             "suggestion replaces entire entry without committing");
         await Task.Delay(300);
-        Check(calls == 1, "accepting a suggestion does not issue a redundant lookup");
+        Check(calls == 2, "accepting a suggestion does not issue a redundant lookup");
         await presenter.HandleControllerButtonAsync(ControllerButton.RightTrigger); await Closed();
         Check(actions.Count == count + 1 && actions.Last().Action.CommittedText == "Fireball", "Done commits accepted suggestion once");
 
@@ -51,6 +61,9 @@ internal sealed partial class TextEntryValidationPage
         await Task.Delay(600);
         Check(((TextBlock)FindDialog("Widget.TextEntry.SuggestionStatus")!).Text == "No matches" && ((TextBox)Editor()).Text == "no match",
             "no results leaves typed text intact");
+        await presenter.HandleControllerButtonAsync(ControllerButton.LeftStick);
+        Check(((TextBox)Editor()).Text == "no match" && !WidgetViewPresenter.CaptureKeyboardGuide(dialog).Any(h=>h.Button==ControllerButton.LeftStick),
+            "first-suggestion shortcut is absent and inert without results");
         await presenter.HandleControllerButtonAsync(ControllerButton.B); await Closed();
         Check(actions.Count == count + 1, "Cancel does not submit a search");
 

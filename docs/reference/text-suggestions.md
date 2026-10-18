@@ -5,6 +5,11 @@ search. This is whole-field completion: selecting a suggestion replaces all text
 leaves the keyboard open, and does not execute an action. Done sends the existing
 final-value action; Cancel sends nothing. Arrival never moves focus to a choice.
 
+Press **LS/L3** to fill the first current suggestion without leaving the keys.
+Its controller glyph appears on the first suggestion and in the controller guide
+only while a result is available. Selecting any suggestion with mouse or A has
+the same behavior; **RT/Done** still confirms the entry.
+
 ![PoB gem suggestions in the host keyboard](../images/text-suggestions.png)
 
 ```csharp

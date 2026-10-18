@@ -31,7 +31,9 @@ public sealed partial class PobWidget
         var navigation=new List<WidgetElement> {Text("Configuration set","config.set-label","pob-field-label")};
         AddSet(navigation,"configSets","config");
         navigation.Add(Text("Search all sections","config.search-label","pob-field-label"));
-        navigation.Add(UI.TextEntry(filter,"Name or description","search","pob.search",256).Classes("pob-input"));
+        navigation.Add(SearchField(UI.TextEntry(filter,"Name or description","search","pob.search",256),result!,
+            ()=>all.Select(c=>(S(c,"title"),S(c,"title")+" "+S(c,"section")+" "+S(c,"description"),S(c,"section")))
+                .Concat(A(State,"customModGroups").Select(g=>(S(g,"title"),S(g,"title")+" "+S(g,"text"),"Custom modifiers")))).Classes("pob-input"));
         if(searching)navigation.Add(Button("Clear search","config-clear-search"));
         var categories=new List<WidgetElement>{Text("Sections","config.sections","pob-heading")};
         for(var i=0;i<sections.Length;i++)

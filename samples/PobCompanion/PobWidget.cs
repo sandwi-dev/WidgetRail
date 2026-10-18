@@ -137,6 +137,7 @@ public sealed partial class PobWidget : Widget
         lock (gate)
         {
             quickControlTargets.Clear();
+            BeginSearchSuggestions();
             overlayWebsites=preferences.OverlayBrowser;
             if (busy && result is null)
             {

@@ -16,6 +16,9 @@ internal sealed partial class WidgetTextEntryDialog
     private TextBlock? suggestionStatus;
     private Grid? suggestionGrid;
     private bool acceptingSuggestion;
+    private FontIcon? firstSuggestionPrompt;
+    internal bool CanAcceptFirstSuggestion => !completed && !IsSensitive && suggestionView is { Items.Count: > 0 } state &&
+        suggestions?.IsCurrent(state) == true;
 
     internal void EnableSuggestions(ViewNode node, Func<TextSuggestionQuery, CancellationToken, Task<TextSuggestionResult>> query)
     {
@@ -71,7 +74,17 @@ internal sealed partial class WidgetTextEntryDialog
             if (index < state.Items.Count)
             {
                 var item = state.Items[index];
-                button.Content = new TextBlock { Text = item.Label, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
+                var label = new TextBlock { Text = item.Label, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
+                if (index == 0)
+                {
+                    firstSuggestionPrompt = new FontIcon { FontSize = button.FontSize };
+                    var content = new Grid { ColumnSpacing = 6 * interfaceScale };
+                    content.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+                    content.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+                    Grid.SetColumn(label, 1); content.Children.Add(firstSuggestionPrompt); content.Children.Add(label);
+                    button.Content = content;
+                }
+                else button.Content = label;
                 AutomationProperties.SetName(button, item.Description is { Length: > 0 } description ? item.Label + ", " + description : item.Label);
                 ToolTipService.SetToolTip(button, item.Description is { Length: > 0 } detail ? item.Label + "\n" + detail : item.Label);
                 button.Visibility = Visibility.Visible;
@@ -79,6 +92,26 @@ internal sealed partial class WidgetTextEntryDialog
             else button.Visibility = Visibility.Collapsed;
         }
         // The reserved rows keep the keyboard keys in place during asynchronous results.
+        RefreshSuggestionPrompt();
+        GuideChanged?.Invoke();
+    }
+
+    private void RefreshSuggestionPrompt()
+    {
+        if (firstSuggestionPrompt is not null)
+            WidgetGlyphs.Apply(firstSuggestionPrompt, new ViewNode { Id = "keyboard.suggestion.prompt", Kind = ViewNodeKind.ControllerGlyph,
+                ControllerPrompt = ControllerPrompt.LeftStickPress }, WidgetControllerPrompts.PlayStation);
+        if (suggestionView is { Items.Count: > 0 } state && suggestionButtons.Count > 0)
+        {
+            var item = state.Items[0];
+            AutomationProperties.SetName(suggestionButtons[0], item.Label + (string.IsNullOrEmpty(item.Description) ? "" : ", " + item.Description) +
+                ", " + WidgetGlyphs.AccessibleName(ControllerPrompt.LeftStickPress, WidgetControllerPrompts.PlayStation));
+        }
+    }
+
+    private void AcceptFirstSuggestion()
+    {
+        if (CanAcceptFirstSuggestion) { repeat.Reset(); AcceptSuggestion(0); }
     }
 
     private void AcceptSuggestion(int index)
@@ -157,6 +190,7 @@ internal sealed partial class WidgetTextEntryDialog
             button.MinHeight = 36 * interfaceScale; button.Padding = new(6 * interfaceScale, 2 * interfaceScale, 6 * interfaceScale, 2 * interfaceScale);
             if (family is not null) button.FontFamily = family; else button.ClearValue(Control.FontFamilyProperty);
         }
+        if (firstSuggestionPrompt is not null) firstSuggestionPrompt.FontSize = size;
     }
 
     private void RetireSuggestions()

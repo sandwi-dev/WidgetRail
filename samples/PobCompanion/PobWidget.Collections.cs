@@ -70,7 +70,10 @@ public sealed partial class PobWidget
         }
         return UI.Stack("pob.library.workspace",ManagementHeader($"Saved builds · {entries.Length}"),
             QuickControls(UI.Grid("pob.library.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto(),GridTrack.Auto()],
-                UI.TextEntry(librarySearch,"Search saved builds","library-search","pob.library.search").Classes("pob-input"),
+                SearchField(UI.TextEntry(librarySearch,"Search saved builds","library-search","pob.library.search"),savedBuilds,
+                    ()=>savedBuilds.Where(b=>libraryClass.Length==0||libraryMetadata.GetValueOrDefault(b.Id).Class==libraryClass).Select(b=>
+                        (b.Name,b.Name+" "+libraryMetadata.GetValueOrDefault(b.Id).Class+" "+libraryMetadata.GetValueOrDefault(b.Id).Ascendancy,
+                        libraryMetadata.GetValueOrDefault(b.Id).Class+" "+libraryMetadata.GetValueOrDefault(b.Id).Ascendancy))).Classes("pob-input"),
                 UI.Select("Sort",[new("recent","Recent","library-sort.recent",librarySort=="recent"),new("name","Name","library-sort.name",librarySort=="name")],"pob.library.sort").Classes("pob-select").InGrid(column:1),
                 UI.Select("Class",new[]{new SelectOption("all","All classes","library-class.all",libraryClass.Length==0)}.Concat(LibraryClasses().Select((name,i)=>new SelectOption("class"+i,name,"library-class."+i,name==libraryClass))).ToArray(),"pob.library.class").Classes("pob-select").InGrid(column:2)).Spacing(0,12),
                 "pob.library.search","pob.library.results","Builds",NeedsQuickControls(entries.Length)),

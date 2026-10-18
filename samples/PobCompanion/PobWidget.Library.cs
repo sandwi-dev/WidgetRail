@@ -4,11 +4,13 @@ public sealed partial class PobWidget
 {
     private readonly Dictionary<string,(DateTime Stamp,string Class,string Ascendancy)> libraryMetadata=new();
     private string libraryClass="";
+    private long libraryMetadataRevision;
     private string[] LibraryClasses()=>savedBuilds.Select(b=>libraryMetadata.GetValueOrDefault(b.Id).Class??"").Where(c=>c.Length>0).Distinct().Order(StringComparer.Ordinal).ToArray();
     private void RefreshBuildMetadata(string id)
     {
         var file=new FileInfo(Path.Combine(dataDirectory,id+".xml"));
         if(!file.Exists||libraryMetadata.TryGetValue(id,out var cached)&&cached.Stamp==file.LastWriteTimeUtc)return;
+        libraryMetadataRevision++;
         try
         {
             using var reader=System.Xml.XmlReader.Create(file.FullName,new(){DtdProcessing=System.Xml.DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=BuildDocument.MaximumBytes});

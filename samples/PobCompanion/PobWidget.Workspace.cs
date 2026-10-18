@@ -330,7 +330,9 @@ public sealed partial class PobWidget
             var quick=NeedsQuickControls(passiveQuery.Entries.Length);
             side.Add(QuickControls(UI.Stack("pob.tree.search-controls",
                 Text("Find a passive", "tree.searchtitle", "pob-eyebrow"),
-                UI.TextEntry(filter, "Search all passives", "search", "pob.search").Classes("pob-input"),
+                SearchField(UI.TextEntry(filter, "Search all passives", "search", "pob.search"), result!,
+                    () => A(State,"nodes").Where(n=>B(n,"interactive")).Select(n =>
+                        (S(n,"name"), S(n,"name")+" "+S(n,"description"), S(n,"description")))).Classes("pob-input"),
                 Text("Search by name or modifier, including unallocated nodes.","tree.searchhint","pob-small pob-muted")).Classes("pob-buildtools"),
                 "pob.search","pob.tree.results","Passives",quick));
             side.Add(Text($"{(filter.Length==0?"Allocated and granted passives":"Search results")} · {passiveQuery.Entries.Length}","tree.count","pob-muted"));

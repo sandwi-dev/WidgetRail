@@ -163,7 +163,8 @@ public sealed partial class PobWidget
         var tools=QuickControls(UI.Stack("pob.calculation.tools",Button("Back to overview","back"),
             CalculationSkillControls(),
             UI.Select("Calculation section",sections.Select(s=>new SelectOption(S(s,"id"),S(s,"title"),"calculation-section."+S(s,"id"),S(s,"id")==calculationSection)).ToArray(),"pob.calculation.section").Classes("pob-select"),
-            UI.TextEntry(calculationSearch,"Search this section","calculation-search","pob.calculation.search",100).Classes("pob-input"),Text($"{entries.Length} calculations","calculation.count","pob-small pob-muted")),"pob.calculation.section","pob.calculation.cells","Calculations",NeedsQuickControls(entries.Length));
+            SearchField(UI.TextEntry(calculationSearch,"Search this section","calculation-search","pob.calculation.search",100),calculationCatalog,
+                ()=>A(selected,"items").Select(c=>(S(c,"title"),S(c,"title"),S(selected,"title")))).Classes("pob-input"),Text($"{entries.Length} calculations","calculation.count","pob-small pob-muted")),"pob.calculation.section","pob.calculation.cells","Calculations",NeedsQuickControls(entries.Length));
         var list=QuickControls(UI.Stack("pob.calculation.list",UI.CollectionList("pob.calculation.cells",calculationCollection,80,"Calculations").Classes("pob-scroll")).Classes("pob-workspace"),"pob.calculation.cells","pob.calculation.tools","Section and search",NeedsQuickControls(entries.Length));
         var chosen=A(selected,"items").FirstOrDefault(c=>S(c,"id")==calculationCell);
         var context=calculationCatalog.GetProperty("context");

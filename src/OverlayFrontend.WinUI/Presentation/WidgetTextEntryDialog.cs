@@ -315,6 +315,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             case ControllerButton.LeftBumper: MoveCaret(-1); break;
             case ControllerButton.RightBumper: MoveCaret(1); break;
             case ControllerButton.RightStick: TogglePassword(); break;
+            case ControllerButton.LeftStick: AcceptFirstSuggestion(); break;
             case ControllerButton.DPadUp: MoveFocus(FocusNavigationDirection.Up); break;
             case ControllerButton.DPadDown: MoveFocus(FocusNavigationDirection.Down); break;
             case ControllerButton.DPadLeft: MoveFocus(FocusNavigationDirection.Left); break;
@@ -351,6 +352,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             AutomationProperties.SetName(key, label + ", " + WidgetGlyphs.AccessibleName(prompt, WidgetControllerPrompts.PlayStation));
         }
         RefreshRevealLabel();
+        RefreshSuggestionPrompt();
     }
     private void TogglePassword()
     {

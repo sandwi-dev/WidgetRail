@@ -233,7 +233,8 @@ public sealed partial class PobWidget
             toolRows.Add(Text("PoB's eligible modifiers for this item. Planning edits do not guarantee an in-game craft.","modifier.help","pob-small pob-muted"));
         }
         if(picker.Prefix=="craft-base.")toolRows.Add(UI.Select("Rarity",new[]{"NORMAL","MAGIC","RARE"}.Select(r=>new SelectOption(r,char.ToUpperInvariant(r[0])+r[1..].ToLowerInvariant(),"craft-rarity."+r,r==craftRarity)).ToArray(),"pob.craft-rarity").Classes("pob-select"));
-        toolRows.Add(UI.TextEntry(choiceSearch,picker.Prefix=="unique-item."?"Search unique names or bases":"Search options","choice-search","pob.choice-search",100).Classes("pob-input"));
+        toolRows.Add(SearchField(UI.TextEntry(choiceSearch,picker.Prefix=="unique-item."?"Search unique names or bases":"Search options","choice-search","pob.choice-search",100),
+            picker.Choices,()=>picker.Choices.Select(c=>(Plain(S(c,"title")),Plain(S(c,"title")+" "+S(c,"description")),Plain(S(c,"description"))))).Classes("pob-input"));
         toolRows.Add(Text($"{entries.Length} {(picker.Prefix=="unique-item."?"unique items":"options")}","choice.count","pob-muted"));
         return UI.Stack("pob.choice-picker",
             QuickControls(UI.Stack("pob.choice-tools",toolRows.ToArray()),"pob.choice-search","pob.choice-results","Options",NeedsQuickControls(entries.Length)),
