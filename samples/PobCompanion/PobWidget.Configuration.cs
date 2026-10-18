@@ -26,8 +26,12 @@ public sealed partial class PobWidget
         var catalog=ConfigurationCatalog;
         if(!catalog.SupportsChangedFilter)configChangedOnly=false;
         var matching=catalog.Match(configSection,filter,configChangedOnly).ToArray();
-        var editable=matching.FirstOrDefault(c=>c.Id!="customMods" && S(c.Raw,"kind")!="customMods" && S(c.Raw,"value").Length<=2048);
-        var firstId=editable is not null?"pob.condition."+editable.Index:null;
+        var inactive=matching.Where(InactiveConfiguration).ToArray();
+        var inactiveDisclosure=inactiveConfigurationDisclosure.Select(InactiveConfigurationContext(),defaultExpanded:false);
+        var visibleMatching=searching?matching:matching.Where(option=>!InactiveConfiguration(option))
+            .Concat(inactiveDisclosure.Expanded?inactive:[]).ToArray();
+        var editable=visibleMatching.FirstOrDefault(c=>c.Id!="customMods" && S(c.Raw,"kind")!="customMods" && S(c.Raw,"value").Length<=2048);
+        var firstId=editable is not null?"pob.condition."+editable.Index:!searching&&inactive.Length>0?"pob.config.inactive.toggle":null;
         var controlsId="pob.config.controls."+(searching?"search":Array.IndexOf(sections,configSection).ToString());
         var navigation=new List<WidgetElement> {Text("Configuration set","config.set-label","pob-field-label")};
         AddSet(navigation,"configSets","config");
@@ -48,35 +52,32 @@ public sealed partial class PobWidget
             categories.Add(category);
         }
         var quick=NeedsQuickControls(sections.Length);
-        ContainerElement categoryList=UI.VerticalScroll("pob.config.categories",categories.ToArray()).Classes("pob-scroll");
+        ContainerElement categoryList=UI.Stack("pob.config.categories",categories.ToArray());
         if(sections.Length>0)categoryList=QuickControls(categoryList,"pob.config.category.0","pob.config.tools","Search / set",quick);
-        var sidebar=UI.Stack("pob.config.navigation",
+        var sidebar=UI.VerticalScroll("pob.config.navigation",
             QuickControls(UI.Stack("pob.config.tools",navigation.ToArray()).Classes("pob-buildtools"),"pob.search","pob.config.footer","Explanations",quick),
             categoryList,
             QuickControls(UI.Stack("pob.config.footer",UI.Switch("Show explanations",configHelp,"config-help","pob.config.help").Classes("pob-toggle")),
-                "pob.config.help","pob.config.categories","Sections",quick)).Classes("pob-panel","pob-tree-main");
+                "pob.config.help","pob.config.categories","Sections",quick)).Classes("pob-panel","pob-scroll");
         var controls=new List<WidgetElement>{Text(searching?"Search results":configSection,"config.title","pob-heading"),
             Text(searching?$"{matching.Length} matching settings across all sections":"Changes update the build immediately. Use Undo to reverse them.","config.summary","pob-muted")};
         string? previousGroup=null;
-        foreach(var option in matching)
+        foreach(var option in visibleMatching.Where(option=>searching||!InactiveConfiguration(option)))
         {
-            var condition=option.Raw;var index=option.Index;
-            var group=S(condition,"section","General");
-            if(searching&&group!=previousGroup)controls.Add(Text(group,"config.group."+index,"pob-heading"));
+            var group=option.Section;
+            if(searching&&group!=previousGroup)controls.Add(Text(group,"config.group."+option.Index,"pob-heading"));
             previousGroup=group;
-            var rows=new List<WidgetElement>();
-            if(S(condition,"id")=="customMods" || S(condition,"kind")=="customMods" || S(condition,"value").Length>2048)
-            {
-                rows.Add(Text((option.Id=="customMods"?"Custom modifiers":InlineLabel(option.Title))+(option.Changed==true?" · Changed":""),"config.readonly."+index,"pob-field-label"));
-                var value=S(condition,"value");
-                AddReading(rows,string.IsNullOrWhiteSpace(value)?"None in this configuration.":value,"config.value."+index);
-            }
-            else rows.Add(Condition(option));
-            if(condition.TryGetProperty("applicable",out var applicable)&&!applicable.GetBoolean())
-                rows.Add(Text("Saved setting; not currently applicable to this build.","config.retained."+index,"pob-small"));
-            if(configHelp&&!string.IsNullOrWhiteSpace(S(condition,"description")))
-                AddFormatted(rows,condition,"description","descriptionRuns","config.description."+index,"pob-help",emphasizeStats:true);
-            controls.Add(UI.Stack("pob.config.row."+index,rows.ToArray()).Classes("pob-setting"));
+            controls.Add(ConfigurationSetting(option));
+        }
+        if(!searching&&inactive.Length>0)
+        {
+            var changed=inactive.Count(option=>option.Changed==true);
+            controls.Add(DisclosureButton(inactiveDisclosure,$"saved inactive settings · {inactive.Length} "+(inactive.Length==1?"setting":"settings")+$" · {changed} changed",
+                "summary-inactive-config","pob.config.inactive.toggle","pob.config.inactive.disclosure"));
+            controls.Add(Text("Saved in this configuration, but not currently applicable. Expanding lets you edit their retained values.","config.inactive.help","pob-small pob-muted"));
+            foreach(var option in inactive)
+                if(inactiveDisclosure.Expanded)controls.Add(ConfigurationSetting(option));
+                else controls.Add(Text(InlineLabel(option.Title)+": "+ConfigurationSummaryValue(option),"config.inactive.summary."+option.Index,"pob-small pob-muted"));
         }
         var customMatches=searching?A(State,"customModGroups").Where(g=>(S(g,"title")+" "+S(g,"text")).Contains(filter,StringComparison.OrdinalIgnoreCase)).ToArray():[];
         foreach(var group in customMatches)controls.Add(Button("Custom modifiers · "+S(group,"title"),"custom-open."+I(group,"id")));
@@ -84,6 +85,23 @@ public sealed partial class PobWidget
         var right=UI.VerticalScroll(controlsId,controls.ToArray()).Classes("pob-scroll","pob-panel");
         if(firstId is not null)right=right.RememberChildFocus(firstId);
         return Split("configuration",sidebar,!searching&&configSection=="Custom modifiers"?CustomModsPanel():right,1,2.6);
+    }
+
+    private WidgetElement ConfigurationSetting(PobConfigurationOption option)
+    {
+        var condition=option.Raw;var index=option.Index;
+        var rows=new List<WidgetElement>();
+        if(S(condition,"id")=="customMods" || S(condition,"kind")=="customMods" || S(condition,"value").Length>2048)
+        {
+            rows.Add(Text((option.Id=="customMods"?"Custom modifiers":InlineLabel(option.Title))+(option.Changed==true?" · Changed":""),"config.readonly."+index,"pob-field-label"));
+            var value=S(condition,"value");
+            AddReading(rows,string.IsNullOrWhiteSpace(value)?"None in this configuration.":value,"config.value."+index);
+        }
+        else rows.Add(Condition(option));
+        if(InactiveConfiguration(option))rows.Add(Text("Saved setting; not currently applicable to this build.","config.retained."+index,"pob-small"));
+        if(configHelp&&!string.IsNullOrWhiteSpace(S(condition,"description")))
+            AddFormatted(rows,condition,"description","descriptionRuns","config.description."+index,"pob-help",emphasizeStats:true);
+        return UI.Stack("pob.config.row."+index,rows.ToArray()).Classes("pob-setting");
     }
 
     private WidgetElement NotesWorkspace()

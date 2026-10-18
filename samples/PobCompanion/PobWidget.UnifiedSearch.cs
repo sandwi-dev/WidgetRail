@@ -50,10 +50,10 @@ public sealed partial class PobWidget
         Work(async token=>
         {
             JsonElement inventory=default,calculations=default;var limitations=new List<string>();
-            try { inventory=(await engine.ExecuteAsync(new{op="inventory-list"},token,before.Xml)).State; }
-            catch(IOException){limitations.Add("Inventory search is unavailable. Reopen Search to retry.");}
-            try { calculations=(await engine.ExecuteAsync(new{op="calculation-catalog",context=selection.Request()},token,before.Xml)).State; }
-            catch(IOException){limitations.Add("Detailed calculation search is unavailable. Reopen Search to retry.");}
+            try { inventory=(await engine.ExecuteAsync(new{op="inventory-list"},token,before.Xml)).State;_ = PobSearchInventory.Read(inventory); }
+            catch(IOException){inventory=default;limitations.Add("Inventory search is unavailable. Reopen Search to retry.");}
+            try { calculations=(await engine.ExecuteAsync(new{op="calculation-catalog",context=selection.Request()},token,before.Xml)).State;_ = PobSearchCalculations.Read(calculations); }
+            catch(IOException){calculations=default;limitations.Add("Detailed calculation search is unavailable. Reopen Search to retry.");}
             token.ThrowIfCancellationRequested();
             lock(gate)
             {
@@ -147,6 +147,7 @@ public sealed partial class PobWidget
                 var option=ConfigurationCatalog.Options.FirstOrDefault(c=>c.Id==target.Key&&c.Index==target.Id);
                 if(option is null){MissingSearchTarget();return;}
                 section="Configuration";detailKind="";configSection=option.Section;filter="";configChangedOnly=false;
+                RevealConfigurationSummary(option);
                 var readOnly=option.Id=="customMods"||S(option.Raw,"kind")=="customMods"||S(option.Raw,"value").Length>2048;
                 if(readOnly)unifiedReadOnlyConfig=option.Index;
                 SetUnifiedFocus(readOnly?"pob.config.readonly-scroll":"pob.condition."+option.Index);break;
@@ -204,6 +205,6 @@ public sealed partial class PobWidget
     private void SetUnifiedIndexedFocus(string kind,string key)
     {unifiedTargetId=null;unifiedIndexedKind=kind;unifiedIndexedKey=key;unifiedTargetSection=section;unifiedTargetDetail=detailKind;unifiedFocusRequest=++focusRequestSequence;quickControlTarget=null;historyFocusRequested=false;}
 
-    private int UnifiedWarningCount()=>A(State,"warnings").Length+A(State,"items").Sum(item=>A(item,"warnings").Length);
+    private int UnifiedWarningCount()=>A(State,"warnings").Length+A(State,"items").Sum(item=>A(item,"warnings").Length)+(PobMainSkillWarning.Read(State)is null?0:1);
     private WidgetElement UnifiedWarningSummary()=>UI.Stack("pob.warnings",Button("Warnings ("+UnifiedWarningCount()+")","unified-warnings"));
 }

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
@@ -9,7 +10,7 @@ internal static class UnifiedSearchTests
 {
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string xml,Action<bool,string> check)
     {
-        var warningState=JsonSerializer.SerializeToElement(new{warnings=new[]{"Ambiguous build warning"},items=new[]{new{id=7,itemId=91,slot="Helmet",name="Known item",@base="Hat",raw="",warnings=new[]{"Unmodelled exact modifier"}}}});
+        var warningState=JsonSerializer.SerializeToElement(new{nodes=Array.Empty<object>(),skills=Array.Empty<object>(),warnings=new[]{"Ambiguous build warning"},items=new[]{new{id=7,itemId=91,slot="Helmet",name="Known item",@base="Hat",raw="",warnings=new[]{"Unmodelled exact modifier"}}}});
         var warningIndex=new PobUnifiedSearchCatalog(warningState,PobConfigurationCatalog.Empty,default,default,[]);
         var known=warningIndex.Entries.Single(e=>e.Title=="Unmodelled exact modifier");var unknown=warningIndex.Entries.Single(e=>e.Title=="Ambiguous build warning");
         check(known.Target.Kind==PobSearchTargetKind.EquippedItem&&known.Target.Id==7&&known.Target.Key=="91"&&unknown.Target.Kind==PobSearchTargetKind.Warning,
@@ -106,6 +107,17 @@ internal static class UnifiedSearchTests
             Set("pendingBefore",before);await Action("unified-search");check(!(bool)Get("unifiedSearchOpen")!&&ReferenceEquals(Get("pendingBefore"),before),"Search cannot replace an unfinished equipment/tree comparison");Set("pendingBefore",null);
             Set("pastedItem","retained draft");await Select(PobSearchTargetKind.Navigation,e=>e.Target.Key=="notes");
             check((string)Get("pastedItem")! == "retained draft"&&ReferenceEquals(before,Result()),"Nonmutating navigation preserves unfinished item draft and exact build result");Set("pastedItem",null);
+            var warningProjection=JsonNode.Parse(before.State.GetRawText())!.AsObject();
+            warningProjection["mainSkillDisabled"]=true;warningProjection["mainSkillDisabledReason"]="Upstream disabled reason fixture";
+            var mainGroup=before.State.GetProperty("skills").EnumerateArray().Single(g=>g.GetProperty("main").GetBoolean()).GetProperty("id").GetInt32();
+            var disabledResult=new PobResult(JsonSerializer.SerializeToElement(warningProjection),before.Xml);Set("result",disabledResult);
+            await Action("unified-warnings");
+            check((string)Get("unifiedCategory")! == "Warnings"&&Results().Any(e=>e.Target.Kind==PobSearchTargetKind.Skill&&e.Target.Key=="main-disabled"&&e.Target.Id==mainGroup&&e.Title=="Upstream disabled reason fixture"),
+                "Disabled main-skill reason appears in the warning index with the exact upstream group identity");
+            await Action("unified-search-close");await Select(PobSearchTargetKind.Skill,e=>e.Target.Key=="main-disabled");
+            check((string)Get("section")! == "Skills"&&(int)Get("detailId")! == mainGroup&&ReferenceEquals(disabledResult,Result()),
+                "Main-skill warning navigates to the supplied group without enabling, replacing or recalculating it");
+            Set("result",before);
             await Action("unified-search");Set("documentId","changed-document");await Action("unified-search-text","life");
             check(!(bool)Get("unifiedSearchOpen")!&&ReferenceEquals(before,Result()),"Document change rejects stale search instead of navigating another build");Set("documentId",build);
             check(File.ReadAllText(Path.Combine(directory,build+".xml"))==saved,"All search navigation leaves saved build bytes unchanged");

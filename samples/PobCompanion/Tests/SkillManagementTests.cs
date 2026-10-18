@@ -109,6 +109,10 @@ internal static class SkillManagementTests
                     "Gem inspection anchors to exact indexed occurrence, not an index or stale display name");
                 check(ReferenceEquals(Result(),before)&&ReferenceEquals(queryBefore,Get("gemQuery"))&&Group().GetProperty("gems").GetArrayLength()==0,
                     "Opening inspection leaves engine result, saved build and picker query unchanged");
+                var expectedContext=PobInspectionContext.Read(before.State,before.Xml,Group()).Summary;
+                check(expectedContext.Length==0?!Nodes(opened.Root).Any(n=>n.Id=="pob.gem-inspection.context"):
+                    Nodes(opened.Root).Any(n=>n.Id=="pob.gem-inspection.context"&&n.Text==expectedContext),
+                    "Gem inspection presents active loadout and calculation weapon context separately from the group's weapon eligibility");
                 var close=Nodes(opened.Root).First(n=>n.ActionId?.StartsWith("gem-inspection-close.",StringComparison.Ordinal)==true).ActionId!;
                 var apply=Nodes(opened.Root).First(n=>n.ActionId?.StartsWith("gem-inspection-apply.",StringComparison.Ordinal)==true).ActionId!;
                 var fixtureDirectory=Environment.GetEnvironmentVariable("POB_GEM_INSPECTION_FIXTURES");

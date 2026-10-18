@@ -80,7 +80,7 @@ public sealed partial class PobWidget
     {
         if(current!=WidgetLifecycleState.Interactive)
         {
-            lock(gate){unifiedSearchOpen=false;unifiedSearchEpoch++;RetireBuildComparisonRequest();}
+            lock(gate){unifiedSearchOpen=false;unifiedSearchEpoch++;skillOptionsState.Suspend();RetireBuildComparisonRequest();}
         }
         return ValueTask.CompletedTask;
     }

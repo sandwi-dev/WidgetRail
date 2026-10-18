@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Reflection;
 using System.Xml.Linq;
 using WidgetRail.Samples.PobCompanion;
@@ -85,11 +86,25 @@ internal static class SkillOptionTests
             var inspectionProcess=engine.ProcessId;
             await Action("skill."+main);await Action("skill."+stages);await Action("skill."+main);
             var stop=DateTime.UtcNow.AddSeconds(15);
-            while((int)typeof(PobWidget).GetField("inspectedSkillGroup",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(widget)! !=main)
+            while((PobSkillOptions?)typeof(PobWidget).GetProperty("CurrentSkillOptions",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(widget) is not {} current||current.Group!=main)
             {if(DateTime.UtcNow>stop)throw new TimeoutException("Inline skill context did not settle");_ = View();await Task.Delay(20);}
             check(engine.ProcessId==inspectionProcess,"Coalesced group inspection retains the existing single engine process");
             check(WorkStateTests.SameBuild(PobWorkStore.Read(directory,buildId,game)!.CommittedXml,beforeInspection),"Rapid skill inspection never changes the saved main group or build");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.skill.context"&&n.Text=="Main calculation skill"),"Inline context distinguishes the real main group");
+            var resultField=typeof(PobWidget).GetField("result",BindingFlags.Instance|BindingFlags.NonPublic)!;
+            var validResult=(PobResult)resultField.GetValue(widget)!;
+            var malformedState=JsonNode.Parse(validResult.State.GetRawText())!.AsObject();malformedState["skillOptions"]=new JsonObject();
+            resultField.SetValue(widget,new PobResult(JsonSerializer.SerializeToElement(malformedState),validResult.Xml));
+            var optionOwner=(PobSkillOptionsState)typeof(PobWidget).GetField("skillOptionsState",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(widget)!;optionOwner.Clear();
+            check(Nodes(View().Root).Any(n=>n.ActionId=="skill-options-retry"),"Malformed inline skill metadata shows explicit Retry instead of disappearing or crashing");
+            await Action("skill-options-retry");
+            stop=DateTime.UtcNow.AddSeconds(15);
+            while((PobSkillOptions?)typeof(PobWidget).GetProperty("CurrentSkillOptions",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(widget) is null)
+            {if(DateTime.UtcNow>stop)throw new TimeoutException("Skill option retry did not settle");_=View();await Task.Delay(20);}
+            check(!Nodes(View().Root).Any(n=>n.ActionId=="skill-options-retry")&&engine.ProcessId==inspectionProcess,
+                "Explicit retry bypasses malformed main-group snapshot and recovers through the existing engine");
+            check(WorkStateTests.SameBuild(PobWorkStore.Read(directory,buildId,game)!.CommittedXml,beforeInspection),"Read retry leaves the saved build and main group unchanged");
+            resultField.SetValue(widget,validResult);
             await Action("skill."+stages);await Action("skill-options");await Action("back");
             await Action("gem-options.1");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.gem-extra.enabled"),"Gem options exposes the selected gem's upstream enabled control");

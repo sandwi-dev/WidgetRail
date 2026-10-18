@@ -11,10 +11,19 @@ public sealed partial class PobWidget
     private sealed record GemInspectionData(string Id,string Name,bool Support,string Tags,string Description,
         double? Comparison,bool? CanSupport);
     private sealed record GemPickerContext(PobResult Build,string? DocumentId,int Group,int Gem,long CatalogRevision,
-        string Search,string Type,string Sort,string GroupName,string ReplacedGem,string MainSkill,string Metric);
+        string Search,string Type,string Sort,string GroupName,string ReplacedGem,string MainSkill,string Metric,PobInspectionContext InspectionContext);
     private sealed record GemInspection(long Token,GemQuery Query,GemEntry Entry,IndexedCollectionFocusTarget Anchor);
     private GemInspection? gemInspection;
     private long gemInspectionToken;
+    private PobResult? gemInspectionContextBuild;
+    private int gemInspectionContextGroup;
+    private PobInspectionContext? gemInspectionContext;
+    private PobInspectionContext GemInspectionContext(JsonElement group)
+    {
+        if(!ReferenceEquals(gemInspectionContextBuild,result)||gemInspectionContextGroup!=detailId||gemInspectionContext is null)
+        {gemInspectionContext=PobInspectionContext.Read(State,result!.Xml,group);gemInspectionContextBuild=result;gemInspectionContextGroup=detailId;}
+        return gemInspectionContext;
+    }
 
     private GemPickerContext CaptureGemPickerContext()
     {
@@ -23,7 +32,7 @@ public sealed partial class PobWidget
             GemInspectionText(S(group,"title"),240),
             pickerGem==0?"":GemInspectionText(S(A(group,"gems").FirstOrDefault(g=>I(g,"id")==pickerGem),"name"),240),
             GemInspectionText(S(State,"mainSkill"),240),
-            GemInspectionText(S(A(State,"gemSortMetrics").FirstOrDefault(m=>S(m,"id")==gemSort),"title"),160));
+            GemInspectionText(S(A(State,"gemSortMetrics").FirstOrDefault(m=>S(m,"id")==gemSort),"title"),160),GemInspectionContext(group));
     }
     private bool GemQueryIsCurrent(GemQuery query) => ReferenceEquals(query,gemQuery)&&query.Context is {} context&&
         result is not null&&ReferenceEquals(context.Build,result)&&context.DocumentId==documentId&&
@@ -109,6 +118,7 @@ public sealed partial class PobWidget
         if(data.Description.Length>0)rows.Add(Text(data.Description,"gem-inspection.description"));
         rows.Add(Text(context.Gem==0?"Add to "+context.GroupName:"Replace "+context.ReplacedGem+" in "+context.GroupName,
             "gem-inspection.target","pob-muted"));
+        if(context.InspectionContext.Summary.Length>0)rows.Add(Text(context.InspectionContext.Summary,"gem-inspection.context","pob-small pob-muted"));
         if(GemComparisonText(data,context) is {Length:>0} total)
         {
             rows.Add(Text(total,"gem-inspection.comparison","pob-heading"));

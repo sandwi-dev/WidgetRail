@@ -30,13 +30,17 @@ internal sealed partial class WidgetStylesValidationPage
         long focusSerial=10000;
         try
         {
-            foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight})
+            var disclosures=Environment.GetCommandLineArgs().Contains("--pob-disclosures-only");
+            foreach(var themeId in disclosures?new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"high-contrast"}:new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
-                var theme=ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,new((WrssDocument[])[package.Document],[]),catalog.Load(themeId,"1.0.0").Package).Theme!;
+                var contrast=themeId=="high-contrast";
+                WidgetViewPresenter.SetHighContrastStyleOverride(contrast);
+                page.ApplyAppearance(AppearanceSettings.Default with{Motion=MotionPreference.Reduced,TextScale=contrast?1.25:1},false);
+                var theme=ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,new((WrssDocument[])[package.Document],[]),catalog.Load(contrast?ThemeIdentity.BuiltInMonoInk:themeId,"1.0.0").Package).Theme!;
                 var snapshot=SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{scenario}.json")));
                 ViewNode[] rows=scenario switch
                 {
@@ -45,7 +49,11 @@ internal sealed partial class WidgetStylesValidationPage
                     _=>[],
                 };
                 var collection=scenario=="search"?"pob.unified.results":"pob.build-comparison.rows";
-                ViewNode Materialize(ViewNode node)=>node.Kind==ViewNodeKind.IndexedCollection&&node.Id==collection
+                var disclosureRows=scenario.StartsWith("calculation-",StringComparison.Ordinal)
+                    ?JsonSerializer.Deserialize<Dictionary<string,ViewNode[]>>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-calculation-disclosure-rows.json")))!:new();
+                ViewNode Materialize(ViewNode node)=>node.Kind==ViewNodeKind.IndexedCollection&&disclosureRows.TryGetValue(node.Id,out var detailRows)
+                    ?new ViewNode{Id=node.Id,Kind=ViewNodeKind.Scroll,ScrollAxis=ScrollAxis.Vertical,StyleClasses=node.StyleClasses,InitialChildFocusId=detailRows.FirstOrDefault()?.Id,Children=detailRows}
+                    :node.Kind==ViewNodeKind.IndexedCollection&&node.Id==collection
                     ?new ViewNode{Id=node.Id,Kind=ViewNodeKind.Scroll,ScrollAxis=ScrollAxis.Vertical,StyleClasses=node.StyleClasses,
                         InitialChildFocusId=rows.FirstOrDefault()?.Id,Children=rows}
                     :node with{Children=node.Children.Select(Materialize).ToArray()};
@@ -88,6 +96,31 @@ internal sealed partial class WidgetStylesValidationPage
                 {
                     Check(rows.Length==1&&Find<Button>("Widget."+rows[0].Id,root) is not null,"Build comparison exposes its real read-only difference row");
                     Check(!declared.Any(n=>n.ActionId is "apply" or "loadout-create"),"Comparison fixture exposes no apply or transfer control");
+                }
+                if(disclosures)
+                {
+                    var toggleId=scenario.StartsWith("calculation-",StringComparison.Ordinal)?"pob.calculation.details-toggle":"pob.config.inactive.toggle";
+                    var toggle=Find<Button>("Widget."+toggleId,root)!;
+                    toggle.StartBringIntoView();
+                    await Wait(()=>VisibleInAncestorScrolls(toggle));
+                    Check(toggle.Focus(FocusState.Keyboard),"Disclosure toggle accepts native focus at constrained size and text scale");
+                    Check(Descendants(page).OfType<ScrollViewer>().All(s=>s.ExtentWidth<=s.ViewportWidth+1),"Disclosure layout has no horizontal overflow");
+                    if(scenario.StartsWith("calculation-",StringComparison.Ordinal))
+                    {
+                        Check(Find<TextBlock>("Widget.pob.calculation.value",root) is {ActualHeight:>0},"Calculation total remains present beside disclosure");
+                        Check(Find<TextBlock>("Widget.pob.calculation.context",root) is {ActualHeight:>0},"Calculation context remains present beside disclosure");
+                        Check((Find<FrameworkElement>("Widget.pob.calculation.source-list",root)is not null)==scenario.EndsWith("expanded",StringComparison.Ordinal),"Calculation sources follow disclosure state");
+                    }
+                    var count=dispatched.Count;page.ActivateFocused();await Wait(()=>dispatched.Count==count+1);
+                    Check(dispatched[^1]==declared.Single(n=>n.Id==toggleId).ActionId,"Disclosure uses its declared action without activating another control");
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),toggle),"Disclosure activation retains its opener");
+                    foreach(var row in disclosureRows.Values.Where(items=>items.Length>0).Select(items=>items[0]))
+                    {
+                        if(Find<Button>("Widget."+row.Id,root)is not {} button)continue;
+                        button.StartBringIntoView();button.Focus(FocusState.Keyboard);
+                        await Wait(()=>VisibleInAncestorScrolls(button));
+                        Check(true,"Calculation list and source rows can be fully revealed at enlarged text scale");
+                    }
                 }
                 var busyNode=scenario=="search"?rows[0]:scenario=="skill-workspace"
                     ?declared.First(n=>n.Id.StartsWith("pob.gem-enabled.",StringComparison.Ordinal)&&n.Kind==ViewNodeKind.Button)

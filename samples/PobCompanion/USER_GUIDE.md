@@ -85,9 +85,13 @@ Tree previews list every changed passive with its numeric modifier descriptions.
 
 The calculation inspector shows skill context for main-skill damage, group context for Full DPS, and the selected statistic's breakdown for other values.
 
+Use **Hide breakdown** to keep the selected total and calculation context visible while collapsing its supporting detail. **Show breakdown** restores the explanation and source rows. The choice is remembered for recently inspected calculations; it never changes the build.
+
 **Calcs** groups statistics beside their calculation setup. Detailed calculations follow the main skill by default; the inspection selectors can choose another group, an active skill within that group, buff mode, and player/minion where supported. These inspection choices do not change the main skill or rewrite the build’s saved desktop Calcs settings. Formula text is directly scrollable; source-table rows remain expandable when their summary is condensed. Breakdowns and source attribution come from upstream; the widget does not maintain passive-effect rules or infer causes that upstream does not attach to a calculation. Main-skill DPS identifies the skill; disabled skills show an unavailable value and PoB's reason. Full DPS identifies its included groups and contributors. Breakdowns identify their skill and calculation mode where relevant, and explain when their total differs from the overview. Matching defensive totals omit unrelated skill context. Exact repeated resource-calculation sequences from upstream are collapsed without changing their values or source rows.
 
 **Configuration** retains upstream section names and order in a category list. Controls scroll within each section; search covers all sections, and Show explanations reveals the upstream help. Retained settings that are currently inapplicable are identified explicitly. Changes recalculate and save immediately; Undo reverses them.
+
+Saved inactive settings initially show their current values and changed-setting count. Expand that group to edit retained values. Searching for one reveals its control directly. If skill options cannot be read, **Retry skill options** requests them again without changing the main skill or the saved build.
 
 Damage labels follow PoB's display mode: skills that report average damage are labelled accordingly, with hit damage per second shown separately in Calcs. Item replacement offers slots accepted by the engine for the pasted item. Configuration omits inapplicable default controls while retaining authored non-default settings.
 

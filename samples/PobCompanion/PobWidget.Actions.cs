@@ -16,6 +16,7 @@ public sealed partial class PobWidget
             if (busy) return ValueTask.CompletedTask;
             skillWorkspaceFocusRequested=false;
             if(HandleUnifiedSearchAction(action)){Invalidate();return ValueTask.CompletedTask;}
+            if(HandleDisclosureAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleItemCandidateInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleGemInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleWebsiteAction(action))return ValueTask.CompletedTask;
@@ -113,8 +114,8 @@ public sealed partial class PobWidget
             else if(parts[0]=="main-group"&&parts.Length==2&&int.TryParse(parts[1],out var mainGroup)&&A(State,"skills").Any(s=>I(s,"id")==mainGroup))
                 Edit(new{op="skill",id=mainGroup,field="main"});
             else if(parts is ["skill-number",var numberGroup,var numberControl]&&detailKind=="skill-options"&&
-                int.TryParse(numberGroup,out var numericGroup)&&numericGroup==detailId&&numericGroup==inspectedSkillGroup&&
-                inspectedSkillOptions.EnumerateArray().Any(o=>S(o,"id")==numberControl&&S(o,"kind")=="number"))
+                int.TryParse(numberGroup,out var numericGroup)&&numericGroup==detailId&&CurrentSkillOptions is {} options&&
+                options.Options.Any(o=>o.Id==numberControl&&o.Numeric))
                 Edit(new{op="skill-number",group=numericGroup,control=numberControl,value=action.CommittedText??""});
             else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";}
             else if(id=="back"&&detailKind=="choose-slot"&&pastedItem is not null) DiscardItemDraft();

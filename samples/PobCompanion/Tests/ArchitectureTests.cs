@@ -5,6 +5,7 @@ internal static class ArchitectureTests
 {
     internal static void Run(Action<bool, string> check)
     {
+        AdapterOwnershipTests.Run(check);
         var first = PobGame.For(1); var second = PobGame.For(2);
         check(first.TradeApiPath == "/api/trade/" && second.TradeApiPath == "/api/trade2/" &&
             first.TradeSearchPath == "/trade/search/" && second.TradeSearchPath == "/trade2/search/", "Game descriptors keep website and captured-response endpoints separate");

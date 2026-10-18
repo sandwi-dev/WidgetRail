@@ -87,21 +87,21 @@ public sealed partial class PobWidget
         await RefreshCommittedMapAsync(token);
     },backwards?"Undoing change…":"Redoing change…");
 
-    private async Task<JsonElement?> ReadVisibleSkillOptionsAsync(PobResult next,CancellationToken token,string? skillDestination=null)
+    private async Task<PobSkillOptions?> ReadVisibleSkillOptionsAsync(PobResult next,CancellationToken token,string? skillDestination=null)
     {
         var kind=skillDestination??detailKind;
         if(section!="Skills"||kind is not ("skill" or "skill-options" or "skill-manage"))return null;
         var group=skillDestination is null?detailId:I(next.State,"editedSkillGroup");
         if(!A(next.State,"skills").Any(s=>I(s,"id")==group))return null;
-        if(I(next.State,"skillOptionsGroup")==group&&next.State.TryGetProperty("skillOptions",out var options))return options;
+        if(I(next.State,"skillOptionsGroup")==group)return PobSkillOptions.Read(next.State,group);
         return await ReadSkillOptionsAsync(group,next.Xml,token);
     }
 
-    private void PublishVisibleSkillOptions(JsonElement? options)
+    private void PublishVisibleSkillOptions(PobSkillOptions? options)
     {
         if(section!="Skills"||detailKind is not ("skill" or "skill-options" or "skill-manage"))return;
-        if(options is {} value){inspectedSkillOptions=value;inspectedSkillGroup=detailId;inspectedSkillXml=result!.Xml;inspectedSkillDocument=documentId;}
-        else {inspectedSkillGroup=0;inspectedSkillXml=null;if(detailKind=="skill-options")detailKind="";}
+        if(options is {} value)skillOptionsState.Publish(new(documentId,result!.Xml,detailId),value);
+        else {skillOptionsState.Clear();if(detailKind=="skill-options")detailKind="";}
     }
 
     private async Task RefreshCommittedMapAsync(CancellationToken token)
