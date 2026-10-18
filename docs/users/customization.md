@@ -31,13 +31,13 @@ The built-in collection includes ten themes:
 Mono Ink is a visual theme. Use the separate contrast accessibility setting
 when you need the host's high-contrast policy.
 
-**Settings → Overlay → Interface size** ranges from 50% to 125%. Lower it if
+**Settings → Appearance → Interface size** ranges from 50% to 125%. Lower it if
 Windows display scaling makes the overlay too large. The size is saved per display.
 
 Accessibility settings can adjust text and contrast, motion, and transparency.
 Try changes in a widget you use often so you can see how they affect real content.
 
-**Settings → Overlay → Section animation** controls page changes inside widgets:
+**Settings → Appearance → Section animation** controls page changes inside widgets:
 **Slide** (default) moves pages horizontally; **Paging** raises the next page
 while the previous page recedes; **Vertical slide** moves pages up or down;
 **Reveal** uncovers stationary content; **Cover slide** moves the new page over
@@ -79,7 +79,7 @@ menu dismissal remain immediate.
 
 ## Arrange your tray
 
-Choose **Settings → Overlay → Position** to place the overlay in the center,
+Choose **Settings → General → Position** to place the overlay in the center,
 bottom left, or bottom right. Center is the default.
 
 Corner layouts keep the outside edge and bottom edge of the widget fixed as it

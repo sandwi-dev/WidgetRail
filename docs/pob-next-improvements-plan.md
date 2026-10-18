@@ -285,11 +285,13 @@ References: [Inno command-line options](https://jrsoftware.org/ishelp/topic_setu
 
 ### Everyday experience first (approved 2026-10-18)
 
-- [ ] Rewrite the README opening around **Your PC, ready for a controller**: use the existing Windows desktop and games without entering a separate fullscreen launcher. Explain launch once/startup at sign-in and the supported View + Menu toggle before introducing the C# framework.
+First pass implemented: concise README, practical Audio Mixer Quick Start, owner demo placeholder, corrected General/Appearance paths, obsolete README recovery promise removed, fresh interactive versus CLI enablement corrected, Game Help removed from the Production guide's bundle claim. Final distribution and updater wording remains coupled to those pending implementations.
+
+- [x] Rewrite the README opening around **Your PC, ready for a controller**: use the existing Windows desktop and games without entering a separate fullscreen launcher. Explain launch once/startup at sign-in and the supported View + Menu toggle before introducing the C# framework.
 - [ ] Make Quick Start demonstrate one useful action: install/launch, open with View + Menu, adjust an application's volume with Audio Mixer, then hide and return. Account for Bare edition needing Audio Mixer installed through Catalogue; recommend Production for this first-run example.
 - [ ] Keep the README order: opening and short demo, Quick Start, everyday uses, optional widgets and setup, compatibility, building widgets. Preserve the existing documentation-index structure. Move CLI commands, renderer/cache internals and exhaustive setting tables into maintained guides.
 - [ ] Reconcile Settings → General, Appearance/interface size, update checks versus explicit installation, current update recovery behavior and path-specific install/enable/permission behavior. Keep one detailed explanation per topic and link to it.
-- [ ] Add a clearly marked owner-supplied demonstration placeholder: one uninterrupted supported desktop/game → open overlay → adjust audio → switch app or pin content → hide sequence, with View + Menu visible. Use placeholders only for assets or information the owner must supply, never in place of facts verifiable from code.
+- [x] Add a clearly marked owner-supplied demonstration placeholder: one uninterrupted supported desktop/game → open overlay → adjust audio → switch app or pin content → hide sequence, with View + Menu visible. Use placeholders only for assets or information the owner must supply, never in place of facts verifiable from code.
 
 Run this after implementation decisions settle, then recheck changed links and examples before delivery. Public documentation should describe the actual delivered app, not a mixture of former plans and current behavior.
 

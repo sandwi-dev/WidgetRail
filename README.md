@@ -2,301 +2,123 @@
 
 # WidgetRail
 
-**A controller-first Windows overlay and open-source C# widget framework.**
+**Your PC, ready for a controller.**
 
-WidgetRail brings audio, media, applications, connectivity, and display controls
-into one interface. Use it with a controller, keyboard, or mouse, and keep supported
-video or compact widget views visible while the main overlay is closed.
+WidgetRail brings controller-friendly controls to your Windows desktop and games.
+Launch an app, adjust audio, switch windows, control music, or keep a video pinned
+while you play—without switching to a separate fullscreen launcher.
+
+Start WidgetRail once, or enable startup at sign-in. Press **View + Menu** whenever
+you need it, then hide the overlay to carry on. Keyboard and mouse work too.
+
+Free and open source, with a C# framework for building additional widgets.
 
 [Download](https://github.com/sandwi-dev/WidgetRail/releases) · [Installation](docs/users/getting-started.md) · [Documentation](docs/README.md) · [Build a widget](docs/developers/widget-quickstart.md)
 
-![Games & Apps with WidgetRail's horizontal rail and Xbox controller hints](docs/images/overview-rail.png)
+> **Demo recording — owner contribution needed:** replace this placeholder with one
+> uninterrupted recording: desktop or game → open WidgetRail → adjust app audio →
+> switch an app or pin content → hide WidgetRail. Keep the **View + Menu** shortcut
+> visible and use a supported windowed or borderless setup.
 
-![WidgetRail's radial switcher over Games & Apps with PlayStation controller hints](docs/images/overview-games-apps-radial.png)
+![WidgetRail over the Windows desktop, with Games & Apps and controller hints](docs/images/overview-rail.png)
 
 ## Quick start
 
 Requires **Windows 10 build 19041 or newer, or Windows 11, x64**. WidgetRail is
-preview software; this README describes the current source version. Check the
-release notes for features available in each downloadable preview.
+preview software. This README describes the source version; check the release
+notes for what is available in each download.
 
-1. **Install WidgetRail.** Download an installer from [GitHub Releases](https://github.com/sandwi-dev/WidgetRail/releases). Choose **Production** for everyday use or **Developer** for additional SDK examples. Both editions include the CLI and widget templates.
-2. **Open the overlay.** Launch WidgetRail from the Start menu, then press **View + Menu** together (the default shortcut). Press again to hide it. Optional **F1** keyboard opening can be enabled in **Settings → Controllers → F1 keyboard shortcut**; it is off by default. Use the D-pad or left stick to navigate and A to select, or use the mouse.
-3. **Use a widget and allow access when needed.** Widgets request permission when a feature needs it. You can review or revoke access in **Settings → Widgets → Permissions & configuration**, and enable any widget you previously disabled.
-4. **Disable widgets you do not need.** From a widget's details, choose **Disable widget** to remove it from the tray. You can enable it again later; Settings itself remains available.
-5. **Adjust the overlay.** Open **Settings → Overlay** and check **Interface size**, **Position**, and **Widget switcher**. Adjust the size to fit your display, and choose the layout you prefer. Startup at sign-in is offered by the installer.
+1. **Install and launch WidgetRail.** Get the **Production** installer from
+   [GitHub Releases](https://github.com/sandwi-dev/WidgetRail/releases), run setup,
+   then open WidgetRail from Start.
+2. **Open the overlay.** Press **View + Menu** together. Navigate with the D-pad or
+   left stick and select with A; follow the on-screen button hints.
+3. **Adjust an app's volume.** Select **Audio Mixer**, choose an application that
+   is playing audio, and adjust its volume. Approve access if prompted.
+4. **Carry on.** Press **View + Menu** again to hide WidgetRail and return to your
+   game or desktop.
 
-Before using WidgetRail in games, review the [recommended setup](#recommended-setup)
-for Windows controller shortcuts and display mode. See the
-[installation guide](docs/users/getting-started.md) for runtime requirements and troubleshooting.
+To make it available each session, enable **Settings → General → Start WidgetRail
+when I sign in**. It starts quietly; the shortcut opens it when you need it.
 
-## Controller navigation
+Guide/PS can be selected as an alternative shortcut in **Settings → Controllers**.
+For display size, use **Settings → Appearance → Interface size**; text size is
+under **Accessibility**. More setup can wait until after your first useful action.
 
-Navigate buttons, sliders, menus, lists, and game libraries with the D-pad or
-left stick. The right stick scrolls content, and a contextual guide shows the
-actions available for the current selection. Text fields support an on-screen
-controller keyboard.
+[Installation and Windows setup](docs/users/getting-started.md) · [Controller and keyboard controls](docs/users/controls.md) · [Customization](docs/users/customization.md)
 
-When no further control is available in a direction but its container can still
-scroll, D-pad/left-stick navigation scrolls the remaining content. The right
-stick also scrolls directly.
+## Everyday uses
 
-When a selection has additional actions, the guide shows **Options** with its
-controller button. Focused tiles also show the glyph for their options button.
+| What you want to do | Where to go |
+| --- | --- |
+| Turn down a loud app or change audio devices | Audio Mixer |
+| Launch a game or application | Games & Apps |
+| Switch to another window | Task Switcher |
+| Pause or skip media reported by Windows | Now Playing |
+| Adjust network connections or put the PC to sleep | Network Controls or Power |
+| Browse a page, or keep supported content visible while playing | Browser and widget pinning |
+| Capture a screenshot or short silent clip | Capture Library |
 
-- **Controller support:** Xbox-compatible controllers and native DualSense input over USB or Bluetooth. Controller hints use Xbox or PlayStation glyphs according to the detected input.
-- **Keyboard navigation:** arrows, Enter, and Escape provide focus, selection, and Back actions.
-- **Optional Exclusive control:** keep a supported controller's input in WidgetRail while the overlay is open. This requires HidHide and ViGEmBus; review the [compatibility notes](docs/users/known-limitations.md#games-and-controller-input) before enabling it.
-
-### Widget switching
-
-The default **Radial + rail** layout provides direct selection from a wheel, with eight widgets per
-page. Press B at a widget's top level to open it, point the left stick to preview
-a widget, and press A to enter. The right stick changes pages without changing
-the current preview until another icon is selected.
-
-The horizontal rail remains available by moving down past the widget's bottom
-row. Browse left or right to preview widgets and use their available dashboard
-shortcuts. The tray menu also provides pinning, reordering, and reload controls.
-
-[Controller and keyboard reference](docs/users/controls.md)
-
-## Pinned video and compact widgets
-
-Pin a supported view, then close the main overlay. Video playback or a compact
-widget remains visible over the desktop or a compatible game. Pin controls
-let you move, resize, or remove it using the controller.
-
-Widgets can provide layouts for different tasks. YouTube offers pinned video;
-Spotify offers compact playback controls and a larger now-playing view with
-upcoming tracks. Press View to switch controller focus between a pinned view
-and the main overlay.
+Pin a supported video or compact widget, then hide the main overlay. Move, resize
+and adjust the pin with the controller. Available pinned views depend on the
+widget. [Pinning guide](docs/users/pinning.md).
 
 ![Pinned YouTube playback beside a game](docs/images/pinned-video.png)
 
-Pinned layouts are provided by each widget; not every view is pinnable.
-Windowed and borderless games provide the most reliable experience.
-[Pinning guide](docs/users/pinning.md) · [Display-mode compatibility](docs/users/known-limitations.md)
+## Add widgets
 
-## Built-in widgets
+Open **WidgetRail Catalogue** to discover widgets, see their setup requirements,
+and review an installation. It is also reachable from **Settings → Widgets**.
+Service integrations may need a separate account, key or companion before use.
 
-Both installer editions include the following widgets:
+| Widget | Setup to know about |
+| --- | --- |
+| [PoE1 / PoE2 Path of Building](samples/PobCompanion/README.md) | Build planning works locally; trade features use sign-in on the official trade website. |
+| [Playnite Library](samples/PlayniteLibraryWidget/README.md) | Playnite plus the separate Playnite Bridge and its connection token. |
+| [Spotify](samples/SpotifyWidget/README.md) | Your Spotify developer app; Premium for streaming and playback control. |
+| [YouTube Video](samples/YouTubeWidget/README.md) | Google API key for search; public video links work without a search key. |
+| [YouTube Music](samples/YtMusicWidget/README.md) | Account sign-in through Chrome or Edge; unofficial integration. |
+| [Game Help](samples/GameHelpWidget/README.md) | Your Gemini API key; provider quotas and charges apply. |
+| [Discord](samples/DiscordWidget/README.md) / [Twitch](samples/TwitchWidget/README.md) | Website sign-in for account features; website compatibility varies. |
+| [Display Profiles](samples/DisplayProfilesWidget/README.md) | Supported display hardware and permission for display controls. |
 
-| Widget | Features |
-|---|---|
-| **Audio Mixer** | Control master and per-app volume, select output and microphone devices, and choose supported spatial sound formats. |
-| **Games & Apps** | Browse and launch Windows applications and discovered games. |
-| **Task Switcher** | View live window previews, switch applications, and request that a window close. |
-| **Now Playing** | View and control media sessions reported by Windows. |
-| **Network Controls** | Toggle Wi-Fi and Bluetooth radios and view connection details. Connect or disconnect Wi-Fi, manage saved networks and automatic connection, and scan, pair, or remove Bluetooth devices. |
-| **Power** | Sleep, restart, or shut down Windows. |
-| **[Capture Library](docs/reference/capture-library.md)** | Save full-resolution screenshots and short silent clips, preview/export them and reuse saved context in Game Help. |
-| **Performance Monitor** | Pin FPS and system CPU/GPU/RAM/VRAM readings. FPS requires explicit Windows approval for a separate collector. |
-| **[Browser](docs/reference/widget-web-browser.md)** | Browse with a controller pointer, drag, zoom and text entry; open URLs or Google searches, use bookmarks/history and pin the page. |
-| **Settings** | Configure layout, appearance, accessibility, controllers, widgets, permissions, and diagnostics. |
-| **[WidgetRail Catalogue](docs/reference/widget-marketplace.md)** | Browse widgets and review installations and updates. |
+Full-access packages require explicit approval because they run with your Windows
+account's permissions. Read the widget's requirements before installing.
+[Catalogue and installation guide](docs/reference/widget-marketplace.md).
 
-Use **Catalogue**, also available from **Settings → Widgets**, to discover
-add-ons and manage their updates from one page. **Update all** verifies packages
-before one explicit review. See [Widget catalogue](docs/reference/widget-marketplace.md).
+**Updates:** automatic app-update checks can notify you, but downloading and
+installing remain your choice. Open **Settings → About & troubleshooting → App
+updates** for the app, or **Catalogue → Updates** for widgets. See the
+[app update guide](docs/reference/app-updates.md) for the current installer flow.
 
-The tray displays local time, internet connectivity over Wi-Fi or Ethernet,
-and Bluetooth radio status. Available controls depend on Windows permissions,
-connected hardware, and installed providers.
+## Compatibility
 
-## Additional widgets
+- Xbox-compatible controllers and native DualSense over USB or Bluetooth are
+  supported. On-screen hints follow the detected controller.
+- Windowed and borderless games offer the most reliable overlay and pinning
+  experience. Exclusive fullscreen can hide desktop overlays.
+- Windows foreground restrictions and other controller shortcuts can interfere.
+  WidgetRail does not automatically change Game Bar or Windows shortcut settings.
+- Optional Exclusive control requires additional drivers. Hardware, service
+  accounts and provider permissions determine which features are available.
 
-Use **Catalogue** to browse these add-ons, or install their separate `.wrwidget` downloads. They are not
-included in either installer.
+[Compatibility and limitations](docs/users/known-limitations.md) · [Recommended Windows settings](docs/users/getting-started.md#recommended-windows-settings) · [Troubleshooting](docs/users/troubleshooting.md)
 
-| Add-on | Features | Setup requirements |
-|---|---|---|
-| [Discord](samples/DiscordWidget/README.md) | Controller-friendly webapp with persistent sessions and pinnable live pop-outs. | Discord account; website permissions for microphone/camera when used. |
-| [Twitch](samples/TwitchWidget/README.md) | Streaming webapp with controller navigation, persistent sessions and pinnable windows. | Sign-in for chat/account features; site compatibility varies. |
-| [Game Help](samples/GameHelpWidget/README.md) | Ask for hints with screenshots/clips, expand solutions and open suggested links. | Your Gemini API key; capture/document access requested when used. |
-| [Display Profiles](samples/DisplayProfilesWidget/README.md) | Save and restore display configurations with timed rollback protection. | Read/control access requested by the widget when needed. |
-| [Spotify](samples/SpotifyWidget/README.md) | Search tracks, albums, artists, and playlists; browse playlists and the queue; add individual tracks to the queue; choose a playback device or use **Play here**; pin playback controls. | Spotify account, a developer app, and Premium for streaming and playback control. |
-| [YouTube Video](samples/YouTubeWidget/README.md) | Search public videos, play a link, seek, adjust volume and playback speed, loop, and use pinned or fullscreen playback. | A Google API key for search. Playing a public link does not require a search key. |
-| [YouTube Music](samples/YtMusicWidget/README.md) | Browse Home and your library, search music, play locally, start song radio, queue songs, playlists or albums with **Play next**, and pin playback controls. | Full-trust approval; Chrome or Edge for account sign-in. No companion app required. Unofficial integration; Windows x64. |
-| [Playnite Library](samples/PlayniteLibraryWidget/README.md) | Browse and search games, filter the library, launch installed games, and manage favorites, categories, hidden games, and completion status. | Playnite running with a compatible Playnite Bridge and a configured connection token. |
+## Build a widget
 
-Each widget's README covers installation, screenshots, and service-specific
-requirements. See [community service integrations](docs/reference/community-companion-services.md)
-for the shared backend and trust model.
+Use the **C# SDK** to describe your interface and actions. WidgetRail provides
+native rendering, responsive layout, controller navigation, shared text entry,
+themes and widget lifecycle support. You do not need to build the native host to
+write an ordinary widget.
 
-## Customization
+The CLI includes templates, validation, previews and packaging. Explore
+[SDK Gallery](samples/SdkGalleryWidget/README.md) for working controls and layouts.
 
-Settings separates overlay layout, appearance, accessibility, and controller
-behavior. Interface size and text size are remembered independently for each
-display; they do not change Windows display scaling.
-
-| Option | Available settings |
-|---|---|
-| **Overlay position** | Center, Bottom left, or Bottom right. Corner layouts keep the outside and bottom edges fixed during widget resizing, with guide hints aligned to the chosen side. |
-| **Widget switcher** | Radial + rail or the horizontal rail. |
-| **Interface size** | 50%–125%, saved per display. |
-| **Text size** | 85%–150%, saved per display, under **Settings → Accessibility**. |
-| **Themes** | Built-in themes and installable theme packages. Shared controls and controller hints follow the selected theme. |
-| **Animations** | Choose Slide (default), Paging, Vertical slide, Reveal, Cover slide, or None for widget sections; choose Zoom (default) or Lift for dialogs; adjust widget animation speed from 0.5× to 2×; toggle dialog and widget-switch animations; follow Windows motion preferences or select Reduced motion. |
-| **Contrast and readability** | Follow Windows high contrast, enable High contrast, use Bold text, or reduce transparency. |
-| **Backdrop** | Adjust backdrop opacity from 0% to 80%. |
-| **Startup (installer)** | Start WidgetRail quietly when signing in to Windows; manage Windows disablement through Startup Apps. |
-| **Tray organization** | Reorder widget icons and reload a widget from its tray controls. |
-
-New installations use **Neon Circuit**, **Radial + rail**, centered placement,
-bold text, and widget-switch animations. Startup is off by default.
-
-![WidgetRail theme comparison](docs/images/themes.png)
-
-[Customization guide](docs/users/customization.md) · [Theme packages](docs/developers/theme-packaging.md)
-
-## Widget installation and management
-
-Use **Settings → Widgets → Install local widget** for a downloaded `.wrwidget`
-package. Full-access widgets require explicit approval because
-they run with your Windows account's permissions.
-New widgets installed here or through Catalogue are enabled and request
-permissions when a feature needs them. The Widgets list has **All**, **Built-in**,
-and **Community** filters and returns to your selected row after viewing details.
-
-The same section supports uninstalling add-ons and removing unused older
-versions. See [Installation and updates](#installation-and-updates) for update procedures.
-
-### Install from GitHub releases
-
-The included `wrail` CLI can discover and install packages directly from public
-GitHub releases. Open PowerShell and locate the installed CLI; it is not added
-to PATH automatically:
-
-```powershell
-$appRoot = (Get-ItemProperty 'HKCU:\Software\WidgetRail\Installation').ApplicationRoot
-$wrail = Join-Path $appRoot 'wrail.cmd'
-& $wrail releases sandwi-dev/WidgetRail --include-prerelease
-```
-
-The listing groups widget and theme packages by release, with readable file
-sizes and an install command for each package. `--include-prerelease` includes
-preview releases; installers are excluded. Use `--page 2` for older releases,
-`--tag <tag>` for a specific release, or `--json` for hashes and exact byte sizes.
-
-Copy the install command for the package you want. When using the PowerShell
-variable above, replace the command's leading `wrail` with `& $wrail`.
-
-If the CLI reports `full_trust_approval_required`, review the widget's source
-and requirements, then repeat its install command with `--accept-full-trust`.
-
-The CLI verifies the download against the published checksum. If no checksum
-is available, supply the publisher's expected hash with `--sha256`.
-CLI installation leaves the widget disabled. Open **Settings → Widgets** to review
-any requested permissions and enable it, then complete the account or companion
-setup described in its README. No widget code runs during installation.
-
-[CLI package reference](docs/reference/cli-packages.md#discover-packages-on-github)
-
-## Performance
-
-Standard widget interfaces use native rendering. Browser-based surfaces are
-used separately for supported embedded web media.
-
-- **Rendering reuse:** unchanged styles, text layouts, and prepared content are cached. Updates repaint affected areas where possible.
-- **Paged content and artwork:** long collections load as needed. Images are decoded for their display size, with bounded memory caches and a disk cache for eligible web artwork.
-- **Lifecycle management:** Audio Mixer stays loaded while hidden and stops its active audio subscriptions. Playnite Library unloads after five minutes hidden. Pinned widgets stay active, and media widgets can remain loaded to preserve playback.
-
-Memory use varies with display size, artwork, active widgets, and playback.
-
-[Widget lifecycle](docs/reference/widget-residency.md) · [Artwork caching](docs/reference/artwork-disk-cache.md)
-
-## Widget development
-
-WidgetRail provides a **C# SDK** for declarative interfaces and action handling.
-The host manages native rendering, responsive layout, controller navigation,
-scrolling, and shared styling.
-
-| Framework capability | Included support |
-|---|---|
-| **UI components** | Buttons, sliders, selectors, menus, text entry, posters, and responsive collections. |
-| **Presentation composition** | Navigation shells, command bars, and reusable layout helpers for multi-section widgets. |
-| **Navigation and actions** | Focus management, nested navigation, shortcuts, and contextual controller hints. |
-| **Data and lifecycle** | Paged collections, loading and error states, and policies for background work and idle unloading. |
-| **Styling** | WRSS styles, shared themes, and accessibility overrides. |
-| **Media** | Supported embedded media, live window previews, and widget-defined pinned layouts. |
-| **Windows integration** | Permission-scoped platform services and support for local companion applications. |
-
-The `wrail` CLI includes project templates, validation, development previews,
-rebuilding on source changes, scenario previews, and package creation.
-The native inspector shows layout, resolved styles, focus, and diagnostic
-information while a development widget runs.
-
-[SDK Gallery](samples/SdkGalleryWidget/README.md) demonstrates the available
-components and layouts. Writing an ordinary C# widget does not require building
-the native host.
-
-[Widget quickstart](docs/developers/widget-quickstart.md) · [Core concepts](docs/developers/concepts.md) · [Presentation composition](docs/reference/presentation-composition.md) · [CLI and inspector](docs/reference/cli-workflows.md) · [Authoring guide](docs/developers/widget-authoring-guide.md)
-
-## Installation and updates
-
-The installer includes private .NET base and Windows Desktop runtimes, and checks for
-GameInput and WebView2. A missing WebView2 runtime requires an internet download.
-
-Use **Settings → About & troubleshooting → App updates & recovery** to review releases and prepare verified installers with a pre-update profile backup. Automatic checks default on and can notify after startup; opening the notification takes you to App updates. Downloading and installation stay explicit. Recovery is available from the same Settings page after updating; no recovery shortcut is created. See [App updates](docs/reference/app-updates.md). You can also manually run a newer installer.
-Built-in widgets update with the application; your settings and installed add-ons
-are retained. Production and Developer use the same application version and
-saved data, rather than separate stable and unstable channels.
-
-Update catalogue add-ons from **Catalogue → Updates**. For a local package,
-use **Settings → Widgets → Update from file** in its details. Updates preserve
-enabled state, permissions, and saved data; full-access updates require approval.
-
-[Installation and updates](docs/users/getting-started.md) · [Build from source](docs/maintainers/building.md)
-
-## Recommended setup
-
-- Turn on **Automatically hide the taskbar** for more space around the overlay.
-- Turn off **Xbox full-screen experience / Xbox mode**, if available, to use WidgetRail with the normal Windows desktop.
-- Turn off **Allow your controller to open Game Bar** in **Windows Settings → Gaming → Game Bar**.
-- If Windows offers **Use View + Menu as Guide button in apps**, turn it off. Otherwise, Windows can report that combination as Guide.
-- In **WidgetRail Settings → Controllers**, set **Controller shortcut** to **Guide** to reduce conflicts with games that use View and Menu. Xbox Guide and PlayStation PS buttons are supported.
-- Use **borderless windowed** mode for the most reliable overlay and pinned-video experience.
-
-These settings are optional. WidgetRail does not change them automatically.
-[Windows setup details](docs/users/getting-started.md#recommended-windows-settings)
-
-## FAQ
-
-### What if widgets are too large or too small, or the guide, tray, and widget overlap?
-
-Use the sizing options in [Customization](#customization). Reduce interface size
-if overlay elements overlap; use text size when only labels need adjustment.
-
-### Why does the overlay open but fail to take focus or switch apps?
-
-Windows can refuse to give WidgetRail foreground focus, including over some
-system windows such as Task Manager and Settings. The overlay may stay visible
-while input reaches the other app, and Task Switcher may be unable to activate
-a window. This does not always mean the other app is running as administrator.
-
-If the guide says **Focus blocked**, try clicking inside the overlay. If that
-does not help, use Alt+Tab to switch to the desktop or a regular app, then reopen
-WidgetRail. [Foreground troubleshooting](docs/users/troubleshooting.md#the-overlay-cannot-take-foreground-focus)
-
-### Why is an enabled widget missing from the tray?
-
-A **Built in** copy takes priority over an installed duplicate, even when the
-built-in copy is disabled. Use **Manage built-in version** to enable it.
-Other widgets may need permission review or a compatible package.
-[Widget management](docs/users/customization.md#manage-widgets)
-
-### What if my controller shortcut does not open WidgetRail?
-
-If the keyboard shortcut works but the controller does not, check the selected
-shortcut in **Settings → Controllers** and the Windows options in
-[Recommended setup](#recommended-setup). Windows gaming features can also respond to Guide.
-[Controller troubleshooting](docs/users/troubleshooting.md)
+[Your first widget](docs/developers/widget-quickstart.md) · [Authoring guide](docs/developers/widget-authoring-guide.md) · [CLI reference](docs/reference/cli-workflows.md) · [Build the app from source](docs/maintainers/building.md)
 
 ## License and contributions
 
-The platform, SDK, first-party widgets, and templates are **MIT-licensed**.
-You can reuse the examples and choose a license for your own widgets.
+The platform, SDK, first-party widgets and templates are **MIT-licensed**.
 Third-party dependencies retain their respective licenses.
 
 [Contributing](CONTRIBUTING.md) · [Issue tracker](https://github.com/sandwi-dev/WidgetRail/issues) · [Licensing](LICENSING.md)

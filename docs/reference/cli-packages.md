@@ -5,6 +5,20 @@ All catalog commands below use `scratch/catalog`, a separate test catalog.
 They do not change the widgets in your normal installation. To try the widget
 in the ordinary overlay, install its package through Settings instead.
 
+## Find the installed CLI
+
+The installer includes `wrail.cmd` but does not add it to PATH. In PowerShell:
+
+```powershell
+$appRoot = (Get-ItemProperty 'HKCU:\Software\WidgetRail\Installation').ApplicationRoot
+$wrail = Join-Path $appRoot 'wrail.cmd'
+& $wrail releases sandwi-dev/WidgetRail --include-prerelease
+```
+
+Use `& $wrail` in place of the leading `wrail` in a printed install command.
+GitHub discovery lists widget/theme packages, sizes and exact install commands;
+installers are excluded. See [Discover packages on GitHub](#discover-packages-on-github).
+
 ## Pack and install
 
 Inspect an existing package before installation:

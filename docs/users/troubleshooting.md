@@ -67,9 +67,10 @@ it to load. Obtain a compatible package from its author. Review full-trust
 applications as you would other Windows software.
 
 Full-access packages such as Playnite Library require an explicit confirmation
-after file selection. **Cancel** is selected by default. Approving installs the
-package disabled; enabling it remains a separate action in Settings. A cancelled
-or expired review does not install the package. If an older build only reports
+after file selection. **Cancel** is selected by default. Approving a fresh install through Settings or Catalogue installs and enables the
+widget; features request permissions when needed. Updates keep the previous enabled
+state. CLI installation leaves a new widget disabled until you enable it in Settings.
+A cancelled or expired review does not install the package. If an older build only reports
 `full_trust_approval_required`, update WidgetRail to a build with this review step.
 
 ## No artwork, media or window preview

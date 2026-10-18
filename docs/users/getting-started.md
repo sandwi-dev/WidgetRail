@@ -7,7 +7,7 @@ You can use a controller, with keyboard navigation available as a fallback.
 
 | Edition | Choose it when… |
 |---|---|
-| Production | You want the everyday PC, audio, media, network, app, Browser, and Game Help widgets. |
+| Production | You want the everyday PC, audio, media, network, app, and Browser widgets. |
 | Developer | You also want SDK Gallery and sample widgets to explore the framework. |
 
 Both include the `wrail` CLI and widget templates. They use the same application
@@ -55,6 +55,16 @@ The row of widget icons is the **tray**. Choose an icon to open its widget.
 Use the on-screen controller guide to discover the actions available at your
 current focus. [Learn the controls](controls.md).
 
+## Try one useful action
+
+Open **Audio Mixer**, choose an application that is playing audio, and adjust its
+volume. Approve access if requested. Press **View + Menu** again to hide the
+overlay and return to your desktop or game.
+
+For later sessions, enable **Settings → General → Start WidgetRail when I sign in**.
+Startup is optional and starts the application quietly. It does not open a
+separate fullscreen environment.
+
 ## Enable the features you want
 
 1. Open **Settings → Widgets** and select a widget you want to use. Built-in widgets
@@ -65,7 +75,7 @@ current focus. [Learn the controls](controls.md).
 2. Choose **Disable widget** for widgets you do not need. They leave the tray
    and can be enabled again later. Settings stays enabled so you can always
    manage the application.
-3. Open **Settings → Overlay** to choose **Position** and decide whether to start
+3. Open **Settings → General** to choose **Position** and decide whether to start
    WidgetRail when signing in. Adjust **Interface size** in **Appearance**.
    B opens the radial chooser; directional navigation also lets you use the rail. See [Customization](customization.md) for the full set of options.
 
