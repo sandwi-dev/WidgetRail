@@ -40,6 +40,39 @@ internal static class IndexedContextMenuValidation
             presenter.SetPresentationInputEnabled(true);
             await Until(() => badge.IsShown);
             Check(!await presenter.HandleControllerButtonAsync(ControllerButton.View), "unbound indexed input returns false from exact displayed declaration");
+            // SendInput exercises native desktop pointer/keyboard routing
+            // through WinUI events; this is not physical controller evidence.
+            var nativeBefore = Calls();
+            var clickedIndex = Enumerable.Range(65, 22).First(index => index != 75 &&
+                view.ContainerFromIndex(index) is SelectorItem candidate && WidgetReadingScrollFocus.IsVisible(candidate, scroll) &&
+                view.Items[index] is IndexedItem<WidgetIndexedRow> { Value.Lease.IsCurrent: true });
+            var clicked = (SelectorItem)view.ContainerFromIndex(clickedIndex);
+            var clickedRow = ((IndexedItem<WidgetIndexedRow>)view.Items[clickedIndex]).Value!;
+            await NativeContextProbeInput.RightClickAsync(clicked);
+            await Until(() => presenter.HasTransientControl && FocusId().StartsWith("Widget." + clickedRow.Item.Root.Id + ".Context.", StringComparison.Ordinal));
+            Check(Calls() == nativeBefore, "Native right click targets the clicked indexed occurrence without executing its primary action");
+            NativeContextProbeInput.Escape();
+            await Until(() => !presenter.HasTransientControl && ReferenceEquals(FocusManager.GetFocusedElement(presenter.XamlRoot), clicked));
+            Check(true, "Native indexed menu dismissal returns focus to the clicked row, not the previously focused row");
+            foreach (var shiftF10 in new[] { true, false })
+            {
+                NativeContextProbeInput.Keyboard(shiftF10);
+                await Until(() => presenter.HasTransientControl && FocusId().StartsWith("Widget." + clickedRow.Item.Root.Id + ".Context.", StringComparison.Ordinal));
+                Check(Calls() == nativeBefore, (shiftF10 ? "Shift+F10" : "Apps key") + " opens exact indexed row without activation");
+                presenter.DismissTransientControl();
+                await Until(() => ReferenceEquals(FocusManager.GetFocusedElement(presenter.XamlRoot), clicked));
+            }
+            NativeContextProbeInput.Keyboard(shiftF10: true);
+            await Until(() => presenter.HasTransientControl && FocusId().Contains(".Context.", StringComparison.Ordinal));
+            await presenter.HandleControllerButtonAsync(ControllerButton.A);
+            await Until(() => Status() == $"row:400:{clickedIndex}:context-play");
+            Check(Calls() == nativeBefore + 1, "Keyboard-opened context admits the exact indexed lease and selected action once");
+            ((SelectorItem)container).Focus(FocusState.Keyboard);
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            // The native-click case intentionally focused a different visible row.
+            // Let returning to row 75 settle, then measure menu-only continuity.
+            await Task.Delay(250, cancellation);
+            offset = scroll.VerticalOffset;
             var before = Calls();
             await Open();
             await Until(() => !badge.IsShown);

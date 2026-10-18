@@ -13,6 +13,9 @@ internal sealed partial class WidgetIndexedCollectionView
             view?.ContainerFromIndex(index) is not FrameworkElement { IsLoaded: true } anchor) return null;
         return (row, anchor);
     }
+    internal IDisposable? RetainContextRow(WidgetIndexedRow row, FrameworkElement anchor) =>
+        IsContextRowCurrent(row, anchor) && anchor is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container &&
+        containers.TryGetValue(container, out var entry) ? source!.Items.Retain(entry.Slot.Index) : null;
     internal bool IsContextRowCurrent(WidgetIndexedRow row, FrameworkElement anchor) =>
         !disposed && CanReceiveInput && ReferenceEquals(source, row.Owner) && row.Lease.IsCurrent &&
         anchor is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem { IsLoaded: true } container && containers.TryGetValue(container, out var slot) &&

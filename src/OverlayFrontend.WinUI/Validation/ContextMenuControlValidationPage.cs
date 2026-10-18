@@ -11,7 +11,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-/// <summary>Real native popup lifetime checks. Hardware input is deliberately absent.</summary>
+/// <summary>Native popup lifetime and synthetic desktop-input checks; no physical controller evidence.</summary>
 internal sealed partial class ContextMenuControlValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
@@ -20,7 +20,7 @@ internal sealed partial class ContextMenuControlValidationPage : Page, IAsyncDis
     private readonly List<WidgetActionRequest> actions = [];
     private long sequence;
     private long runtime = 1;
-    private bool disabled, ambiguous, modal, removed, rebound, unavailableOptions;
+    private bool disabled, ambiguous, modal, removed, rebound, unavailableOptions, ownerBusy;
     private Exception? failure;
     private Task? run;
     public ContextMenuControlValidationPage()
@@ -127,6 +127,9 @@ internal sealed partial class ContextMenuControlValidationPage : Page, IAsyncDis
             Check(actions[2].Action.SourceElementId == "hint" && actions[2].Action.FocusedElementId == "poster",
                 "scoped menu retains focused opener separately from nonfocusable command owner");
             await OpenAsync(ControllerButton.X, "poster", "poster");
+            presenter.DismissTransientControl();
+            await NativeDesktopContextsAsync();
+            await OpenAsync(ControllerButton.X, "poster", "poster");
             await presenter.DisposeAsync();
             Check(!presenter.HasTransientControl, "disposal revokes popup");
             if (failure is not null) throw failure;
@@ -163,7 +166,7 @@ internal sealed partial class ContextMenuControlValidationPage : Page, IAsyncDis
     private void Apply()
     {
         ViewNode Poster(string id, ControllerButton? button) => new() { Id = id, Kind = ViewNodeKind.ActionSurface,
-            ActionId = "open", AccessibilityLabel = id, ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, ContextMenuButton = button, IsDisabled = disabled,
+            ActionId = "open", AccessibilityLabel = id, ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, ContextMenuButton = button, IsDisabled = disabled, IsBusy = ownerBusy,
             ContextActions = (WidgetContextAction[])[ new(rebound ? "play.changed" : "play", "Play", IsDisabled: unavailableOptions), new("disabled", "Disabled", IsDisabled: true),
                 new("busy", "Busy", IsBusy: true), new("remove", "Remove", WidgetContextActionStyle.Danger, IsDisabled: unavailableOptions)],
             Children = (ViewNode[])[new() { Id = id + ".text", Kind = ViewNodeKind.Text, Text = id }] };

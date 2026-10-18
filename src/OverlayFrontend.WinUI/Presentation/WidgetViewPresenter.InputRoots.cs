@@ -23,6 +23,8 @@ internal sealed partial class WidgetViewPresenter
                 Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space or Windows.System.VirtualKey.Escape)
             { CancelGroupEntry(); CancelScrollReveal(); }
         };
+        root.ContextRequested += NativeContextRequested;
+        root.PreviewKeyDown += NativeContextKeyDown;
         root.GotFocus += focused;
         root.GettingFocus += OnGettingFocus;
         // Cancel the previous intent before this key starts a new one. Doing
@@ -34,6 +36,7 @@ internal sealed partial class WidgetViewPresenter
         root.AddHandler(PointerWheelChangedEvent, wheel, true);
         return new InputRootLease(() =>
         {
+            root.ContextRequested -= NativeContextRequested; root.PreviewKeyDown -= NativeContextKeyDown;
             root.GotFocus -= focused; root.GettingFocus -= OnGettingFocus; root.PreviewKeyDown -= key; root.PreviewKeyDown -= DirectionalKeyDown;
             root.RemoveHandler(PointerPressedEvent, pressed); root.RemoveHandler(PointerWheelChangedEvent, wheel);
         });

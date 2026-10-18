@@ -30,6 +30,85 @@ internal sealed partial class WidgetViewPresenter
     private sealed record ContextTarget(Binding Owner, ViewNode Node, FrameworkElement Anchor,
         WidgetIndexedRow? Row = null, WidgetIndexedCollectionView? Collection = null);
 
+    private void NativeContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        if (args.Handled) return;
+        var keyboard = !args.TryGetPosition(sender, out _);
+        if (OpenNativeContextMenu(args.OriginalSource as DependencyObject, keyboard)) args.Handled = true;
+    }
+    private void NativeContextKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Handled || XamlRoot is null || Input.GamepadKeyBoundary.Owns(this, args)) return;
+        var shift = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift) &
+            Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        if (!IsNativeContextKey(args.Key, shift)) return;
+        if (contextPopup is not null) { args.Handled = true; return; }
+        if (!args.KeyStatus.WasKeyDown && OpenNativeContextMenu(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, keyboard: true))
+            args.Handled = true;
+    }
+    internal static bool IsNativeContextKey(Windows.System.VirtualKey key, bool shift) =>
+        key == Windows.System.VirtualKey.Application || key == Windows.System.VirtualKey.F10 && shift;
+
+    // Native pointer/keyboard requests select a context owner, never its primary
+    // action. The indexed route resolves the clicked resident occurrence rather
+    // than reusing whatever row happened to have focus before the right click.
+    internal bool OpenNativeContextMenu(DependencyObject? originalSource, bool keyboard)
+    {
+        if (!presentationInputEnabled || !presentationActive || applying || disposed || presentationOnly || frame is null ||
+            textEntryPopup is not null || selectPopup is not null) return false;
+        if (contextPopup is not null) return true; // Shift+F10 can also produce ContextRequested.
+        var source = keyboard ? FocusManager.GetFocusedElement(XamlRoot) as DependencyObject : originalSource;
+        var target = NativeContextTarget(source);
+        // Keyboard context on an ordinary focused control may use the same
+        // unambiguous scoped Menu owner used by the controller. Pointer requests
+        // never jump to a distant container or a previously focused row.
+        if (target is null && keyboard && FindBinding(source) is { Identity.Kind: not ViewNodeKind.ActionSurface,
+            Element: not WidgetIndexedCollectionView } fallback && ContextOwnerAvailable(fallback))
+            target = FindContextTarget(ControllerButton.Menu);
+        if (target is null) return false;
+        if (!HasAvailableActions(target.Node)) return true;
+        IDisposable? retention = null;
+        if (target.Row is { } row)
+        {
+            retention = target.Collection!.RetainContextRow(row, target.Anchor);
+            if (retention is null) return true;
+        }
+        try
+        {
+            CancelGroupEntry(); CancelScrollReveal();
+            if (target.Anchor is Control control && !control.Focus(FocusState.Keyboard)) return true;
+            if (!ContextOwnerAvailable(target.Owner) || target.Row is { } captured &&
+                !target.Collection!.IsContextRowCurrent(captured, target.Anchor) || target.Row is null &&
+                (!bindings.TryGetValue(target.Owner.Identity.Id, out var currentOwner) || !ReferenceEquals(currentOwner, target.Owner) ||
+                 !ReferenceEquals(declarations[target.Owner.Identity.Id].Node, target.Node))) return true;
+            var transferred = retention; retention = null;
+            return ShowContextMenu(target.Owner, target.Node, target.Node.ContextMenuButton ?? ControllerButton.Menu,
+                target.Anchor, target.Row, transferred);
+        }
+        finally { retention?.Dispose(); }
+    }
+    private ContextTarget? NativeContextTarget(DependencyObject? source)
+    {
+        var nearest = FindBinding(source);
+        if (nearest is { Element: WidgetIndexedCollectionView indexed } && ContextOwnerAvailable(nearest))
+        {
+            var captured = indexed.CapturePreviewRow(source);
+            if (captured is { } row && Matches(row.Row.Item.Root, row.Row.Item.Root.ContextMenuButton ?? ControllerButton.Menu))
+                return new(nearest, row.Row.Item.Root, row.Anchor, row.Row, indexed);
+            // A loading, disabled or busy row is never replaced by another row.
+            return null;
+        }
+        for (var binding = nearest; binding is not null; binding = declarations[binding.Identity.Id].ParentId is { } parent
+            ? bindings.GetValueOrDefault(parent) : null)
+        {
+            if (!ContextOwnerAvailable(binding)) return null;
+            var node = declarations[binding.Identity.Id].Node;
+            if (node.ContextActions.Count > 0)
+                return new(binding, node, binding.Element);
+        }
+        return null;
+    }
+
     private bool OpenContextMenu(ControllerButton trigger)
     {
         if (!presentationInputEnabled) return false;

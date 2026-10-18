@@ -44,7 +44,7 @@ public static class CapabilityPresentation
         PlatformCapabilities.PerformanceFpsControlV1 => "Request Windows approval to enable FPS collection",
         PlatformCapabilities.PowerReadV1 => "Check available PC power options",
         PlatformCapabilities.DisplaysReadV1 => "See display controls and saved profiles",
-        PlatformCapabilities.DisplaysControlV1 => "Save and restore display profiles",
+        PlatformCapabilities.DisplaysControlV1 => "Change display modes and HDR; save and restore profiles",
         PlatformCapabilities.PowerControlV1 => "Shut down, restart or sleep this PC",
         PlatformCapabilities.TaskWindowsReadV1 => "See open windows and their titles",
         PlatformCapabilities.TaskWindowsSwitchV1 => "Switch to open windows",
