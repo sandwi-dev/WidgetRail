@@ -614,3 +614,36 @@ regressions pass both engines. Representative compact and high-contrast renders
 were inspected after correction. Evidence: `catalogue-states-20261018/*/native-result.json`
 and `disclosure-native-scroll-20261018/native-result.json`. Subsequent count-label
 cleanup removes zero-count noise; both-engine disclosure checks pass again.
+
+## Current cumulative candidate — 2026-10-18 follow-up checkpoint
+
+`cumulative-candidate-20261018-d` was published from clean source `76e81d0d`.
+PoE1/PoE2 `0.1.4.5` were installed and enabled through the ordinary verified CLI
+update flow. Their unchanged engines/artwork reuse the previously qualified
+package payloads after comparing engine-lock hashes and confirming no changes to
+the engine, web or artwork-generation sources. Managed assemblies were republished
+from the final source; qualified archives and provenance are in
+`gap-reused-package-20261018-poe{1,2}/qualified`. The earlier redundant artwork build
+was stopped and its partial output was never installed.
+
+The installed PoE2 widget loaded the normal saved build, opened detailed
+calculations, collapsed and expanded its actual upstream source row, and retained
+native focus on `pob.calculation.details-toggle`. No build edit or GGG call was
+needed. Evidence: `cumulative-candidate-20261018-d/poe2-disclosure-live.json`.
+The candidate was hidden using its semantic Guide Close action; this is not a
+physical Guide press. PID **66756** was responding and hidden at this checkpoint,
+with the normal profile and no validation flags. All 138 deployed top-level DLLs
+match the publication. See `live-payload.json`, `live-checkpoint.json` and
+`final-hidden.json` in that candidate directory. Recheck the PID before reuse.
+
+Commits: `a1c8bab9` startup recovery copy; `96a067cf` Catalogue integrated/state
+coverage; `c1d6cba3` real isolated updater acceptance and path performance;
+`2d08acbe` typed PoB ownership/inspection/disclosure and compact navigation;
+`76e81d0d` evidence/plan checkpoint. No merge, push, release or CI repair.
+
+The goal remains active. Remaining acceptance includes Spotify reconnection/live
+flows, guarded display Keep/HDR/disconnection variants, the broader integrated
+app/controller/couch walkthrough, remaining final resource measurements and final
+documentation reconciliation. Preserve the previously recorded unreproduced Bare
+rendering observation and the distinction between fixture, integrated service,
+native presentation and physical hardware/controller evidence.
