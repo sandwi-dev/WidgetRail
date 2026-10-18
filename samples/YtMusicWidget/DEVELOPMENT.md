@@ -19,9 +19,8 @@ stays stationary. Provider results, cursor loading and playback updates keep the
 section key and cannot restart a transition. Reduced motion is host-controlled.
 
 Browsing uses four horizontal tabs and one rich focus target per result.
-A `WidgetCursorResource` pages through the provider’s bounded in-memory collection
-in 24-entry windows, targeting 72 retained entries with a hard cap of 96. This is
-UI windowing; it does not bypass the provider’s 500-entry fetch cap. Home retains
+A `WidgetIndexedCollection` realizes ranges from the provider's bounded in-memory
+collection. This is UI windowing; it does not bypass the provider's 500-entry fetch cap. Home retains
 provider section titles, with one responsive square-poster grid per section.
 “Mixed for you” is promoted first when present; other sections retain provider order. Song
 radio and Play next are host-owned Menu context actions. Play next inserts into both
@@ -32,10 +31,42 @@ in both orders; only the first inserted song is prefetched. Empty queues start p
 The SDK compact navigation sits above a persistent left player and right browsing pane,
 following the Spotify widget. Settings is a compact secondary page. Explicit focus-group
 entry requests enter newly loaded pages and restore collection selection on Back.
-Home, Search, Queue and each of the four Library filters retain separate cursor
-windows and stable focus-group/scroll IDs. Section returns reuse loaded results;
+Home, Search, Queue and each of the four Library filters retain separate indexed
+collections and stable focus-group/scroll IDs. Section returns reuse loaded results;
 Refresh, a new search, account changes and changed queue contents reset the relevant
 collection. Library remembers its last filter.
+
+Queue keys follow occurrence object identity, not song IDs or array indices. Each
+new playback queue and Play next insertion owns distinct occurrence objects, even
+when the caller supplies the same song object twice. Shuffle retains these objects.
+Removal uses a captured queue snapshot and index, rejects stale snapshots, and
+removes the exact occurrence from both orders. Membership changes publish a new
+query; equivalent membership and playback changes use content updates. Old leases
+cannot invoke actions against shifted indices.
+
+Removing the current occurrence selects its successor, wrapping only for Repeat All.
+Playing playback continues; paused playback waits for Play. A generation-bound stop
+rejects delayed loads and cannot stop a newer selection. Pausing while that stop is
+pending cancels the automatic continuation. Queue capacity remains 500.
+
+Search suggestions are bounded local catalogs of loaded titles and 20 recent
+searches. They replace the whole entry, make no provider requests, and reject stale
+source keys. Account changes clear recent-search history.
+
+Queue navigation emits one indexed `ScrollRevealRequest` for the synchronously
+available current occurrence. It leaves focus on the navigation group. Empty entry
+does not schedule a future reveal; membership generations retire pending targets.
+Playback ticks, edits and overlay reactivation retain the request ID, so the host
+does not reapply it. The queue publishes its bounded occurrence map for shared
+membership-change focus and viewport continuity.
+
+Song ratings use pinned ytmusicapi 1.12.3 `rate_song` with `LikeStatus.LIKE` and
+`INDIFFERENT`; they do not invoke `edit_song_library_status`. Existing catalogue
+`likeStatus` supplies known ratings. An unknown current song uses one bounded watch
+playlist read; unknown remains unknown if the provider omits the matching track.
+The account-scoped cache holds at most 1,024 song states. Writes are acknowledged
+before publishing, coalesced, and serialized separately from playback. Provider
+generation binding and local account epochs reject stale account requests/results.
 Library focus memory belongs to the results scroll, excluding the filter toolbar.
 New results enter at the first item; returning to a loaded list restores its last
 focused result. Loading stays on the selected filter, and Up returns to that filter.

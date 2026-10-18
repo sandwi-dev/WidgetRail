@@ -76,6 +76,14 @@ internal sealed class SpotifyApplicationService(
         CancellationToken cancellationToken = default) => new(
         _backend.GetSpotifyQueueAsync(_identity, cancellationToken));
 
+    public ValueTask<IReadOnlyList<bool>> GetSavedItemsAsync(IReadOnlyList<string> uris,
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifySavedItemsAsync(_identity, uris, cancellationToken));
+
+    public ValueTask SetSavedItemAsync(string uri, bool saved,
+        CancellationToken cancellationToken = default) => new(
+        _backend.SetSpotifySavedItemAsync(_identity, uri, saved, cancellationToken));
+
     public ValueTask AddToQueueAsync(
         string uri,
         string? deviceId = null,

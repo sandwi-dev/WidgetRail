@@ -8,6 +8,10 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Spotify music saved state batches deduplicates and fences account races", SpotifyMusicWorkflowTests.SavedState),
+    ("Spotify music library UI coalesces writes and rejects old song actions", SpotifyMusicWorkflowTests.PlayerSavedState),
+    ("Spotify music suggestions are local whole-entry and reject stale sources", SpotifyMusicWorkflowTests.Suggestions),
+    ("Spotify music queue refresh preserves content and current track is separate", SpotifyMusicWorkflowTests.QueueRefresh),
     ("Spotify background local events publish without additional polling and retire safely", SpotifyNotificationTests.BackgroundPlayback),
     ("Spotify notifications deduplicate and activity distinguishes local and remote playback", SpotifyNotificationTests.Run),
     ("Discovered Spotify sources retain prefixes captured actions and route return", SpotifyDiscoveredTests.PrefixAndReturn),
@@ -52,7 +56,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Setup write cancellation retains configuration and the setup scope", SetupConfigureCancellation),
     ("Connect action acknowledges while OAuth remains pending", ConnectAcknowledgesWhilePending),
     ("OAuth survives Background and reconciles when visible", ConnectSurvivesBackground),
-    ("Explicit connect requests the four implemented least-privilege scopes", ExplicitConnect),
+    ("Explicit connect requests implemented playback and library scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
     ("Ready UI publishes persistent player navigation metadata and WRSS contracts", SpotifyResponsiveLayoutTests.PersistentPlayerNavigationAndMetadataContract),
@@ -598,6 +602,8 @@ static async Task ExplicitConnect()
         SpotifyAuthorizationScope.PlaybackStateControl,
         SpotifyAuthorizationScope.LocalPlayback,
         SpotifyAuthorizationScope.PlaylistsRead,
+        SpotifyAuthorizationScope.LibraryRead,
+        SpotifyAuthorizationScope.LibraryModify,
     }, harness.LastScopes!);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     Assert.Equal(SpotifyWidgetViewState.Ready, widget.ViewState);
@@ -664,7 +670,7 @@ static async Task ResponsiveNavigation()
     Assert.Equal(1, CountId(snapshot.Root, "spotify.track-title"));
     Assert.Equal("Small Hours", Find(snapshot.Root, "spotify.track-title").Text);
     Assert.Equal("Northern Lines", Find(snapshot.Root, "spotify.track-subtitle").Text);
-    Assert.Equal("Night Drive", Find(snapshot.Root, "spotify.context").Text);
+    Assert.Equal("Now playing · Night Drive", Find(snapshot.Root, "spotify.context").Text);
     Assert.True(!ContainsAction(snapshot.Root, "spotify.nav.player"),
         "The retired Player destination returned beside the persistent player.");
     await StopAsync(widget);
@@ -2089,7 +2095,13 @@ static Task ManifestContract()
         ["spotify.brand.white"] = ("assets/icons/spotify-white.svg", 1252,
             "8929D148F54CEDE78F0F36CE90DF815E5EA5E5559E7FAECCAD3669302EF2DAA1"),
     };
-    Assert.Equal(expectedAssets.Count, manifest.IconAssets.Count);
+    Assert.Equal(expectedAssets.Count + 2, manifest.IconAssets.Count);
+    foreach (var variant in new[] { "outline", "filled" })
+    {
+        var path = "assets/icons/heart-" + variant + ".svg";
+        Assert.Equal(path, manifest.IconAssets["spotify.saved." + variant].Path);
+        Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, path)), "Saved-song icon missing from package fixture");
+    }
     foreach (var (id, expected) in expectedAssets)
     {
         Assert.Equal(expected.Path, manifest.IconAssets[id].Path);
@@ -2767,6 +2779,19 @@ internal sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocal
         LocalTransportChanged?.Invoke(this, EventArgs.Empty);
     }
     public List<string> QueuedUris { get; } = [];
+    public List<string[]> SavedReads { get; } = [];
+    public List<(string Uri, bool Saved)> SavedWrites { get; } = [];
+    public Func<IReadOnlyList<string>, CancellationToken, ValueTask<IReadOnlyList<bool>>>? SavedReadHandler { get; set; }
+    public Func<string, bool, CancellationToken, ValueTask>? SavedWriteHandler { get; set; }
+    public ValueTask<IReadOnlyList<bool>> GetSavedItemsAsync(IReadOnlyList<string> uris, CancellationToken token = default)
+    {
+        SavedReads.Add(uris.ToArray());
+        return SavedReadHandler?.Invoke(uris, token) ?? ValueTask.FromResult<IReadOnlyList<bool>>(uris.Select(_ => false).ToArray());
+    }
+    public ValueTask SetSavedItemAsync(string uri, bool saved, CancellationToken token = default)
+    {
+        SavedWrites.Add((uri, saved)); return SavedWriteHandler?.Invoke(uri, saved, token) ?? ValueTask.CompletedTask;
+    }
     public int SearchCalls { get; private set; }
     public Func<string, SpotifySearchKind, int, int, CancellationToken, ValueTask<SpotifySearchPage>>? SearchHandler { get; set; }
     public ValueTask<SpotifySearchPage> SearchAsync(string query, SpotifySearchKind kind, int offset, int limit,

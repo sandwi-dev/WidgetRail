@@ -1,9 +1,10 @@
 namespace WidgetRail.Samples.YtMusicWidget.Standalone;
 
-public sealed record MusicItem(string Id, string Kind, string Title, string Subtitle = "", string Artwork = "", string Section = "");
+public sealed record MusicItem(string Id, string Kind, string Title, string Subtitle = "", string Artwork = "", string Section = "", bool? Liked = null);
 public sealed record MusicPage(string Title, IReadOnlyList<MusicItem> Items);
 public sealed record PlayNextResult(int AddedCount, bool QueueLimitReached);
 public sealed record MusicQueueAddition(MusicState State, MusicItem[] OriginalQueue, PlayNextResult Result);
+public sealed record MusicQueueRemoval(MusicState State, MusicItem[] OriginalQueue, bool CurrentRemoved);
 public sealed record PlayerState(string TrackId = "", bool Playing = false, bool Buffering = false,
     double Position = 0, double Duration = 0, double Volume = .5, string? Error = null);
 public sealed record MusicState(bool Connected, IReadOnlyList<MusicItem> Queue, int Index,
@@ -11,6 +12,10 @@ public sealed record MusicState(bool Connected, IReadOnlyList<MusicItem> Queue, 
 {
     public static MusicState Empty { get; } = new(false, [], -1, false, "off", new());
     public MusicItem? Current => Index >= 0 && Index < Queue.Count ? Queue[Index] : null;
+    public IReadOnlyDictionary<string, bool?> SongLikes { get; init; } = new Dictionary<string, bool?>();
+    public IReadOnlySet<string> PendingLikes { get; init; } = new HashSet<string>();
+    public long RatingGeneration { get; init; }
+    public bool? LikeFor(MusicItem item) => SongLikes.TryGetValue(item.Id, out var liked) ? liked : null;
 }
 
 public interface IMusicService : IAsyncDisposable
@@ -24,6 +29,9 @@ public interface IMusicService : IAsyncDisposable
     Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token);
     Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token);
     Task SelectQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token);
+    Task RemoveQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token);
+    Task ReadSongLikeAsync(MusicItem item, CancellationToken token);
+    Task SetSongLikeAsync(MusicItem item, bool liked, CancellationToken token);
     Task RadioAsync(MusicItem song, CancellationToken token);
     Task<PlayNextResult> PlayNextAsync(MusicItem item, CancellationToken token);
     Task CommandAsync(string command, double? value, CancellationToken token);
@@ -33,6 +41,23 @@ public interface IMusicService : IAsyncDisposable
 public static class MusicQueue
 {
     public const int MaximumItems = 500;
+
+    public static MusicQueueRemoval Remove(MusicState state, IReadOnlyList<MusicItem> originalQueue, int index)
+    {
+        if (index < 0 || index >= state.Queue.Count) throw new ArgumentOutOfRangeException(nameof(index));
+        var removed = state.Queue[index];
+        var queue = state.Queue.Where((_, position) => position != index).ToArray();
+        var originalIndex = -1;
+        for (var i = 0; i < originalQueue.Count; i++)
+            if (ReferenceEquals(originalQueue[i], removed)) { originalIndex = i; break; }
+        if (originalIndex < 0) throw new InvalidOperationException("The queue occurrence is missing from the original order.");
+        var original = originalQueue.Where((_, position) => position != originalIndex).ToArray();
+        var currentRemoved = index == state.Index;
+        var nextIndex = currentRemoved
+            ? index < queue.Length ? index : state.Repeat == "all" && queue.Length > 0 ? 0 : -1
+            : state.Index - (index < state.Index ? 1 : 0);
+        return new(state with { Queue = queue, Index = nextIndex }, original, currentRemoved);
+    }
 
     private static (MusicItem[] Items, int CurrentIndex, MusicItem[] Removed, int AddedCount) InsertNext(
         IReadOnlyList<MusicItem> queue, int index, IReadOnlyList<MusicItem> songs)

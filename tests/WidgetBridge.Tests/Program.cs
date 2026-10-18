@@ -78,6 +78,13 @@ if (args is ["--serve-discovered-validation", var discoveredPipe])
     return 0;
 }
 
+if (args is ["--export-normalized-icon", var iconSource, var iconOutput])
+{
+    var normalized = SvgIconNormalizer.Normalize(await File.ReadAllBytesAsync(iconSource));
+    await File.WriteAllBytesAsync(iconOutput, normalized.Bytes);
+    return 0;
+}
+
 if (args.Length is 4 or 5 && args[0] == "--export-styled-fixture")
 {
     var snapshotPath = args[1]; var stylePath = args[2]; var outputPath = args[3];

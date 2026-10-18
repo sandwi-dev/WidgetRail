@@ -13,15 +13,17 @@ internal static class SpotifyDiscoveredCollections
     internal static WidgetDiscoveredCollectionOptions<SpotifyLibraryQuery, SpotifyPlaylistCollectionItem> Library(
         ISpotifyApplicationService spotify, int pageSize, int maximumItems,
         Func<SpotifyLibraryQuery, SpotifyPlaylistCollectionItem, WidgetActionEvent, CancellationToken, ValueTask> onAction,
-        Func<Exception, WidgetResourceError> mapError) => new()
+        Func<Exception, WidgetResourceError> mapError, Action<SpotifyLibraryQuery, IEnumerable<string>>? observeNames = null) => new()
     {
         PageSize = pageSize, MaximumItems = maximumItems, MapError = mapError,
         DuplicatePolicy = WidgetDiscoveredDuplicatePolicy.KeepFirst,
         ItemKey = item => item.Key,
-        LoadNext = async (_, continuation, count, token) =>
+        LoadNext = async (query, continuation, count, token) =>
         {
             var offset = Offset(continuation);
             var page = await spotify.GetPlaylistsAsync(offset, count, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            observeNames?.Invoke(query, page.Items.Select(item => item.Name));
             var next = Next(offset, count, page.Offset, page.Limit, page.Total, page.Items.Count);
             return new(page.Items.Select(item => new SpotifyPlaylistCollectionItem(item,
                 SpotifyCollectionIdentity.Playlist(item.PlaylistId))).ToArray(), next);
@@ -33,7 +35,7 @@ internal static class SpotifyDiscoveredCollections
     internal static WidgetDiscoveredCollectionOptions<SpotifyDetailQuery, SpotifyMediaCollectionItem> Detail(
         int pageSize, int maximumItems, Action<SpotifyDetailQuery, SpotifyPlaylistSummary, CancellationToken> publishMetadata,
         Func<SpotifyDetailQuery, SpotifyMediaCollectionItem, WidgetActionEvent, CancellationToken, ValueTask> onAction,
-        Func<Exception, WidgetResourceError> mapError) => new()
+        Func<Exception, WidgetResourceError> mapError, Action<SpotifyDetailQuery, IEnumerable<string>>? observeNames = null) => new()
     {
         PageSize = pageSize, MaximumItems = maximumItems, MapError = mapError,
         ItemKey = item => item.Key,
@@ -44,6 +46,7 @@ internal static class SpotifyDiscoveredCollections
             var offset = Offset(continuation);
             var page = await pages.LoadAsync(offset, count, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
+            observeNames?.Invoke(query, page.Items.Items.Select(item => item.Title));
             var next = Next(offset, count, page.Items.Offset, page.Items.Limit, page.Items.Total, page.Items.Items.Count);
             publishMetadata(query, page.Playlist, token);
             // Provider-page occurrences do not claim raw positions in filtered
@@ -59,7 +62,7 @@ internal static class SpotifyDiscoveredCollections
     internal static WidgetDiscoveredCollectionOptions<SpotifySearchQuery, SpotifySearchCollectionItem> Search(
         ISpotifyApplicationService spotify, int maximumItems,
         Func<SpotifySearchQuery, SpotifySearchCollectionItem, WidgetActionEvent, CancellationToken, ValueTask> onAction,
-        Func<Exception, WidgetResourceError> mapError) => new()
+        Func<Exception, WidgetResourceError> mapError, Action<SpotifySearchQuery, IEnumerable<string>>? observeNames = null) => new()
     {
         PageSize = Math.Min(10, maximumItems), MaximumItems = maximumItems, MapError = mapError,
         ItemKey = item => item.Key,
@@ -68,6 +71,8 @@ internal static class SpotifyDiscoveredCollections
             if (query.Text.Length == 0) return new([], null);
             var offset = Offset(continuation);
             var page = await spotify.SearchAsync(query.Text, query.Kind, offset, count, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            observeNames?.Invoke(query, page.Items.Select(item => item.Title));
             var next = Next(offset, count, page.Offset, page.Limit, page.Total, page.Items.Count);
             return new(page.Items.Select((item, index) => new SpotifySearchCollectionItem(item,
                 new("search." + query.Generation.ToString(CultureInfo.InvariantCulture) + "." +

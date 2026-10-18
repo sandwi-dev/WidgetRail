@@ -21,6 +21,8 @@
     }
   },
   "iconAssets": {
+    "spotify.saved.outline": { "path": "assets/icons/heart-outline.svg" },
+    "spotify.saved.filled": { "path": "assets/icons/heart-filled.svg" },
     "spotify.brand.black": { "path": "assets/icons/spotify-black.svg" },
     "spotify.brand.full-green": { "path": "assets/icons/spotify-full-green.svg" },
     "spotify.brand.green": { "path": "assets/icons/spotify-green.svg" },

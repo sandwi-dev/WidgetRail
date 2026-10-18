@@ -260,3 +260,27 @@ the existing Windows Credential Manager target, so updating from the retired
 provider path preserves user configuration and refresh credentials without a
 migration or deletion step. Live authorization, Premium eligibility, Web
 Playback EME, and account/device behavior remain manual verification.
+
+
+## Saved songs and local suggestions
+
+The current unified `/v1/me/library` and `/v1/me/library/contains` endpoints
+require `user-library-read` and `user-library-modify`. Existing connections
+without those grants use the existing reconnect flow. Contains requests are
+batched at 40 tracks, deduplicated, and cached in memory for the account session
+(up to 512 entries). Reads and writes serialize independently of playback;
+acknowledged writes update the cache. Account resets reject late results and
+queued writes before sending. Repeated pending writes to the same track coalesce.
+The player and upcoming queue menus show known saved state. Search and playlist
+menus expose explicit Save and Remove commands so a stale menu never reverses an unknown state.
+
+Search suggestions use at most 20 recent queries and 500 loaded names. Matching
+uses the shared whole-entry text suggestion catalog, with no network calls on
+keystrokes. Account reset clears these suggestions; stale source tokens and
+inactive search routes return no suggestions.
+
+Spotify's current track is not an upcoming queue occurrence. It remains visible
+in the fixed player; entering Queue must not reveal or activate the first queued
+track or another occurrence of the same URI. The 50-item upcoming list publishes
+complete occurrence keys for native focus/viewport continuity. Refresh retains
+its last-good rows and query until a new membership observation is committed.

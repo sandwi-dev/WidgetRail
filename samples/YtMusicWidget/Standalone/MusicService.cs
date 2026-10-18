@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace WidgetRail.Samples.YtMusicWidget.Standalone;
 
-public sealed class MusicService : IMusicService
+public sealed partial class MusicService : IMusicService
 {
     private readonly object _gate = new();
     private readonly SemaphoreSlim _initialization = new(1, 1);
@@ -25,6 +25,7 @@ public sealed class MusicService : IMusicService
     private CancellationTokenSource? _selection;
     private long _generation;
     private long _playerGeneration;
+    private long? _queueResumeGeneration;
     public MusicState State { get { lock (_gate) return _state; } }
     public event Action? Changed;
 
@@ -58,7 +59,12 @@ public sealed class MusicService : IMusicService
             {
                 var result = await backend.CallAsync("status", null, token).ConfigureAwait(false);
                 _backend = backend;
-                lock (_gate) _state = _state with { Connected = result.GetProperty("connected").GetBoolean() };
+                lock (_gate)
+                {
+                    _providerAccountGeneration = result.TryGetProperty("accountGeneration", out var account) ? account.GetInt64() : 0;
+                    _ratingAccountChanging = false;
+                    _state = _state with { Connected = result.GetProperty("connected").GetBoolean() };
+                }
                 Changed?.Invoke();
             }
             catch { await backend.DisposeAsync().ConfigureAwait(false); throw; }
@@ -69,14 +75,24 @@ public sealed class MusicService : IMusicService
     public async Task<string> SignInAsync(CancellationToken token)
     {
         await InitializeAsync(token).ConfigureAwait(false);
-        await _backend!.CallAsync("signin", null, token).ConfigureAwait(false);
-        lock (_gate) _state = _state with { Connected = true };
+        ResetSongLikes();
+        System.Text.Json.JsonElement result;
+        try { result = await _backend!.CallAsync("signin", null, token).ConfigureAwait(false); }
+        catch { lock (_gate) _ratingAccountChanging = false; throw; }
+        lock (_gate)
+        {
+            ++_ratingEpoch;
+            _ratingAccountChanging = false;
+            _providerAccountGeneration = result.TryGetProperty("accountGeneration", out var account) ? account.GetInt64() : 0;
+            _state = _state with { Connected = true, RatingGeneration = _ratingEpoch };
+        }
         Changed?.Invoke();
         return "Connected to YouTube Music";
     }
 
     public async Task DisconnectAsync(CancellationToken token)
     {
+        ResetSongLikes();
         lock (_gate) { _selection?.Cancel(); _generation++; }
         if (_player is not null) await _player.CallAsync("stop", null, token).ConfigureAwait(false);
         await InitializeAsync(token).ConfigureAwait(false);
@@ -94,8 +110,26 @@ public sealed class MusicService : IMusicService
     public async Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token)
     {
         await InitializeAsync(token).ConfigureAwait(false);
+        long epoch;
+        lock (_gate) epoch = _ratingEpoch;
         var result = await _backend!.CallAsync("browse", new { kind, value }, token).ConfigureAwait(false);
-        return result.Deserialize<MusicPage>(JsonProcess.Json) ?? throw new IOException("The music page is unavailable.");
+        var page = result.Deserialize<MusicPage>(JsonProcess.Json) ?? throw new IOException("The music page is unavailable.");
+        var changed = false;
+        lock (_gate)
+            if (epoch == _ratingEpoch && _state.Connected && !_ratingAccountChanging)
+            {
+                var ratings = new Dictionary<string, bool?>(_state.SongLikes, StringComparer.Ordinal);
+                foreach (var item in page.Items.Where(item => item.Kind == "song" && item.Liked is not null))
+                    if (!ratings.ContainsKey(item.Id))
+                    {
+                        if (ratings.Count >= 1024) ratings.Remove(ratings.Keys.First());
+                        ratings.Add(item.Id, item.Liked);
+                        changed = true;
+                    }
+                if (changed) _state = _state with { SongLikes = ratings };
+            }
+        if (changed) Changed?.Invoke();
+        return page;
     }
 
     public async Task SelectQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token)
@@ -125,11 +159,45 @@ public sealed class MusicService : IMusicService
             throw new ArgumentException("Select a song from a valid queue.");
         lock (_gate)
         {
-            _originalQueue = tracks.ToArray();
-            var queue = _state.Shuffle ? MusicQueue.Shuffled(tracks, index, Random.Shared) : tracks.ToArray();
+            // A queue entry is an occurrence, even when callers repeat the same object.
+            _originalQueue = tracks.Select(track => track with { }).ToArray();
+            var queue = _state.Shuffle ? MusicQueue.Shuffled(_originalQueue, index, Random.Shared) : _originalQueue;
             _state = _state with { Queue = queue, Index = index };
         }
         await SelectAsync(token).ConfigureAwait(false);
+    }
+
+    public async Task RemoveQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        bool removedCurrent, resume;
+        long generation;
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_state.Queue, expectedQueue) || index < 0 || index >= expectedQueue.Count) return;
+            var removal = MusicQueue.Remove(_state, _originalQueue, index);
+            removedCurrent = removal.CurrentRemoved;
+            resume = removedCurrent && (_state.Player.Playing || _state.Player.Buffering) && removal.State.Current is not null;
+            _originalQueue = removal.OriginalQueue;
+            _state = removal.State;
+            if (removedCurrent)
+            {
+                _selection?.Cancel();
+                ++_generation;
+                _playerGeneration = _generation;
+                _consecutiveSkips = 0;
+                _recoveryStopped = true;
+                _state = _state with { Player = new(_state.Current?.Id ?? "", Buffering: resume, Volume: _preferredVolume), PlaybackNotice = null };
+            }
+            generation = _generation;
+            if (removedCurrent) _queueResumeGeneration = resume ? generation : null;
+        }
+        Changed?.Invoke();
+        if (!removedCurrent) return;
+        // A late stop cannot silence a newer selection. The player advances its
+        // generation even when empty, rejecting delayed loads from the removed song.
+        if (_player is not null) await _player.CallAsync("stop", new { generation }, _lifetime.Token).ConfigureAwait(false);
+        if (resume) await SelectAsync(_lifetime.Token, generation).ConfigureAwait(false);
     }
 
     public async Task<PlayNextResult> PlayNextAsync(MusicItem item, CancellationToken token)
@@ -215,6 +283,7 @@ public sealed class MusicService : IMusicService
             selection = _selection = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
             selectionToken = selection.Token;
             generation = ++_generation;
+            _queueResumeGeneration = null;
             _state = _state with { Player = new(current.Id, Buffering: true, Volume: _state.Player.Volume) };
         }
         Changed?.Invoke();
@@ -378,10 +447,11 @@ public sealed class MusicService : IMusicService
         bool retry;
         lock (_gate)
         {
-            if (_state.Player.Buffering && command is "pause" or "toggle")
+            if ((_state.Player.Buffering || _queueResumeGeneration == _generation) && command is "pause" or "toggle")
             {
                 _selection?.Cancel();
                 ++_generation;
+                _queueResumeGeneration = null;
                 _recoveryStopped = true;
                 _state = _state with { Player = _state.Player with { Playing = false, Buffering = false }, PlaybackNotice = null };
                 command = "pause";

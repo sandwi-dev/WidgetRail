@@ -32,7 +32,7 @@
   align: stretch;
   overflow: clip;
 }
-.spotify-pinned-player {
+.spotify-player-card.spotify-pinned-player {
   min-width: 280px;
   flex-grow: 1;
 }
@@ -593,3 +593,7 @@
   border-color: var(--accent);
 }
 .spotify-search-message { color: var(--text-muted); font-size: 14px; padding: 14px 4px; }
+
+.spotify-track-heading { width: 100%; min-width: 0px; gap: 8px; align: center; }
+.spotify-title-grow { min-width: 0px; flex-grow: 1; text-align: start; }
+.spotify-saved-action { flex-grow: 0; }

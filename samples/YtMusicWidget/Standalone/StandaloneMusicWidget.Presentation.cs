@@ -30,7 +30,7 @@ public sealed partial class StandaloneMusicWidget
                 children.Add(UI.Row("music.navigation.header",
                     parts.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always).AddClasses("music-navigation-tabs"),
                     UI.ControllerHint(ControllerButton.Y, "Settings", "hint.settings").Classes("music-settings-hint"))
-                    .Classes("music-navigation-header"));
+                    .Classes("music-navigation-header").RememberChildFocus(NavigationFocusId));
                 children.Add(UI.Row("music.panes", Player(state, "main", entry),
                     group.TransitionContent("music.nav", _tab, Array.IndexOf(Tabs, _tab))).Classes("music-panes"));
             }
@@ -48,13 +48,15 @@ public sealed partial class StandaloneMusicWidget
 
             var pinned = PlaybackShortcuts(UI.Stack("music.pinned", Player(state, "pinned"))
                 .InputScope("music.pinned").Classes("music-root", "music-pinned-root"));
-            return new(root, InitialFocusId: entry, Surface: new()
+            return new(root, InitialFocusId: _tab == "queue" && panel is null ? NavigationFocusId : entry, Surface: new()
             {
                 Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 840,
                 PreferredHeight = compact ? 440 : 580, MinimumWidth = 620, MinimumHeight = compact ? 360 : 400,
             })
             {
                 FocusGroupEntryRequest = _focusRequest,
+                ScrollRevealRequest = _tab == "queue" && panel is null && _queueReveal?.IndexedItem?.QueryGeneration == _browse.Collection.Descriptor.QueryGeneration
+                    ? _queueReveal : null,
                 QuickActions = state.Current is null ? [] :
                     [new(ControllerButton.X, "player.toggle", "Play or pause"), new(ControllerButton.LeftBumper, "player.previous", "Previous song"), new(ControllerButton.RightBumper, "player.next", "Next song")],
                 PinnedLayouts = state.Current is null ? [] : [WidgetView.PinnedLayout("music.compact", "Compact now playing",
@@ -133,7 +135,7 @@ public sealed partial class StandaloneMusicWidget
         var content = new List<WidgetElement>();
         var rows = new List<WidgetElement>();
         if (_tab == "search")
-            content.Add(UI.TextEntry(_query, "Search music — press A to type", "search", "search", 96).Classes("music-search"));
+            content.Add(UI.TextEntry(_query, "Search music — press A to type", "search", "search", 96).Suggest(_suggestionSource).Classes("music-search"));
         if (_tab == "library" && _history.Count == 0)
         {
             var filters = new[] { "playlists", "songs", "albums", "artists" }.Select(filter =>
@@ -200,7 +202,7 @@ public sealed partial class StandaloneMusicWidget
 
     // Every factory input is immutable and explicit, including focus neighbours
     // and playback state. Timer/status updates can reuse unchanged declarations.
-    private sealed record BrowseRow(BrowseEntry Entry, bool Home, bool Playing, string? FocusUp, bool HasPlayer);
+    private sealed record BrowseRow(BrowseEntry Entry, bool Home, bool Playing, string? FocusUp, bool HasPlayer, bool Queue, MusicState RatingState);
 
     private static WidgetElement RenderBrowseRow(BrowseRow input)
     {
@@ -220,6 +222,10 @@ public sealed partial class StandaloneMusicWidget
         if (item.Kind is "song" or "playlist" or "album") row = row.ContextMenuShortcut(ControllerButton.Menu)
             .ContextAction("next." + index, "Play next");
         if (item.Kind == "song") row = row.ContextAction("radio." + index, "Start radio");
+        if (input.Queue) row = row.ContextAction("remove." + index, "Remove from queue");
+        if (item.Kind == "song" && input.RatingState.Connected)
+            row = row.ContextAction("like." + index, input.RatingState.LikeFor(item) == true ? "Unlike song" : "Like song",
+                disabled: false, busy: input.RatingState.PendingLikes.Count > 0);
         return row;
     }
 
@@ -276,6 +282,9 @@ public sealed partial class StandaloneMusicWidget
         { UI.Row(prefix + ".artwork.frame", artwork).Classes("music-artwork-frame") };
         content.Add(UI.Text(current.Title, prefix + ".title").Classes("music-track-title"));
         content.Add(UI.Text(p.Buffering ? "Buffering…" : current.Subtitle, prefix + ".artist").Classes("music-player-subtitle"));
+        if (state.Connected)
+            content.Add(UI.Button(state.LikeFor(current) == true ? "Liked · Unlike" : "Like song", "song.like", prefix + ".like")
+                .Selected(state.LikeFor(current) == true).Busy(state.PendingLikes.Count > 0).Classes("music-secondary"));
         content.Add(UI.Scrubber(TimeSpan.FromSeconds(Math.Clamp(p.Position, 0, Math.Max(1, p.Duration))),
                 TimeSpan.FromSeconds(Math.Max(1, p.Duration)), TimeSpan.FromSeconds(Math.Min(5, Math.Max(1, p.Duration))), "player.seek", prefix + ".seek", "Playback position")
             .RequireControllerActivation().Disabled(p.Duration <= 0).FocusDown(prefix + ".toggle").AddClasses("music-scrubber"));

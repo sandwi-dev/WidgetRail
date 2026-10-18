@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
@@ -20,6 +21,16 @@ internal sealed partial class WidgetStylesValidationPage
 {
     private async Task NativeMediaLayoutsAsync(string directory)
     {
+        Exception? failure = null;
+        try { await RunNativeMediaLayoutsAsync(directory); }
+        catch (Exception error) { failure = error; }
+        await File.WriteAllTextAsync(Path.Combine(directory, "native-result.json"),
+            JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
+        if (failure is not null) throw failure;
+    }
+
+    private async Task RunNativeMediaLayoutsAsync(string directory)
+    {
         var files = Directory.GetFiles(directory, "*.renderer.json");
         if (files.Length != 4) throw new InvalidDataException("Provide the four main/compact music renderer fixtures.");
         var scale = XamlRoot.RasterizationScale;
@@ -27,6 +38,16 @@ internal sealed partial class WidgetStylesValidationPage
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         var artwork = await ArtworkPngAsync(128, 128);
         presenter.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, artwork));
+        presenter.ResolvePackageIconAsync = (icon, _) =>
+        {
+            var filename = icon.AssetId switch {
+                "spotify.saved.outline" => "heart-outline.svg", "spotify.saved.filled" => "heart-filled.svg",
+                "spotify.brand.full-green" => "spotify-full-green.svg", _ => null };
+            if (filename is null) throw new IOException("No local icon fixture");
+            var bytes = File.ReadAllBytes(Path.Combine(directory, filename));
+            return Task.FromResult(new WidgetPresentationPackageIcon(icon.AssetId,
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), bytes));
+        };
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         foreach (var path in files.Order(StringComparer.Ordinal))
@@ -61,12 +82,52 @@ internal sealed partial class WidgetStylesValidationPage
                 {
                     if (Find<Button>("Widget." + node.Id) is not { IsLoaded: true, Visibility: Visibility.Visible } button || button.ActualWidth == 0) continue;
                     var bounds = button.TransformToVisual(presenter).TransformBounds(new(0, 0, button.ActualWidth, button.ActualHeight));
+                    var inScroll = false;
+                    for (DependencyObject? parent = VisualTreeHelper.GetParent(button); parent is not null && !ReferenceEquals(parent, presenter); parent = VisualTreeHelper.GetParent(parent))
+                        if (parent is ScrollViewer) { inScroll = true; break; }
+                    if (!inScroll) Check(bounds.Top >= -1 && bounds.Bottom <= presenter.ActualHeight + 1,
+                        name + " keeps " + node.Id + " inside the vertical viewport at height " + height);
                     Check(bounds.Left >= -1 && bounds.Right <= presenter.ActualWidth + 1,
                         name + " keeps " + node.Id + " inside the horizontal viewport at height " + height);
+                }
+                foreach (var node in Walk(snapshot.Root).Where(node => node.Kind == ViewNodeKind.Button &&
+                    (node.Id.EndsWith(".play-toggle", StringComparison.Ordinal) || node.Id.EndsWith(".toggle", StringComparison.Ordinal))))
+                {
+                    var button = Find<Button>("Widget." + node.Id);
+                    if (button is not { IsEnabled: true, IsLoaded: true }) continue;
+                    Check(button.Focus(FocusState.Keyboard), name + " accepts focus on transport at height " + height);
+                    // Match controller navigation's explicit bring-into-view step.
+                    // Direct native Focus alone does not exercise that host path.
+                    button.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                    await Wait(() =>
+                    {
+                        var current = button.TransformToVisual(presenter).TransformBounds(new(0, 0, button.ActualWidth, button.ActualHeight));
+                        return current.Top >= -1 && current.Bottom <= presenter.ActualHeight + 1;
+                    });
+                    var bounds = button.TransformToVisual(presenter).TransformBounds(new(0, 0, button.ActualWidth, button.ActualHeight));
+                    Check(bounds.Top >= -1 && bounds.Bottom <= presenter.ActualHeight + 1,
+                        name + " reveals focused transport within the viewport at height " + height);
                 }
             }
             presenter.Height = snapshot.Surface.PreferredHeight.Value;
             presenter.UpdateLayout();
+            var saveNode = Walk(snapshot.Root).FirstOrDefault(node => node.Id.EndsWith(".saved", StringComparison.Ordinal) || node.Id.EndsWith(".like", StringComparison.Ordinal));
+            if (saveNode is not null && Find<Button>("Widget." + saveNode.Id) is { } save)
+            {
+                save.Focus(FocusState.Keyboard);
+                save.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                foreach (var busy in new[] { true, false })
+                {
+                    var next = snapshot with { Sequence = snapshot.Sequence + (busy ? 1 : 2), Root = BusyNode(snapshot.Root) };
+                    presenter.Apply(frame with { Authority = frame.Authority with { SnapshotSequence = next.Sequence }, Snapshot = next });
+                    presenter.UpdateLayout();
+                    Check(ReferenceEquals(save, Find<Button>("Widget." + saveNode.Id)) && save.IsEnabled && save.IsTabStop &&
+                        ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot), save),
+                        name + " preserves the same focused save control when busy=" + busy);
+                    ViewNode BusyNode(ViewNode node) => node with { IsBusy = node.Id == saveNode.Id ? busy : node.IsBusy,
+                        Children = node.Children.Select(BusyNode).ToArray() };
+                }
+            }
             await Task.Delay(80);
             presenter.WriteLayoutDiagnostics(Path.Combine(directory, name + ".layout.json"));
             var raster = new RenderTargetBitmap();

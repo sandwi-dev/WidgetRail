@@ -5,4 +5,4 @@ namespace WidgetRail.Samples.SpotifyWidget;
 
 internal sealed record SpotifySearchCollectionItem(SpotifySearchItem Value, WidgetCollectionItemKey Key);
 internal sealed record SpotifySearchPresentation(string Query, SpotifySearchKind Kind,
-    SpotifyDiscoveredPresentation Results);
+    SpotifyDiscoveredPresentation Results, string? SuggestionSource = null);

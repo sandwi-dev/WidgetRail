@@ -22,7 +22,7 @@ public sealed partial class StandaloneMusicWidget : Widget
         public string ScrollId { get; } = "music.scroll." + id;
         public string GroupId { get; } = "music.content." + id;
         public WidgetIndexedCollection<BrowseQuery, BrowseEntry> Collection { get; set; } = null!;
-        public BrowseQuery Query { get; set; } = new([], false, false, -1, false, null);
+        public BrowseQuery Query { get; set; } = new([], false, false, -1, false, null, MusicState.Empty);
         public MusicPage Page { get; set; } = new("Home", []);
         public IReadOnlyList<MusicItem> Source { get; set; } = [];
         public BrowseEntry[] Items { get; set; } = [];
@@ -34,6 +34,8 @@ public sealed partial class StandaloneMusicWidget : Widget
     private long _pageGeneration;
     private long _focusSequence;
     private FocusGroupEntryRequest? _focusRequest;
+    private long _queueRevealSequence;
+    private ScrollRevealRequest? _queueReveal;
     private string? _panel;
     private string? _panelReturnFocus;
     private readonly Stack<(string Kind, string Value, string Focus)> _history = new();
@@ -53,6 +55,7 @@ public sealed partial class StandaloneMusicWidget : Widget
         var state = new BrowseState(id);
         state.Collection = CreateIndexedCollection<BrowseQuery, BrowseEntry>("music.collection." + id, state.Query, 0, new()
         {
+            OccurrenceKeys = id == "queue" ? query => query.Entries.Select(entry => entry.Key).ToArray() : null,
             ReadRange = (query, start, count, token) =>
             {
                 token.ThrowIfCancellationRequested();
@@ -60,7 +63,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             },
             ItemKey = entry => entry.Key,
             RenderItem = (query, entry, _) => RenderBrowseRow(new(entry, query.Home,
-                query.Queue && entry.Index == query.PlayingIndex, entry.Index == 0 ? query.FocusUp : null, query.HasPlayer)),
+                query.Queue && entry.Index == query.PlayingIndex, entry.Index == 0 ? query.FocusUp : null, query.HasPlayer, query.Queue, query.RatingState)),
             OnAction = (query, entry, action, token) => HandleBrowseActionAsync(state, query, entry, action, token),
         });
         _sections.Add(id, state);
@@ -94,6 +97,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                     ReplaceCollection(_service.State.Queue);
                 else UpdateBrowseContent();
         }
+        ObserveSongLike();
         return ValueTask.CompletedTask;
     }
 
@@ -101,6 +105,12 @@ public sealed partial class StandaloneMusicWidget : Widget
     {
         _service.Changed -= ServiceChanged;
         await _service.DisposeAsync().AsTask().WaitAsync(shutdownToken);
+    }
+
+    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    {
+        lock (_gate) _observedLike = null;
+        return ValueTask.CompletedTask;
     }
 
     private void ServiceChanged()
@@ -113,6 +123,7 @@ public sealed partial class StandaloneMusicWidget : Widget
         }
         ObserveTrackNotification();
         ObservePlaybackActivity();
+        ObserveSongLike();
         if (IsActive) Invalidate();
     }
 
@@ -120,21 +131,33 @@ public sealed partial class StandaloneMusicWidget : Widget
     {
         _browse.Source = items;
         var generation = ++_collectionGeneration;
+        // Keep only the current bounded snapshot's identities. Reference identity
+        // distinguishes duplicate songs, while shuffle/insertion retain occurrences.
+        var previous = new Dictionary<MusicItem, Queue<WidgetCollectionItemKey>>(ReferenceEqualityComparer.Instance);
+        if (_browse.Kind == "queue")
+            foreach (var entry in _browse.Items)
+            {
+                if (!previous.TryGetValue(entry.Item, out var keys)) previous.Add(entry.Item, keys = new());
+                keys.Enqueue(entry.Key);
+            }
+        var oldKeys = _browse.Items.Select(entry => entry.Key).ToArray();
         _browse.Items = items.Select((item, index) =>
-            new BrowseEntry(index, item, new($"music.item.{generation}.{index}"))).ToArray();
+            new BrowseEntry(index, item, previous.TryGetValue(item, out var keys) && keys.TryDequeue(out var key)
+                ? key : new($"music.item.{generation}.{index}"))).ToArray();
         _browse.Query = CaptureBrowseQuery(_browse);
-        _browse.Collection.PublishQuery(_browse.Query, _browse.Items.Length);
+        if (oldKeys.SequenceEqual(_browse.Items.Select(entry => entry.Key))) _browse.Collection.UpdateContent(_browse.Query);
+        else _browse.Collection.PublishQuery(_browse.Query, _browse.Items.Length);
     }
 
     private sealed record BrowseQuery(IReadOnlyList<BrowseEntry> Entries, bool Home, bool Queue,
-        int PlayingIndex, bool HasPlayer, string? FocusUp);
+        int PlayingIndex, bool HasPlayer, string? FocusUp, MusicState RatingState);
 
     private BrowseQuery CaptureBrowseQuery(BrowseState browse)
     {
         var player = _service.State;
         return new(Array.AsReadOnly(browse.Items), browse.Kind == "home", browse.Kind == "queue",
             player.Index, player.Current is not null, browse.Kind == "search" ? "search" : browse.Kind == "library"
-                ? "library." + browse.Value : WidgetIds.Scope("music.nav").KeyedId("compact", _tab));
+                ? "library." + browse.Value : WidgetIds.Scope("music.nav").KeyedId("compact", _tab), player);
     }
 
     private void UpdateBrowseContent()
@@ -142,8 +165,11 @@ public sealed partial class StandaloneMusicWidget : Widget
         var player = _service.State;
         foreach (var browse in _sections.Values)
         {
-            var next = browse.Query with { PlayingIndex = player.Index, HasPlayer = player.Current is not null };
-            if (next.HasPlayer == browse.Query.HasPlayer && (!next.Queue || next.PlayingIndex == browse.Query.PlayingIndex)) continue;
+            var next = browse.Query with { PlayingIndex = player.Index, HasPlayer = player.Current is not null, RatingState = player };
+            if (next.HasPlayer == browse.Query.HasPlayer && (!next.Queue || next.PlayingIndex == browse.Query.PlayingIndex) &&
+                player.Connected == browse.Query.RatingState.Connected &&
+                ReferenceEquals(player.SongLikes, browse.Query.RatingState.SongLikes) &&
+                ReferenceEquals(player.PendingLikes, browse.Query.RatingState.PendingLikes)) continue;
             browse.Query = next;
             browse.Collection.UpdateContent(next);
         }
@@ -202,6 +228,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                     if (!context.IsCurrent || generation != _pageGeneration) return;
                     Page = page; _status = "";
                     ReplaceCollection(page.Items);
+                    RefreshSuggestions();
                     _loading = false;
                     _browse.Loaded = true;
                     EnterContent();
@@ -223,14 +250,31 @@ public sealed partial class StandaloneMusicWidget : Widget
 
     private void SelectTab(string tab)
     {
+        bool enteringQueue;
         lock (_gate)
         {
+            enteringQueue = tab == "queue" && _tab != "queue";
+            if (tab != "queue") _queueReveal = null;
             _panel = null;
             _panelReturnFocus = null;
             _tab = _kind = tab; _value = tab == "library" ? _libraryFilter : tab == "search" ? _query : "";
             _history.Clear();
         }
         LoadPage(refresh: false);
+        if (enteringQueue)
+        {
+            lock (_gate)
+            {
+                // Queue is locally owned and available synchronously. No deferred
+                // request is issued later if entry has no playing occurrence.
+                _focusRequest = new() { RequestId = ++_focusSequence, GroupId = "music.navigation.header" };
+                var current = _service.State.Current;
+                var entry = _browse.Items.FirstOrDefault(entry => ReferenceEquals(entry.Item, current));
+                _queueReveal = entry is null ? null : _browse.Collection.Reveal(_browse.ScrollId, ++_queueRevealSequence,
+                    _browse.Collection.FocusTarget(_browse.ScrollId, entry.Key, entry.Index));
+            }
+            Invalidate();
+        }
     }
 
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
@@ -259,7 +303,17 @@ public sealed partial class StandaloneMusicWidget : Widget
         }
         else if (id == "search")
         {
-            lock (_gate) { _query = (action.CommittedText ?? "").Trim(); _kind = "search"; _value = _query; }
+            lock (_gate)
+            {
+                _query = (action.CommittedText ?? "").Trim(); _kind = "search"; _value = _query;
+                if (_query.Length is > 0 and <= 96)
+                {
+                    _recentSearches.RemoveAll(value => string.Equals(value, _query, StringComparison.OrdinalIgnoreCase));
+                    _recentSearches.Insert(0, _query);
+                    if (_recentSearches.Count > 20) _recentSearches.RemoveAt(20);
+                }
+                RefreshSuggestions();
+            }
             LoadPage();
         }
         else if (id.StartsWith("library.", StringComparison.Ordinal) && id[8..] is "playlists" or "songs" or "albums" or "artists")
@@ -278,6 +332,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             LoadPage(previous.Focus, refresh: false);
         }
         else if (id == "refresh") LoadPage();
+        else if (id == "song.like" && _service.State.Current is { } current) ChangeSongLike(current, _service.State.LikeFor(current) != true);
         else if (id == "signin")
         {
             Operations.RunSingleFlight("music.auth", async context =>
@@ -291,7 +346,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 }
                 catch (Exception error) when (error is IOException or OperationCanceledException)
                 { if (context.IsCurrent) SetStatus("Sign-in did not complete. Select Sign in to try again."); }
-                finally { lock (_gate) _signingIn = false; Invalidate(); }
+                finally { lock (_gate) _signingIn = false; ObserveSongLike(); Invalidate(); }
             }, WidgetOperationLifetime.Widget);
         }
         else if (id == "signin.cancel")
@@ -341,10 +396,25 @@ public sealed partial class StandaloneMusicWidget : Widget
                 action.Phase != ControllerEventPhase.Pressed) return ValueTask.CompletedTask;
             var id = action.ActionId;
             var index = entry.Index;
-            if (id != "item." + index && id != "radio." + index && id != "next." + index) return ValueTask.CompletedTask;
+            if (id != "item." + index && id != "radio." + index && id != "next." + index && id != "remove." + index && id != "like." + index) return ValueTask.CompletedTask;
             var item = entry.Item;
             var items = query.Entries.Select(value => value.Item).ToArray();
-            if (id.StartsWith("next.", StringComparison.Ordinal) && item.Kind is "song" or "playlist" or "album")
+            if (id.StartsWith("like.", StringComparison.Ordinal))
+            {
+                if (item.Kind == "song" && query.RatingState.Connected) ChangeSongLike(item, query.RatingState.LikeFor(item) != true);
+            }
+            else if (id.StartsWith("remove.", StringComparison.Ordinal))
+            {
+                if (!query.Queue) return ValueTask.CompletedTask;
+                var queue = owner.Source;
+                Operations.RunSingleFlight("music.remove", async context =>
+                {
+                    try { await _service.RemoveQueueItemAsync(queue, index, context.CancellationToken); }
+                    catch (Exception error) when (error is IOException or OperationCanceledException)
+                    { if (context.IsCurrent) SetStatus("Could not remove the song. Try again."); }
+                }, WidgetOperationLifetime.Widget);
+            }
+            else if (id.StartsWith("next.", StringComparison.Ordinal) && item.Kind is "song" or "playlist" or "album")
             {
                 Operations.RunSerial("music.queue", async context =>
                 {
@@ -397,6 +467,8 @@ public sealed partial class StandaloneMusicWidget : Widget
             }
             _history.Clear();
             _kind = _tab; _value = _tab == "library" ? _libraryFilter : _tab == "search" ? _query : "";
+            _recentSearches.Clear();
+            RefreshSuggestions();
         }
         LoadPage();
     }

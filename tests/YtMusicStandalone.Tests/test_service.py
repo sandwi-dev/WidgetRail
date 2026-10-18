@@ -133,6 +133,58 @@ class ServiceTests(unittest.TestCase):
         self.service.close()
         self.directory.cleanup()
 
+    def test_song_like_reads_exact_track_and_preserves_unknown(self):
+        self.service.auth = {"cookie": "synthetic"}
+        class Fake:
+            def get_watch_playlist(self, **args):
+                assert args == {"videoId": "M7lc1UVf-VE", "limit": 1}
+                return {"tracks": [{"videoId": "different11", "likeStatus": "LIKE"},
+                                   {"videoId": "M7lc1UVf-VE", "likeStatus": "INDIFFERENT"}]}
+        with patch.object(music, "make_client", return_value=Fake()):
+            self.assertEqual({"liked": False}, self.service.handle("song_like", {
+                "videoId": "M7lc1UVf-VE", "accountGeneration": 0}))
+        self.assertIsNone(music.normalize({"videoId": "M7lc1UVf-VE"})["liked"])
+        self.assertTrue(music.normalize({"videoId": "M7lc1UVf-VE", "likeStatus": "LIKE"})["liked"])
+
+    def test_song_like_uses_dependency_rating_enum_and_updates_cached_rows(self):
+        from ytmusicapi.models.content.enums import LikeStatus
+        self.service.auth = {"cookie": "synthetic"}
+        row = {"id": "M7lc1UVf-VE", "kind": "song", "liked": False}
+        self.service.cache["home:"] = (time.monotonic() + 300, {"items": [row]})
+        calls = []
+        class Fake:
+            def rate_song(self, video, rating):
+                calls.append((video, rating)); return {"responseContext": {}}
+        with patch.object(music, "make_client", return_value=Fake()):
+            for liked in (True, False):
+                self.assertEqual({"liked": liked}, self.service.song_like({
+                    "videoId": "M7lc1UVf-VE", "accountGeneration": 0, "liked": liked}))
+                self.assertEqual(liked, row["liked"])
+        self.assertEqual([("M7lc1UVf-VE", LikeStatus.LIKE), ("M7lc1UVf-VE", LikeStatus.INDIFFERENT)], calls)
+
+    def test_song_like_rejects_stale_account_invalid_input_and_unacknowledged_write(self):
+        self.service.auth = {"cookie": "synthetic"}
+        with patch.object(music, "make_client") as create:
+            for args in ({"videoId": "M7lc1UVf-VE", "accountGeneration": 9, "liked": True},
+                         {"videoId": "bad", "accountGeneration": 0, "liked": True},
+                         {"videoId": "M7lc1UVf-VE", "accountGeneration": 0, "liked": "true"}):
+                with self.assertRaises((RuntimeError, ValueError)): self.service.song_like(args)
+            create.assert_not_called()
+            create.return_value.rate_song.return_value = None
+            with self.assertRaises(RuntimeError):
+                self.service.song_like({"videoId": "M7lc1UVf-VE", "accountGeneration": 0, "liked": True})
+
+    def test_song_like_does_not_publish_old_account_acknowledgement(self):
+        self.service.auth = {"cookie": "synthetic"}
+        service = self.service
+        class Fake:
+            def rate_song(self, *_):
+                service.generation += 1
+                return {}
+        with patch.object(music, "make_client", return_value=Fake()):
+            with self.assertRaisesRegex(RuntimeError, "session_changed"):
+                service.song_like({"videoId": "M7lc1UVf-VE", "accountGeneration": 0, "liked": True})
+
     def test_dpapi_round_trip_and_tamper_rejection(self):
         secret = b'{"cookie":"synthetic-session-for-test"}'
         protected = music.protected(secret)

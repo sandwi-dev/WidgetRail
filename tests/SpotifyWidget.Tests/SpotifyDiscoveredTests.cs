@@ -213,7 +213,7 @@ internal static class SpotifyDiscoveredTests
             using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "spotify.search-menu");
             await host.ContinueAsync("spotify.search.scroll"); host.PublishSnapshot();
             using var row = await host.AcquireAsync("spotify.search.scroll", 0, 1);
-            var item = row.Range.Items[0]; var menu = item.Root.ContextActions.Single();
+            var item = row.Range.Items[0]; var menu = item.Root.ContextActions.Single(action => action.ActionId.StartsWith("spotify.search.enqueue.", StringComparison.Ordinal));
             Equal(ControllerButton.Menu, item.Root.ContextMenuButton);
             Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, row.RouteAction(item.Key, ControllerButton.A,
                 contextActionOwnerId: item.Root.Id, contextActionId: menu.ActionId));

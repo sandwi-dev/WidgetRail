@@ -12,6 +12,10 @@ using BrokerSpotifyLocalPlaybackState =
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Library checks batch exact URIs and saving uses current unified endpoints", LibraryApiTests.ExactEndpoints),
+    ("Library validates track bounds and rejects inconsistent responses", LibraryApiTests.BoundsAndResponseValidation),
+    ("Library rejects late cancellation and preserves input snapshot alignment", LibraryApiTests.CancellationAndCallerMutation),
+    ("Library uses shared authorization and sanitizes service failures", LibraryApiTests.AuthorizationAndSafeErrors),
     ("Cache partition survives token rotation and migration failure leaves authorization usable", CachePartitionPersistence),
     ("Playlist parser preserves the opaque snapshot version", PlaylistSnapshotVersion),
     ("Search encodes queries, bounds paging and parses every result type", SearchContract),

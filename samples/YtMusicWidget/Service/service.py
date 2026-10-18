@@ -238,7 +238,9 @@ def normalize(item, kind=None, *, fallback_artwork=""):
     title = str(item.get("title") or item.get("artist") or "Untitled")[:160]
     artists = item.get("artists") or []
     subtitle = ", ".join(str(a.get("name", "")) for a in artists if isinstance(a, dict))[:180]
-    return dict(id=key, kind=kind, title=title, subtitle=subtitle, artwork=artwork(item) or fallback_artwork)
+    rating = item.get("likeStatus")
+    return dict(id=key, kind=kind, title=title, subtitle=subtitle, artwork=artwork(item) or fallback_artwork,
+                liked=rating == "LIKE" if rating in {"LIKE", "DISLIKE", "INDIFFERENT"} else None)
 
 
 def items(values, kind=None, *, fallback_artwork=""):
@@ -348,6 +350,7 @@ class MusicService:
                 pass  # An expired/different-user session returns to sign-in.
         self.lock = threading.RLock()
         self.auth_gate = threading.Lock()
+        self.rating_gate = threading.Lock()
         self.auth_cancel = threading.Event()
         self.generation = 0
         self.cache = {}
@@ -379,7 +382,7 @@ class MusicService:
 
     def status(self, _):
         with self.lock:
-            return {"connected": bool(self.auth)}
+            return {"connected": bool(self.auth), "accountGeneration": self.generation}
 
     def disconnect(self, _):
         self.auth_cancel.set()
@@ -471,7 +474,7 @@ class MusicService:
                         self.url_cache.reset(self.auth)
                         generation = self.generation
                     self.retire_resolvers(generation)
-                    return {"connected": True}
+                    return {"connected": True, "accountGeneration": generation}
                 raise RuntimeError("signin_timeout")
             finally:
                 if connection:
@@ -550,6 +553,43 @@ class MusicService:
                     self.cache.pop(next(iter(self.cache)))
                 self.cache[key] = (time.monotonic() + 300, result)
         return result
+
+    def song_like(self, args):
+        video = args.get("videoId", "")
+        if not isinstance(video, str) or not VIDEO_ID.fullmatch(video):
+            raise ValueError("invalid_video")
+        write = "liked" in args
+        if write and not isinstance(args["liked"], bool):
+            raise ValueError("invalid_rating")
+        # Serialize rating requests only; playback and browsing keep their lanes.
+        with self.rating_gate:
+            with self.lock:
+                generation = self.generation
+                if not self.auth or args.get("accountGeneration") != generation:
+                    raise RuntimeError("session_changed")
+                auth = dict(self.auth)
+            client = make_client(auth)
+            if write:
+                from ytmusicapi.models.content.enums import LikeStatus
+                response = client.rate_song(video, LikeStatus.LIKE if args["liked"] else LikeStatus.INDIFFERENT)
+                if not isinstance(response, dict) or "error" in response:
+                    raise RuntimeError("rating_not_acknowledged")
+                liked = args["liked"]
+            else:
+                page = client.get_watch_playlist(videoId=video, limit=1)
+                track = next((track for track in page.get("tracks", []) if track.get("videoId") == video), {})
+                rating = track.get("likeStatus")
+                liked = rating == "LIKE" if rating in {"LIKE", "DISLIKE", "INDIFFERENT"} else None
+            with self.lock:
+                if generation != self.generation:
+                    raise RuntimeError("session_changed")
+                if write:
+                    # Keep retained catalogue items fresh without a provider refetch.
+                    for _, page in self.cache.values():
+                        for item in page.get("items", []):
+                            if item.get("kind") == "song" and item.get("id") == video:
+                                item["liked"] = liked
+            return {"liked": liked}
 
     def resolve(self, args, *, speculative=False, renew=None):
         video = str(args.get("videoId", ""))
@@ -703,7 +743,7 @@ class MusicService:
                 if self.prefetch_work is None or self.prefetch_work.done():
                     self.prefetch_work = self.prefetch.submit(self.safe_prefetch, dict(args))
             return {}
-        if method not in {"status", "signin", "cancel_signin", "disconnect", "browse", "resolve"}:
+        if method not in {"status", "signin", "cancel_signin", "disconnect", "browse", "resolve", "song_like"}:
             raise ValueError("unknown_method")
         return getattr(self, method)(args)
 

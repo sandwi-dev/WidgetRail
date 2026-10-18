@@ -48,6 +48,8 @@ internal sealed partial class WidgetViewPresenter
     private void UpdateNativeIcon(WidgetPackageIconView icon, ViewNode node) => icon.Update(node, IconResolver(), PackageGeneration, IconDiagnostic);
     private void UpdateButtonContent(Binding binding, Button button, ViewNode node)
     {
+        NativePopupTheme.SetToolTip(button, node.Glyph is not null && string.IsNullOrEmpty(node.Text)
+            ? node.AccessibilityLabel : null);
         if (node.Glyph is null)
         {
             if (buttonIcons.Remove(binding, out var previous)) previous.Dispose();

@@ -64,6 +64,8 @@ var tests = new List<(string, Func<Task>)>
     ("Song banners opt in during setup and publish only track changes", MusicNotificationTests.Run),
     ("Playback recovery refreshes, skips, stops and rejects stale events", PlaybackRecoveryTests.Run),
     ("Volume preference survives restart and rejects provider defaults", VolumePreferenceTests.Run),
+    ("Queue removal preserves occurrence, shuffle, paused state and repeat semantics", QueueRemovalTests.Run),
+    ("Song likes acknowledge writes, coalesce and reject old account responses", SongLikeTests.Run),
     ("Compact pin declares artwork and admits the same transport shortcuts as the main player", PinnedPlayer),
     ("Section content and navigation share motion identity without moving the player", async () =>
     {
@@ -111,6 +113,10 @@ var tests = new List<(string, Func<Task>)>
     ("Reconnect and disconnect invalidate retained account pages", AccountPages),
     ("Library controls stay in one row, Home keeps sections, and player hides scrollbar", BrowsePresentation),
     ("Queue refreshes after background changes without resetting on playback ticks", QueueRefresh),
+    ("Queue membership preserves surviving row identities and exposes occurrence removal", QueueContinuity),
+    ("Music suggestions use loaded names and recent searches without provider calls", LocalSuggestions),
+    ("Queue entry reveals the playing occurrence once without row focus", QueueEntryReveal),
+    ("Song liking uses existing menus and updates every occurrence after acknowledgement", SongLikePresentation),
     ("Scrubber commands convert milliseconds to player seconds", SeekUnits),
     ("Sign-in can be canceled from the controller without waiting for its timeout", CancelAuth),
 };
@@ -746,6 +752,115 @@ static async Task QueueRefresh()
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
 
+static async Task QueueContinuity()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        var first = new MusicItem("same", "song", "First duplicate");
+        var second = new MusicItem("same", "song", "Second duplicate");
+        service.ReplaceQueue([first, second]);
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        var rows = await Rows(widget);
+        var keys = rows.Select(row => row.CollectionItemKey).ToArray();
+        Check(keys[0] != keys[1], "Duplicate occurrences share keys");
+        service.ReplaceQueue([new("inserted", "song", "New"), first, second]);
+        rows = await Rows(widget);
+        Check(rows[1].CollectionItemKey == keys[0] && rows[2].CollectionItemKey == keys[1], "Insertion changes surviving keys");
+        await RowAction(widget, "remove.1");
+        await Until(() => service.Commands.Contains("remove"));
+        rows = await Rows(widget);
+        Check(rows.Count == 2 && rows[1].CollectionItemKey == keys[1] && ReferenceEquals(service.State.Queue[1], second),
+            "Remove did not preserve the remaining duplicate");
+        var source = BrowseScroll(widget).IndexedCollection!;
+        service.ReplaceQueue(service.State.Queue.ToArray());
+        Check(BrowseScroll(widget).IndexedCollection!.QueryGeneration == source.QueryGeneration, "Equivalent queue republished membership");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task LocalSuggestions()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        await widget.OnActionAsync(new("tab.search", "test"));
+        string Source() => Nodes(widget.Render().CreateSnapshot("suggest", 1).Root).Single(node => node.Id == "search").TextEntrySuggestions!.Key;
+        var source = Source();
+        var calls = service.BrowseCalls.Count;
+        var result = await widget.OnSuggestTextAsync(new("search", source, "11111111111111111111111111111111", 1, "Song 2", 6, 96), default);
+        Check(result.Items.Any(item => item.Value == "Song 2") && result.Items.Count <= 6, "Loaded names unavailable or unbounded");
+        for (var i = 0; i < 30; i++) await widget.OnSuggestTextAsync(new("search", source, "11111111111111111111111111111111", i + 2, "Song", 6, 96), default);
+        Check(service.BrowseCalls.Count == calls, "Typing performs provider requests");
+        await widget.OnActionAsync(new("search", "search") { CommittedText = "An unusual phrase" });
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        result = await widget.OnSuggestTextAsync(new("search", Source(), "11111111111111111111111111111111", 33, "An unusual", 6, 96), default);
+        Check(result.Items.Any(item => item.Value == "An unusual phrase"), "Recent search missing whole-entry completion");
+        Check((await widget.OnSuggestTextAsync(new("search", source, "11111111111111111111111111111111", 34, "Song"), default)).Unavailable, "Old source accepted");
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        Check((await widget.OnSuggestTextAsync(new("search", source, "11111111111111111111111111111111", 35, "Song"), default)).Unavailable, "Suggestions outlive search page");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task QueueEntryReveal()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        service.ReplaceQueue(Enumerable.Range(0, 180).Select(index => new MusicItem("song" + index, "song", "Song " + index)).ToArray());
+        service.SelectCurrent(120);
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        var view = widget.Render();
+        var request = view.ScrollRevealRequest!;
+        Check(request.IndexedItem?.Index == 120 && view.FocusGroupEntryRequest?.GroupId == "music.navigation.header" &&
+            view.InitialFocusId!.StartsWith("music.nav.", StringComparison.Ordinal), "Queue entry moves focus or reveals wrong occurrence");
+        foreach (var error in ViewSnapshotValidator.Validate(view.CreateSnapshot("entry", 1))) throw new Exception(error.ToString());
+        service.PlaybackTick(); service.SelectCurrent(121);
+        Check(widget.Render().ScrollRevealRequest == request, "Playback change requests another reveal");
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        Check(widget.Render().ScrollRevealRequest == request, "Hide/reopen creates another reveal");
+        service.ReplaceQueue(service.State.Queue.Skip(1).ToArray());
+        Check(widget.Render().ScrollRevealRequest is null, "Membership change reissues stale reveal");
+        await widget.OnActionAsync(new("tab.home", "test"));
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        Check(widget.Render().ScrollRevealRequest!.RequestId > request.RequestId, "Queue reentry did not create a new request");
+        await widget.OnActionAsync(new("tab.home", "test"));
+        service.SetPlayback(false);
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        Check(widget.Render().ScrollRevealRequest is null, "Empty entry invents playing target");
+        service.ReplaceQueue([new("late", "song", "Late")]);
+        Check(widget.Render().ScrollRevealRequest is null, "Late data takes over scrolling after empty entry");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task SongLikePresentation()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        service.ReplaceQueue([new("same", "song", "First"), new("same", "song", "Second")]);
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        var before = BrowseScroll(widget).IndexedCollection!;
+        service.SetLikePending(true);
+        var busyLike = Nodes(widget.Render().CreateSnapshot("like.busy", 1).Root).Single(node => node.ActionId == "song.like");
+        Check(busyLike.IsBusy == true && busyLike.IsDisabled != true && busyLike.IsFocusable, "Pending like removes focus eligibility");
+        service.SetLikePending(false);
+        await RowAction(widget, "like.1");
+        await Until(() => service.Commands.Contains("like"));
+        var after = BrowseScroll(widget).IndexedCollection!;
+        Check(before.QueryGeneration == after.QueryGeneration && after.ContentRevision > before.ContentRevision,
+            "Rating write resets membership instead of updating content");
+        Check(Nodes(widget.Render().CreateSnapshot("like", 1).Root).Any(node => node.Text == "Liked · Unlike"), "Player state did not show acknowledged like");
+        await RowAction(widget, "like.0");
+        await Until(() => service.State.LikeFor(service.State.Current!) == false);
+        Check(Nodes(widget.Render().CreateSnapshot("like", 2).Root).Any(node => node.Text == "Like song"), "Unlike did not update current duplicate");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
 static async Task SeekUnits()
 {
     var (widget, service) = await Start();
@@ -839,6 +954,7 @@ sealed class FakeService : IMusicService
     public void PlaybackTick() { State = State with { Player = State.Player with { Position = State.Player.Position + 1 } }; Changed?.Invoke(); }
     public void SetPlayerError(string? error) { State = State with { Player = State.Player with { Error = error } }; Changed?.Invoke(); }
     public void ReplaceQueue(IReadOnlyList<MusicItem> queue) { State = State with { Queue = queue, Index = 0 }; Changed?.Invoke(); }
+    public void SelectCurrent(int index) { State = State with { Index = index }; Changed?.Invoke(); }
     public void SetPlayback(bool playing, string trackId = "test")
     {
         State = playing ? new(true, [new(trackId, "song", "A song title", "Artist name", "https://example.invalid/fixture.png")], 0, false, "off", new(trackId, true, Position: 15, Duration: 196))
@@ -880,6 +996,21 @@ sealed class FakeService : IMusicService
         CheckQueue(expectedQueue, index);
         Commands.Add("queue"); LastValue = index;
         return Task.CompletedTask;
+    }
+    public Task RemoveQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token)
+    {
+        CheckQueue(expectedQueue, index);
+        State = MusicQueue.Remove(State, State.Queue, index).State;
+        Commands.Add("remove"); Changed?.Invoke();
+        return Task.CompletedTask;
+    }
+    public void SetLikePending(bool pending)
+    { State = State with { PendingLikes = pending ? new HashSet<string> { State.Current!.Id } : new HashSet<string>() }; Changed?.Invoke(); }
+    public Task ReadSongLikeAsync(MusicItem item, CancellationToken token) => Task.CompletedTask;
+    public Task SetSongLikeAsync(MusicItem item, bool liked, CancellationToken token)
+    {
+        State = State with { SongLikes = new Dictionary<string, bool?>(State.SongLikes) { [item.Id] = liked } };
+        Commands.Add("like"); Changed?.Invoke(); return Task.CompletedTask;
     }
     private void CheckQueue(IReadOnlyList<MusicItem> queue, int index)
     { if (!ReferenceEquals(State.Queue, queue) || index < 0 || index >= queue.Count) throw new InvalidOperationException("Wrong captured queue authority"); }

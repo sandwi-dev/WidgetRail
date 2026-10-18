@@ -56,7 +56,7 @@ public sealed class SpotifyCommunityApplicationTests
             return Json(200, Token("access-one", "refresh-one",
                 "user-read-playback-state user-modify-playback-state streaming " +
                 "user-read-email user-read-private playlist-read-private " +
-                "playlist-read-collaborative"));
+                "playlist-read-collaborative user-library-read user-library-modify"));
         });
 
         await using (var backend = Backend(configuration, vault, http, browser, callback))
@@ -79,7 +79,7 @@ public sealed class SpotifyCommunityApplicationTests
             ? Json(200, Token("access-two", null,
                 "user-read-playback-state user-modify-playback-state streaming " +
                 "user-read-email user-read-private playlist-read-private " +
-                "playlist-read-collaborative"))
+                "playlist-read-collaborative user-library-read user-library-modify"))
             : new SpotifyHttpResponse(204, string.Empty, EmptyHeaders()));
         await using var restartedBackend = Backend(configuration, vault, restartHttp,
             new NullBrowser(), new NullCallback());

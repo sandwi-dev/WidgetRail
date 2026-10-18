@@ -7,6 +7,7 @@ public static class SpotifyApplicationContract
     public const int MaximumClientIdInputCharacters = 96;
     public const int MaximumClientIdCharacters = 128;
     public const int MaximumQueueItems = 50;
+    public const int MaximumLibraryItems = 40;
     public const int MaximumCollectionPageSize = 50;
     public const int MaximumCollectionOffset = 100_000;
     public const long MaximumPositionMilliseconds = 604_800_000;
@@ -17,6 +18,8 @@ public static class SpotifyApplicationContract
             SpotifyAuthorizationScope.PlaybackStateControl,
             SpotifyAuthorizationScope.LocalPlayback,
             SpotifyAuthorizationScope.PlaylistsRead,
+            SpotifyAuthorizationScope.LibraryRead,
+            SpotifyAuthorizationScope.LibraryModify,
         ]);
 }
 
@@ -232,6 +235,14 @@ public sealed class SpotifyApplicationException : Exception
 
 public interface ISpotifyApplicationService : IAsyncDisposable
 {
+    ValueTask<IReadOnlyList<bool>> GetSavedItemsAsync(IReadOnlyList<string> uris,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<IReadOnlyList<bool>>(new SpotifyApplicationException(
+            "library_unavailable", "Saving Spotify tracks is unavailable. Update the widget and try again."));
+    ValueTask SetSavedItemAsync(string uri, bool saved,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new SpotifyApplicationException(
+            "library_unavailable", "Saving Spotify tracks is unavailable. Update the widget and try again."));
     ValueTask<SpotifySearchPage> SearchAsync(string query, SpotifySearchKind kind,
         int offset, int limit, CancellationToken cancellationToken = default) =>
         ValueTask.FromException<SpotifySearchPage>(new SpotifyApplicationException(

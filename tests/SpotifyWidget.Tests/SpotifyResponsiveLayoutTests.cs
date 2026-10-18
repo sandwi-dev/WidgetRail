@@ -17,13 +17,14 @@ internal static class SpotifyResponsiveLayoutTests
 
         Equal(ViewNodeKind.Row, Find(snapshot.Root, "spotify.connected.panes").Kind);
         var player = Find(snapshot.Root, "spotify.card");
+        Equal(ViewNodeKind.Scroll, player.Kind);
         HasClass(player, "spotify-player-pane");
         HasClass(player, "spotify-player-card");
         Equal(1, Count(snapshot.Root, "spotify.card"));
         Equal(1, Count(snapshot.Root, "spotify.track-title"));
         Equal("Small Hours", Find(snapshot.Root, "spotify.track-title").Text);
         Equal("Northern Lines", Find(snapshot.Root, "spotify.track-subtitle").Text);
-        Equal("Night Drive", Find(snapshot.Root, "spotify.context").Text);
+        Equal("Now playing · Night Drive", Find(snapshot.Root, "spotify.context").Text);
         Equal("Spotify", Find(snapshot.Root, "spotify.attribution").Text);
 
         var compactNavigation = FindClass(snapshot.Root,
@@ -89,6 +90,9 @@ internal static class SpotifyResponsiveLayoutTests
             Equal("44px", actionStyle.Get("min-height")?.Text);
             Equal("14px", actionStyle.Get("font-size")?.Text);
         }
+        var pinStyle = Resolve(theme, "scroll", "spotify.player.pinned-compact.card",
+            "spotify-player-card", "spotify-player-card-compact", "spotify-pinned-player");
+        Equal(1d, pinStyle.Get("flex-grow")?.Number);
         WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Player", snapshot);
         WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Compact-Pin", snapshot with
         { Root = compactPin.Root!, Surface = compactPin.Surface, InitialFocusId = compactPin.InitialFocusId,

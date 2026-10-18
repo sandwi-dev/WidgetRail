@@ -27,6 +27,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     public const string PlaybackControlScope = "user-modify-playback-state";
     public const string PlaylistReadPrivateScope = "playlist-read-private";
     public const string PlaylistReadCollaborativeScope = "playlist-read-collaborative";
+    public const string LibraryReadScope = "user-library-read";
+    public const string LibraryModifyScope = "user-library-modify";
     public const string StreamingScope = "streaming";
     public const string UserReadEmailScope = "user-read-email";
     public const string UserReadPrivateScope = "user-read-private";
@@ -68,6 +70,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     private readonly SpotifyPlaybackApi _playbackApi;
     private readonly SpotifyCollectionApi _collectionApi;
     private readonly SpotifySearchApi _searchApi;
+    private readonly SpotifyLibraryApi _libraryApi;
     private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
     private readonly ConcurrentDictionary<string, IntegrationState> _states = new();
     private int _disposed;
@@ -116,6 +119,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         _playbackApi = new SpotifyPlaybackApi(authorizedSender);
         _collectionApi = new SpotifyCollectionApi(authorizedSender);
         _searchApi = new SpotifySearchApi(authorizedSender);
+        _libraryApi = new SpotifyLibraryApi(authorizedSender);
     }
 
     public async Task<SpotifyProviderConfiguration> GetConfigurationAsync(
@@ -476,6 +480,16 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             return await _playbackApi.GetQueueAsync(
                 identity, cancellationToken).ConfigureAwait(false);
         });
+
+    public Task<IReadOnlyList<bool>> GetSpotifySavedItemsAsync(
+        SpotifyIntegrationIdentity identity, IReadOnlyList<string> uris,
+        CancellationToken cancellationToken) => ApplicationCallAsync(() =>
+            _libraryApi.GetSavedItemsAsync(identity, uris, cancellationToken));
+
+    public Task SetSpotifySavedItemAsync(
+        SpotifyIntegrationIdentity identity, string uri, bool saved,
+        CancellationToken cancellationToken) => ApplicationCallAsync(() =>
+            _libraryApi.SetSavedItemAsync(identity, uri, saved, cancellationToken));
 
     public Task AddSpotifyQueueItemAsync(
         SpotifyIntegrationIdentity identity, AddSpotifyQueueItemRequest request,
@@ -1122,7 +1136,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         "authorization_expired" => "Spotify authorization expired. Connect again.",
         "insufficient_scope" or "authorization_scope_required" or
             "reauthorization_required" =>
-            "Reconnect Spotify to allow playback on this PC.",
+            "Reconnect Spotify to grant the required permissions.",
         "premium_required" =>
             "Spotify Premium is required for playback on this PC.",
         "local_playback_timeout" or "host_start_timeout" or

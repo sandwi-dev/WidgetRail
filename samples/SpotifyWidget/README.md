@@ -9,7 +9,9 @@ manage playback on a Spotify device, or use **Play here** to listen through Widg
 
 - Search for tracks, albums, artists, and playlists.
 - Browse playlists and choose a track to start from.
-- View the queue and add individual tracks to it.
+- View the queue and add individual tracks to it. The separate now-playing panel stays visible.
+- Save the current track to Liked Songs; track menus also provide Save and Remove actions.
+- Get whole-search suggestions from recent searches and already-loaded music names, without extra Spotify searches.
 - Switch playback devices or play locally through **This overlay**.
 - Pin **Compact now playing** or **Now playing + up next** beside your game.
 
@@ -60,6 +62,10 @@ Your saved Spotify connection remains in the widget's existing credential store.
 
 **Spotify rejects authorization.** Check the Client ID, the exact redirect URI,
 and whether your Spotify app allows the account you're signing in with.
+
+**Saving songs asks me to reconnect.** Reconnect in Settings to grant library read/write access. Existing playback grants do not include this permission.
+
+**Can I remove a queued song?** Spotify does not expose a supported queue-removal API. The widget keeps the real Spotify queue rather than hiding entries locally.
 
 **Why can't I add a whole playlist to the queue?** Add to queue is limited to
 individual tracks. Adding an entire collection would require a separate request per track.

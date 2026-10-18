@@ -59,8 +59,11 @@ The standalone package currently supports Windows x64.
 - **Play next** also works on playlists and albums. Songs are inserted together in their original order, including when shuffle is already enabled. The current song keeps playing.
 - Choose **Start radio** to replace the queue with recommendations based on it.
 - Use **Queue** to select a different queued song. The current song stays highlighted while you browse.
+- Entering **Queue** scrolls to the playing song once, leaving controller focus on the navigation controls. Playback changes and queue edits do not repeatedly move your view.
+- In Queue, open a song's **Menu** and choose **Remove from queue**. Only that occurrence is removed, even if the song appears more than once. Removing the playing song advances to the next; paused playback stays paused. Removing the last song stops, unless Repeat All can wrap to a remaining song.
 - Use the player on the left for playback, seeking, volume, shuffle and repeat while browsing on the right.
 - Pin **Compact now playing** to keep controls beside your game.
+- When connected, use **Like song** on the player or a song's Menu. **Liked · Unlike** confirms the saved rating; choose it to remove your like. This is YouTube Music's thumbs-up rating, separate from Add to library.
 
 **LT / RT** changes the four browsing tabs, **X** plays or pauses, and **LB / RB**
 selects the previous or next song. **Y** opens Settings; **B** returns from Settings
@@ -68,6 +71,8 @@ or a playlist, album or artist page.
 While signing in, **Cancel sign-in** closes the temporary browser session without
 stopping playback. Music continues when the overlay closes. Windows media controls and
 WidgetRail's Now Playing widget can control the local player.
+
+Search offers whole-entry suggestions from your recent searches and music already loaded in the widget. Typing suggestions does not make extra YouTube requests.
 
 <!-- Screenshot: add screenshots/song-radio.png showing Start radio and its resulting queue. -->
 <!-- Screenshot: add screenshots/pinned-player.png showing the compact player beside a game. -->

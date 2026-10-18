@@ -111,7 +111,7 @@ internal static class SpotifyPresentation
                 presentation.PendingOperation,
                 mode,
                 pinned: true,
-                adjacentFocusId: nextItemId);
+                adjacentFocusId: nextItemId, savedSong: presentation.SavedSong);
             if (includeUpNext)
             {
                 content.Add(UI.Row($"spotify.{mode}.shell",
@@ -516,7 +516,7 @@ internal static class SpotifyPresentation
                 "spotify.connected.panes",
                 PlayerPanel(
                     playback, pending, "wide", pane: true,
-                    controlsEnabled: !setup),
+                    controlsEnabled: !setup, savedSong: presentation.SavedSong),
                 pageGroup.TransitionContent("spotify.pages", route.Route.ToString(), setup ? destinations.Length * 2 :
                     Array.FindIndex(destinations, item => item.Id == DestinationToken(destination)) * 2 +
                         (route.Route == SpotifyRoute.PlaylistDetail ? 1 : 0)))
@@ -613,7 +613,7 @@ internal static class SpotifyPresentation
         string? adjacentFocusId = null,
         bool docked = false,
         bool pane = false,
-        bool controlsEnabled = true)
+        bool controlsEnabled = true, SpotifySavedPresentation? savedSong = null)
     {
         if (playback is not { IsAvailable: true, Item: not null })
         {
@@ -752,8 +752,8 @@ internal static class SpotifyPresentation
                 compact ? "spotify-compact-track-title" : "spotify-wide-track-title");
         var subtitle = UI.Text(item.Subtitle, subtitleId, item.Subtitle)
             .Classes("spotify-track-subtitle");
-        var context = UI.Text(item.ContextName ?? "Spotify", contextId,
-                item.ContextName ?? "Spotify")
+        var context = UI.Text("Now playing · " + (item.ContextName ?? "Spotify"), contextId,
+                "Now playing · " + (item.ContextName ?? "Spotify"))
             .Classes("spotify-context");
         if (docked)
         {
@@ -761,7 +761,21 @@ internal static class SpotifyPresentation
             subtitle = subtitle.AddClasses("spotify-dock-track-subtitle");
             context = context.AddClasses("spotify-dock-context");
         }
-        var details = UI.Stack(detailsId, title, subtitle, context)
+        WidgetElement heading = title;
+        if (SpotifySavedLibrary.IsTrack(item.Uri))
+        {
+            var saved = savedSong?.Saved == true;
+            var save = UI.IconButton(WidgetIcon.PackageSvg(saved ? "spotify.saved.filled" : "spotify.saved.outline",
+                    WidgetPackageIconColorMode.ThemeTint, WidgetGlyph.Like),
+                "spotify.saved.toggle." + SpotifyCollectionIdentity.Media(item.Uri).Value, prefix + ".saved",
+                saved ? "Remove from liked songs" : "Save to liked songs", size: IconButtonSize.Medium)
+                .Selected(saved).Busy(savedSong?.Busy == true).Disabled(!controlsEnabled)
+                .Classes("spotify-saved-action");
+            heading = UI.Row(prefix + ".track-heading", title.AddClasses("spotify-title-grow"), save)
+                .Classes("spotify-track-heading");
+        }
+        var detailsChildren = new List<WidgetElement> { heading, subtitle, context };
+        var details = UI.Stack(detailsId, detailsChildren.ToArray())
                 .Classes("spotify-details",
                     compact ? "spotify-compact-details" : "spotify-wide-details");
         if (docked) details = details.AddClasses("spotify-dock-details");
@@ -786,9 +800,9 @@ internal static class SpotifyPresentation
                 .Classes("wrail-surface-raised", "spotify-player-card", "spotify-player-dock",
                     "spotify-player-standard");
 
-        // Pins can be resized independently of the main surface. Keep their
-        // real player reachable at minimum size and with larger text settings.
-        WidgetElement card = pinned
+        // Both the main pane and pins can have less height than their content.
+        // Keep transport reachable at minimum size and with larger text settings.
+        WidgetElement card = pinned || pane
             ? UI.VerticalScroll($"{prefix}.card", artworkFrame, details, transport) with { ShowScrollbar = false }
             : UI.Stack($"{prefix}.card", artworkFrame, details, transport);
         return card
@@ -1012,7 +1026,7 @@ internal static class SpotifyPresentation
         .PersistFocusAs(focusPersistenceId)
         .Classes("spotify-media-row");
 
-    internal static WidgetElement IndexedQueueRow(SpotifyMediaCollectionItem item, bool first)
+    internal static WidgetElement IndexedQueueRow(SpotifyMediaCollectionItem item, bool first, bool? saved = null)
     {
         var row = MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
             SpotifyCollectionIdentity.FocusId("spotify.queue.item", "shared", item.Key),
@@ -1020,15 +1034,20 @@ internal static class SpotifyPresentation
             first ? "Next track" : "Play from here");
         // Native lazy collection owns neighbors; item fragments never point at
         // unrealized siblings or confuse the first row of a range with queue head.
+        row = saved is { } value && SpotifySavedLibrary.IsTrack(item.Value.Uri)
+            ? row.ContextMenuShortcut(ControllerButton.Menu).ContextAction(
+                value ? "spotify.library.remove" : "spotify.library.save",
+                value ? "Remove from liked songs" : "Save to liked songs")
+            : SavedSongActions(row, item.Value.Uri);
         return row with { AccessibilityLabel = (first ? "Next track: " : "Play from here: ") + item.Value.Title };
     }
 
     internal static WidgetElement IndexedPlaylistTrackRow(SpotifyMediaCollectionItem item) =>
-        MediaRow(item.Value, "spotify.playlist.track." + item.Key.Value,
+        SavedSongActions(MediaRow(item.Value, "spotify.playlist.track." + item.Key.Value,
             SpotifyCollectionIdentity.FocusId("spotify.playlist.track", "shared", item.Key),
             SpotifyCollectionIdentity.FocusId("spotify.playlist.track.persist", "shared", item.Key))
             .ContextMenuShortcut(ControllerButton.Menu)
-            .ContextAction("spotify.playlist.enqueue." + item.Key.Value, "Add to queue");
+            .ContextAction("spotify.playlist.enqueue." + item.Key.Value, "Add to queue"), item.Value.Uri);
 
     internal static WidgetElement IndexedSearchRow(SpotifySearchCollectionItem item)
     {
@@ -1038,9 +1057,14 @@ internal static class SpotifyPresentation
             item.Value.Subtitle, artwork: Artwork(item.Value.ArtworkUrl, item.Value.Title),
             accessibilityLabel: "Play " + item.Value.Kind.ToString().ToLowerInvariant() + " " + item.Value.Title)
             .Disabled(!item.Value.IsPlayable).Classes("spotify-media-row");
-        return item.Value.Kind == SpotifySearchKind.Track ? row.ContextMenuShortcut(ControllerButton.Menu)
-            .ContextAction("spotify.search.enqueue." + item.Key.Value, "Add to queue") : row;
+        return item.Value.Kind == SpotifySearchKind.Track ? SavedSongActions(row.ContextMenuShortcut(ControllerButton.Menu)
+            .ContextAction("spotify.search.enqueue." + item.Key.Value, "Add to queue"), item.Value.Uri) : row;
     }
+
+    private static ActionSurfaceElement SavedSongActions(ActionSurfaceElement row, string uri) =>
+        SpotifySavedLibrary.IsTrack(uri) ? row.ContextMenuShortcut(ControllerButton.Menu)
+            .ContextAction("spotify.library.save", "Save to liked songs")
+            .ContextAction("spotify.library.remove", "Remove from liked songs") : row;
 
     private static TileArtwork Artwork(string? url, string label) =>
         string.IsNullOrWhiteSpace(url)
@@ -1117,6 +1141,7 @@ internal static class SpotifyPresentation
         var entry = UI.TextEntry(query, "Search Spotify", "spotify.search.query",
                 "spotify.search.query", ProtocolConstants.MaximumTextEntryLength)
             .Classes("spotify-search-entry");
+        if (search?.SuggestionSource is { } source) entry = entry.Suggest(source);
         var kinds = Enum.GetValues<SpotifySearchKind>().Select(value => new SelectOption(
             "spotify.search.type." + value, value + "s", "spotify.search.type." + value,
             IsSelected: value == kind)).ToArray();

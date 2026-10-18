@@ -128,6 +128,7 @@ public sealed partial class SpotifyWidget : Widget
         string? playlistCacheRoot = null)
     {
         _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
+        _savedLibrary = new(spotify);
         _playlistCache = new(playlistCacheRoot);
         _timeProvider = timeProvider ?? TimeProvider.System;
         _runtimeDiagnostics = runtimeDiagnostics ??
@@ -155,7 +156,7 @@ public sealed partial class SpotifyWidget : Widget
         _indexedQueue = CreateIndexedCollection<SpotifyQueueQuery, SpotifyMediaCollectionItem>(
             "spotify.queue.indexed", new(0, []), 0, SpotifyIndexedQueue.Options(HandleIndexedQueueActionAsync));
         _search = CreateDiscoveredCollection<SpotifySearchQuery, SpotifySearchCollectionItem>("spotify.search", new(0, "", SpotifySearchKind.Track),
-            SpotifyDiscoveredCollections.Search(_spotify, maximumDiscoveredItems, HandleDiscoveredSearchActionAsync, SpotifyResourceError));
+            SpotifyDiscoveredCollections.Search(_spotify, maximumDiscoveredItems, HandleDiscoveredSearchActionAsync, SpotifyResourceError, (query, names) => { lock (_gate) if (query.Generation == _searchGeneration) RememberLoadedNames(names); }));
         _compactPinnedLayout = CreatePinnedLayoutHandle(
             SpotifyPresentation.CompactPinnedLayoutId,
             SpotifyPresentation.CompactPinnedLayoutName,
@@ -181,9 +182,9 @@ public sealed partial class SpotifyWidget : Widget
             ],
         });
         _playlists = CreateDiscoveredCollection<SpotifyLibraryQuery, SpotifyPlaylistCollectionItem>("spotify.playlists", new(0),
-            SpotifyDiscoveredCollections.Library(_spotify, collectionPageSize, maximumDiscoveredItems, HandleDiscoveredPlaylistActionAsync, SpotifyResourceError));
+            SpotifyDiscoveredCollections.Library(_spotify, collectionPageSize, maximumDiscoveredItems, HandleDiscoveredPlaylistActionAsync, SpotifyResourceError, (query, names) => { lock (_gate) if (query.Generation == _libraryGeneration) RememberLoadedNames(names); }));
         _playlistItems = CreateDiscoveredCollection("spotify.playlist.items", _detailQuery,
-            SpotifyDiscoveredCollections.Detail(collectionPageSize, maximumDiscoveredItems, PublishDetailMetadata, HandleDiscoveredDetailActionAsync, SpotifyResourceError));
+            SpotifyDiscoveredCollections.Detail(collectionPageSize, maximumDiscoveredItems, PublishDetailMetadata, HandleDiscoveredDetailActionAsync, SpotifyResourceError, (query, names) => { lock (_gate) if (ReferenceEquals(query, _detailQuery)) RememberLoadedNames(names); }));
     }
 
     public SpotifyWidgetViewState ViewState { get { lock (_gate) return _viewState; } }
@@ -372,6 +373,14 @@ public sealed partial class SpotifyWidget : Widget
         lock (_gate)
             if (_setupBusy && intent.Kind is (SpotifyActionKind.SetupDone or
                     SpotifyActionKind.Disconnect)) return;
+        if (action.ActionId.StartsWith("spotify.saved.toggle.", StringComparison.Ordinal))
+        {
+            string? uri; bool saved;
+            lock (_gate) { uri = _playback?.Item?.Uri; saved = uri is not null && _savedLibrary.Get(uri) == true; }
+            if (uri is not null && action.ActionId == "spotify.saved.toggle." + SpotifyCollectionIdentity.Media(uri).Value)
+                await ChangeSavedSongAsync(uri, !saved, cancellationToken, notifySuccess: false).ConfigureAwait(false);
+            return;
+        }
         if (await TryHandleQueueAdditionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (await TryHandleSearchActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (TryHandleNavigationBack(action)) return;
@@ -681,6 +690,7 @@ public sealed partial class SpotifyWidget : Widget
         if (cursor is not null || direction is not null)
             throw new InvalidOperationException("Spotify queue does not expose adjacent cursors.");
         var operation = Interlocked.Increment(ref _queueLoadOperationSequence);
+        var savedGeneration = _savedLibrary.Generation;
         var generation = Math.Max(0, Volatile.Read(ref _activeGeneration));
         var started = Stopwatch.GetTimestamp();
         using var queueLifetime =
@@ -690,6 +700,14 @@ public sealed partial class SpotifyWidget : Widget
         {
             var queue = await ReadSettledQueueAsync(queueLifetime.Token)
                 .ConfigureAwait(false);
+            queueLifetime.Token.ThrowIfCancellationRequested();
+            lock (_gate) if (savedGeneration == _savedLibrary.Generation) RememberLoadedNames(queue.Items.Select(item => item.Title));
+            Operations.RunLatest("spotify.queue.saved-read", async context =>
+            {
+                try { await _savedLibrary.ReadAsync(queue.Items.Select(item => item.Uri), savedGeneration, context.CancellationToken); }
+                catch (Exception error) when (error is SpotifyApplicationException or OperationCanceledException) { }
+                if (context.IsCurrent && savedGeneration == _savedLibrary.Generation) Invalidate();
+            }, WidgetOperationLifetime.Active);
             var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
             var items = _queueOccurrences.NormalizePage(
                 occurrenceRequest, queue.Items, []);
@@ -938,7 +956,11 @@ public sealed partial class SpotifyWidget : Widget
 
             var authorization = await _spotify.GetAuthorizationAsync(cancellationToken)
                 .ConfigureAwait(false);
-            lock (_gate) _authorizationState = authorization.State;
+            lock (_gate)
+            {
+                _authorizationState = authorization.State;
+                if (authorization.State == SpotifyAuthorizationState.Connected) AdoptSavedAccountLocked(authorization.CachePartitionId);
+            }
             if (authorization.State == SpotifyAuthorizationState.Connected)
                 _playlistCache.SetPartition(authorization.CachePartitionId);
             switch (authorization.State)
@@ -993,7 +1015,11 @@ public sealed partial class SpotifyWidget : Widget
         {
             var authorization = await _spotify.ConnectAsync(
                 SpotifyScopes, cancellationToken).ConfigureAwait(false);
-            lock (_gate) _authorizationState = authorization.State;
+            lock (_gate)
+            {
+                _authorizationState = authorization.State;
+                if (authorization.State == SpotifyAuthorizationState.Connected) AdoptSavedAccountLocked(authorization.CachePartitionId);
+            }
             if (authorization.State == SpotifyAuthorizationState.Connected)
                 _playlistCache.SetPartition(authorization.CachePartitionId);
             if (authorization.State != SpotifyAuthorizationState.Connected)
@@ -1093,14 +1119,15 @@ public sealed partial class SpotifyWidget : Widget
                 _pageLoading,
                 _pageError,
                 new SpotifySearchPresentation(_searchQuery, _searchKind,
-                    new(UI.CollectionList(SearchScrollId, _search, 82, "Spotify search results").Classes("spotify-page-scroll"))), _actionToast),
-                _activeGeneration, _indexedQueue, ref _queueQuery);
+                    new(UI.CollectionList(SearchScrollId, _search, 82, "Spotify search results").Classes("spotify-page-scroll")), _suggestionSource), _actionToast),
+                _activeGeneration, _indexedQueue, ref _queueQuery, _savedLibrary.Get);
             if (navigation.Route == SpotifyRoute.Playlists && navigation.Revision == _playlistReturnRevision &&
                 _playlistReturnItem is { } target && target.QueryGeneration == playlists.Source.QueryGeneration)
                 result = result with { CollectionEntry = _playlists.Enter(PlaylistsScrollId, navigation.Revision, target) };
             else if (SetupCollectionEntry(navigation) is { } setupEntry)
                 result = result with { CollectionEntry = setupEntry };
-            return result;
+            return result with { SavedSong = _playback?.Item is { Uri: not null } current
+                ? new(_savedLibrary.Get(current.Uri), _savedBusy.Contains(current.Uri)) : null };
         }
     }
 
@@ -1282,6 +1309,7 @@ public sealed partial class SpotifyWidget : Widget
 
     private void ClearPageCachesLocked()
     {
+        ResetSavedSongsLocked();
         _playlistCache.Clear();
         _setupReturnItem = null; _setupReturnRevision = null;
         _searchQuery = string.Empty;
@@ -1499,6 +1527,12 @@ public sealed partial class SpotifyWidget : Widget
     private async ValueTask HandleIndexedQueueActionAsync(SpotifyQueueQuery query, SpotifyMediaCollectionItem item,
         WidgetActionEvent action, CancellationToken cancellationToken)
     {
+        if (action.ActionId is "spotify.library.save" or "spotify.library.remove")
+        {
+            lock (_gate) if (_activeGeneration != query.Generation || _navigation.Value.Route != SpotifyRoute.Queue ||
+                !_queue.Snapshot.Items.SequenceEqual(query.Items)) return;
+            await ChangeSavedSongAsync(item.Value.Uri, action.ActionId == "spotify.library.save", cancellationToken); return;
+        }
         if (action.ActionId != "spotify.queue.play." + item.Key.Value || !item.Value.IsPlayable) return;
         // Recheck inside command serialization, then execute the captured exact
         // occurrence and suffix. Never reinterpret an index in the current queue.
@@ -1753,6 +1787,7 @@ public sealed partial class SpotifyWidget : Widget
                 ClearOptimisticReconciliationLocked();
         }
         Invalidate();
+        ObserveSavedSong();
         ObservePlaybackEffects();
         if (playbackIdentityChanged) InvalidateQueueCollection();
     }
@@ -1831,6 +1866,7 @@ public sealed partial class SpotifyWidget : Widget
         if (_pollWake.CurrentCount == 0)
             try { _pollWake.Release(); } catch (SemaphoreFullException) { }
         Invalidate();
+        ObserveSavedSong();
         ObservePlaybackEffects();
         if (refreshQueue && IsActive) InvalidateQueueCollection();
     }
@@ -1916,7 +1952,17 @@ public sealed partial class SpotifyWidget : Widget
     {
         lock (_gate)
         {
-            if (query is not null) _searchQuery = query;
+            if (query is not null)
+            {
+                _searchQuery = query;
+                if (query.Length > 0)
+                {
+                    _recentSearches.RemoveAll(item => string.Equals(item, query, StringComparison.OrdinalIgnoreCase));
+                    _recentSearches.Insert(0, query);
+                    if (_recentSearches.Count > 20) _recentSearches.RemoveAt(20);
+                    RefreshSuggestionCatalogLocked();
+                }
+            }
             if (kind is { } value) _searchKind = value;
             ++_searchGeneration;
             _search.ReplaceQuery(new(_searchGeneration, _searchQuery, _searchKind));
@@ -1964,6 +2010,11 @@ public sealed partial class SpotifyWidget : Widget
     private async ValueTask HandleDiscoveredDetailActionAsync(SpotifyDetailQuery query, SpotifyMediaCollectionItem item,
         WidgetActionEvent action, CancellationToken token)
     {
+        if (action.ActionId is "spotify.library.save" or "spotify.library.remove")
+        {
+            lock (_gate) if (!CurrentDetail(query)) return;
+            await ChangeSavedSongAsync(item.Value.Uri, action.ActionId == "spotify.library.save", token); return;
+        }
         if (!item.Value.IsPlayable) return;
         if (action.ActionId == "spotify.playlist.enqueue." + item.Key.Value)
             await AddCapturedToQueueAsync(item.Value.Uri, () => CurrentDetail(query), token).ConfigureAwait(false);
@@ -1979,6 +2030,11 @@ public sealed partial class SpotifyWidget : Widget
     private async ValueTask HandleDiscoveredSearchActionAsync(SpotifySearchQuery query, SpotifySearchCollectionItem item,
         WidgetActionEvent action, CancellationToken token)
     {
+        if (action.ActionId is "spotify.library.save" or "spotify.library.remove")
+        {
+            lock (_gate) if (!CurrentSearch(query)) return;
+            await ChangeSavedSongAsync(item.Value.Uri, action.ActionId == "spotify.library.save", token); return;
+        }
         if (!item.Value.IsPlayable) return;
         if (action.ActionId == "spotify.search.enqueue." + item.Key.Value && item.Value.Kind == SpotifySearchKind.Track)
             await AddCapturedToQueueAsync(item.Value.Uri, () => CurrentSearch(query), token).ConfigureAwait(false);
