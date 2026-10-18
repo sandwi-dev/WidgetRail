@@ -24,6 +24,8 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | Shared host capability, before dependent widget flows | Audit and extend reusable rich previews / anchored popovers | Existing facilities audited; extension pending |
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Agreed; implementation resumed, queued |
 | Display widget expansion | Add display controls alongside saved profiles, using Quick Settings as a reference | Agreed direction; feature audit and implementation queued |
+| App update workflow | Controller-only routine updates through the existing Inno installer | Agreed; implementation queued |
+| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Agreed; required before final delivery |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
@@ -259,6 +261,36 @@ Reference: [Quick Settings](https://github.com/LoZazaMastro/Quick-Settings), ins
 - [ ] Attribute actual inspiration/adapted code, verify the license of each reused component, and retain required notices. Quick Settings' repository is MIT, but its bundled dependencies have separate terms; do not assume every binary can be copied under that license.
 
 This addition concerns display controls. Quick Settings' audio, CPU/TDP, game-launch automation, Lossless Scaling and broader Radeon gaming features are reference context, not automatically included in the requested display-widget expansion. No reference executables, installers or helpers were run during the audit.
+
+## Controller-only routine app updates
+
+Added at the user's request on 2026-10-18. Keep Inno Setup, the unsigned distribution and the current lack of Windows package identity. For an existing per-user installation whose prerequisites are already satisfied and whose execution Windows permits, the target is **Install and restart → unattended installation → WidgetRail reopens**. The overlay briefly closes; a separate always-visible updater UI is not required.
+
+Current-source audit confirms `PrivilegesRequired=lowest`, per-user installation, an updater launch without installer arguments, GameInput installation through elevated `msiexec`, startup choices initialized on the wizard task page, and a helper failure message box. These are implementation inputs, not proof that a silent handoff already works.
+
+- [ ] Reuse verified-installer admission and the existing close/install/relaunch handoff. Supply the appropriate Inno unattended flags for routine upgrades, including deliberate restart/log behavior. Never use silent mode to skip package checks, overwrite another installation, or suppress required consent.
+- [ ] Detect required prerequisite work before closing WidgetRail. Missing/outdated GameInput or another prerequisite requiring prompts must select a clearly explained interactive setup path. Recheck in the installer so a race cannot unexpectedly launch elevation in the routine silent path.
+- [ ] Preserve enabled and disabled startup choices explicitly in silent mode; do not rely on task-page callbacks. Preserve automatic update-check preference, selected Bare/Production bundle, user-installed widgets and the existing installation directory. Cover foreign startup registrations without taking ownership of them.
+- [ ] Ensure unattended paths cannot block on custom `MsgBox` calls. Record startup-registration or other nonfatal warnings and surface them in WidgetRail after relaunch. Keep appropriate interactive messages for the explicit interactive fallback.
+- [ ] Handle installer cancellation, failure and restart-required exit outcomes deliberately. Where the installed application is verified usable, reopen it and show the result with a controller-accessible recovery/retry action. Do not blindly relaunch a partially invalid installation or rely on a mouse-only helper message box as the routine recovery path.
+- [ ] Replace the current blanket mouse/keyboard update warning with accurate path-specific guidance once the controller-only path is verified. Silent flags cannot approve UAC or bypass Smart App Control or other Windows application-control restrictions; provide an explicit fallback rather than promising every installation is unattended.
+- [ ] Test both startup preference states, prerequisite readiness/change, installer arguments and identity checks, process shutdown, cancellation/failure/restart-required results, warning delivery, relaunch, and Bare/Production preservation using deterministic fakes. Perform a coordinated real routine-upgrade check plus a safe interactive-fallback check without unnecessarily changing prerequisites on the user's machine.
+
+References: [Inno command-line options](https://jrsoftware.org/ishelp/topic_setupcmdline.htm), [privilege behavior](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm), and [Smart App Control](https://learn.microsoft.com/windows/apps/develop/smart-app-control/overview). Read the current documentation when implementing. This is update-workflow work, not a signing/package-identity migration or authorization to resume unrelated deferred CI repairs.
+
+## Final documentation audit and retirement
+
+Run this after implementation decisions settle, then recheck changed links and examples before delivery. Public documentation should describe the actual delivered app, not a mixture of former plans and current behavior.
+
+- [ ] Audit the top-level README, Getting Started, troubleshooting, update guide, Catalogue/installation guide, widget READMEs/user guides and relevant developer/reference documentation against the final code, manifests and packaging.
+- [ ] Resolve the reported update conflict: README currently promises pre-update profile backups/recovery while the dedicated update guide describes the newer flow. Document the implemented update/recovery behavior consistently; do not restore obsolete behavior merely to match old prose.
+- [ ] Resolve fresh full-access install guidance: distinguish reviewed interactive installs that start enabled from low-level CLI staging that remains disabled, while retaining required approval and permission behavior. Troubleshooting must match the Catalogue and Settings workflows.
+- [ ] Resolve Game Help distribution guidance from the final Bare/Production package contents and Catalogue listing. Getting Started and README must agree on what is preinstalled versus installed separately. Apply the same check to every optional widget and remove retired Developer edition guidance.
+- [ ] Remove superseded plans, old discussion documents and redundant status/specification copies after transferring any still-current requirements, operational instructions or useful rationale into maintained guides. Use Git history for obsolete discussion rather than creating another stale documentation archive. Keep the active execution plan/verification record authoritative until delivery; do not delete requirements that remain open.
+- [ ] Update navigation/index pages and incoming links for removed/renamed documents. Check file links, commands, screenshots/captions, feature names, version assumptions and permission claims. Retain required license/copyright notices and accurate adopted-project credits.
+- [ ] Keep the front-facing README concise and approachable; place technical architecture, provider limitations and maintainer procedures in their appropriate dedicated guides. Report any remaining documentation uncertainty rather than implying unsupported behavior is available.
+
+The three reported contradictions were confirmed in current files during planning. Their final corrections are part of this audit, coordinated with the new update and distribution work rather than a temporary prose-only rewrite now.
 
 ## Resource and trade decisions
 
