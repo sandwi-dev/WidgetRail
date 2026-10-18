@@ -111,7 +111,8 @@ public sealed partial class PobWidget
             rows.Add(link.Intent.ContractId==WidgetIntentContracts.OpenVideo
                 ?(UI.Button(link.Label,"note-link."+index,"pob.note-link."+index) with {Intent=link.Intent}).Classes("pob-button")
                 :WebsiteButton(link.Label,"note-link."+index,link.Url));
-        AddFormatted(rows,State,"notes","notesRuns","notes","pob-prose");
+        if(string.IsNullOrWhiteSpace(S(State,"notes")))rows.Add(Text("No notes in this build.","notes.empty","pob-muted"));
+        else AddFormatted(rows,State,"notes","notesRuns","notes","pob-prose");
         var scroll=UI.VerticalScroll("pob.notes.scroll",UI.Stack("pob.notes.document",rows.ToArray()).Classes("pob-reading")).Classes("pob-scroll","pob-panel");
         if(!busy&&pendingBefore is null)
         {

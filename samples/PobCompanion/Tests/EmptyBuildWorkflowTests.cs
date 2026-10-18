@@ -102,7 +102,10 @@ internal static class EmptyBuildWorkflowTests
             });
             await Scenario("Blank notes and zero-match item catalogs retain valid back paths", async () =>
             {
-                await Action("section.5"); await Action("section.3"); await Action("inventory");
+                await Action("section.5");
+                if(!View().Any(n=>n.Id=="pob.notes.empty"&&n.Text=="No notes in this build."))
+                    throw new InvalidOperationException("An empty Notes page must explain its empty state.");
+                await Action("section.3"); await Action("inventory");
                 await Action("item-uniques"); await Action("choice-search", "no-match-xyz123"); await Action("back");
                 await Action("item-create"); await Action("choice-search", "no-match-xyz123"); await Action("back");
             });
