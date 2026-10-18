@@ -129,6 +129,13 @@ Cumulative candidates may be launched hidden with the normal profile, as previou
 | --- | --- | --- | --- |
 | Plan creation | Discussion captured on 2026-10-18 | Continue discussing scope | Not implementation acceptance |
 
-## Reference implementation
+## PoB Redux attribution and reference implementation
+
+Credit PoB Redux for the ideas, techniques and implementation work that actually contribute to these improvements. Attribution is part of delivery, not an optional follow-up.
+
+- [ ] Record the specific Redux contributions adopted as each feature is implemented, with source links and revisions where relevant.
+- [ ] Add a concise acknowledgement linking to PoB Redux in the widget README credits, with fuller attribution in developer documentation and relevant marketplace documentation.
+- [ ] Distinguish inspiration from adapted code or reused assets; do not imply contributions were incorporated when they were only evaluated.
+- [ ] For reused code or assets, verify the applicable license and retain required copyright/license notices in source and distributed packages. Keep existing PoB Community and Grinding Gear Games credits; Redux attribution supplements them.
 
 The comparison reviewed [PoB Redux at a5afd8b](https://github.com/pobredux/pob-redux/tree/a5afd8b80de993623c1fc5c1541269312361e50f). Its code is a reference for ideas, not proof of measured performance in WidgetRail or an instruction to reproduce every feature. Recheck current upstream code when implementing.
