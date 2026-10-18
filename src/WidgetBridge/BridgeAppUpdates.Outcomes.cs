@@ -30,7 +30,7 @@ internal sealed partial class BridgeAppUpdates
                 "cancelled" => "Setup was cancelled. Your verified installation reopened. Check for updates to retry when ready.",
                 "failed" => "Setup did not finish. Your verified installation reopened. Check for updates to retry, or run the downloaded installer interactively.",
                 "restart-required" => "Setup requires a Windows restart. Save your work and restart Windows before retrying the update.",
-                "startup-warning" => "The update installed, but startup at sign-in could not be restored. Review startup in Settings → General.",
+                "startup-warning" => "The update installed, but startup at sign-in could not be restored. Run setup again and select Start WidgetRail when I sign in.",
                 _ => null,
             };
             File.Delete(path);
