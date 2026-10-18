@@ -13,7 +13,7 @@ The PoE2 planning build is the **Late game** loadout from [Ghost Activity's Mart
 | [configuration.png](configuration.png) | Configuration categories with optional explanations from PoB. |
 | [import.png](import.png) | Build library, import destinations, website shortcuts and browser preference. |
 | [trade-comparison.png](trade-comparison.png) | Official PoE2 listing beside calculated changes for the selected equipment slot; account header scrolled out of view. |
-| [trade-ranking.png](trade-ranking.png) | Six complete saved candidates visible together, compact ranking controls and collapsed skipped-item reasons. |
+| [trade-ranking.png](trade-ranking.png) | Seven complete saved candidates visible together, compact ranking controls and collapsed skipped-item reasons. |
 
 The trade examples use the same Martial Artist build and real historical Standard listings on GGG's official site. The saved shortlist came from a batch of 20 loaded candidates: eight were ranked and twelve were skipped because the pinned engine could not calculate their modifiers. **Strongest improvement** is selected, so the displayed prices do not affect the order. No item was purchased or equipped for these captures.
 

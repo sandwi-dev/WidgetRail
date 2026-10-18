@@ -251,18 +251,17 @@ public sealed partial class PobWidget
             controls.Add(Text(RankingRateLabel(),"rank.rates","pob-small pob-muted"));
         }
         else controls.Add(Text($"{rankingSlot} · {TradePriorities.First(p=>p.Key==tradePriority).Label} · up to {tradeBatchLimit}\n{RankingSorts.First(s=>s.Key==rankingSort).Label}","rank.context","pob-small pob-muted"));
-        controls.Add(UI.Row("pob.rank.actions",
+        var actions=new List<WidgetElement>{
             Button(rankingEditing?"Done":"Edit ranking…","trade-rank-edit","rank.edit").FocusLeft("pob.website.browser"),
-            Button("Evaluate again","trade-rank-evaluate","rank.evaluate")).Classes("pob-toolbar"));
-        var summary=Text(stale?"Scores need recalculation for this build, slot or priority.":rankingSummary,"rank.summary","pob-small pob-muted");
+            Button("Evaluate again","trade-rank-evaluate","rank.evaluate")};
+        if(rankingSkipped.Length>0)actions.Add(Button((rankingSkippedExpanded?"Hide ":"")+$"{rankingSkipped.Length} skipped","trade-rank-skipped","rank.skipped-toggle"));
+        controls.Add(UI.Row("pob.rank.actions",actions.ToArray()).Classes("pob-toolbar"));
+        controls.Add(Text(stale?"Scores need recalculation for this build, slot or priority.":rankingSummary,"rank.summary","pob-small pob-muted"));
         if(rankingSkipped.Length>0)
         {
-            controls.Add(UI.Grid("pob.rank.status",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],summary,
-                Button((rankingSkippedExpanded?"Hide ":"")+$"{rankingSkipped.Length} skipped","trade-rank-skipped","rank.skipped-toggle").InGrid(column:1)).Spacing(0,8));
             if(rankingSkippedExpanded)controls.Add(UI.VerticalScroll("pob.rank.skipped",rankingSkipped.Select((reason,i)=>Text(Limit(reason,600),"rank.skipped."+i,"pob-small pob-muted")).ToArray())
                 .Shortcut(ControllerButton.LeftStick,"trade-rank-focus","Ranking controls").Classes("pob-scroll","pob-rank-skipped"));
         }
-        else controls.Add(summary);
         var tools=UI.Stack("pob.rank.tools",controls.ToArray()).RememberChildFocus("pob.rank.edit").Classes("pob-buildtools");
         var list=UI.Stack("pob.rank.list",UI.CollectionList("pob.rank.results",rankingCollection,76,"Evaluated trade listings").Classes("pob-scroll"))
             .RememberChildFocus("pob.rank.results").Shortcut(ControllerButton.LeftStick,"trade-rank-focus","Ranking controls").Classes("pob-workspace");
