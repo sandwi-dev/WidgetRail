@@ -70,6 +70,7 @@ internal static class Program
             mediaDiagnostics.RecordBridgeStartupPhase(
                 "trusted-catalog-ready",
                 (long)Stopwatch.GetElapsedTime(trustedCatalogStarted).TotalMilliseconds);
+            Task? initialWidgetSeeding = null;
             await using var catalogMonitor = new BridgeCatalogMonitor(
                 catalogPath, installedCatalogRoot, workerHostExecutable, catalog,
                 initialDiagnostics: trustedCatalog.Warnings,
@@ -80,6 +81,12 @@ internal static class Program
                 settingsFilePath: settingsPaths.SettingsFile,
                 loadProgressively: async (cancellationToken, publish) =>
                 {
+                    // Settings is already published. Seed once in the deferred
+                    // catalog lane; watch-triggered reload cancellation must not
+                    // abandon an in-progress package publication.
+                    initialWidgetSeeding ??= BridgeInitialWidgetSeeder.SeedAsync(
+                        installationRoot, installedCatalogRoot, Console.Error.WriteLine, shutdown.Token);
+                    await initialWidgetSeeding.WaitAsync(cancellationToken).ConfigureAwait(false);
                     var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
                     var apps = await userWebApps.ReadAsync(cancellationToken).ConfigureAwait(false);
                     var stopped = await stopState.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -136,8 +143,20 @@ internal static class Program
             mediaDiagnostics.RecordBridgeStartupPhase("control-plane-created");
             catalogMonitor.Start();
             mediaDiagnostics.RecordBridgeStartupPhase("installed-catalog-pending");
-            await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
-                .ConfigureAwait(false);
+            try
+            {
+                await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                shutdown.Cancel();
+                if (initialWidgetSeeding is { } seeding)
+                {
+                    try { await seeding.ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
+                }
+            }
             return 0;
         }
         catch (Exception exception)

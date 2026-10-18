@@ -22,7 +22,7 @@ public static class MarketplaceValidation
     }
     public static string? SnapshotError(MarketplaceSnapshot snapshot)
     {
-        if (snapshot is null || snapshot.Revision < 0 || snapshot.Items is null || snapshot.Items.Count > 16 ||
+        if (snapshot is null || snapshot.Revision < 0 || snapshot.Items is null || snapshot.Items.Count > 32 ||
             snapshot.Items.Any(item => item is null || !Token(item.Id,128) || !Text(item.Name,120) || !Text(item.Description,1024) ||
                 item.Screenshots is null || item.Screenshots.Count > 4 || item.Screenshots.Any(url => !Uri.TryCreate(url,UriKind.Absolute,out var uri) ||
                     uri.Scheme != "https" || uri.Host != "raw.githubusercontent.com" || uri.Port != 443 || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0 || url.Length > 512) ||

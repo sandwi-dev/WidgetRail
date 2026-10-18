@@ -63,5 +63,91 @@
     "description": "Browse music and keep playback controls pinned while playing.",
     "setupRequirements": ["A Google account is needed for your personal library. Sign-in opens Chrome, or Edge as a fallback.", "Public search and supported playback can work without signing in. No developer app, Python installation or YTMDesktop is required."],
     "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.audio-mixer",
+    "publisher": "widgetrail.firstparty",
+    "name": "Audio Mixer",
+    "description": "Adjust application volume, switch audio devices and control microphone levels without leaving your game.",
+    "setupRequirements": [],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.capture-library",
+    "publisher": "widgetrail.firstparty",
+    "name": "Capture Library",
+    "description": "Browse your screenshots and recordings, preview captures and manage saved files.",
+    "setupRequirements": [],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.performance-monitor",
+    "publisher": "widgetrail.firstparty",
+    "name": "Performance Monitor",
+    "description": "Check system and process performance and pin live statistics while playing.",
+    "setupRequirements": [],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.media-sessions",
+    "publisher": "widgetrail.firstparty",
+    "name": "Media Controls",
+    "description": "Control playback in apps that expose Windows media sessions.",
+    "setupRequirements": [
+      "Playback controls depend on the active media app supporting Windows media controls."
+    ],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.games-apps",
+    "publisher": "widgetrail.firstparty",
+    "name": "Games & Apps",
+    "description": "Find, pin and launch your installed games and applications.",
+    "setupRequirements": [],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.task-switcher",
+    "publisher": "widgetrail.firstparty",
+    "name": "Task Switcher",
+    "description": "Switch between open windows and close or restart applications with your controller.",
+    "setupRequirements": [],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.network-controls",
+    "publisher": "widgetrail.firstparty",
+    "name": "Network Controls",
+    "description": "Manage Wi-Fi, Bluetooth and connected devices through Windows.",
+    "setupRequirements": [
+      "Wi-Fi and Bluetooth controls require compatible hardware and drivers. Some Windows-managed changes may require keyboard or mouse interaction."
+    ],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.power",
+    "publisher": "widgetrail.firstparty",
+    "name": "Power",
+    "description": "Lock, sleep, restart or shut down your PC from the overlay.",
+    "setupRequirements": [],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.firstparty.recent-apps",
+    "publisher": "widgetrail.firstparty",
+    "name": "Recent Apps",
+    "description": "Reopen recently used applications from a compact list.",
+    "setupRequirements": [],
+    "screenshots": []
+  },
+  {
+    "id": "widgetrail.samples.browser",
+    "publisher": "widgetrail.samples",
+    "name": "Browser",
+    "description": "Open websites in a controller-friendly browser and keep pages pinned while playing.",
+    "setupRequirements": [
+      "Websites may require their own accounts or subscriptions."
+    ],
+    "screenshots": []
   }
 ]

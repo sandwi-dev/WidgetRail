@@ -379,10 +379,10 @@ public sealed partial class SettingsWidget : Widget
     {
         ArgumentNullException.ThrowIfNull(action);
         if (await HandleExtensionActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
-        if (action.ActionId is "installed.filter.all" or "installed.filter.builtin" or "installed.filter.community")
+        if (action.ActionId is "installed.filter.all" or "installed.filter.builtin" or "installed.filter.installed")
         {
             ChangeInstalledFilter(action.ActionId switch
-            { "installed.filter.builtin" => SettingsWidgetFilter.BuiltIn, "installed.filter.community" => SettingsWidgetFilter.Community, _ => SettingsWidgetFilter.All });
+            { "installed.filter.builtin" => SettingsWidgetFilter.BuiltIn, "installed.filter.installed" => SettingsWidgetFilter.Installed, _ => SettingsWidgetFilter.All });
             return;
         }
         if (action.ActionId == "intent.retry")

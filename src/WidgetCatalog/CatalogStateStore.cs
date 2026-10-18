@@ -8,6 +8,9 @@ internal sealed record CatalogState
 {
     public int Version { get; init; } = 2;
     public IReadOnlyList<CatalogStateEntry> Widgets { get; init; } = [];
+    // Package identities supplied by an initial application bundle. Retained
+    // after uninstall so a later application update never reinstalls a removal.
+    public IReadOnlyList<string> SeededPackageIds { get; init; } = [];
 }
 
 internal sealed record CatalogStateEntry
@@ -171,6 +174,10 @@ internal sealed class CatalogStateStore
         if (state.Version is not (1 or 2))
             throw new JsonException($"Unsupported catalog state version {state.Version}.");
         if (state.Widgets is null) throw new JsonException("Widget state list cannot be null.");
+        if (state.SeededPackageIds is null || state.SeededPackageIds.Count > 64 ||
+            state.SeededPackageIds.Any(id => !WidgetManifestValidator.IsValidPackageIdentity(id)) ||
+            state.SeededPackageIds.Distinct(StringComparer.Ordinal).Count() != state.SeededPackageIds.Count)
+            throw new JsonException("Initial bundle receipts must be bounded unique package IDs.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var orders = new HashSet<int>();
         foreach (var entry in state.Widgets)

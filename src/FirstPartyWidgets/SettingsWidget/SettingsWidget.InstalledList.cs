@@ -16,7 +16,7 @@ internal sealed record SettingsInstalledRow(string PackageId, bool BuiltIn, stri
         ? WidgetIcon.CatalogSvg(new(PackageId, Version, BuiltIn, ContentDigest), icon.AssetId, icon.ColorMode, Glyph)
         : WidgetIcon.Glyph(Glyph);
     internal string Key { get; } = KeyFor(PackageId, BuiltIn);
-    internal static string KeyFor(string id, bool builtIn) => (builtIn ? "builtin." : "community.") +
+    internal static string KeyFor(string id, bool builtIn) => (builtIn ? "builtin." : "installed.") +
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id)));
 }
 
@@ -71,7 +71,7 @@ public sealed partial class SettingsWidget
                     installedRowsBusy = rowBusy;
                     installedRowsStops = stoppedWidgetIds;
                     var rows = new List<SettingsInstalledRow>();
-                    if (_installedState.Filter != SettingsWidgetFilter.Community)
+                    if (_installedState.Filter != SettingsWidgetFilter.Installed)
                         rows.AddRange(_installedState.BuiltIns.Select(manifest => new SettingsInstalledRow(manifest.Id, true,
                             manifest.Name, manifest.Version, "Built-in · " + (_settings.BuiltInWidgets.IsEnabled(manifest.Id) ? stoppedWidgetIds.Contains(manifest.Id) ? "Stopped" : "Enabled" : "Disabled"),
                             manifest.Presentation.Icon, rowBusy, !_installedState.CatalogValid) { PackageIcon = manifest.Presentation.PackageIcon }));
@@ -83,7 +83,7 @@ public sealed partial class SettingsWidget
                             var status = duplicate ? "Unused copy · built-in version takes priority" : widget.Enabled
                                 ? compatible ? stoppedWidgetIds.Contains(widget.Id) ? "Stopped" : "Enabled" : "Enabled · incompatible" : compatible ? "Disabled" : "Incompatible";
                             rows.Add(new(widget.Id, false, widget.Name, widget.ActiveVersion.Version.ToString(),
-                                (_installedState.CatalogValid ? "Community · " : "Last good · ") + status,
+                                (_installedState.CatalogValid ? "" : "Last good · ") + status,
                                 widget.ActiveVersion.Manifest.Presentation.Icon, rowBusy, false)
                                 { PackageIcon = widget.ActiveVersion.Manifest.Presentation.PackageIcon, ContentDigest = widget.ActiveVersion.ContentDigest });
                         }

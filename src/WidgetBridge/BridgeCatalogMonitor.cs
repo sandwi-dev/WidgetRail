@@ -329,7 +329,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 {
                     var incomplete = ApplyRuntimeChoices(loaded.Catalog).WithCompleteness(false);
                     var warnings = loaded.Warnings.Concat(
-                    ["Widget catalog reload failed closed to the trusted catalog; all community widgets were retired."])
+                    ["Widget catalog reload failed closed to the trusted catalog; all installed widgets were retired."])
                         .Take(64)
                         .ToArray();
                     _lastDiagnostics = warnings;

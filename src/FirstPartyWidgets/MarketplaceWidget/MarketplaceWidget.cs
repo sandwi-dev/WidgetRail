@@ -81,7 +81,7 @@ public sealed class MarketplaceWidget : Widget
             case "marketplace.update-all" or "marketplace.retry-updates" when operation?.State is not ("running" or "review"):
                 var retry = state.Snapshot.UpdateBatch?.Items.Where(item => item.State is "failed" or "cancelled").Select(item => item.PackageId).ToHashSet(StringComparer.Ordinal);
                 var ids = state.Snapshot.Items.Where(item => UpdateAvailable(item) &&
-                    (action.ActionId == "marketplace.update-all" || retry?.Contains(item.Id) == true)).Select(item => item.Id).ToArray();
+                    (action.ActionId == "marketplace.update-all" || retry?.Contains(item.Id) == true)).Select(item => item.Id).Take(16).ToArray();
                 if (ids.Length > 0) Work(ct => ReadAsync(new("download-updates", PackageIds: ids), ct));
                 break;
             case "marketplace.batch.review" when operation is { Kind: "download-updates", State: "review" } && state.Snapshot.UpdateBatch is { ReviewToken: { } batchToken }:
@@ -154,7 +154,7 @@ public sealed class MarketplaceWidget : Widget
                 new SegmentedTab("marketplace.tab.updates", $"Updates ({updates})", "marketplace.tab.updates")));
             commands.Add(UI.Button("Check for updates","marketplace.refresh","marketplace.refresh").Busy(busy));
             if (state.Section == Section.Updates && updates > 0)
-                commands.Add(UI.Button($"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
+                commands.Add(UI.Button(updates > 16 ? "Update next 16" : $"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
             var visible = state.Snapshot.Items.Where(i => state.Section switch
                 { Section.Installed => i.InstalledVersion is not null,
                     Section.Updates => UpdateAvailable(i) || state.Snapshot.UpdateBatch?.Items.Any(result => result.PackageId == i.Id) == true, _ => true }).ToArray();

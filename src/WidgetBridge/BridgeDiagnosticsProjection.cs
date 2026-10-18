@@ -351,8 +351,8 @@ internal sealed class BridgeAuthorityRecoveryProjection(
                 displayNamesByProfile.GetValueOrDefault(
                     candidate.ProfileName,
                     candidate.IsLegacy
-                        ? "Legacy community widget recovery"
-                        : "Community widget recovery"),
+                        ? "Legacy widget recovery"
+                        : "Widget recovery"),
                 PlatformAuthorityRecoveryState.Pending,
                 candidate.IsLegacy ? "legacy_pending_recovery" : "pending_recovery",
                 CanRetry: true,
@@ -445,8 +445,8 @@ internal sealed class BridgeAuthorityRecoveryProjection(
         var candidate = generation is null ? configured.Name : $"{configured.Name} {generation}";
         if (IsSafeAuthorityRecoveryLabel(candidate)) return candidate;
         return generation is not null && IsSafeAuthorityRecoveryLabel(generation)
-            ? $"Community widget {generation}"
-            : "Community widget recovery";
+            ? $"Widget {generation}"
+            : "Widget recovery";
     }
 
     private static bool IsSafeAuthorityRecoveryLabel(string? value) =>

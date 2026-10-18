@@ -213,7 +213,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Configured Settings icons resolve from the built host catalog", ConfiguredSettingsIcons),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
     ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
-    ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
+    ("Initial bundles validate locked bytes and preserve ordinary package consent", InitialBundleScenarios.RunAsync),
+    ("Protected Wi-Fi admission requires declared features and exact content consent", ProtectedWifiHostAdmissionIsExact),
     ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
     ("Trusted artwork waits for the current worker snapshot after idle unload", BridgeClientRegistryScenarios.ArtworkWaitsForCurrentWorkerSnapshotAfterIdleUnload),
@@ -884,7 +885,7 @@ static Task CatalogMemoryGuidanceIsAdvisory()
     return Task.CompletedTask;
 }
 
-static Task ProtectedWifiHostAdmissionIsExact()
+static async Task ProtectedWifiHostAdmissionIsExact()
 {
     var trusted = new ConfiguredWidget
     {
@@ -896,16 +897,26 @@ static Task ProtectedWifiHostAdmissionIsExact()
         WorkerExecutable = Environment.ProcessPath!,
         WorkerFingerprint = new string('A', 64),
         CatalogFingerprint = new string('B', 64),
-        DeclaredCapabilities = [PlatformCapabilities.NetworkWifiConnectV1],
+        DeclaredCapabilities = [PlatformCapabilities.NetworkWifiReadV1, PlatformCapabilities.NetworkWifiConnectV1],
     };
     Assert.True(trusted.PublicDescriptor().ProtectedWifiPromptSupported,
         "Exact first-party Network Controls did not receive trusted prompt admission.");
-    Assert.False((trusted with { PackageId = "dev.example.network-controls" })
-        .PublicDescriptor().ProtectedWifiPromptSupported,
-        "A package spoof received trusted prompt admission.");
-    Assert.False((trusted with { PublisherId = "dev.example" })
-        .PublicDescriptor().ProtectedWifiPromptSupported,
-        "A publisher spoof received trusted prompt admission.");
+    var installed = trusted with { PackageId = "dev.example.network-controls", PublisherId = "unsigned." + new string('a', 64) };
+    Assert.True(installed.PublicDescriptor().ProtectedWifiPromptSupported,
+        "An ordinary package declaring Wi-Fi access lost the protected password flow.");
+    using var permissionFiles = new TemporaryDirectory("protected-wifi-consent");
+    var consent = new ConsentStore(permissionFiles.Path);
+    await Assert.ThrowsAsync<BridgeProtocolException>(() => ProtectedWifiPermissionPolicy.DemandAsync(installed, consent, default));
+    await Assert.ThrowsAsync<BridgeProtocolException>(() => ProtectedWifiPermissionPolicy.DemandAsync(trusted, null, default));
+    var identity = new BrokerWidgetIdentity(installed.PackageId, installed.PublisherId, installed.InstanceId);
+    await consent.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiReadV1, ConsentDecision.Grant);
+    await Assert.ThrowsAsync<BridgeProtocolException>(() => ProtectedWifiPermissionPolicy.DemandAsync(installed, consent, default));
+    await consent.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiConnectV1, ConsentDecision.Grant);
+    await ProtectedWifiPermissionPolicy.DemandAsync(installed, consent, default);
+    await Assert.ThrowsAsync<BridgeProtocolException>(() => ProtectedWifiPermissionPolicy.DemandAsync(
+        installed with { PublisherId = "unsigned." + new string('b', 64) }, consent, default));
+    await consent.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiConnectV1, ConsentDecision.Deny);
+    await Assert.ThrowsAsync<BridgeProtocolException>(() => ProtectedWifiPermissionPolicy.DemandAsync(installed, consent, default));
     Assert.False((trusted with { DeclaredCapabilities = [] })
         .PublicDescriptor().ProtectedWifiPromptSupported,
         "A capability-free worker received trusted prompt admission.");
@@ -944,7 +955,6 @@ static Task ProtectedWifiHostAdmissionIsExact()
             secretLength = 14,
             secret = 1,
         })));
-    return Task.CompletedTask;
 }
 
 static async Task ProtectedWifiProductionDispatchIsZeroed()
@@ -955,15 +965,19 @@ static async Task ProtectedWifiProductionDispatchIsZeroed()
         packageId: "widgetrail.firstparty.network-controls",
         publisherId: "widgetrail.firstparty",
         instanceId: "network-controls",
-        declaredCapabilities: [PlatformCapabilities.NetworkWifiConnectV1]);
+        declaredCapabilities: [PlatformCapabilities.NetworkWifiReadV1, PlatformCapabilities.NetworkWifiConnectV1]);
     var catalog = BridgeCatalog.Load(catalogFiles.Path);
     var descriptor = catalog.GetConfigured("network-controls").PublicDescriptor();
     var network = new ProtectedWifiNetworkBackend();
     var simulator = new SimulatedPlatformBrokerBackend();
     await using var composite = new CompositePlatformBrokerBackend(simulator, network);
+    using var permissionFiles = new TemporaryDirectory("protected-wifi-consent");
+    var consent = new ConsentStore(permissionFiles.Path);
+    await consent.SetDecisionsAsync(new("widgetrail.firstparty.network-controls", "widgetrail.firstparty", "network-controls"),
+        [PlatformCapabilities.NetworkWifiReadV1, PlatformCapabilities.NetworkWifiConnectV1], ConsentDecision.Grant);
     var pipeName = $"wrail-bridge-protected-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(
-        pipeName, catalog, 64 * 1024, platformBackend: composite);
+        pipeName, catalog, 64 * 1024, platformBackend: composite, consentStore: consent);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
     await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
     try
@@ -972,7 +986,8 @@ static async Task ProtectedWifiProductionDispatchIsZeroed()
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest(
                 "network-controls", WidgetLifecycleState.Interactive));
-        Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+        Assert.True(lifecycle.Type == BridgeMessageTypes.Acknowledged,
+            "Protected Wi-Fi fixture activation failed: " + lifecycle.Payload.GetRawText());
 
         var secret = Enumerable.Range(0, 15)
             .Select(index => (char)('A' + index)).ToArray();

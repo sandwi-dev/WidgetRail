@@ -18,7 +18,7 @@ internal static class SettingsInstalledWidgetPresentation
         var tabs = UI.SegmentedTabs("installed.filters", tab,
             new SegmentedTab("installed.filter.all", "All", "installed.filter.all"),
             new SegmentedTab("installed.filter.builtin", "Built-in", "installed.filter.builtin"),
-            new SegmentedTab("installed.filter.community", "Community", "installed.filter.community"));
+            new SegmentedTab("installed.filter.installed", "Widgets", "installed.filter.installed"));
         tabs = tabs with { Children = tabs.Children.Select(child => child is ButtonElement button
             ? button.FocusUp("installed.add-webapp").FocusDown(list.Count == 0 ? "installed.install-local" : list.Id) : child).ToArray() };
         var children = new List<WidgetElement>
@@ -44,7 +44,7 @@ internal static class SettingsInstalledWidgetPresentation
         children.Add(list.Count == 0 ? UI.Text(state.Filter switch
         {
             SettingsWidgetFilter.BuiltIn => "No built-in widgets are available.",
-            SettingsWidgetFilter.Community => "No community widgets are installed.",
+            SettingsWidgetFilter.Installed => "No optional widgets are installed.",
             _ => "No widgets are installed.",
         }, "installed.empty").Classes("page-help") : list.Content);
         var scope = UI.Stack("installed.widgets", children.ToArray()).InputScope("installed.widgets")

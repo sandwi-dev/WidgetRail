@@ -8,6 +8,8 @@ using WidgetRail.WidgetProtocol;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Initial bundle seeds ordinary enabled widgets once and respects removals", InitialBundleLifecycle),
+    ("Initial bundle preserves existing selections and rejects wrong identities", InitialBundleSafety),
     ("Reviewed updates reuse retained bytes after rollback and reject conflicting archives", RetainedUpdateReuse),
     ("Malformed retention receipts cannot delete packages or block catalog use", RetentionMalformedReceipts),
     ("Updates retain current and previous versions across repeated publication", RetentionUpdates),
@@ -59,7 +61,9 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Integrity hashing rejects early EOF and trailing bytes", IntegrityHashingRequiresExactLength),
 };
 
-var tests = args.Contains("--widge-193-only", StringComparer.Ordinal)
+var tests = args.Contains("--initial-bundle-only", StringComparer.Ordinal)
+    ? allTests.Where(test => test.Name.StartsWith("Initial bundle", StringComparison.Ordinal)).ToArray()
+    : args.Contains("--widge-193-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name is
         "Uninstall is disabled-only and removes every immutable version" or
         "Pending uninstall recovery retires authority before same-package reuse")
@@ -84,6 +88,57 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
+
+static async Task<bool> SeedPackage(WidgetCatalog catalog, string path, string id)
+{
+    await using var input = File.OpenRead(path);
+    return await catalog.SeedInitialPackageAsync(input, id);
+}
+
+static async Task InitialBundleLifecycle()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    const string id = "widgetrail.firstparty.audio-mixer";
+    var archive = CreatePackage(temp.Path, id, "widgetrail.firstparty", "1.0.0");
+    Assert.True(await SeedPackage(catalog, archive, id), "Fresh bundle was not installed");
+    var widget = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.True(widget.Enabled, "Fresh bundle was not enabled");
+    Assert.True(InstalledWidgetAuthority.PublisherId(widget.ActiveVersion).StartsWith("unsigned.", StringComparison.Ordinal),
+        "A first-party label granted publisher authority");
+    await catalog.SetEnabledAsync(id, false);
+    Assert.True(!await SeedPackage(catalog, archive, id), "Repeated bundle seed changed selection");
+    Assert.True(!(await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Disabled widget was re-enabled");
+    await catalog.UninstallAsync(id);
+    var restarted = new WidgetCatalog(catalog.Root);
+    Assert.True(!await SeedPackage(restarted, archive, id), "Removed widget was restored by an application restart");
+    Assert.Equal(0, (await restarted.DiscoverAsync()).Widgets.Count);
+    Assert.True(!await SeedPackage(restarted, CreatePackage(temp.Path, id, "widgetrail.firstparty", "2.0.0"), id),
+        "A newer app bundle restored a removed widget");
+    await restarted.InstallAsync(archive);
+    Assert.Equal(1, (await restarted.DiscoverAsync()).Widgets.Count);
+}
+
+static async Task InitialBundleSafety()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    const string id = "dev.test.initial";
+    var archive = CreatePackage(temp.Path, id, "dev.test", "1.0.0");
+    await catalog.InstallAsync(archive);
+    Assert.True(!await SeedPackage(catalog, CreatePackage(temp.Path, id, "dev.test", "2.0.0"), id),
+        "Bundle changed a user-installed package");
+    var widget = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.Equal(new Version(1, 0, 0), widget.ActiveVersion.Version);
+    Assert.True(!widget.Enabled, "Bundle enabled an existing disabled package");
+    await Assert.ThrowsAsync<WidgetPackageException>(() => SeedPackage(catalog, archive, "dev.test.different"));
+    await Assert.ThrowsAsync<WidgetPackageException>(() => SeedPackage(catalog, archive, "widgetrail.firstparty.settings"));
+    Assert.Equal(1, (await catalog.DiscoverAsync()).Widgets.Count);
+    var other = new WidgetCatalog(Path.Combine(temp.Path, "parallel"));
+    var results = await Task.WhenAll(SeedPackage(other, archive, id), SeedPackage(new WidgetCatalog(other.Root), archive, id));
+    Assert.Equal(1, results.Count(installed => installed));
+    Assert.Equal(1, (await other.DiscoverAsync()).Widgets.Count);
+}
 
 static async Task<InstalledWidgetVersion> RetentionUpdate(WidgetCatalog catalog, string package,
     Func<InstalledWidgetVersion, InstalledWidgetVersion, CancellationToken, Task>? transfer = null,

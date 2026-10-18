@@ -239,6 +239,13 @@ static async Task Contracts()
         "PoB listing previews are missing");
     foreach (var package in new[] { "widgetrail.samples.twitch", "widgetrail.samples.discord", "widgetrail.samples.game-help", "widgetrail.samples.display-profiles", "widgetrail.samples.poe1-companion", "widgetrail.samples.poe2-companion" })
         Check(snapshot.Items.Any(item => item.Id == package), "Marketplace-only listing missing: " + package);
+    foreach (var id in new[] { "audio-mixer", "capture-library", "performance-monitor", "media-sessions", "games-apps", "task-switcher", "network-controls", "power", "recent-apps" })
+        Check(snapshot.Items.Count(item => item.Id == "widgetrail.firstparty." + id) == 1,
+            "Optional widget missing or duplicated in Catalogue: " + id);
+    Check(snapshot.Items.Count(item => item.Id == "widgetrail.samples.browser") == 1,
+        "Browser is not available to Bare users");
+    Check(!snapshot.Items.Any(item => item.Id is "widgetrail.firstparty.settings" or "widgetrail.firstparty.marketplace"),
+        "Protected application components were offered as replaceable widgets");
     foreach (var command in new[] { new MarketplaceCommand("install"), new("status", ApproveFullTrust: true), new("download", PackageId: "../../bad") })
         await Reject(() => service.HandleAsync(command, default).AsTask());
     foreach (var (id, required) in new (string, string[])[]

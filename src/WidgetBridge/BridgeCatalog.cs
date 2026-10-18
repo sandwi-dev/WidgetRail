@@ -139,11 +139,12 @@ internal sealed record ConfiguredWidget
             .ToArray(),
         PinningSupported = PinningSupported,
         FullWidgetPinningSupported = FullWidgetPinningSupported,
+        // Availability is a declared feature, never trust in a claimed publisher.
+        // The protected host operation rechecks content-scoped consent before
+        // reading scan results or passing a secret to Windows.
         ProtectedWifiPromptSupported =
-            string.Equals(PackageId, "widgetrail.firstparty.network-controls", StringComparison.Ordinal) &&
-            string.Equals(PublisherId, "widgetrail.firstparty", StringComparison.Ordinal) &&
-            DeclaredCapabilities.Contains(
-                PlatformCapabilities.NetworkWifiConnectV1, StringComparer.Ordinal),
+            DeclaredCapabilities.Contains(PlatformCapabilities.NetworkWifiReadV1, StringComparer.Ordinal) &&
+            DeclaredCapabilities.Contains(PlatformCapabilities.NetworkWifiConnectV1, StringComparer.Ordinal),
         QuickActions = QuickActions,
     };
 }

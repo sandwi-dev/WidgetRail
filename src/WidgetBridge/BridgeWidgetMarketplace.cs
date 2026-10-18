@@ -57,6 +57,10 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         _snapshot = new(0, _definitions.Select(d => new MarketplaceItem(d.Id, d.Name, d.Description, d.Screenshots,
             SetupRequirements: d.SetupRequirements)).ToArray());
         MarketplaceContract.ValidateSnapshot(_snapshot);
+        // Inventory grew to include optional first-party widgets. Preserve
+        // room for the independently bounded batch review in broker replies.
+        if (JsonSerializer.SerializeToUtf8Bytes(_snapshot).Length > 64 * 1024)
+            throw new InvalidDataException("Catalogue listing metadata exceeds its transport budget.");
     }
 
     internal ValueTask<MarketplaceSnapshot> HandleAsync(MarketplaceCommand command, CancellationToken token)

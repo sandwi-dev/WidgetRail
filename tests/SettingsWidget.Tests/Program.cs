@@ -1479,7 +1479,7 @@ static async Task InstalledListFilters()
     Assert.Equal(1,(await InstalledRows(widget,true)).Count);
     Assert.Equal(0,(await InstalledRows(widget)).Count);
     Assert.Equal("installed.filter.builtin",Snapshot(widget).InitialFocusId);
-    await Action(widget,"installed.filter.community");
+    await Action(widget,"installed.filter.installed");
     Assert.Equal(3,(await InstalledRows(widget)).Count);
     Assert.Equal(0,(await InstalledRows(widget,true)).Count);
     var before = Nodes(Snapshot(widget).Root).Single(node=>node.IndexedCollection is not null).IndexedCollection!.QueryGeneration;
@@ -3253,7 +3253,7 @@ static async Task<IReadOnlyList<ViewNode>> InstalledRows(SettingsWidget widget, 
     for (var start = 0; start < list.IndexedCollection!.Count; start += 16)
     {
         using var lease = await host.AcquireAsync(list.Id, start, Math.Min(16, list.IndexedCollection.Count - start));
-        rows.AddRange(lease.Range.Items.Where(item => item.Key.StartsWith(builtIn ? "builtin." : "community.", StringComparison.Ordinal)).Select(item => item.Root));
+        rows.AddRange(lease.Range.Items.Where(item => item.Key.StartsWith(builtIn ? "builtin." : "installed.", StringComparison.Ordinal)).Select(item => item.Root));
     }
     return rows;
 }
@@ -3267,7 +3267,7 @@ static async Task OpenInstalledRow(SettingsWidget widget, int index, bool builtI
     for (var start = 0; start < list.IndexedCollection!.Count; start += 16)
     {
         using var lease = await host.AcquireAsync(list.Id, start, Math.Min(16, list.IndexedCollection.Count - start));
-        foreach (var item in lease.Range.Items.Where(item => item.Key.StartsWith(builtIn ? "builtin." : "community.", StringComparison.Ordinal)))
+        foreach (var item in lease.Range.Items.Where(item => item.Key.StartsWith(builtIn ? "builtin." : "installed.", StringComparison.Ordinal)))
         {
             if (found++ != index) continue;
             Assert.True(lease.RouteAction(item.Key, ControllerButton.A) is not null, "Indexed row action was not admitted");

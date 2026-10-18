@@ -14,6 +14,7 @@ var tests = new (string Name,Func<Task> Run)[] {
     ("Retained newer versions remain available through normal update actions", RetainedUpdate),
     ("Individual updates are reviewed and installed without leaving the Updates page", UpdateFromList),
     ("Update all uses one explicit bounded review and preserves per-item results", BatchReview),
+    ("Large catalogues keep update actions within the existing sixteen-package batch", LargeInventoryUpdates),
     ("Marketplace intent resets the page through the ordinary receiver contract", Intent),
     ("Marketplace package and theme declare only narrow intents and no install permission", Package),
 };
@@ -143,6 +144,22 @@ static async Task RefreshOnOpening()
     await Until(() => f.Commands.Any(c => c.Action == "refresh"));
     Check(f.Commands.All(c => c.Action is "status" or "refresh"), "Reopening mutated a package without user action");
 }
+static async Task LargeInventoryUpdates()
+{
+    await using var f = new Fixture();
+    f.Snapshot = f.Snapshot with { Items = Enumerable.Range(0, 21).Select(index =>
+        new MarketplaceItem("example.optional." + index, "Optional widget " + index, "Description", [], "2.0.0", "1.0.0")).ToArray() };
+    await f.Start();
+    await f.Act("marketplace.tab.updates");
+    Check(Node(f, "marketplace.update-all")?.Text == "Update next 16", "Large batch promise exceeds the bounded action");
+    Check(ViewSnapshotValidator.Validate(f.View()).Count == 0, "Expanded inventory presentation is invalid");
+    await f.Act("marketplace.update-all");
+    await Until(() => f.Commands.Any(command => command.Action == "download-updates"));
+    var command = f.Commands.Single(command => command.Action == "download-updates");
+    Check(command.PackageIds?.Count == 16 && MarketplaceValidation.CommandError(command) is null,
+        "Large catalogue emitted an invalid oversized update request");
+}
+
 static async Task RetainedAvailability()
 {
     await using var f = new Fixture();

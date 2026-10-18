@@ -1120,6 +1120,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 throw new BridgeProtocolException("Protected Wi-Fi request is invalid.");
             using var publication = _registry.AdmitProtectedWifi(
                 request.WidgetId, request.RuntimeGeneration);
+            await ProtectedWifiPermissionPolicy.DemandAsync(
+                publication.Value, _consentStore, cancellationToken).ConfigureAwait(false);
             var networks = await _platformBackend.GetAvailableWifiNetworksAsync(cancellationToken).ConfigureAwait(false);
             if (!NetworkControlsHostPolicy.TryResolveNetworkId(request.SourceElementId, networks, out var networkId))
                 throw new BridgeProtocolException("That Wi-Fi scan entry has expired. Scan again before entering a password.");

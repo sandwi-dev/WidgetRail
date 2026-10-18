@@ -58,7 +58,7 @@ internal static class BridgeDiagnosticsScenarios
         Equal(first.Workers[0].LastFailureAtUtc!.Value, second.Workers[0].LastFailureAtUtc!.Value,
             "Reading diagnostics changed the failure timestamp.");
         var authority = first.AuthorityRecoveries.Single();
-        Equal("Community widget 2.1.0", authority.DisplayName,
+        Equal("Widget 2.1.0", authority.DisplayName,
             "Unsafe catalog text escaped the recovery-label fallback.");
         Equal(token, authority.ConfirmationToken,
             "The exact host-owned confirmation token was not retained privately.");
@@ -222,7 +222,7 @@ internal static class BridgeDiagnosticsScenarios
         var projected = recovery.ProjectPending(Catalog());
         Equal(PlatformDiagnosticsSnapshot.MaximumAuthorityRecoveries, projected.Count,
             "Recovery projection exceeded its public bound.");
-        Require(projected.All(item => item.DisplayName == "Community widget recovery"),
+        Require(projected.All(item => item.DisplayName == "Widget recovery"),
             "A stale catalog mapping exposed an untrusted profile as display text.");
         Require(projected.SequenceEqual(projected.OrderBy(item => item.ConfirmationToken,
                 StringComparer.Ordinal)),

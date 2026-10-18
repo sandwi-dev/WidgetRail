@@ -5,7 +5,7 @@ using WidgetRail.PlatformDiagnostics;
 
 namespace WidgetRail.FirstPartyWidgets.Settings;
 
-internal enum SettingsWidgetFilter { All, BuiltIn, Community }
+internal enum SettingsWidgetFilter { All, BuiltIn, Installed }
 
 internal sealed record SettingsInstalledWidgetState(
     WidgetCatalogSnapshot Catalog,
@@ -167,7 +167,7 @@ internal static class SettingsInstalledWidgetPolicy
             state with
             {
                 SelectedInstalledId = state.Catalog.Widgets[index].Id,
-                Filter = state.Filter == SettingsWidgetFilter.BuiltIn ? SettingsWidgetFilter.Community : state.Filter,
+                Filter = state.Filter == SettingsWidgetFilter.BuiltIn ? SettingsWidgetFilter.Installed : state.Filter,
                 SelectedBuiltInId = null,
                 LocalData = null,
                 PackageUninstall = null,
@@ -191,7 +191,7 @@ internal static class SettingsInstalledWidgetPolicy
             state with
             {
                 SelectedBuiltInId = state.BuiltIns[index].Id,
-                Filter = state.Filter == SettingsWidgetFilter.Community ? SettingsWidgetFilter.BuiltIn : state.Filter,
+                Filter = state.Filter == SettingsWidgetFilter.Installed ? SettingsWidgetFilter.BuiltIn : state.Filter,
                 SelectedInstalledId = null,
                 LocalData = null,
                 PackageUninstall = null,
