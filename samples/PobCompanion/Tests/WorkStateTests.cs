@@ -162,10 +162,17 @@ internal static class WorkStateTests
                 element.ReplaceAttributes(attributes);
                 foreach(var key in new[]{"nodes","strNodes","dexNodes","intNodes"})
                     if(element.Attribute(key) is {} value)value.Value=string.Join(',',value.Value.Split(',').Order(StringComparer.Ordinal));
+                // PoE1 serializes these keyed maps through Lua pairs(), whose
+                // order can change across engine processes. Keep every pair/value.
+                if(element.Name.LocalName=="Spec"&&element.Attribute("masteryEffects") is {} masteries)
+                {
+                    var pairs=System.Text.RegularExpressions.Regex.Matches(masteries.Value,@"\{\d+,\d+\}").Select(m=>m.Value).ToArray();
+                    if(string.Join(',',pairs)==masteries.Value)masteries.Value=string.Join(',',pairs.Order(StringComparer.Ordinal));
+                }
                 if(element.Name.LocalName=="Spec"&&element.Attribute("nodes") is not null)
                     element.Elements("URL").Remove(); // Redundant encoded representation of the same allocation.
             }
-            foreach(var element in root.Descendants().Where(e=>e.Name.LocalName is "Config" or "ConfigSet" or "ItemSet" or "Sockets" or "Calcs").ToArray())
+            foreach(var element in root.Descendants().Where(e=>e.Name.LocalName is "Config" or "ConfigSet" or "ItemSet" or "Sockets" or "Calcs" or "Overrides").ToArray())
                 element.ReplaceNodes(element.Elements().OrderBy(e=>e.Name.ToString(),StringComparer.Ordinal)
                     .ThenBy(e=>(string?)e.Attribute("name")??(string?)e.Attribute("nodeId")??(string?)e.Attribute("id"),StringComparer.Ordinal)
                     .ThenBy(e=>(string?)e.Attribute("subsection"),StringComparer.Ordinal).ToArray());

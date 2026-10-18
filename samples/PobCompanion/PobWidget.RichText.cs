@@ -97,12 +97,27 @@ public sealed partial class PobWidget
                 var entry=groups[group];var prefix=id+".group."+group;
                 if(groups.Length>1||S(entry,"title")=="Minion")rows.Add(Text(S(entry,"title"),prefix+".title","pob-eyebrow"));
                 var lines=A(entry,"lines");
-                for(var i=0;i<lines.Length;i++)AddFormatted(rows,lines[i],"text","runs",prefix+"."+i);
+                for(var i=0;i<lines.Length;i++)AddComparisonLine(rows,lines[i],prefix+"."+i);
             }
             if(B(after,"mainSkillDisabled"))rows.Add(Text(S(after,"mainSkill")+": "+S(after,"mainSkillDisabledReason"),id+".disabled","pob-life"));
             return;
         }
         rows.Add(Text("Comparison details are unavailable.",id+".unavailable","pob-life"));
+    }
+
+    // Reformat only the upstream display's numeric prefix and optional percent
+    // suffix. Unrecognized explanations remain intact; no stat/effect rules live here.
+    private static readonly Regex ComparisonLine=new(@"^([+-]?[\d,.]+%?) (.+?)( \([+-]?[\d,.]+%\))?$",RegexOptions.CultureInvariant,TimeSpan.FromMilliseconds(100));
+    internal static void AddComparisonLine(List<WidgetElement> rows,JsonElement line,string id)
+    {
+        var match=ComparisonLine.Match(S(line,"text"));
+        if(!match.Success){AddFormatted(rows,line,"text","runs",id);return;}
+        var runs=ReadFormattedRuns(line,"text","runs");
+        var tone=runs.FirstOrDefault(r=>r.Tone!="text")?.Tone??"text";
+        rows.Add(UI.Grid("pob."+id,[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
+            Text(match.Groups[2].Value,id+".label","pob-comparison-label"),
+            Text(match.Groups[1].Value+match.Groups[3].Value,id+".change","pob-comparison-value "+ToneClass(tone)).InGrid(column:1))
+            .Spacing(0,12).Classes("pob-comparison-row"));
     }
 
     private static void AddBreakdownRows(List<WidgetElement> content,JsonElement breakdown)

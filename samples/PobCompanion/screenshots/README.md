@@ -13,9 +13,9 @@ The PoE2 planning build is the **Late game** loadout from [Ghost Activity's Mart
 | [configuration.png](configuration.png) | Configuration categories with optional explanations from PoB. |
 | [import.png](import.png) | Build library, import destinations, website shortcuts and browser preference. |
 | [trade-comparison.png](trade-comparison.png) | Official PoE2 listing beside calculated changes for the selected equipment slot; account header scrolled out of view. |
-| [trade-ranking.png](trade-ranking.png) | A batch shortlist using selected build weights, with unsupported-item reasons shown separately. |
+| [trade-ranking.png](trade-ranking.png) | Six complete saved candidates visible together, compact ranking controls and collapsed skipped-item reasons. |
 
-The trade examples use the same Martial Artist build and real historical Standard listings on GGG's official site. The captured batch evaluated 20 loaded candidates: eight were ranked and twelve were skipped because the pinned engine could not calculate their modifiers. The timing shown is one local run, not a general performance claim. **Strongest improvement** is selected, so the displayed prices do not affect the order. No item was purchased or equipped for these captures.
+The trade examples use the same Martial Artist build and real historical Standard listings on GGG's official site. The saved shortlist came from a batch of 20 loaded candidates: eight were ranked and twelve were skipped because the pinned engine could not calculate their modifiers. **Strongest improvement** is selected, so the displayed prices do not affect the order. No item was purchased or equipped for these captures.
 
 The PoE1 **Jewel planning example** is a synthetic development fixture, separate from Ghost Activity's guide. It searches Lethal Pride seeds at Arsenal of Vengeance (socket 2491), with total Strength weighted at 1 and scoring not restricted to allocated nodes. Its 8,001 matching seeds and scores come from PoB's finder; the score is not total build DPS. The fixture is not a recommended or complete character build.
 

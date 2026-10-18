@@ -111,11 +111,15 @@ public sealed partial class PobWidget
     private List<WidgetElement> TradeReviewControls(string prefix)
     {
         var rows=new List<WidgetElement>();
-        if(HasRanking)rows.Add(Button("Back to ranked results","trade-rank-show",prefix+".rank-back").FocusLeft("pob.website.browser"));
-        else if(tradeCandidates.Count>1)rows.Add(Button("Rank recent comparisons","trade-rank-recent").FocusLeft("pob.website.browser"));
+        var rankingAction=HasRanking?Button("Ranked results","trade-rank-show",prefix+".rank-back"):
+            tradeCandidates.Count>1?Button("Rank recent","trade-rank-recent",prefix+".rank-back"):null;
         if(tradeCandidates.Count>1)
-            rows.Add(UI.Select("Recent comparisons",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
-                TradeItemName(c.Listing)+" · "+c.Listing.Price,"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob."+prefix+".recent").FocusLeft("pob.website.browser").Classes("pob-select"));
+        {
+            var recent=UI.Select("Recent",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
+                TradeItemName(c.Listing),"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob."+prefix+".recent").FocusLeft("pob.website.browser").Classes("pob-select");
+            rows.Add(rankingAction is null?recent:UI.Grid("pob."+prefix+".navigation",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],recent,rankingAction.InGrid(column:1)).Spacing(0,8));
+        }
+        else if(rankingAction is not null)rows.Add(rankingAction.FocusLeft("pob.website.browser"));
         if(itemDraftSlots.Length>0)
             rows.Add(UI.Select("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").FocusLeft("pob.website.browser").Classes("pob-select"));
         rows.Add(UI.Row("pob."+prefix+".actions",
@@ -166,7 +170,7 @@ public sealed partial class PobWidget
         controls.Insert(0,Text(S(item,"name",TradeItemName(tradeListing!)),prefix+".title","pob-heading"));
         controls.Insert(1,Text(tradeListing!.Price+" · "+previewSlot,prefix+".summary","pob-gold"));
         var tools=UI.Stack("pob.website.review.tools",controls.ToArray()).RememberChildFocus("pob."+prefix+".find").Classes("pob-buildtools");
-        var scroll=UI.VerticalScroll("pob.website.review.details",details.ToArray()).Classes("pob-scroll")
+        var scroll=UI.VerticalScroll("pob.website.review.details",details.ToArray()).Classes("pob-scroll","pob-comparison-details")
             .Shortcut(ControllerButton.LeftStick,"trade-review-focus","Comparison controls");
         return UI.Stack("pob.website.review",tools,scroll).RememberChildFocus("pob."+prefix+".find")
             .Shortcut(ControllerButton.X,"trade-review-details","Item details").Classes("pob-panel","pob-tree-main");

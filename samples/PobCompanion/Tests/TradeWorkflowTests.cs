@@ -8,6 +8,13 @@ internal static class TradeWorkflowTests
 {
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string xml,Action<bool,string> check)
     {
+        foreach(var (text,label,value) in new[]{("+4,305.6 Average Damage (+14.4%)","Average Damage","+4,305.6 (+14.4%)"),("-35.51% Crit Chance","Crit Chance","-35.51%")})
+        {
+            var formatted=new List<WidgetElement>();
+            PobWidget.AddComparisonLine(formatted,JsonSerializer.SerializeToElement(new{text,runs=new[]{new{text,tone="warning"}}}),"test");
+            var row=new WidgetView(formatted.Single()).CreateSnapshot("comparison-format",1).Root;
+            check(row.Kind==ViewNodeKind.Grid&&row.Children![0].Text==label&&row.Children[1].Text==value&&row.Children[1].StyleClasses.Contains("pob-life"),"Compact comparison preserves upstream label, values and effect color: "+label);
+        }
         const string reason="This item does not fit the comparison slot";
         const string luaError=@"...es.poe2-companion\0.1.0\payload\Engine\trade-ranking.lua:23: ";
         check(PobWidget.RankingError(luaError+reason)==reason&&PobWidget.RankingError("C:\\PoB\\trade-ranking.lua:28: Modules/Trade.lua:42: Cannot calculate: unsupported modifier")=="Cannot calculate: unsupported modifier","Skipped errors remove nested Lua paths and preserve useful colons");
@@ -172,12 +179,16 @@ internal static class TradeWorkflowTests
             while(!Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text?.Contains("ranked")==true))
             {if(DateTime.UtcNow>rankDeadline)throw new TimeoutException("Batch ranking did not finish: "+string.Join(" | ",Nodes(View().Root).Select(n=>n.Text)));await Task.Delay(30);}
             await Idle();
+            check(!Nodes(View().Root).Any(n=>n.Id=="pob.rank.setup"||n.Id=="pob.rank.skipped")&&Nodes(View().Root).Any(n=>n.ActionId=="trade-rank-edit"),"Completed rankings collapse setup and skipped reasons to leave room for results");
+            await Action("trade-rank-skipped");
             check(Nodes(View().Root).Where(n=>n.Id.StartsWith("pob.rank.skipped.",StringComparison.Ordinal)&&n.Id!="pob.rank.skipped.title").Any(n=>n.Text=="Gold Ring: "+reason),"Incompatible listings display item name and readable reason without Lua locations");
+            await Action("trade-rank-skipped");await Action("trade-rank-edit");
             var target=Nodes(View().Root).Single(n=>n.Id=="pob.rank.slot").SelectOptions.Single(o=>o.Label.StartsWith("Ring 2 —",StringComparison.Ordinal));
             await Action(target.ActionId);await Action("trade-rank-evaluate");
             check(loadRequests==2&&requestedLimit is 20 or 50 or 100&&!Nodes(View().Root).Any(n=>n.Id=="pob.rank.help"),"Website and panel actions request bounded automatic loading and omit redundant priority guidance");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("2 ranked"))&&ViewSnapshotValidator.Validate(View()).Count==0,"Received batch ranks both listings for an explicit equipment target in a valid native panel");
             await Action("trade-rank-sort.price");
+            await Action("trade-rank-edit");
             check(Nodes(View().Root).Single(n=>n.Id=="pob.rank.order").SelectOptions.Single(o=>o.IsSelected).Label=="Lowest price","Price order changes without another evaluation batch");
             check(loadRequests==2&&Nodes(View().Root).Any(n=>n.Id=="pob.rank.rates"&&n.Text!.Contains("Standard")),"Changing order reuses evaluated candidates and displays the exchange league");
             await Action("trade-rank-sort.value");await Action("trade-rank-sort.strength");

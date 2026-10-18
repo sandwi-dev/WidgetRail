@@ -26,6 +26,13 @@ text { color: var(--text); text-align: start; }
 .pob-price-fields { align: end; }
 .pob-scroll { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; gap: 10px; }
 .pob-rank-skipped { flex-grow: 0; max-height: 120px; }
+.pob-list-item.pob-rank-item { padding: 8px 10px; min-height: 64px; gap: 4px; }
+.pob-rank-title { max-lines: 1; text-overflow: ellipsis; }
+.pob-rank-metrics { max-lines: 2; }
+.pob-comparison-details { gap: 6px; }
+.pob-comparison-row { padding: 4px 0px; min-width: 0px; }
+.pob-comparison-label { font-size: 14px; color: var(--text-muted); }
+.pob-comparison-value { font-size: 14px; text-align: end; font-weight: 600; }
 .pob-workspace { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; }
 .pob-panel { padding: 16px; background: var(--surface-raised); corner-radius: 12px; gap: 12px; }
 .pob-card { padding: 14px; background: var(--surface-raised); corner-radius: 12px; gap: 7px; min-width: 0px; }

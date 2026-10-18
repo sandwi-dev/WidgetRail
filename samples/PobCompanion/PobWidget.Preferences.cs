@@ -97,7 +97,9 @@ public sealed partial class PobWidget
         {
             ScrollContent=false,
             HeaderActions=UI.Row("pob.website.header-actions",
-                (!reviewing&&CanReplaceTradeComparison
+                (ranking
+                    ?new[]{Button("Return to website","trade-rank-hide","website.rank-hide"),Button("Close","website-close","website.close")}
+                    :!reviewing&&CanReplaceTradeComparison
                     ?new[]{Button("Show comparison","trade-review-show","website.review-shortcut"),Button("Close","website-close","website.close")}
                     :new[]{Button("Close","website-close","website.close")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")
         });

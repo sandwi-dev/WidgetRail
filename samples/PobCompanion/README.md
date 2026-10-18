@@ -29,7 +29,7 @@ Native WidgetRail captures from 17 October 2026 in Velvet Dusk. The PoE2 plannin
 **Compare while browsing.** The official listing stays beside PoB's calculated gains and losses. The equipment target is explicit; comparing does not equip or buy the item.
 ![Trade listing beside its PoB comparison](screenshots/trade-comparison.png)
 
-**Rank a batch.** The shortlist identifies the target, weights, limit and order. Unsupported items stay visible in the skipped list. These historical listings and prices are examples, not purchase recommendations.
+**Rank a batch.** The shortlist identifies the target, weights, limit and order. Completed rankings collapse setup under **Edit ranking…**; weighted change and Player DPS share a line, and skipped reasons expand on request. These historical listings and prices are examples, not purchase recommendations.
 ![Ranked trade listings and explicit skipped-item reasons](screenshots/trade-ranking.png)
 
 ## Using a build
