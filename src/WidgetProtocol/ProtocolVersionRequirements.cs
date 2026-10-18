@@ -137,6 +137,12 @@ internal sealed class ProtocolVersionRequirements
             bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
+            if (node.FocusPreview is not null)
+                Add("focus-preview", ProtocolConstants.AnchoredPresentationVersion, path + ".focusPreview",
+                    "Anchored focus previews require protocol version 92 or later.");
+            if (node.AnchoredPresentation is not null)
+                Add("anchored-presentation", ProtocolConstants.AnchoredPresentationVersion, path + ".anchoredPresentation",
+                    "Anchored presentations require protocol version 92 or later.");
             if (node.GridLayout is not null || node.GridCell is not null)
                 Add("grid-layout", ProtocolConstants.GridLayoutVersion, path,
                     $"Explicit Grid layout and cell placement require protocol version {ProtocolConstants.GridLayoutVersion} or later.");

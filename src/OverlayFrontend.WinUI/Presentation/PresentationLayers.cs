@@ -12,6 +12,7 @@ internal enum PresentationLayer
 {
     Content = 0,
     ContentMedia = 100,
+    ContentPreview = 150,
     WidgetDialog = 200,
     WidgetDialogMedia = 300,
     FullscreenBackdrop = 400,

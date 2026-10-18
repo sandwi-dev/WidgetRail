@@ -15,7 +15,9 @@ internal sealed partial class WidgetViewPresenter
     {
         // Own only scale/center on the whole clipped presenter, leaving shell
         // staging opacity and internal section/dialog motion independent.
+        ClearFocusPreview();
         (surfaceResize ??= new(this)).Play(appearance, systemAnimationsEnabled, previousSize, background, reason);
+        if (surfaceResize.Playback is { } playback) _ = RefreshPreviewAfterMotionAsync(playback);
     }
     internal void SettleWidgetResize() => surfaceResize?.Cancel();
     internal void ApplyAppearance(AppearanceSettings value, bool animationsEnabled)

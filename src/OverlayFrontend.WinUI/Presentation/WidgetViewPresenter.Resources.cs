@@ -37,6 +37,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void Retire(Binding binding)
     {
+        if (ReferenceEquals(previewSource?.Owner, binding) || ReferenceEquals(previewSource?.Source, binding)) ClearFocusPreview();
         if (binding.Element is ScrollViewer scroll && readingScrolls.Remove(scroll,out var reading)) reading.Dispose();
         RetireInlineLink(binding);
         if (binding.Element is WidgetRichTextView rich) rich.DetachExcept(_ => false);
@@ -210,6 +211,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        DisposePreviewEvents();
         scrollGesture = null;
         CancelScrollReveal();
         directionalScroll = null;

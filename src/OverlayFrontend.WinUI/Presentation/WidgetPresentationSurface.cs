@@ -23,6 +23,14 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
     internal WidgetViewPresenter? Fragment { get; }
     internal ImageSource? ArtworkSource => artwork.Source;
     private bool retainArtwork;
+    private bool previewMode;
+    internal void ConfigurePreview(bool enabled)
+    {
+        if (Fragment is null || previewMode == enabled) return;
+        previewMode = enabled;
+        if (enabled) root.Children.Remove(Fragment);
+        else if (!root.Children.Contains(Fragment)) root.Children.Insert(0, Fragment);
+    }
     private ImageSource? latestArtwork;
     private Stretch latestFit = Stretch.UniformToFill;
     private Stretch paintedFit = Stretch.UniformToFill;
@@ -76,7 +84,7 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
         // Presentation fragments are an implicit first child of the declared
         // surface. Honor its layout just like ordinary WRSS rows/columns; a
         // bounded poster rail must not consume all remaining vertical space.
-        var fragmentVisible = Fragment.Visibility == Visibility.Visible;
+        var fragmentVisible = !previewMode && Fragment.Visibility == Visibility.Visible;
         var contentVisible = ContentPanel.Visibility == Visibility.Visible;
         var grows = new List<double>();
         if (fragmentVisible) grows.Add(0);

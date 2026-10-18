@@ -1282,6 +1282,7 @@ method WidgetRail.WidgetSdk.WidgetIdScope.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Enter(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.FocusTarget(string collectionId, WidgetRail.WidgetSdk.WidgetCollectionItemKey key, int index) -> WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.PublishQuery(TQuery query, int count) -> void
+method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Reveal(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.UpdateContent(TQuery query) -> void
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.Equals(object? obj) -> bool
@@ -2520,6 +2521,7 @@ property System.Func<TItem,int,string> WidgetRail.WidgetSdk.WidgetPagedViewport<
 property System.Func<TItem,string> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemFocusId { get; set; }
 property System.Func<TObservation,long> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.CorrelationSequence { get; set; }
 property System.Func<TObservation,long>? WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ObservationSequence { get; set; }
+property System.Func<TQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCollectionItemKey>?>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.OccurrenceKeys { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.OnAction { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.OnAction { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ResolveArtwork { get; set; }
@@ -2578,6 +2580,7 @@ property TState WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAu
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
+property WidgetRail.WidgetProtocol.AnchoredPresentation? WidgetRail.WidgetSdk.WidgetModal.AnchoredPresentation { get; set; }
 property WidgetRail.WidgetProtocol.CaptureAttachment WidgetRail.WidgetSdk.CapturedMediaElement.Attachment { get; set; }
 property WidgetRail.WidgetProtocol.CollectionLayout WidgetRail.WidgetSdk.IndexedCollectionElement.Layout { get; }
 property WidgetRail.WidgetProtocol.CollectionLayout? WidgetRail.WidgetSdk.ScrollElement.CollectionLayout { get; set; }
@@ -2602,6 +2605,7 @@ property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.Scrubber
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.SelectElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.SliderElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.TextEntryElement.FocusNeighbors { get; set; }
+property WidgetRail.WidgetProtocol.FocusPreviewOptions? WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Preview { get; set; }
 property WidgetRail.WidgetProtocol.FrameTimingStatistics? WidgetRail.WidgetSdk.WidgetPerformanceSnapshot.FrameStatistics { get; set; }
 property WidgetRail.WidgetProtocol.GridCellPlacement WidgetRail.WidgetSdk.GridCellElement.Placement { get; set; }
 property WidgetRail.WidgetProtocol.GridLayoutDefinition WidgetRail.WidgetSdk.GridLayoutElement.Layout { get; set; }

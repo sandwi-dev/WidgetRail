@@ -18,6 +18,7 @@ internal sealed partial class WidgetViewPresenter
         IsHitTestVisible = enabled && presentationActive;
         if (!enabled)
         {
+            ClearFocusPreview();
             directionalScroll = null;
             ResetSliderValues(); SetSliderAdjustment(null);
             DismissTransientControl();

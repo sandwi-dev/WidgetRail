@@ -84,18 +84,20 @@ internal sealed partial class WidgetViewPresenter
         if (!scroll.IsLoaded || scroll.ViewportHeight <= 0 || scroll.ViewportWidth <= 0) return null;
         var axis = declarations[binding.Identity.Id].Node.ScrollAxis ?? ScrollAxis.Vertical;
         var horizontal = axis == ScrollAxis.Horizontal;
-        var extent = horizontal ? scroll.ViewportWidth : scroll.ViewportHeight;
+        var visible = WidgetScrollViewport.ContentBounds(scroll);
+        var start = horizontal ? visible.Left : visible.Top;
+        var end = horizontal ? visible.Right : visible.Bottom;
         var candidates = bindings.Values.Where(child => child.Identity != binding.Identity && child.Element.IsLoaded && IsMemoryVisible(child.Element) &&
                 IsDescendant(child.Identity.Id, binding.Identity.Id) &&
                 NearestScroll(child.Identity.Id) == binding.Identity.Id &&
                 (declarations[child.Identity.Id].Node.IsFocusable || declarations[child.Identity.Id].Node.Children.Count == 0))
             .Select(child => (child.Identity, Bounds: child.LayoutElement.TransformToVisual(scroll).TransformBounds(
                 new Rect(0, 0, child.LayoutElement.ActualWidth, child.LayoutElement.ActualHeight))))
-            .Where(pair => (horizontal ? pair.Bounds.Right : pair.Bounds.Bottom) > 0 && (horizontal ? pair.Bounds.X : pair.Bounds.Y) < extent)
+            .Where(pair => (horizontal ? pair.Bounds.Right : pair.Bounds.Bottom) > start && (horizontal ? pair.Bounds.X : pair.Bounds.Y) < end)
             .OrderBy(pair => horizontal ? pair.Bounds.X : pair.Bounds.Y).FirstOrDefault();
         if (candidates.Identity is null) return null;
         var size = horizontal ? candidates.Bounds.Width : candidates.Bounds.Height;
-        var position = horizontal ? candidates.Bounds.X : candidates.Bounds.Y;
+        var position = (horizontal ? candidates.Bounds.X : candidates.Bounds.Y) - start;
         return new(binding.Identity, candidates.Identity, axis, size > 0 ? Math.Clamp(-position / size, -1, 1) : 0);
 
         string? NearestScroll(string id)
@@ -140,7 +142,8 @@ internal sealed partial class WidgetViewPresenter
             if (!scroll.IsLoaded || !anchor.IsLoaded || anchor.ActualWidth <= 0 || anchor.ActualHeight <= 0 || scroll.ViewportWidth <= 0 || scroll.ViewportHeight <= 0) continue;
             var bounds = anchor.TransformToVisual(scroll).TransformBounds(new Rect(0, 0, anchor.ActualWidth, anchor.ActualHeight));
             var horizontal = memory.Axis == ScrollAxis.Horizontal;
-            var delta = (horizontal ? bounds.X : bounds.Y) + Math.Clamp(memory.ClippedFraction, -1, 1) * (horizontal ? bounds.Width : bounds.Height);
+            var visible = WidgetScrollViewport.ContentBounds(scroll);
+            var delta = (horizontal ? bounds.X - visible.X : bounds.Y - visible.Y) + Math.Clamp(memory.ClippedFraction, -1, 1) * (horizontal ? bounds.Width : bounds.Height);
             var current = horizontal ? scroll.HorizontalOffset : scroll.VerticalOffset;
             var desired = Math.Clamp(current + delta, 0, horizontal ? scroll.ScrollableWidth : scroll.ScrollableHeight);
             if (Math.Abs(desired - current) <= 1 / (scroll.XamlRoot?.RasterizationScale ?? 1))

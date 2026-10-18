@@ -25,11 +25,15 @@ public sealed record FocusPresentationSurfaceElement : WidgetElement
     /// <summary>Retains the last valid associated fragment when focus leaves it. Defaults to false.</summary>
     public bool RetainLastPresentation { get; init; }
 
+    /// <summary>Optional passive anchored preview; omission preserves immediate inline presentation.</summary>
+    public FocusPreviewOptions? Preview { get; init; }
+
     internal override ViewNode ToProtocolNode() => new()
     {
         Id = Id,
         Kind = ViewNodeKind.FocusPresentationSurface,
         DefaultFocusPresentation = DefaultPresentation.ToProtocolNode(),
+        FocusPreview = Preview,
         RetainLastPresentation = RetainLastPresentation ? true : null,
         StyleClasses = StyleClasses,
         Children = [Content.ToProtocolNode()],

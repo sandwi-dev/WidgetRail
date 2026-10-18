@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\FocusPreviewDelayState.cs" Link="FocusPreviewDelayState.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ScrollEdgeCueState.cs" Link="ScrollEdgeCueState.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\AnchoredPresentationGeometry.cs" Link="AnchoredPresentationGeometry.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\TextSuggestionController.cs" Link="TextSuggestionController.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionTypes.cs" Link="ExtensionTypes.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\Extensions\ExtensionPackage.cs" Link="ExtensionPackage.cs" />

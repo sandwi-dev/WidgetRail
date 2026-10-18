@@ -23,16 +23,19 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
     private readonly Microsoft.UI.Composition.CompositionGeometricClip roundedClip;
     private bool disposed;
     private bool paintOnly;
+    private readonly bool followComposition;
     internal FrameworkElement Content { get; }
     internal FrameworkElement Anchor => anchor;
 
-    internal PresentationPortal(PresentationLayers layers, FrameworkElement anchor, FrameworkElement content)
+    internal PresentationPortal(PresentationLayers layers, FrameworkElement anchor, FrameworkElement content,
+        PresentationLayer layer = PresentationLayer.WidgetDialog, bool passive = false, bool followComposition = true)
     {
         this.anchor = anchor; root = layers.Root; Content = content;
+        this.followComposition = followComposition; paintOnly = passive;
         HorizontalAlignment = HorizontalAlignment.Left; VerticalAlignment = VerticalAlignment.Top;
         RenderTransform = placement; Clip = clip;
         for (DependencyObject? item = anchor; item is not null; item = VisualTreeHelper.GetParent(item))
-            if (item is WidgetViewPresenter presenter) { owner = presenter; input = presenter.AttachPresentationInput(content); break; }
+            if (item is WidgetViewPresenter presenter) { owner = presenter; if (!passive) input = presenter.AttachPresentationInput(content); break; }
         // XAML owns the outer rectangular clip/transform. A separate visual
         // carries the rounded compositor clip; putting both on one visual makes
         // WinUI attempt to treat a geometric clip as an inset clip (E_NOINTERFACE).
@@ -41,10 +44,10 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
         roundedClip = visual.Compositor.CreateGeometricClip(rounded); visual.Clip = roundedClip;
         roundedLayer.Children.Add(content); Children.Add(roundedLayer);
         GettingFocus += (_, args) => { if (paintOnly) args.TryCancel(); };
-        layers.Add(this, PresentationLayer.WidgetDialog);
+        layers.Add(this, layer);
         FollowOpacity();
         anchor.LayoutUpdated += Refresh;
-        CompositionTarget.Rendering += Refresh;
+        if (followComposition) CompositionTarget.Rendering += Refresh;
         Refresh(null, EventArgs.Empty);
     }
 
@@ -110,7 +113,7 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
     {
         if (disposed) return;
         disposed = true; Visibility = Visibility.Collapsed;
-        anchor.LayoutUpdated -= Refresh; CompositionTarget.Rendering -= Refresh;
+        anchor.LayoutUpdated -= Refresh; if (followComposition) CompositionTarget.Rendering -= Refresh;
         ElementCompositionPreview.GetElementVisual(this).StopAnimation("Opacity");
         ElementCompositionPreview.GetElementVisual(roundedLayer).Clip = null;
         roundedClip.Dispose(); rounded.Dispose();

@@ -134,3 +134,58 @@ Next execution phase: shared anchored preview/popover contracts and implementati
 scroll-edge cues, generic native input/lifecycle/bounds checks, then dependent PoB
 adoption. Existing passive `PresentOnFocus`/`FocusPresentationSurface` and modal
 scope/restore machinery are the foundations; no duplicate temporary-page system.
+
+## Shared preview and scroll foundations — 2026-10-18
+
+Protocol 92 adds optional anchored geometry to existing `WidgetModal` and optional
+settled-focus/hover previews to existing `FocusPresentationSurface`. Interactive
+inspection retains modal input scope, Back/Close and opener restoration. Passive
+previews consume already-loaded fragments, have no input or focus ownership, and
+use one settling timer with no render polling. Source changes, input handoff,
+modal entry, suspension, removal and compositor motion revoke passive paint.
+
+Native checks found and corrected a shared focus race: native Focus can complete
+before routed GotFocus, so scope transitions now capture the actual opener before
+mutating controls. Anchored sizing also respects authored minimum dimensions.
+The initial scroll-cue wrapper disturbed focus; it was replaced with reserved
+template rows that never reparent native content. A shared content-viewport bounds
+helper keeps reveal, reading visibility, focus settling and viewport memory aligned
+with the actual native content origin, including existing padding.
+
+Evidence:
+
+- `anchored-native06`: 136 assertions across Mono Ink/Mineral Light and 900/420-DIP
+  widgets, ordinary/anchored repetition, removed opener, minimums, resize and resume.
+- `focus-previews-native06`: 32 assertions including settling during updates,
+  busy focus, simulated hover target without selection, native text/chrome contrast,
+  compositor resize, input/lifecycle suspension and removal. This fixture calls
+  the same hover-target handler; it does not claim physical pointer/controller input.
+- `scroll-cues-native04`: 22 assertions for fixed 40×2-DIP lines, reserved strips,
+  DPI rounding, native focus/no-unload, reload, nested scrollers, virtualized ListView,
+  light/high-contrast ink and padded reveal. No service requests or content fetching.
+- `scroll-cues-reading-focus01`: 42 assertions; `scroll-cues-directional01`: 93;
+  `scroll-cues-indexed-reveal02`: 10; `scroll-cues-indexed-continuity01`: 16.
+- SDK anchored/passive contract groups: 1 each. Geometry/timing/cue policies: 9.
+  API compatibility/determinism: 2. Managed/native generated contract parity passes.
+- Debug builds pass without warnings. Representative native dark/light captures
+  were inspected; a missing shell palette in the passive fixture was corrected,
+  and native text/chrome contrast is now asserted.
+
+The passive hover timeout was fixture clipping: the fixture placed its second
+source beyond the native window. Sizing the test window fixed it without relaxing
+the host's offscreen-anchor rejection. Earlier failed evidence remains available.
+Temporary traces are bounded fixture artifacts; no normal-session logging added.
+
+`indexed-previews-native06` adds 14 passing checks against the real local worker:
+exact row identity, wrong source/key/generation/index rejection, no extra fetch or
+scroll/focus changes, hover with toolbar focus, recycling and query replacement.
+Native row focus can precede visible layout; the host now retries semantic source
+changes on LayoutUpdated without polling. A delayed routed GotFocus cannot override
+a newer pointer choice captured after native focus already changed. The indexed
+fixture uses a separate overlay root so portals cannot inflate its toolbar Auto row.
+
+Exact indexed-anchor/passive lease replacement qualification is complete.
+High-contrast passive content, physical input and the cumulative app-wide walk
+remain unverified. PoB adoption has not started. The running hidden normal-profile
+candidate still uses the earlier published payload; these changes are not yet
+deployed to it. Native fixtures restore that candidate after each run.

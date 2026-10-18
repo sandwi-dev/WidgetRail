@@ -21,7 +21,7 @@ internal sealed partial class WidgetViewPresenter
         if (presentationActive == active) return active ? Task.CompletedTask : suspension;
         if (active && !suspension.IsCompleted) throw new InvalidOperationException("Await presentation suspension before resuming.");
         if (active && !suspension.IsCompletedSuccessfully) throw new InvalidOperationException("Presentation suspension failed.", suspension.Exception);
-        if (!active) RememberFocus();
+        if (!active) { RememberFocus(); ClearFocusPreview(); }
         presentationActive = active;
         RefreshReadingFocus();
         RefreshMediaPlayers();

@@ -35,7 +35,7 @@ internal sealed partial class WidgetViewPresenter
         return true;
     }
     private void NotifyControllerGuideChanged()
-    { RefreshContextIndicators(); ControllerGuideChanged?.Invoke(); }
+    { if (HasTransientControl) ClearFocusPreview(); RefreshContextIndicators(); ControllerGuideChanged?.Invoke(); }
 
     internal IReadOnlyList<ControllerGuideHint> CaptureControllerGuide()
     {

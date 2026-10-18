@@ -78,6 +78,8 @@ internal sealed partial class WidgetViewPresenter
         }
         if (binding.Element is WidgetPresentationSurface { Fragment: not null } surface)
         {
+            if (node.FocusPreview is null && IsFocusPreviewSurface(surface)) ClearFocusPreview();
+            surface.ConfigurePreview(node.FocusPreview is not null);
             UpdateLayout(surface.ContentPanel, node);
             var horizontal = ComputedStyle(node, "direction")?.Text == "row";
             var axis = horizontal ? "width" : "height";

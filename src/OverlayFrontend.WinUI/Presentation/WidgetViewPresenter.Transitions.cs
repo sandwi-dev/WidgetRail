@@ -135,6 +135,7 @@ internal sealed partial class WidgetViewPresenter
     private void StartTransitions(TransitionCommit commit)
     {
         if (!ReferenceEquals(activeTransition, commit)) return;
+        ClearFocusPreview();
         // Retained pixels stay within their incoming declaration's native
         // ancestors. Hoisting them to the widget root loses modal/scroll clips
         // and paints old dialog text over the scrim and unrelated controls.
@@ -252,6 +253,6 @@ internal sealed partial class WidgetViewPresenter
             foreach (var binding in commit.Retained) Retire(binding);
             foreach (var media in bindings.Values.Select(binding => binding.Element).OfType<Media.MediaPlayerView>()) media.EndPageMotion();
         }
-        finally { commit.Settled.TrySetResult(); }
+        finally { commit.Settled.TrySetResult(); QueueSurfaceUpdate(); }
     }
 }

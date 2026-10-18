@@ -192,6 +192,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly bool selectorInput;
     private RootFocusPresentation? focusRoot;
     private WidgetContextIndicator? contextIndicator;
+    private WidgetScrollEdgeCues? scrollEdgeCues;
+    internal WidgetScrollEdgeCues? ScrollEdgeCues => scrollEdgeCues;
     internal ControllerButton? ContextHintButton { get; set; }
     internal Func<bool>? ContextHintAdmitted { get; set; }
     internal Panel? ContextHintHost { get; set; }
@@ -527,6 +529,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             var scrollbarWidth = Number(style, "scrollbar-width", true);
             if (thumb is null && track is null && scrollbarWidth is null) RestoreResources();
             else WidgetScrollBarResources.Apply(EnsureResources(), thumb, track, scrollbarWidth);
+            scrollEdgeCues ??= new((Control)element);
+            scrollEdgeCues.Update(thumb ?? Brush(style, "color", contrast, false), contrast);
         }
         RefreshContextIndicator();
     }
@@ -750,6 +754,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         if (disposed) return;
         BindTextScale(null);
         BindFocusRoot(null);
+        scrollEdgeCues?.Dispose(); scrollEdgeCues = null;
         contextIndicator?.Dispose(); contextIndicator = null; ContextHintAdmitted = null; ContextHintHost = null;
         textStyle?.Dispose(); textStyle = null; styledText = null;
         scaleMotion?.Dispose(); scaleMotion = null;

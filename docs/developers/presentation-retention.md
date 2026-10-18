@@ -1,5 +1,38 @@
 # Focus presentation retention
 
+## Interactive anchored inspection
+
+Use the existing `WidgetModal` for explicit inspection with controls. Its optional
+`AnchoredPresentation` places the panel beside an element or an exact indexed item:
+
+```csharp
+view.WithModal(new WidgetModal("inspect", "Details", details,
+    "inspect.confirm", "inspect.close")
+{
+    AnchoredPresentation = new(new PresentationAnchor(ElementId: "candidate.inspect")),
+});
+```
+
+The default requested size is 360 × 280 logical DIPs. Width accepts 160–960 and
+height 96–800; the host clamps both to the widget viewport. `Placement` can prefer
+Right, Left, Below or Above; Auto starts on the right. The host tries other sides
+when needed. Missing, offscreen or stale anchors use a bounded centered panel.
+An indexed anchor uses `IndexedCollectionFocusTarget`, including its source,
+query generation, occurrence key and index. Resolving it never fetches pages,
+scrolls the list or selects an item.
+
+This remains a modal: background controls cannot receive input, B/Close follows
+the existing dismiss action, and focus returns to the remembered opener or a valid
+fallback. It does not assign a new global Inspect shortcut. Authors expose an
+ordinary action with a meaningful label, preserve its identity, and publish the
+background view again on dismissal. Ignore asynchronous results whose inspection
+request or widget lifetime has ended; a late result must not publish a new modal.
+
+Anchored inspection requires presentation protocol 92. Omitting the option keeps
+the existing centered modal and its existing protocol requirements.
+
+## Inline focus presentations
+
 `BackgroundSurfaceElement` and `FocusPresentationSurfaceElement` share a native,
 per-surface source resolver. Set `RetainLastPresentation` in C# to choose whether a
 surface keeps its last valid focused source when focus moves elsewhere:
@@ -65,3 +98,41 @@ Keeping the element ID alone does not preserve ownership when its inherited scop
 changes. Playnite uses an explicit stable `playnite-library.presentation` scope
 around the cinematic surface and keeps the navigator's page scopes underneath it.
 This preserves separate page focus/scroll/action authority while artwork continues.
+
+## Anchored passive previews
+
+Existing `PresentOnFocus` content can appear beside its source instead of taking
+space in an inline inspector. Set `Preview` on its existing enclosing surface:
+
+```csharp
+UI.FocusPresentationSurface(
+    UI.Button("Audio setting", "inspect-audio", "audio")
+        .PresentOnFocus(UI.Text("Current output and volume", "audio.preview")),
+    UI.Text("", "preview.empty"),
+    "settings.preview") with
+{
+    Preview = new FocusPreviewOptions(Width: 360, Height: 240)
+}
+```
+
+The default is settled focus and mouse hover after 350 ms. `OnFocus` and `OnHover`
+can independently disable either source; at least one must remain enabled.
+`DelayMilliseconds` accepts 0–1500, width 160–960 DIP and height 96–800 DIP. The
+host can shrink and flip the panel to keep it within the widget. Long content is
+clipped; put essential information and controls behind an explicit inspect action
+using a normal or anchored modal. Passive fragments retain their existing 64-node,
+8-level limits and cannot contain focusable controls, actions or scrolling.
+
+Preview activation does not invoke the widget or calculate data. Reuse content
+already loaded for the source. Updating that content does not restart the settling
+deadline. Only one preview is visible; the nearest enclosing surface owns it.
+Pointer hover does not select a row or move focus. Controller input resumes the
+focused source, including at a navigation boundary.
+
+Anchored previews deliberately do not support `RetainLastPresentation`: they hide
+when their source is removed, leaves the viewport or loses current occurrence
+authority. Suspension, input handoff, modal entry and unloading revoke them and
+cancel their pending deadline. Indexed previews inspect resident rows only, without
+fetching, retaining or scrolling. They share placement geometry and scaled host
+presentation layers with interactive inspection, but never take focus or pointer
+input. Leaving `Preview` unset preserves existing inline presentation behaviour.

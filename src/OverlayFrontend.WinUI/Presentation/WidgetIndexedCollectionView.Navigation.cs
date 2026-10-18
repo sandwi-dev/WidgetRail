@@ -37,10 +37,11 @@ internal sealed partial class WidgetIndexedCollectionView
                 !ReferenceEquals(source, capturedSource) || FocusedIndex() != index ||
                 view?.ContainerFromIndex(index) is not FrameworkElement item || FindNativeScroll(view) is not { } scroll) return;
             var bounds = item.TransformToVisual(scroll).TransformBounds(new(0, 0, item.ActualWidth, item.ActualHeight));
-            var extent = horizontal ? scroll.ViewportWidth : scroll.ViewportHeight;
+            var visible = WidgetScrollViewport.ContentBounds(scroll);
+            var extent = horizontal ? visible.Width : visible.Height;
             if (extent <= 0) return;
-            var start = horizontal ? bounds.X : bounds.Y;
-            var end = horizontal ? bounds.Right : bounds.Bottom;
+            var start = horizontal ? bounds.X - visible.X : bounds.Y - visible.Y;
+            var end = horizontal ? bounds.Right - visible.X : bounds.Bottom - visible.Y;
             var size = horizontal ? bounds.Width : bounds.Height;
             var delta = size > extent || start < 0 ? start : end > extent ? end - extent : 0;
             if (Math.Abs(delta) <= 0.5) return;

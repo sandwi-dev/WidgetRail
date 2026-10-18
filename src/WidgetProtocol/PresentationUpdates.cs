@@ -93,6 +93,8 @@ public enum PresentationProperty
     CapturedMedia,
     MediaPlayer,
     Graph,
+    AnchoredPresentation,
+    FocusPreview,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -253,6 +255,8 @@ public static class PresentationPropertyMetadata
         PresentationProperty.GridMaximumColumns or
         PresentationProperty.GridLayout or
         PresentationProperty.GridCell or
+        PresentationProperty.AnchoredPresentation or
+        PresentationProperty.FocusPreview or
         PresentationProperty.Minimum or
         PresentationProperty.Maximum or
         PresentationProperty.Step or

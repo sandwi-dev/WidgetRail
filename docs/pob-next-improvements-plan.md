@@ -11,8 +11,8 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | Order | Work item | Status |
 | --- | --- | --- |
 | Foundation already started | Clean up shared code and game-specific boundaries | In progress; fixed game contracts, typed changed workflows and compatibility boundary implemented |
-| **Next: host prerequisites** | Extend reusable rich previews / anchored popovers | Existing facilities audited; implement and validate before dependent PoB inspection/editing UI |
-| **Host prerequisites** | Add subtle scroll-container edge cues | Agreed; implement and validate on generic host surfaces before widget adoption |
+| **Next: host prerequisites** | Extend reusable rich previews / anchored popovers | Implemented; 136 anchored, 32 passive and 14 indexed-source native assertions pass, including themes and motion; ready for PoB adoption with integrated acceptance still required |
+| **Host prerequisites** | Add subtle scroll-container edge cues | Implemented; 22 cue, 42 reading-focus, 93 directional, 10 indexed-reveal and 16 indexed-continuity native assertions pass; final integrated app audit remains |
 | **Host prerequisites** | Finish shared layout, focus, scrolling, sizing and accessibility changes needed by planned widget workflows | Indexed reveal/continuity and busy-focus fixes tested; qualify remaining shared changes before adoption |
 | After host prerequisites | Adjust widget dimensions and stabilize workspace sizing | Sizing policy implemented; integrated native verification pending |
 | After host prerequisites | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; candidate packaging complete; integrated inspection pending |
@@ -102,6 +102,13 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 ## Shared rich previews and anchored popovers
 
 Audit (2026-10-18): `PresentOnFocus` and `FocusPresentationSurface` already provide widget-authored, bounded passive content selected locally by host focus, including indexed-row ownership. Reuse these instead of adding a duplicate passive inspector. Extend placement/activation for anchored previews; retain passive-fragment validation. Explicit interactive inspection should reuse the modal focus scope, Back handling and restoration with an anchored presentation option. Existing presentation identities, row leases and transient input admission must remain authoritative. No public API shape is finalized by this audit.
+
+Control-flow decision (2026-10-18): passive previews follow settled focus or hover
+without moving focus, selecting an entry or consuming A/B. PoB keeps the existing
+Select/Add/Replace action on A. Interactive inspection is a separately labelled
+contextual action, using the existing modal scope and B/Close restoration. Choose
+its shortcut per screen only after checking existing bindings; no globally reserved
+Inspect button. Host prerequisites remain ahead of PoB adoption.
 
 
 Provide reusable widget-authored content anchored to an existing element. Content is composed from the normal widget UI elements; it is not restricted to item descriptions, artwork or statistics and does not require another layout language.

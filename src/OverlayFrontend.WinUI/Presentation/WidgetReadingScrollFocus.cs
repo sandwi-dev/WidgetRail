@@ -40,7 +40,8 @@ internal sealed class WidgetReadingScrollFocus : IDisposable
             if(parent is ScrollViewer clip)
             {
                 var bounds=element.TransformToVisual(clip).TransformBounds(new(0,0,element.ActualWidth,element.ActualHeight));
-                if(bounds.Right<=.5||bounds.Bottom<=.5||bounds.X>=clip.ViewportWidth-.5||bounds.Y>=clip.ViewportHeight-.5)return false;
+                var visible = WidgetScrollViewport.ContentBounds(clip);
+                if(bounds.Right<=visible.Left+.5||bounds.Bottom<=visible.Top+.5||bounds.X>=visible.Right-.5||bounds.Y>=visible.Bottom-.5)return false;
                 if(ReferenceEquals(clip,viewport))return true;
             }
         }

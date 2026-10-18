@@ -78,12 +78,13 @@ internal sealed partial class WidgetViewPresenter
         if (directionalScroll is not { } gesture || Horizontal(direction) != Horizontal(gesture.Direction) ||
             gesture.NativeAnchor is not FrameworkElement anchor) return false;
         var rect = anchor.TransformToVisual(gesture.Viewport).TransformBounds(new(0, 0, anchor.ActualWidth, anchor.ActualHeight));
+        var visible = WidgetScrollViewport.ContentBounds(gesture.Viewport);
         var towardAnchor = direction switch
         {
-            FocusNavigationDirection.Up => rect.Bottom <= .5,
-            FocusNavigationDirection.Down => rect.Y >= gesture.Viewport.ViewportHeight - .5,
-            FocusNavigationDirection.Left => rect.Right <= .5,
-            FocusNavigationDirection.Right => rect.X >= gesture.Viewport.ViewportWidth - .5,
+            FocusNavigationDirection.Up => rect.Bottom <= visible.Top + .5,
+            FocusNavigationDirection.Down => rect.Y >= visible.Bottom - .5,
+            FocusNavigationDirection.Left => rect.Right <= visible.Left + .5,
+            FocusNavigationDirection.Right => rect.X >= visible.Right - .5,
             _ => false,
         };
         if (!towardAnchor) return false;

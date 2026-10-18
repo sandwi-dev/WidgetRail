@@ -177,6 +177,14 @@ public static class ViewSnapshotValidator
             Add("$.pinnedLayouts", "aggregate_resources_too_large",
                 $"The full widget and pinned projections may reference at most {ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount} resources in total.");
         Visit(snapshot.Root, "$.root", 1, "$.root");
+        if (snapshot.Root is { Kind: ViewNodeKind.ModalLayer, Children.Count: 2, AnchoredPresentation: { Anchor: { } anchor } })
+        {
+            var anchorId = anchor.ElementId ?? anchor.IndexedItem?.CollectionId;
+            if (anchorId is not null && ids.TryGetValue(anchorId, out var target) &&
+                (!target.Path.StartsWith("$.root.children[0]", StringComparison.Ordinal) ||
+                    anchor.IndexedItem is not null && target.Node.Kind != ViewNodeKind.IndexedCollection))
+                Add("$.root.anchoredPresentation.anchor", "invalid_presentation_anchor", "A popover anchor must belong to the background view.");
+        }
         if (errors.Count == 0) ValidateTransitions(snapshot.Root);
         ValidateFocusPresentationOwnership(snapshot.Root, "$.root", consumerDepth: 0);
         if (mediaViewportCount != 0 && snapshot.EmbeddedMediaSession is null)
@@ -1648,6 +1656,22 @@ public static class ViewSnapshotValidator
                         children[index], $"{path}.children[{index}]", 1, null, ref contentBudget);
             }
 
+            if (node.FocusPreview is { } preview)
+            {
+                if (node.Kind != ViewNodeKind.FocusPresentationSurface)
+                    Add(path + ".focusPreview", "focus_preview_not_allowed", "Only a focus presentation surface may declare passive preview options.");
+                if (node.RetainLastPresentation == true)
+                    Add(path + ".retainLastPresentation", "focus_preview_retention_not_allowed", "An anchored preview cannot retain an absent source.");
+                try { FocusPreviewContract.Validate(preview); }
+                catch (ArgumentException) { Add(path + ".focusPreview", "invalid_focus_preview", "Invalid preview dimensions, activation or timing."); }
+            }
+            if (node.AnchoredPresentation is { } anchored)
+            {
+                if (node.Kind != ViewNodeKind.ModalLayer)
+                    Add(path + ".anchoredPresentation", "anchored_presentation_not_allowed", "Only a modal layer may declare popover placement.");
+                try { AnchoredPresentationContract.Validate(anchored); }
+                catch (ArgumentException) { Add(path + ".anchoredPresentation", "invalid_anchored_presentation", "Invalid anchor, placement or dimensions."); }
+            }
             if (node.Kind is ViewNodeKind.ModalLayer)
             {
                 if (path != "$.root" || children.Count != 2 ||
@@ -1834,7 +1858,7 @@ public static class ViewSnapshotValidator
                     node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null ||
                     node.FocusPersistenceId is not null || node.Focus is not null ||
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
-                    node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
+                    node.FocusPreview is not null || node.AnchoredPresentation is not null || node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
                     node.DefaultFocusPresentation is not null || node.Transition is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                     node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null || node.IndexedOccurrenceKeys is not null ||

@@ -39,19 +39,21 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         if (source is null || view is null || !view.IsLoaded || FindNativeScroll(view) is not { } scroll) return null;
         var horizontal = axis == ScrollAxis.Horizontal;
-        var extent = horizontal ? scroll.ViewportWidth : scroll.ViewportHeight;
+        var visible = WidgetScrollViewport.ContentBounds(scroll);
+        var start = horizontal ? visible.Left : visible.Top;
+        var end = horizontal ? visible.Right : visible.Bottom;
         var candidates = containers.Select(pair => (Container: pair.Key, Slot: pair.Value.Slot))
             .Where(pair => pair.Container.IsLoaded && pair.Slot.Key is not null)
             .Select(pair => (pair.Slot, Bounds: pair.Container.TransformToVisual(scroll).TransformBounds(
                 new Rect(0, 0, pair.Container.ActualWidth, pair.Container.ActualHeight))))
-            .Where(pair => (horizontal ? pair.Bounds.Right : pair.Bounds.Bottom) > 0 &&
-                (horizontal ? pair.Bounds.X : pair.Bounds.Y) < extent)
+            .Where(pair => (horizontal ? pair.Bounds.Right : pair.Bounds.Bottom) > start &&
+                (horizontal ? pair.Bounds.X : pair.Bounds.Y) < end)
             .OrderBy(pair => horizontal ? pair.Bounds.X : pair.Bounds.Y).ThenBy(pair => pair.Slot.Index).ToArray();
         if (candidates.Length == 0) return null;
         var first = preferFocused && FocusedIndex() is { } focus && candidates.Any(pair => pair.Slot.Index == focus)
             ? candidates.First(pair => pair.Slot.Index == focus) : candidates[0];
         var size = horizontal ? first.Bounds.Width : first.Bounds.Height;
-        var position = horizontal ? first.Bounds.X : first.Bounds.Y;
+        var position = (horizontal ? first.Bounds.X : first.Bounds.Y) - start;
         var query = source.Declaration.IndexedCollection!;
         return new(identity, query.SourceId, query.QueryGeneration, layoutKind!.Value, axis!.Value,
             first.Slot.Index, first.Slot.Key!, size > 0 ? Math.Clamp(-position / size, -1, 1) : 0, preferFocused ? position : null);
@@ -78,7 +80,8 @@ internal sealed partial class WidgetIndexedCollectionView
         var bounds = container.TransformToVisual(scroll).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
         var horizontal = axis == ScrollAxis.Horizontal;
         var size = horizontal ? bounds.Width : bounds.Height;
-        var position = horizontal ? bounds.X : bounds.Y;
+        var visible = WidgetScrollViewport.ContentBounds(scroll);
+        var position = horizontal ? bounds.X - visible.X : bounds.Y - visible.Y;
         var delta = memory.LeadingPosition is { } leading ? position - leading : position + Math.Clamp(memory.ClippedFraction, -1, 1) * size;
         var current = horizontal ? scroll.HorizontalOffset : scroll.VerticalOffset;
         var desired = Math.Clamp(current + delta, 0, horizontal ? scroll.ScrollableWidth : scroll.ScrollableHeight);

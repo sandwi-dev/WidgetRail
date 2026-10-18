@@ -88,7 +88,8 @@ internal sealed partial class WidgetViewPresenter
         { CancelScrollReveal(); return; }
         var bounds = element.TransformToVisual(viewport).TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
         var horizontal = declarations[scroll.Identity.Id].Node.ScrollAxis == ScrollAxis.Horizontal;
-        var offset = horizontal ? viewport.HorizontalOffset + bounds.X : viewport.VerticalOffset + bounds.Y;
+        var visible = WidgetScrollViewport.ContentBounds(viewport);
+        var offset = horizontal ? viewport.HorizontalOffset + bounds.X - visible.X : viewport.VerticalOffset + bounds.Y - visible.Y;
         var limit = horizontal ? viewport.ScrollableWidth : viewport.ScrollableHeight;
         CancelScrollReveal(); // Consume before ChangeView can trigger layout again.
         viewport.ChangeView(horizontal ? Math.Clamp(offset, 0, limit) : null,

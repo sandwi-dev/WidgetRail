@@ -8,6 +8,8 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Anchored presentations preserve modal scope and bounded versioned geometry", AnchoredPresentationTests.Contract),
+    ("Focus previews preserve passive bounded versioned ownership", FocusPreviewTests.Contract),
     ("Text suggestions are whole-entry bounded versioned and reusable", TextSuggestionTests.Run),
     ("Web session shared batching preserves Unicode envelopes and bounds", WebSessionBatchTests.Run),
     ("Activity sources coalesce preserve ownership and stay bounded", ActivityServiceTests.Contract),

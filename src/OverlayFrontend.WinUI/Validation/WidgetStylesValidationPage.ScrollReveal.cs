@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using WidgetRail.WidgetBridge;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
@@ -45,10 +46,11 @@ internal sealed partial class WidgetStylesValidationPage
                 await Task.Delay(500);
                 var target = Find<TextBlock>("Widget.gallery.message." + i)!;
                 var y = target.TransformToVisual(viewport).TransformPoint(new(0, 0)).Y;
-                observations.Add(new { index = i, before, offset = viewport.VerticalOffset, y, viewport.ViewportHeight, viewport.ScrollableHeight,
+                var visible = WidgetScrollViewport.ContentBounds(viewport);
+                observations.Add(new { index = i, before, offset = viewport.VerticalOffset, y, visible, viewport.ViewportHeight, viewport.ScrollableHeight,
                     focus = button.FocusState.ToString(), diagnostics = presenter.ScrollRevealDiagnostics() });
-                Check(viewport.VerticalOffset > before + 1 && y >= -1 && y + target.ActualHeight <= viewport.ViewportHeight + 1 &&
-                    (y < 8 || Math.Abs(viewport.VerticalOffset - viewport.ScrollableHeight) < 1),
+                Check(viewport.VerticalOffset > before + 1 && y >= visible.Top - 1 && y + target.ActualHeight <= visible.Bottom + 1 &&
+                    (Math.Abs(y - visible.Top) < 1 || Math.Abs(viewport.VerticalOffset - viewport.ScrollableHeight) < 1),
                     "Appending message " + i + " aligns it with the viewport start");
                 Check(button.FocusState != FocusState.Unfocused, "Reveal retains append-button focus");
                 viewport.ChangeView(null, Math.Max(0, before - 50), null, true);

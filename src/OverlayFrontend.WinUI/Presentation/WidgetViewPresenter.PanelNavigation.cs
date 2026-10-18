@@ -47,6 +47,11 @@ internal sealed partial class WidgetViewPresenter
             if (ancestor is ScrollViewer || ReferenceEquals(ancestor, this))
             {
                 if (NavigationBounds((FrameworkElement)ancestor) is not { } clip) return null;
+                if (ancestor is ScrollViewer scroll)
+                {
+                    var content = scroll.TransformToVisual(this).TransformBounds(WidgetScrollViewport.ContentBounds(scroll));
+                    clip = new(content.X, content.Y, content.Width, content.Height);
+                }
                 var x = Math.Max(bounds.X, clip.X); var y = Math.Max(bounds.Y, clip.Y);
                 bounds = new(x, y, Math.Min(bounds.X + bounds.Width, clip.X + clip.Width) - x,
                     Math.Min(bounds.Y + bounds.Height, clip.Y + clip.Height) - y);

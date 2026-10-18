@@ -92,7 +92,8 @@ internal sealed partial class IndexedWidgetValidationPage
                 View()!.Items[index] is not IndexedItem<WidgetIndexedRow> { Value.Lease.IsCurrent: true }) return false;
             var scroll = Scroll();
             var bounds = row.TransformToVisual(scroll).TransformBounds(new(0, 0, row.ActualWidth, row.ActualHeight));
-            return bounds.Y >= -1 && bounds.Bottom <= scroll.ViewportHeight + 1;
+            var viewport = WidgetScrollViewport.ContentBounds(scroll);
+            return bounds.Y >= viewport.Top - 1 && bounds.Bottom <= viewport.Bottom + 1;
         }
         async Task SettledOffset()
         {

@@ -142,6 +142,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         // such mutation can trigger WinUI's focused-element-removal recovery.
         var focused = FocusedBinding();
         var oldScope = activeScope;
+        if (root.Kind == ViewNodeKind.ModalLayer) ClearFocusPreview();
+        // Native Focus() can complete before routed GotFocus. Preserve the
+        // actual opener before changing scopes and detaching its input subtree.
+        if (sameOwner && oldScope != nextPresentation.Scope && focused is not null)
+            RememberFocus(focused);
         TransitionCommit transition;
         ModalExit? modalExit;
         applying = true;
@@ -309,6 +314,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (!presentationActive || applying || !IsLoaded || frame is null) return true;
         if (!presentationInputEnabled) return true;
+        UseFocusedPreviewSource();
         // No row is focused yet. Directions cannot use the parking container as
         // a spatial target or cancel the only pending route back to real content.
         if (FindIndexedCollection() is { IsFocusParked: true, IsEntryPending: true }) return true;

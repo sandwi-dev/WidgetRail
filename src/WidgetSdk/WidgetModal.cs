@@ -16,6 +16,9 @@ public sealed record WidgetModal(
     /// </summary>
     public WidgetElement? HeaderActions { get; init; }
 
+    /// <summary>Optional widget-local popover placement. Missing, stale or off-screen anchors use a centered panel.</summary>
+    public AnchoredPresentation? AnchoredPresentation { get; init; }
+
     /// <summary>
     /// Wraps the entire content in a vertical scroll viewport. Set false when
     /// the content supplies its own bounded layout and scroll regions.
@@ -29,14 +32,16 @@ public sealed record WidgetModal(
 internal sealed record ModalLayerElement : WidgetElement
 {
     internal ModalLayerElement(string id, WidgetElement background, string backgroundScope,
-        WidgetElement dialog) : base(id)
+        WidgetElement dialog, AnchoredPresentation? anchoredPresentation = null) : base(id)
     {
         Background = background;
         BackgroundScope = backgroundScope;
         Dialog = dialog;
+        AnchoredPresentation = anchoredPresentation;
         RequiredStyleClasses = ["wrail-modal-layer"];
     }
 
+    private AnchoredPresentation? AnchoredPresentation { get; }
     private WidgetElement Background { get; }
     private string BackgroundScope { get; }
     private WidgetElement Dialog { get; }
@@ -57,6 +62,7 @@ internal sealed record ModalLayerElement : WidgetElement
         {
             Id = Id,
             Kind = ViewNodeKind.ModalLayer,
+            AnchoredPresentation = AnchoredPresentation,
             StyleClasses = StyleClasses,
             Children = [background, Dialog.ToProtocolNode()],
         };

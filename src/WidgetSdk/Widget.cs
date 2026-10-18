@@ -75,6 +75,7 @@ public sealed record WidgetView(
         StableIdentifier.Validate(modal.DismissActionId, nameof(modal));
         ArgumentException.ThrowIfNullOrWhiteSpace(modal.Title);
         ArgumentNullException.ThrowIfNull(modal.Content);
+        if (modal.AnchoredPresentation is { } anchor) AnchoredPresentationContract.Validate(anchor);
         if (Root is ModalLayerElement || EmbeddedMediaSession is not null)
             throw new InvalidOperationException("A modal requires an ordinary widget view without embedded media.");
         var scope = StableIdentifier.Child(modal.Id, "scope");
@@ -93,7 +94,7 @@ public sealed record WidgetView(
         return this with
         {
             Root = new ModalLayerElement(StableIdentifier.Child(modal.Id, "layer"), Root,
-                RootScopeId(Root), dialog),
+                RootScopeId(Root), dialog, modal.AnchoredPresentation),
             ActiveInputScopeId = scope,
             InitialFocusId = modal.InitialFocusId,
             QuickActions = [],

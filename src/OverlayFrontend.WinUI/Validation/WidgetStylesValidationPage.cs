@@ -40,6 +40,12 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--focus-previews-output") is { } previewsOutput)
+        { await FocusPreviewsAsync(previewsOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--scroll-edge-cues-output") is { } scrollCuesOutput)
+        { await ScrollEdgeCuesAsync(scrollCuesOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--anchored-validation-output") is { } anchoredOutput)
+        { await AnchoredPresentationsAsync(anchoredOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--widget-status-fixtures") is { } statusFixtures)
         { await WidgetStatusAsync(statusFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--marketplace-fixtures") is { } marketplaceFixtures)

@@ -84,9 +84,8 @@ internal sealed partial class WidgetViewPresenter
             !bindings.TryGetValue(gesture.Owner.Identity.Id, out var owner) || !ReferenceEquals(owner, gesture.Owner))
         { scrollGesture = null; return true; }
         var scroll = gesture.Viewport;
-        var width = scroll.ViewportWidth;
-        var height = scroll.ViewportHeight;
-        if (width <= 0 || height <= 0) return false;
+        var visible = WidgetScrollViewport.ContentBounds(scroll);
+        if (visible.Width <= 0 || visible.Height <= 0) return false;
         // Reading-only viewports (notes, preview details) own focus themselves.
         // Indexed collections may still be realizing rows, so retain their wait.
         if (owner.Element is not WidgetIndexedCollectionView &&
@@ -103,7 +102,7 @@ internal sealed partial class WidgetViewPresenter
             .Select(control => (Control: control, Bounds: control.TransformToVisual(scroll).TransformBounds(
                 new Rect(0, 0, control.ActualWidth, control.ActualHeight))))
             .Where(item => item.Bounds.Width > 0 && item.Bounds.Height > 0 &&
-                item.Bounds.Right > .5 && item.Bounds.Bottom > .5 && item.Bounds.X < width - .5 && item.Bounds.Y < height - .5)
+                item.Bounds.Right > visible.Left + .5 && item.Bounds.Bottom > visible.Top + .5 && item.Bounds.X < visible.Right - .5 && item.Bounds.Y < visible.Bottom - .5)
             .ToArray();
         // Preserve focus if any of its pixels are still in the viewport, matching
         // the native host. Otherwise prefer a fully visible row at the leading edge.
@@ -111,8 +110,8 @@ internal sealed partial class WidgetViewPresenter
         if (candidates.Any(item => IsWithin(focused, item.Control))) { scrollGesture = null; return true; }
         var horizontal = scroll.HorizontalScrollMode != ScrollMode.Disabled && scroll.ScrollableWidth > 0 &&
             (scroll.VerticalScrollMode == ScrollMode.Disabled || scroll.ScrollableHeight <= 0);
-        var target = candidates.OrderByDescending(item => item.Bounds.X >= -.5 && item.Bounds.Y >= -.5 &&
-                item.Bounds.Right <= width + .5 && item.Bounds.Bottom <= height + .5)
+        var target = candidates.OrderByDescending(item => item.Bounds.X >= visible.Left - .5 && item.Bounds.Y >= visible.Top - .5 &&
+                item.Bounds.Right <= visible.Right + .5 && item.Bounds.Bottom <= visible.Bottom + .5)
             .ThenBy(item => horizontal ? item.Bounds.X : item.Bounds.Y)
             .ThenBy(item => horizontal ? item.Bounds.Y : item.Bounds.X).FirstOrDefault().Control;
         if (target is null) return owner.Element is not WidgetIndexedCollectionView && FocusReadingRegion();

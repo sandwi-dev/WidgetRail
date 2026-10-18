@@ -127,6 +127,8 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
                 await ValidateScrollRevealAsync(revealResult);
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-continuity-validation") is { } continuityResult)
                 await ValidateContinuityAsync(continuityResult);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-preview-validation") is { } previewResult)
+                await ValidateIndexedPreviewsAsync(previewResult);
             if (Environment.GetCommandLineArgs().Contains("--indexed-state-validation"))
             {
                 activationResult = "pending"; Observe();

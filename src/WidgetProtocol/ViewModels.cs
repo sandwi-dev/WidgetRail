@@ -476,6 +476,7 @@ public sealed record ViewNode
     public GridLayoutDefinition? GridLayout { get; init; }
     /// <summary>Attached placement for a direct child of an explicit Grid.</summary>
     public GridCellPlacement? GridCell { get; init; }
+    public AnchoredPresentation? AnchoredPresentation { get; init; }
     /// <summary>
     /// Optional author cap on responsive columns. Omitting it lets the host use
     /// any safe count allowed by the protocol and available width.
@@ -526,6 +527,8 @@ public sealed record ViewNode
     /// fragment for this consumer.
     /// </summary>
     public ViewNode? DefaultFocusPresentation { get; init; }
+    /// <summary>Optional host-timed anchored placement of the existing focus fragment (protocol v92).</summary>
+    public FocusPreviewOptions? FocusPreview { get; init; }
     /// <summary>
     /// Selects the bounded axis for a Scroll node. The host owns the offset,
     /// clips descendants, and reveals controller focus; widgets never publish pixels.

@@ -196,6 +196,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private int headerRevision;
     private bool repartitioned;
     private bool surfaces;
+    private bool focusPreviews;
     private bool modalMode;
     private int? modalItem;
     private long modalOpening;
@@ -309,6 +310,13 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         Volatile.Write(ref status, action.ActionId);
         if (action.ActionId == "parent" && surfaces) releaseBackground.TrySetResult();
         if (action.ActionId == "content") source.UpdateContent(surfaces ? 101 : 1);
+        if (action.ActionId == "preview-mode")
+        {
+            focusPreviews = true; surfaces = grid = grouped = modalMode = false; modalItem = null; reveal = null;
+            source.PublishQuery(150, 100);
+            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+        }
+        if (action.ActionId == "preview-replace") { entry = null; source.PublishQuery(151, 100); }
         if (action.ActionId == "focus-placeholder")
         {
             activationReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -417,6 +425,8 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private WidgetElement Collection()
     {
         var element = grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items");
+        if (focusPreviews) return UI.FocusPresentationSurface(element, UI.Text("No selection", "preview-default"), "preview-surface")
+            with { Preview = new(320, 180, DelayMilliseconds: 100) };
         if (surfaces) return UI.BackgroundSurface(
             UI.FocusPresentationSurface(element.Shortcut(ControllerButton.X, "parent"), UI.Text("Default summary", "default-summary"), "summary-surface") with { RetainLastPresentation = true },
             "background-surface").UseFocusedDescendantArtwork();

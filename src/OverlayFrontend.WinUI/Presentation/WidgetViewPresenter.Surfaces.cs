@@ -65,6 +65,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void ClearSurfaceState()
     {
+        ClearFocusPreview();
         foreach (var retention in surfaceRetentions.Values) retention.Dispose();
         surfaceRetentions.Clear(); surfaceSources.Clear();
     }
@@ -78,7 +79,7 @@ internal sealed partial class WidgetViewPresenter
         foreach (var binding in bindings.Values)
         {
             var node = declarations[binding.Identity.Id].Node;
-            if (binding.Element is not WidgetPresentationSurface) continue;
+            if (binding.Element is not WidgetPresentationSurface || node.FocusPreview is not null) continue;
             var kind = node.Kind == ViewNodeKind.BackgroundSurface ? PresentationSurfaceKind.Background : PresentationSurfaceKind.FocusFragment;
             var id = new PresentationSurfaceId(binding.Identity.Scope, node.Id, kind);
             surfaces.Add(new(id, new(kind == PresentationSurfaceKind.Background ? node : node.DefaultFocusPresentation!, binding.Identity.Scope), node.RetainLastPresentation));
@@ -155,6 +156,7 @@ internal sealed partial class WidgetViewPresenter
             }
             else if (surface.Fragment is { } fragment)
             {
+                if (previewSuspensions.GetValueOrDefault(surface) is { IsCompleted: false }) continue;
                 fragment.Session = Session;
                 fragment.ResolveArtworkAsync = resolve;
                 fragment.ArtworkGeneration = generation;
@@ -166,6 +168,8 @@ internal sealed partial class WidgetViewPresenter
             if (selectedRow is null && surfaceRetentions.Remove(selection.Surface, out var unused)) unused.Dispose();
         }
 
+        UpdateFocusPreview();
+
         PresentationSurfaceId? Owner(string sourceId, PresentationSurfaceKind kind)
         {
             for (var declaration = declarations.GetValueOrDefault(sourceId); declaration is not null;
@@ -173,6 +177,7 @@ internal sealed partial class WidgetViewPresenter
             {
                 var wanted = kind == PresentationSurfaceKind.Background ? ViewNodeKind.BackgroundSurface : ViewNodeKind.FocusPresentationSurface;
                 if (declaration.Node.Kind != wanted) continue;
+                if (kind == PresentationSurfaceKind.FocusFragment && declaration.Node.FocusPreview is not null) return null;
                 // A nested background always owns its subtree, even when it opts
                 // out of consuming focus artwork. Never leak into an outer owner.
                 if (kind == PresentationSurfaceKind.Background && declaration.Node.UsesFocusedDescendantArtwork != true) return null;
