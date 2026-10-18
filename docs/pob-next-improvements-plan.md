@@ -16,6 +16,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | 4 | Complete passive-tree artwork and measure rendering improvements | Planned; not started |
 | 5 | Add whole-build and loadout comparison | Planned; not started |
 | 6 | Add unified search and direct navigation | Planned; not started |
+| Independent host change | Rename Marketplace to WidgetRail Catalogue | Agreed; not started |
 
 Cleanup comes before UI additions so new features use the improved boundaries. Preserve existing behavior during cleanup; keep feature changes separately reviewable.
 
@@ -91,6 +92,17 @@ Detailed layout and whether any selective transfer of changes should exist are s
 - [ ] Handle stale results, build switches, cancellation, unloading and missing targets without misdirected actions or focus jumps.
 
 The exact invocation shortcut, result grouping and action set remain to be designed. Do not promise every desktop command as a search action.
+
+## Host-wide naming: WidgetRail Catalogue
+
+Rename the user-facing Marketplace to **WidgetRail Catalogue**, using the user's preferred spelling. It is a place to discover, install and update widgets, not a shop.
+
+- [ ] Update the widget display name, main heading, Settings entry points, controller guide labels and user-facing status/error messages.
+- [ ] Update user-facing documentation and installation/update instructions consistently, including the PoB README.
+- [ ] Preserve existing widget IDs, intent/action identifiers, package identities and protocol/API contracts so the display rename does not break installed configurations or integrations.
+- [ ] Check label fit and navigation in the catalogue and Settings. Update existing name assertions where applicable.
+
+This is independent of the PoB architecture work. Technical identifiers and historical records need not be mechanically renamed.
 
 ## Resource and trade decisions
 
