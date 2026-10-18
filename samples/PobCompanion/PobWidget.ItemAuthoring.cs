@@ -11,8 +11,8 @@ public sealed partial class PobWidget
     private int inventoryId, authoringId;
     private string inventorySearch="", inventorySlot="";
     private string craftRarity="RARE";
-    private ListQuery inventoryQuery=new("",[]);
-    private WidgetIndexedCollection<ListQuery,ListEntry>? inventoryCollection;
+    private ItemCandidateQuery inventoryQuery=new(null,[]);
+    private WidgetIndexedCollection<ItemCandidateQuery,ItemCandidateEntry>? inventoryCollection;
     private sealed record InventoryView(JsonElement State,int Id,JsonElement Item,string[] Slots);
     private string[] inventorySlots=[];
     private JsonElement[] modifierSources=[];
@@ -213,26 +213,23 @@ public sealed partial class PobWidget
 
     private WidgetElement StoredInventoryWorkspace()
     {
-        inventoryCollection??=CreateIndexedCollection<ListQuery,ListEntry>("pob.stored.source",inventoryQuery,0,new()
-        {
-            ReadRange=(query,start,count,token)=>{token.ThrowIfCancellationRequested();return ValueTask.FromResult<IReadOnlyList<ListEntry>>(query.Entries.Skip(start).Take(count).ToArray());},
-            ItemKey=entry=>new(entry.Key),
-            RenderItem=(_,entry,context)=>UI.Button(entry.Label,"select",context.Id("entry")).Selected(entry.Selected).FocusRight("pob.inventory-edit").Classes("pob-list-item"),
-            OnAction=(query,entry,action,token)=>{lock(gate){if(!ReferenceEquals(query,inventoryQuery)||busy||detailKind!="inventory"||action.ActionId!="select")return ValueTask.CompletedTask;return OnActionAsync(action with{ActionId=entry.Action},token);}}
-        });
+        inventoryCollection??=CreateItemCandidateCollection("pob.stored.source",inventoryQuery,"pob.stored.items");
         var all=A(inventoryState,"inventory");
+        var context=ItemCandidateContextFor(inventoryState,inventorySearch,unique:false);
         var entries=all.Where(i=>(S(i,"title")+" "+S(i,"base")).Contains(inventorySearch,StringComparison.OrdinalIgnoreCase))
-            .Select(i=>new ListEntry(I(i,"id").ToString(),S(i,"title")+(A(i,"uses").Length>0?" · In use":" · Unequipped"),"inventory-select."+I(i,"id"),I(i,"id")==inventoryId)).ToArray();
-        if(!inventoryQuery.Entries.SequenceEqual(entries))
+            .Select(i=>new ItemCandidateEntry(I(i,"id").ToString(),CandidateText(S(i,"title"),512),"inventory-select."+I(i,"id"),I(i,"id"),"",
+                CandidateText(S(i,"base"),512),CandidateText(S(i,"rarity"),64),
+                CandidateText(string.Join("; ",A(i,"uses").Select(u=>u.GetString()??"")),1800),false,I(i,"id")==inventoryId)).ToArray();
+        if(!inventoryQuery.Entries.SequenceEqual(entries)||inventoryQuery.Context!=context||!ReferenceEquals(inventoryQuery.Context?.Build,result))
         {
-            var same=inventoryQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));inventoryQuery=new("inventory",entries);
+            var same=inventoryQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));inventoryQuery=new(context,entries);
             if(same)inventoryCollection.UpdateContent(inventoryQuery);else inventoryCollection.PublishQuery(inventoryQuery,entries.Length);
         }
         var tools=QuickControls(UI.Stack("pob.stored.tools",UI.Row("pob.stored.header",Button("Back to equipment","back"),Text("Item inventory","stored.title","pob-heading")).Classes("pob-toolbar"),
             UI.Row("pob.stored.create",Button(pastedItem is null?"Craft item":"Continue item draft","item-create"),Button("Unique library","item-uniques").Disabled(pastedItem is not null),Button("Paste item","item-paste").Disabled(pastedItem is not null)).Classes("pob-toolbar"),
             SearchField(UI.TextEntry(inventorySearch,"Search inventory","inventory-search","pob.inventory-search",100),inventoryState,
                 ()=>all.Select(i=>(S(i,"title"),S(i,"title")+" "+S(i,"base"),S(i,"base")))).Classes("pob-input"),Text($"{entries.Length} of {all.Length} items","stored.count","pob-muted")),"pob.inventory-search","pob.stored.list","Items",NeedsQuickControls(entries.Length));
-        var list=QuickControls(UI.Stack("pob.stored.list",UI.CollectionList("pob.stored.items",inventoryCollection,64,"Item inventory").Classes("pob-scroll")).Classes("pob-workspace"),"pob.stored.items","pob.stored.tools","Search",NeedsQuickControls(entries.Length));
+        var list=QuickControls(UI.Stack("pob.stored.list",ItemCandidatePreview(UI.CollectionList("pob.stored.items",inventoryCollection,64,"Item inventory").Classes("pob-scroll"),"pob.stored.preview")).Classes("pob-workspace"),"pob.stored.items","pob.stored.tools","Search",NeedsQuickControls(entries.Length));
         var details=new List<WidgetElement>();
         if(inventoryId>0)
         {

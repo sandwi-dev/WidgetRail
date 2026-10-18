@@ -40,6 +40,12 @@ Pending work and saved history survive widget unloading and restart. Recovery ca
 
 ## Loadouts and skills
 
+Gem, inventory and unique-library candidates offer **X → Inspect** (or the pointer
+context menu). A keeps its normal selection action. Focus previews show already
+loaded information; inspection keeps the list and search in place. Use the explicit
+Add, Replace, Equip or Open item draft action when ready. Inventory inspection lets
+you choose an eligible equipment slot. Back/Close returns to the same candidate.
+
 For engines with linked loadouts, **Build & import → Save current setup as a new loadout** creates independent tree, item, skill and configuration sets. Existing loadouts remain accessible even when they previously shared a single set. Switching sets retains the main skill by its identity when there is one unambiguous match; otherwise it selects the first group instead of retaining an unrelated row number.
 
 **Skills** and **Items** keep the list beside the selected entry. Skills offers New group, Paste group and Manage group: name, equipment slot, duplicate, move and delete; add, replace, enable and remove gems through a searchable virtualized catalog. Gem creation uses upstream editor defaults. Skill options inspect and edit that group without changing the main calculation group. Item comparisons name the replaced and proposed items and show changed statistics before Apply. Descriptions preserve upstream inline formatting through native rich text and theme colors.

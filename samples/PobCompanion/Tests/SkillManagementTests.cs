@@ -150,6 +150,11 @@ internal static class SkillManagementTests
                 check(lease.RouteAction(row.Key,ControllerButton.X) is null&&Get("gemInspection") is null,"Retired query cannot reopen a stale gem inspector");
                 await Action("gem-search","");
             }
+            var oldQuery=Get("gemQuery");
+            var equalReplacement=Result() with { };
+            typeof(PobWidget).GetField("result",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(widget,equalReplacement);
+            _=View();
+            check(!ReferenceEquals(oldQuery,Get("gemQuery")),"Equal-valued replacement builds retire the old gem query identity");
             check(catalog.Any(g=>g.GetProperty("tagString").GetString()!.Contains("Projectile",StringComparison.OrdinalIgnoreCase)),"Catalog carries upstream human-readable gem tags");
             await Action("gem-search","projectile");
             var expectedTags=catalog.Where(g=>g.GetProperty("name").GetString()!.Contains("projectile",StringComparison.OrdinalIgnoreCase)||

@@ -190,7 +190,7 @@ public sealed partial class PobWidget
             .Select(x=>new GemEntry(WidgetIds.Scope("gem").KeyedId("entry",S(x.gem,"id")),S(x.gem,"name")+(B(x.gem,"support")?" · Support":" · Active skill")+
                 (gemSort!="name"&&x.gem.TryGetProperty("comparison",out var value)?" · "+value.GetDouble().ToString("N0",System.Globalization.CultureInfo.InvariantCulture):""),"gem-pick."+x.i,Inspection:gemInspectionCatalog[x.i])).ToArray();
         var context=CaptureGemPickerContext();
-        if(!gemQuery.Entries.SequenceEqual(entries)||gemQuery.Context!=context){gemQuery=new(entries,context);gemCollection.PublishQuery(gemQuery,entries.Length);}
+        if(!gemQuery.Entries.SequenceEqual(entries)||gemQuery.Context!=context||!ReferenceEquals(gemQuery.Context?.Build,context.Build)){gemQuery=new(entries,context);gemCollection.PublishQuery(gemQuery,entries.Length);}
         ContainerElement results=UI.Stack("pob.gem-picker.results",entries.Length==0?Text("No matching gems.","gem-picker.empty","pob-muted"):
             UI.FocusPresentationSurface(UI.CollectionList("pob.gems",gemCollection,64,"Available gems").Classes("pob-scroll"),
                 UI.Text("","pob.gem-preview.empty"),"pob.gem-preview") with{Preview=new(Width:420,Height:280)}).Classes("pob-workspace");

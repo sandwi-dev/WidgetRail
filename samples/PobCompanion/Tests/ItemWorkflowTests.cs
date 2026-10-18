@@ -7,6 +7,7 @@ internal static class ItemWorkflowTests
 {
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string xml,Action<bool,string> check)
     {
+        await ItemCandidateInspectionTests.RunAsync(game,root,runtime,adapter,xml,check);
         var directory=Path.Combine(Path.GetTempPath(),"widgetrail-item-workflow-"+Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);var buildId=Guid.NewGuid().ToString("N");
         File.WriteAllText(Path.Combine(directory,buildId+".xml"),xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),buildId);

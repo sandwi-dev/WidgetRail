@@ -292,3 +292,31 @@ replaying the same restore scope correctly recalled its prior focus.
 Native checks use real widget declarations and local action completions. Actual
 hardware Apply/Keep/Revert and the integrated cumulative candidate remain unverified.
 Brightness/DDC, dimmer overlays and vendor color controls are not falsely exposed.
+
+## Inventory and unique-library inspection — 2026-10-18
+
+Inventory and unique candidate lists now use shared passive previews and local X /
+context-menu inspection. Focus reads only cached catalog facts; full details load on
+explicit Inspect. Inspection preserves list/query/selection and fences build, catalog,
+query and action tokens. Inventory offers upstream-eligible slot selection and explicit
+Equip. Unique inspection opens the cached recoverable draft only on explicit choice.
+A retains its prior selection behavior. A gem query also retires on an equal-valued
+replacement result object, matching its identity-based action admission.
+
+Real-engine item suites: PoE1 81/81, PoE2 79/79. Gem suites after identity hardening:
+PoE1 69/69, PoE2 71/71. Evidence: `item-inspection-poe1-03.log`,
+`item-inspection-poe2.log`, `gem-identity-poe1.log`, `gem-identity-poe2.log`.
+
+`item-inspection-native04/native-result.json`: 184 native checks across both games,
+both candidate types, Mono Ink/Mineral Light and 1320x900/820x600. Checks include
+passive focus/non-mutation, anchored bounds, scrolling, explicit equip reachability,
+slot dropdown cancellation/confirmation, Close restoration and subsequent A action.
+Representative dark inventory and light unique captures were inspected. These use
+actual exported content with demanded rows materialized; they complement real indexed
+and engine checks and do not establish full live-session or physical acceptance.
+The fixture now waits for actual option focus before sending A and for opener focus
+after dismissal; confirming even the current option intentionally dispatches once.
+
+Pre-commit review caught invalid dot-separated indexed child ID segments and corrected
+them to stable hyphenated segments before successful engine/native verification.
+No normal-profile or live-service changes were needed.

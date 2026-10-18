@@ -16,7 +16,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | **Host prerequisites** | Finish shared layout, focus, scrolling, sizing and accessibility changes needed by planned widget workflows | Indexed reveal/continuity and busy-focus fixes tested; qualify remaining shared changes before adoption |
 | After host prerequisites | Adjust widget dimensions and stabilize workspace sizing | Sizing policy implemented; integrated native verification pending |
 | After host prerequisites | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; candidate packaging complete; integrated inspection pending |
-| After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Gem search, Changed settings and gem inspection implemented and qualified; inventory/unique inspection and remaining editing workflows in progress |
+| After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Gem search, Changed settings and gem/inventory/unique inspection implemented and qualified; inline editing, warnings and remaining workflows pending |
 | After host prerequisites | Complete passive-tree artwork and measure rendering improvements | In progress; both-engine artwork and bounded renderer verification underway |
 | After host prerequisites | Add whole-build and loadout comparison | Agreed; not started |
 | After host prerequisites | Add unified search and direct navigation | Agreed; not started |
@@ -24,7 +24,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 | Independent completed slice | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, setup prerequisites and card styling implemented; focused and native checks passed |
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Packaging, update bundle identity, one-time ordinary package seeding and Catalogue inventory implemented; deterministic checks pass; fresh assembled payload/native acceptance pending |
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | Implemented; offline and native player checks pass; integrated/live workflows pending |
-| Display widget expansion | Add trusted reusable display controls, then expose them in the widget | Agreed; provider capability work precedes its dependent widget UI |
+| Display widget expansion | Add trusted reusable display controls, then expose them in the widget | Implemented; 25 deterministic and 124 native presentation checks pass; real guarded hardware acceptance pending |
 | App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; offline tests/Inno fixture compile pass; real installed upgrade acceptance pending |
 | Final documentation pass | Reconcile current guides and remove superseded plans/discussions | README/first-use pass implemented; final whole-doc audit required before delivery |
 

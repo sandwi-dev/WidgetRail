@@ -14,6 +14,7 @@ public sealed partial class PobWidget
         {
             if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
+            if(HandleItemCandidateInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleGemInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleWebsiteAction(action))return ValueTask.CompletedTask;
             if(HandleRankingAction(action)){Invalidate();return ValueTask.CompletedTask;}

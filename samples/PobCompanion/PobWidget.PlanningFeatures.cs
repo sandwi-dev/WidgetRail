@@ -209,6 +209,7 @@ public sealed partial class PobWidget
     private WidgetElement FeaturePickerWorkspace()
     {
         if(featurePicker is not {} picker)return Text("Choose a setting again.","choice.missing");
+        if(picker.Prefix=="unique-item.")return UniqueCandidateWorkspace(picker.Choices);
         choiceCollection??=CreateIndexedCollection<GemQuery,GemEntry>("pob.choice-source",choiceQuery,0,new()
         {
             ReadRange=(query,start,count,token)=>ValueTask.FromResult<IReadOnlyList<GemEntry>>(query.Entries.Skip(start).Take(count).ToArray()),
@@ -233,9 +234,9 @@ public sealed partial class PobWidget
             toolRows.Add(Text("PoB's eligible modifiers for this item. Planning edits do not guarantee an in-game craft.","modifier.help","pob-small pob-muted"));
         }
         if(picker.Prefix=="craft-base.")toolRows.Add(UI.Select("Rarity",new[]{"NORMAL","MAGIC","RARE"}.Select(r=>new SelectOption(r,char.ToUpperInvariant(r[0])+r[1..].ToLowerInvariant(),"craft-rarity."+r,r==craftRarity)).ToArray(),"pob.craft-rarity").Classes("pob-select"));
-        toolRows.Add(SearchField(UI.TextEntry(choiceSearch,picker.Prefix=="unique-item."?"Search unique names or bases":"Search options","choice-search","pob.choice-search",100),
+        toolRows.Add(SearchField(UI.TextEntry(choiceSearch,"Search options","choice-search","pob.choice-search",100),
             picker.Choices,()=>picker.Choices.Select(c=>(Plain(S(c,"title")),Plain(S(c,"title")+" "+S(c,"description")),Plain(S(c,"description"))))).Classes("pob-input"));
-        toolRows.Add(Text($"{entries.Length} {(picker.Prefix=="unique-item."?"unique items":"options")}","choice.count","pob-muted"));
+        toolRows.Add(Text($"{entries.Length} options","choice.count","pob-muted"));
         return UI.Stack("pob.choice-picker",
             QuickControls(UI.Stack("pob.choice-tools",toolRows.ToArray()),"pob.choice-search","pob.choice-results","Options",NeedsQuickControls(entries.Length)),
             entries.Length==0?UI.Stack("pob.choice-results",Text("No matching options.","choice.empty")).Classes("pob-workspace"):
@@ -318,6 +319,7 @@ public sealed partial class PobWidget
 
     private WidgetView WithPlanningModal(WidgetView view)
     {
+        if(candidateInspection is not null)return WithItemCandidateInspection(view);
         if(timelessDetail is {} jewel)return view.WithModal(new("pob-timeless-detail",jewel.Row.Title,
             UI.Stack("pob.timeless.detail.body",UI.Row("pob.timeless.detail.actions",Button("Back to results","timeless-detail-close"),Button("Add to item inventory","timeless-add."+jewel.Row.Id)),
                 UI.VerticalScroll("pob.timeless.detail.lines",jewel.Lines).Classes("pob-scroll")).Classes("pob-card","pob-workspace"),"pob.timeless-detail-close","timeless-detail-close"){ScrollContent=false});
