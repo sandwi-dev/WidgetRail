@@ -647,3 +647,32 @@ app/controller/couch walkthrough, remaining final resource measurements and fina
 documentation reconciliation. Preserve the previously recorded unreproduced Bare
 rendering observation and the distinction between fixture, integrated service,
 native presentation and physical hardware/controller evidence.
+
+## Display hardware and diagnostic correction — 2026-10-18
+
+Installed Display Controls 0.1.1.1 on the normal-profile cumulative candidate was
+exercised through its actual UI. A separate read-only test process sampled Windows
+CCD/DXGI data during each preview and after restoration:
+
+- Odyssey G93SC: 5120×1440 changed from 240 Hz to 120 Hz; Revert restored 240 Hz.
+- A second 120 Hz preview was kept, independently observed, then 240 Hz was applied
+  and kept again. Both monitors' full summaries matched the original baseline.
+- HDR became enabled **and active** on the Odyssey during preview; Revert returned
+  both flags to false. Both monitor modes stayed at their original values.
+- P27h-20 remained 2560×1440 at 59.951 Hz, without HDR, throughout. Saved profile
+  file modification time remained 2026-10-11; these actions did not replace profiles.
+
+Evidence: `display-hardware-20261018/result.json` and its baseline/preview/kept/
+restored JSON captures. This is actual hardware with UI Automation, not a physical
+controller check. Cable disconnection remains covered by deterministic unavailable
+monitor/remapping/rollback tests rather than physical unplugging; unsupported HDR
+was not attempted on the second display. Brightness/vendor controls remain outside
+the supported capability set as explained in the maintained display reference.
+
+The earlier baseline-only restore log was traced to diagnostic serialization of a
+valid direct-mode target: its target-mode index is intentionally `uint.MaxValue`
+until Windows selects timings. Logging now represents unresolved timings as null
+and records requested HDR instead of indexing a nonexistent record and silently
+ending the logger. A regression verifies subsequent entries still arrive. The 25
+display checks pass, including blocked/failing diagnostics not delaying rollback.
+No native apply, guard deadline or rollback policy changed.

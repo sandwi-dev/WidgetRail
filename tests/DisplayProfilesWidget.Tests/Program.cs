@@ -9,6 +9,13 @@ using WidgetRail.Samples.DisplayProfiles;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetStyling;
 
+if (args is ["--controls-json"])
+{
+    var native = new WindowsDisplayNative();
+    Console.WriteLine(JsonSerializer.Serialize(new { utc = DateTimeOffset.UtcNow, current = native.Capture().Summaries(), controls = native.ReadControls() }));
+    return;
+}
+
 if (args is ["--controls-read"])
 {
     var controls = new WindowsDisplayNative().ReadControls();
@@ -626,6 +633,25 @@ static async Task AdvanceUntil(Task awaited, Task run, ManualClock clock)
 static async Task DiagnosticObservations()
 {
     using var temp = new TemporaryDirectory();
+    // A direct mode request carries uint.MaxValue until Windows resolves timing.
+    var modeTarget = DisplayControlConfiguration.WithMode(Fixture.Setup(1280), 0,
+        new DisplayControlMode("1920-1080-60-1",1920,1080,60,1)) with { Hdr = [true] };
+    var modeLogDirectory = Path.Combine(temp.Path,"mode-request");
+    var modeLog = new DisplayRestoreDiagnosticLog(modeLogDirectory,Guid.NewGuid().ToString("N"),()=>Fixture.Setup(1280));
+    await using (modeLog)
+    {
+        modeLog.Record("target",modeTarget);
+        modeLog.Record("after-target");
+    }
+    await modeLog.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+    var modeLines=File.ReadAllLines(Path.Combine(modeLogDirectory,"restore.log"));
+    Check(modeLines.Length==2 && modeLines[1].Contains("after-target"),"Unresolved mode timing stopped diagnostic processing");
+    using(var modeJson=JsonDocument.Parse(modeLines[0]))
+    {
+        var display=modeJson.RootElement.GetProperty("Setup").GetProperty("Displays")[0];
+        Check(display.GetProperty("DriverSelectedTiming").GetBoolean() && display.GetProperty("Signal0").ValueKind==JsonValueKind.Null &&
+            display.GetProperty("HdrEnabled").GetBoolean(),"Requested timing/HDR metadata is missing or fabricated");
+    }
     var baseline = Fixture.Setup(1280);
     var target = Fixture.Setup(1920);
     var native = new FakeNative { Current = baseline };

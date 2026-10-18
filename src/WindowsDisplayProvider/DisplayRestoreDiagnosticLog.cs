@@ -117,7 +117,9 @@ internal sealed class DisplayRestoreDiagnosticLog : IAsyncDisposable
         return new { configuration.Mode, Displays = paths.Select((path, index) =>
         {
             var source = modes[path.Source.ModeIndex].Source;
-            var signal = modes[path.Target.ModeIndex];
+            // A requested mode deliberately lets Windows choose driver timings.
+            // That valid pre-apply target has no target-mode record yet.
+            NativeMode? signal = path.Target.ModeIndex == uint.MaxValue ? null : modes[path.Target.ModeIndex];
             var identity = configuration.Targets[index];
             return new {
                 // No monitor names, raw device paths, EDID serials or profile names.
@@ -128,7 +130,9 @@ internal sealed class DisplayRestoreDiagnosticLog : IAsyncDisposable
                 source.Width, source.Height, source.X, source.Y, path.Target.Rotation,
                 RefreshNumerator = path.Target.Refresh.Numerator, RefreshDenominator = path.Target.Refresh.Denominator,
                 path.Target.Scaling, path.Target.Technology, path.Target.Available, path.Flags,
-                signal.Signal0, signal.Signal1, signal.Signal2, signal.Signal3, signal.Signal4, signal.Signal5
+                DriverSelectedTiming = signal is null, HdrEnabled = configuration.Hdr?[index],
+                Signal0 = signal?.Signal0, Signal1 = signal?.Signal1, Signal2 = signal?.Signal2,
+                Signal3 = signal?.Signal3, Signal4 = signal?.Signal4, Signal5 = signal?.Signal5
             };
         }).ToArray() };
     }
