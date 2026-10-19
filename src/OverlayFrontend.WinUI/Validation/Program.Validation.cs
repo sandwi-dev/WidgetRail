@@ -31,7 +31,7 @@ internal static partial class Program
             "--validate-slider", "--validate-context-menu"];
         if (arguments.Any(early.Contains)) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--shell-config") is not null) return;
-        string[] remaining = ["--validate-text-entry", "--validate-styles", "--validate-glyphs",
+        string[] remaining = ["--validate-extensions", "--validate-text-entry", "--validate-styles", "--validate-glyphs",
             "--validate-modals", "--validate-motion", "--validate-select", "--validate-surfaces",
             "--validate-grouped", "--validate-grouped-flat", "--validate-grouped-adapted",
             "--validate-controls", "--validate-focus-policy", "--validate-indexed",

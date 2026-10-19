@@ -3224,6 +3224,20 @@ static async Task UninstallWorkflow()
     Assert.Equal(0, (await RunCli(
         "uninstall", "dev.test.no-store", "--catalog", catalog)).Code);
 
+    var profileRoot = Path.Combine(temp.Path, "custom-profile");
+    var profilePackage = await CreatePackedPackageAsync(temp.Path, "dev.test.profile-cleanup", "1.0.0");
+    Assert.Equal(0, (await RunCli("install", profilePackage, "--catalog", catalog, "--settings-root", profileRoot)).Code);
+    var browserData = new WidgetRail.PlatformSettings.BrowserProfileLifecycleStore(profileRoot);
+    var original = await browserData.RegisterAsync("dev.test.profile-cleanup", "persistent-cli", "persistent-cli.json");
+    var otherData = new WidgetRail.PlatformSettings.BrowserProfileLifecycleStore(temp.Path);
+    var other = await otherData.RegisterAsync("dev.test.profile-cleanup", "persistent-other", null);
+    Assert.Equal(0, (await RunCli("uninstall", "dev.test.profile-cleanup", "--catalog", catalog, "--settings-root", profileRoot)).Code);
+    Assert.True((await browserData.ReadAsync("dev.test.profile-cleanup")).Removed, "Custom-profile uninstall did not record browser removal.");
+    Assert.True((await otherData.ReadAsync("dev.test.profile-cleanup")).Profiles.Contains(other!), "Custom-profile uninstall touched another Settings root.");
+    Assert.Equal(0, (await RunCli("install", profilePackage, "--catalog", catalog, "--settings-root", profileRoot)).Code);
+    var replacement = await browserData.RegisterAsync("dev.test.profile-cleanup", "persistent-cli", "persistent-cli.json");
+    Assert.True(replacement is not null && replacement.Name != original!.Name, "Custom-profile reinstall reused removed browser data.");
+
     var missing = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
     Assert.Equal(1, missing.Code);
     Assert.Contains("is not installed", missing.Error);

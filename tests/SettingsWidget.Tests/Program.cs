@@ -123,10 +123,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Full-trust installed applications disclose authority before enabling", FullTrustInstalledWidgetReview),
     ("Local widget installation is an exact host-owned action with feature-triggered permissions", LocalWidgetInstallationAction),
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
-    ("Enabled widget uninstall confirms before disabling and preserves data", EnabledWidgetUninstall),
+    ("Enabled widget uninstall confirms before disabling and preserves unrelated files", EnabledWidgetUninstall),
     ("Update file flow binds target and reviews the newly selected version", WidgetUpdateReviewFlow),
     ("Technical details expose one rollback action and reject obsolete version actions", CompactVersionManagement),
-    ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
+    ("Disabled Community uninstall confirms exact package and declares data removal", InstalledWidgetPackageUninstall),
     ("Built-in widgets remain available and can be disabled without removing files", BuiltInWidgetInventory),
     ("Bundled Marketplace technical details show its declared idle unloading policy", MarketplaceResidencyDetails),
     ("Installed copies cannot shadow built-in widget management", InstalledBuiltInCopy),
@@ -1720,7 +1720,8 @@ static async Task InstalledWidgetLocalDataClear()
     await Action(widget, "installed.local-data.open");
     Assert.Equal(SettingsPage.InstalledWidgetLocalData, widget.CurrentPage);
     var confirm = Snapshot(widget);
-    Assert.Contains("does not remove packages", Text(confirm.Root, "installed.local-data.help").Text!);
+    Assert.Contains("keeps the widget installed", Text(confirm.Root, "installed.local-data.help").Text!);
+    Assert.Contains("website sign-ins", Text(confirm.Root, "installed.local-data.help").Text!);
     Assert.Equal("installed.local-data.back", confirm.InitialFocusId);
     await Action(widget, "installed.local-data.clear");
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
@@ -1861,7 +1862,7 @@ static async Task InstalledWidgetPackageUninstall()
     Assert.Contains(selectedId, Text(confirmation.Root, "installed.uninstall.id").Text!);
     Assert.Contains("installed versions: 2",
         Text(confirmation.Root, "installed.uninstall.version").Text!);
-    Assert.Contains("Your saved data and sign-ins stay",
+    Assert.Contains("saved widget state, configuration and browser data",
         Text(confirmation.Root, "installed.uninstall.help").Text!);
     Assert.True(!JsonSerializer.Serialize(confirmation).Contains(service.LastToken!,
         StringComparison.Ordinal), "Confirmation rendered the uninstall token.");
@@ -1899,7 +1900,7 @@ static async Task InstalledWidgetPackageUninstall()
     Assert.Equal("retained", await File.ReadAllTextAsync(privateState));
     Assert.Equal(1, Buttons(list.Root).Count(item =>
         item.ActionId == "host.install-local-widget"));
-    Assert.Contains("package cleanup is pending", Text(list.Root, "settings.toast.message").Text!);
+    Assert.Contains("remaining cleanup will finish automatically", Text(list.Root, "settings.toast.message").Text!);
 
     await Action(widget, "installed.select.0");
     await Action(widget, "installed.toggle");

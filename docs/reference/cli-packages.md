@@ -83,8 +83,12 @@ not silently run an unreviewed alternative.
 & $wrail uninstall dev.example.volume-control --catalog .\scratch\catalog
 ```
 
-Package removal preserves saved widget data. Clearing private state, deleting
-credentials, and uninstalling the application are separate operations.
+Confirmed package removal also clears host-owned widget state, configuration and
+browser data. Use the same `--settings-root <profile>` on install/reinstall and
+uninstall when selecting a custom data root; otherwise it
+is the parent of the catalogue directory. The running host (or its next start) finishes native profile deletion
+automatically. Updates and version selection preserve data. Downloaded user files
+and separately stored integration credentials remain outside this cleanup.
 
 ## Install a remote release
 

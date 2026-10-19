@@ -18,6 +18,7 @@ internal sealed record UserWebAppDocument
 {
     public int SchemaVersion { get; init; } = 1;
     public UserWebApp[] Apps { get; init; } = [];
+    public string[] Removed { get; init; } = [];
 }
 
 /// <summary>Local website definitions, independent of installed executable packages and browser profiles.</summary>
@@ -78,6 +79,10 @@ public sealed class UserWebAppStore
             foreach(var app in document.Apps)
                 if(app is null || app.Name is null || app.Url is null || !IsId(app.Id) || !ids.Add(app.Id) || app.Name!=ValidateName(app.Name) ||
                     app.Url!=NormalizeUrl(app.Url) || app.Revision<1)throw Invalid("The saved webapp catalog is invalid.");
+            if (document.Removed is null || document.Removed.Length > MaximumApps || document.Removed.Any(id => !IsId(id) || ids.Contains(id)))
+                throw Invalid("Invalid webapp removal receipt.");
+            foreach (var removed in document.Removed)
+                await new BrowserProfileLifecycleStore(root).ResetAsync(removed, removed[IdPrefix.Length..], true, CancellationToken.None).ConfigureAwait(false);
             return document.Apps;
         }
         catch(JsonException error){throw new PlatformSettingsException("invalid_webapp_catalog","The saved webapp catalog could not be read.",error);}
@@ -108,7 +113,8 @@ public sealed class UserWebAppStore
         var apps=await ReadAsync(token).ConfigureAwait(false);
         _=Current(apps,id,expectedRevision);
         DeleteIcon(id);
-        await SaveAsync(apps.Where(a=>a.Id!=id).ToArray(),token).ConfigureAwait(false);
+        await SaveAsync(apps.Where(a=>a.Id!=id).ToArray(),token, [id]).ConfigureAwait(false);
+        await new BrowserProfileLifecycleStore(root).ResetAsync(id, id[IdPrefix.Length..], true, CancellationToken.None).ConfigureAwait(false);
     }
     private static UserWebApp Current(IReadOnlyList<UserWebApp> apps,string id,long revision)
     {
@@ -152,9 +158,9 @@ public sealed class UserWebAppStore
         var width=BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(16,4));var height=BinaryPrimitives.ReadUInt32BigEndian(bytes.Slice(20,4));
         return width is >0 and <=256 && height is >0 and <=256;
     }
-    private async Task SaveAsync(UserWebApp[] apps,CancellationToken token)
+    private async Task SaveAsync(UserWebApp[] apps,CancellationToken token, string[]? removed = null)
     {
-        var bytes=JsonSerializer.SerializeToUtf8Bytes(new UserWebAppDocument{Apps=apps},UserWebAppJsonContext.Default.UserWebAppDocument);
+        var bytes=JsonSerializer.SerializeToUtf8Bytes(new UserWebAppDocument{Apps=apps,Removed=removed ?? []},UserWebAppJsonContext.Default.UserWebAppDocument);
         if(bytes.Length>MaximumDocumentBytes)throw Invalid("The saved webapp catalog is too large.");
         await WriteAtomicAsync(path,bytes,token).ConfigureAwait(false);
     }

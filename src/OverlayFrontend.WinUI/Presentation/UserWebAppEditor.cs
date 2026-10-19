@@ -188,7 +188,7 @@ internal sealed class UserWebAppEditor : IDisposable
     }
     private async Task RemoveAsync()
     {
-        if (!confirmRemove) { confirmRemove = true; message.Text = "Select Remove webapp again to remove it from your rail. Browser data is retained."; return; }
+        if (!confirmRemove) { confirmRemove = true; message.Text = "Select Remove webapp again to remove it and its saved website data, sign-ins, bookmarks and history."; return; }
         await store.RemoveAsync(existing!.Id, existing.Revision, lifetime.Token); Close();
     }
     internal void MoveFocus(FocusNavigationDirection direction)

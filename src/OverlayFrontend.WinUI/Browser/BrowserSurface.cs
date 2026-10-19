@@ -99,13 +99,13 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 #endif
     }
 
-    internal BrowserSurface(string widgetId, WebBrowserDocument document, Func<Task<CoreWebView2Environment>> environment, IReadOnlyList<string>? providerHtml = null, BrowserLibraryStore? library = null, bool popup = false)
+    internal BrowserSurface(string widgetId, WebBrowserDocument document, Func<Task<CoreWebView2Environment>> environment, IReadOnlyList<string>? providerHtml = null, BrowserLibraryStore? library = null, bool popup = false, string? profileName = null)
     {
         isPopup = popup;
         this.library = library;
         this.widgetId = widgetId;
         this.document = document; this.environment = environment; this.providerHtml = providerHtml;
-        profile = BrowserProfileIdentity.Name(widgetId, document);
+        profile = profileName ?? BrowserProfileIdentity.Name(widgetId, document);
         CreateChrome();
         AutomationProperties.SetName(web, document.AccessibleName);
         AutomationProperties.SetAutomationId(web, "Browser.WebView");

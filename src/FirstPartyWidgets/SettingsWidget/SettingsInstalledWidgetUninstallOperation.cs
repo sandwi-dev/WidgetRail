@@ -9,7 +9,7 @@ internal sealed record SettingsInstalledWidgetUninstallExecution(
     string Status);
 
 /// <summary>
-/// Owns the trusted companion request sequence for package-only uninstall.
+/// Owns the trusted companion request sequence for package uninstall and its associated host-owned data cleanup.
 /// SettingsWidget remains the sole committed page/status owner.
 /// </summary>
 internal sealed class SettingsInstalledWidgetUninstallOperation(
@@ -57,9 +57,9 @@ internal sealed class SettingsInstalledWidgetUninstallOperation(
                 Status: result.Status switch
                 {
                     PlatformWidgetPackageUninstallStatus.Uninstalled =>
-                        $"{displayed.DisplayName} uninstalled; local data was preserved",
+                        $"{displayed.DisplayName} uninstalled; local data removed",
                     PlatformWidgetPackageUninstallStatus.CleanupPending =>
-                        "Widget uninstalled; package cleanup is pending and retryable",
+                        "Widget uninstalled; remaining cleanup will finish automatically",
                     PlatformWidgetPackageUninstallStatus.RecoveryPending =>
                         "Widget removed; catalog recovery is pending",
                     PlatformWidgetPackageUninstallStatus.Stale =>

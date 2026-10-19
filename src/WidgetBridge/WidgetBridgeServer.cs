@@ -127,7 +127,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _authorityRecovery = new BridgeAuthorityRecoveryProjection(
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(
-            _registry, _platformBackend, _catalogMonitor, _platformBackend);
+            _registry, _platformBackend, _catalogMonitor, _platformBackend, _settingsRoot);
         var packageCatalog = _catalogMonitor is null
             ? null
             : _platformBackend is null
@@ -135,7 +135,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     _catalogMonitor.InstalledCatalogRoot)
                 : new WidgetRail.WidgetCatalog.WidgetCatalog(
                     _catalogMonitor.InstalledCatalogRoot,
-                    new BridgeWidgetUninstallAuthorityParticipant(_platformBackend));
+                    new BridgeWidgetUninstallAuthorityParticipant(_platformBackend), _settingsRoot);
         _packageUninstall = new BridgeWidgetPackageUninstallService(
             packageCatalog,
             _catalogMonitor);
@@ -252,6 +252,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
 
         if (_appearance is not null) _appearance.Changed += OnAppearanceChanged;
         var appUpdateEvents = PumpAppUpdateEventsAsync(sessionCancellation.Token);
+        var uninstallMaintenance = Task.Run(() => _packageUninstall.MaintainAsync(sessionCancellation.Token));
         try
         {
             while (!sessionCancellation.IsCancellationRequested)
@@ -324,6 +325,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         {
             sessionCancellation.Cancel();
             try { await appUpdateEvents.ConfigureAwait(false); } catch (OperationCanceledException) { }
+            try { await uninstallMaintenance.ConfigureAwait(false); } catch (OperationCanceledException) { }
             await requestDispatcher.CancelAndDrainAsync().ConfigureAwait(false);
             await _revisionNotifications.CloseAndDrainAsync().ConfigureAwait(false);
             if (_catalogMonitor is not null) _catalogMonitor.Changed -= OnCatalogChanged;

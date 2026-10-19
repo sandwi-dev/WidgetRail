@@ -2,6 +2,45 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Explicit removal and browser-data reset, 2026-10-19
+
+Confirmed webapp removal and widget uninstall now include host-owned browser
+profiles and their extension registrations/settings. Package uninstall also clears
+private widget state and public configuration for its installed publisher
+identities. The original confirmation covers this; no second deletion prompt was
+added. Clear local data resets state, public configuration and browser data while
+keeping the package installed, including when browser data is the only saved data.
+Downloads, externally owned files and separately stored integration credentials
+remain outside this operation.
+
+The host records exact profile names and deletion receipts. Explicit reset/removal
+rotates profile identity; update, version selection, rename, disable and ordinary
+restart do not. Reinstall cannot reuse an old profile pending WebView deletion.
+Native cleanup retires matching views, drains the browser library, deletes the
+profile through WebView, and removes its extension metadata. Late registration
+cannot recreate a deleted selector entry. Pending work retries automatically and
+survives restarts. Package retirement recovery keeps its authority fence and now
+also finishes data removal. Custom Settings roots are forwarded explicitly.
+
+Validation: PlatformSettings **32/32**; package catalogue **49/49**, including
+update/rollback preservation and owned-data removal; focused Bridge checks for
+browser-only reset, worker retirement, built-in source isolation and uninstall;
+updated Settings confirmation tests. The native fixture uses only temporary
+profiles and local synthetic content. It verifies native cookies survive ordinary
+reopening, resets start clean, deletion preserves live neighbours/replacements,
+stale registrations are rejected, pending deletion can be retried, and immediate
+reinstall starts clean. Evidence: `artifacts/pob/data-cleanup-native03/result.json`.
+The retry fixture caught WinUI returning a null CoreWebView2 with a
+`ERROR_DELETE_PENDING` initialization event; that documented native deletion state
+is treated as successful scheduling, while other initialization failures retain
+the cleanup receipt for retry. Native initialization is bounded to ten seconds;
+identical retry failures do not repeatedly fill logs. The CLI uninstall/reinstall
+scenario also passes with an explicit custom Settings root and preserves another
+profile root. Full production publication passed; cumulative candidate
+`artifacts/pob/cumulative-candidate-20261019-profile-cleanup` was launched hidden
+with the normal profile. Automatic approval blocked deletion of superseded build
+payloads, so those artifacts were retained.
+
 ## Built-in acrylic defaults and Catalogue section bumpers, 2026-10-19
 
 The approved lighter acrylic preset is now the shared built-in preview default:

@@ -27,6 +27,8 @@ internal sealed partial class BrowserExtensionValidationPage : Page, IAsyncDispo
             var shared = new Web.HostedWebViewEnvironment(Path.Combine(root, "udf"), new() { AreBrowserExtensionsEnabled = true });
             var env = await shared.GetAsync(); runtime = env.BrowserVersionString;
             var manager = new Browser.Extensions.BrowserExtensionManager(shared, root);
+            if (Environment.GetCommandLineArgs().Contains("--validate-profile-cleanup"))
+            { await VerifyProfileCleanupAsync(env, manager); Write(true, runtime, null); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--extension-restart-root") is not null)
             {
                 var reopened = await CreateAsync(env, "persistent-managed", false);

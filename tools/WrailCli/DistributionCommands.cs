@@ -158,16 +158,17 @@ internal static class InstallCommand
     {
         var parsed = new CommandArguments(
             args,
-            ["--catalog", "--sha256"],
+            ["--catalog", "--sha256", "--settings-root"],
             ["--accept-full-trust"]);
         if (parsed.Positionals.Count != 1)
             throw new CliUsageException(
                 "Usage: wrail install <file.wrwidget|https-url|github:owner/repository@tag/asset.wrwidget> " +
-                "[--sha256 <64-hex>] [--catalog <root>] [--accept-full-trust]");
+                "[--sha256 <64-hex>] [--catalog <root>] [--settings-root <profile>] [--accept-full-trust]");
 
         var source = parsed.Positionals[0];
         var expectedSha256 = PackageIntegrity.ParseExpectedSha256(parsed.Option("--sha256"));
-        var catalog = new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog")));
+        var catalogRoot = CatalogPath.Resolve(parsed.Option("--catalog"));
+        var catalog = new CatalogService(catalogRoot, new CliWidgetUninstallAuthorityParticipant(catalogRoot), parsed.Option("--settings-root"));
         var remoteUri = RemotePackageSource.Resolve(source);
         if (remoteUri is null)
         {
@@ -313,14 +314,14 @@ internal static class UninstallCommand
         TextWriter output,
         CancellationToken cancellationToken)
     {
-        var parsed = new CommandArguments(args, "--catalog");
+        var parsed = new CommandArguments(args, "--catalog", "--settings-root");
         if (parsed.Positionals.Count != 1)
-            throw new CliUsageException("Usage: wrail uninstall <widget-id> [--catalog <root>]");
+            throw new CliUsageException("Usage: wrail uninstall <widget-id> [--catalog <root>] [--settings-root <profile>]");
 
         var catalogRoot = CatalogPath.Resolve(parsed.Option("--catalog"));
         var catalog = new CatalogService(
             catalogRoot,
-            new CliWidgetUninstallAuthorityParticipant(catalogRoot));
+            new CliWidgetUninstallAuthorityParticipant(catalogRoot), parsed.Option("--settings-root"));
         try
         {
             var removed = await catalog.UninstallAsync(parsed.Positionals[0], cancellationToken);

@@ -62,6 +62,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
 #endif
         Runtime = new(profileRoot, environmentOptions);
         Extensions = new(Runtime, settingsRoot);
+        InitializeProfileLifecycle(settingsRoot);
         ownsNotifications = notifications is null;
         NotificationCenter = notifications ?? new(settingsRoot);
         notificationPreferencesLoading = NotificationCenter.Ready;
@@ -136,6 +137,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             while (dirty && !retired)
             {
                 dirty = false;
+                await ReconcileProfileCleanupAsync();
                 SynchronizeExpandedBinding();
                 foreach (var pair in entries.ToArray())
                 {
@@ -167,7 +169,6 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     {
                         if (chosen.Document.HostedSession is not null) { chosen.Slot.SetMessage("This web session is unavailable. Reopen it from the widget."); continue; }
                         if (retiringEntries.Contains(group.Key)) continue;
-                        if (changingProfiles.Contains(BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document))) continue;
                         if (entries.Count + retiringEntries.Count >= 4)
                         {
                             var oldest = entries.Where(pair => !pair.Value.Retained && !pair.Value.Surface.BackgroundFaulted && pair.Value.Slot?.CanDisplay != true &&
@@ -188,16 +189,20 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                                 !session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
                         }
                         BrowserLibraryStore? library = null;
-                        var profileName = BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document);
+                        var ownedProfile = await profileLifecycle.RegisterAsync(group.Key.Widget, BrowserProfileIdentity.Name(group.Key.Widget, chosen.Document),
+                            chosen.Document.ProviderDocument is null ? BrowserProfileIdentity.LibraryFileName(group.Key.Widget, chosen.Document) : null, lifetime.Token);
+                        if (ownedProfile is null) { chosen.Slot.SetMessage("This widget was removed."); continue; }
+                        var profileName = ownedProfile.Name;
+                        if (changingProfiles.Contains(profileName)) continue;
                         if (chosen.Document.ProviderDocument is null && !libraries.TryGetValue(profileName, out library))
                         {
-                            library = await BrowserLibraryStore.LoadAsync(Path.Combine(profileRoot, "Library", BrowserProfileIdentity.LibraryFileName(group.Key.Widget, chosen.Document)), lifetime.Token);
+                            library = await BrowserLibraryStore.LoadAsync(Path.Combine(profileRoot, "Library", ownedProfile.LibraryFile!), lifetime.Token);
                             if (retired) break;
                             libraries[profileName] = library;
                             if (slots.GetValueOrDefault(chosen.Slot)?.Document != chosen.Document ||
                                 !session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
                         }
-                        var surface = CreateSurface(group.Key.Widget, chosen.Document, chosen.Authority, providerHtml, library);
+                        var surface = CreateSurface(group.Key.Widget, chosen.Document, chosen.Authority, providerHtml, library, profileName);
                         entry = new(chosen.Authority, surface); entries.Add(group.Key, entry); CreatedCount++;
                         // WinUI can move composition across XamlRoots while the
                         // native WebView retains its original creation HWND.
@@ -254,9 +259,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         catch (Exception error) { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("browser-placement", error); }
     }
     private BrowserSurface CreateSurface(string widgetId, WebBrowserDocument document,
-        WidgetPresentationAuthority authority, IReadOnlyList<string>? providerHtml = null, BrowserLibraryStore? library = null)
+        WidgetPresentationAuthority authority, IReadOnlyList<string>? providerHtml = null, BrowserLibraryStore? library = null, string? profileName = null)
     {
-        return new BrowserSurface(widgetId, document, EnvironmentAsync, providerHtml, library)
+        return new BrowserSurface(widgetId, document, EnvironmentAsync, providerHtml, library, profileName: profileName)
         {
             OpenExternal = (uri, token) => OpenExternal?.Invoke(uri, token) ?? Task.FromResult(false),
             Choose = (source, title, message, choices, token, focusFirstChoice, preference) => Choose?.Invoke(source, title, message, choices, token, focusFirstChoice, preference) ?? Task.FromResult<string?>(null),
@@ -395,6 +400,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal void BeginShutdown()
     {
         if (retired) return; retired = true; lifetime.Cancel();
+        profileWatcher?.Dispose(); profileCleanupRetry?.Stop();
         session.PresentationChanged -= Changed; session.CatalogChanged -= CatalogChanged;
     }
     public ValueTask DisposeAsync() => new(disposal ??= DisposeCoreAsync());

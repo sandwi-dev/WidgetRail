@@ -255,9 +255,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Bridge alone synthesizes private state authority for capability-free workers", PrivateStateAuthorityIsHostSynthesized),
     ("Action-bound app launch closes only after exact successful terminal", ActionBoundLaunchCloseIsTerminalExact),
+    ("Browser-only local data reset is enabled and scoped to the selected widget", BrowserOnlyLocalDataClearIsExact),
     ("Installed worker local data clears after exact retirement and preserves its neighbor", InstalledWorkerLocalDataClearIsExact),
     ("Built-in local data resolves disabled runtime aliases without touching installed copies", BuiltInLocalDataIsSourceScoped),
-    ("Disabled package uninstall is exact revisioned and preserves private data", InstalledPackageUninstallIsExact),
+    ("Disabled package uninstall is exact revisioned and preserves unrelated files", InstalledPackageUninstallIsExact),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
@@ -369,7 +370,7 @@ if (args.Contains("--widge-193-only", StringComparer.Ordinal))
     var selected = new HashSet<string>(StringComparer.Ordinal)
     {
         "Installed worker local data clears after exact retirement and preserves its neighbor",
-        "Disabled package uninstall is exact revisioned and preserves private data",
+        "Disabled package uninstall is exact revisioned and preserves unrelated files",
         "Trusted local-data management clears one exact retired generation",
         "Catalog retirement cancels a real running-registration request lease",
         "Action-bound app launch closes only after exact successful terminal",
@@ -3561,6 +3562,32 @@ static async Task BuiltInLocalDataIsSourceScoped()
     Assert.Equal(1, fixture.Clients[0].DisposeCount);
     Assert.True((await backend.ReadPrivateStateAsync(installedIdentity, default)).Exists,
         "Clearing active built-in data touched the installed copy.");
+}
+
+static async Task BrowserOnlyLocalDataClearIsExact()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("wrail-browser-data-clear");
+    var root = Path.Combine(temporary.Path, "catalog");
+    var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(root);
+    var installed = await InstallWidgetAsync(catalog, temporary.Path, "dev.example.browser-clear", enabled: false);
+    var load = await BridgeCatalog.LoadWithInstalledAsync(trusted.Path, root, Environment.ProcessPath!);
+    var profiles = new BrowserProfileLifecycleStore(temporary.Path);
+    var selected = await profiles.RegisterAsync(installed.Manifest.Id, "persistent-selected", "persistent-selected.json");
+    var neighbor = await profiles.RegisterAsync("dev.example.neighbor", "persistent-neighbor", "persistent-neighbor.json");
+    var simulator = new SimulatedPlatformBrokerBackend();
+    await using var monitor = new BridgeCatalogMonitor(trusted.Path, root, Environment.ProcessPath!, load.Catalog);
+    await using var server = new WidgetBridgeServer("browser-clear-" + Guid.NewGuid().ToString("N"), load.Catalog, 64 * 1024,
+        appearance: null, consentStore: null, platformBackend: simulator, catalogMonitor: monitor, residencyBudget: null,
+        capabilityDiagnosticSink: null, settingsStore: new PlatformSettingsStore(new PlatformSettingsPaths(temporary.Path)));
+    var inspection = await server.InspectWidgetLocalDataAsync(installed.Manifest.Id);
+    Assert.True(inspection.Exists && inspection.ConfirmationToken is not null, "Browser-only data did not enable Clear local data.");
+    var result = await server.ClearWidgetLocalDataAsync(installed.Manifest.Id, inspection.ConfirmationToken!);
+    Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, result.Status);
+    var reset = await profiles.ReadAsync(installed.Manifest.Id);
+    Assert.True(reset.Pending.Contains(selected!) && !reset.Removed && reset.Profiles.Length == 0, "Reset failed to retain install or queue browser deletion.");
+    Assert.True((await profiles.ReadAsync("dev.example.neighbor")).Profiles.Contains(neighbor!), "Another widget's browser was reset.");
+    Assert.Equal(0, server.RunningWorkerCount);
 }
 
 static async Task InstalledWorkerLocalDataClearIsExact()

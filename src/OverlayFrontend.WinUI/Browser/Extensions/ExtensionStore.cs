@@ -34,6 +34,15 @@ internal sealed class ExtensionStore(string settingsRoot)
     }
     internal Task RegisterAsync(ExtensionProfile profile, CancellationToken token) => UpdateAsync(catalog =>
         catalog.Profiles.Contains(profile) ? catalog : catalog with { Profiles = catalog.Profiles.Where(p => p.Name != profile.Name).Append(profile).ToArray() }, token);
+    internal Task RemoveProfileAsync(string name, CancellationToken token) => UpdateAsync(catalog => catalog with
+    {
+        Profiles = catalog.Profiles.Where(profile => profile.Name != name).ToArray(),
+        Library = catalog.Library.Select(entry => entry with
+        {
+            Overrides = entry.Overrides.Where(pair => pair.Key != name).ToDictionary(pair => pair.Key, pair => pair.Value),
+            Bindings = entry.Bindings.Where(pair => pair.Key != name).ToDictionary(pair => pair.Key, pair => pair.Value),
+        }).ToArray(),
+    }, token);
     internal Task SaveAsync(ExtensionEntry entry, CancellationToken token) => UpdateAsync(catalog =>
         catalog with { Library = catalog.Library.Where(i => i.Slot != entry.Slot).Append(entry).ToArray() }, token);
     internal Task ForgetAsync(string slot, CancellationToken token) => UpdateAsync(catalog =>

@@ -2,7 +2,7 @@
 
 Open **Settings → Widgets → Add webapp**, enter or paste a website address, optionally edit its name, then choose **Add and open**. The new webapp is enabled immediately. The browser's **Page actions → Add as webapp** uses the same form with the current address and title filled in.
 
-Each webapp has a stable identity and its own persistent browser profile. Renaming it preserves sign-in, website permissions and extension preferences. It uses the host's standard webapp browser, notifications, pinning and lifecycle behavior without a separate widget executable. Tray **Widget → Manage widget** opens its editor; **Settings → Widgets → Manage webapps** also provides rename and removal. Removal takes the entry and cached icon out of the rail; browser data is retained.
+Each webapp has a stable identity and its own persistent browser profile. Renaming it preserves sign-in, website permissions and extension preferences. It uses the host's standard webapp browser, notifications, pinning and lifecycle behavior without a separate widget executable. Tray **Widget → Manage widget** opens its editor; **Settings → Widgets → Manage webapps** also provides rename and removal. Confirmed removal deletes the entry, cached icon and its browser data, including sign-ins, bookmarks/history and profile-specific extension settings. No second data-deletion prompt is shown. Locked native profile files are deleted automatically by WebView after its browser process exits. Renaming, disabling and restarting preserve data.
 
 Turn off **Enabled** in the editor to remove a webapp from the rail and radial chooser without deleting it. It remains available in **Manage webapps** so you can enable it again.
 

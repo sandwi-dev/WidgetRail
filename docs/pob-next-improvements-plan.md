@@ -1,5 +1,7 @@
 # PoB widget improvements: discussion and implementation plan
 
+- [x] Include host-owned browser data cleanup in explicit webapp/widget removal and Clear local data, without another confirmation. Keep updates, rollback, disable and restart data-preserving. Use durable exact-profile deletion receipts, fresh identities for reset/reinstall, native deletion and automatic retry. Keep downloaded/external files and separately stored integration credentials outside this operation.
+
 Last updated: 2026-10-19
 
 Current follow-up delivered: Find similar, a 20-build recent selector and shared

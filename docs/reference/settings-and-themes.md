@@ -31,9 +31,14 @@ disabled-install workflow.
 
 Uninstall and catalog-recovery removal require confirmation. Cancelling an
 uninstall does not disable a working widget. Recovery can remove only eligible
-inactive, non-selected versions. Saved widget data is preserved by widget removal. **Clear local data** is a
-separate confirmed operation for overlay-owned private state, with worker restart;
-it excludes credentials, provider data and ordinary user files.
+inactive, non-selected versions. Confirmed uninstall also removes host-owned saved
+widget state, configuration and browser profiles, including website sign-ins,
+bookmarks/history and profile-specific extension settings. **Clear local data**
+resets that data while keeping the widget installed. Downloaded files, externally
+owned provider data and separately stored integration credentials are not removed.
+Browser deletion is retried automatically; reinstall uses a fresh profile even
+while WebView finishes deleting the previous one. Updates, rollback, disable and
+ordinary restarts preserve existing data.
 See [Package and share](../developers/publishing-and-installation.md).
 
 ## Controller settings

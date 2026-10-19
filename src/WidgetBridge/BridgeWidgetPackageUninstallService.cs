@@ -13,6 +13,17 @@ internal sealed class BridgeWidgetPackageUninstallService(
     WidgetCatalog.WidgetCatalog? catalog,
     BridgeCatalogMonitor? catalogMonitor)
 {
+    internal async Task MaintainAsync(CancellationToken token)
+    {
+        if (catalog is null) return;
+        while (!token.IsCancellationRequested)
+        {
+            try { await catalog.RecoverUninstallMaintenanceAsync(token).ConfigureAwait(false); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or WidgetPackageException or BrokerException or WidgetRail.PlatformSettings.PlatformSettingsException) { }
+            await Task.Delay(TimeSpan.FromSeconds(30), token).ConfigureAwait(false);
+        }
+    }
+
     internal async ValueTask<PlatformWidgetPackageUninstallInspection> InspectAsync(
         string widgetId,
         CancellationToken cancellationToken)

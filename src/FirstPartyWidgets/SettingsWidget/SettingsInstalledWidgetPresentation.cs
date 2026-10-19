@@ -472,7 +472,7 @@ internal static class SettingsInstalledWidgetPresentation
                     "installed.uninstall.version", "Installed package versions")
                     .Classes("diagnostic-line"),
                 UI.Text(
-                    "This removes the widget and all its installed versions. Your saved data and sign-ins stay. Use Clear local data separately if you want to remove them.",
+                    "This removes the widget, all its installed versions, saved widget state, configuration and browser data, including website sign-ins, bookmarks and history. Downloaded files are kept.",
                     "installed.uninstall.help", "Widget uninstall scope")
                     .Classes("page-help"),
                 UI.Button(package.Enabled ? "Disable and uninstall" : "Uninstall widget", "installed.uninstall.confirm",
@@ -507,7 +507,7 @@ internal static class SettingsInstalledWidgetPresentation
                 UI.Text(name, "installed.local-data.widget", "Selected widget")
                     .Classes("diagnostic-line"),
                 UI.Text(
-                    "This stops the selected widget, clears only its overlay-owned private state, then starts a fresh worker generation. It does not remove packages, credentials, provider data, themes, settings, or user files.",
+                    "This resets saved widget state, configuration and browser data, including website sign-ins, bookmarks and history, then restarts the widget. It keeps the widget installed, downloaded files and data in external applications.",
                     "installed.local-data.help", "Local data clear scope")
                     .Classes("page-help"),
                 UI.Button("Clear local data", "installed.local-data.clear",

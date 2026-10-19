@@ -5,6 +5,7 @@ using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Browser cleanup preserves updates and isolates resets, uninstalls and reinstalls", BrowserProfileLifecycleTests.Run),
     ("All built-in themes remain isolated, selectable and readable", ThemeDesignTests.Run),
     ("Controller glyphs share readable geometry and theme ink", ControllerGlyphThemeTests.Run),
     ("Focus preserves selection and authored fills in every built-in theme", FocusSelectionThemeTests.Run),

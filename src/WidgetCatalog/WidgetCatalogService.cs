@@ -8,6 +8,7 @@ namespace WidgetRail.WidgetCatalog;
 public sealed partial class WidgetCatalog
 {
     private readonly string _root;
+    private readonly string _dataSettingsRoot;
     private readonly string _packagesRoot;
     private readonly CatalogStateStore _stateStore;
     private readonly CatalogOperationLock _operationLock;
@@ -22,8 +23,8 @@ public sealed partial class WidgetCatalog
 
     internal WidgetCatalog(
         string currentUserRoot,
-        IWidgetUninstallAuthorityParticipant uninstallAuthority)
-        : this(currentUserRoot, null, TimeProvider.System, uninstallAuthority)
+        IWidgetUninstallAuthorityParticipant uninstallAuthority, string? settingsRoot = null)
+        : this(currentUserRoot, null, TimeProvider.System, uninstallAuthority, settingsRoot)
     {
     }
 
@@ -39,11 +40,12 @@ public sealed partial class WidgetCatalog
         string currentUserRoot,
         WidgetCatalogOptions? options,
         TimeProvider timeProvider,
-        IWidgetUninstallAuthorityParticipant? uninstallAuthority)
+        IWidgetUninstallAuthorityParticipant? uninstallAuthority, string? settingsRoot = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(currentUserRoot);
         ArgumentNullException.ThrowIfNull(timeProvider);
         _root = Path.GetFullPath(currentUserRoot);
+        _dataSettingsRoot = Path.GetFullPath(settingsRoot ?? Path.GetDirectoryName(_root)!);
         _packagesRoot = Path.Combine(_root, "packages");
         _options = options ?? new WidgetCatalogOptions();
         _options.Validate();
@@ -595,9 +597,7 @@ public sealed partial class WidgetCatalog
         var retiredDirectory = Path.Combine(
             stagingRoot, $".uninstall-{Guid.NewGuid():N}");
         var markerPath = PendingWidgetUninstallStore.MarkerPath(retiredDirectory);
-        if (_uninstallAuthority is not null)
-        {
-            await PendingWidgetUninstallStore.WriteAsync(
+        await PendingWidgetUninstallStore.WriteAsync(
                 markerPath,
                 new PendingWidgetUninstall(
                     1,
@@ -605,9 +605,8 @@ public sealed partial class WidgetCatalog
                     widget.Versions.Select(InstalledWidgetAuthority.PublisherId)
                         .Distinct(StringComparer.Ordinal)
                         .Order(StringComparer.Ordinal)
-                        .ToArray()),
+                        .ToArray(), DataOnly: _uninstallAuthority is null),
                 cancellationToken).ConfigureAwait(false);
-        }
         var priorState = await _stateStore.LoadAsync(cancellationToken);
         var stateMutated = false;
         var directoryMoved = false;
@@ -631,9 +630,15 @@ public sealed partial class WidgetCatalog
                         "Portable app registration cleanup did not commit.");
                 authorityCommitted = true;
                 cleanupPending |= retirement.CleanupPending;
-                if (!retirement.CleanupPending)
-                    cleanupPending |= !TryDeletePendingMarker(markerPath);
             }
+            authorityCommitted = true;
+            try
+            {
+                await RemoveWidgetDataAsync(widgetId, widget.Versions.Select(InstalledWidgetAuthority.PublisherId).Distinct(), retiredDirectory).ConfigureAwait(false);
+                if (!cleanupPending) cleanupPending |= !TryDeletePendingMarker(markerPath);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or WidgetRail.PlatformBroker.BrokerException or WidgetRail.PlatformSettings.PlatformSettingsException)
+            { cleanupPending = true; }
         }
         catch when (!authorityCommitted)
         {
@@ -790,17 +795,18 @@ public sealed partial class WidgetCatalog
                     _ = TryDeletePendingMarker(marker);
                     continue;
                 }
-                if (_uninstallAuthority is null ||
-                    Directory.Exists(source) && Directory.Exists(retired))
+                if (_uninstallAuthority is null && !pending.DataOnly || Directory.Exists(source) && Directory.Exists(retired))
                     continue;
                 WidgetUninstallAuthorityCommit retirement;
                 try
                 {
-                    retirement = await _uninstallAuthority.RetirePackageAsync(
+                    retirement = _uninstallAuthority is null ? new(true, false) : await _uninstallAuthority.RetirePackageAsync(
                         pending.PackageId, cancellationToken).ConfigureAwait(false);
+                    if (retirement.Committed)
+                        await RemoveWidgetDataAsync(pending.PackageId, pending.PublisherAuthorities, retired).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is IOException or
-                    UnauthorizedAccessException or WidgetPackageException)
+                    UnauthorizedAccessException or WidgetPackageException or WidgetRail.PlatformBroker.BrokerException or WidgetRail.PlatformSettings.PlatformSettingsException)
                 {
                     continue;
                 }

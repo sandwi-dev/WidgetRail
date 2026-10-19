@@ -632,8 +632,16 @@ static async Task UninstallRemovesAllVersions()
     Assert.Equal(3, (await catalog.DiscoverAsync()).Widgets
         .Single(widget => widget.Id == "dev.test.remove").Versions.Count);
     var current = await catalog.InspectUninstallAsync("dev.test.remove");
+    var profileLifecycle = new WidgetRail.PlatformSettings.BrowserProfileLifecycleStore(Path.GetDirectoryName(root)!);
+    var browserProfile = await profileLifecycle.RegisterAsync(current.Id, "persistent-uninstall-test", "persistent-uninstall-test.json");
+    var privateStore = new PrivateStateStore(Path.Combine(Path.GetDirectoryName(root)!, "widget-state"));
+    var dataIdentity = new BrokerWidgetIdentity(current.Id, current.PublisherId, "uninstall-test");
+    await privateStore.WriteAsync(dataIdentity, new(Convert.ToBase64String("{\"version\":1}"u8), null), default);
     var removed = await catalog.UninstallConfirmedAsync(
         current.Id, current.PublisherId, current.ActiveVersion, current.ConfirmationToken);
+    Assert.True(!(await privateStore.ReadAsync(dataIdentity, default)).Exists, "Uninstall retained owned private data.");
+    var browserRemoval = await profileLifecycle.ReadAsync(current.Id);
+    Assert.True(browserRemoval.Removed && browserRemoval.Pending.Contains(browserProfile!), "Uninstall lost browser cleanup evidence.");
     Assert.Equal("dev.test.remove", removed.Id);
     Assert.True(!removed.CleanupPending, "Unlocked package cleanup unexpectedly remained pending.");
     Assert.SequenceEqual(["3.0.0", "2.0.0", "1.0.0"],

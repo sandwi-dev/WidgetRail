@@ -68,6 +68,8 @@ public sealed partial class WidgetCatalog
 
     private async Task<InstalledWidgetVersion> FinishRetentionAsync(InstalledWidgetVersion installed)
     {
+        await new WidgetRail.PlatformSettings.BrowserProfileLifecycleStore(_dataSettingsRoot)
+            .ActivateAsync(installed.Id, CancellationToken.None).ConfigureAwait(false);
         var pending = !await RecoverRetentionAsync(installed.Id).ConfigureAwait(false);
         return installed with { RetentionCleanupPending = pending };
     }

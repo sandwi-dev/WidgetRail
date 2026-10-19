@@ -104,8 +104,8 @@ returns to the selected widget and restores it into view.
 - **Install:** choose a `.wrwidget` file in the Windows file picker (mouse/keyboard). The overlay shows controller-accessible full-access approval when needed and completion dialogs. Fresh installs start enabled and ask for permissions when features need them.
 - **Update:** use **Catalogue → Updates** for catalogue add-ons, or **Update from file** in widget details for a local package. Updates preserve enabled/disabled and stopped state, permissions and saved data; new permissions are not granted automatically.
 - **Revert:** disable the widget, open **Technical details**, and choose **Revert to previous version**. Ordinary updates keep one backup and clean older versions automatically. Use the normal update action to return to the newer version.
-- **Uninstall:** remove an optional widget from its details, including one preinstalled by Production. If it is enabled, confirm **Disable and uninstall**. Its saved data is kept.
-- **Clear local data:** separately clear the selected widget's overlay-owned private state and restart its worker. Credentials, provider data and ordinary user files are excluded.
+- **Uninstall:** remove an optional widget from its details, including one preinstalled by Production. If it is enabled, confirm **Disable and uninstall**. Its host-owned saved state, configuration and browser data are removed as part of that confirmation.
+- **Clear local data:** reset the selected widget's saved state, configuration and browser data, then restart it. This includes website sign-ins, bookmarks/history and profile-specific extension settings. Downloads, externally owned provider data and separately stored integration credentials are kept.
 
 Settings and Catalogue belong to the application release and are not separately
 uninstalled or updated from a package file. Every other widget uses the same

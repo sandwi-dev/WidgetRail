@@ -18,7 +18,8 @@ internal interface IWidgetUninstallAuthorityParticipant
 internal sealed record PendingWidgetUninstall(
     [property: JsonRequired] int SchemaVersion,
     [property: JsonRequired] string PackageId,
-    [property: JsonRequired] IReadOnlyList<string> PublisherAuthorities);
+    [property: JsonRequired] IReadOnlyList<string> PublisherAuthorities,
+    bool DataOnly = false);
 
 internal static class PendingWidgetUninstallStore
 {

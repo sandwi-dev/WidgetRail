@@ -68,7 +68,9 @@ internal sealed partial class BrowserOwner
                 { Options = options, InteractionMode = BrowserInteractionMode.ActivateToInteract };
                 var authority = session.GetState(request.WidgetId)?.LastGood?.Authority ??
                     new WidgetPresentationAuthority(request.WidgetId, "", "", 0, request.Identity.InstanceId, 0, "");
-                var surface = CreateSurface(request.WidgetId, document, authority);
+                var ownedProfile = await profileLifecycle.RegisterAsync(request.WidgetId, BrowserProfileIdentity.Name(request.WidgetId, document), null, lifetime.Token)
+                    ?? throw new InvalidOperationException("This widget was removed.");
+                var surface = CreateSurface(request.WidgetId, document, authority, profileName: ownedProfile.Name);
                 surface.ConfigureHostedSession(definition, work.Resources);
                 var entry = new Entry(authority, surface)
                 { Hosted = request.Session, Retained = definition.Browser.Background == BrowserBackgroundMode.KeepAlive, LastUse = Environment.TickCount64 };

@@ -180,7 +180,7 @@ internal sealed partial class BrowserSurface
                     {
                         InteractionMode = BrowserInteractionMode.InteractOnFocus,
                         Options = document.Options with { Chrome = BrowserChrome.OnDemand, ExternalLinks = BrowserExternalLinkMode.InWidget, Background = BrowserBackgroundMode.Automatic },
-                    }, environment, library: library, popup: true)
+                    }, environment, library: library, popup: true, profileName: profile)
                     {
                         popupParent = this,
                         extensionOptionsId = window.ExtensionId,

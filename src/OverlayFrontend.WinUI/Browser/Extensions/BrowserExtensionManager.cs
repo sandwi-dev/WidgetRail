@@ -56,6 +56,9 @@ internal sealed class BrowserExtensionManager(Web.HostedWebViewEnvironment runti
         try
         {
             await RecoverPendingAsync();
+            var ownership = await new WidgetRail.PlatformSettings.BrowserProfileLifecycleStore(settingsRoot).ReadAsync(profile.WidgetId, token);
+            if (ownership.Removed || ownership.Pending.Any(p => p.Name == profile.Name) ||
+                ownership.Generation.Length != 0 && !ownership.Profiles.Any(p => p.Name == profile.Name)) return;
             await Store.RegisterAsync(profile, token);
             if (profile.Private) return;
             foreach (var entry in (await Store.ReadAsync(token)).Library)
@@ -102,6 +105,39 @@ internal sealed class BrowserExtensionManager(Web.HostedWebViewEnvironment runti
         }
         if (failure is not null) throw new InvalidOperationException("Some profiles could not be updated. Their saved choices are retained; use Retry or reopen the widget.", failure);
     }
+    internal async Task DeleteProfileAsync(string name, CancellationToken token)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        token = deadline.Token;
+        await InitializeAsync(token);
+        await operations.WaitAsync(token);
+        try
+        {
+            await RecoverPendingAsync();
+            if (!name.StartsWith("private-", StringComparison.Ordinal))
+            {
+                var environment = await runtime.GetAsync().WaitAsync(token);
+                var options = environment.CreateCoreWebView2ControllerOptions(); options.ProfileName = name;
+                var view = new WebView2();
+                Exception? initializationError = null;
+                view.CoreWebView2Initialized += (_, args) => initializationError = args.Exception;
+                try
+                {
+                    await view.EnsureCoreWebView2Async(environment, options).AsTask().WaitAsync(token);
+                    if (view.CoreWebView2 is { } core) core.Profile.Delete();
+                    else if (initializationError?.HResult != unchecked((int)0x8007012F))
+                        throw new InvalidOperationException("Browser profile deletion could not initialize: " + initializationError?.ToString(), initializationError);
+                }
+                catch (System.Runtime.InteropServices.COMException error) when (error.HResult == unchecked((int)0x8007012F))
+                { /* WebView already owns this durable deletion; it retries locked files on browser startup. */ }
+                finally { view.Close(); }
+            }
+            await Store.RemoveProfileAsync(name, CancellationToken.None);
+        }
+        finally { operations.Release(); }
+    }
+
     internal async Task SetPolicyAsync(string slot, bool? defaultEnabled, string? profileName, ExtensionOverride choice, CancellationToken token)
     {
         await InitializeAsync(token); await operations.WaitAsync(token);
