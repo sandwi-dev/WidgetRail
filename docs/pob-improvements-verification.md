@@ -1172,3 +1172,53 @@ Remaining cross-app/populated-music verification is separate, along with Spotify
 authentication, physical controller/couch and environment-specific checks. Recheck
 documentation affected by any remaining corrections before delivery. Earlier
 visibility/shutdown observations retain their scoped, unreproduced disposition.
+
+## Final cross-app and populated music presentation — 2026-10-18
+
+Current Debug frontend, normal native renderer and isolated settings were exercised
+at 125% Windows DPI, interface size 125% and text size 125%. Settings home and
+Appearance, Audio Mixer, Games & Apps, Task Switcher, Network Controls (details
+and Bluetooth subpages) and Power were inspected without invoking hardware or
+power changes. Settings controls remained named and visible; the audio output
+selector closed with Escape back to its opener. The actual Games GridView reached
+100% by wheel without changing its focused occurrence. Its named outer wrapper
+has no ScrollPattern; early shallow/unsettled inspections and the ineffective
+UIA `--to` attempt are excluded from passing evidence. Settings and Audio Mixer
+crops were visually inspected. Evidence: `cross-app-20261018/result.json`,
+`games-scroll-qualified.json` and `audio-selector-return.json`.
+
+The music fixture now exports sixteen actual widget-produced queue rows for each
+service, including duplicates, the current-song location and long metadata. It
+materializes those rows only for presentation; indexed leases and virtualization
+remain covered separately. **221 native assertions pass** across two viewport
+sizes (840×580 and 620×400), Mono Ink, Mineral Light and a host high-contrast
+palette with enlarged text. Scroll/reveal does not activate playback or change
+focus. Menu cancellation and dispatch preserve the exact duplicate occurrence.
+Evidence: `music-queues-final-20261018/native-result.json`; native frontend build
+has zero warnings/errors. A test-export return-type compile error and missing
+native input path were corrected before the qualifying build. No live requests.
+
+The provider availability audit also fixed explicitly unavailable playlist/album
+entries in commit `20d4f8dd`. Unknown availability, provider ordering, duplicates
+and the first-500 input bound remain unchanged; no fill-up requests are added.
+All **41 offline Python tests** pass. Package 0.3.43.3 reuses the verified 0.3.43.2
+managed/runtime files and changes the provider script and manifest only.
+
+Browser 0.1.6 was also opened against the normal installed catalogue with isolated
+shell settings. Its local start page, Bookmarks dialog and address keyboard were
+exercised; Cancel returned to the browser scope, and the start page/toolbar crop
+was inspected. No external URL was opened. Evidence: `browser-native-20261018`.
+
+Visual inspection of the populated Spotify light-theme queue found a white options
+glyph on its light badge. Labels had explicit text colors, but the shared action
+surface had no default foreground. The shared rule now supplies `var(--text)`;
+widget/state overrides retain precedence. Native queue tests add actual badge
+contrast assertions before/after menus and complete synthetic button releases.
+This was not a word-clipping or queue-virtualization defect.
+
+The corrected queue matrix passes **269 assertions**, including glyph presence
+and at least 3:1 options-badge contrast in every tested theme/size, before and
+after opening/using context menus. The first new check ran before post-release
+layout settled; awaiting the badge's bounded native readiness corrected that test
+race. Mineral Light was visually re-inspected and the glyph is readable.
+Evidence: `music-queues-contrast2-20261018/native-result.json`; fix `5a946113`.

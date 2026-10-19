@@ -14,7 +14,7 @@ and updater warning wrapping now have targeted native fixes and evidence. The
 additional Bare upgrade case now passes optional package preservation, native
 launch, removal and restart; the earlier failure was test-path redirection. Spotify
 authentication, the earlier unreproduced invisible-overlay observation, remaining
-cross-app acceptance and physical controller/couch checks remain distinct
+physical controller/couch checks and environment-specific installer variants remain distinct
 from completed automated checks. See the latest verification-ledger entries.
 Both installed games now pass item edit/cancel and skill toggle/restore round
 trips; Group settings and More skill options return to their exact openers.
@@ -31,10 +31,10 @@ trips; Group settings and More skill options return to their exact openers.
 | After host prerequisites | Complete passive-tree artwork and measure rendering improvements | Implemented; 46 version audits, both-engine checks and 34 renderer assertions pass; packaged trees rendered in both installed widgets |
 | After host prerequisites | Add whole-build and loadout comparison | Both-engine and native fixture checks pass; installed PoE2 loadout calculation, Compare focus retention, detail and return-to-row flow verified; broader acceptance remains |
 | After host prerequisites | Add unified search and direct navigation | Both-engine and native checks pass; installed PoE2 exact-gem destination and modal return verified; installed fresh PoE1 search verified |
-| Cross-app adoption and verification | Compact layouts and inspect the app for couch readability | Catalogue and music player slices inspected; remaining application audit pending |
+| Cross-app adoption and verification | Compact layouts and inspect the app for couch readability | Catalogue, music player, Settings/Appearance, Audio, Games & Apps, Task Switcher, Network/Power and Browser native passes recorded; couch-distance acceptance remains |
 | Independent completed slice | Rename Marketplace to WidgetRail Catalogue | Rename, bounded cache, prerequisites and card styling implemented; familiar-store comparison, 22 integrated native workflows and 150 screenshot-browsing assertions pass; physical controller acceptance remains separate |
 | Release distribution | Bare and Production bundles; all optional widgets available through Catalogue | Bundles, resources and 22 native end-to-end Catalogue checks pass, including partial retry, permissions, revert/re-update and idle reopening; earlier invisible-overlay observation remains unresolved |
-| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | YouTube Music live workflows and 381 default/light/high-contrast player assertions pass; Spotify awaits reconnection; populated alternate-theme queues and physical acceptance remain |
+| Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | YouTube Music live workflows and 381 default/light/high-contrast player assertions pass; 269 populated-queue native checks pass, including light-theme options-glyph contrast; Spotify awaits reconnection and physical acceptance remains |
 | Display widget expansion | Add trusted reusable display controls, then expose them in the widget | 25 deterministic and 124 native checks pass; real mode Apply/Keep/Revert and HDR preview/revert independently sampled and restored; physical cable disconnection not attempted |
 | App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; six isolated real-Inno upgrade/startup-preservation cases pass; production-registration and prerequisite/UAC variants remain unverified |
 | Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Current guides reconciled and 22 superseded plans retired; 244 tracked Markdown files / 761 local targets and 44 local Markdown fragments checked; commands and representative screenshot captions reviewed; recheck documentation affected by remaining fixes |
@@ -111,7 +111,7 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 - [ ] Check coherent spacing, alignment, typography, hierarchy, panel proportions, readable labels, deliberate empty states and clear selected/disabled/loading/error states. Fix awkward gaps, clipped content, unstable layouts, obscured controls and inconsistent styling before delivery; do not merely document these as polish follow-ups.
 - [ ] Verify dense and partially configured builds in both games, long names/descriptions, small and large displays, interface/text scaling and light/dark/high-contrast themes. Ensure focus remains visible and predictable across panels, updates, dismissal, hide/reopen and widget unloading.
 - [x] Record coverage, findings, corrections and native visual evidence for verified workflows under the existing app-wide verification checklist. Use local/sanitized fixtures for repeated checks; preserve the minimal-live-GGG constraint.
-- [ ] Complete the remaining cross-app native acceptance above, add its final evidence to the same checklist, and retain final couch-distance readability as physical user acceptance. Installed item edit/cancel, skill toggle/restore and long Notes scrolling are already verified in both games.
+- [x] Complete the named cross-app native pass and record its evidence. Installed item edit/cancel, skill toggle/restore and long Notes scrolling pass in both games; Settings/Appearance, Audio, Games & Apps, Task Switcher, Network/Power, Browser and populated music queues are covered. Physical controller/couch and unavailable authenticated-service acceptance remain separate.
 
 ## Shared rich previews and anchored popovers
 
