@@ -25,6 +25,7 @@ public sealed partial class PobWidget
         EnsureBuildName(committed, targetId);
         // This is the commit point. No visible mutation is published before it.
         PobWorkStore.Save(dataDirectory, targetId, game, work);
+        if (targetId == documentId) PrepareHistoryPreviews(work, committed.State);
         // Keep the existing XML available to exports/tools. Recovery uses the
         // atomic work record even if the process exits before this mirror write.
         try
@@ -86,6 +87,7 @@ public sealed partial class PobWidget
         token.ThrowIfCancellationRequested();
         BuildDocument.SaveAtomic(Path.Combine(dataDirectory, "selected.txt"), id);
         EnsureBuildName(committed, id);
+        PrepareHistoryPreviews(work is null ? new(committed.Xml, [], []) : work with { CommittedXml = committed.Xml }, committed.State);
         lock (gate)
         {
             documentId = id; result = shown; pendingBefore = work?.Pending is null ? null : committed;recoveryReadOnly=readOnly;showChangedNodes=false;

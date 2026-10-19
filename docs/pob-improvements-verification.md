@@ -1,6 +1,34 @@
 # PoB and shared UI improvement verification
 
-Updated 2026-10-18. This ledger records implementation evidence, not final acceptance of the full plan.
+Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
+
+## Undo/Redo previews, 2026-10-19
+
+History retains its existing XML snapshots and loadout-switch behavior. A passive
+focus/hover preview on each available action describes its current-to-restored
+values. Existing saved history is supported without a storage migration. Summaries
+are prepared at checkpoint/reopen boundaries, cached for the current pair of
+snapshots, and bounded to four entries with an additional-change count. Rendering
+and focusing never call the calculation engine. Item changes show differing text
+lines; configuration and passive labels use existing upstream projection metadata.
+Other saved fields use their build-document labels; these are state differences,
+not predicted damage changes or a replay of the original command.
+
+Pure description checks: 12 passed. Focused edit/Undo/Redo/reload workflows: 10
+passed per engine. The full work-state suite passed 40 checks on PoE2; its PoE1
+run caught a normalized-XML cache mismatch after reopening, corrected and verified
+by the focused reload suite. Native checks: 320 passed across both games, two
+sizes, and four themes, verifying passive chrome, unchanged focus, A activation,
+and busy-control retention. The compact preview was visually inspected.
+
+Evidence: `artifacts/pob/history-preview-native-20261019`,
+`history-preview-focused{1,2}-20261019.log`, `history-preview-work{1,2}-20261019.log`.
+Packages: `history-preview-packages-20261019`, PoE1/PoE2 version 0.1.4.16, with
+qualified engine/runtime/web assets verified unchanged against 0.1.4.15.
+Both packages are installed/enabled; installed code and styles match the qualified
+staging hashes. Cumulative candidate k was relaunched hidden with the normal
+profile/controller configuration (PID 34628 at delivery). One frontend remains,
+with no main-window handle/title; validation windows are closed. No merge or release.
 
 ## Music layout qualification, 2026-10-18
 

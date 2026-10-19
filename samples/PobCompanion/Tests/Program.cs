@@ -5,6 +5,22 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
+if(args is ["--history-preview-only"])
+{
+    var passed=0;var failed=0;
+    HistoryPreviewTests.Run((ok,name)=>{Console.WriteLine((ok?"PASS ":"FAIL ")+name);if(ok)passed++;else failed++;});
+    Console.WriteLine($"History previews: {passed} passed, {failed} failed");return failed==0?0:1;
+}
+
+if(args.Length==5&&args[4]=="--history-workflow-only")
+{
+    var passed=0;var failed=0;var fixture=Directory.EnumerateFiles(args[3],"*.xml").Order(StringComparer.Ordinal).First();
+    await WorkStateTests.RunAsync(int.Parse(args[0]),args[1],args[2],Environment.GetEnvironmentVariable("POB_ADAPTER")!,
+        await BuildDocument.ReadAsync(fixture,int.Parse(args[0]),default),
+        (ok,name)=>{Console.WriteLine((ok?"PASS ":"FAIL ")+name);if(ok)passed++;else failed++;},historyOnly:true);
+    Console.WriteLine(JsonSerializer.Serialize(new{game=int.Parse(args[0]),passed,failed}));return failed==0?0:1;
+}
+
 if(args is ["--formatted-reading-only"])
 {
     Console.WriteLine($"Formatted reading: {FormattedReadingTests.Run()} passed");return 0;

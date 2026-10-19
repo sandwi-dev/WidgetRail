@@ -1,6 +1,10 @@
 # PoB widget improvements: discussion and implementation plan
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
+
+Undo/Redo now exposes passive focus/hover previews of the next saved-state change.
+The existing history behavior is unchanged, including loadout switches. Summaries
+are cached outside rendering and reconstructed from saved snapshots on reopening.
 
 Latest music layout follow-up passes native qualification: YouTube Music's heart
 is beside the seek slider, and Spotify's title is centered across the vertical
@@ -14,7 +18,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 ## Implementation order and tracking
 
 Current acceptance checkpoint (2026-10-18): candidate **k** contains the cumulative
-host changes, with PoE1/PoE2 packages **0.1.4.15**, YouTube Music **0.3.43.5**, Spotify **0.3.90.2** and a quiet responsive toolbar.
+host changes, with PoE1/PoE2 packages **0.1.4.16**, YouTube Music **0.3.43.5**, Spotify **0.3.90.2** and a quiet responsive toolbar.
 Trade-session actions are separate from build/history controls. Configuration fits 11 options
 instead of 6 at the same viewport, comparisons use aligned named columns, and
 inspections fit their content. Search retains query/category/selected identity;

@@ -35,9 +35,10 @@ internal sealed partial class WidgetStylesValidationPage
             var density=Environment.GetCommandLineArgs().Contains("--pob-density-only");
             var headerOnly=Environment.GetCommandLineArgs().Contains("--pob-header-only");
             var editorOnly=Environment.GetCommandLineArgs().Contains("--pob-editor-only");
+            var historyOnly=Environment.GetCommandLineArgs().Contains("--pob-history-only");
             foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"widgetrail.builtin.velvet-dusk","high-contrast"})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in historyOnly?new[]{"history-undo","history-redo"}:editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
@@ -189,6 +190,18 @@ internal sealed partial class WidgetStylesValidationPage
                         await Wait(()=>VisibleInAncestorScrolls(button));
                         Check(true,"Calculation list and source rows can be fully revealed at enlarged text scale");
                     }
+                }
+                if(historyOnly)
+                {
+                    var action=scenario[8..];var control=Find<Button>("Widget.pob."+action,root)!;
+                    Check(control.Focus(FocusState.Keyboard),"History action accepts native focus");
+                    await Wait(()=>page.IsFocusPreviewOpen);
+                    Check(page.FocusPreviewChrome is {IsHitTestVisible:false}&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),control),
+                        "History preview is read-only and keeps focus on the original action");
+                    var value=Find<TextBlock>("Widget.pob."+action+".preview.value.0",root);
+                    Check(value is {ActualHeight:>0}&&value.Text.Contains(action=="undo"?"77 →":"→ 77"),"History preview paints the correct restore direction");
+                    var count=dispatched.Count;page.ActivateFocused();Check(dispatched.Count==count+1,"A still activates the history action rather than entering its preview");
+                    if(size.Width==820&&game==2&&themeId=="widgetrail.builtin.velvet-dusk")await Capture(Path.Combine(directory,"native-"+scenario+".png"));
                 }
                 var busyNode=scenario=="search"?rows[0]:scenario=="skill-workspace"
                     ?declared.First(n=>n.Id.StartsWith("pob.gem-enabled.",StringComparison.Ordinal)&&n.Kind==ViewNodeKind.Button)

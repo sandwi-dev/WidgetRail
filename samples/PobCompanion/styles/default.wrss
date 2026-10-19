@@ -116,6 +116,8 @@ text { color: var(--text); text-align: start; }
 .pob-candidate-row { gap:3px; align:stretch; }
 .pob-candidate-summary { color:var(--text-muted); font-size:13px; max-lines:2; text-align:start; }
 .pob-preview-content { gap:8px; }
+.pob-history-preview-change { gap:2px; }
+.pob-history-preview-value { color:var(--text); font-size:14px; max-lines:3; text-overflow:ellipsis; }
 .pob-preview-title { color:var(--text); font-size:18px; font-weight:600; max-lines:2; }
 .pob-preview-meta { color:var(--text-muted); font-size:13px; max-lines:3; }
 .pob-preview-description { color:var(--text); font-size:14px; max-lines:8; }

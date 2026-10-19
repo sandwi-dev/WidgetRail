@@ -25,6 +25,9 @@ Use **PoE1 Path of Building (Beta)** for Path of Exile or **PoE2 Path of Buildin
 
 Edits save automatically. Tree and equipment proposals use **Apply** or **Discard**; **Undo/Redo** is available in the build controls.
 
+Focus or hover Undo/Redo to preview the change before applying it. The preview is
+read-only; A or click still performs the action. Loadout switches remain part of history.
+
 For a build on **poe.ninja** or **pob.cool**, copy its PoB code and use **Paste build from clipboard**. Direct poe.ninja profile-link import is unavailable, and pob.cool requires a mouse and keyboard.
 
 ## Learn more

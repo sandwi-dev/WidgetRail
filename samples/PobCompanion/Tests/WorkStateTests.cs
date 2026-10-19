@@ -6,7 +6,7 @@ using WidgetRail.WidgetSdk;
 
 internal static class WorkStateTests
 {
-    internal static async Task RunAsync(int game, string engineRoot, string runtime, string adapter, string xml, Action<bool,string> check)
+    internal static async Task RunAsync(int game, string engineRoot, string runtime, string adapter, string xml, Action<bool,string> check, bool historyOnly=false)
     {
         var directory=Path.Combine(Path.GetTempPath(),"widgetrail-pob-work-"+Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -43,18 +43,38 @@ internal static class WorkStateTests
             await widget!.OnActionAsync(new(action,"work-test"){CommittedText=value});await Settled();
         }
         PobWorkState Saved()=>PobWorkStore.Read(directory,id,game)!;
+        void ExportHistory(string action)
+        {
+            if(Environment.GetEnvironmentVariable("POB_HISTORY_FIXTURES") is not {Length:>0} output)return;
+            Directory.CreateDirectory(output);
+            File.WriteAllBytes(Path.Combine(output,$"poe{game}-history-{action}.json"),SnapshotJson.Serialize(Snapshot() with
+                {InitialFocusId="pob."+action,FocusGroupEntryRequest=null}));
+        }
         try
         {
             await Open();
             await Action("level","77");var edited=Saved().CommittedXml;
             check(Saved().Undo.Length==1,"Immediate edit saves its undo entry in the same checkpoint");
+            var undoPreview=Nodes(Snapshot().Root).Single(n=>n.Id=="pob.undo").FocusPresentation;
+            check(undoPreview is not null && Nodes(undoPreview).All(n=>!n.IsFocusable&&n.ActionId is null)&&
+                Nodes(undoPreview).Any(n=>n.Text?.Contains("77 →")==true),"Undo exposes a passive before/after preview without stealing its action");
+            var previewXml=Saved().CommittedXml;
+            _=Snapshot();_=Snapshot();
+            check(Saved().CommittedXml==previewXml,"Rendering history previews never mutates saved work");
+            ExportHistory("undo");
             await Action("section.5");await Close();await Open();
             check(Snapshot().ActiveInputScopeId=="pob.scope.calcs.main"&&Nodes(Snapshot().Root).Single(n=>n.Id=="pob.undo").IsDisabled!=true,
                 "Reopen restores Undo without retaining browsing navigation");
+            check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.undo").FocusPresentation is {} restoredPreview&&
+                Nodes(restoredPreview).Any(n=>n.Text?.Contains("77 →")==true),"Existing saved snapshots regain descriptions after restart without new metadata");
             await Action("undo");var before=Saved().CommittedXml;
             check(before!=edited&&Saved().Redo.Length==1,"Restored Undo returns to the prior committed build");
+            check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.redo").FocusPresentation is {} redoPreview&&
+                Nodes(redoPreview).Any(n=>n.Text?.Contains("→ 77")==true),"Redo preview updates to the opposite change after Undo");
+            ExportHistory("redo");
             await Close();await Open();await Action("redo");
             check(SameBuild(Saved().CommittedXml,edited)&&Saved().Redo.Length==0,"Redo survives a second process restart");
+            if(historyOnly)return;
 
             var state=await engine!.ExecuteAsync(new{op="snapshot"},default);
             var node=state.State.GetProperty("nodes").EnumerateArray().First(n=>n.GetProperty("canAllocate").GetBoolean()&&n.GetProperty("pathCount").GetInt32() is >=2 and <=5);
