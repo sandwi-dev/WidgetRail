@@ -2,6 +2,21 @@
 
 Updated 2026-10-18. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Current checkpoint
+
+The dated entries below are historical evidence; their earlier "pending" and
+process-ID statements are superseded by later checkpoints. Current verified work
+includes both installed games' item edit/cancel and skill toggle/restore flows,
+exact skill-subpage return focus, Catalogue installation/update/screenshot flows,
+Bare optional-package upgrade/load/remove/restart, shared preview accessibility,
+modal Escape, music layout and unattended-update recovery presentation.
+The apparent Bare discovery failure was resolved as AppData redirection in the
+test environment. A fresh actual media close succeeds; the earlier isolated media
+shutdown and invisible-overlay observations remain unreproduced, with no speculative
+production fix. Spotify authentication, physical controller/couch acceptance and
+remaining integrated cross-app/environment-specific checks are not claimed complete.
+The current goal remains active. See the final checkpoint for the live candidate.
+
 Local commits: `2bbf0b6c` architecture boundaries; `41d1fe9a` workspace sizing; `317be39e` Catalogue rename/tests. Nothing merged, pushed or released.
 
 ## First implementation slice
@@ -1054,3 +1069,30 @@ check caught this and the corrected test covers both. The initial engine command
 incorrectly included `.zip` instead of the bundle stem and is excluded.
 Package preparation reuses hash-verified 0.1.4.7 engine/web/artwork assets; only the
 managed widget binaries and package version change. No live service calls.
+
+## Current running candidate after skill focus verification — 2026-10-18
+
+Candidate **g** is restored hidden with normal profile/controller input, PID
+**30684** at this checkpoint. Both PoB packages are enabled at **0.1.4.9**, updated
+through the ordinary disable/reviewed-update/enable CLI sequence after installed
+fixture verification. Resolving the normal catalogue's file handle confirmed its
+physical path is the real `AppData/Local/WidgetRail/widgets` directory; the isolated
+acceptance namespace's redirection does not apply to that normal catalogue.
+The sole frontend has only `--hidden` and the explicit installation root, no test
+profile/controller flags; UIA reports no visible windows. All **138 frontend DLLs**
+match the qualified build. The restored Bridge catalogue DLL also matches its
+pre-diagnostic hash. No temporary catalogue probe remains in production source.
+
+Evidence: `cumulative-candidate-20261018-g/live-payload-skill-return.json`,
+`normal-launch-skill-return.json`, `normal-pob-versions.json` and
+`hidden-windows-skill-return.json`. Current documentation file-link audit passes
+**244 tracked Markdown files / 761 relative local targets**, with zero missing
+files; external URLs and fragment anchors are excluded. The larger tracked-file
+count uses all Git-tracked Markdown rather than the earlier maintained-guide subset.
+
+Remaining work is final integrated coverage reconciliation, including any still
+unverified Notes/calculation scrolling combinations, Spotify authentication and
+physical controller/couch/environment-specific acceptance. The two earlier native
+visibility/shutdown observations are unreproduced, with scoped passing retests;
+no broad reliability claim follows from those retests. The goal remains active.
+No merge, push, release or deferred CI repair.

@@ -14,8 +14,10 @@ and updater warning wrapping now have targeted native fixes and evidence. The
 additional Bare upgrade case now passes optional package preservation, native
 launch, removal and restart; the earlier failure was test-path redirection. Spotify
 authentication, the earlier unreproduced invisible-overlay observation, remaining
-installed editing checks and physical controller/couch acceptance remain distinct
+cross-app acceptance and physical controller/couch checks remain distinct
 from completed automated checks. See the latest verification-ledger entries.
+Both installed games now pass item edit/cancel and skill toggle/restore round
+trips; Group settings and More skill options return to their exact openers.
 
 | Order | Work item | Status |
 | --- | --- | --- |
