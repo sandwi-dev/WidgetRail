@@ -251,16 +251,22 @@ as finished. Two panes alone do not make the comparison efficient or readable.
 
 Search opens from the build controls, supports category filtering and local whole-entry suggestions, and navigates through existing focus targets. Known item and disabled-main-skill warnings use supplied identities; ambiguous warnings remain informational. Inventory/calculation catalog failures identify unavailable categories and retry on reopening Search.
 
-### Reported regression: RS after a search destination opens Tree
+### Reported regression: shortcuts after global-search navigation
 
 **Recorded for investigation; implementation and application testing remain on hold.**
-The user reports: open global search → select a “shock chance” result → Tree opens →
-the RS shortcut to Build controls stops working. The exact selected result type and
-root cause are not yet verified; do not assume the search result was misrouted.
+The user reports two affected destinations:
 
-- [ ] Reproduce the reported sequence and compare RS behavior after normal Tree entry versus entry through global search. Check the displayed controller guide, active input/focus scope, tree/browser interaction ownership and completion of the search navigation handoff.
-- [ ] Restore access to Build controls through the intended RS route without consuming Tree controls incorrectly or leaving stale search/modal ownership. Determine the cause before changing shared input admission or introducing a special-case shortcut.
-- [ ] Add a focused regression covering search → Tree → RS → Build controls and return to the selected node. Check other search destination types and normal section navigation for the same ownership problem, preserving existing contextual shortcuts and Back behavior.
+- Global search → select a “shock chance” result → Tree opens → RS no longer opens Build controls.
+- Global search → a Skills result opens Skills → LS no longer performs its contextual shortcut.
+
+Treat this as a potentially shared shortcut/input-ownership regression after search
+navigation, not a Tree-only issue. The exact selected result types, expected Skills
+LS target and root cause still need verification against the active controller guide;
+do not assume search results were misrouted.
+
+- [ ] Reproduce both sequences and compare RS/LS behavior after ordinary section entry versus entry through global search. Check the displayed controller guide, active input/focus scope, destination shortcut registration, tree/browser interaction ownership and completion of the search navigation handoff.
+- [ ] Restore each destination's intended shortcuts without consuming local controls incorrectly or leaving stale search/modal ownership. Determine the cause before changing shared input admission or introducing destination-specific shortcut workarounds.
+- [ ] Add focused regressions for search → Tree → RS → Build controls and return to the selected node, plus search → Skills → LS → its declared contextual target and return. Check other search destinations and normal section navigation for the same ownership problem, preserving existing contextual shortcuts and Back behavior.
 
 ## Host-wide naming: WidgetRail Catalogue
 
