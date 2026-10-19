@@ -1265,3 +1265,14 @@ last-card access and stable focus. The old height fails; the corrected height pa
 **44 native assertions**. Two focused home-action/loading tests pass. Velvet Dusk
 was visually inspected. Evidence: `settings-home-fit-20261018/before-result.json`,
 `after-result.json` and `after-velvet.png`.
+
+Candidate **j**, PID **7192** at this checkpoint, runs hidden with the normal
+profile and controller input. It reuses candidate i's qualified frontend and
+unchanged runtime files, and publishes/reseals the Settings assembly from
+`97f23dff` into a separate installation root. Hash comparison permits only the
+two Settings DLL copies and generated integrity metadata to differ. All 138
+frontend DLLs still match; one frontend is running and UIA reports no visible
+windows. The copied seal was removed only from the new staging root before
+regeneration; the first seal attempt correctly rejected existing integrity metadata.
+Evidence: `cumulative-candidate-20261018-j/provenance.json`, `live-process.json`
+and `live-payload.json`. No release, merge or profile changes.
