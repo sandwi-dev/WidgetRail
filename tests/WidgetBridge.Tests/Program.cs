@@ -115,6 +115,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Catalogue integrated widget review update revert retry and permission workflow", MarketplaceIntegratedWorkflow.RunAsync),
     ("Text suggestions preserve authority, cancellation and bounded admission", BridgeClientRegistryScenarios.TextSuggestions),
+    ("Text suggestions cancellation preserves the real bridge connection", SuggestionCancellationPreservesConnection),
     ("Background browser retention is bounded worker-scoped and never grants input", BridgeClientRegistryScenarios.BackgroundBrowserRetention),
     ("Background browser retention crosses the real pipe without reviving workers", BridgeClientRegistryScenarios.BrowserRetentionPipe),
     ("Media player source crosses both pipes for inline and pinned projections", MediaPlayerScenarios.ThroughPipes),
@@ -465,6 +466,8 @@ static Task MarketplaceAuthority()
 static async Task<int> RunWorkerAsync(string[] arguments)
 {
     var instance = RequiredValue(arguments, "--widget-instance");
+    if (instance == "suggestion-cancel.instance")
+        return await WidgetWorkerBootstrap.RunAsync(arguments, () => new SuggestionCancellationWidget());
     if (instance == "settings-navigation.fixture")
         return await WidgetWorkerBootstrap.RunAsync(arguments, () => SettingsNavigationFixture.CreateSettings(RequiredValue(arguments, "--settings-fixture-root")));
     if (instance == "settings-source.fixture")
@@ -5154,6 +5157,38 @@ static async Task SuspendWhenHiddenIsLogical()
         cachedResponse.Payload.GetProperty("snapshot").GetRawText()));
     Assert.Equal(visible.Sequence, cached.Sequence);
     Assert.Equal(1, harness.Server.RunningWorkerCount);
+}
+
+static async Task SuggestionCancellationPreservesConnection()
+{
+    using var fixture = TemporaryCatalog.Create(instanceId: "suggestion-cancel.instance");
+    var pipe = "wrail-suggestion-cancel-" + Guid.NewGuid().ToString("N");
+    await using var server = new WidgetBridgeServer(pipe, BridgeCatalog.Load(fixture.Path), 64 * 1024);
+    var serving = server.RunAsync(TimeSpan.FromSeconds(5));
+    await using (var session = await WidgetPresentationSession.ConnectAsync(pipe,
+        new WidgetPresentationSessionOptions { MaximumMessageBytes = 64 * 1024 }))
+    {
+        await session.ListWidgetsAsync();
+        var frame = await session.EstablishPresentationAsync(session.GetTarget("test-widget"), WidgetLifecycleState.Interactive);
+        var query = new TextSuggestionQuery("entry", "suggestions", Guid.NewGuid().ToString("N"), 1, "first", 6, 96);
+        Assert.Equal("First suggestion", (await session.SuggestTextAsync(frame, query)).Items.Single().Value);
+        for (var i = 1; i <= 3; i++)
+        {
+            using var cancellation = new CancellationTokenSource();
+            var entered = WaitForPresentationAsync(session, state => state.LastGood is { } current &&
+                FindNode(current.Snapshot.Root, "pending").Text == i.ToString());
+            var pending = session.SuggestTextAsync(frame, query with { Revision = i * 2, Text = "delayed" }, cancellation.Token);
+            frame = (await entered.WaitAsync(TimeSpan.FromSeconds(5))).LastGood!;
+            cancellation.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => pending);
+            await session.ListWidgetsAsync();
+            Assert.Equal("First suggestion", (await session.SuggestTextAsync(frame, query with { Revision = i * 2 + 1 })).Items.Single().Value);
+            frame = await session.RefreshAsync(frame.Authority);
+            Assert.True(session.GetState("test-widget")!.Failure is null, "Cancelled suggestions failed the widget presentation.");
+            Assert.Equal(1, server.RunningWorkerCount);
+        }
+    }
+    await serving.WaitAsync(TimeSpan.FromSeconds(5));
 }
 
 static async Task IdleUnloadSessionResumes()

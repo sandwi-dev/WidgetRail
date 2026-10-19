@@ -59,6 +59,17 @@ internal static partial class BridgeClientRegistryScenarios
         await fixture.GetSnapshotAsync(configured.Id);
         reply.SetResult(TextSuggestionResult.Empty);
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => stale);
+        var currentRequest = request with { Query = query with { TimeoutMilliseconds = 3000 } };
+        fixture.Clients[0].TextSuggestions = (_, _) => Task.FromCanceled<TextSuggestionResult>(new CancellationToken(true));
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => fixture.Registry.SuggestTextAsync(currentRequest, default));
+        using (var shutdown = new CancellationTokenSource())
+        {
+            shutdown.Cancel();
+            await RegistryAssert.ThrowsAsync<OperationCanceledException>(() => fixture.Registry.SuggestTextAsync(currentRequest, shutdown.Token));
+        }
+        fixture.Clients[0].TextSuggestions = (_, _) => Task.FromResult(TextSuggestionResult.Empty);
+        using (var recovered = await fixture.Registry.SuggestTextAsync(currentRequest, default))
+            RegistryAssert.True(!recovered.Value.Unavailable);
         await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => fixture.Registry.SuggestTextAsync(
             request with { Query = query with { SourceKey = "replacement" } }, default));

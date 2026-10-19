@@ -2,6 +2,35 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Suggestion cancellation bridge failure, 2026-10-19
+
+The user's second YouTube Music suggestion update exposed a host cancellation
+boundary missed by the prior tests. Logs show the bridge retiring both workers
+and the frontend subsequently reporting a closed presentation transport. A new
+test using a real worker, named-pipe bridge and presentation session reproduces
+that failure: first suggestion succeeds; cancel an admitted delayed request;
+the following widget-list request fails with a closed transport.
+
+The registry now translates suggestion-local `OperationCanceledException` into
+a request-level protocol error, matching the dispatcher contract. Previously the
+dispatcher treated it as fatal because the bridge session itself was not cancelled.
+Actual session cancellation still propagates. No widget workaround, global
+cancellation suppression or extra production diagnostics were added.
+
+The same test now passes three cancellation/requery/render cycles with one worker.
+Registry checks cover private timeouts, session shutdown, admission recovery,
+stale owners and providers ignoring cancellation. Both suggestion scenarios and
+all four request-dispatcher scenarios pass. Prior widget/native tests did not
+exercise this complete cancellation path, so they did not establish this guarantee.
+
+Evidence: `artifacts/pob/suggestion-cancel-before.log` (reproduced transport loss),
+`suggestion-cancel-qualified.log`, `suggestion-cancel-dispatcher.log` and
+`suggestion-cancel-publication.log`. Corrected cumulative host is staged at
+`artifacts/pob/cumulative-candidate-20261019-suggestion-cancel`; YouTube Music
+remains 0.3.43.7. Production publication and cleanup verification passed; all
+138 deployed frontend DLLs match. The corrected candidate is running hidden on
+the normal profile. Physical checks remain with the user as requested.
+
 ## Expanded completion and YouTube Music suggestions, 2026-10-19
 
 Offline completion now uses all 82,765 supported words from the pinned SymSpell

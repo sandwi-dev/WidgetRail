@@ -68,6 +68,12 @@ internal sealed partial class BridgeClientRegistry
                 return publication;
             }
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Superseded typing and the worker RPC's own deadline cancel only
+            // this optional read. Never let them become a fatal session fault.
+            throw new BridgeProtocolException("Text suggestion request was cancelled or timed out.");
+        }
         finally
         {
             Task? cancellation;
