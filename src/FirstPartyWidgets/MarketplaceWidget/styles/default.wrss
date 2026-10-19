@@ -3,7 +3,7 @@ text { color: var(--text); }
 .marketplace-header { gap: 8px; }
 .marketplace-content { gap: 12px; }
 .marketplace-commands { gap: 8px; }
-.marketplace-badges { gap: 8px; align: start; }
+.marketplace-badges { gap: 8px; align: start; min-height: 28px; }
 .page-heading { font-size: 24px; font-weight: 600; }
 .section-heading { color: var(--data-blue, var(--text)); font-size: 18px; font-weight: 600; text-align: start; }
 .page-help { font-size: 14px; color: var(--text-muted); text-align: start; }
@@ -11,7 +11,11 @@ text { color: var(--text); }
 .marketplace-card:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; border-color: var(--focus); }
 .marketplace-requirements { padding: 14px; gap: 8px; corner-radius: 8px; background: var(--surface-raised); border-width: 1px; border-color: var(--border, var(--surface-muted)); }
 .catalogue-gold { color: var(--data-gold, var(--text)); font-weight: 600; }
-.marketplace-setup { font-size: 14px; }
+/* Reserve the same title and two-line summary slots without fixing the card height. */
+.marketplace-browse-card { padding: 12px; gap: 6px; }
+.marketplace-card-title { min-height: 22px; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; }
+.marketplace-card-description { min-height: 38px; line-height: 1.25; max-lines: 2; text-overflow: ellipsis; }
+.marketplace-rich-preview { padding: 16px; gap: 10px; }
 .marketplace-preview { height: 280px; }
 .diagnostic-line { font-size: 15px; text-align: start; }
 .diagnostic-error { color: var(--danger, var(--text)); text-align: start; }

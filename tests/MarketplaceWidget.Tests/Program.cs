@@ -6,6 +6,8 @@ using WidgetRail.WidgetStyling;
 
 if (args is ["--export-native", var output]) { await ExportNative(output); return 0; }
 var tests = new (string Name,Func<Task> Run)[] {
+    ("Catalogue local search retains filters and rejects stale suggestions", Search),
+    ("Catalogue previews are deferred read-only metadata and retire on navigation", Previews),
     ("Catalog navigation filters updates and restores the selected card", Navigation),
     ("Catalogue screenshot actions preserve image identity and return to the exact card", () => ScreenshotNavigation(null)),
     ("Catalogue setup requirements are visible before download and navigation stays outside scrolling", SetupPresentation),
@@ -180,12 +182,89 @@ static async Task SetupPresentation()
     var view = f.View();
     Check(view.Root.Kind == ViewNodeKind.Grid, "Catalogue lacks a bounded fixed header");
     Check(!Walk(Node(f, "marketplace.content")!).Any(n => n.Id == "marketplace.tabs" || n.Id == "marketplace.refresh"), "Navigation scrolls away");
-    Check(Walk(view.Root).Any(n => n.Text == "Requires a separate service account."), "Discovery omitted setup requirements");
+    Check(Walk(view.Root).Any(n => n.Text == "Setup required"), "Discovery omitted setup indication");
     Check(Walk(view.Root).Any(n => n.Text == "Preview"), "Preview state omitted");
     await f.Act(Walk(view.Root).First(n => n.Kind == ViewNodeKind.ActionSurface).ActionId!);
     Check(Node(f, "marketplace.requirement.1")?.Text?.Contains("service token") == true, "Details omitted complete setup requirements");
     Check(f.Commands.All(c => c.Action is "status" or "refresh"), "Reading prerequisites downloads or installs a widget");
     Check(ViewSnapshotValidator.Validate(f.View()).Count == 0 && WinUiPresentationContract.Validate(f.View()).Count == 0, "Setup details invalid");
+}
+
+static async Task Search()
+{
+    await using var f = new Fixture();
+    f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(item => item.Id == Fixture.Id
+        ? item with { SetupRequirements = ["Needs a service token"] } : item).ToArray() };
+    await f.Start();
+    await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
+    Check(Node(f, "marketplace.search.row")!.Children.Any(n => n.Id == "marketplace.refresh"), "Check for updates is not beside search");
+    var before = f.Commands.Count;
+    TextSuggestionQuery Query(string text) => new("marketplace.search", Node(f, "marketplace.search")!.TextEntrySuggestions!.Key, new string('a', 32), 1, text, MaximumValueLength: 128);
+    var query = Query("sec");
+    var suggestions = await f.Widget.OnSuggestTextAsync(query, default);
+    Check(suggestions.Items.Single().Value == "Second widget", "Suggestions do not use loaded catalogue names");
+    await f.Act("marketplace.search", "  SERVICE token  ");
+    var card = Walk(f.View().Root).Single(n => n.Kind == ViewNodeKind.ActionSurface);
+    Check(card.AccessibilityLabel!.StartsWith("First widget"), "Search does not match setup requirements case-insensitively");
+    Check((await f.Widget.OnSuggestTextAsync(query, default)).Unavailable, "Old search generation remained available");
+    await f.Act(card.ActionId!);
+    Check((await f.Widget.OnSuggestTextAsync(query with { Revision = 2 }, default)).Unavailable, "Details allowed a stale search response");
+    await f.Act("marketplace.back");
+    Check(Node(f, "marketplace.search")!.Text == "SERVICE token" && f.View().InitialFocusId == card.Id, "Back lost search or exact selection");
+    await f.Act("marketplace.search", "no such widget");
+    Check(Node(f, "marketplace.empty")!.Text!.Contains("No widgets match") && !Walk(f.View().Root).Any(n => n.Kind == ViewNodeKind.ActionSurface), "No-match state is misleading");
+    await f.Act("marketplace.search.clear");
+    Check(Walk(f.View().Root).Count(n => n.Kind == ViewNodeKind.ActionSurface) == 2, "Clear did not restore catalogue");
+    Check(Node(f, "marketplace.search.clear")?.IsDisabled != true, "Clearing removed its own focus eligibility");
+    var old = Query("sec");
+    await f.Act("marketplace.tab.installed");
+    Check((await f.Widget.OnSuggestTextAsync(old, default)).Unavailable, "Section transition accepted old suggestions");
+    Check((await f.Widget.OnSuggestTextAsync(Query("sec"), default)).Items.Count == 0, "Installed suggestions include uninstalled widgets");
+    Check(f.Commands.Count == before, "Search or suggestions issued a marketplace request");
+    var beforeRefresh = Query("first");
+    await f.Act(card.ActionId!);
+    f.Snapshot = f.Snapshot with { Revision = f.Snapshot.Revision + 1, Items = [f.Snapshot.Items[1]] };
+    await f.Act("marketplace.refresh");
+    await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true && Node(f, "marketplace.search") is not null);
+    Check((await f.Widget.OnSuggestTextAsync(beforeRefresh, default)).Unavailable, "Refresh accepted old suggestions");
+    await f.Act("marketplace.tab.browse");
+    Check(Walk(f.View().Root).Single(n => n.Kind == ViewNodeKind.ActionSurface).AccessibilityLabel!.StartsWith("Second widget"),
+        "Removing the selected listing left the catalogue empty");
+    var active = Query("second");
+    await WidgetTestHost.SetLifecycleStateAsync(f.Widget, WidgetLifecycleState.Background);
+    Check((await f.Widget.OnSuggestTextAsync(active, default)).Unavailable, "Inactive widget still supplies suggestions");
+    using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+    try { await f.Widget.OnSuggestTextAsync(active, cancelled.Token); throw new Exception("Cancellation was ignored"); }
+    catch (OperationCanceledException) { }
+}
+
+static async Task Previews()
+{
+    await using var f = new Fixture();
+    f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(item => item with {
+        SetupRequirements = ["Separate service account required", "Configure your token inside the widget"],
+        RetainedAvailability = true, IsPrerelease = true }).ToArray() };
+    await f.Start(); await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
+    using var host = WidgetTestHost.CreateIndexedCollectionHost(f.Widget, "catalogue-preview-test");
+    var surface = Walk(host.CurrentSnapshot.Root).Single(n => n.Id == "marketplace.previews");
+    var card = Walk(host.CurrentSnapshot.Root).First(n => n.Kind == ViewNodeKind.ActionSurface);
+    Check(surface.FocusPreview is { EnterButton: null, SizeToContentHeight: true } && surface.FocusPreviewSource is not null,
+        "Preview is not deferred and read-only");
+    Check(!Walk(host.CurrentSnapshot.Root).Any(n => n.Text?.Contains("Configure your token") == true), "Previews were eagerly constructed");
+    var before = f.Commands.Count;
+    using var preview = await host.AcquirePreviewAsync(surface.Id, card.FocusPreviewKey!);
+    var content = preview.Range.Items.Single().Root;
+    FocusPreviewContentContract.Validate(content, false);
+    Check(Walk(content).Any(n => n.Text?.Contains("Configure your token") == true) &&
+        Walk(content).Any(n => n.Text?.Contains("Previously checked release") == true), "Preview dropped setup or release provenance");
+    Check(!Walk(content).Any(n => n.ActionId is not null || n.Kind == ViewNodeKind.Image), "Preview has an action or network artwork");
+    await f.Act("marketplace.search", "Second"); host.PublishSnapshot();
+    Check(Walk(host.CurrentSnapshot.Root).Single(n => n.Id == surface.Id).FocusPreviewSource != surface.FocusPreviewSource, "Search retained old preview generation");
+    await f.Act("marketplace.select." + card.FocusPreviewKey);
+    host.PublishSnapshot();
+    Check(!Walk(host.CurrentSnapshot.Root).Any(n => n.Id == surface.Id), "Details retained browse preview surface");
+    Check(f.Commands.Count == before, "Preview issued a marketplace request");
+    Check(f.View().Surface is { PreferredHeight: 640, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Catalogue still fills all available height");
 }
 
 static async Task Navigation()
@@ -271,7 +350,7 @@ static async Task RetainedAvailability()
     await using var f = new Fixture();
     f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(item => item with { RetainedAvailability = true }).ToArray() };
     await f.Start();
-    Check(Walk(f.View().Root).Any(node => node.Text?.Contains("Previously checked release") == true), "Browse silently presented retained availability as fresh");
+    Check(Walk(f.View().Root).Any(node => node.Text == "Cached release"), "Browse silently presented retained availability as fresh");
     var card = Walk(f.View().Root).First(node => node.Kind == ViewNodeKind.ActionSurface);
     await f.Act(card.ActionId!);
     Check(Node(f,"marketplace.version")?.Text?.Contains("Previously checked release") == true,
@@ -399,6 +478,6 @@ sealed class Fixture : IAsyncDisposable
     }
     internal async Task Start() { await WidgetTestHost.InitializeAsync(Widget);await WidgetTestHost.SetLifecycleStateAsync(Widget,WidgetLifecycleState.Interactive);
         using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(5));while(Commands.Count<2)await Task.Delay(10,deadline.Token); }
-    internal ValueTask Act(string action)=>Widget.OnActionAsync(new(action,action));
+    internal ValueTask Act(string action, string? text = null)=>Widget.OnActionAsync(new(action,action) { CommittedText = text });
     public ValueTask DisposeAsync()=>WidgetTestHost.DestroyAsync(Widget);
 }

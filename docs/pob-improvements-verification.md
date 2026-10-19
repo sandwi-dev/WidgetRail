@@ -2,6 +2,37 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Compact catalogue, local search and deferred previews, 2026-10-19
+
+Browse and Installed use aligned compact cards: one title line, two summary lines,
+and themed state/preview/setup badges. Full descriptions, release versions, size
+and every prerequisite are available in an automatically opened, read-only focus
+preview; A still opens the full details/install workflow. Cached availability is
+labelled. Previews are resolved on demand through the existing host API, without
+loading screenshot images or embedding one preview tree per card.
+
+Search filters names, descriptions and prerequisites in the current tab. Keyboard
+suggestions use loaded widget names; selection fills the field and Done commits.
+Check for updates sits beside search, with no extra search-submit button. Back
+preserves the query and selected card. Context changes retire old previews and
+suggestions. The surface prefers 640 DIP instead of filling available height.
+No shared production host changes or extra GitHub requests were introduced.
+
+The Catalogue suite passes **15/15**, covering local search, stale/cancelled
+suggestions, deferred read-only previews, setup visibility, cached versions,
+return focus, busy controls and exact installation review. Release builds and
+WRSS compilation pass. The bounded native fixture passes **13 assertions** at
+900 and 560 DIP, including equal card heights and no horizontal clipping. Both
+initial renders and the final narrow toolbar were visually inspected. This is
+synthetic native rendering, not physical controller or live-service acceptance.
+Evidence: `artifacts/pob/catalogue-*-final*.binlog` and
+`artifacts/pob/catalogue-compact-native02/{native-result.json,browse-*.png}`.
+
+The cumulative candidate reuses the previously qualified host and normal profile;
+**575 files** outside Catalogue match the previous candidate byte-for-byte. The
+Catalogue package was republished, resealed and validated. Its path is
+`artifacts/pob/cumulative-candidate-20261019-catalogue-compact/build`.
+
 ## Passive detail return control, 2026-10-19
 
 The detail panel's existing return action was misleadingly labelled Search nodes,

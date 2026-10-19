@@ -336,6 +336,14 @@ Evidence is recorded in the ledger: the UniGetUI familiar-store comparison, dete
 
 This is independent of the PoB architecture work. Technical identifiers and historical records need not be mechanically renamed.
 
+### Compact catalogue browsing (2026-10-19)
+
+- [x] Keep browse cards aligned with a compact title, two-line summary and status/setup badges. Full wording and prerequisites remain in details and a deferred read-only focus preview.
+- [x] Add local catalogue search and whole-entry name suggestions, retain the query when returning from details, and reject retired suggestion/preview contexts. Typing and previews make no catalogue/network requests.
+- [x] Put Check for updates beside the search field. Keyboard Done commits the search; no extra submit button.
+- [x] Prefer a 640-DIP surface height instead of filling available height. Keep navigation outside the scrolling content and preserve review/install actions.
+- [x] Check native card alignment and clipping at wide/constrained widths and verify search, preview, review and focus flows automatically. Physical acceptance remains with the user under the existing waiver.
+
 ## Release distribution: Bare and Production
 
 From the next release, offer the same application and host capabilities with two initial widget bundles: Bare contains Settings and WidgetRail Catalogue; Production contains those plus a selected set of generally useful widgets. All optional widgets must be available through Catalogue, including first-party widgets currently available only in the bundled installation. Bundle choice must not restrict which widgets a user can install later.

@@ -21,7 +21,8 @@ internal sealed partial class WidgetStylesValidationPage
         {
             var scale = XamlRoot.RasterizationScale;
             App.Window.AppWindow.Resize(new((int)(1080 * scale), (int)(900 * scale)));
-            presenter.Height = 650;
+            var compactOnly = Environment.GetCommandLineArgs().Contains("--catalogue-compact-only");
+            presenter.Height = 640;
             var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
             options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
             var dispatched = new List<string>();
@@ -29,7 +30,7 @@ internal sealed partial class WidgetStylesValidationPage
             foreach (var width in new[] { 900, 560 })
             {
                 presenter.Width = width;
-                foreach (var name in new[] { "browse", "details", "installed", "updates", "review", "completed",
+                foreach (var name in compactOnly ? new[] { "browse" } : new[] { "browse", "details", "installed", "updates", "review", "completed",
                     "empty", "loading", "stale-error", "requirements-long", "requirements-absent" })
                 {
                     using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, name + ".json")));
@@ -112,9 +113,12 @@ internal sealed partial class WidgetStylesValidationPage
                         Check(cards.Length >= 2, "Browse exposes native interactive cards");
                         if (width == 900) Check(Math.Abs(cards[0].TransformToVisual(presenter).TransformPoint(new()).Y -
                             cards[1].TransformToVisual(presenter).TransformPoint(new()).Y) < 1, "Different-height cards share the same top edge");
+                        Check(cards.Max(card => card.ActualHeight) - cards.Min(card => card.ActualHeight) < 1,
+                            $"Browse at {width}: all card edges align despite different description and setup lengths");
+                        Check(cards.All(card => card.ActualHeight < 180), $"Browse at {width}: compact cards fit more content");
                         var header = Find<FrameworkElement>("Widget.marketplace.header")!;
                         var top = header.TransformToVisual(presenter).TransformPoint(new()).Y;
-                        var content = scrolls.First(scroll => scroll.ScrollableHeight > 0);
+                        var content = scrolls.OrderByDescending(scroll => scroll.ScrollableHeight).First();
                         content.ChangeView(null, content.ScrollableHeight, null, true);
                         await Task.Delay(100);
                         Check(Math.Abs(header.TransformToVisual(presenter).TransformPoint(new()).Y - top) < 1,
@@ -136,7 +140,7 @@ internal sealed partial class WidgetStylesValidationPage
                     }
                     await CaptureAsync(Path.Combine(directory, $"{name}-{width}.png"));
                 }
-                await ScreenshotFlowAsync(width,options,dispatched);
+                if (!compactOnly) await ScreenshotFlowAsync(width,options,dispatched);
             }
         }
         catch (Exception error) { failure = error; }
