@@ -95,6 +95,8 @@ public enum PresentationProperty
     Graph,
     AnchoredPresentation,
     FocusPreview,
+    FocusPreviewSource,
+    FocusPreviewKey,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -257,6 +259,8 @@ public static class PresentationPropertyMetadata
         PresentationProperty.GridCell or
         PresentationProperty.AnchoredPresentation or
         PresentationProperty.FocusPreview or
+        PresentationProperty.FocusPreviewSource or
+        PresentationProperty.FocusPreviewKey or
         PresentationProperty.Minimum or
         PresentationProperty.Maximum or
         PresentationProperty.Step or

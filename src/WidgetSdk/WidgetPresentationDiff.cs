@@ -409,6 +409,8 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.GridCell, before.GridCell, after.GridCell);
         Add(PresentationProperty.AnchoredPresentation, before.AnchoredPresentation, after.AnchoredPresentation);
         Add(PresentationProperty.FocusPreview, before.FocusPreview, after.FocusPreview);
+        Add(PresentationProperty.FocusPreviewSource, before.FocusPreviewSource, after.FocusPreviewSource);
+        Add(PresentationProperty.FocusPreviewKey, before.FocusPreviewKey, after.FocusPreviewKey);
         Add(PresentationProperty.GridMaximumColumns, before.GridMaximumColumns, after.GridMaximumColumns);
         Add(PresentationProperty.IsDisabled, before.IsDisabled, after.IsDisabled);
         Add(PresentationProperty.IsSelected, before.IsSelected, after.IsSelected);

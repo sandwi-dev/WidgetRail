@@ -85,6 +85,9 @@ public static class IndexedCollectionInputContract
         IndexedCollectionInputRequest request)
     {
         ValidateInput(request);
+        if (owners.LastOrDefault() is { Kind: ViewNodeKind.FocusPresentationSurface, FocusPreviewSource: not null } surfaceOwner)
+            return surfaceOwner.FocusPreview?.EnterButton is not null && request.PreviewAction is { } deferred
+                ? ResolvePreview(item,deferred,available:true) : null;
         var path = owners.Append(item).ToArray();
         var collectionAvailable = owners.Where(node => node.Kind == ViewNodeKind.IndexedCollection)
             .All(ControllerShortcutResolutionContract.OwnerAvailable);

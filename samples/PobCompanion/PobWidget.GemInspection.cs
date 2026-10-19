@@ -65,7 +65,11 @@ public sealed partial class PobWidget
     {
         var candidate=UI.ActionSurface("choose",context.Id("gem"),entry.Name,ActionSurfaceOrientation.Horizontal,
             UI.Text(entry.Name,context.Id("name")).Classes("pob-inline")).Classes("pob-button");
-        if(entry.Inspection is not {} data||query.Context is not {} picker)return candidate;
+        return candidate.PresentOnFocus(entry.Key);
+    }
+    private static WidgetElement RenderGemCandidatePreview(GemQuery query,GemEntry entry,WidgetIdScope context)
+    {
+        if(entry.Inspection is not {} data||query.Context is not {} picker)return UI.Text("Gem details unavailable",context.Id("empty"));
         var rows=new List<WidgetElement>{UI.Text(data.Support?"Support gem":"Active skill gem",context.Id("type")).Classes("pob-eyebrow","pob-gold")};
         if(data.Tags.Length>0)rows.Add(UI.Text(data.Tags,context.Id("tags")).Classes("pob-gold"));
         if(data.Description.Length>0)rows.Add(UI.Text(data.Description,context.Id("description")).Classes("pob-text"));
@@ -78,9 +82,9 @@ public sealed partial class PobWidget
             if(data.Support&&data.CanSupport is {} supports)rows.Add(UI.Text(supports?"Supports the current skill":"Does not support the current skill",context.Id("support")).Classes("pob-small"));
             rows.Add(UI.Text("PoB's selected comparison total, not the change from your equipped gem.",context.Id("total-help")).Classes("pob-small","pob-muted"));
         }
-        return candidate.PresentOnFocus(InspectionWorkspace(context.Id("preview"),rows,
+        return InspectionWorkspace(context.Id("preview"),rows,
             UI.Stack(context.Id("controls"),UI.Text(data.Name,context.Id("title")).Classes("pob-preview-title","pob-blue"),
-                UI.Button(picker.Gem==0?"Add gem":"Replace gem","choose",context.Id("apply")).Classes("pob-button"))));
+                UI.Button(picker.Gem==0?"Add gem":"Replace gem","choose",context.Id("apply")).Classes("pob-button")));
     }
     private static string GemComparisonText(GemInspectionData data,GemPickerContext context) =>
         context.Sort!="name"&&data.Comparison is {} total

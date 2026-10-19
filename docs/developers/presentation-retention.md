@@ -33,13 +33,65 @@ revoke the panel. No stale action is replayed against a replacement item.
 Interactive fragments support bounded layout, rich text, images, buttons,
 action surfaces, selectors and scrolling. Nested scopes, embedded services,
 collections and nested previews are not supported. Existing fragment node/depth
-limits and range budgets still apply. Keep IDs stable across busy updates; mark
-pending controls busy rather than removing or disabling them. Content belongs in
-the source data, loaded in bounded batches or from valid caches before entry.
+limits apply to inline fragments; deferred content has its own bound below. Keep IDs stable across busy updates; mark
+pending controls busy rather than removing or disabling them. For catalogs, resolve content on demand rather than attaching every preview to
+the row batch.
 
 Leave `EnterButton` unset for read-only previews such as Undo/Redo. Their passive
 content validation and focus behavior remain unchanged. Ordinary blocking dialogs
 continue to use `WithModal`; interactive previews do not wrap that API.
+
+## On-demand preview sources
+
+Protocol 95 lets ordinary and indexed rows carry a lightweight preview key.
+Declare a `WidgetFocusPreviewSource<TContext>` once with `CreateFocusPreviewSource`.
+Its `Resolve(context, key, cancellationToken)` returns a complete `WidgetElement`;
+optional `OnAction` and `ResolveArtwork` callbacks receive that same captured
+context and key. Use immutable context data. Call `Publish(newContext)` when the
+build, query, selected target or other meaning of the data changes.
+
+```csharp
+// Create once in the widget; use your immutable domain model as context.
+previews = CreateFocusPreviewSource("item-previews", catalog,
+    new WidgetFocusPreviewOptions<Catalog>
+    {
+        Resolve = (context, key, token) => LoadPreviewAsync(context, key, token),
+        OnAction = (context, key, action, token) => ApplyAsync(context, key, action, token),
+    });
+var row = UI.Button("Select item", "select", "candidate").PresentOnFocus(itemKey);
+var surface = UI.FocusPresentationSurface(row, UI.Text("", "empty"), "preview")
+    with
+    {
+        PreviewSource = previews.Descriptor,
+        Preview = new(480, 560) { EnterButton = ControllerButton.X, SizeToContentHeight = true },
+    };
+```
+
+After focus/hover settles, the host requests one key and renders only the resolved
+panel. It never fetches a row batch's previews. X enters those existing controls;
+B returns without requesting content again. Leave `EnterButton` unset for a
+read-only summary. Both forms support rich text. Small inline previews such as
+Undo/Redo can continue using `PresentOnFocus(WidgetElement)`.
+
+The limits serve different purposes:
+
+- Normal views retain their 2,048-node bound; inline preview fragments retain 64.
+- A deferred preview has an independent 256-node bound. Nested scopes, lists,
+  previews and service surfaces remain prohibited.
+- The presenter retains at most four resolved semantic leases and one pending
+  preview request. Cached data is reused only while its context and owner remain
+  current. Native controls exist only for the active panel.
+- Each source permits one actual provider operation. Cancellation-ignoring work
+  holds that slot until it really completes; it cannot create unbounded work.
+  The provider timeout defaults to five seconds, configurable from 250 ms to
+  ten seconds. Honor cancellation and avoid blocking operations.
+
+Source changes cancel pending requests. Late results are discarded; replacement
+contexts, lifecycle suspension and disposal retire the cached leases. Errors leave
+the ordinary page usable and do not repeatedly retry while focus remains unchanged.
+Preview actions use the captured content lease and original displayed frame;
+forged actions and retired contexts are rejected. This reuses indexed semantic
+lease transport, but previews are not hidden collections or actionable fake rows.
 
 ## Anchored dialogs
 

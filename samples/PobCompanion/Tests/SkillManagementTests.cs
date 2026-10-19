@@ -34,8 +34,9 @@ internal static class SkillManagementTests
             using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"gem-apply-test",900);
             using var lease=await host.AcquireAsync("pob.gems",index,1);
             var row=lease.Range.Items.Single();var before=Result();
-            var apply=Nodes(row.Root.FocusPresentation!).Single(n=>n.ActionId=="choose");
-            check((inspect?lease.RoutePreviewAction(row.Key,apply.Id,"choose"):lease.RouteAction(row.Key,ControllerButton.A))==WidgetOperationAdmission.Enqueued,
+            using var preview=await host.AcquirePreviewAsync("pob.gem-preview",row.Key);
+            var apply=Nodes(preview.Range.Items.Single().Root).Single(n=>n.ActionId=="choose");
+            check((inspect?preview.RoutePreviewAction(row.Key,apply.Id,"choose"):lease.RouteAction(row.Key,ControllerButton.A))==WidgetOperationAdmission.Enqueued,
                 inspect?"Preview applies the exact captured gem":"A still chooses the indexed gem directly");
             await Until(()=>!ReferenceEquals(Result(),before));await Idle();
             check((string)Get("detailKind")! == "skill","Explicit gem selection returns to inline group editing");
@@ -98,7 +99,9 @@ internal static class SkillManagementTests
                 using var lease=await host.AcquireAsync("pob.gems",0,3);
                 var row=lease.Range.Items[1];var before=Result();var queryBefore=Get("gemQuery");
                 check(row.Root.ActionId=="choose"&&row.Root.Shortcuts.Count==0,"Gem source retains A and X is host-owned");
-                var content=row.Root.FocusPresentation!;var apply=Nodes(content).Single(n=>n.ActionId=="choose");
+                check(row.Root.FocusPresentation is null&&row.Root.FocusPreviewKey==row.Key,"Gem rows contain only a deferred preview key");
+                using var preview=await host.AcquirePreviewAsync("pob.gem-preview",row.Key);
+                var content=preview.Range.Items.Single().Root;var apply=Nodes(content).Single(n=>n.ActionId=="choose");
                 check(Nodes(content).Any(n=>n.Kind==ViewNodeKind.Scroll)&&apply.Text=="Add gem","Full gem content and Add gem appear together before entry");
                 check(ReferenceEquals(Result(),before)&&ReferenceEquals(queryBefore,Get("gemQuery")),"Reading preview performs no engine edit or query reset");
                 var expected=PobInspectionContext.Read(before.State,before.Xml,Group()).Summary;
@@ -108,17 +111,17 @@ internal static class SkillManagementTests
                 {
                     Directory.CreateDirectory(output);
                     File.WriteAllBytes(Path.Combine(output,"poe"+game+"-gem-inspection.json"),SnapshotJson.Serialize(host.CurrentSnapshot));
-                    File.WriteAllText(Path.Combine(output,"poe"+game+"-gem-row.json"),JsonSerializer.Serialize(row.Root));
+                    File.WriteAllText(Path.Combine(output,"poe"+game+"-gem-row.json"),JsonSerializer.Serialize(row.Root with{FocusPreviewKey=null,FocusPresentation=content}));
                     File.WriteAllBytes(Path.Combine(output,"poe"+game+"-gem-picker.json"),SnapshotJson.Serialize(host.CurrentSnapshot));
                 }
-                check(lease.RoutePreviewAction(row.Key,apply.Id,"forged") is null,"Gem preview rejects undeclared action");
+                check(preview.RoutePreviewAction(row.Key,apply.Id,"forged") is null,"Gem preview rejects undeclared action");
                 typeof(PobWidget).GetField("pickerGem",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(widget,99);
-                lease.RoutePreviewAction(row.Key,apply.Id,"choose");await Task.Delay(100);
+                preview.RoutePreviewAction(row.Key,apply.Id,"choose");await Task.Delay(100);
                 check(ReferenceEquals(Result(),before),"Changed target rejects captured preview apply");
                 typeof(PobWidget).GetField("pickerGem",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(widget,0);
                 host.PublishSnapshot();
                 await Action("gem-search","not-present-in-catalog");host.PublishSnapshot();
-                check(lease.RoutePreviewAction(row.Key,apply.Id,"choose") is null,"Retired gem query rejects late preview apply");
+                check(preview.RoutePreviewAction(row.Key,apply.Id,"choose") is null,"Retired gem query rejects late preview apply");
                 await Action("gem-search","");
             }
             var oldQuery=Get("gemQuery");

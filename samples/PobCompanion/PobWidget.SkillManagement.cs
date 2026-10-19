@@ -155,6 +155,8 @@ public sealed partial class PobWidget
         return UI.VerticalScroll("pob.skill-manage.tools",properties.ToArray()).RememberChildFocus("pob.group-name").Classes("pob-scroll");
     }
 
+    private WidgetFocusPreviewSource<GemQuery>? gemPreviews;
+    private GemQuery? gemPreviewQuery;
     private WidgetElement GemPickerWorkspace()
     {
         gemCollection??=CreateIndexedCollection<GemQuery,GemEntry>("pob.gem-source",gemQuery,0,new()
@@ -172,9 +174,16 @@ public sealed partial class PobWidget
                 (gemSort!="name"&&x.gem.TryGetProperty("comparison",out var value)?" · "+value.GetDouble().ToString("N0",System.Globalization.CultureInfo.InvariantCulture):""),"gem-pick."+x.i,Inspection:gemInspectionCatalog[x.i])).ToArray();
         var context=CaptureGemPickerContext();
         if(!gemQuery.Entries.SequenceEqual(entries)||gemQuery.Context!=context||!ReferenceEquals(gemQuery.Context?.Build,context.Build)){gemQuery=new(entries,context);gemCollection.PublishQuery(gemQuery,entries.Length);}
+        gemPreviews??=CreateFocusPreviewSource("pob.gem-preview-source",gemQuery,new WidgetFocusPreviewOptions<GemQuery>
+        {
+            Resolve=(query,key,token)=>{token.ThrowIfCancellationRequested();return ValueTask.FromResult(RenderGemCandidatePreview(query,query.Entries.Single(entry=>entry.Key==key),WidgetIds.Scope(WidgetIds.Scope("pob.preview").KeyedId("gem",key))));},
+            OnAction=(query,key,action,token)=>{lock(gate){if(!GemQueryIsCurrent(query)||busy||action.ActionId!="choose")return ValueTask.CompletedTask;
+                return OnActionAsync(action with{ActionId=query.Entries.Single(entry=>entry.Key==key).Action},token);}},
+        });
+        if(!ReferenceEquals(gemPreviewQuery,gemQuery)){gemPreviewQuery=gemQuery;gemPreviews.Publish(gemQuery);}
         ContainerElement results=UI.Stack("pob.gem-picker.results",entries.Length==0?Text("No matching gems.","gem-picker.empty","pob-muted"):
             UI.FocusPresentationSurface(UI.CollectionList("pob.gems",gemCollection,64,"Available gems").Classes("pob-scroll"),
-                UI.Text("","pob.gem-preview.empty"),"pob.gem-preview") with{Preview=new(Width:480,Height:560){SizeToContentHeight=true,EnterButton=ControllerButton.X}}).Classes("pob-workspace");
+                UI.Text("","pob.gem-preview.empty"),"pob.gem-preview") with{Preview=new(Width:480,Height:560){SizeToContentHeight=true,EnterButton=ControllerButton.X},PreviewSource=gemPreviews.Descriptor}).Classes("pob-workspace");
         if(entries.Length>0)results=QuickControls(results,"pob.gems","pob.gem-picker.tools","Search / type",NeedsQuickControls(entries.Length));
         return UI.Stack("pob.gem-picker",
             QuickControls(UI.Stack("pob.gem-picker.tools",UI.Row("pob.gem-picker.header",Button("Back to group","back"),Text((pickerGem==0?"Add gem · ":"Replace gem · ")+S(A(State,"skills").FirstOrDefault(g=>I(g,"id")==detailId),"title"),"gem-picker.title","pob-heading")).Classes("pob-toolbar"),

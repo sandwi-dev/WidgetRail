@@ -26,7 +26,7 @@ public abstract partial class Widget
         CancellationToken cancellationToken)
     {
         IndexedCollectionContract.ValidateRequest(request);
-        if (request.Kind != IndexedCollectionRequestKind.Range) throw new ArgumentException("Continuation requests do not acquire row leases.", nameof(request));
+        if (request.Kind is not (IndexedCollectionRequestKind.Range or IndexedCollectionRequestKind.FocusPreview)) throw new ArgumentException("Continuation requests do not acquire row leases.", nameof(request));
         var id = Guid.NewGuid().ToString("N");
         lock (indexedSourcesGate)
         {
@@ -114,7 +114,7 @@ public abstract partial class Widget
                 correlation.Sequence, correlation.MonotonicTimestampMicroseconds, InputScopeId: lease.Lease.Range.ScopeId)
                 {
                     FocusedElementId = input.PreviewAction?.OwnerId ?? item.Declaration.Root.Id,
-                    FocusedCollectionItem = new(lease.Request.CollectionId, lease.Request.Source.SourceId,
+                    FocusedCollectionItem = lease.Request.Kind == IndexedCollectionRequestKind.FocusPreview ? null : new(lease.Request.CollectionId, lease.Request.Source.SourceId,
                         lease.Request.Source.QueryGeneration, item.Declaration.Key,
                         lease.Request.StartIndex + lease.Read.Items.TakeWhile(candidate => candidate.Declaration.Key != item.Declaration.Key).Count()),
                 };

@@ -9,6 +9,7 @@ using WidgetRail.WidgetSdk;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Anchored presentations preserve modal scope and bounded versioned geometry", AnchoredPresentationTests.Contract),
+    ("Deferred previews resolve on demand and retain bounded authority", DeferredPreviewTests.Run),
     ("Interactive previews preserve indexed action authority", InteractivePreviewTests.IndexedAuthority),
     ("Focus previews preserve passive bounded versioned ownership", FocusPreviewTests.Contract),
     ("Text suggestions are whole-entry bounded versioned and reusable", TextSuggestionTests.Run),

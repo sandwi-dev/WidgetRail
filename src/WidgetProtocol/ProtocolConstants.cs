@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 94;
+    public const int CurrentVersion = 95;
+    public const int DeferredFocusPreviewVersion = 95;
     public const int InteractivePreviewVersion = 94;
     public const int ContentSizedPresentationVersion = 93;
     public const int AnchoredPresentationVersion = 92;

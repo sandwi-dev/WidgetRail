@@ -80,6 +80,9 @@ public abstract record WidgetElement(string Id)
     /// project the fragment while native host focus is on this element. Anchored
     /// consumers may opt into host-managed interaction through Preview.EnterButton.
     /// </summary>
+    /// <summary>Associates a lightweight key with the enclosing deferred preview source.</summary>
+    public WidgetElement PresentOnFocus(string previewKey) => new DeferredFocusPresentationElement(this, previewKey);
+
     public WidgetElement PresentOnFocus(WidgetElement presentation) =>
         new FocusPresentationElement(this, presentation);
 

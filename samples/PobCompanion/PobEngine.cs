@@ -64,11 +64,20 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
         return ExecuteCoreAsync(command, token, expectedState, compare, readOnly: true);
     }
 
-    private async Task<PobResult> ExecuteCoreAsync(object command, CancellationToken token, string? expectedState, bool compare, bool readOnly)
+    // A metadata read cannot be interrupted inside the line protocol without
+    // discarding the engine. Cancel queue admission, then drain an admitted reply
+    // within a short deadline; the preview lease discards superseded results.
+    internal Task<PobResult> ReadItemPreviewAsync(string key, int itemId, string? uniqueKey,
+        string expectedState, CancellationToken demand, CancellationToken widgetLifetime) =>
+        ExecuteCoreAsync(new { op = "item-previews", items = new[] { new { key, itemId, uniqueKey } } },
+            demand, expectedState, compare: false, readOnly: false, completionToken: widgetLifetime);
+
+    private async Task<PobResult> ExecuteCoreAsync(object command, CancellationToken token, string? expectedState, bool compare, bool readOnly,
+        CancellationToken? completionToken = null)
     {
         await serial.WaitAsync(token);
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(CommandTimeout);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(completionToken ?? token);
+        deadline.CancelAfter(completionToken.HasValue ? TimeSpan.FromSeconds(5) : CommandTimeout);
         var baselineRejected = false;
         try
         {

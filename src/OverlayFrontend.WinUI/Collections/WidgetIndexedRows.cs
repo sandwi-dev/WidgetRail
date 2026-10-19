@@ -20,6 +20,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     private readonly PresentationSession session;
     private readonly DispatcherQueue dispatcher;
     private static readonly ConditionalWeakTable<PresentationSession, SemaphoreSlim> Admissions = new();
+    internal static SemaphoreSlim ProviderAdmission(PresentationSession session)=>Admissions.GetValue(session,owner=>new(owner.MaximumConcurrentIndexedRequests,owner.MaximumConcurrentIndexedRequests));
     private readonly SemaphoreSlim admission;
     private SourcePresentation presentation;
     internal IndexedItemsSource<WidgetIndexedRow> Items { get; }
@@ -69,7 +70,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         this.session = session;
         this.dispatcher = dispatcher;
         if (session.MaximumConcurrentIndexedRequests < 1) throw new InvalidOperationException("The session has no indexed provider capacity.");
-        admission = Admissions.GetValue(session, owner => new(owner.MaximumConcurrentIndexedRequests, owner.MaximumConcurrentIndexedRequests));
+        admission = ProviderAdmission(session);
         var source = collection.IndexedCollection ?? throw new ArgumentException("Missing indexed source.", nameof(collection));
         var frame = binding.Frame;
         presentation = new(binding, collection);

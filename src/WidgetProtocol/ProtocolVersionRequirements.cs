@@ -137,6 +137,9 @@ internal sealed class ProtocolVersionRequirements
             bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
+            if (node.FocusPreviewSource is not null || node.FocusPreviewKey is not null ||
+                node.Kind == ViewNodeKind.RichText && (path.Contains(".focusPresentation",StringComparison.Ordinal)||path.Contains(".defaultFocusPresentation",StringComparison.Ordinal)))
+                Add("deferred-focus-preview",ProtocolConstants.DeferredFocusPreviewVersion,path,"Deferred or rich read-only previews require protocol version 95 or later.");
             if (node.FocusPreview?.EnterButton is not null)
                 Add("interactive-preview", ProtocolConstants.InteractivePreviewVersion, path,
                     "Interactive rich previews require protocol version 94 or later.");

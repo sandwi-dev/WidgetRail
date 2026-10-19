@@ -231,7 +231,7 @@ public sealed partial class PobWidget
             list.Add(UI.ActionSurface(kind + "." + id, "pob." + kind + "." + id, title + ", " + subtitle, ActionSurfaceOrientation.Vertical,
                 Text(Limit(title, 160), kind + ".title." + id, "pob-list-title"),
                 Text(subtitle, kind + ".subtitle." + id, "pob-small"))
-                .Selected(id == detailId).FocusRight("pob.detail").Classes("pob-list-item"));
+                .Selected(id == detailId).FocusRight("pob.detail").Classes("pob-list-item").PresentOnFocus(kind+"."+id));
         }
         if (entries.Length == 0) list.Add(Text("No entries in this set.", "empty", "pob-muted"));
         var returnId=entries.Length>0?"pob."+kind+"."+detailId:"pob.tab."+(skills?2:3);
@@ -271,7 +271,7 @@ public sealed partial class PobWidget
         ContainerElement rows=UI.VerticalScroll("pob.inventory.rows",list.ToArray()).Classes("pob-scroll");
         tools=QuickControls(tools,skills?(sets?"pob.set.skills":"pob.group-create"):"pob.inventory","pob.inventory.rows",skills?"Skill groups":"Equipment",quick);
         if(entries.Length>0)rows=QuickControls(rows,"pob."+kind+"."+I(entries[0],"id"),"pob.inventory.tools",skills?"Group controls":"Equipment controls",quick);
-        return Split("inventory",UI.Stack("pob.list",tools,rows).Classes("pob-panel","pob-tree-main"), detailPanel, 1, 1.55);
+        return Split("inventory",UI.Stack("pob.list",tools,WithRowPreviews(rows,skills)).Classes("pob-panel","pob-tree-main"), detailPanel, 1, 1.55);
     }
 
     private static WidgetElement LinkLeft(WidgetElement element,string target)=>element switch

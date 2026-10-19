@@ -66,7 +66,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void ClearSurfaceState()
     {
-        ClearFocusPreview();
+        ClearFocusPreview(); ClearDeferredPreviews();
         foreach (var retention in surfaceRetentions.Values) retention.Dispose();
         surfaceRetentions.Clear(); surfaceSources.Clear();
     }

@@ -180,6 +180,14 @@ Audit (2026-10-18): `PresentOnFocus` and `FocusPresentationSurface` already prov
 
 Navigation follow-up (2026-10-19): remember the last main tab separately for each game and restore it on reload, preserving pending-work recovery precedence. Implemented and checked on empty and populated builds.
 
+On-demand follow-up (2026-10-19): rows publish only preview keys. Settled focus
+resolves one independently bounded fragment through the shared semantic lease
+transport, with cancellation, late-result rejection and a four-entry host cache.
+Inventory uses the panel's rich formatter; no batch-budget plain-text fallback.
+Skill groups and equipped items have read-only summaries using existing build
+data. Inventory, unique and gem candidates retain optional X entry into the same
+visible controls. Undo/Redo remains an inexpensive inline preview.
+
 Control-flow decision (2026-10-19, corrected): complete preview content and controls
 are shown on focus/hover. Optional `EnterButton` is host-owned: X enters the existing
 control tree and B returns to its source without replacing the panel. Entry does

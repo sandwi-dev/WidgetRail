@@ -128,3 +128,7 @@ text { color: var(--text); text-align: start; }
 .pob-list-title.pob-blue, .pob-preview-title.pob-blue { color:var(--data-blue,var(--text)); }
 .pob-list-title.pob-gold, .pob-preview-title.pob-gold { color:var(--data-gold,var(--text)); }
 .pob-list-title.pob-orange, .pob-preview-title.pob-orange { color:var(--data-orange,var(--text)); }
+
+.pob-preview-gem { gap:0px; }
+.pob-preview-gem-name { font-size:14px; max-lines:1; text-overflow:ellipsis; }
+.pob-preview-gem-name.pob-blue { color:var(--data-blue,var(--text)); }

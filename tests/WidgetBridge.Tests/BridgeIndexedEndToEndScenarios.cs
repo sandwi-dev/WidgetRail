@@ -190,6 +190,8 @@ internal static class BridgeIndexedEndToEndScenarios
 internal sealed class IndexedOwnedBridgeProbeWidget : Widget
 {
     private readonly WidgetIndexedCollection<int, int> source;
+    private readonly WidgetFocusPreviewSource<(int Revision,bool ReadOnly)> previews;
+    private bool deferredMode;private bool deferredReadonly;private int previewRevision;private long previewReads;
     private string status = "initial";
     private bool grid;
     private bool grouped;
@@ -210,6 +212,18 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private ScrollRevealRequest? reveal;
     internal IndexedOwnedBridgeProbeWidget()
     {
+        previews=CreateFocusPreviewSource("preview-provider",(0,false),new WidgetFocusPreviewOptions<(int Revision,bool ReadOnly)>
+        {
+            Resolve=async(context,key,token)=>
+            {
+                Interlocked.Increment(ref previewReads);Invalidate();
+                await Task.Delay(key=="item.0"?350:35,token);
+                var text=UI.Stack("preview.copy",UI.Text(key,"preview.key"),UI.RichText("preview.rich",UI.Text("Details for ","preview.prefix"),UI.Text(key,"preview.value")));
+                return UI.Stack("preview.content",UI.Text("Context "+context.Revision,"preview.context"),text,
+                    context.ReadOnly?UI.Text("Read only","preview.readonly"):UI.Button("Apply","preview-apply","preview.apply"));
+            },
+            OnAction=(context,key,action,token)=>{Volatile.Write(ref status,$"preview:{context.Revision}:{key}:{action.ActionId}");Invalidate();return ValueTask.CompletedTask;},
+        });
         source = CreateIndexedCollection<int, int>("owned", 0, 100, new()
         {
             ReadRange = async (query, start, count, token) =>
@@ -235,6 +249,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                 if (query == 303) tile = ((ActionSurfaceElement)tile).Disabled();
                 if (query is 304 or 305) tile = ((ActionSurfaceElement)tile).Selected();
                 if (query == 305) tile = ((ActionSurfaceElement)tile).Busy();
+                if(deferredMode)return tile.PresentOnFocus("item."+item);
                 return query is >= 100 and < 600 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
             },
             OnAction = (query, item, action, _) =>
@@ -280,7 +295,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         _ => Enumerable.Range(0, 100).ToArray(),
     };
     private WidgetView RenderParent() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
-        UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
+        UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(Interlocked.Read(ref previewReads).ToString(),"preview.reads"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
         UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces")),
         Collection())
         .Shortcut(ControllerButton.LeftBumper, actionId: "focus-exact")
@@ -291,7 +306,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         .Shortcut(ControllerButton.RightStick, actionId: "focus-disabled")
         .Shortcut(ControllerButton.LeftStick, actionId: "group-label")
         .Shortcut(ControllerButton.X, actionId: "group-partition")
-        .Shortcut(ControllerButton.B, actionId: "focus-clear"), "items") { FocusGroupEntryRequest = entry, ScrollRevealRequest = reveal };
+        .Shortcut(ControllerButton.B, actionId: "focus-clear"), deferredMode?"parent":"items") { FocusGroupEntryRequest = entry, ScrollRevealRequest = reveal };
     public override WidgetView Render()
     {
         var parent = RenderParent();
@@ -308,6 +323,12 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     {
         Interlocked.Increment(ref calls);
         Volatile.Write(ref status, action.ActionId);
+        if(action.ActionId is "deferred-mode" or "deferred-readonly")
+        {
+            deferredMode=true;surfaces=focusPreviews=grid=grouped=modalMode=false;modalItem=null;entry=null;
+            deferredReadonly=action.ActionId=="deferred-readonly";previews.Publish((++previewRevision,deferredReadonly));source.PublishQuery(0,100);
+        }
+        if(action.ActionId=="deferred-replace")previews.Publish((++previewRevision,deferredReadonly));
         if (action.ActionId == "parent" && surfaces) releaseBackground.TrySetResult();
         if (action.ActionId == "content") source.UpdateContent(surfaces ? 101 : 1);
         if (action.ActionId == "preview-mode")
@@ -425,6 +446,8 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private WidgetElement Collection()
     {
         var element = grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items");
+        if(deferredMode)return UI.FocusPresentationSurface(element,UI.Text("","preview.empty"),"deferred.surface")
+            with{Preview=new(360,280,DelayMilliseconds:100){SizeToContentHeight=true,EnterButton=deferredReadonly?null:ControllerButton.X},PreviewSource=previews.Descriptor};
         if (focusPreviews) return UI.FocusPresentationSurface(element, UI.Text("No selection", "preview-default"), "preview-surface")
             with { Preview = new(320, 180, DelayMilliseconds: 100) };
         if (surfaces) return UI.BackgroundSurface(

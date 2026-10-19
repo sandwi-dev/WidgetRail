@@ -2,6 +2,36 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## On-demand preview sources, 2026-10-19
+
+Protocol 95 adds a shared on-demand source to existing anchored previews. Rows
+publish lightweight keys. Settled focus resolves one complete fragment through
+existing semantic lease transport; only the active panel gets native controls.
+One request and a four-entry lease cache are bounded independently of row batches.
+The resolved fragment has a 256-node bound; normal views and inline previews keep
+their existing bounds. Publishing context, changing scope, suspension and disposal
+retire content; cancellation and late replies cannot retarget the current panel.
+
+PoB inventory/unique rows no longer construct or fetch previews in 64-row ranges,
+and the old 128-entry widget metadata cache and plain-text cutoff are removed.
+The full item preview uses the same rich formatter as the detail panel. Gem
+previews use existing catalog data. Equipped items and skill groups have compact
+read-only summaries; neither selects nor edits the build. Green custom modifier
+runs remain visible alongside ordinary modifiers. Empty and generated groups are
+covered. Undo/Redo keeps its inexpensive inline preview.
+
+Tooltip requests can cancel before engine admission. An admitted read drains its
+reply within a five-second deadline using the widget lifetime, avoiding a cold
+engine restart when focus changes; the canceled preview result is discarded.
+Build-changing operations retain their existing interruption behavior.
+
+Validation: SDK 166/166; API baseline 1/1; real worker indexed regression 1/1;
+real worker native preview lifecycle 12 checks; readonly native theme/size matrix
+96, inventory/unique matrix 256, gem matrix 128. Both engines passed 13 summary
+checks, item suites (94 PoE1 / 92 PoE2) and skill suites (70 / 72). Representative native screenshots were
+reviewed. Tests use local fixtures with no live service requests. Artifacts are
+`artifacts/pob/deferred-*`. Physical controller acceptance remains separate.
+
 ## Complete rich previews and navigation restoration, 2026-10-19
 
 Protocol 94 now places complete interactive content inside `PresentOnFocus`.
@@ -14,11 +44,9 @@ The rejected modal wrapper, separate PoB inspection state and eager three-line
 unique-library summaries have been removed. Ordinary modals and passive
 Undo/Redo previews remain separate.
 
-PoB requests full item tooltip metadata in bounded batches and retains at most
-128 entries in each live build/query cache. Gem details use existing catalog data.
-A maximum 64-item range was validated against the protocol budget. Measured first
-reads were about 109–131 ms and cached reads 2 ms on this machine; these are local
-warm-engine measurements, not cold-start promises.
+The bounded-batch tooltip cache described in the initial implementation has been
+replaced by protocol 95 on-demand sources (see the current verification entry
+below). The earlier batch timings do not describe the current design.
 
 Preview commands retain original displayed-frame authority and the exact indexed
 lease, item key, owner and declared action. Tests reject forged owners/actions,

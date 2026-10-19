@@ -39,6 +39,12 @@ public sealed partial class WidgetPresentationSession
         int startIndex, int count, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
         (await ReadIndexedCoreAsync(authority, collectionId, source, startIndex, count, pinnedLayoutId, true, cancellationToken).ConfigureAwait(false)).Lease!;
 
+    /// <summary>Resolves one key after focus settles, using the shared cancellable semantic lease lane.</summary>
+    public async Task<WidgetPresentationIndexedLease> AcquireFocusPreviewAsync(WidgetPresentationAuthority authority,
+        string surfaceId,IndexedCollectionDescriptor source,string key,string? pinnedLayoutId=null,CancellationToken cancellationToken=default)=>
+        (await ReadIndexedCoreAsync(authority,surfaceId,source,0,1,pinnedLayoutId,true,cancellationToken,
+            IndexedCollectionRequestKind.FocusPreview,previewKey:key).ConfigureAwait(false)).Lease!;
+
     /// <summary>Loads one worker-private continuation. Existing prefixes keep their range/action authority.</summary>
     public async Task ContinueDiscoveredCollectionAsync(WidgetPresentationAuthority authority, string collectionId,
         IndexedCollectionDescriptor source, bool retry = false, CancellationToken cancellationToken = default) =>
@@ -60,11 +66,11 @@ public sealed partial class WidgetPresentationSession
     private async Task<IndexedReadResult> ReadIndexedCoreAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
         int startIndex, int count, string? pinnedLayoutId, bool acquire, CancellationToken cancellationToken,
-        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range, WidgetPinnedSelection? pinnedSelection = null)
+        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range, WidgetPinnedSelection? pinnedSelection = null, string? previewKey = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var range = new IndexedCollectionRangeRequest(collectionId, source, startIndex, count,
-            Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind };
+            Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind, PreviewKey = previewKey };
         IndexedCollectionContract.ValidateRequest(range);
         IndexedDemand operation;
         using (_gate.Enter())

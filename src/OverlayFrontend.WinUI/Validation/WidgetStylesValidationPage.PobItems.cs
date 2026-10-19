@@ -14,6 +14,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 internal sealed partial class WidgetStylesValidationPage
 {
     private Task PobItemInspectionAsync(string directory)=>PobPreviewMatrixAsync(directory,["inventory","unique"]);
+    private Task PobReadonlyPreviewsAsync(string directory)=>PobPreviewMatrixAsync(directory,["skills","equipment"]);
     private async Task PobPreviewMatrixAsync(string directory,string[] kinds)
     {
         Exception? failure=null;
@@ -38,8 +39,9 @@ internal sealed partial class WidgetStylesValidationPage
                 page.ApplyAppearance(appearance,false);
                 var theme=ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,new((WrssDocument[])[package.Document],[]),
                     catalog.Load(contrast?ThemeIdentity.BuiltInMonoInk:themeId,"1.0.0").Package).Theme!;
-                var snapshot=SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{kind}-inspection.json")));
-                var row=JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{kind}-row.json")))!;
+                var readOnly=kind is "skills" or "equipment";
+                var snapshot=SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{kind}-"+(readOnly?"readonly":"inspection")+".json")));
+                var row=readOnly?Nodes(snapshot.Root).First(node=>node.FocusPresentation is not null):JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{kind}-row.json")))!;
                 row=row with{CollectionItemKey=null};
                 var preview=row.FocusPresentation!;
                 // The exact exported content is rendered in the real parent layout.
@@ -62,6 +64,15 @@ internal sealed partial class WidgetStylesValidationPage
                 var source=Find<Button>("Widget."+row.Id,root)!;source.Focus(FocusState.Keyboard);
                 await Wait(()=>page.IsFocusPreviewOpen&&page.FocusPreviewChrome is {ActualHeight:>0});
                 var chrome=page.FocusPreviewChrome!;
+                if(readOnly)
+                {
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),source)&&actions==0,scenario+": read-only preview preserves source focus");
+                    Check(!Nodes(preview).Any(node=>node.ActionId is not null),scenario+": no duplicated editing controls");
+                    var panelBounds=chrome.TransformToVisual(page).TransformBounds(new(0,0,chrome.ActualWidth,chrome.ActualHeight));
+                    Check(panelBounds.Left>=-1&&panelBounds.Top>=-1&&panelBounds.Right<=page.ActualWidth+1&&panelBounds.Bottom<=page.ActualHeight+1,scenario+": read-only panel fits viewport");
+                    if(game==2&&size.Width==1320&&themeId==ThemeIdentity.BuiltInMonoInk)await Capture(Path.Combine(directory,$"native-{kind}.png"));
+                    continue;
+                }
                 var first=Nodes(preview).First(node=>node.Kind==ViewNodeKind.Button&&node.ActionId is not null);
                 await Wait(()=>Find<Button>("Widget."+first.Id,root) is {IsLoaded:true});
                 var action=Find<Button>("Widget."+first.Id,root)!;

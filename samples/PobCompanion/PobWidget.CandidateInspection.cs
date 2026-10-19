@@ -9,11 +9,9 @@ public sealed partial class PobWidget
     private sealed record ItemCandidateContext(PobResult Build,string? Document,object Catalog,string Search,bool Unique);
     private sealed record ItemCandidateEntry(string Key,string Title,string Action,int ItemId,string UniqueKey,string Description,
         string Rarity,string Uses,bool Selected=false,JsonElement Preview=default,string[]? Slots=null);
-    private sealed record ItemCandidateQuery(ItemCandidateContext? Context,ItemCandidateEntry[] Entries)
-    {
-        internal readonly SemaphoreSlim PreviewGate = new(1,1);
-        internal readonly Dictionary<string,ItemCandidateEntry> Previews = new(StringComparer.Ordinal);
-    }
+    private sealed record ItemCandidateQuery(ItemCandidateContext? Context,ItemCandidateEntry[] Entries);
+    private WidgetFocusPreviewSource<ItemCandidateQuery>? itemCandidatePreviews;
+    private ItemCandidateQuery? itemPreviewQuery;
     private ItemCandidateQuery uniqueCandidateQuery=new(null,[]);
     private WidgetIndexedCollection<ItemCandidateQuery,ItemCandidateEntry>? uniqueCandidateCollection;
 
@@ -34,48 +32,36 @@ public sealed partial class PobWidget
     private WidgetIndexedCollection<ItemCandidateQuery,ItemCandidateEntry> CreateItemCandidateCollection(string sourceId,ItemCandidateQuery initial)=>
         CreateIndexedCollection<ItemCandidateQuery,ItemCandidateEntry>(sourceId,initial,0,new()
         {
-            ReadRange=ReadItemCandidatePreviewsAsync,
+            ReadRange=(query,start,count,token)=>{token.ThrowIfCancellationRequested();return ValueTask.FromResult<IReadOnlyList<ItemCandidateEntry>>(query.Entries.Skip(start).Take(count).ToArray());},
             ItemKey=entry=>new(entry.Key),
             RenderItem=(query,entry,context)=>RenderItemCandidate(query,entry,context),
-            OnAction=(query,entry,action,token)=>
-            {
-                lock(gate)
-                {
-                    if(busy||!ItemCandidateIsCurrent(query))return ValueTask.CompletedTask;
-                    if(action.ActionId.StartsWith("equip.",StringComparison.Ordinal)&&int.TryParse(action.ActionId[6..],out var slot)&&
-                        entry.Slots is {} slots&&slot>=0&&slot<slots.Length&&!query.Context!.Unique)
-                    {Edit(new{op="inventory-edit",mode="equip",id=entry.ItemId,slot=slots[slot]});return ValueTask.CompletedTask;}
-                    return action.ActionId=="select"?OnActionAsync(action with{ActionId=entry.Action},token):ValueTask.CompletedTask;
-                }
-            },
+            OnAction=HandleCandidateAction,
         });
-    private async ValueTask<IReadOnlyList<ItemCandidateEntry>> ReadItemCandidatePreviewsAsync(ItemCandidateQuery query,int start,int count,CancellationToken token)
+    private ValueTask HandleCandidateAction(ItemCandidateQuery query,ItemCandidateEntry entry,WidgetActionEvent action,CancellationToken token)
     {
-        await query.PreviewGate.WaitAsync(token);
-        try
+        lock(gate)
         {
-            var entries=query.Entries.Skip(start).Take(count).ToArray();
-            var missing=entries.Where(entry=>!query.Previews.ContainsKey(entry.Key)).ToArray();
-            if(missing.Length>0)
+            if(busy||!ItemCandidateIsCurrent(query))return ValueTask.CompletedTask;
+            if(action.ActionId.StartsWith("equip.",StringComparison.Ordinal)&&int.TryParse(action.ActionId[6..],out var index)&&!query.Context!.Unique)
             {
-                var response=await engine.ExecuteAsync(new{op="item-previews",items=missing.Select(entry=>new
-                    {key=entry.Key,itemId=entry.ItemId,uniqueKey=query.Context!.Unique?entry.UniqueKey:null}).ToArray()},token,query.Context!.Build.Xml);
-                var returned=A(response.State,"previews");
-                if(returned.Length!=missing.Length)throw new InvalidDataException("PoB returned an incomplete preview range.");
-                for(var index=0;index<missing.Length;index++)
-                {
-                    var entry=missing[index];var item=returned[index];
-                    if(S(item,"key")!=entry.Key||A(item,"details").Length>128)throw new InvalidDataException("PoB returned invalid preview metadata.");
-                    query.Previews[entry.Key]=entry with{Preview=item.GetProperty("details").Clone(),Slots=A(item,"slots").Select(slot=>slot.GetString()!).ToArray()};
-                }
+                var slots=A(query.Context.Build.State,"slots");
+                if(index>=0&&index<slots.Length)Edit(new{op="inventory-edit",mode="equip",id=entry.ItemId,slot=S(slots[index],"name")});
+                return ValueTask.CompletedTask;
             }
-            var result=entries.Select(entry=>query.Previews[entry.Key]).ToArray();
-            // This cache belongs to the immutable build/query, never crosses build edits.
-            foreach(var key in query.Previews.Keys.Where(key=>!entries.Any(entry=>entry.Key==key)).Take(Math.Max(0,query.Previews.Count-128)).ToArray())
-                query.Previews.Remove(key);
-            return result;
+            return action.ActionId=="select"?OnActionAsync(action with{ActionId=entry.Action},token):ValueTask.CompletedTask;
         }
-        finally{query.PreviewGate.Release();}
+    }
+    private async ValueTask<WidgetElement> ResolveItemCandidatePreviewAsync(ItemCandidateQuery query,string key,CancellationToken token)
+    {
+        var entry=query.Entries.Single(candidate=>candidate.Key==key);
+        var response=await engine.ReadItemPreviewAsync(entry.Key,entry.ItemId,query.Context!.Unique?entry.UniqueKey:null,
+            query.Context.Build.Xml,token,WidgetLifetimeToken);
+        token.ThrowIfCancellationRequested();
+        var items=A(response.State,"previews");
+        if(items.Length!=1||S(items[0],"key")!=entry.Key)throw new InvalidDataException("PoB returned another preview item.");
+        var item=items[0];
+        return RenderItemCandidatePreview(query,entry with{Preview=item.GetProperty("details").Clone(),Slots=A(item,"slots").Select(slot=>slot.GetString()!).ToArray()},
+            WidgetIds.Scope(WidgetIds.Scope("pob.preview").KeyedId("item",key)));
     }
     private static WidgetElement RenderItemCandidate(ItemCandidateQuery query,ItemCandidateEntry entry,WidgetIndexedItemContext context)
     {
@@ -86,33 +72,38 @@ public sealed partial class PobWidget
             UI.Text(entry.Title,context.Id("title")).Classes("pob-list-title",RarityClass(entry.Rarity)),
             UI.Text(summary,context.Id("summary")).Classes("pob-candidate-summary")).Selected(entry.Selected);
         if(!unique)candidate=candidate.FocusRight("pob.inventory-edit");
+        return candidate.Classes("pob-list-item","pob-candidate-row").PresentOnFocus(entry.Key);
+    }
+    private static WidgetElement RenderItemCandidatePreview(ItemCandidateQuery query,ItemCandidateEntry entry,WidgetIdScope context)
+    {
+        var unique=query.Context!.Unique;
         var controls=new List<WidgetElement>{UI.Button(unique?"Open item draft":"Select item","select",context.Id("choose")).Classes("pob-button")};
         if(!unique&&entry.Slots is {Length:>0} slots)
-            controls.Add(UI.Select("Equip in…",new[]{new SelectOption("none","Choose slot","none",true)}.Concat(slots.Select((slot,index)=>new SelectOption("slot"+index,slot,"equip."+index))).ToArray(),context.Id("equip")).Classes("pob-select"));
+            controls.Add(UI.Select("Equip in…",new[]{new SelectOption("none","Choose slot","none",true)}.Concat(slots.Select(slot=>(Name:slot,Index:Array.FindIndex(A(query.Context!.Build.State,"slots"),candidate=>S(candidate,"name")==slot))).Where(slot=>slot.Index>=0).Select(slot=>new SelectOption("slot"+slot.Index,slot.Name,"equip."+slot.Index))).ToArray(),context.Id("equip")).Classes("pob-select"));
         var lines=entry.Preview.ValueKind==JsonValueKind.Array?entry.Preview.EnumerateArray().ToArray():[];
-        var runs=new List<FormattedRun>();
-        foreach(var line in lines)
-        {
-            if(runs.Count>0)runs.Add(new("\n",runs[^1].Tone));
-            runs.AddRange(ReadFormattedRuns(line,"text","runs"));
-        }
-        // Merge adjacent runs to keep a maximum-size leased range within its protocol budget.
-        var merged=new List<FormattedRun>();
-        foreach(var run in runs)
-            if(merged.Count>0&&merged[^1].Tone==run.Tone)merged[^1]=merged[^1] with{Text=merged[^1].Text+run.Text};else merged.Add(run);
+        // Use exactly the same upstream line formatter as the full details panel.
         var details=new List<WidgetElement>();
-        if(merged.Count<=12)AddRuns(details,merged,context.Id("details"),"pob-text");
-        else details.Add(UI.Text(string.Concat(merged.Select(run=>run.Text)),context.Id("details")).Classes("pob-text"));
+        foreach(var (line,index) in lines.Select((line,index)=>(line,index)))
+            AddFormatted(details,line,"text","runs",context.Id("line"+index));
         if(!unique)details.Add(UI.Text(entry.Uses.Length==0?"Not equipped in any set.":"Used by: "+entry.Uses,context.Id("uses")).Classes("pob-preview-usage"));
         var content=InspectionWorkspace(context.Id("preview"),details,
             UI.Stack(context.Id("controls"),UI.Text(entry.Title,context.Id("preview-title")).Classes("pob-preview-title",RarityClass(entry.Rarity)),
                 UI.Row(context.Id("actions"),controls.ToArray()).Classes("pob-toolbar")));
-        return candidate.Classes("pob-list-item","pob-candidate-row").PresentOnFocus(content);
+        return content;
     }
     private static string RarityClass(string rarity)=>rarity.ToUpperInvariant() switch
-    {"MAGIC"=>"pob-blue","RARE"=>"pob-gold","UNIQUE"=>"pob-orange",_=>"pob-text"};
-    private static WidgetElement ItemCandidatePreview(WidgetElement list,string id)=>
-        UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with{Preview=new(Width:480,Height:560){SizeToContentHeight=true,EnterButton=ControllerButton.X}};
+    {"MAGIC"=>"pob-blue","RARE"=>"pob-gold","UNIQUE" or "RELIC"=>"pob-orange",_=>"pob-text"};
+    private WidgetElement ItemCandidatePreview(WidgetElement list,string id,ItemCandidateQuery query)
+    {
+        itemCandidatePreviews??=CreateFocusPreviewSource("pob.item-preview-source",query,new WidgetFocusPreviewOptions<ItemCandidateQuery>
+        {
+            Resolve=ResolveItemCandidatePreviewAsync,
+            OnAction=(captured,key,action,token)=>HandleCandidateAction(captured,captured.Entries.Single(entry=>entry.Key==key),action,token),
+        });
+        if(!ReferenceEquals(itemPreviewQuery,query)){itemPreviewQuery=query;itemCandidatePreviews.Publish(query);}
+        return UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with
+        {Preview=new(Width:480,Height:560){SizeToContentHeight=true,EnterButton=ControllerButton.X},PreviewSource=itemCandidatePreviews.Descriptor};
+    }
 
     private WidgetElement UniqueCandidateWorkspace(JsonElement[] choices)
     {
@@ -128,7 +119,7 @@ public sealed partial class PobWidget
             SearchField(UI.TextEntry(choiceSearch,"Search unique names or bases","choice-search","pob.choice-search",100),choices,
                 ()=>choices.Select(c=>(Plain(S(c,"title")),Plain(S(c,"title")+" "+S(c,"description")),Plain(S(c,"description"))))).Classes("pob-input"),
             Text($"{entries.Length} unique items","choice.count","pob-muted")),"pob.choice-search","pob.choice-results","Items",NeedsQuickControls(entries.Length));
-        var list=ItemCandidatePreview(UI.CollectionList("pob.choices",uniqueCandidateCollection,64,"Unique item library").Classes("pob-scroll"),"pob.unique.preview");
+        var list=ItemCandidatePreview(UI.CollectionList("pob.choices",uniqueCandidateCollection,64,"Unique item library").Classes("pob-scroll"),"pob.unique.preview",uniqueCandidateQuery);
         var results=entries.Length==0
             ? UI.Stack("pob.choice-results",Text("No matching items.","choice.empty"),list)
             : UI.Stack("pob.choice-results",list);

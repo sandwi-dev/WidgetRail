@@ -529,6 +529,8 @@ public sealed record ViewNode
     public ViewNode? DefaultFocusPresentation { get; init; }
     /// <summary>Optional host-timed anchored placement of the existing focus fragment (protocol v92).</summary>
     public FocusPreviewOptions? FocusPreview { get; init; }
+    public IndexedCollectionDescriptor? FocusPreviewSource { get; init; }
+    public string? FocusPreviewKey { get; init; }
     /// <summary>
     /// Selects the bounded axis for a Scroll node. The host owns the offset,
     /// clips descendants, and reveals controller focus; widgets never publish pixels.

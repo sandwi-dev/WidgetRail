@@ -6,16 +6,18 @@ using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetPresentationSession;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
     private sealed record PreviewSource(Binding Owner, Binding Source, FrameworkElement Anchor,
-        WidgetIndexedRow? Row, ViewNode Content, string Scope, FocusPreviewOptions Options)
+        WidgetIndexedRow? Row, ViewNode? Content, string Scope, FocusPreviewOptions Options,
+        IndexedCollectionDescriptor? Provider=null,string? ContentKey=null,WidgetPresentationIndexedLease? ContentLease=null)
     {
         internal object Key => (Owner.Token, Source.Token, Anchor, Row is null ? null : RowIdentity(Row),
-            Row?.Lease.LeaseId, Options);
+            Row?.Lease.LeaseId, Options, Provider, ContentKey);
     }
     private readonly FocusPreviewDelayState previewDelay = new();
     private PreviewSource? previewSource;
@@ -88,7 +90,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private void DisposePreviewEvents()
     {
-        ClearFocusPreview();
+        ClearFocusPreview(); ClearDeferredPreviews();
         previewTimer?.Stop();
         if (previewTimer is not null) previewTimer.Tick -= PreviewTimerElapsed;
         previewTimer = null; previewPointerTarget = null; previewPointerFocus = null;
@@ -133,7 +135,10 @@ internal sealed partial class WidgetViewPresenter
         bindings.GetValueOrDefault(source.Owner.Identity.Id)?.Token == source.Owner.Token &&
         source.Source.Identity.Scope == activeScope &&
         declarations[source.Owner.Identity.Id].Node.FocusPreview == source.Options &&
-        (source.Row is not null || declarations[source.Source.Identity.Id].Node.FocusPresentation is not null) &&
+        (source.Row is not null || declarations[source.Source.Identity.Id].Node.FocusPresentation is not null ||
+            declarations[source.Source.Identity.Id].Node.FocusPreviewKey == source.ContentKey && source.ContentKey is not null) &&
+        (source.Provider is null || declarations[source.Owner.Identity.Id].Node.FocusPreviewSource == source.Provider) &&
+        source.ContentLease?.IsCurrent != false &&
         declarations[source.Source.Identity.Id].Node.IsDisabled != true &&
         (source.Row is null || source.Row.Lease.IsCurrent) &&
         VisibleAnchorBounds(source.Anchor, this) is { Valid: true };
@@ -170,7 +175,7 @@ internal sealed partial class WidgetViewPresenter
             return null;
         if ((previewEntered || previewPointerIntent && previewPointerOverChrome) && previewSource is { } retained &&
             PreviewEnterButton(retained) is not null && RetainedPreviewIsCurrent(retained))
-            return retained with { Content = retained.Row?.Item.Root.FocusPresentation ?? declarations[retained.Source.Identity.Id].Node.FocusPresentation! };
+            return retained with { Content = retained.Provider is not null ? retained.Content : retained.Row?.Item.Root.FocusPresentation ?? declarations[retained.Source.Identity.Id].Node.FocusPresentation! };
         var target = previewPointerIntent ? previewPointerTarget : XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
         var source = FindBinding(target);
         if (source is null || source.Identity.Scope != activeScope || !Navigable(source)) return null;
@@ -183,7 +188,8 @@ internal sealed partial class WidgetViewPresenter
             row = occurrence.Value.Row; anchor = occurrence.Value.Anchor;
         }
         var content = row?.Item.Root.FocusPresentation ?? declarations[source.Identity.Id].Node.FocusPresentation;
-        if (content is null) return null;
+        var contentKey = row?.Item.Root.FocusPreviewKey ?? declarations[source.Identity.Id].Node.FocusPreviewKey;
+        if (content is null && contentKey is null) return null;
         for (var declaration = declarations.GetValueOrDefault(source.Identity.Id); declaration is not null;
              declaration = declaration.ParentId is { } parent ? declarations.GetValueOrDefault(parent) : null)
         {
@@ -193,21 +199,22 @@ internal sealed partial class WidgetViewPresenter
                 previewPointerIntent && !options.OnHover || !previewPointerIntent && !options.OnFocus ||
                 !bindings.TryGetValue(declaration.Node.Id, out var owner) ||
                 VisibleAnchorBounds(anchor, this) is not { Valid: true }) return null;
-            return new(owner, source, anchor, row, content, row?.Lease.Range.ScopeId ?? source.Identity.Scope, options);
+            return new(owner, source, anchor, row, content, row?.Lease.Range.ScopeId ?? source.Identity.Scope, options,
+                contentKey is null ? null : declaration.Node.FocusPreviewSource,contentKey);
         }
         return null;
     }
 
     private void UpdateFocusPreview()
     {
-        EnsurePreviewEvents();
+        EnsurePreviewEvents(); PruneDeferredPreviews();
         var next = CurrentPreviewSource();
         if (next is null) { ClearFocusPreview(); return; }
         var changed = previewDelay.Select(next.Key, next.Options.DelayMilliseconds, Environment.TickCount64);
         previewSource = next;
         if (changed)
         {
-            previewTimer?.Stop();
+            previewTimer?.Stop(); CancelDeferredPreviewRead();
             HideFocusPreview();
             WatchPreviewScrollers(next.Anchor);
         }
@@ -225,7 +232,7 @@ internal sealed partial class WidgetViewPresenter
             return;
         }
         previewTimer?.Stop();
-        ShowFocusPreview(next);
+        if (ResolveDeferredPreview(next) is { } resolved) { previewSource=resolved; ShowFocusPreview(resolved); }
     }
     private void PreviewTimerElapsed(DispatcherQueueTimer sender, object args)
     {
@@ -254,6 +261,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private void ShowFocusPreview(PreviewSource source)
     {
+        if (source.Content is null) return;
         if (source.Owner.Element is not WidgetPresentationSurface { Fragment: { } fragment } surface ||
             PresentationLayers.Find(this) is not { } layers) return;
         if (previewSuspensions.TryGetValue(surface, out var pending))
@@ -305,16 +313,16 @@ internal sealed partial class WidgetViewPresenter
         fragment.EnsureInteractionAsync = async (authority, token) =>
             PreviewInputCurrent(fragment) && await AdmitInteractionAsync(authority, token) && PreviewInputCurrent(fragment);
         fragment.Session = Session;
-        fragment.ResolveArtworkAsync = row is null ? ResolveArtworkAsync : async (handle, token) =>
+        fragment.ResolveArtworkAsync = source.ContentLease is { } previewLease ? (handle,token)=>previewLease.ResolveArtworkAsync(source.ContentKey!,handle,token) : row is null ? ResolveArtworkAsync : async (handle, token) =>
         {
             try { return await row.Owner.ResolveArtworkAsync(row, handle, token); }
             catch (WidgetRail.WidgetPresentationSession.WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { return null; }
         };
-        fragment.ArtworkGeneration = row is null ? ArtworkGeneration : row.Lease.LeaseId + ":" + row.Item.Key.Length + ":" + row.Item.Key;
-        fragment.ArtworkAuthorityCurrent = row is null ? ArtworkAuthorityCurrent : () => row.Lease.IsCurrent && previewSource?.Key.Equals(source.Key) == true;
+        fragment.ArtworkGeneration = source.ContentLease?.LeaseId ?? (row is null ? ArtworkGeneration : row.Lease.LeaseId + ":" + row.Item.Key.Length + ":" + row.Item.Key);
+        fragment.ArtworkAuthorityCurrent = source.ContentLease is { } contentLease ? ()=>contentLease.IsCurrent : row is null ? ArtworkAuthorityCurrent : () => row.Lease.IsCurrent && previewSource?.Key.Equals(source.Key) == true;
         fragment.Failed = ReportFailure;
         _ = fragment.SetPresentationActiveAsync(true);
-        fragment.ApplyFragment(row is null ? presentation! : presentation!.WithStyles(row.Lease.RenderStyles), source.Content, source.Scope);
+        fragment.ApplyFragment(source.ContentLease is { } content ? presentation!.WithStyles(content.RenderStyles) : row is null ? presentation! : presentation!.WithStyles(row.Lease.RenderStyles), source.Content, source.Scope);
         PositionFocusPreview();
     }
     private void UpdatePreviewEnterHint(PreviewSource source)
@@ -348,7 +356,8 @@ internal sealed partial class WidgetViewPresenter
         {
             UpdateFocusPreview();
             previewTimer?.Stop(); previewDelay.Complete(Environment.TickCount64);
-            ShowFocusPreview(source);
+            if (ResolveDeferredPreview(source) is not { } resolved) return false;
+            previewSource=source=resolved; ShowFocusPreview(source);
         }
         if (previewSurface?.Fragment is not { } fragment || !IsFocusPreviewOpen) return false;
         RememberFocus(source.Source);
@@ -374,7 +383,9 @@ internal sealed partial class WidgetViewPresenter
             declarations[source.Source.Identity.Id].Node.IsBusy == true ||
             !await AdmitInteractionAsync(displayed.Frame.Authority) || !PreviewInputCurrent(fragment) ||
             previewSource?.Key.Equals(source.Key) != true) return;
-        if (source.Row is { } row)
+        if (source.ContentLease is { } content)
+            await content.AdmitPreviewActionAsync(displayed.Frame,source.ContentKey!,new(action.SourceElementId,action.ActionId),action.Sequence,action.MonotonicTimestampMicroseconds);
+        else if (source.Row is { } row)
             await row.Lease.AdmitPreviewActionAsync(displayed.Frame, row.Item.Key,
                 new(action.SourceElementId, action.ActionId), action.Sequence, action.MonotonicTimestampMicroseconds);
         else await DispatchCapturedActionAsync(displayed, action);
@@ -457,6 +468,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private void ClearFocusPreview()
     {
+        CancelDeferredPreviewRead();
         previewExitRevision++; previewPointerOverChrome = false;
         previewTimer?.Stop(); previewDelay.Clear(); previewSource = null;
         foreach (var scroll in previewScrollers) scroll.ViewChanged -= PreviewScrolled;

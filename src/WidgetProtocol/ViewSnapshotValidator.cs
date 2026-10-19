@@ -64,7 +64,12 @@ public static class ViewSnapshotValidator
     internal static IReadOnlyList<ProtocolValidationError> Validate(
         ViewSnapshot snapshot,
         ProtocolVersionRequirements requirements,
-        bool materializedIndexedCollections = false)
+        bool materializedIndexedCollections = false) =>
+        Validate(snapshot, requirements, materializedIndexedCollections, deferredFocusContent: false);
+
+    internal static IReadOnlyList<ProtocolValidationError> Validate(
+        ViewSnapshot snapshot, ProtocolVersionRequirements requirements,
+        bool materializedIndexedCollections, bool deferredFocusContent)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(requirements);
@@ -1656,6 +1661,19 @@ public static class ViewSnapshotValidator
                         children[index], $"{path}.children[{index}]", 1, null, ref contentBudget);
             }
 
+            if (node.FocusPreviewSource is { } source)
+            {
+                if (node.Kind != ViewNodeKind.FocusPresentationSurface || node.FocusPreview is null || source.Count != 1 || source.Discovery is not null)
+                    Add(path,"invalid_preview_source","A deferred source belongs to an anchored preview surface.");
+                try { IndexedCollectionContract.ValidateDescriptor(source); }
+                catch (ArgumentException) { Add(path,"invalid_preview_source","Invalid preview source identity."); }
+            }
+            if (node.FocusPreviewKey is { } key)
+            {
+                CheckIdentifier(key,path+".focusPreviewKey","preview key");
+                if (!node.IsFocusable || node.FocusPresentation is not null)
+                    Add(path,"invalid_preview_key","A focusable source may declare an inline fragment or a deferred key, not both.");
+            }
             if (node.FocusPreview is { } preview)
             {
                 if (node.Kind != ViewNodeKind.FocusPresentationSurface)
@@ -1780,7 +1798,7 @@ public static class ViewSnapshotValidator
         void ValidateFocusPresentationOwnership(
             ViewNode? node,
             string path,
-            int consumerDepth)
+            int consumerDepth, bool deferredOwner = false)
         {
             if (node is null) return;
             var nextConsumerDepth = node.Kind is ViewNodeKind.FocusPresentationSurface
@@ -1789,10 +1807,13 @@ public static class ViewSnapshotValidator
             if (node.FocusPresentation is not null && consumerDepth == 0)
                 Add($"{path}.focusPresentation", "focus_presentation_consumer_required",
                     "An associated presentation requires an enclosing FocusPresentationSurface.");
+            if (node.FocusPreviewKey is not null && !deferredOwner)
+                Add(path,"preview_source_required","A deferred key requires an enclosing preview source.");
+            var nextDeferred = node.Kind == ViewNodeKind.FocusPresentationSurface ? node.FocusPreviewSource is not null : deferredOwner;
             var children = node.Children ?? [];
             for (var index = 0; index < children.Count; index++)
                 ValidateFocusPresentationOwnership(
-                    children[index], $"{path}.children[{index}]", nextConsumerDepth);
+                    children[index], $"{path}.children[{index}]", nextConsumerDepth, nextDeferred);
         }
 
         void ValidateActionSurfaceContent(
@@ -1839,9 +1860,10 @@ public static class ViewSnapshotValidator
             {
                 if (node is null) return;
                 fragmentNodes++;
-                if (fragmentNodes == ProtocolConstants.MaximumFocusPresentationNodes + 1)
+                var maximumNodes = deferredFocusContent ? FocusPreviewContentContract.MaximumNodes : ProtocolConstants.MaximumFocusPresentationNodes;
+                if (fragmentNodes == maximumNodes + 1)
                     Add(nodePath, "focus_presentation_too_large",
-                        $"A focus-associated presentation may contain at most {ProtocolConstants.MaximumFocusPresentationNodes} nodes.");
+                        $"A focus-associated presentation may contain at most {maximumNodes} nodes.");
                 if (relativeDepth > ProtocolConstants.MaximumFocusPresentationDepth)
                     Add(nodePath, "focus_presentation_too_deep",
                         $"A focus-associated presentation may be at most {ProtocolConstants.MaximumFocusPresentationDepth} levels deep.");
@@ -1855,7 +1877,7 @@ public static class ViewSnapshotValidator
                         ViewNodeKind.Select or ViewNodeKind.Scroll or ViewNodeKind.Progress or ViewNodeKind.LineGraph or
                         ViewNodeKind.Spacer or ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
                         node.InputScopeId is not null || node.Focus is not null || node.FocusPersistenceId is not null ||
-                        node.FocusPresentation is not null || node.DefaultFocusPresentation is not null || node.FocusPreview is not null ||
+                        node.FocusPreviewKey is not null || node.FocusPreviewSource is not null || node.FocusPresentation is not null || node.DefaultFocusPresentation is not null || node.FocusPreview is not null ||
                         node.Transition is not null || node.AnchoredPresentation is not null ||
                         node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                         node.VirtualCollectionWindow is not null || node.IndexedCollection is not null ||
@@ -1866,7 +1888,7 @@ public static class ViewSnapshotValidator
                     return;
                 }
                 if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
-                    ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LineGraph or ViewNodeKind.Spacer or
+                    ViewNodeKind.Text or ViewNodeKind.RichText or ViewNodeKind.Progress or ViewNodeKind.LineGraph or ViewNodeKind.Spacer or
                     ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
                     node.ActionId is not null || (node.ContextActions?.Count ?? 0) != 0 ||
                     (node.SelectOptions?.Count ?? 0) != 0 ||
@@ -1879,7 +1901,7 @@ public static class ViewSnapshotValidator
                     node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null ||
                     node.FocusPersistenceId is not null || node.Focus is not null ||
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
-                    node.FocusPreview is not null || node.AnchoredPresentation is not null || node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
+                    node.FocusPreviewKey is not null || node.FocusPreviewSource is not null || node.FocusPreview is not null || node.AnchoredPresentation is not null || node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
                     node.DefaultFocusPresentation is not null || node.Transition is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                     node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null || node.IndexedOccurrenceKeys is not null ||

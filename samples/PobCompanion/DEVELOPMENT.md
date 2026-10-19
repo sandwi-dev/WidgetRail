@@ -7,6 +7,21 @@ This document covers the implementation and its compatibility checks. Installati
 The [editor capability audit](../../docs/pob-editor-capability-audit.md) maps the
 pinned upstream dialogs to delivered controls and records remaining omissions.
 
+## Preview data and lifetime
+
+Candidate rows publish preview keys through the shared `WidgetFocusPreviewSource`.
+Settled focus resolves only the requested inventory/unique tooltip; gem, equipment
+and skill-group previews use captured catalog/build data. The host retains at most
+four current preview leases and renders only the active panel. Inventory keeps the
+same rich formatter as full details. Equipped items and skill groups are read-only;
+X/B entry and return apply only to interactive candidate previews.
+
+Tooltip queue admission is cancellable. Once sent to PoB, the read completes under
+a five-second deadline and widget lifetime so rapid navigation does not repeatedly
+restart the engine. Canceled replies cannot become visible or actionable. See the
+[shared contract](../../docs/developers/presentation-retention.md) for independent
+content limits and context retirement.
+
 ## Architecture
 
 Two controller-first widgets share one implementation and run pinned Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ. Calculation rules remain upstream; the adapter translates editor actions and presentation.

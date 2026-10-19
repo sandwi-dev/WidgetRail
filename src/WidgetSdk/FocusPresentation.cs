@@ -28,6 +28,8 @@ public sealed record FocusPresentationSurfaceElement : WidgetElement
 
     /// <summary>Optional anchored preview; omission preserves immediate passive inline presentation.</summary>
     public FocusPreviewOptions? Preview { get; init; }
+    /// <summary>Optional source for keys resolved only after host focus/hover settles.</summary>
+    public IndexedCollectionDescriptor? PreviewSource { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()
     {
@@ -35,8 +37,18 @@ public sealed record FocusPresentationSurfaceElement : WidgetElement
         Kind = ViewNodeKind.FocusPresentationSurface,
         DefaultFocusPresentation = DefaultPresentation.ToProtocolNode(),
         FocusPreview = Preview,
+        FocusPreviewSource = PreviewSource,
         RetainLastPresentation = RetainLastPresentation ? true : null,
         StyleClasses = StyleClasses,
         Children = [Content.ToProtocolNode()],
     };
+}
+
+internal sealed record DeferredFocusPresentationElement : WidgetElement
+{
+    private readonly WidgetElement child;
+    private readonly string key;
+    internal DeferredFocusPresentationElement(WidgetElement child,string key):base(child.Id)
+    { StableIdentifier.Validate(key,nameof(key));this.child=child;this.key=key;RequiredStyleClasses=child.RequiredStyleClasses;AuthorStyleClasses=child.AuthorStyleClasses; }
+    internal override ViewNode ToProtocolNode()=>child.ToProtocolNode() with{FocusPreviewKey=key,StyleClasses=StyleClasses};
 }

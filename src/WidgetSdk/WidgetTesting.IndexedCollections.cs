@@ -94,6 +94,25 @@ public sealed class WidgetIndexedCollectionTestHost : IDisposable
         }
     }
 
+    /// <summary>Resolves one deferred preview using the production source and semantic lease validation.</summary>
+    public async ValueTask<WidgetIndexedCollectionTestLease> AcquirePreviewAsync(string surfaceId,string key,CancellationToken cancellationToken=default)
+    {
+        IndexedCollectionRangeRequest request;
+        lock(gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed,this);
+            var source=Find(snapshot.Root,surfaceId)?.FocusPreviewSource??throw new ArgumentException("Missing preview source.",nameof(surfaceId));
+            request=new(surfaceId,source,0,1,Guid.NewGuid().ToString("N")){Kind=IndexedCollectionRequestKind.FocusPreview,PreviewKey=key};
+        }
+        using var cancellation=CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token,cancellationToken);
+        var acquired=await widget.AcquireIndexedRangeAsync(request,cancellation.Token).ConfigureAwait(false);
+        lock(gate)
+        {
+            if(disposed||cancellation.IsCancellationRequested){widget.ReleaseIndexedRange(acquired.LeaseId);cancellation.Token.ThrowIfCancellationRequested();throw new ObjectDisposedException(nameof(WidgetIndexedCollectionTestHost));}
+            var lease=new WidgetIndexedCollectionTestLease(this,acquired);leases.Add(lease);return lease;
+        }
+    }
+
     internal WidgetOperationAdmission? Route(WidgetIndexedCollectionTestLease lease, IndexedCollectionInputRequest input,
         IndexedCollectionInputContext? context)
     {

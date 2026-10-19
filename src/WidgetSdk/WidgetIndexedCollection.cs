@@ -351,7 +351,7 @@ public abstract partial class Widget
         IWidgetIndexedCollection source;
         lock (indexedSourcesGate)
             source = indexedSources.GetValueOrDefault(request.Source.SourceId) ?? throw new InvalidOperationException("Indexed source is not registered.");
-        if (request.Kind != IndexedCollectionRequestKind.Range)
+        if (request.Kind is not (IndexedCollectionRequestKind.Range or IndexedCollectionRequestKind.FocusPreview))
         {
             await source.ContinueAsync(request, cancellationToken).ConfigureAwait(false);
             parent = Volatile.Read(ref _latestSnapshot) ?? throw new InvalidOperationException("Parent presentation retired during continuation.");

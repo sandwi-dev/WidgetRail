@@ -12,7 +12,7 @@ public sealed record IndexedCollectionDescriptor(string SourceId, long QueryGene
 public enum DiscoveredCollectionStatus { Ready, Loading, Failed, LimitReached }
 public sealed record DiscoveredCollectionState(long Revision, bool HasMore, DiscoveredCollectionStatus Status,
     int MaximumItems, string? ErrorCode = null, string? ErrorMessage = null);
-public enum IndexedCollectionRequestKind { Range, Continue, Retry }
+public enum IndexedCollectionRequestKind { Range, Continue, Retry, FocusPreview }
 
 /// <summary>One contiguous display-only heading and item run in an existing flat indexed query.</summary>
 public sealed record IndexedCollectionGroup(string Key, string Header, int Count);
@@ -27,6 +27,7 @@ public sealed record IndexedCollectionRangeRequest(
     /// <summary>Continuation control demands have zero rows and run on the bounded range lane.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IndexedCollectionRequestKind Kind { get; init; }
+    public string? PreviewKey { get; init; }
 }
 
 public sealed record IndexedCollectionItem(string Key, ViewNode Root);
@@ -154,6 +155,14 @@ public static class IndexedCollectionContract
         RequireId(request.DemandId);
         if (request.PinnedLayoutId is { } pinned) RequireId(pinned);
         if (!Enum.IsDefined(request.Kind)) throw new ArgumentException("Unknown indexed request kind.", nameof(request));
+        if (request.Kind == IndexedCollectionRequestKind.FocusPreview)
+        {
+            RequireId(request.PreviewKey!);
+            if (request.Source.Count != 1 || request.Source.Discovery is not null || request.StartIndex != 0 || request.Count != 1)
+                throw new ArgumentException("A preview demand resolves one content key.", nameof(request));
+            return;
+        }
+        if (request.PreviewKey is not null) throw new ArgumentException("Only preview demands carry a preview key.", nameof(request));
         if (request.Kind != IndexedCollectionRequestKind.Range)
         {
             if (request.Source.Discovery is null || request.Count != 0 || request.StartIndex != request.Source.Count)
@@ -179,6 +188,14 @@ public static class IndexedCollectionContract
             || range.ScopeId != binding.Scope || range.StartIndex != request.StartIndex || range.DemandId != request.DemandId
             || range.PinnedLayoutId != request.PinnedLayoutId || range.Items is null || range.Items.Count != request.Count)
             throw new ArgumentException("Indexed response authority does not match its request.", nameof(range));
+        if (request.Kind == IndexedCollectionRequestKind.FocusPreview)
+        {
+            var item=range.Items[0];
+            ArgumentNullException.ThrowIfNull(item);
+            if (item.Key != request.PreviewKey) throw new ArgumentException("Preview key changed during resolution.");
+            FocusPreviewContentContract.Validate(item.Root,binding.Node.FocusPreview?.EnterButton is not null);
+            return;
+        }
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var nodes = 0;
         var itemIndex = request.StartIndex;
@@ -242,6 +259,12 @@ public static class IndexedCollectionContract
             var scope = entry.Node.InputScopeId ?? entry.Scope;
             if (entry.Node.Id == request.CollectionId)
             {
+                if (request.Kind == IndexedCollectionRequestKind.FocusPreview)
+                {
+                    if (entry.Node.Kind != ViewNodeKind.FocusPresentationSurface || entry.Node.FocusPreview is null || entry.Node.FocusPreviewSource != request.Source || scope != projection.ActiveInputScopeId)
+                        throw new ArgumentException("Preview source or input scope has retired.", nameof(request));
+                    return (entry.Node,scope,projection);
+                }
                 if (entry.Node.Kind != ViewNodeKind.IndexedCollection || !RetainsPrefix(entry.Node.IndexedCollection, request.Source))
                     throw new ArgumentException("Indexed request does not match the current parent declaration.", nameof(request));
                 return (entry.Node, scope, projection);
