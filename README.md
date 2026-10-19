@@ -67,7 +67,7 @@ Pin a supported video or compact widget, then hide the main overlay. Move, resiz
 and adjust the pin with the controller. Available pinned views depend on the
 widget. [Pinning guide](docs/users/pinning.md).
 
-![Pinned YouTube playback beside a game](docs/images/pinned-video.png)
+![Pinned YouTube playback above the overlay's video controls](docs/images/pinned-video.png)
 
 ## Add widgets
 

@@ -20,8 +20,8 @@ is running. Use **Refresh** to reload a collection from the beginning.
 
 ## Get started
 
-1. Install the YouTube Music `.wrwidget` through **Settings → Widgets → Install from local file**.
-2. Review the **full-trust** prompt and enable the widget.
+1. Install YouTube Music from **Catalogue**, or install its `.wrwidget` through **Settings → Widgets → Install from local file**.
+2. Review the **full-access** prompt. A fresh reviewed installation starts enabled; updating an existing installation preserves its enabled state.
 3. Press **Y** for Settings and choose **Sign in with Google**. Complete sign-in in the separate Chrome window (Edge is the fallback).
 4. Return to the overlay and open **Library**, or search for a song.
 

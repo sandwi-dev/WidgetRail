@@ -173,7 +173,7 @@ while opting into collection layout. Games and Apps uses it for the curated
 library and running-app grids. Its catalog mixes explicit page controls with a
 grid and retains ordinary Scroll. Grouped Home shelves and empty-state content
 keep their generic layout. Public author guidance is in
-[collections](../reference/collections.md#native-list-and-grid-realization).
+[collections](../reference/collections.md#choose-a-presentation-model).
 
 `DeclarativeRenderer::PrepareCollections` now provides host-thread work slices
 bounded by new item measurements and elapsed time. Protected/visible demand precedes

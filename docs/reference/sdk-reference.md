@@ -34,7 +34,7 @@ Use this index to find one API family at a time. For a first project, start with
 | [`WidgetModel<TState>`](widget-model-reference.md) | Store related immutable UI state |
 | [`WidgetResource<TValue>`](async-work.md) | Load and cache one result |
 | [`WidgetCursorResource<TItem>`](collections.md) | Fetch a continuous window of adjacent pages |
-| [`WidgetCollectionItems<TItem>`](collections.md#native-list-and-grid-realization) | Reuse immutable keyed item declarations; pair with `UI.CollectionList` or `UI.CollectionGrid` |
+| [`WidgetCollectionItems<TItem>`](collections.md#data-and-identity) | Cache immutable keyed declarations; use indexed/discovered sources for native virtualized list/grid presentation |
 | [`WidgetPagedResource<TItem>`](collections.md) | Load and cache one offset-based page at a time |
 | [`WidgetNavigator<TRoute>`](routes.md) | Keep the route stack and route lifetimes |
 | [`WidgetOperations`](async-work.md) | Coordinate asynchronous work by key |

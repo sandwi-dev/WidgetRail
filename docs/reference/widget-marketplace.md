@@ -105,7 +105,7 @@ digest. Failure to save optional CLI source metadata does not undo installation.
 - Publish immutable `<package-id>-<version>.wrwidget` assets with GitHub asset
   digests or a supported checksum manifest. ID, publisher and version inside the
   archive must match the curated listing and advertised asset.
-- Discord, Twitch, Game Help and Display Controls each provide `samples/<Widget>Widget/Build-CommunityPackage.ps1`, backed by `scripts/Build-MarketplacePackage.ps1`. Build their archives and SHA-256 sidecars, then attach them to the release when publishing. Adding a listing alone does not make an unpublished package downloadable. These builders do not install, enable, grant access or publish.
+- Discord, Twitch, Game Help and Display Controls provide `Build-CommunityPackage.ps1` in `samples/DiscordWidget`, `samples/TwitchWidget`, `samples/GameHelpWidget` and `samples/DisplayProfilesWidget`, respectively, backed by `scripts/Build-MarketplacePackage.ps1`. Build their archives and SHA-256 sidecars, then attach them to the release when publishing. Adding a listing alone does not make an unpublished package downloadable. These builders do not install, enable, grant access or publish.
 - `PackageDistribution` owns shared remote download, release and source-record
   code. CLI command parsing and exit-code mapping remain in the CLI.
 - `BridgeWidgetMarketplace` owns jobs and archive handles. Mutations use the

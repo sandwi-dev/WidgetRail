@@ -25,9 +25,9 @@ trips; Group settings and More skill options return to their exact openers.
 | Host prerequisites | Extend reusable rich previews / anchored popovers | Implemented; 136 anchored, 32 passive and 14 indexed-source native assertions pass, including themes and motion; adopted in PoB; remaining integrated/controller acceptance is separate |
 | Host prerequisites | Add subtle scroll-container edge cues | Implemented; 22 cue, 42 reading-focus, 93 directional, 10 indexed-reveal and 16 indexed-continuity native assertions pass; final integrated app audit remains |
 | Host prerequisites | Finish shared layout, focus, scrolling, sizing and accessibility changes needed by planned widget workflows | Indexed reveal/continuity, busy-focus and shared presentation changes implemented and tested; broader integrated app audit remains |
-| After host prerequisites | Adjust widget dimensions and stabilize workspace sizing | Sizing policy, twelve installed section transitions and both-game website/inspection subpage checks pass; broader editing and physical acceptance remain |
+| After host prerequisites | Adjust widget dimensions and stabilize workspace sizing | Sizing policy, twelve installed section transitions, website/inspection subpages, item/skill edit-return and long Notes scrolling pass in both games; remaining cross-app and physical acceptance are separate |
 | After host prerequisites | Bring PoE1 to a tested beta candidate and audit new features | Implemented and engine-tested; packaged beta opens all six sections in the installed fresh PoE1 build |
-| After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Implemented; fixed inspector reading position, 318 item/skill checks, 340 native inspector checks and installed inventory/website/offline trade flows pass; broader editing and physical acceptance remain |
+| After host prerequisites | Improve PoB editing and inspection workflows using Redux as a reference | Implemented; both-engine item/skill regressions, native inspection, installed item edit/cancel and skill toggle/restore with exact opener focus pass; bounded reading and long Notes checks also pass; physical acceptance remains separate |
 | After host prerequisites | Complete passive-tree artwork and measure rendering improvements | Implemented; 46 version audits, both-engine checks and 34 renderer assertions pass; packaged trees rendered in both installed widgets |
 | After host prerequisites | Add whole-build and loadout comparison | Both-engine and native fixture checks pass; installed PoE2 loadout calculation, Compare focus retention, detail and return-to-row flow verified; broader acceptance remains |
 | After host prerequisites | Add unified search and direct navigation | Both-engine and native checks pass; installed PoE2 exact-gem destination and modal return verified; installed fresh PoE1 search verified |
@@ -37,7 +37,7 @@ trips; Group settings and More skill options return to their exact openers.
 | Music widget follow-up | YouTube Music and Spotify queue continuity, current-song navigation and saving songs | YouTube Music live workflows and 381 default/light/high-contrast player assertions pass; Spotify awaits reconnection; populated alternate-theme queues and physical acceptance remain |
 | Display widget expansion | Add trusted reusable display controls, then expose them in the widget | 25 deterministic and 124 native checks pass; real mode Apply/Keep/Revert and HDR preview/revert independently sampled and restored; physical cable disconnection not attempted |
 | App update workflow | Controller-only routine updates through the existing Inno installer | Implemented; six isolated real-Inno upgrade/startup-preservation cases pass; production-registration and prerequisite/UAC variants remain unverified |
-| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Current guides reconciled and 22 superseded plans retired; latest audit covers 240 Markdown files and 760 valid local targets; final reconciliation against remaining changes still required |
+| Final documentation pass | Reconcile current guides and remove superseded plans/discussions | Current guides reconciled and 22 superseded plans retired; 244 tracked Markdown files / 761 local targets and 44 local Markdown fragments checked; commands and representative screenshot captions reviewed; recheck documentation affected by remaining fixes |
 
 **Dependency order clarified on 2026-10-18:** complete the necessary shared host
 contracts and implementations first. Validate them using generic fixtures for
@@ -74,14 +74,14 @@ Planning sections, Tree and build comparison now share a preferred width of 1320
 - [x] Keep website and other modals within widget bounds while making them large enough for navigation.
 - [ ] Verify smaller displays, display/interface/text scaling, long lists, two-column layouts, controller reachability and focus after resize.
 
-The implementation reuses the host's `FillAvailable` height and preferred-width policies; it does not stretch to an ultrawide display's full width. Small management views remain smaller. Compact/enlarged-text fixtures, twelve installed main-section transitions, website modals, inventory inspection and offline trade flows are verified. Broader installed editing subpages and physical couch acceptance remain open.
+The implementation reuses the host's `FillAvailable` height and preferred-width policies; it does not stretch to an ultrawide display's full width. Small management views remain smaller. Compact/enlarged-text fixtures, twelve installed main-section transitions, website modals, inventory inspection and offline trade flows are verified. Installed item roll editing/cancel and skill Full DPS toggle/restore now pass in both games, including exact return to Group settings and More skill options. Both installed games also pass synthetic long Notes wheel/PageDown scrolling to both boundaries with stable focus. Remaining cross-app coverage and physical couch acceptance remain open.
 
 ## 2a. Compact layouts and app-wide visual verification
 
 Follow the architecture cleanup and dimension adjustment. Increase useful information per page and reduce navigation without making the interface difficult to read from a couch. Apply the same principles to subsequent new screens, then repeat the affected visual checks.
 
-- [ ] Improve shared host layouts and PoB screens by reducing excess padding/gaps, redundant headings/descriptions and unnecessary navigation. Keep meaningful explanations and distinctions; do not remove information solely to fit more rows.
-- [ ] Use the larger workspace, appropriate two-column layouts and compact rows for related values. Keep reading-line lengths reasonable and group related controls clearly.
+- [x] Improve shared host layouts and PoB screens by reducing excess padding/gaps, redundant headings/descriptions and unnecessary navigation. Keep meaningful explanations and distinctions; do not remove information solely to fit more rows.
+- [x] Use the larger workspace, appropriate two-column layouts and compact rows for related values. Keep reading-line lengths reasonable and group related controls clearly.
 - [ ] Preserve readable text, unmistakable focus indicators, comfortable pointer/controller targets and existing text/interface scaling. Do not apply indiscriminate font or target shrinking.
 - [x] Start with one balanced default; do not add a separate density preference or duplicate desktop/couch layouts in this pass.
 - [ ] Walk through the actual app, not only isolated screenshots: shell/rail, Settings, Catalogue, shared dialogs, on-screen keyboard/suggestions, pinned surfaces and available widgets. Exercise each PoB section in both games, including subpages, selectors, expanded details, lists, Notes, trade comparisons and ranked results.
@@ -111,7 +111,7 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 - [ ] Check coherent spacing, alignment, typography, hierarchy, panel proportions, readable labels, deliberate empty states and clear selected/disabled/loading/error states. Fix awkward gaps, clipped content, unstable layouts, obscured controls and inconsistent styling before delivery; do not merely document these as polish follow-ups.
 - [ ] Verify dense and partially configured builds in both games, long names/descriptions, small and large displays, interface/text scaling and light/dark/high-contrast themes. Ensure focus remains visible and predictable across panels, updates, dismissal, hide/reopen and widget unloading.
 - [x] Record coverage, findings, corrections and native visual evidence for verified workflows under the existing app-wide verification checklist. Use local/sanitized fixtures for repeated checks; preserve the minimal-live-GGG constraint.
-- [ ] Complete the remaining installed editing and native acceptance above, add their final evidence to the same checklist, and retain final couch-distance readability as physical user acceptance.
+- [ ] Complete the remaining cross-app native acceptance above, add its final evidence to the same checklist, and retain final couch-distance readability as physical user acceptance. Installed item edit/cancel, skill toggle/restore and long Notes scrolling are already verified in both games.
 
 ## Shared rich previews and anchored popovers
 
@@ -329,15 +329,16 @@ The README, Quick Start, bundle membership, update flow and install/permission w
 
 Run this after implementation decisions settle, then recheck changed links and examples before delivery. Public documentation should describe the actual delivered app, not a mixture of former plans and current behavior.
 
-- [ ] Audit the top-level README, Getting Started, troubleshooting, update guide, Catalogue/installation guide, widget READMEs/user guides and relevant developer/reference documentation against the final code, manifests and packaging.
+- [x] Audit the top-level README, Getting Started, troubleshooting, update guide, Catalogue/installation guide, widget READMEs/user guides and relevant developer/reference documentation against the current code, manifests and packaging.
 - [x] Resolve the reported update conflict: README currently promises pre-update profile backups/recovery while the dedicated update guide describes the newer flow. Document the implemented update/recovery behavior consistently; do not restore obsolete behavior merely to match old prose.
 - [x] Resolve fresh full-access install guidance: distinguish reviewed interactive installs that start enabled from low-level CLI staging that remains disabled, while retaining required approval and permission behavior. Troubleshooting must match the Catalogue and Settings workflows.
 - [x] Resolve Game Help distribution guidance from the final Bare/Production package contents and Catalogue listing. Getting Started and README must agree on what is preinstalled versus installed separately. Apply the same check to every optional widget and remove retired Developer edition guidance.
 - [x] Remove superseded plans, old discussion documents and redundant status/specification copies after transferring any still-current requirements, operational instructions or useful rationale into maintained guides. Use Git history for obsolete discussion rather than creating another stale documentation archive. Keep the active execution plan/verification record authoritative until delivery; do not delete requirements that remain open.
-- [ ] Update navigation/index pages and incoming links for removed/renamed documents. Check file links, commands, screenshots/captions, feature names, version assumptions and permission claims. Retain required license/copyright notices and accurate adopted-project credits.
+- [x] Update navigation/index pages and incoming links for removed/renamed documents. Check file links, commands, screenshots/captions, feature names, version assumptions and permission claims. Retain required license/copyright notices and accurate adopted-project credits.
+- [ ] Recheck documentation affected by the remaining implementation/acceptance corrections before delivery. Retain exact limitations for Spotify authentication, physical controller/couch checks and environment-specific acceptance; do not describe representative earlier screenshots as the current candidate.
 - [x] Keep the front-facing README concise and approachable; place technical architecture, provider limitations and maintainer procedures in their appropriate dedicated guides. Report any remaining documentation uncertainty rather than implying unsupported behavior is available.
 
-The three reported contradictions are corrected. The remaining audit checks subsequent changes against these maintained guides and retires stale status claims; it must not restore obsolete behavior.
+The three reported contradictions are corrected. The final source/documentation pass also corrected two obsolete collection fragment links and remaining music-guide installation wording. Current command paths/options were checked against their scripts/CLI definitions without executing builds. Representative README, Spotify and PoB calculation/trade screenshot captions were checked against their pixels; older PoB captures are dated and explicitly illustrative. External destinations were not requested, and the owner demonstration remains a placeholder. Recheck subsequent corrections against these maintained guides without restoring obsolete behavior.
 
 ## Resource and trade decisions
 

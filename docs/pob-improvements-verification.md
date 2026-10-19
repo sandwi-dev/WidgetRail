@@ -9,7 +9,7 @@ process-ID statements are superseded by later checkpoints. Current verified work
 includes both installed games' item edit/cancel and skill toggle/restore flows,
 exact skill-subpage return focus, Catalogue installation/update/screenshot flows,
 Bare optional-package upgrade/load/remove/restart, shared preview accessibility,
-modal Escape, music layout and unattended-update recovery presentation.
+modal Escape, music layout, long Notes scrolling and unattended-update recovery presentation.
 The apparent Bare discovery failure was resolved as AppData redirection in the
 test environment. A fresh actual media close succeeds; the earlier isolated media
 shutdown and invisible-overlay observations remain unreproduced, with no speculative
@@ -1125,3 +1125,50 @@ Both import/export suites pass (**19 PoE1 / 28 PoE2**), including actual local
 BOM files, clipboard/share payloads and entity rejection. Evidence:
 `bom-import-poe{1,2}.log`. New packages 0.1.4.10 retain the previously verified
 engine/artwork assets; native reopening/Notes acceptance follows below.
+
+## Bounded formatted reading and installed Notes — 2026-10-18
+
+`bb2de55c` keeps natural word/paragraph boundaries when splitting long formatted
+text into protocol-bounded presentation blocks. The focused regression passes
+**11 assertions**: exact text reconstruction, bounded valid snapshots, preferred
+paragraph/whitespace breaks and intact Unicode surrogate pairs. Evidence:
+`reading-chunks-test.log`.
+
+`installed-reading-20261018/fixed/result.json` passes in both installed engines
+with synthetic long Notes at a 1600×888 viewport. Native wheel scrolling reaches
+the middle, PageDown advances, and scrolling reaches exactly 100%/0% at the
+bottom/top while retaining focus. This is installed reading/viewport evidence,
+not physical controller or every possible formatted-content acceptance. No
+service requests were made.
+
+## Final documentation source and evidence reconciliation — 2026-10-18
+
+The current maintained README, user/setup/update/Catalogue guides, PoB/music/display
+guides and related developer references were reviewed against current sources,
+manifests and existing qualified artifacts. Two obsolete collection fragment links
+were corrected, along with remaining Spotify/YouTube Music instructions to enable
+a fresh reviewed install and the ambiguous Display Controls package-builder path.
+The SDK summary now distinguishes declaration caching from indexed/discovered native
+presentation. Command paths/options were checked against scripts and CLI dispatch;
+this was a source review, not a new build or command-execution qualification.
+
+The local-file audit records **244 tracked Markdown files / 761 relative local
+targets**, zero missing (`documentation-links-latest-20261018.json`). A separate
+heading/explicit-anchor pass checks **44 local Markdown fragment links**, now with
+zero missing. Evidence: `documentation-final-source-audit-20261018.json`. External
+URLs were not requested. The earlier **240/760** plan count is superseded.
+
+Seven existing images were inspected for caption accuracy: the README overview and
+pinned video, Spotify search/pin, and PoB calculations/comparison/ranking. The pinned
+video caption now describes the visible overlay controls. PoB's dated earlier
+captures remain illustrative rather than claiming the latest layout; their trade
+headers contain no signed-in username. No new screenshots, live services or native
+launches were needed for this review. The owner demonstration remains a placeholder;
+required project/license acknowledgements remain intact.
+
+The plan now records completed installed item/skill/Notes checks and implemented
+compact layout slices without treating their broad physical acceptance as complete.
+Remaining cross-app/populated-music verification is separate, along with Spotify
+authentication, physical controller/couch and environment-specific checks. Recheck
+documentation affected by any remaining corrections before delivery. Earlier
+visibility/shutdown observations retain their scoped, unreproduced disposition.

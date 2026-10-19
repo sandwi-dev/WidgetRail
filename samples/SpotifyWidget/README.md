@@ -20,7 +20,7 @@ manage playback on a Spotify device, or use **Play here** to listen through Widg
 You need a Spotify account and your own Spotify developer app. Spotify Premium is
 required for Web Playback SDK streaming and Spotify's playback-control APIs.
 
-1. Install the Spotify `.wrwidget` from [WidgetRail releases](https://github.com/sandwi-dev/WidgetRail/releases) through **Settings → Widgets**. Review the full-trust prompt and enable it.
+1. Install Spotify from **Catalogue**, or install its `.wrwidget` from [WidgetRail releases](https://github.com/sandwi-dev/WidgetRail/releases) through **Settings → Widgets**. Review the full-access prompt. A fresh reviewed installation starts enabled; updating an existing installation preserves its enabled state.
 2. Open **Setup** in the widget and create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
 3. Register this exact redirect URI in that app:
 
