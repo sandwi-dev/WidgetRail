@@ -251,6 +251,16 @@ as finished. Two panes alone do not make the comparison efficient or readable.
 
 Search opens from the build controls, supports category filtering and local whole-entry suggestions, and navigates through existing focus targets. Known item and disabled-main-skill warnings use supplied identities; ambiguous warnings remain informational. Inventory/calculation catalog failures identify unavailable categories and retry on reopening Search.
 
+### Planned follow-up: retain Search build context
+
+**Recorded for the plan; implementation and application testing remain on hold.**
+The user reports that Search build forgets the search after selecting a result.
+
+- [ ] Preserve the entered query and category filter when a result opens another section. Returning to or reopening Search build within the same build should restore that context instead of starting with an empty search.
+- [ ] Restore the selected result and list scroll position when the result still exists, so users can inspect several matches without retyping or searching through the list again. Use stable result identities and a valid fallback if the previous result is gone.
+- [ ] Revalidate results when the build changes; retaining search text must not retain stale destinations or action authority. Keep state scoped to the appropriate build/session. Cross-restart persistence is not required by this report.
+- [ ] Cover repeated search → destination → Search build round trips, changed/removed results, empty results and explicit query clearing. Coordinate with the shortcut-navigation regression below without coupling retained search state to stale focus/input ownership.
+
 ### Reported regression: shortcuts after global-search navigation
 
 **Recorded for investigation; implementation and application testing remain on hold.**
