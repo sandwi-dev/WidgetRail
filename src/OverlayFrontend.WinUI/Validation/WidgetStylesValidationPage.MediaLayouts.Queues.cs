@@ -115,27 +115,49 @@ internal sealed partial class WidgetStylesValidationPage
                 var button = Find<Button>("Widget." + owner.Id)!;
                 Check(button.Focus(FocusState.Keyboard), name + ": duplicate occurrence accepts context focus");
                 await Reveal(button);
+                CheckIndicator(button, name + ": before menu");
                 var action = owner.ContextActions.First(item => !item.IsDisabled && !item.IsBusy);
                 Check(owner.ContextActions.Any(item => item.Label.Contains(service == "Spotify" ? "liked songs" : "Remove from queue", StringComparison.OrdinalIgnoreCase)),
                     name + ": expected service-supported context actions are present");
                 await presenter.HandleControllerButtonAsync(ControllerButton.Menu);
+                await presenter.HandleControllerButtonAsync(ControllerButton.Menu, ControllerEventPhase.Released);
                 await Wait(() => presenter.HasTransientControl && FocusManager.GetFocusedElement(XamlRoot) is MenuFlyoutItem);
                 Check(dispatched.Count == 0, name + ": opening the occurrence menu does not select or play");
                 await presenter.HandleControllerButtonAsync(ControllerButton.B);
+                await presenter.HandleControllerButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
                 await Wait(() => !presenter.HasTransientControl && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button));
                 Check(true, name + ": menu cancellation restores the exact duplicate occurrence");
                 await presenter.HandleControllerButtonAsync(ControllerButton.Menu);
+                await presenter.HandleControllerButtonAsync(ControllerButton.Menu, ControllerEventPhase.Released);
                 await Wait(() => presenter.HasTransientControl && FocusManager.GetFocusedElement(XamlRoot) is MenuFlyoutItem);
                 await presenter.HandleControllerButtonAsync(ControllerButton.A);
+                await presenter.HandleControllerButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
                 await Wait(() => dispatched.Count == 1 && !presenter.HasTransientControl);
                 Check(dispatched[0] == (action.ActionId, owner.Id) && action.ActionId != owner.ActionId,
                     name + ": context activation dispatches the selected occurrence action, not playback");
                 await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button));
+                await Wait(() => Descendants(button).OfType<WidgetContextIndicator>().Single().IsShown);
+                CheckIndicator(button, name + ": after menu");
                 if (size.Width == 620 && themeId != "high-contrast")
                     await CaptureQueue(Path.Combine(directory, name + ".png"));
             }
         }
         static IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+        void CheckIndicator(Button owner, string name)
+        {
+            var indicator = Descendants(owner).OfType<WidgetContextIndicator>().Single();
+            var badge = Descendants(indicator).OfType<Border>().Single();
+            Check(indicator.IsShown && !string.IsNullOrWhiteSpace(indicator.Glyph.Glyph), name + " options glyph is visible");
+            var ink = ((SolidColorBrush)indicator.Glyph.Foreground).Color;
+            var fill = ((SolidColorBrush)badge.Background).Color;
+            static double Luminance(Windows.UI.Color color)
+            {
+                static double Channel(byte value) { var c = value / 255d; return c <= .04045 ? c / 12.92 : Math.Pow((c + .055) / 1.055, 2.4); }
+                return .2126 * Channel(color.R) + .7152 * Channel(color.G) + .0722 * Channel(color.B);
+            }
+            Check((Math.Max(Luminance(ink), Luminance(fill)) + .05) / (Math.Min(Luminance(ink), Luminance(fill)) + .05) >= 3,
+                name + " options glyph has at least 3:1 contrast against its badge");
+        }
         async Task Reveal(FrameworkElement element)
         { element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }); await Wait(() => Visible(element)); }
         bool Visible(FrameworkElement element)

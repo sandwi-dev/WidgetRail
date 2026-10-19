@@ -890,6 +890,7 @@ slider:focused {
    presentation-only, so focus and pressed treatment always follows the full
    visible tile instead of an inner label. */
 .wrail-action-surface {
+  color: var(--text);
   min-width: 0;
   min-height: 72px;
   gap: 12px;
