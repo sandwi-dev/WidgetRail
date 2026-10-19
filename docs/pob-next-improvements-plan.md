@@ -2,6 +2,11 @@
 
 Last updated: 2026-10-18
 
+Latest music layout follow-up passes native qualification: YouTube Music's heart
+is beside the seek slider, and Spotify's title is centered across the vertical
+player. Default main/pinned YouTube players have zero vertical overflow, so no
+artwork reduction is needed. See the verification ledger for delivery status.
+
 **Status: approved follow-up implementation and scoped verification complete (2026-10-18).** The visual/density, shared preview/scroll-cue, comparison and search changes are delivered in the cumulative candidate. Unchecked acceptance items retain physical, service or environment limits recorded below; they are not implied complete by implementation status.
 
 This plan covers the next round of PoE1 and PoE2 widget improvements discussed after reviewing PoB Redux. It supplements the [existing trade plan](pob-trade-completion-plan.md); it does not restart completed work or reopen deferred CI repairs.
@@ -9,13 +14,21 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 ## Implementation order and tracking
 
 Current acceptance checkpoint (2026-10-18): candidate **k** contains the cumulative
-host changes, with PoE1/PoE2 packages **0.1.4.14** and a quiet responsive toolbar.
+host changes, with PoE1/PoE2 packages **0.1.4.15**, YouTube Music **0.3.43.5**, Spotify **0.3.90.2** and a quiet responsive toolbar.
 Trade-session actions are separate from build/history controls. Configuration fits 11 options
 instead of 6 at the same viewport, comparisons use aligned named columns, and
 inspections fit their content. Search retains query/category/selected identity;
 the Tree RS and Skills LS handoffs pass installed native checks. Unique-library
 previews include three bounded upstream modifier lines loaded with the catalogue.
 See the latest verification-ledger entry for launch evidence and limitations.
+
+Latest corrections add rare item names, unavailable-selection recovery (including
+saved ranking targets), first-returned-league defaults, and restore stretched trade
+options after a shared-style regression. YouTube Music now has a compact heart
+and its previously omitted hosted-player assets; one normal-profile playback test
+advanced and paused successfully. The [editor capability audit](pob-editor-capability-audit.md)
+records remaining upstream editor omissions rather than treating import support as
+equivalent editing UI.
 
 Unchecked compound acceptance items below retain their physical or unavailable
 environment/service portions. Authenticated Spotify actions, physical controller
@@ -460,7 +473,7 @@ The three reported contradictions are corrected. The final source/documentation 
 
 ## Earlier items and completed work
 
-- League discovery now caches the successful list in memory for the widget instance. Reopening equipment searches reuses it; a fresh instance after restart/unloading or explicit Refresh leagues fetches again. No timer, expiry or disk cache. Standard/default selection behavior is unchanged.
+- League discovery caches the successful list in memory for the widget instance. Reopening equipment searches reuses it; a fresh instance after restart/unloading or explicit Refresh leagues fetches again. No timer, expiry or disk cache. The first returned league is the default; explicit saved selections are retained while available, and removed selections fall back to the first returned entry.
 - Floating selected-node name badge removed; selection outline and hover details retained.
 - PoB documentation split into [overview](../samples/PobCompanion/README.md), [user guide](../samples/PobCompanion/USER_GUIDE.md) and [developer documentation](../samples/PobCompanion/DEVELOPMENT.md).
 - Grouping duplicate passive names into expandable rows was discussed earlier. It is not yet part of the implementation scope. If revisited, preserve distinct node identities and investigate a reusable flattened virtualized-list pattern rather than assuming nested expandable lists exist.

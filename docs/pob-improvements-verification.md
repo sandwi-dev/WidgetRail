@@ -2,6 +2,37 @@
 
 Updated 2026-10-18. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Music layout qualification, 2026-10-18
+
+Resumed after the requested pause. YouTube Music's heart sits beside the seek
+slider with reciprocal navigation and pending-state focus preserved. Spotify's
+vertical player reserves equal widths around the centered title; docked playback
+keeps its horizontal presentation. No production host changes were required.
+
+Widget suites passed 39/39 (YouTube Music) and 86/86 (Spotify); the final Spotify
+layout contract rerun passed 1/1. Native rendering passed 415 checks across normal,
+light and enlarged high-contrast styles, including focused heart retention while
+busy. Both main players were visually inspected using offline artwork. Main
+YouTube viewport/extent heights are both 408.8 DIP; compact-pin heights are both
+384 DIP. No artwork reduction was necessary. Smaller/enlarged-text layouts retain
+scrolling so controls remain reachable.
+
+The initial centering assertion incorrectly used TextBlock.ActualWidth (the text
+extent) instead of its allocated layout slot. Corrected geometry checks also
+caught a 46px heart versus 44px spacer mismatch. Both sides now use 44px. Final
+evidence is `artifacts/pob/music-seek-native/native-result.json`, its layout JSON
+and representative PNGs. Source exports are `music-seek-export` and
+`spotify-center-row-export`. Qualified packages are `music-seek-package-20261018`
+(YouTube Music 0.3.43.5) and `spotify-centering-qualified-20261018` (Spotify 0.3.90.2).
+No new service calls, merge, push or release occurred during this layout follow-up.
+
+Delivery: both qualified packages are installed and enabled in the normal profile;
+installed styles match source hashes. Candidate k was relaunched with `--hidden`
+and its normal installation root, controller enabled. Exactly one frontend runs,
+PID 28332 at this checkpoint, with no main-window handle/title. PoE1/PoE2 remain
+at 0.1.4.15. Validation windows are closed. Earlier live YouTube playback evidence
+below applies to the repaired .4 package; this .5 follow-up changed layout only.
+
 ## Current checkpoint
 
 The dated entries below are historical evidence; their earlier "pending" and
@@ -1405,3 +1436,68 @@ remains candidate k; only its validation harness changed in this source revision
 The normal-profile candidate is relaunched hidden with controller enabled, PID
 28228 at this checkpoint; launch and payload evidence are under `header-20261018`.
 No merge, push or release. Native automation does not replace physical acceptance.
+
+## Item names, render recovery and music playback correction — 2026-10-18
+
+PoB packages **0.1.4.15** add Item name to the shared rare-item editor. Naming uses
+upstream Edit Item Text with only the title line changed; bases, modifiers and raw
+item metadata are preserved. Draft recovery, stored-item Undo/Redo, equipment IDs,
+slot references and unchanged calculated statistics are tested. Unique identities
+and normal/magic derived names are not renamed as rare titles. The earlier
+proposal to hide `New Item` was withdrawn; names stay intact until edited.
+Both complete item suites pass: **101 PoE1 / 99 PoE2**.
+
+The reported Edit ranking failure reproduces offline using a copy of the user's
+PoE2 build: its saved Weapon 1 target is absent from the current active slot list,
+and the old Select constructor throws for zero selected options. The replacement
+shows the unavailable saved target explicitly, retains results and requires a valid
+choice before requesting website results again. Four focused ranking-settings
+checks pass per engine, plus the actual-build repro after correction. Eleven
+render-resilience checks pass per engine for missing active sets/main skills,
+legacy gem choices, removed calculation selections/passives and unavailable
+league discovery. A removed tree node also needed its stale detail/focus mode
+retired, not merely a guarded lookup. No blanket render exception suppression or
+silent gameplay selection was added. Existing guarded inventory/library flows
+and immutable enum lookups were retained.
+
+League discovery preserves returned order and selects the first entry by default.
+An explicit saved choice survives while available; a removed league is not appended
+back into discovery. Cached reopening and explicit refresh are covered. Trade-menu
+checks pass **84 PoE1 / 50 PoE2**; full offline trade workflows pass **92 / 93**.
+No repeated live GGG calls were made. The centered Evaluation limit/Advanced search
+regression came from putting `align:center` on the reused `.pob-buildtools` class.
+That change is removed. Native editor/trade matrices pass **256 assertions**, with
+actual control alignment, item-name accessibility and wide/constrained/theme cases.
+Velvet Dusk item editing and trade-option renders were visually inspected.
+
+YouTube Music **0.3.43.4** places an outlined/filled themed heart beside the title
+in both player layouts. It retains its action/element identity, accessible label,
+pointer tooltip and focus eligibility while busy. The standalone suite passes
+**39/39**; native music checks pass **381**, including pending/idle focus retention
+and light/high-contrast rendering. The main layout was visually inspected.
+
+The installed .3 candidate and its archive lacked root `web/player.html` and
+`web/web-session.js`; this prevents hosted player startup. The canonical package
+builder already copied them, but the ad-hoc cumulative path had omitted `web`.
+The new archive-level `Test-PackageAssets.ps1` rejects that old package and passes
+the repaired .4 package, checking nine required runtime/icon assets. The repaired
+package was built through the canonical script. No cookie refresh or provider
+workaround was needed. One normal-profile song start succeeded: elapsed playback
+advanced **0:20 → 0:35** and Pause returned the control to Play. The song was left
+paused; no rating mutation was needed for the live check. This verifies player
+state/progress, not physical audio output.
+
+Source audit of both pinned editors is in [the capability audit](pob-editor-capability-audit.md).
+It records remaining dedicated enchant/anoint/corruption, cluster-jewel, affix-sort,
+gem-picker-default/visibility and general raw-item-editor gaps. These were not
+silently treated as implemented because equivalent data can be imported.
+
+Evidence: `item-name-music-20261018`, particularly `ranking-repro.log` (old failure),
+`ranking-fixed.log`, `poe*-*-qualified.log`, `poe*-render-final.log`,
+`editors-native/native-result.json`, `music-native/native-result.json`,
+`music-tests.log`, and `live/music-{playing,progress}-full.json` / `music-paused.json`.
+Candidate k retains its qualified production host; all **138 frontend DLLs** match.
+One normal-profile/controller-enabled frontend remains, PID **27652** at this
+checkpoint. The overlay is hidden; UIA lists only the small background-web-session
+host. Installed versions and launch/payload evidence are saved in the same folder.
+No merge, push, release or deferred CI repairs were performed.
