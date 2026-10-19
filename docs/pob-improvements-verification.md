@@ -1112,3 +1112,16 @@ disposal, and unchanged-account source order/normal playback. It fails against t
 original implementation; the corrected complete music suite passes **39/39 tests**.
 Evidence: `music-account-repro.log` and `music-account-final2.log`. A test property
 name typo was corrected before the qualified build. All traffic was local/fake.
+
+## UTF-8 XML byte-order mark import — 2026-10-18
+
+The integrated Notes fixture was saved by .NET's XML writer with a UTF-8 BOM.
+Bounded file reading preserved that marker, causing XML to be classified as a
+share code and rejected. Decode now removes a leading encoding marker before
+classification and after decoding a compressed XML payload. Input/expansion byte
+bounds, game-root checks and external-entity rejection remain unchanged.
+
+Both import/export suites pass (**19 PoE1 / 28 PoE2**), including actual local
+BOM files, clipboard/share payloads and entity rejection. Evidence:
+`bom-import-poe{1,2}.log`. New packages 0.1.4.10 retain the previously verified
+engine/artwork assets; native reopening/Notes acceptance follows below.

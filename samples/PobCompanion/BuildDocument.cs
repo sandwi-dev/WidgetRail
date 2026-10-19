@@ -13,6 +13,9 @@ public static class BuildDocument
     {
         text = text.Trim();
         if (Encoding.UTF8.GetByteCount(text) > MaximumBytes) throw new IOException("This build exceeds the supported size.");
+        // UTF-8 readers preserve the BOM when decoding bounded byte buffers.
+        // Remove the encoding marker before distinguishing XML from a share code.
+        if (text.StartsWith('\uFEFF')) text = text[1..].TrimStart();
         if (!text.StartsWith('<'))
         {
             var normalized = text.Replace('-', '+').Replace('_', '/');
@@ -29,6 +32,7 @@ public static class BuildDocument
                 output.Write(buffer, 0, count);
             }
             text = Encoding.UTF8.GetString(output.ToArray());
+            if (text.StartsWith('\uFEFF')) text = text[1..];
         }
         using var reader = XmlReader.Create(new StringReader(text), new() { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = MaximumBytes });
         XDocument document;

@@ -14,6 +14,18 @@ internal static class ImportExportTests
             check(rejected,"Internal poe.ninja URL is rejected with clipboard instructions: "+url);
         }
         check(BuildDocument.Decode(BuildDocument.Encode(xml),game)==xml,"Copied PoB codes remain importable without a website API");
+        check(BuildDocument.Decode("\uFEFF"+xml,game)==xml,"A UTF-8 byte-order mark does not turn XML into a share code");
+        check(BuildDocument.Decode(BuildDocument.Encode("\uFEFF"+xml),game)==xml,"A shared XML payload can contain a UTF-8 byte-order mark");
+        var bomFile=Path.Combine(Path.GetTempPath(),"pob-bom-"+Guid.NewGuid().ToString("N")+".xml");
+        try
+        {
+            await File.WriteAllTextAsync(bomFile,xml,new System.Text.UTF8Encoding(true));
+            check(await BuildDocument.ReadAsync(bomFile,game,default)==xml,"Local UTF-8 XML files with a BOM import through the bounded reader");
+            var rejected=false;
+            try{BuildDocument.Decode("\uFEFF<!DOCTYPE x [<!ENTITY x SYSTEM 'file:///private'>]><x>&x;</x>",game);}catch(IOException){rejected=true;}
+            check(rejected,"BOM handling preserves external-entity rejection");
+        }
+        finally {File.Delete(bomFile);}
         foreach(var url in new[]{"http://poe.ninja/poe2/pob/abc","https://poe.ninja.evil.test/poe2/pob/abc","https://user@poe.ninja/poe2/pob/abc","https://poe.ninja:444/poe2/pob/abc","https://poe.ninja/poe1/pob/abc","https://poe.ninja/poe2/profile/a%2Fb/standard/character/test","https://poe.ninja/poe2/builds","https://poe.ninja/poe2/pob/abc?url=https://example.com"})
         {var rejected=false;try{Download(url,2);}catch(IOException){rejected=true;}check(rejected,"Reject unsupported import URL: "+url);}
         check(Download("https://pobb.in/abc_DEF-123",game).AbsoluteUri=="https://pobb.in/pob/abc_DEF-123","Existing pobb.in downloads are preserved");
