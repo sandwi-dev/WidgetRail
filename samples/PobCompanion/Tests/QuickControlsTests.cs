@@ -32,6 +32,8 @@ internal static class QuickControlsTests
                 "Trade return keeps its identity outside the build history toolbar");
             check(headerNodes.Single(n=>n.Id=="pob.undo").AccessibilityLabel=="Undo"&&headerNodes.Single(n=>n.Id=="pob.redo").AccessibilityLabel=="Redo",
                 "Compact history controls retain explicit accessible action names");
+            check(Nodes(headerNodes.Single(n=>n.Id=="pob.buildtools")).Where(n=>n.InitialChildFocusId is not null).Select(n=>n.Id)
+                .SequenceEqual(new[]{"pob.buildtools"}),"The complete build-controls row has one focus group, including Undo and Redo");
             if(Environment.GetEnvironmentVariable("POB_HEADER_FIXTURES") is {Length:>0} output)
             {Directory.CreateDirectory(output);File.WriteAllBytes(Path.Combine(output,$"poe{game}-header.json"),SnapshotJson.Serialize(headerView));}
             Set("savedTradeUrl",null);

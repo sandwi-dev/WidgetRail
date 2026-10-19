@@ -63,17 +63,23 @@ internal static class WorkStateTests
             check(Saved().CommittedXml==previewXml,"Rendering history previews never mutates saved work");
             ExportHistory("undo");
             await Action("section.5");await Close();await Open();
-            check(Snapshot().ActiveInputScopeId=="pob.scope.calcs.main"&&Nodes(Snapshot().Root).Single(n=>n.Id=="pob.undo").IsDisabled!=true,
-                "Reopen restores Undo without retaining browsing navigation");
+            check(Snapshot().ActiveInputScopeId=="pob.scope.notes.main"&&Nodes(Snapshot().Root).Single(n=>n.Id=="pob.undo").IsDisabled!=true,
+                "Reopen restores Undo alongside the saved navigation tab");
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.undo").FocusPresentation is {} restoredPreview&&
                 Nodes(restoredPreview).Any(n=>n.Text?.Contains("77 →")==true),"Existing saved snapshots regain descriptions after restart without new metadata");
             await Action("undo");var before=Saved().CommittedXml;
             check(before!=edited&&Saved().Redo.Length==1,"Restored Undo returns to the prior committed build");
+            check(Snapshot().FocusGroupEntryRequest?.GroupId=="pob.buildtools"&&
+                Nodes(Snapshot().Root).Single(n=>n.Id=="pob.buildtools").InitialChildFocusId=="pob.redo",
+                "Exhausting Undo returns to the shared toolbar with Redo as its available fallback");
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.redo").FocusPresentation is {} redoPreview&&
                 Nodes(redoPreview).Any(n=>n.Text?.Contains("→ 77")==true),"Redo preview updates to the opposite change after Undo");
             ExportHistory("redo");
             await Close();await Open();await Action("redo");
             check(SameBuild(Saved().CommittedXml,edited)&&Saved().Redo.Length==0,"Redo survives a second process restart");
+            check(Snapshot().FocusGroupEntryRequest?.GroupId=="pob.buildtools"&&
+                Nodes(Snapshot().Root).Single(n=>n.Id=="pob.buildtools").InitialChildFocusId=="pob.undo",
+                "Exhausting Redo returns to the shared toolbar with Undo as its available fallback");
             if(historyOnly)return;
 
             var state=await engine!.ExecuteAsync(new{op="snapshot"},default);

@@ -23,8 +23,7 @@ public sealed partial class PobWidget
         }
         controls.Add(UI.Button("Search","unified-search","pob.unified-search").Disabled(pendingBefore is not null).Classes("pob-button","pob-header-action"));
         controls.Add(UI.Button("Build & import", "menu", "pob.menu").Disabled(pendingBefore is not null).Classes("pob-button","pob-header-action"));
-        var history=UI.Row("pob.history",HistoryButton(true),HistoryButton(false))
-            .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
+        var history=UI.Row("pob.history",HistoryButton(true),HistoryButton(false)).Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
         heading.Add(RecentBuildSelector());
         heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}", "context", "pob-muted"));
@@ -33,7 +32,8 @@ public sealed partial class PobWidget
         var tools=UI.Grid("pob.buildtools",[GridTrack.Auto()],
             controls.Select((_,i)=>i==0&&loadouts.Length>0?GridTrack.Star():GridTrack.Auto()).ToArray(),
             controls.Select((control,i)=>control.InGrid(column:i)).ToArray()).Spacing(0,6)
-            .RememberChildFocus(loadouts.Length>0?"pob.loadout":"pob.menu").Classes("pob-buildtools");
+            .RememberChildFocus(historyFocusRequested ? undo.Count>0 ? "pob.undo" : "pob.redo" :
+                loadouts.Length>0 ? "pob.loadout" : "pob.menu").Classes("pob-buildtools");
         if(BuildControlsAvailable)tools=tools.Shortcut(ControllerButton.RightStick,"quick-controls.pob.body","Return to content");
         return UI.ResponsiveGrid("pob.header",520,2,
             UI.Stack("pob.identity", heading.ToArray()).Classes("pob-build-identity"),tools).Classes("pob-build-header");

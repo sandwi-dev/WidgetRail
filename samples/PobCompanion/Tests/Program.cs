@@ -455,7 +455,7 @@ if(firstXml is not null)
     Check(skillResult.State.GetProperty("skills").EnumerateArray().First().GetProperty("enabled").GetBoolean()!=firstSkill.GetProperty("enabled").GetBoolean(),"Widget skill toggle survives reload");
     await Action("undo");
     Check(Snapshot(widget,1031).ActiveInputScopeId==immediateSkill.ActiveInputScopeId&&Nodes(Snapshot(widget,1032).Root).Any(n=>n.Id=="pob.workspace.inventory"),"Undo preserves the current skill workspace and input scope");
-    Check(Snapshot(widget,10311).FocusGroupEntryRequest?.GroupId=="pob.history","Undo restores focus within the history controls rather than the first section tab");
+    Check(Snapshot(widget,10311).FocusGroupEntryRequest?.GroupId=="pob.buildtools","Undo restores focus within the shared build-controls row rather than the first section tab");
     var undoneSkill=await engine.ExecuteAsync(new{op="load",xml=File.ReadAllText(working),name="undo skill"},default);
     Check(undoneSkill.State.GetProperty("skills").EnumerateArray().First().GetProperty("enabled").GetBoolean()==firstSkill.GetProperty("enabled").GetBoolean(),"Undo restores the saved skill state");
     await Action("redo");

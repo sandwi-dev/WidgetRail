@@ -61,6 +61,24 @@ internal static class UnifiedSearchTests
                 PobSearchTargetKind.InventoryItem,PobSearchTargetKind.Configuration,PobSearchTargetKind.Calculation,PobSearchTargetKind.SavedBuild,PobSearchTargetKind.Navigation})
                 check(entries.Any(e=>e.Target.Kind==kind),"Unified index includes "+kind);
             check(ReferenceEquals(before,Result())&&File.ReadAllText(Path.Combine(directory,build+".xml"))==saved,"Opening search and loading catalogs leaves the working build and saved XML untouched");
+            foreach (var equipment in entries.Where(entry=>entry.Target.Kind==PobSearchTargetKind.EquippedItem&&entry.Category=="Equipment"))
+            {
+                await Action("unified-search");await Action("unified-search-category.0");await Action("unified-search-text",equipment.Title);
+                var position=Array.FindIndex(Results(),entry=>entry.Key==equipment.Key);
+                using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"equipment-name-search",9100+equipment.Target.Id);
+                using var range=await host.AcquireAsync("pob.unified.results",position,1);
+                check(range.RouteAction(range.Range.Items.Single().Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,
+                    "Named equipment search admits slot "+equipment.Target.Id);
+                await Until(()=>!(bool)Get("unifiedSearchOpen")!||Get("feedback") is not null);
+                check(!(bool)Get("unifiedSearchOpen")!&&(string)Get("section")! == "Items"&&(int)Get("detailId")! == equipment.Target.Id,
+                    "Named equipment search opens its existing slot "+equipment.Target.Id);
+                var destination=View();
+                check(Get("feedback") is null&&destination.FocusGroupEntryRequest is {} equipmentFocus&&
+                    Nodes(destination.Root).Any(node=>node.Id==equipmentFocus.GroupId&&node.InitialChildFocusId=="pob.item."+equipment.Target.Id),
+                    "Named equipment search focuses the preview-wrapped row without a stale-result warning for slot "+equipment.Target.Id);
+                if((bool)Get("unifiedSearchOpen")!)throw new InvalidOperationException("Equipment search rejected a current result");
+            }
+            await Action("unified-search");await Action("unified-search-text","");
             var field=Nodes(View().Root).Single(n=>n.Id=="pob.unified.search");
             var suggestion=new TextSuggestionQuery(field.Id,field.TextEntrySuggestions!.Key,Guid.NewGuid().ToString("N"),1,"life",6,160);
             var suggestions=await widget.OnSuggestTextAsync(suggestion,default);

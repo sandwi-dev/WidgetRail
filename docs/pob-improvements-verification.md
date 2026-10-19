@@ -2,6 +2,33 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Build toolbar and search destination focus, 2026-10-19
+
+Undo/Redo no longer declare a nested remembered-focus group inside the shared
+build-controls row. History actions return to `pob.buildtools`; if the just-used
+history action becomes disabled, the other available history action is the
+group's fallback. The existing passive previews and R3 return shortcut remain.
+
+The equipped-item search warning was a focus-decoration failure, not a missing
+item. `WithUnifiedNavigationTarget` recognised concrete control types but missed
+SDK decorators used for deferred rich previews. Navigation reached the item, then
+failed to find its focus target and emitted the stale-result warning. The helper
+now matches the explicitly authored target control ID through those wrappers.
+Build/cache/query/slot identity checks are unchanged; no stale authority was relaxed.
+
+Validation: 120 quick-control, 12 history-workflow and 83 unified-search checks
+passed for each game (430 total). An isolated copy of the user's current PoE2
+working XML reproduced the equipment focus failure before correction; the expanded
+169-check suite now passes, including every named equipment result's actual focus
+handoff and absence of a warning. Total: 599 checks. User build files were read
+only. The old history test was reconciled with the already-accepted saved-tab
+restoration behavior; no navigation-persistence behavior changed here.
+
+Evidence: `artifacts/pob/history-toolbar-*`, `search-focus-*`,
+`equipment-search-user-before.log` and `equipment-search-user-fixed.log`. Both
+0.1.4.22 packages validate and retain the qualified upstream/web assets by hash.
+The existing corrected host is reused; no host API changes or physical UI checks.
+
 ## Suggestion cancellation bridge failure, 2026-10-19
 
 The user's second YouTube Music suggestion update exposed a host cancellation

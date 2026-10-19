@@ -94,7 +94,7 @@ public sealed partial class PobWidget
         if(detailKind=="library"&&libraryOpenFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.library.open-action"};
         if(modifierFocusRequested&&section=="Configuration"&&configSection=="Custom modifiers"&&string.IsNullOrWhiteSpace(filter))return new(){RequestId=focusRequestSequence,GroupId="pob.custom.edit-tools"};
         if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};
-        if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.history"};
+        if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.buildtools"};
         if(detailKind=="skill"&&skillWorkspaceFocusRequested)return new(){RequestId=focusRequestSequence,GroupId=skillWorkspaceReturnControl is not null?"pob.skill.actions":"pob.detail.scroll"};
         if(detailKind=="skill-options")return new(){RequestId=focusRequestSequence,GroupId="pob.skill-options.content"};
         if(detailKind=="skill-manage"&&skillOrderFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.group-order.actions"};

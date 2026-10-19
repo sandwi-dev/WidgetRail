@@ -30,7 +30,9 @@ public sealed partial class PobWidget
             }
             if(element is ResponsiveBranchElement responsive)
             {var child=Visit(responsive.Child);return ReferenceEquals(child,responsive.Child)?responsive:child.VisibleWhen(responsive.Visibility);}
-            if(element.Id==target&&element is ButtonElement or ActionSurfaceElement or TextEntryElement or SelectElement or SliderElement)
+            // Targets are authored control IDs. SDK presentation decorators keep
+            // that ID but may wrap the concrete control type (deferred previews).
+            if(element.Id==target)
             {
                 found=true;
                 return UI.Stack(groupId,element).RememberChildFocus(target);
