@@ -35,6 +35,7 @@ internal sealed partial class WidgetViewPresenter
     private ViewNode? previewPaintedContent;
     private WidgetPresentationBinding? previewPaintedPresentation;
     private AnchorRectangle? previewBounds;
+    private readonly ContentSizedPresentationState previewHeight = new();
     internal bool IsFocusPreviewOpen => previewPortal?.Visibility == Visibility.Visible;
     internal FrameworkElement? FocusPreviewChrome => previewChrome;
     internal object FocusPreviewDiagnostics() => new
@@ -261,7 +262,14 @@ internal sealed partial class WidgetViewPresenter
     {
         if (previewSource is not { } source || previewChrome is null || previewLayer is null) return;
         if (VisibleAnchorBounds(source.Anchor, this) is not { Valid: true } anchor) { ClearFocusPreview(); return; }
-        var bounds = AnchoredPresentationGeometry.Place(ActualWidth, ActualHeight, anchor, source.Options.Width, source.Options.Height, source.Options.Placement);
+        var width = Math.Max(0, Math.Min(source.Options.Width, ActualWidth - 32));
+        var maximumHeight = Math.Max(0, Math.Min(source.Options.Height, ActualHeight - 32));
+        previewChrome.Width = width;
+        var height = source.Options.SizeToContentHeight
+            ? previewHeight.Resolve(width, 96, maximumHeight, appearance.TextScale,
+                () => ContentSizedPresentationMeasure.Height(previewChrome, width, maximumHeight))
+            : maximumHeight;
+        var bounds = AnchoredPresentationGeometry.Place(ActualWidth, ActualHeight, anchor, width, height, source.Options.Placement);
         if (previewBounds == bounds) return;
         previewBounds = bounds;
         previewChrome.Width = bounds.Width; previewChrome.Height = bounds.Height;
@@ -291,6 +299,7 @@ internal sealed partial class WidgetViewPresenter
         }
         previewOriginalFontSize = DependencyProperty.UnsetValue;
         previewSurface = null; previewBounds = null; previewPaintedContent = null; previewPaintedPresentation = null;
+        previewHeight.Reset();
     }
     private async Task ResumePreviewAfterSuspensionAsync(WidgetPresentationSurface surface, Task task)
     {

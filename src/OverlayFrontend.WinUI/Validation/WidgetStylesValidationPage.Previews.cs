@@ -51,7 +51,8 @@ internal sealed partial class WidgetStylesValidationPage
                 var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
                     new((WrssDocument[])[package.Document], []), catalog.Load(highContrast ? ThemeIdentity.BuiltInMonoInk : themeId, "1.0.0").Package);
                 var theme = compiled.Theme ?? throw new InvalidOperationException("Invalid preview fixture theme");
-                var options = new FocusPreviewOptions(360, 220, DelayMilliseconds: 180);
+                var contentSized = Environment.GetCommandLineArgs().Contains("--content-sized-previews");
+                var options = new FocusPreviewOptions(360, 220, DelayMilliseconds: 180) { SizeToContentHeight = contentSized };
                 var caption = "Adjust this setting without leaving your current page.";
                 var busy = false;
                 var showFirst = true;
@@ -105,6 +106,10 @@ internal sealed partial class WidgetStylesValidationPage
                 Check(dispatched == 0, "Settling does not dispatch widget actions");
                 Check(page.FocusPreviewChrome is { IsHitTestVisible: false }, "Passive preview cannot intercept clicks");
                 Check(Inside(), "Preview stays within widget bounds");
+                var settledHeight = page.FocusPreviewChrome!.ActualHeight;
+                if (contentSized)
+                    Check(settledHeight is >= 96 and < 200 && Math.Abs(page.FocusPreviewChrome.ActualWidth - 360) < 1,
+                        "Short passive content fits its height while keeping the browser width stable");
                 var portal = root.Children.OfType<PresentationPortal>().Single();
                 Check(Canvas.GetZIndex(portal) == (int)PresentationLayer.ContentPreview, "Preview uses a band below dialogs");
                 busy = true; Publish(); await Task.Delay(30);
@@ -112,6 +117,9 @@ internal sealed partial class WidgetStylesValidationPage
                 busy = false;
                 caption = "Widget-authored details reuse ordinary text, layout and progress controls."; Publish();
                 await Wait(() => Find<TextBlock>("Widget.preview.first.details", root)?.Text == caption);
+                if (contentSized)
+                    Check(Math.Abs(page.FocusPreviewChrome!.ActualHeight - settledHeight) < 1,
+                        "Late same-source content update does not move or resize an open preview");
                 var textInk = ColorOf(Find<TextBlock>("Widget.preview.first.details", root)!.Foreground);
                 previewBaseFontSize = Find<TextBlock>("Widget.preview.first.details", root)!.FontSize;
                 var panelInk = ColorOf(((Border)page.FocusPreviewChrome!).Background);

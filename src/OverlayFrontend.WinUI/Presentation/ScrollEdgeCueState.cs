@@ -4,6 +4,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal readonly record struct ScrollEdgeCueState(bool Above, bool Below)
 {
     internal const double BoundaryTolerance = .5;
+    internal static double Width(double viewportWidth) => !double.IsFinite(viewportWidth) || viewportWidth <= 0
+        ? 0 : Math.Min(viewportWidth, Math.Clamp(viewportWidth * .08, 48, 80));
     internal static ScrollEdgeCueState From(double offset, double extent, double viewport, bool verticalEnabled)
     {
         if (!verticalEnabled || !double.IsFinite(offset) || !double.IsFinite(extent) ||

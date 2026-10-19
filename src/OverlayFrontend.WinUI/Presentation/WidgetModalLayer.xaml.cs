@@ -21,6 +21,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     private AnchoredPresentation? anchoredPresentation;
     private Func<AnchorRectangle?>? resolveAnchor;
     private bool observingAnchor;
+    private readonly ContentSizedPresentationState contentHeight = new();
     private double authoredMinWidth;
     private double authoredMinHeight;
     private double authoredMaxWidth;
@@ -49,6 +50,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         double width, double height, double maximumWidth, double maximumHeight, FrameworkElement? semanticDialog = null,
         AnchoredPresentation? anchored = null, Func<AnchorRectangle?>? anchor = null)
     {
+        if (!ReferenceEquals(dialog, panel) || anchoredPresentation != anchored) contentHeight.Reset();
         if (!ReferenceEquals(dialog, panel))
         {
             motion?.Dispose();
@@ -91,7 +93,11 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         // Native minimums take precedence over Width/Height. Placement must use
         // the same effective dimensions that WinUI will actually arrange.
         dialog.Width = Math.Clamp(preferredWidth, dialog.MinWidth, dialog.MaxWidth);
-        dialog.Height = Math.Clamp(preferredHeight, dialog.MinHeight, dialog.MaxHeight);
+        var maximumHeight = Math.Clamp(preferredHeight, dialog.MinHeight, dialog.MaxHeight);
+        dialog.Height = anchoredPresentation?.SizeToContentHeight == true
+            ? contentHeight.Resolve(dialog.Width, Math.Max(96, dialog.MinHeight), maximumHeight, appearance.TextScale,
+                () => ContentSizedPresentationMeasure.Height(dialog, dialog.Width, maximumHeight))
+            : maximumHeight;
         if (anchoredPresentation is { } anchored)
         {
             var placed = AnchoredPresentationGeometry.Place(ActualWidth, ActualHeight, resolveAnchor?.Invoke(),

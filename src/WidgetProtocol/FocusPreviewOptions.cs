@@ -6,7 +6,13 @@ namespace WidgetRail.WidgetProtocol;
 /// </summary>
 public sealed record FocusPreviewOptions(double Width = 360, double Height = 240,
     AnchorPlacement Placement = AnchorPlacement.Auto, bool OnFocus = true, bool OnHover = true,
-    int DelayMilliseconds = 350);
+    int DelayMilliseconds = 350)
+{
+    /// <summary>Fit initial content height up to Height. Width stays stable. The host remeasures
+    /// for viewport/text-size changes, not late updates to the same source. Requires protocol 93.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SizeToContentHeight { get; init; }
+}
 
 public static class FocusPreviewContract
 {

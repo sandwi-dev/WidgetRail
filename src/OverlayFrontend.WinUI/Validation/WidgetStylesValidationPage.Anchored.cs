@@ -45,6 +45,8 @@ internal sealed partial class WidgetStylesValidationPage
                     var anchored = true;
                     var removeRight = false;
                     var minimumSize = false;
+                    var contentSized = Environment.GetCommandLineArgs().Contains("--content-sized-previews");
+                    var description = "Widget-authored details stay beside the option being inspected.";
                     string anchorId = "anchor.left";
                     var dispatched = new List<string>();
                     presenter.DispatchActionAsync = request =>
@@ -74,6 +76,23 @@ internal sealed partial class WidgetStylesValidationPage
                             Check(id == "anchor.left" ? location.X >= origin.X + opener.ActualWidth + 7 : location.X + dialog.ActualWidth <= origin.X - 7,
                                 themeId + " places popover beside " + id);
                         Check(Inside(dialog), themeId + " keeps popover within " + width + " DIP widget");
+                        if (anchored && contentSized)
+                        {
+                            var initialHeight = dialog.ActualHeight;
+                            Check(initialHeight is >= 96 and < 280,
+                                "Short interactive content fits below its preferred maximum height");
+                            description = string.Join(" ", Enumerable.Repeat("Late description remains readable through the existing scroll viewport.", 30));
+                            Publish();
+                            await Wait(() => Find<TextBlock>("Widget.anchor.description")?.Text == description);
+                            Check(Math.Abs(dialog.ActualHeight - initialHeight) < 1 &&
+                                ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Find<Button>("Widget.anchor.done")),
+                                "Late interactive content retains panel height and exact focused control");
+                            var scroll = Descendants(dialog).OfType<ScrollViewer>().First();
+                            await Wait(() => scroll.ScrollableHeight > 0);
+                            Check(scroll.ScrollableHeight > 0, "Long late inspection content scrolls inside the stable panel");
+                            description = "Widget-authored details stay beside the option being inspected.";
+                            Publish();
+                        }
                         Check(!opener.IsTabStop && !opener.IsHitTestVisible && opener.IsEnabled,
                             "Popover preserves background appearance while blocking its interaction");
                         opener.Focus(FocusState.Keyboard);
@@ -168,9 +187,9 @@ internal sealed partial class WidgetStylesValidationPage
                         var background = removeRight ? baseView with { Root = (ContainerElement)baseView.Root with
                             { Children = ((ContainerElement)baseView.Root).Children.Where(child => child.Id != "anchor.right").ToArray() } } : baseView;
                         var view = opened ? background.WithModal(new("anchor.inspect", "Inspect option",
-                            UI.Stack("anchor.details", UI.Text("Widget-authored details stay beside the option being inspected.", "anchor.description"),
+                            UI.Stack("anchor.details", UI.Text(description, "anchor.description"),
                                 UI.Button("Done", "anchor.close", "anchor.done")), "anchor.done", "anchor.close")
-                            { AnchoredPresentation = anchored ? new(new(anchorId)) : null }) : background;
+                            { AnchoredPresentation = anchored ? new(new(anchorId)) { SizeToContentHeight = contentSized } : null }) : background;
                         var snapshot = view.CreateSnapshot("anchor.instance", ++sequence);
                         if (opened && minimumSize)
                         {

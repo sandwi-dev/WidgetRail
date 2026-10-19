@@ -72,9 +72,18 @@ internal sealed partial class WidgetStylesValidationPage
                 Check(cue.AboveCue?.IsHitTestVisible == false && cue.BelowCue?.IsHitTestVisible == false,
                     "Scroll cues never intercept input");
                 var physicalPixel = 1 / XamlRoot.RasterizationScale;
-                Check(cue.BelowCue?.Width == 40 && cue.BelowCue.Height == 2 &&
-                    Math.Abs(cue.BelowCue.ActualWidth - 40) <= physicalPixel && Math.Abs(cue.BelowCue.ActualHeight - 2) <= physicalPixel,
-                    $"Cues keep a short fixed size within physical-pixel rounding ({cue.BelowCue?.ActualWidth}x{cue.BelowCue?.ActualHeight}, scale={XamlRoot.RasterizationScale})");
+                Check(cue.BelowCue?.Width == 48 && cue.BelowCue.Height == 2 &&
+                    Math.Abs(cue.BelowCue.ActualWidth - 48) <= physicalPixel && Math.Abs(cue.BelowCue.ActualHeight - 2) <= physicalPixel,
+                    $"Narrow viewports use 48 by 2 cues within physical-pixel rounding ({cue.BelowCue?.ActualWidth}x{cue.BelowCue?.ActualHeight}, scale={XamlRoot.RasterizationScale})");
+                scroll.Width = 800;
+                await Wait(() => scroll.ViewportWidth > 700 &&
+                    Math.Abs(cue.BelowCue!.Width - scroll.ViewportWidth * .08) < .1);
+                Check(cue.BelowCue!.Width is > 48 and < 80, "Cue width follows eight percent of the actual enlarged viewport");
+                scroll.Width = 1100;
+                await Wait(() => cue.BelowCue!.Width == 80);
+                Check(cue.BelowCue!.Width == 80, "Wide viewport cue stops at 80 DIP");
+                scroll.Width = 340;
+                await Wait(() => cue.BelowCue!.Width == 48);
                 Check(nativeUnloadCount == 0 && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), first),
                     "Attaching scroll cues never reparents content or changes focused control");
                 first.Focus(FocusState.Keyboard);
@@ -89,11 +98,11 @@ internal sealed partial class WidgetStylesValidationPage
                 Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), first), "Scroll cue updates retain native focus");
                 Check(Math.Abs(scroll.ViewportHeight - originalViewport) < .1, "Cue visibility never changes viewport geometry");
                 await Capture(scroll, "dark.png");
-                var bounds = cue.AboveCue!.TransformToVisual(scroll).TransformBounds(new(0, 0, 40, 2));
+                var bounds = cue.AboveCue!.TransformToVisual(scroll).TransformBounds(new(0, 0, cue.AboveCue.Width, 2));
                 var nativePresenter = ScrollParts(scroll).OfType<ScrollContentPresenter>().First();
                 var contentBounds = nativePresenter.TransformToVisual(scroll).TransformBounds(new(0, 0, nativePresenter.ActualWidth, nativePresenter.ActualHeight));
                 Check(bounds.Bottom <= contentBounds.Top + physicalPixel, "Top cue is outside the clipped content viewport");
-                var bottomBounds = cue.BelowCue!.TransformToVisual(scroll).TransformBounds(new(0, 0, 40, 2));
+                var bottomBounds = cue.BelowCue!.TransformToVisual(scroll).TransformBounds(new(0, 0, cue.BelowCue.Width, 2));
                 Check(bottomBounds.Top + physicalPixel >= contentBounds.Bottom, "Bottom cue is outside the clipped content viewport");
                 scroll.ChangeView(null, scroll.ScrollableHeight, null, true);
                 await Wait(() => cue.State == new ScrollEdgeCueState(true, false));

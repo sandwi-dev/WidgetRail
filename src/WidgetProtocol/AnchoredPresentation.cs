@@ -7,7 +7,13 @@ public sealed record PresentationAnchor(string? ElementId = null, IndexedCollect
 
 /// <summary>Preferred geometry; the host flips or falls back to a centered, viewport-bounded panel.</summary>
 public sealed record AnchoredPresentation(PresentationAnchor Anchor,
-    double Width = 360, double Height = 280, AnchorPlacement Placement = AnchorPlacement.Auto);
+    double Width = 360, double Height = 280, AnchorPlacement Placement = AnchorPlacement.Auto)
+{
+    /// <summary>Fit initial content height up to Height. Width stays stable. The host remeasures
+    /// for viewport/text-size changes, not late updates to the same inspection. Requires protocol 93.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SizeToContentHeight { get; init; }
+}
 
 public static class AnchoredPresentationContract
 {

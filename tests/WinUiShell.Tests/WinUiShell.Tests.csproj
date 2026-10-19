@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\FocusPreviewDelayState.cs" Link="FocusPreviewDelayState.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ContentSizedPresentationState.cs" Link="ContentSizedPresentationState.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ScrollEdgeCueState.cs" Link="ScrollEdgeCueState.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\AnchoredPresentationGeometry.cs" Link="AnchoredPresentationGeometry.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\TextSuggestionController.cs" Link="TextSuggestionController.cs" />

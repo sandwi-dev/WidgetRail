@@ -12,14 +12,13 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed class WidgetScrollEdgeCues : IDisposable
 {
     internal const double StripHeight = 4;
-    internal const double CueWidth = 40;
     private readonly Control owner;
     private ScrollViewer? scroll;
     private Grid? templateGrid;
     private RowDefinition? topStrip, bottomStrip;
     private readonly List<(FrameworkElement Element, int Row, object LocalValue)> originalRows = [];
     private Border? above, below;
-    private long extentToken, viewportToken, modeToken, templateToken;
+    private long extentToken, viewportToken, viewportWidthToken, modeToken, templateToken;
     private Brush? paint;
     private bool highContrast, disposed;
     internal ScrollEdgeCueState State { get; private set; }
@@ -94,12 +93,13 @@ internal sealed class WidgetScrollEdgeCues : IDisposable
         scroll.SizeChanged += SizeChanged;
         extentToken = scroll.RegisterPropertyChangedCallback(ScrollViewer.ExtentHeightProperty, (_, _) => Refresh());
         viewportToken = scroll.RegisterPropertyChangedCallback(ScrollViewer.ViewportHeightProperty, (_, _) => Refresh());
+        viewportWidthToken = scroll.RegisterPropertyChangedCallback(ScrollViewer.ViewportWidthProperty, (_, _) => Refresh());
         modeToken = scroll.RegisterPropertyChangedCallback(ScrollViewer.VerticalScrollModeProperty, (_, _) => Refresh());
         Paint(); Refresh();
     }
     private static Border CreateCue()
     {
-        var cue = new Border { Width = CueWidth, Height = 2, CornerRadius = new CornerRadius(1),
+        var cue = new Border { Width = 0, Height = 2, CornerRadius = new CornerRadius(1),
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         AutomationProperties.SetAccessibilityView(cue, AccessibilityView.Raw);
@@ -122,6 +122,8 @@ internal sealed class WidgetScrollEdgeCues : IDisposable
         var height = new GridLength(vertical ? StripHeight : 0);
         if (topStrip.Height != height) { topStrip.Height = height; bottomStrip.Height = height; }
         State = ScrollEdgeCueState.From(scroll.VerticalOffset, scroll.ExtentHeight, scroll.ViewportHeight, vertical);
+        var width = ScrollEdgeCueState.Width(scroll.ViewportWidth);
+        if (above.Width != width) above.Width = below.Width = width;
         above.Visibility = State.Above ? Visibility.Visible : Visibility.Collapsed;
         below.Visibility = State.Below ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -144,6 +146,7 @@ internal sealed class WidgetScrollEdgeCues : IDisposable
             scroll.ViewChanged -= ViewChanged; scroll.SizeChanged -= SizeChanged;
             scroll.UnregisterPropertyChangedCallback(ScrollViewer.ExtentHeightProperty, extentToken);
             scroll.UnregisterPropertyChangedCallback(ScrollViewer.ViewportHeightProperty, viewportToken);
+            scroll.UnregisterPropertyChangedCallback(ScrollViewer.ViewportWidthProperty, viewportWidthToken);
             scroll.UnregisterPropertyChangedCallback(ScrollViewer.VerticalScrollModeProperty, modeToken);
         }
         if (templateGrid is not null)

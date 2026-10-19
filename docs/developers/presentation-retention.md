@@ -31,6 +31,28 @@ request or widget lifetime has ended; a late result must not publish a new modal
 Anchored inspection requires presentation protocol 92. Omitting the option keeps
 the existing centered modal and its existing protocol requirements.
 
+Set `SizeToContentHeight = true` on `AnchoredPresentation` or `FocusPreviewOptions`
+to fit the initial content instead of reserving the full preferred height. This
+opt-in requires protocol 93; existing constructors and fixed-size defaults are unchanged:
+
+```csharp
+new AnchoredPresentation(new("candidate.inspect"), Width: 560, Height: 440)
+{
+    SizeToContentHeight = true,
+};
+```
+
+Width stays at the bounded preferred width. Height is measured once on opening,
+with a 96-DIP minimum and the authored `Height` as its upper bound, clamped to the
+available widget space. Existing authored dialog minimums still apply. Changing
+the viewport or text scale remeasures; late updates to the same open source do not
+resize the panel. A new source or reopened inspection receives a new measurement.
+Supply the useful summary before showing the surface; loading a large replacement
+later will not expand it. Interactive inspection retains its ordinary scrolling;
+passive content is clipped at the bound and still needs an explicit Inspect route.
+The host uses bounded native measurement and retains the existing focus, lease and
+lifetime authority. This sizing option does not fetch data or create another engine.
+
 ## Inline focus presentations
 
 `BackgroundSurfaceElement` and `FocusPresentationSurfaceElement` share a native,

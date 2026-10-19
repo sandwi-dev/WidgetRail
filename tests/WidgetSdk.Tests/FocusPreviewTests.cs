@@ -16,6 +16,12 @@ internal static class FocusPreviewTests
         Check(WinUiPresentationContract.Validate(before).Count == 0);
         Check(Snapshot().ProtocolVersion < 92);
         Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(before)).Root.FocusPreview == before.Root.FocusPreview);
+        Check(before.Root.FocusPreview?.SizeToContentHeight == false);
+        Check(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(before)).Contains("sizeToContentHeight"));
+        var fitted = Snapshot(new() { SizeToContentHeight = true });
+        Check(fitted.ProtocolVersion == 93 && WinUiPresentationContract.Validate(fitted).Count == 0);
+        Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(fitted)).Root.FocusPreview?.SizeToContentHeight == true);
+        Check(ViewSnapshotValidator.Validate(fitted with { ProtocolVersion = 92 }).Any(error => error.Code == "feature_requires_version"));
         Check(ViewSnapshotValidator.Validate(before with { ProtocolVersion = 91 }).Any(error => error.Code == "feature_requires_version"));
         foreach (var invalid in new[] { new FocusPreviewOptions(Width: double.NaN), new(Height: double.PositiveInfinity),
             new(Width: 159), new(Width: 961), new(Height: 95), new(Height: 801), new(Placement: (AnchorPlacement)99),
@@ -34,11 +40,11 @@ internal static class FocusPreviewTests
             FocusPresentation = new() { Id = "invalid.preview", Kind = ViewNodeKind.Button, Text = "Click", ActionId = "action" } }] } };
         Check(ViewSnapshotValidator.Validate(interactive).Any(error => error.Code == "interactive_focus_presentation_fragment"));
         const string generation = "abababababababababababababababab";
-        var after = before with { Sequence = 2, Root = before.Root with { FocusPreview = new(420, 320, AnchorPlacement.Above, DelayMilliseconds: 500) } };
-        var update = WidgetPresentationDiff.Create(before, after, generation, 1, PresentationUpdateCapabilities.Current,
+        var after = fitted with { Sequence = 2, Root = fitted.Root with { FocusPreview = new(420, 320, AnchorPlacement.Above, DelayMilliseconds: 500) { SizeToContentHeight = true } } };
+        var update = WidgetPresentationDiff.Create(fitted, after, generation, 1, PresentationUpdateCapabilities.Current,
             WidgetPresentationTransactionKind.IncrementalUpdate).Update;
         Check(update is not null);
-        Check(SnapshotJson.Serialize(after).SequenceEqual(SnapshotJson.Serialize(PresentationUpdateMaterializer.Apply(before, update!, generation))));
+        Check(SnapshotJson.Serialize(after).SequenceEqual(SnapshotJson.Serialize(PresentationUpdateMaterializer.Apply(fitted, update!, generation))));
         return Task.CompletedTask;
     }
     private static void Check(bool value) { if (!value) throw new Exception("Focus preview contract failed"); }
