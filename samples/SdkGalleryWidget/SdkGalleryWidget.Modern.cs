@@ -111,7 +111,7 @@ public sealed partial class SdkGalleryWidget
                 break;
             case "player":
                 content.Add(UI.Text("The bundled clip works offline. Optionally enter a direct HTTP(S) media URL; a web page or YouTube URL is not a media file.", "gallery.player.help"));
-                content.Add(UI.TextEntry(state.MediaUrl, "Optional direct media URL", "gallery.media.url", "gallery.media.url", 2048));
+                content.Add((UI.TextEntry(state.MediaUrl, "Optional direct media URL", "gallery.media.url", "gallery.media.url", 2048) with { InputKind = TextEntryInputKind.Url }));
                 content.Add(UI.Button("Use bundled clip", "gallery.media.reset", "gallery.media.reset"));
                 content.Add(UI.Switch("Loop playback", state.Loop, "gallery.media.loop", "gallery.media.loop"));
                 content.Add(UI.Button("Open player in modal", "gallery.media.modal.open", "gallery.media.modal.open"));

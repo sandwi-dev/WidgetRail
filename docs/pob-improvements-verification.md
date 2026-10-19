@@ -2,6 +2,48 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Default completion and build-name consistency, 2026-10-19
+
+Reproduced the reported missing `sa` suggestions in Saved builds. Its Build name
+field and the PoE2 export field omitted Prose, unlike the identically labelled
+current-build editor. Both failed the new declaration checks before correction;
+all three now share one build-name field builder.
+
+Following the user's requested default, omitted input kinds now allow offline
+English completion. Explicit Ordinary opts out. The SDK preserves that distinction
+through its existing public property and view serialization; no new public member
+or protocol enum was needed. Widget suggestions retain priority. Live browser
+editors and sensitive/specialised fields remain excluded.
+
+Audited all authored widget TextEntry calls and host-created fields. PoB numbers
+use numeric kinds; mixed import links/paths, raw modifier syntax and export folders
+opt out. Spotify's public client ID opts out; YouTube and SDK Gallery media links
+and host webapp addresses use URL. Wi-Fi password entry now uses SensitiveTextEntry
+(the audit found it was previously ordinary). Existing untyped names/search fields
+and Game Help questions receive completion from the updated host without a new
+Game Help installation. No dictionary queries reach external services.
+
+Checks: SDK 166/166, unchanged public API baseline 1/1, Network Controls 31/31,
+native keyboard 191/191 including controller-typed `sa`, default/opt-out behavior,
+existing widget suggestions and sensitive fields. PoB management, configuration,
+render resilience, skills and trade menus: 217 PoE1 and 186 PoE2. The resilience
+run also exposed an unsaved-build selector with no selected option; it now selects
+the All saved builds fallback. Temporary diagnostic state was removed.
+
+Installed walkthrough passed: repeated space, `s`, `a` in Saved builds and saw
+said/same/save/sale/sales; the unspecified loadout-name field also offered the same
+completions. Cancel preserved the saved build name and created no loadout.
+Candidate `cumulative-candidate-20261019-default-completion` is running hidden
+under the normal profile (PID 22256); all 138 deployed DLLs match publication.
+Installed/enabled packages: PoE1/PoE2 0.1.4.21, Spotify 0.3.90.3, YouTube Video
+0.3.43.1 and Network Controls 0.1.6. Physical controller acceptance remains
+separate from the native controller-route checks and mouse-driven key walkthrough.
+No merge/release, service searches, playback changes or credential edits were made.
+Evidence is under `artifacts/pob/`:
+`build-name-completion-before.log`, `default-completion-native.json`,
+`default-completion-sdk.log`, `default-completion-network-tests.log`,
+`default-completion-{1,2}--*-only-final.log`.
+
 ## Find similar, recent builds and keyboard, 2026-10-19
 
 Implementation uses protocol 96 and each pinned PoB engine's Buy similar query

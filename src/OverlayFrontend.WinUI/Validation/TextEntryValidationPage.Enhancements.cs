@@ -8,10 +8,10 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 internal sealed partial class TextEntryValidationPage
 {
-    private TextEntryInputKind? purpose;
+    private TextEntryInputKind? purpose = TextEntryInputKind.Ordinary;
     private async Task VerifyKeyboardEnhancementsAsync()
     {
-        sensitive=false;purpose=null;maximumLength=2048;value="one two abcdefghijk";Apply();await Open();
+        sensitive=false;purpose=TextEntryInputKind.Ordinary;maximumLength=2048;value="one two abcdefghijk";Apply();await Open();
         var dialog=(WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
         await presenter.HandleControllerButtonAsync(ControllerButton.X);
         dialog.SampleHeldButtons(0x4000,0x4000,0);
@@ -57,6 +57,25 @@ internal sealed partial class TextEntryValidationPage
         try
         {
             System.Globalization.CultureInfo.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("en-US");
+            purpose=null;value="Twister · Gemling Legionnaire ";Apply();await Open();
+            dialog=(WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
+            foreach (var index in new[] { 21, 20 })
+            {
+                ((Button)FindDialog("Widget.TextEntry.Key." + index)!).Focus(FocusState.Keyboard);
+                await presenter.HandleControllerButtonAsync(ControllerButton.A);
+                await Task.Delay(40);
+            }
+            var typingDeadline=Environment.TickCount64+6000;
+            while(!dialog.CanAcceptFirstSuggestion)
+            {
+                if(Environment.TickCount64>typingDeadline)throw new TimeoutException("Controller-typed prefix has no suggestions");
+                await Task.Delay(20);
+            }
+            Check(dialog.TakeValue()==value+"sa", "Unspecified fields offer completion while typing with controller keys");
+            await presenter.HandleControllerButtonAsync(ControllerButton.B);await Closed();
+            purpose=TextEntryInputKind.Ordinary;value="sa";Apply();await Open();
+            Check(FindDialog("Widget.TextEntry.Suggestions") is null, "Explicit Ordinary opts out of offline completion");
+            await presenter.HandleControllerButtonAsync(ControllerButton.B);await Closed();
             purpose=TextEntryInputKind.Prose;value=new string('a',520)+" helter later";Apply();await Open();
             dialog=(WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;editor=(TextBox)Editor();editor.Select(524,0);
             var deadline=Environment.TickCount64+6000;
@@ -69,6 +88,6 @@ internal sealed partial class TextEntryValidationPage
             Check(actions.Count==count,"Accepting a word never submits the field");
             await presenter.HandleControllerButtonAsync(ControllerButton.B);await Closed();
         }
-        finally{purpose=null;System.Globalization.CultureInfo.CurrentUICulture=culture;}
+        finally{purpose=TextEntryInputKind.Ordinary;System.Globalization.CultureInfo.CurrentUICulture=culture;}
     }
 }

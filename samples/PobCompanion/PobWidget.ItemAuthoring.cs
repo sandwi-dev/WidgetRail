@@ -276,21 +276,21 @@ public sealed partial class PobWidget
         {
             var options=A(control,"options");
             if(options.Length>0)controls.Add(ItemChoiceControl(control,"author-setting."+i,"author-setting-choice."+i+"."));
-            else controls.Add(Field(S(control,"title"),UI.TextEntry(S(control,"value"),S(control,"title"),"author-setting."+i,"pob.author-setting."+i,2).Disabled(!B(control,"enabled")).Classes("pob-input"),"author-setting."+i));
+            else controls.Add(Field(S(control,"title"),(UI.TextEntry(S(control,"value"),S(control,"title"),"author-setting."+i,"pob.author-setting."+i,2) with { InputKind = TextEntryInputKind.Integer }).Disabled(!B(control,"enabled")).Classes("pob-input"),"author-setting."+i));
         }
         foreach(var affix in A(authoredItem,"affixes"))
         {
             var id=I(affix,"id");
             controls.Add(UI.Stack("pob.author.affix."+id,Text(S(affix,"title"),"author.affix.label."+id,"pob-eyebrow"),
                 Button(S(affix,"selected","None"),"author-affix."+id),
-                Field("Roll %",UI.TextEntry(I(affix,"roll").ToString(),"0–100","author-roll."+id,"pob.author-roll."+id,3).Disabled(S(affix,"modId")=="None").Classes("pob-input"),"author-roll."+id)).Classes("pob-context-card"));
+                Field("Roll %",(UI.TextEntry(I(affix,"roll").ToString(),"0–100","author-roll."+id,"pob.author-roll."+id,3) with { InputKind = TextEntryInputKind.Integer }).Disabled(S(affix,"modId")=="None").Classes("pob-input"),"author-roll."+id)).Classes("pob-context-card"));
         }
         if(!B(authoredItem,"crafted"))foreach(var range in A(authoredItem,"ranges"))
-            controls.Add(Field(S(range,"title")+" · Roll %",UI.TextEntry(I(range,"roll").ToString(),"0–100","author-range."+I(range,"id"),"pob.author-range."+I(range,"id"),3).Classes("pob-input"),"author-range."+I(range,"id")));
+            controls.Add(Field(S(range,"title")+" · Roll %",(UI.TextEntry(I(range,"roll").ToString(),"0–100","author-range."+I(range,"id"),"pob.author-range."+I(range,"id"),3) with { InputKind = TextEntryInputKind.Integer }).Classes("pob-input"),"author-range."+I(range,"id")));
         if(B(authoredItem,"canAddCustom"))
         {
             controls.Add(Button("Add modifier…","author-add-modifier"));
-            controls.Add(Field("Custom modifier text",UI.TextEntry("","e.g. +25 to maximum Mana","author-custom","pob.author-custom",2048).Classes("pob-input"),"author-custom"));
+            controls.Add(Field("Custom modifier text",(UI.TextEntry("","e.g. +25 to maximum Mana","author-custom","pob.author-custom",2048) with { InputKind = TextEntryInputKind.Ordinary }).Classes("pob-input"),"author-custom"));
         }
         foreach(var custom in A(authoredItem,"custom"))
         {

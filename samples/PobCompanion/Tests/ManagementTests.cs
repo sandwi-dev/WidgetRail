@@ -42,6 +42,13 @@ internal static class ManagementTests
             check(stableWorkspace&&treeSurface.HeightMode==WidgetSurfaceAxisMode.FillAvailable&&treeSurface.WidthMode==WidgetSurfaceAxisMode.Preferred,
                 "Every planning section uses the same bounded width and available-height policy");
             await Action("menu");
+            check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.rename").TextEntryInputKind==TextEntryInputKind.Prose,"Current build names enable offline word completion");
+            if(game==2)
+            {
+                await Action("game-export");
+                check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.game-export.name").TextEntryInputKind==TextEntryInputKind.Prose,"Export build names enable the same word completion");
+                await Action("back");
+            }
             check(widget.Render().Surface!.PreferredWidth<treeWidth&&!Has("pob.navigation")&&Has("pob.field.label.name")&&Has("pob.field.label.level"),"Build menu has its own compact size and persistent field labels");
             check(widget.Render().Surface!.HeightMode==WidgetSurfaceAxisMode.Preferred,"Management does not inherit the planning workspace height");
             check(Has("pob.manage.character")&&Has("pob.manage.import")&&Has("pob.manage.export")&&Has("pob.new"),"Build menu groups character, import, export and new-build actions");
@@ -70,6 +77,7 @@ internal static class ManagementTests
             await Action("redo");check(WorkStateTests.SameBuild(PobWorkStore.Read(directory,id,game)!.CommittedXml,replaced.CommittedXml),"Redo reapplies the imported replacement");
             await Action("undo");
             await Action("library");await Action("library-rename","Renamed test build");
+            check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.library.rename").TextEntryInputKind==TextEntryInputKind.Prose,"Saved build names enable the same word completion");
             check(File.ReadAllText(Path.Combine(directory,id+".name.txt"))=="Renamed test build","Library can rename its selected build");
             await Action("library-rename",new string('N',100));
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.library.rename").TextEntryValue?.Length==100,"Every accepted build name can render in the library text field");

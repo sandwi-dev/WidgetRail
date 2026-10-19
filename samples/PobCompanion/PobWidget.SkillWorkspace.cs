@@ -17,7 +17,7 @@ public sealed partial class PobWidget
                 Text(char.ToUpperInvariant(field[0]) + field[1..], "gemlabel."+id+field, "pob-small"),
                 field=="level"&&B(gem,"levelReadOnly")
                     ? Text(S(gem,field),"gem."+id+field,"pob-field-label")
-                    : UI.TextEntry(S(gem,field),field,"gem."+id+"."+field,"pob.gem."+id+field).Classes("pob-input"))
+                    : (UI.TextEntry(S(gem,field),field,"gem."+id+"."+field,"pob.gem."+id+field) with { InputKind = field=="count"?TextEntryInputKind.Decimal:TextEntryInputKind.Integer }).Classes("pob-input"))
                 .InGrid(column:index)).ToArray();
             var card=new List<WidgetElement>{Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue"),
                 UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],fields.Select(_=>GridTrack.Star()).ToArray(),controls).Spacing(0,8)};

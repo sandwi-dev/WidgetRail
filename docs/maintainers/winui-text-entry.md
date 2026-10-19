@@ -166,14 +166,15 @@ checks remain passing. Evidence: `artifacts/winui-shell/popup-typography-2026093
 ## Input purposes and offline completion
 
 Protocol 96 extends `TextEntryInputKind` with `Integer`, `Decimal`, `Url`, `Email`
-and `Prose`. Authors opt in through `TextEntryElement.InputKind`; existing
-`Ordinary` and `Sensitive` declarations keep their behavior. Numeric fields use a
+and `Prose`. Authors choose a purpose through `TextEntryElement.InputKind`. An
+omitted kind now allows offline completion; explicit `Ordinary` opts out, and
+`Sensitive` remains protected. Numeric fields use a
 keypad; URL/email fields put their common punctuation on the main layer. Purposes
 choose presentation, not validation: widgets still validate committed values.
 Browser input type/inputmode selects compatible layouts without changing its DOM.
 
-`Prose` permits host-local English word completion when no widget suggestion source
-is declared and the UI language is English. It reuses the bounded suggestion
+An omitted kind or explicit `Prose` permits host-local English word completion
+when no widget suggestion source is declared and the UI language is English. It reuses the bounded suggestion
 controller/row, resolves only a prefix at the caret and replaces only that word.
 Selections, technical identifiers, sensitive fields and live browser editors do
 not get this fallback. Widget-supplied suggestions retain whole-entry semantics.

@@ -81,7 +81,7 @@ public sealed partial class PobWidget
     private void AddTimelessText(List<WidgetElement> rows,string title,string property,string field,string id)
     {
         var text=S(timelessState,property);
-        if(text.Length<=2048)rows.Add(Field(title,UI.TextEntry(text,"Choose modifiers above; optionally edit the list","timeless-text."+field,"pob.timeless."+id,2048).Classes("pob-input"),"timeless."+id));
+        if(text.Length<=2048)rows.Add(Field(title,(UI.TextEntry(text,"Choose modifiers above; optionally edit the list","timeless-text."+field,"pob.timeless."+id,2048) with { InputKind = TextEntryInputKind.Ordinary }).Classes("pob-input"),"timeless."+id));
         else{rows.Add(Text(title,"timeless."+id+".title","pob-eyebrow"));AddReading(rows,text,"timeless."+id+".text");}
         if(text.Length>0)rows.Add(Button("Clear "+title.ToLowerInvariant(),"timeless-clear."+field));
     }
@@ -104,7 +104,7 @@ public sealed partial class PobWidget
             {
                 if(key=="secondary"&&!B(timelessState,"secondaryEnabled"))continue;
                 controls.Add(Field(key=="minimum"?"Minimum weight (500 = required)":key=="primary"?"Primary stat weight":"Secondary stat weight",
-                    UI.TextEntry(S(timelessState,key),"Weight","timeless-weight."+key,"pob.timeless.weight."+key,16).Classes("pob-input"),"timeless.weight."+key));
+                    (UI.TextEntry(S(timelessState,key),"Weight","timeless-weight."+key,"pob.timeless.weight."+key,16) with { InputKind = TextEntryInputKind.Decimal }).Classes("pob-input"),"timeless.weight."+key));
             }
         }
         AddTimelessText(controls,"Desired modifiers and weights","searchList","searchList","desired");

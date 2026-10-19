@@ -385,9 +385,9 @@ internal static class SpotifyPresentation
                 .Classes("spotify-secondary", "spotify-setup-action"),
             UI.Text("3. Save only the public Client ID; never enter a Client Secret.",
                     "spotify.setup-step-3").Classes("spotify-setup-step"),
-            UI.TextEntry(string.Empty, "Enter public Spotify Client ID",
+            (UI.TextEntry(string.Empty, "Enter public Spotify Client ID",
                     "spotify.setup.client-id", "spotify.setup.client-id",
-                    SpotifyApplicationContract.MaximumClientIdInputCharacters)
+                    SpotifyApplicationContract.MaximumClientIdInputCharacters) with { InputKind = TextEntryInputKind.Ordinary })
                 .Disabled(setupBusy)
                 .FocusUp("spotify.setup.copy-redirect")
                 .FocusDown("spotify.setup.done")

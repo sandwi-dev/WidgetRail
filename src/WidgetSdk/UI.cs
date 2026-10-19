@@ -77,7 +77,7 @@ public static partial class UI
         string action,
         string id,
         int maximumLength = ProtocolConstants.MaximumTextEntryLength) =>
-        new(id, value, placeholder, maximumLength, action, TextEntryInputKind.Ordinary);
+        new(id, value, placeholder, maximumLength, action, null);
 
     /// <summary>
     /// Creates a host-owned sensitive text-entry trigger. The authored view

@@ -486,13 +486,14 @@ keyboard work. Physically exercise the installed UI before handing over a candid
 - Add Space/Paste shortcuts without changing L3/R3 suggestion behavior. Menu/Space
   and View/Paste operate on release; View+Menu remains the overlay visibility chord
   and must not insert content. Ownership loss cancels pending shortcut actions.
-- Add opt-in integer, decimal, URL, email and prose input kinds. Keep existing
-  ordinary/sensitive defaults compatible. Infer supported purposes from browser
+- Add opt-in integer, decimal, URL, email and prose input kinds. Omitted kinds allow completion; explicit Ordinary
+  opts out and Sensitive remains protected. Infer supported purposes from browser
   input metadata; migrate known numeric and prose fields, not unknown fields.
-- Optional English word completion uses a bounded offline vocabulary and the
+- Default English word completion for unspecified fields uses a bounded offline vocabulary and the
   shared suggestion UI. No network, typing-history learning or silent correction.
   It replaces only the word at the caret. Widget-provided whole-field suggestions
-  take priority; passwords, identifiers and browser live editors do not opt in.
+  take priority; explicit Ordinary, specialised layouts, passwords and live browser
+  editors do not receive fallback completion. Audit technical fields before rollout.
 - Test races, middle-of-text editing, selection, punctuation/Unicode, paste,
   release/chord cancellation, held input, lifecycle interruption and layout.
   Document input-kind semantics, dictionary attribution and tested limitations.

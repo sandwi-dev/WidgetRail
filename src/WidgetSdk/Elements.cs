@@ -733,9 +733,11 @@ public sealed record SelectElement : WidgetElement
 /// </summary>
 public sealed record TextEntryElement : WidgetElement
 {
+    private TextEntryInputKind? inputKind;
+
     internal TextEntryElement(
         string id, string value, string placeholder, int maximumLength, string actionId,
-        TextEntryInputKind inputKind)
+        TextEntryInputKind? inputKind)
         : base(RequireId(id))
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -744,7 +746,7 @@ public sealed record TextEntryElement : WidgetElement
             throw new ArgumentOutOfRangeException(nameof(maximumLength));
         if (value.Length > maximumLength)
             throw new ArgumentException("The text-entry value exceeds its maximum length.", nameof(value));
-        if (!Enum.IsDefined(inputKind))
+        if (inputKind is { } purpose && !Enum.IsDefined(purpose))
             throw new ArgumentOutOfRangeException(nameof(inputKind));
         if (inputKind == TextEntryInputKind.Sensitive && value.Length != 0)
             throw new ArgumentException(
@@ -753,14 +755,15 @@ public sealed record TextEntryElement : WidgetElement
         Placeholder = placeholder;
         MaximumLength = maximumLength;
         ActionId = RequireId(actionId);
-        InputKind = inputKind;
+        this.inputKind = inputKind;
     }
 
     public string Value { get; init; }
     public string Placeholder { get; init; }
     public int MaximumLength { get; init; }
     public string ActionId { get; init; }
-    public TextEntryInputKind InputKind { get; init; }
+    /// <summary>Omitting the kind permits host word completion. Explicit Ordinary opts out.</summary>
+    public TextEntryInputKind InputKind { get => inputKind ?? TextEntryInputKind.Ordinary; init => inputKind = value; }
     public TextSuggestionSource? SuggestionSource { get; init; }
 
     public TextEntryElement Suggest(string sourceKey, int minimumLength = 1, int maximumResults = 6)
@@ -799,7 +802,7 @@ public sealed record TextEntryElement : WidgetElement
         TextEntryValue = Value,
         TextEntryPlaceholder = Placeholder,
         TextEntryMaximumLength = MaximumLength,
-        TextEntryInputKind = InputKind == TextEntryInputKind.Ordinary ? null : InputKind,
+        TextEntryInputKind = inputKind,
         TextEntrySuggestions = SuggestionSource,
         IsDisabled = IsDisabled,
         Focus = FocusNeighbors,

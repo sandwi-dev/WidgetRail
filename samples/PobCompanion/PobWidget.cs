@@ -283,7 +283,7 @@ public sealed partial class PobWidget : Widget
             return UI.Select(title.TrimEnd(' ',':'),choices,"pob.condition."+key).FocusLeft(categoryTarget).Classes("pob-select");
         }
         return UI.Stack("pob.conditionrow."+key, Text(title,"conditionlabel."+key,"pob-field-label"),
-            UI.TextEntry(S(c,"value"),title,"condition."+key,"pob.condition."+key,2048).FocusLeft(categoryTarget).Classes("pob-input"));
+            (UI.TextEntry(S(c,"value"),title,"condition."+key,"pob.condition."+key,2048) with { InputKind = S(c,"kind") switch { "count" or "countAllowZero" or "integer" => TextEntryInputKind.Integer, "float" => TextEntryInputKind.Decimal, _ => TextEntryInputKind.Ordinary } }).FocusLeft(categoryTarget).Classes("pob-input"));
     }
     private List<WidgetElement> NodeDetails()
     {

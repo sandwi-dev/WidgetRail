@@ -317,6 +317,13 @@ static Task TextEntryRoundTrip()
     Assert.Equal("Halo", node.TextEntryValue);
     Assert.Equal("Search games", node.TextEntryPlaceholder);
     Assert.Equal(32, node.TextEntryMaximumLength);
+    Assert.True(node.TextEntryInputKind is null, "Unspecified purpose permits host completion.");
+    var ordinary = new WidgetView(UI.TextEntry("token", "Identifier", "edit", "identifier") with { InputKind = TextEntryInputKind.Ordinary })
+        .CreateSnapshot("explicit-purpose.test", 1);
+    Assert.Equal(TextEntryInputKind.Ordinary, ordinary.Root.TextEntryInputKind);
+    var copied = new WidgetView(UI.TextEntry("name", "Name", "edit", "name").Classes("example"))
+        .CreateSnapshot("default-purpose.test", 1);
+    Assert.True(copied.Root.TextEntryInputKind is null, "Fluent copies preserve the omitted purpose.");
     Assert.True(node.IsFocusable, "Text entry must be a controller focus target.");
     Assert.Throws<ArgumentOutOfRangeException>(() =>
         UI.TextEntry("", "Search", "search.commit", "search", 2049));

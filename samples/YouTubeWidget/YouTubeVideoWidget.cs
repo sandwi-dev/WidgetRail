@@ -94,12 +94,12 @@ public sealed partial class YouTubeVideoWidget : Widget
         var media = CreateMediaSession(
             videoId, playback.PendingCommand, showFullscreenAction);
 
-        var linkEntry = UI.TextEntry(
+        var linkEntry = (UI.TextEntry(
                 playback.Link,
                 "Enter youtube.com or youtu.be link here",
                 LinkActionId,
                 "youtube.link",
-                ProtocolConstants.MaximumTextEntryLength)
+                ProtocolConstants.MaximumTextEntryLength) with { InputKind = TextEntryInputKind.Url })
             .FocusDown("youtube.controls")
             .Classes("youtube-link", playback.Link.Length == 0 ? "is-empty" : "has-value");
         var playing = playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing;

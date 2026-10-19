@@ -251,7 +251,7 @@ public sealed partial class PobWidget
         {
             var options=A(control,"options");
             if(options.Length>0)controls.Add(ItemChoiceControl(control,"item-control."+i,"item-choice."+i+"."));
-            else controls.Add(Field(S(control,"title"),UI.TextEntry(S(control,"value"),S(control,"title"),"item-control."+i,"pob.item-control."+i,2).Classes("pob-input"),"item-control."+i));
+            else controls.Add(Field(S(control,"title"),(UI.TextEntry(S(control,"value"),S(control,"title"),"item-control."+i,"pob.item-control."+i,2) with { InputKind = TextEntryInputKind.Integer }).Classes("pob-input"),"item-control."+i));
         }
         var mods=new List<WidgetElement>{Text("Item modifiers","item-edit.mods-title","pob-heading")};
         foreach(var mod in A(itemEditor,"mods"))
@@ -286,7 +286,7 @@ public sealed partial class PobWidget
                 Field("Group state",UI.Switch("Enabled",B(group,"enabled"),"custom-enabled","pob.custom-enabled").Shortcut(ControllerButton.X,"Compare toggle",actionId:"custom-compare").Classes("pob-toggle"),"custom-enabled").InGrid(column:1)).Spacing(0,12),
             UI.Row("pob.custom.actions",Button("Compare toggle","custom-compare"),Button("Replace from clipboard","custom-paste"),Button("New modifier","custom-new").Disabled(editingModifier<0)).Classes("pob-toolbar"),
             UI.Stack("pob.custom.edit-tools",Field(editingModifier>=0?"Edit modifier "+(editingModifier+1):"Add modifier",
-                editValue.Length<=2048?UI.TextEntry(editValue,"e.g. +100 to maximum Life",editingModifier>=0?"custom-line."+editingModifier:"custom-new-line","pob.custom-new-line",2048).Classes("pob-input"):
+                editValue.Length<=2048?(UI.TextEntry(editValue,"e.g. +100 to maximum Life",editingModifier>=0?"custom-line."+editingModifier:"custom-new-line","pob.custom-new-line",2048) with { InputKind = TextEntryInputKind.Ordinary }).Classes("pob-input"):
                 UI.Stack("pob.custom.large-line",Text("This line is too long for the keyboard.","custom.large-line-help","pob-muted"),Button("Replace group from clipboard","custom-paste","custom-long-paste")),"custom-new-line")).RememberChildFocus(editValue.Length<=2048?"pob.custom-new-line":"pob.custom-long-paste")};
         var supported=A(group,"lines");var text=S(group,"text").Split('\n');var nonempty=0;
         var entries=new List<ModifierEntry>();

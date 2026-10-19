@@ -1,3 +1,4 @@
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PobCompanion;
@@ -38,10 +39,10 @@ public sealed partial class PobWidget
         UI.VerticalScroll("pob.game-export.scroll",
             Text("Follow your build inside the game","game-export.title","pob-heading"),
             Text("Creates a .build guide with passive, skill and equipment recommendations. It does not equip gear or spend points. Existing files are kept.","game-export.help","pob-muted"),
-            Field("Build name",UI.TextEntry(gameExportName,"Build name","game-export.name","pob.game-export.name",100).Classes("pob-input"),"game-export.name"),
+            Field("Build name",BuildNameEntry(gameExportName,"game-export.name","pob.game-export.name").Classes("pob-input"),"game-export.name"),
             Field("Author (optional)",UI.TextEntry(gameExportAuthor,"Author","game-export.author","pob.game-export.author",100).Classes("pob-input"),"game-export.author"),
             Field("Description (optional)",UI.TextEntry(gameExportDescription,"Description","game-export.description","pob.game-export.description",1000).Classes("pob-input"),"game-export.description"),
-            Field("PoE2 BuildPlanner folder",UI.TextEntry(gameExportDirectory,"Folder path","game-export.directory","pob.game-export.directory",2048).Classes("pob-input"),"game-export.directory"),
+            Field("PoE2 BuildPlanner folder",(UI.TextEntry(gameExportDirectory,"Folder path","game-export.directory","pob.game-export.directory",2048) with { InputKind = TextEntryInputKind.Ordinary }).Classes("pob-input"),"game-export.directory"),
             Text("Selected sets exports the active passive tree, skills and equipment. Each linked loadout exports to its own file.","game-export.sets-help","pob-small pob-muted"),
             UI.Row("pob.game-export.actions",Button("Export selected sets","game-export.selected"),Button("Export all loadouts","game-export.all").Disabled(A(State,"loadouts").Length==0)).Classes("pob-toolbar"),
             UI.Stack("pob.game-export.results",gameExportPaths.Select((path,i)=>(WidgetElement)Text(path,"game-export.file."+i,"pob-small")).ToArray()))

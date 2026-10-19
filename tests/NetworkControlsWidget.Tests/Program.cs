@@ -684,6 +684,7 @@ static async Task CredentialsStayOutOfWorker()
     Assert.True(!NetworkControlsHostPolicy.TryResolveNetworkId(protectedEntry.Id,
         trustedScan with { Networks = [trustedScan.Networks[0] with { Security = WidgetRail.PlatformBroker.WifiSecurityKind.Enterprise }] }, out _));
     Assert.Equal(string.Empty, protectedEntry.TextEntryValue);
+    Assert.Equal(TextEntryInputKind.Sensitive, protectedEntry.TextEntryInputKind);
     Assert.Equal(63, protectedEntry.TextEntryMaximumLength);
     await widget.OnActionAsync(new WidgetActionEvent(
         "wifi.connect.protected",

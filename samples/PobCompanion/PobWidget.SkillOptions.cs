@@ -1,3 +1,4 @@
+using WidgetRail.WidgetProtocol;
 using System.Text.Json;
 using WidgetRail.WidgetSdk;
 
@@ -76,7 +77,7 @@ public sealed partial class PobWidget
     private WidgetElement SkillOptionControl(PobSkillOption option)
     {
         var key=option.Id;
-        if(option.Numeric)return Field(option.Title,UI.TextEntry(option.Value,"PoB default",$"skill-number.{detailId}.{key}","pob.option."+key,9).Classes("pob-input"),"skill-number."+key);
+        if(option.Numeric)return Field(option.Title,(UI.TextEntry(option.Value,"PoB default",$"skill-number.{detailId}.{key}","pob.option."+key,9) with { InputKind = TextEntryInputKind.Decimal }).Classes("pob-input"),"skill-number."+key);
         var title=key switch{"mainSkill"=>"Skill in group","statSet"=>"Stat set","mainSkillPart"=>"Skill part","mainSkillMinion"=>"Minion","mainSkillMinionSkill"=>"Minion skill","mainSkillMinionSkillStatSet"=>"Minion stat set",_=>StatLabel(key)};
         return UI.Select(title,option.Choices.Select(o=>new SelectOption("choice"+o.Id,InlineLabel(o.Title),$"skill-option.{detailId}.{key}.{o.Id}",o.Active)).ToArray(),"pob.option."+key).Classes("pob-select");
     }

@@ -5,6 +5,9 @@ namespace WidgetRail.Samples.PobCompanion;
 
 public sealed partial class PobWidget
 {
+    private static TextEntryElement BuildNameEntry(string value, string actionId, string id) =>
+        UI.TextEntry(value, "Build name", actionId, id, 100) with { InputKind = TextEntryInputKind.Prose };
+
     private string librarySearch="",librarySort="recent";
     private string? librarySelection,deleteBuildId;
     private bool replaceOnImport;
@@ -25,7 +28,7 @@ public sealed partial class PobWidget
         UI.Stack("pob.field."+id,Text(label,"field.label."+id,"pob-small"),input).Classes("pob-field");
     private WidgetElement ImportField()=>Field("Build link or XML file path",
         UI.Stack("pob.import.field",
-            UI.TextEntry("","Build link or XML file path","import","pob.import",2048).Classes("pob-input"),
+            (UI.TextEntry("","Build link or XML file path","import","pob.import",2048) with { InputKind = TextEntryInputKind.Ordinary }).Classes("pob-input"),
             Text("PoB share link: https://pobb.in/your-build-code. For poe.ninja, copy its PoB code and choose Paste build from clipboard.","import.example.link","pob-small pob-muted"),
             Text(@"For an exported XML build, enter its full Windows path, such as C:\Users\YourName\Documents\PoB\MyBuild.xml","import.example.file","pob-small pob-muted")).Classes("pob-field"),"import");
     private static WidgetElement ManagementSection(string title,string id,params WidgetElement[] content)=>
@@ -44,7 +47,7 @@ public sealed partial class PobWidget
             return UI.VerticalScroll("pob.build-menu",comparison.ToArray()).Classes("pob-scroll","pob-panel");
         }
         var character=new List<WidgetElement>{UI.Grid("pob.manage.identity",[GridTrack.Auto()],[GridTrack.Star(3),GridTrack.Star()],
-            Field("Build name",(UI.TextEntry(BuildName(),"Build name","rename","pob.rename",100) with{InputKind=TextEntryInputKind.Prose}).Classes("pob-input"),"name"),
+            Field("Build name",BuildNameEntry(BuildName(),"rename","pob.rename").Classes("pob-input"),"name"),
             Field("Character level",(UI.TextEntry(S(State,"level"),"Character level","level","pob.level") with{InputKind=TextEntryInputKind.Integer}).Classes("pob-input"),"level").InGrid(column:1)).Spacing(0,12)};
         var choices=new List<WidgetElement>();
         foreach(var (field,kind,title) in new[]{("classes","class","Class"),("ascendancies","ascendancy","Ascendancy")})
@@ -83,7 +86,7 @@ public sealed partial class PobWidget
             Text(selected.Name,"library.selected.title","pob-heading"),
             Text(selected.Id==documentId?"Current build":"Saved build","library.selected.status","pob-muted"),
             UI.Stack("pob.library.open-action",Button("Open build","saved."+selected.Id,"library.open").FocusLeft("pob.saved-builds")).RememberChildFocus("pob.library.open"),
-            Field("Build name",UI.TextEntry(selected.Name,"Build name","library-rename","pob.library.rename",100).FocusLeft("pob.saved-builds").Classes("pob-input"),"library-name"),
+            Field("Build name",BuildNameEntry(selected.Name,"library-rename","pob.library.rename").FocusLeft("pob.saved-builds").Classes("pob-input"),"library-name"),
             Button("Duplicate build","library-duplicate").FocusLeft("pob.saved-builds"),
             Button("Compare builds & loadouts","build-comparison").Disabled(result is null||pendingBefore is not null||pastedItem is not null).FocusLeft("pob.saved-builds"),
             Button("Delete build…","library-delete").FocusLeft("pob.saved-builds"))

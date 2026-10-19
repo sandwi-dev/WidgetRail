@@ -153,7 +153,8 @@ internal sealed class UserWebAppEditor : IDisposable
         WidgetTextEntryDialog? keyboard = null;
         keyboard = new(new ViewNode { Id = "webapp.edit", Kind = ViewNodeKind.TextEntry,
             AccessibilityLabel = editAddress ? "Website address" : "Webapp name", TextEntryValue = editAddress ? address : name,
-            TextEntryMaximumLength = editAddress ? 2048 : 80 }, commit => { accepted = commit; keyboard!.Hide(); });
+            TextEntryMaximumLength = editAddress ? 2048 : 80,
+            TextEntryInputKind = editAddress ? TextEntryInputKind.Url : null }, commit => { accepted = commit; keyboard!.Hide(); });
         keyboard.BindRoot(root); keyboard.ThemeLease = NativePopupTheme.Dialog(keyboard, origin);
         keyboard.GuideChanged = () => Changed?.Invoke(); Keyboard = keyboard; Changed?.Invoke();
         try

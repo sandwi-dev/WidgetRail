@@ -1,3 +1,4 @@
+using WidgetRail.WidgetProtocol;
 using System.Globalization;
 using System.Text.Json;
 using WidgetRail.WidgetSdk;
@@ -98,7 +99,7 @@ public sealed partial class PobWidget
         if(tradePriority=="custom")
         {
             foreach(var (id,value) in tradeWeights)
-                controls.Add(UI.Row("pob.trade.weight.row."+id,Field(S(A(tradeCatalog,"stats").FirstOrDefault(s=>I(s,"id")==id),"title","Unavailable statistic"),UI.TextEntry(value.ToString(CultureInfo.InvariantCulture),"0–100","trade-weight."+id,"pob.trade-weight."+id,6).Classes("pob-input"),"trade-weight."+id),Button("Remove","trade-remove-weight."+id)).Classes("pob-toolbar"));
+                controls.Add(UI.Row("pob.trade.weight.row."+id,Field(S(A(tradeCatalog,"stats").FirstOrDefault(s=>I(s,"id")==id),"title","Unavailable statistic"),(UI.TextEntry(value.ToString(CultureInfo.InvariantCulture),"0–100","trade-weight."+id,"pob.trade-weight."+id,6) with { InputKind = TextEntryInputKind.Decimal }).Classes("pob-input"),"trade-weight."+id),Button("Remove","trade-remove-weight."+id)).Classes("pob-toolbar"));
             controls.Add(Button("Add statistic","trade-add-weight").Disabled(tradeWeights.Count>=20));
             controls.Add(Text("Weights express relative importance. PoB handles statistics where lower is better. Set at least one nonzero weight.","trade.weights-help","pob-small pob-muted"));
         }
@@ -109,7 +110,7 @@ public sealed partial class PobWidget
                 .Concat(game==2?new[]{("includeRunes","Include rune modifier weights")}:new[]{("includeTalisman","Include talisman modifier weights"),("includeScourge","Include Scourge modifier weights"),("includeEldritch","Include regular Eldritch modifier weights")}))
                 if(TradeOptionApplies(key))controls.Add(UI.Switch(title,tradeFlags.GetValueOrDefault(key),"trade-flag."+key,"pob.trade-flag."+key).Classes("pob-toggle"));
             foreach(var (key,title,hint) in new[]{("maxLevel","Maximum required level","Character level"),("sockets","Minimum empty sockets","No minimum")}.Concat(game==1?new[]{("links","Minimum links","No minimum")}:[]))
-                if(TradeOptionApplies(key))controls.Add(Field(title,UI.TextEntry(tradeNumbers.TryGetValue(key,out var n)?n.ToString():"",hint,"trade-number."+key,"pob.trade-number."+key,3).Classes("pob-input"),"trade-number."+key));
+                if(TradeOptionApplies(key))controls.Add(Field(title,(UI.TextEntry(tradeNumbers.TryGetValue(key,out var n)?n.ToString():"",hint,"trade-number."+key,"pob.trade-number."+key,3) with { InputKind = TextEntryInputKind.Integer }).Classes("pob-input"),"trade-number."+key));
             controls.Add(Text("Modifier options affect PoB's search weights. Evaluations always use the item as listed, including its existing augments and implicits.","trade.advanced-help","pob-small pob-muted"));
         }
         return UI.Stack("pob.trade.options",controls.ToArray()).Classes("pob-buildtools");

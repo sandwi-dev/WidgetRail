@@ -418,8 +418,7 @@ internal static class NetworkControlsPresentation
             if (network.CredentialRequired &&
                 network.Security == WidgetWifiSecurityKind.Personal)
             {
-                var protectedEntry = UI.TextEntry(
-                    string.Empty,
+                var protectedEntry = UI.SensitiveTextEntry(
                     network.DisplayName,
                     "wifi.connect.protected",
                     id,

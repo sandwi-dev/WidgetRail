@@ -19,7 +19,7 @@ internal sealed partial class WidgetTextEntryDialog
 
     private void EnableWordCompletion(ViewNode node)
     {
-        if(node.TextEntryInputKind!=TextEntryInputKind.Prose||node.TextEntrySuggestions is not null||IsLive||protectedInput||text is null||
+        if(node.TextEntryInputKind is not (null or TextEntryInputKind.Prose)||node.TextEntrySuggestions is not null||IsLive||protectedInput||text is null||
             CultureInfo.CurrentUICulture.TwoLetterISOLanguageName!="en")return;
         wordCompletion=true;
         completionContext=WordCompletionContext.Capture(text.Text,text.SelectionStart,text.SelectionLength);

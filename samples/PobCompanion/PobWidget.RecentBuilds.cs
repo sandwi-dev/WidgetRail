@@ -52,7 +52,7 @@ public sealed partial class PobWidget
             if(options.Count>=RecentBuildLimit)options.RemoveAt(options.Count-1);
             options.Insert(0,new(current,BuildName(),"recent-build."+current,true));
         }
-        options.Add(new("library","All saved builds…","library"));
+        options.Add(new("library","All saved builds…","library",documentId is null));
         return UI.Select("Build",options.ToArray(),"pob.recent-builds").Disabled(pendingBefore is not null||buildComparisonRunning)
             .Classes("pob-select","pob-recent-builds");
     }

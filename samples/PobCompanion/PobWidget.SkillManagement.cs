@@ -128,7 +128,7 @@ public sealed partial class PobWidget
         if(generated)
         {
             properties.Add(Text("Granted by "+(S(group,"sourceName").Length>0?S(group,"sourceName"):"this build's effects")+(S(group,"slot").Length>0?" · "+S(group,"slot"):"")+". Its source controls the skill and level.","group-source","pob-muted"));
-            properties.Add(Field("Group count (Full DPS)",UI.TextEntry(S(group,"groupCount"),"Count","group-count","pob.group-count",12).Classes("pob-input"),"group-count"));
+            properties.Add(Field("Group count (Full DPS)",(UI.TextEntry(S(group,"groupCount"),"Count","group-count","pob.group-count",12) with { InputKind = TextEntryInputKind.Decimal }).Classes("pob-input"),"group-count"));
         }
         else if(A(State,"skillSlots").Length>0)properties.Add(UI.Select("Socketed in",A(State,"skillSlots").Select((s,i)=>new SelectOption("slot"+i,S(s,"label"),"group-slot."+i,S(s,"name")==S(group,"slot"))).ToArray(),"pob.group-slot").Classes("pob-select"));
         foreach(var set in A(group,"weaponSets"))

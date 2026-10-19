@@ -147,22 +147,31 @@ Default suggestions require protocol 88 (introduced in SDK 0.4.5-dev). Custom ti
 requires protocol 89 and SDK 0.4.6-dev; older hosts must reject that feature instead
 of silently using a shorter deadline. Existing fields remain commit-only.
 
-## Ordinary word completion
+## Offline word completion
 
-Widget suggestions remain whole-field replacements. Separately, protocol 96 adds
-an opt-in host fallback for prose fields:
+Text entries with no input kind now receive host-local English word completion
+by default when they have no widget suggestion source. `Prose` explicitly requests
+the same behavior. Existing packages whose field metadata omits the kind also
+benefit from this default; live browser editors remain excluded.
 
 ```csharp
-var message = UI.TextEntry(draft, "Your message", "message", "message.entry", 2048)
-    with { InputKind = TextEntryInputKind.Prose };
+var message = UI.TextEntry(draft, "Your message", "message", "message.entry", 2048);
+var identifier = UI.TextEntry(id, "Identifier", "identifier", "identifier.entry", 100)
+    with { InputKind = TextEntryInputKind.Ordinary }; // Explicit opt-out.
 ```
 
-With an English UI language and no declared widget source, the keyboard offers
-local word completions. L3 or choosing a result replaces only the word at the
-caret, preserves the surrounding text and leaves the keyboard open. Moving the
-caret invalidates older results even when the prefix is unchanged. Sensitive and
-technical fields must retain the appropriate input kind; existing ordinary fields
-are not automatically opted in. No server queries or typing-history learning occur.
+The SDK preserves omitted metadata separately from explicit `Ordinary`, without
+changing the public property type. Fluent copies preserve that distinction. Older
+SDK builds serialized `Ordinary` as omitted; rebuild technical fields with the
+current SDK to express the opt-out. Use `SensitiveTextEntry` for passwords and keys.
 
-Other purposes are `Integer`, `Decimal`, `Url` and `Email`. These choose a suitable
-keyboard layout; they do not replace validation of committed input.
+With an English UI language, two letters at the caret produce local completions.
+L3 or choosing a result replaces only the current word, preserves surrounding
+text and leaves the keyboard open. Moving the caret invalidates old results,
+even when the prefix is unchanged. No server queries, history learning, automatic
+correction or submission occur. Widget-supplied suggestions take priority and
+retain whole-field replacement semantics, including when they return no matches.
+
+`Integer`, `Decimal`, `Url` and `Email` choose specialised layouts and suppress
+word completion. Raw modifier syntax, identifiers and mixed link/file-path fields
+use explicit `Ordinary`. Input purposes do not replace committed-value validation.
