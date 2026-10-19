@@ -265,7 +265,7 @@ public sealed partial class StandaloneMusicWidget
                 size: IconButtonSize.Small).Selected(state.Repeat != "off")
             .FocusLeft(prefix + ".next").FocusUp(prefix + ".seek.slider").Classes("music-secondary-action");
         if (adjacentFocus is not null) repeat = repeat.FocusRight(adjacentFocus);
-        var controls = UI.Row(prefix + ".controls",
+        var transport = new List<WidgetElement>{
             UI.IconButton(WidgetGlyph.Shuffle, "player.shuffle", prefix + ".shuffle", "Shuffle", size: IconButtonSize.Small)
                 .Selected(state.Shuffle).FocusRight(prefix + ".previous").FocusUp(prefix + ".seek.slider").Classes("music-secondary-action"),
             UI.IconButton(WidgetGlyph.Previous, "player.previous", prefix + ".previous", "Previous song")
@@ -273,21 +273,33 @@ public sealed partial class StandaloneMusicWidget
             toggle,
             UI.IconButton(WidgetGlyph.Next, "player.next", prefix + ".next", "Next song")
                 .FocusLeft(prefix + ".toggle").FocusRight(prefix + ".repeat").FocusUp(prefix + ".seek.slider").Classes("music-transport"),
-            repeat).Classes("music-transport-row");
+            repeat};
+        var seek = UI.Scrubber(TimeSpan.FromSeconds(Math.Clamp(p.Position, 0, Math.Max(1, p.Duration))),
+                TimeSpan.FromSeconds(Math.Max(1, p.Duration)), TimeSpan.FromSeconds(Math.Min(5, Math.Max(1, p.Duration))), "player.seek", prefix + ".seek", "Playback position")
+            .RequireControllerActivation().Disabled(p.Duration <= 0).FocusDown(prefix + ".toggle").AddClasses("music-scrubber");
+        WidgetElement seekRow = seek;
+        if(state.Connected)
+        {
+            var liked=state.LikeFor(current)==true;
+            var like=UI.IconButton(WidgetIcon.PackageSvg(liked?"ytmusic.liked.filled":"ytmusic.liked.outline",
+                    WidgetPackageIconColorMode.ThemeTint,WidgetGlyph.Like),"song.like",prefix+".like",
+                    liked?"Unlike song":"Like song",size:IconButtonSize.Small)
+                .Selected(liked).Busy(state.PendingLikes.Count>0).FocusLeft(prefix+".seek.slider").FocusDown(prefix+".toggle").Classes("music-like-action");
+            if(adjacentFocus is not null)like=like.FocusRight(adjacentFocus);
+            seekRow = UI.Grid(prefix + ".seek.row", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto()],
+                seek.FocusRight(prefix + ".like").InGrid(column: 0), like.InGrid(column: 1))
+                .Spacing(0, 8).Classes("music-seek-row");
+        }
+        var controls=UI.Row(prefix+".controls",transport.ToArray()).Classes("music-transport-row");
         WidgetElement artwork = current.Artwork.StartsWith("https://", StringComparison.Ordinal)
             ? UI.Image(current.Artwork, prefix + ".artwork", current.Title, ImageFit.Cover).Classes("music-artwork")
             : UI.Icon(WidgetGlyph.Music, prefix + ".artwork", "No artwork").Classes("music-artwork", "music-artwork-placeholder");
         if (!pane) artwork = artwork.AddClasses("music-pinned-artwork");
         var content = new List<WidgetElement>
         { UI.Row(prefix + ".artwork.frame", artwork).Classes("music-artwork-frame") };
-        content.Add(UI.Text(current.Title, prefix + ".title").Classes("music-track-title"));
+        content.Add(UI.Text(current.Title,prefix+".title").Classes("music-track-title"));
         content.Add(UI.Text(p.Buffering ? "Buffering…" : current.Subtitle, prefix + ".artist").Classes("music-player-subtitle"));
-        if (state.Connected)
-            content.Add(UI.Button(state.LikeFor(current) == true ? "Liked · Unlike" : "Like song", "song.like", prefix + ".like")
-                .Selected(state.LikeFor(current) == true).Busy(state.PendingLikes.Count > 0).Classes("music-secondary"));
-        content.Add(UI.Scrubber(TimeSpan.FromSeconds(Math.Clamp(p.Position, 0, Math.Max(1, p.Duration))),
-                TimeSpan.FromSeconds(Math.Max(1, p.Duration)), TimeSpan.FromSeconds(Math.Min(5, Math.Max(1, p.Duration))), "player.seek", prefix + ".seek", "Playback position")
-            .RequireControllerActivation().Disabled(p.Duration <= 0).FocusDown(prefix + ".toggle").AddClasses("music-scrubber"));
+        content.Add(seekRow);
         content.Add(controls);
         content.Add(UI.Row(prefix + ".volume.row",
             UI.Icon(WidgetGlyph.Volume, prefix + ".volume.icon", "Volume").Classes("music-volume-icon"),

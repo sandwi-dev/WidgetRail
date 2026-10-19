@@ -81,7 +81,7 @@ internal sealed partial class WidgetStylesValidationPage
         presenter.ResolvePackageIconAsync = (icon, _) =>
         {
             var filename = icon.AssetId switch {
-                "spotify.saved.outline" => "heart-outline.svg", "spotify.saved.filled" => "heart-filled.svg",
+                "spotify.saved.outline" or "ytmusic.liked.outline" => "heart-outline.svg", "spotify.saved.filled" or "ytmusic.liked.filled" => "heart-filled.svg",
                 "spotify.brand.full-green" => "spotify-full-green.svg", _ => null };
             if (filename is null) throw new IOException("No local icon fixture");
             var bytes = File.ReadAllBytes(Path.Combine(directory, filename));
@@ -158,6 +158,32 @@ internal sealed partial class WidgetStylesValidationPage
                         name + " applies enlarged text to native content rather than only recording the setting");
                 Check(Descendants(presenter).OfType<ScrollViewer>().All(scroll => scroll.ExtentWidth <= scroll.ViewportWidth + 1),
                     name + " avoids horizontal scrolling at its authored viewport and text scale");
+                if (fixtureName.StartsWith("Spotify-", StringComparison.Ordinal))
+                {
+                    var prefix = fixtureName.Contains("Pin", StringComparison.Ordinal) ? "spotify.player.pinned-compact" : "spotify";
+                    var titleId = Walk(snapshot.Root).Single(node => node.StyleClasses.Contains("spotify-track-title")).Id;
+                    var title = Find<TextBlock>("Widget." + titleId)!;
+                    var heading = Find<FrameworkElement>("Widget." + prefix + ".track-heading")!;
+                    // TextBlock.ActualWidth reports its text extent, not the stretched layout slot.
+                    var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(title);
+                    var bounds = ((UIElement)VisualTreeHelper.GetParent(title)).TransformToVisual(heading).TransformBounds(slot);
+                    Check(title.HorizontalAlignment == HorizontalAlignment.Stretch && title.TextAlignment == TextAlignment.Center && Math.Abs(bounds.Left + bounds.Width / 2 - heading.ActualWidth / 2) <= 1,
+                        name + $" centers the song title across the player independently of the saved-song button (alignment={title.TextAlignment}, left={bounds.Left}, width={bounds.Width}, heading={heading.ActualWidth})");
+                }
+                if(fixtureName.StartsWith("YouTubeMusic-",StringComparison.Ordinal)&&!highContrast)
+                {
+                    var playerScroll=Find<ScrollViewer>("Widget."+(fixtureName.Contains("Pin",StringComparison.Ordinal)?"player.pinned.scroll":"player.main.scroll"))!;
+                    Check(playerScroll.ExtentHeight<=playerScroll.ViewportHeight+1,
+                        name+" fits the normal player without a tiny vertical scroll range");
+                    foreach(var buttonId in new[]{"shuffle","previous","toggle","next","repeat","like"})
+                    {
+                        var prefix=fixtureName.Contains("Pin",StringComparison.Ordinal)?"player.pinned.":"player.main.";
+                        if(Find<Button>("Widget."+prefix+buttonId) is not {} transport)continue;
+                        var bounds=transport.TransformToVisual(playerScroll).TransformBounds(new(0,0,transport.ActualWidth,transport.ActualHeight));
+                        var viewport=WidgetScrollViewport.ContentBounds(playerScroll);
+                        Check(bounds.Left>=viewport.Left-1&&bounds.Right<=viewport.Right+1,name+" keeps transport inside its own player viewport: "+buttonId);
+                    }
+                }
                 var art = Find<WidgetArtworkView>("Widget." + artId)!;
                 var authoredWidth = styles[artId].Base.GetValueOrDefault("width")?.Number ?? 96;
                 var authoredHeight = styles[artId].Base.GetValueOrDefault("height")?.Number ?? 96;

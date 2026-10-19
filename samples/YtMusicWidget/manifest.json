@@ -18,7 +18,9 @@
     "packageIcon": { "assetId": "ytmusic.mark", "colorMode": "originalColor" }
   },
   "iconAssets": {
-    "ytmusic.mark": { "path": "assets/icons/yt-music.svg" }
+    "ytmusic.mark": { "path": "assets/icons/yt-music.svg" },
+    "ytmusic.liked.outline": { "path": "assets/icons/heart-outline.svg" },
+    "ytmusic.liked.filled": { "path": "assets/icons/heart-filled.svg" }
   },
   "notificationCategories": [
     { "id": "song-changes", "name": "Song changes", "description": "Brief banners with artwork, artist and duration. These notices do not enter the notification list.", "enabledByDefault": true, "retention": "bannerOnly" }

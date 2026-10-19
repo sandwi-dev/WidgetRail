@@ -596,4 +596,5 @@
 
 .spotify-track-heading { width: 100%; min-width: 0px; gap: 8px; align: center; }
 .spotify-title-grow { min-width: 0px; flex-grow: 1; text-align: start; }
-.spotify-saved-action { flex-grow: 0; }
+.spotify-title-centered { text-align: center; }
+.spotify-title-balance, .spotify-saved-action { width: 44px; flex-grow: 0; }

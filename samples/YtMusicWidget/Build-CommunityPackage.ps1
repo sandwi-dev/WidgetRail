@@ -46,7 +46,7 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Service/service.py') -Destinati
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Service/runtime-lock.json') -Destination (Join-Path $payload 'service/runtime-lock.json')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'NOTICE.md') -Destination (Join-Path $payload 'NOTICE.md')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'styles/default.wrss') -Destination (Join-Path $staging 'styles/default.wrss')
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/icons/yt-music.svg') -Destination (Join-Path $staging 'assets/icons/yt-music.svg')
+Copy-Item -Path (Join-Path $PSScriptRoot 'assets/icons/*.svg') -Destination (Join-Path $staging 'assets/icons')
 $manifest | ConvertTo-Json -Depth 16 | Set-Content (Join-Path $staging 'manifest.json') -Encoding utf8
 $cli = Join-Path $repository 'tools/WrailCli/WrailCli.csproj'
 & dotnet build $cli -c $Configuration --nologo "-bl:$logs/cli-{}.binlog"
@@ -57,6 +57,7 @@ $package = Join-Path $output "$($manifest.id)-$($manifest.version).wrwidget"
 if ($LASTEXITCODE -ne 0) { throw 'Package validation failed.' }
 & dotnet $cliDll pack $staging --output $package
 if ($LASTEXITCODE -ne 0) { throw 'Package creation failed.' }
+& (Join-Path $PSScriptRoot 'Test-PackageAssets.ps1') -Package $package
 if ($Install) {
     & (Join-Path $repository 'scripts/Install-CommunityPackage.ps1') `
         -CliDll (Join-Path $repository "tools/WrailCli/bin/$Configuration/net8.0/wrail.dll") `

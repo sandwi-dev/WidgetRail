@@ -45,7 +45,11 @@
 .music-artwork-placeholder.music-pinned-artwork { padding: 34px; }
 .music-track-title { width: 100%; font-size: 21px; font-weight: 600; line-height: 1.15; max-lines: 2; text-align: center; text-overflow: ellipsis; }
 .music-player-subtitle { width: 100%; color: var(--text-muted); font-size: 13px; max-lines: 1; text-align: center; text-overflow: ellipsis; }
+.music-like-action { width:36px; height:36px; padding:8px; background:transparent; border-color:transparent; color:var(--text-muted); }
+.music-like-action:selected { color:var(--accent); }
+.music-like-action:focused { color:var(--text); outline-color:var(--focus); outline-width:var(--focus-width,1.5px); outline-offset:-2px; }
 .music-scrubber { width: 100%; min-width: 0px; min-height: 44px; }
+.music-seek-row { width: 100%; min-width: 0px; align: start; }
 .music-transport-row { width: 100%; min-width: 0px; gap: 7px; align: center; justify: center; }
 .music-transport { width: 40px; height: 40px; padding: 9px; corner-radius: 26px; }
 .music-play { width: 52px; height: 52px; padding: 13px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; corner-radius: 26px; background: var(--accent); color: var(--canvas, #090908); }

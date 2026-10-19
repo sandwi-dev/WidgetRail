@@ -60,6 +60,12 @@ Playback ticks, edits and overlay reactivation retain the request ID, so the hos
 does not reapply it. The queue publishes its bounded occurrence map for shared
 membership-change focus and viewport continuity.
 
+`Test-PackageAssets.ps1` checks the final archive for the hosted player's HTML and
+bridge script, Python service/runtime and declared icons. Run it for cumulative
+candidate packages too: ordinary package validation cannot infer runtime web paths
+from the executable. An earlier candidate omitted the root `web` folder even
+though the normal packaging script included it, preventing playback-session startup.
+
 Song ratings use pinned ytmusicapi 1.12.3 `rate_song` with `LikeStatus.LIKE` and
 `INDIFFERENT`; they do not invoke `edit_song_library_status`. Existing catalogue
 `likeStatus` supplies known ratings. An unknown current song uses one bounded watch

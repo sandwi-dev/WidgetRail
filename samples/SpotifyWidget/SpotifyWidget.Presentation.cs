@@ -771,8 +771,13 @@ internal static class SpotifyPresentation
                 saved ? "Remove from liked songs" : "Save to liked songs", size: IconButtonSize.Medium)
                 .Selected(saved).Busy(savedSong?.Busy == true).Disabled(!controlsEnabled)
                 .Classes("spotify-saved-action");
-            heading = UI.Row(prefix + ".track-heading", title.AddClasses("spotify-title-grow"), save)
-                .Classes("spotify-track-heading");
+            heading = docked
+                ? UI.Row(prefix + ".track-heading", title.AddClasses("spotify-title-grow"), save)
+                    .Classes("spotify-track-heading")
+                : UI.Row(prefix + ".track-heading",
+                    UI.Stack(prefix + ".title-balance").Classes("spotify-title-balance"),
+                    title.AddClasses("spotify-title-grow", "spotify-title-centered"), save)
+                    .Classes("spotify-track-heading");
         }
         var detailsChildren = new List<WidgetElement> { heading, subtitle, context };
         var details = UI.Stack(detailsId, detailsChildren.ToArray())

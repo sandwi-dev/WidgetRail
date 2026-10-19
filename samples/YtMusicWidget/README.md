@@ -63,7 +63,7 @@ The standalone package currently supports Windows x64.
 - In Queue, open a song's **Menu** and choose **Remove from queue**. Only that occurrence is removed, even if the song appears more than once. Removing the playing song advances to the next; paused playback stays paused. Removing the last song stops, unless Repeat All can wrap to a remaining song.
 - Use the player on the left for playback, seeking, volume, shuffle and repeat while browsing on the right.
 - Pin **Compact now playing** to keep controls beside your game.
-- When connected, use **Like song** on the player or a song's Menu. **Liked · Unlike** confirms the saved rating; choose it to remove your like. This is YouTube Music's thumbs-up rating, separate from Add to library.
+- When connected, use the heart beside the seek slider or **Like song** in a song's Menu. An outlined heart means not liked; a filled heart confirms the saved rating. Choose it again to remove your like. This is YouTube Music's thumbs-up rating, separate from Add to library. The heart keeps focus while the request is pending.
 
 **LT / RT** changes the four browsing tabs, **X** plays or pauses, and **LB / RB**
 selects the previous or next song. **Y** opens Settings; **B** returns from Settings

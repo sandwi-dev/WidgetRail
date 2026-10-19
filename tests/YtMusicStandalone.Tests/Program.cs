@@ -881,16 +881,22 @@ static async Task SongLikePresentation()
         service.SetLikePending(true);
         var busyLike = Nodes(widget.Render().CreateSnapshot("like.busy", 1).Root).Single(node => node.ActionId == "song.like");
         Check(busyLike.IsBusy == true && busyLike.IsDisabled != true && busyLike.IsFocusable, "Pending like removes focus eligibility");
+        Check(busyLike.PackageIcon?.AssetId=="ytmusic.liked.outline"&&string.IsNullOrEmpty(busyLike.Text),
+            "Like uses a themed heart rather than an extra text button row");
+        var seekRow=Nodes(widget.Render().CreateSnapshot("like.controls",1).Root).Single(node=>node.Id=="player.main.seek.row");
+        Check(Nodes(seekRow).Any(node=>node.Id==busyLike.Id)&&busyLike.Focus?.Left=="player.main.seek.slider"&&
+            Nodes(seekRow).Single(node=>node.Id=="player.main.seek.slider").Focus?.Right==busyLike.Id,
+            "Like shares the seek row and keeps reciprocal controller navigation");
         service.SetLikePending(false);
         await RowAction(widget, "like.1");
         await Until(() => service.Commands.Contains("like"));
         var after = BrowseScroll(widget).IndexedCollection!;
         Check(before.QueryGeneration == after.QueryGeneration && after.ContentRevision > before.ContentRevision,
             "Rating write resets membership instead of updating content");
-        Check(Nodes(widget.Render().CreateSnapshot("like", 1).Root).Any(node => node.Text == "Liked · Unlike"), "Player state did not show acknowledged like");
+        Check(Nodes(widget.Render().CreateSnapshot("like", 1).Root).Any(node => node.AccessibilityLabel == "Unlike song"&&node.PackageIcon?.AssetId=="ytmusic.liked.filled"), "Player state did not show acknowledged like");
         await RowAction(widget, "like.0");
         await Until(() => service.State.LikeFor(service.State.Current!) == false);
-        Check(Nodes(widget.Render().CreateSnapshot("like", 2).Root).Any(node => node.Text == "Like song"), "Unlike did not update current duplicate");
+        Check(Nodes(widget.Render().CreateSnapshot("like", 2).Root).Any(node => node.AccessibilityLabel == "Like song"&&node.PackageIcon?.AssetId=="ytmusic.liked.outline"), "Unlike did not update current duplicate");
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
