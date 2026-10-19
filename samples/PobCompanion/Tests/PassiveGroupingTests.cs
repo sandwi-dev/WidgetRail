@@ -65,7 +65,19 @@ internal static class PassiveGroupingTests
             host.PublishSnapshot();using var oldChild=await host.AcquireAsync("pob.passives",Array.FindIndex(Query().Entries,entry=>entry.Key==child.Key),1);
             await Activate(child.Key);
             check((int)Get("detailId")! == child.Nodes[0].GetProperty("id").GetInt32()&&ReferenceEquals(before,Get("result")),"Child selection opens its exact node without allocating it");
-            await Action("back");host.PublishSnapshot();
+            var detailView=View();var back=Nodes(detailView.Root).Single(node=>node.Id=="pob.tree.side").Shortcuts.Single(shortcut=>shortcut.Button==ControllerButton.B);
+            check(back.ActionId=="back"&&back.Label=="Back to passives"&&Nodes(detailView.Root).Single(node=>node.Id=="pob.back").Text=="Back to passives"&&
+                !Nodes(detailView.Root).Single(node=>node.Id=="pob.tree.main").Shortcuts.Any(shortcut=>shortcut.Button==ControllerButton.B),
+                "Passive details expose a clearly labelled return button and panel-local B without changing browser routing");
+            Set("status","Updating passive fixture…");Set("busy",true);
+            check(!Nodes(View().Root).Single(node=>node.Id=="pob.tree.side").Shortcuts.Any(shortcut=>shortcut.Button==ControllerButton.B)&&
+                Nodes(View().Root).Single(node=>node.Id=="pob.root").Shortcuts.Any(shortcut=>shortcut.Button==ControllerButton.B&&shortcut.ActionId=="cancel-operation"),
+                "Busy cancellation keeps priority over passive detail Back");Set("busy",false);
+            Set("pendingBefore",before);
+            check(!Nodes(View().Root).SelectMany(node=>node.Shortcuts).Any(shortcut=>shortcut.Button==ControllerButton.B&&shortcut.ActionId=="back")&&
+                Nodes(View().Root).Single(node=>node.Id=="pob.root").Shortcuts.Any(shortcut=>shortcut.Button==ControllerButton.B&&shortcut.ActionId=="cancel"),
+                "A pending passive edit retains its discard shortcut rather than navigating away");Set("pendingBefore",null!);
+            await Action(back.ActionId);host.PublishSnapshot();
             check(Query().Entries.Any(entry=>entry.Key==child.Key)&&View().FocusGroupEntryRequest?.IndexedItem?.ItemKey==child.Key,"Back restores the exact child inside its expanded group");
             await Activate(group.Key);
             check(!Query().Entries.Any(entry=>entry.Key==child.Key)&&View().FocusGroupEntryRequest?.IndexedItem?.ItemKey==group.Key&&oldChild.RouteAction(child.Key,ControllerButton.A) is null,

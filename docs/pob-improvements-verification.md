@@ -2,6 +2,22 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Passive detail return control, 2026-10-19
+
+The detail panel's existing return action was misleadingly labelled Search nodes,
+and inline-detail classification prevented it from receiving the root's B-to-back
+shortcut. It now says Back to passives and declares that B shortcut locally on
+the idle detail panel. Browser interaction routing is unchanged. Busy operations
+retain root B-to-cancel-operation; pending tree edits retain B-to-discard.
+
+Both games pass **358 checks**: 59 preview/grouping and 120 quick-control checks
+each. Tests resolve the panel's declared B action and verify exact child return,
+the explicit button label, browser-region separation and busy/pending precedence.
+Release build and package/WRSS validation pass. Evidence:
+`artifacts/pob/passive-back-*-final.log`, `passive-back-build*.binlog`,
+`passive-back-packaging.log`. Candidate packages: **0.1.4.33**. No new physical
+or native visual checks under the user's existing waiver.
+
 ## Expandable passive-name groups, 2026-10-19
 
 Repeated passive names now appear as collapsed group headers with matching-node

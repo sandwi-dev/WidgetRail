@@ -320,7 +320,7 @@ public sealed partial class PobWidget
         var side = new List<WidgetElement>();
         if (detailKind == "node" && A(State, "nodes").Any(n => I(n, "id") == detailId))
         {
-            side = NodeDetails(); side[0] = pendingBefore is null ? Button("Search nodes", "back") : Text("Tree preview", "tree.preview.heading", "pob-eyebrow");
+            side = NodeDetails(); side[0] = pendingBefore is null ? Button("Back to passives", "back") : Text("Tree preview", "tree.preview.heading", "pob-eyebrow");
         }
         else
         {
@@ -355,7 +355,11 @@ public sealed partial class PobWidget
                 previewDetails)
                 .RememberChildFocus("pob.apply").Classes("pob-panel","pob-tree-main");
         }
-        else if(detailKind=="node")sidebar=UI.VerticalScroll("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-scroll","pob-panel");
+        else if(detailKind=="node")
+        {
+            var details=UI.VerticalScroll("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-scroll","pob-panel");
+            sidebar=busy?details:details.Shortcut(ControllerButton.B,"back","Back to passives");
+        }
         else sidebar=UI.Stack("pob.tree.side",side.ToArray()).RememberChildFocus(entry).Classes("pob-tree-main","pob-panel");
         return Split("tree", UI.Stack("pob.tree.main", main.ToArray()).Classes("pob-panel", "pob-tree-main"), sidebar, 3, 1);
     }
