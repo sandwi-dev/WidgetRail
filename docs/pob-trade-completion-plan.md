@@ -220,11 +220,13 @@ Final candidate: `artifacts/pob/trade-review-host03`, `trade-review-final-catalo
 
 ### Controller escape and reading-order correction
 
-The side-by-side browser now uses ActivateToInteract while its comparison is visible, and
-InteractOnFocus when it is alone. Native validation exercises A enter, B leave without closing
-the modal, Right into the comparison, and hiding/showing the panel on the same session. All ten
-live checks pass in `artifacts/pob/trade-order-native/live-result.json`; this is routed controller
-input validation, not physical-gamepad acceptance.
+The browser now uses ActivateToInteract in both full-page and side-by-side layouts:
+A enters website interaction and B leaves it so the native header remains reachable.
+Back from expanded comparison restores ranked results when available, otherwise
+the comparison sidebar. Hide panel is the explicit full-page browsing action.
+The earlier ten native checks in `artifacts/pob/trade-order-native/live-result.json`
+covered the then-current side-by-side routing, not this latest full-page correction.
+See the current verification ledger for automated coverage and physical-test limits.
 
 The sidebar presents item/name, price/slot, essential controls, and main-skill impact first.
 Complete PoB comparison lines and their formatting are preserved. Item descriptions and grouped

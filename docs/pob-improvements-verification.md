@@ -2,6 +2,33 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Compact modifier diff and browser return, 2026-10-19
+
+User screenshots exposed two follow-ups. Back from an expanded comparison without
+rankings explicitly hid the sidebar; the full-page browser then used automatic
+interaction, so B left the modal instead of releasing the page to native controls.
+Back now restores rankings when present, otherwise the comparison sidebar. Hide
+panel is explicit, and both layouts use A-enter/B-leave interaction. Hidden
+rankings have a visible restore button as well as the existing R3 shortcut.
+
+Changes now presents compact two-column rich text without repeated status headings
+or card backgrounds. Removed lines use red/−, added green/+, changed gold/↔ and
+unchanged muted/=. Section metadata is inline, and missing sides have explicit text.
+Symbols and accessible status descriptions preserve meaning without colour.
+This is diff formatting only; Full items retains upstream colours and Build impact
+retains upstream calculations. No stat sums or gameplay-value rules were added.
+
+**231 workflow checks passed** (115 PoE1 / 116 PoE2), including unranked Back,
+ranked Back, unchanged committed XML/page navigation, explicit hide/show,
+browser interaction policy, duplicate modifiers and every diff colour/symbol.
+Release build and both package/WRSS validations pass. Evidence:
+`artifacts/pob/trade-diff-*-workflow.log`, `trade-diff-build.binlog`,
+`trade-diff-packaging.log`. Both cumulative packages are **0.1.4.26** in
+`trade-diff-packages-20261019`; .25 was staged but superseded before installation.
+No GGG calls or new physical/native visual checks were performed. The user's
+physical-test waiver remains; header routing is verified by the existing host
+interaction contract and widget declarations, not a new gamepad walkthrough.
+
 ## Changes view alignment correction, 2026-10-19
 
 The user's screenshot exposed centred modifier groups that did not line up with

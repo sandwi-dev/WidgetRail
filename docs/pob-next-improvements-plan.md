@@ -22,7 +22,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 ## Implementation order and tracking
 
 Current acceptance checkpoint (2026-10-19): the cumulative candidate is running
-hidden with the normal profile, PoE1/PoE2 packages **0.1.4.24**, YouTube Music
+hidden with the normal profile, PoE1/PoE2 packages **0.1.4.26**, YouTube Music
 **0.3.43.7**, Spotify **0.3.90.2** and a quiet responsive toolbar.
 Trade-session actions are separate from build/history controls. Configuration fits 11 options
 instead of 6 at the same viewport, comparisons use aligned named columns, and
@@ -543,6 +543,10 @@ Use isolated tests first, then a bounded installed-candidate walkthrough. Keep l
   collapse purchase details and materialize modifier rows on demand.
 - [x] Keep ranked candidates beside expanded comparisons; return to results with
   B/Back, preserve candidate focus while switching, and commit only through Equip.
+- [x] Keep the comparison sidebar on Back when no rankings exist. Full-page
+  browsing is explicitly Hide panel; both layouts use A-enter/B-leave website
+  interaction so the native header remains reachable. Changes uses compact
+  colour-coded rich text with +/−/↔/= markers instead of repeated status cards.
 - [x] Starting an explicit new search for different equipment retires the old
   ranking and recent comparisons. Resume remains separate. Reject stale scores
   and old-row actions; verify Ring 2 to Helmet and saved-preview recovery.

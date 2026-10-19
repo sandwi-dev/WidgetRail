@@ -63,7 +63,12 @@ public sealed partial class PobWidget
             Work(async token=>
             {
                 await OpenWebsiteAsync(websiteUrl??tradeListing!.Url,token);
-                lock(gate){rankingVisible=HasRanking;websiteReview=false;websiteFocus=HasRanking?"pob.rank.list":"pob.website.browser";websiteFocusSequence=++focusRequestSequence;}
+                lock(gate)
+                {
+                    rankingVisible=HasRanking;websiteReview=!rankingVisible;
+                    websiteFocus=rankingVisible?(rankedItems.Length>0?"pob.rank.list":"pob.rank.tools"):"pob.website.review.tools";
+                    websiteFocusSequence=++focusRequestSequence;
+                }
             },"Returning to results…");return true;
         }
         if(id=="trade-review-close")

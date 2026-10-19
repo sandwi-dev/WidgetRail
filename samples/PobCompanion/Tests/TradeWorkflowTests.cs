@@ -14,15 +14,24 @@ internal static class TradeWorkflowTests
             [Line("+141 to Evasion Rating")],[Line("+161 to Evasion Rating"),Line("+49 to Evasion Rating")]),"fixture");
         var modifierSnapshot=new WidgetView(modifierRow).CreateSnapshot("modifier-layout",1);
         IEnumerable<ViewNode> Flatten(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Flatten));
-        check(Flatten(modifierSnapshot.Root).Count(node=>node.Text=="Explicit")==2,
-            "Repeated modifier type is labelled once per side rather than once per roll");
+        check(Flatten(modifierSnapshot.Root).Count(node=>node.Text==" · Explicit")==2&&
+            !Flatten(modifierSnapshot.Root).Any(node=>node.Text is "CHANGED" or "Explicit"),
+            "Compact diff uses inline section metadata without repeated status headings");
         foreach(var value in new[]{"+141 to Evasion Rating","+161 to Evasion Rating","+49 to Evasion Rating"})
-            check(Flatten(modifierSnapshot.Root).Where(node=>node.Kind==ViewNodeKind.RichText).Any(node=>string.Concat(node.Children.Select(span=>span.Text))==value),
+            check(Flatten(modifierSnapshot.Root).Where(node=>node.Kind==ViewNodeKind.RichText).Any(node=>string.Concat(node.Children.Select(span=>span.Text)).Contains(value,StringComparison.Ordinal)),
                 "Compact comparison retains complete upstream modifier: "+value);
         var mixed=new WidgetView(PobWidget.ModifierDifferenceRow(new("mixed","changed",[],
             [Line("+10 to maximum Life","Implicit"),Line("+20 to maximum Life")]),"mixed")).CreateSnapshot("modifier-layout",2);
-        check(Flatten(mixed.Root).Any(node=>node.Text=="Implicit")&&Flatten(mixed.Root).Any(node=>node.Text=="Explicit")&&Flatten(mixed.Root).Any(node=>node.Text=="—"),
+        check(Flatten(mixed.Root).Any(node=>node.Text==" · Implicit")&&Flatten(mixed.Root).Any(node=>node.Text==" · Explicit")&&Flatten(mixed.Root).Any(node=>node.Text=="Not on equipped item"),
             "Compact labels preserve section changes and the empty equipped side");
+        foreach(var (status,symbol,colour) in new[]{("removed","− ","pob-life"),("added","+ ","pob-green"),("changed","↔ ","pob-gold"),("same","= ","pob-muted")})
+        {
+            var diff=new WidgetView(PobWidget.ModifierDifferenceRow(new(status,status,
+                status=="added"?[]:[Line("+20 to Intelligence")],status=="removed"?[]:[Line("+30 to Intelligence")]),"diff")).CreateSnapshot("modifier-layout",3);
+            check(Flatten(diff.Root).Where(node=>node.Text==symbol||node.Text?.Contains("Intelligence")==true&&node.Kind==ViewNodeKind.Text)
+                .All(node=>node.StyleClasses.Contains(colour))&&Flatten(diff.Root).Any(node=>node.Text==symbol),
+                "Diff text and symbol distinguish status independently of original modifier colour: "+status);
+        }
         foreach(var (text,label,value) in new[]{("+4,305.6 Average Damage (+14.4%)","Average Damage","+4,305.6 (+14.4%)"),("-35.51% Crit Chance","Crit Chance","-35.51%")})
         {
             var formatted=new List<WidgetElement>();
@@ -173,8 +182,17 @@ internal static class TradeWorkflowTests
             await Action("trade-review-view.impact");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.skill"),"Build impact remains available as an explicit view");
             await Action("trade-review-view.changes");
+            var beforeReturn=PobWorkStore.Read(directory,id,game)!.Pending!.Xml;
+            var navigatedBeforeReturn=navigated;
+            await Action("trade-review-expand");await Action("trade-review-back");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.tools")&&View().FocusGroupEntryRequest?.GroupId=="pob.website.review.tools",
+                "Back without rankings restores the comparison sidebar and focuses its controls");
+            check(PobWorkStore.Read(directory,id,game)!.Pending!.Xml==beforeReturn&&navigated==navigatedBeforeReturn,
+                "Returning to unranked results retains the comparison and live page without navigation");
             await Action("trade-review-hide");
-            check(Nodes(View().Root).Single(n=>n.Id=="pob.website").WebBrowser?.InteractionMode==BrowserInteractionMode.InteractOnFocus&&opened.Count==1,"Hiding the comparison restores automatic browsing on the same session");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.website").WebBrowser?.InteractionMode==BrowserInteractionMode.ActivateToInteract&&opened.Count==1,"Hidden panel retains A-enter/B-leave browser interaction so native header controls remain reachable");
+            check(Nodes(View().Root).Any(n=>n.ActionId=="trade-review-show")&&!Nodes(View().Root).Any(n=>n.Id=="pob.website.review.tools"),
+                "Only explicit Hide panel hides the unranked sidebar and leaves a visible restore action");
             await Action("trade-review-show");
             var tools=Nodes(View().Root).Single(n=>n.Id=="pob.website.review.tools");
             check(Nodes(tools).Single(n=>n.Id=="pob.website.review.find").ActionId=="trade-review-find"&&Nodes(tools).Single(n=>n.Id=="pob.website.review.find").Focus?.Left=="pob.website.browser"&&!Nodes(View().Root).Any(n=>n.Text=="Browse listings"||n.Text=="Comparison controls"),"Find seller item replaces redundant focus buttons and links Left to the website");

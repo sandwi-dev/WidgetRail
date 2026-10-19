@@ -52,15 +52,24 @@ public sealed partial class PobWidget
         tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
     }
 
-    private static WidgetElement ModifierCell(PobModifierLine[] lines, string prefix)
+    private static WidgetElement ModifierCell(PobModifierLine[] lines,string status,string side,string prefix)
     {
         var content = new List<WidgetElement>();
-        if (lines.Length == 0) content.Add(Text("—", prefix + ".empty", "pob-muted"));
+        if(lines.Length==0)content.Add(Text("Not on "+side+" item",prefix+".empty","pob-modifier-absent"));
+        var (symbol,tone)=status switch
+        {
+            "removed"=>("− ","warning"), "added"=>("+ ","green"),
+            "same"=>("= ","muted"), _=>("↔ ","gold"),
+        };
         foreach (var (line, index) in lines.Select((line, index) => (line, index)))
         {
+            // Diff colour describes membership/change, not PoB's gameplay valuation.
+            // Full items retains the untouched upstream formatting and warning colours.
+            var runs=new List<FormattedRun>{new(symbol,tone)};
+            runs.AddRange(ReadFormattedRuns(line.Formatted,"text","runs").Select(run=>run with{Tone=tone}));
             if(index==0||lines[index-1].Kind!=line.Kind)
-                content.Add(Text(line.Kind, prefix + ".kind." + index, "pob-small pob-muted"));
-            AddFormatted(content, line.Formatted, "text", "runs", prefix + ".line." + index, "pob-modifier-text", emphasizeStats: true);
+                runs.Add(new(" · "+line.Kind,"muted"));
+            AddRuns(content,runs,prefix+".line."+index,"pob-modifier-text");
         }
         return UI.Stack("pob." + prefix, content.ToArray()).Classes("pob-modifier-cell");
     }
@@ -70,10 +79,8 @@ public sealed partial class PobWidget
         return UI.ActionSurface("inspect",prefix+".row",
             row.Status+" modifier. Equipped: "+string.Join("; ",row.Before.Select(line=>S(line.Formatted,"text")))+
             ". Proposed: "+string.Join("; ",row.After.Select(line=>S(line.Formatted,"text")))+". View full items.",ActionSurfaceOrientation.Vertical,
-            UI.Text(row.Status switch { "added" => "ADDED", "removed" => "REMOVED", "same" => "UNCHANGED", _ => "CHANGED" }, prefix+".status")
-                .Classes("pob-eyebrow", row.Status switch { "removed" => "pob-orange", "added" => "pob-blue", "same" => "pob-muted", _ => "pob-gold" }),
             UI.Grid(prefix+".values", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
-                ModifierCell(row.Before, prefix+".before"), ModifierCell(row.After, prefix+".after").InGrid(column: 1))
+                ModifierCell(row.Before,row.Status,"equipped",prefix+".before"), ModifierCell(row.After,row.Status,"proposed",prefix+".after").InGrid(column: 1))
                 .Spacing(0,12).Classes("pob-modifier-values"))
             .Classes("pob-modifier-row");
     }
@@ -107,7 +114,7 @@ public sealed partial class PobWidget
             return UI.VerticalScroll("pob." + prefix + ".details", Text("PoB modifier matching is unavailable for this comparison. Full items and Build impact remain available.", prefix + ".unavailable", "pob-muted")).Classes("pob-scroll");
         if (itemModifierQuery.Rows.Length == 0)
             return UI.VerticalScroll("pob." + prefix + ".details", Text("No modifier changes. Full items includes base properties, requirements and sockets.", prefix + ".empty", "pob-muted")).Classes("pob-scroll");
-        return UI.CollectionList("pob." + prefix + ".details", itemModifierCollection, 96, "Equipped and proposed modifier changes").Classes("pob-scroll");
+        return UI.CollectionList("pob." + prefix + ".details", itemModifierCollection, 52, "Equipped and proposed modifier changes").Classes("pob-scroll","pob-modifier-diff");
     }
 
     private WidgetElement ComparisonReading(string prefix)

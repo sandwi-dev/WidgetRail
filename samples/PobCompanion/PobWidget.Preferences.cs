@@ -88,7 +88,9 @@ public sealed partial class PobWidget
         if(!websiteVisible||websiteSession is not {} session)return view;
         var ranking=rankingVisible&&HasRanking;
         var reviewing=!ranking&&websiteReview&&CanReplaceTradeComparison&&pendingBefore is not null;
-        var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:reviewing||ranking?BrowserInteractionMode.ActivateToInteract:BrowserInteractionMode.InteractOnFocus).Classes("pob-website-view"))
+        // Native header actions remain reachable even when the side panel is hidden.
+        // B leaves website interaction; a subsequent B closes the modal.
+        var web=UI.Stack("pob.website.browser",UI.WebView(session.Reference,"pob.website",interactionMode:BrowserInteractionMode.ActivateToInteract).Classes("pob-website-view"))
             .RememberChildFocus("pob.website").Classes("pob-workspace");
         if(!reviewing&&!ranking&&HasRanking)web=web.Shortcut(ControllerButton.RightStick,"trade-rank-show","Ranked results");
         else if(!reviewing&&!ranking&&CanReplaceTradeComparison)web=web.Shortcut(ControllerButton.RightStick,"trade-review-show","Show comparison");
@@ -98,9 +100,11 @@ public sealed partial class PobWidget
             ScrollContent=false,
             HeaderActions=UI.Row("pob.website.header-actions",
                 (ranking
-                    ?new[]{Button("Return to website","trade-rank-hide","website.rank-hide"),Button("Close","website-close","website.close")}
+                    ?new[]{Button("Hide panel","trade-rank-hide","website.rank-hide"),Button("Close","website-close","website.close")}
                     :reviewing
-                    ?new[]{Button("Return to website","trade-review-hide","website.review-hide"),Button("Close","website-close","website.close")}
+                    ?new[]{Button("Hide panel","trade-review-hide","website.review-hide"),Button("Close","website-close","website.close")}
+                    :HasRanking
+                    ?new[]{Button("Ranked results","trade-rank-show","website.rank-shortcut"),Button("Close","website-close","website.close")}
                     :!reviewing&&CanReplaceTradeComparison
                     ?new[]{Button("Show comparison","trade-review-show","website.review-shortcut"),Button("Close","website-close","website.close")}
                     :new[]{Button("Close","website-close","website.close")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")

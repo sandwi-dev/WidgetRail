@@ -135,9 +135,11 @@ text { color: var(--text); text-align: start; }
 .pob-recent-builds { font-size:20px; font-weight:600; min-width:0px; }
 
 /* Aligned item text uses semantic colour; change labels never imply better/worse. */
-.pob-modifier-row { padding:8px 10px; gap:4px; align:stretch; justify:start; text-align:start; background:var(--surface-raised); corner-radius:6px; }
+.pob-modifier-row { padding:6px 10px; min-height:40px; gap:0px; align:stretch; justify:start; text-align:start; background:transparent; border-width:0px; corner-radius:4px; }
 .pob-modifier-row:focused { outline-color:var(--focus); outline-width:2px; outline-offset:-2px; }
 .pob-modifier-values { width:100%; min-width:0px; align:start; }
 .pob-modifier-cell { gap:4px; min-width:0px; width:100%; align:stretch; justify:start; text-align:start; }
 .pob-modifier-text { font-size:14px; color:var(--text); text-align:start; }
+.pob-modifier-diff { gap:0px; }
+.pob-modifier-absent { font-size:13px; color:var(--text-muted); text-align:start; }
 .pob-comparison-columns { padding:4px 10px; background:var(--surface-raised); corner-radius:6px; }
