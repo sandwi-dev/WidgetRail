@@ -134,7 +134,7 @@ public sealed partial class PobWidget
             Text($"{matches.Length} results","unified.count","pob-small pob-muted")};
         foreach(var (limitation,index) in unifiedCache!.Limitations.Select((value,i)=>(value,i)))rows.Add(Text(limitation,"unified.limitation."+index,"pob-small pob-gold"));
         if(busy)rows.Add(UI.Row("pob.unified.busy",Text(status,"unified.busy-text","pob-small pob-muted"),Button("Cancel","cancel-operation","unified.cancel")).Classes("pob-toolbar"));
-        if(unifiedNotice.Length>0)rows.Add(UI.VerticalScroll("pob.unified.notice",Text(unifiedNotice,"unified.notice-text")).Classes("pob-scroll"));
+        if(unifiedNotice.Length>0)rows.Add(UI.VerticalScroll("pob.unified.notice",Text(unifiedNotice,"unified.notice-text")).Classes("pob-scroll","pob-unified-notice"));
         rows.Add(matches.Length==0?Text("No matching content.","unified.empty","pob-muted"):
             UI.CollectionList("pob.unified.results",unifiedCollection,88,"Build search results").Classes("pob-scroll"));
         var modal=view.WithModal(new("pob.unified","Search build",UI.Stack("pob.unified.content",rows.ToArray()).Classes("pob-workspace"),

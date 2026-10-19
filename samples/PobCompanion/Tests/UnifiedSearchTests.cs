@@ -180,10 +180,32 @@ internal static class UnifiedSearchTests
             Set("pastedItem","retained draft");await Select(PobSearchTargetKind.Navigation,e=>e.Target.Key=="notes");
             check((string)Get("pastedItem")! == "retained draft"&&ReferenceEquals(before,Result()),"Nonmutating navigation preserves unfinished item draft and exact build result");Set("pastedItem",null);
             var warningProjection=JsonNode.Parse(before.State.GetRawText())!.AsObject();
+            const string requirementWarning="You do not meet the Strength requirement of your total Strength support gems.";
+            var longWarning=string.Join(" ",Enumerable.Repeat("Long upstream build warning.",40));
+            warningProjection["warnings"]=new JsonArray(requirementWarning,longWarning);
             warningProjection["mainSkillDisabled"]=true;warningProjection["mainSkillDisabledReason"]="Upstream disabled reason fixture";
             var mainGroup=before.State.GetProperty("skills").EnumerateArray().Single(g=>g.GetProperty("main").GetBoolean()).GetProperty("id").GetInt32();
             var disabledResult=new PobResult(JsonSerializer.SerializeToElement(warningProjection),before.Xml);Set("result",disabledResult);
             await Action("unified-warnings");
+            foreach(var message in new[]{requirementWarning,longWarning})
+            {
+                var warningEntries=Results();var position=Array.FindIndex(warningEntries,e=>e.Target.Kind==PobSearchTargetKind.Warning&&e.Title==message);
+                var descriptor=Nodes(View().Root).Single(n=>n.Id=="pob.unified.results").IndexedCollection!;
+                var sectionBefore=Get("section");
+                using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"warning-reading",9000+sequence);
+                using var range=await host.AcquireAsync("pob.unified.results",position,1);var row=range.Range.Items.Single();
+                check(range.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Targetless warning opens through its actual indexed row");
+                await Until(()=>(string?)Get("unifiedNotice")==message);await Idle();
+                var notice=Nodes(View().Root).Single(n=>n.Id=="pob.unified.notice");
+                check(notice.StyleClasses.Contains("pob-unified-notice")&&Nodes(notice).Single(n=>n.Id=="pob.unified.notice-text").Text==message,
+                    "Short and long warnings retain full text in the bounded non-growing reading viewport");
+                check((bool)Get("unifiedSearchOpen")!&&Equals(sectionBefore,Get("section"))&&ReferenceEquals(disabledResult,Result())&&
+                    Nodes(View().Root).Single(n=>n.Id=="pob.unified.results").IndexedCollection==descriptor,
+                    "Reading an ambiguous warning preserves the search results, viewport authority and build");
+            }
+            await Action("unified-search-text","fixture");
+            check(!Nodes(View().Root).Any(n=>n.Id=="pob.unified.notice"),"Changing search clears the old warning reader");
+            await Action("unified-search-text","");
             check((string)Get("unifiedCategory")! == "Warnings"&&Results().Any(e=>e.Target.Kind==PobSearchTargetKind.Skill&&e.Target.Key=="main-disabled"&&e.Target.Id==mainGroup&&e.Title=="Upstream disabled reason fixture"),
                 "Disabled main-skill reason appears in the warning index with the exact upstream group identity");
             await Action("unified-search-close");await Select(PobSearchTargetKind.Skill,e=>e.Target.Key=="main-disabled");

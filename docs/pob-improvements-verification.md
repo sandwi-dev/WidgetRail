@@ -2,6 +2,23 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Targetless search-warning layout, 2026-10-19
+
+Selecting the user's total-Strength-support-gem warning opened a second growing
+scroll viewport above results. Its shared `pob-scroll` class gave it equal spare
+height with the results even for one sentence. The notice now uses an explicit
+non-growing, content-sized layout capped at 120 logical pixels. Long warnings
+remain scrollable; the indexed results keep the remaining space. No warning target
+is inferred from text, and opening a notice does not edit or navigate the build.
+
+Both unified-search suites pass **90 checks each**. Added real indexed-action
+coverage for the exact reported sentence and a long targetless warning, complete
+text, unchanged collection generation/build/section, and clearing the notice when
+search text changes. Release build and package/WRSS validation pass. Evidence:
+`artifacts/pob/search-warning-layout-*`. Candidate packages: **0.1.4.30**.
+The supplied screenshot and host sizing implementation were inspected; no new
+physical/native visual check was performed under the user's existing waiver.
+
 ## Remove modifier status popup, 2026-10-19
 
 At the user's request, removed the Changes-list status focus/hover preview,

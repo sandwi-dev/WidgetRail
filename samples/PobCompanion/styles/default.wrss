@@ -29,6 +29,7 @@ text { color: var(--text); text-align: start; }
 .pob-button:disabled, .pob-select:disabled, .pob-input:disabled, .pob-toggle:disabled { opacity: 0.45; color: var(--text-muted); }
 .pob-price-fields { align: end; }
 .pob-scroll { flex-grow: 1; min-height: 0px; min-width: 0px; width: 100%; gap: 6px; }
+.pob-scroll.pob-unified-notice { flex-grow:0; max-height:120px; padding:8px 10px; background:var(--surface-raised); corner-radius:6px; }
 .pob-rank-skipped { flex-grow: 0; max-height: 120px; }
 .pob-rank-tools { flex-grow: 0; }
 .pob-list-item.pob-rank-item { padding: 8px 10px; min-height: 64px; gap: 4px; }
