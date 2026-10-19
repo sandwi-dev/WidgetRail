@@ -291,6 +291,56 @@ class ServiceTests(unittest.TestCase):
         result = self.service.browse({"kind": "playlist", "value": "PLtest"})
         self.assertEqual([str(index) for index in range(500)], [item["title"] for item in result["items"]])
 
+    def test_collection_rows_omit_explicit_unavailable_songs_without_reordering(self):
+        rows = [
+            {"videoId": "AAAAAAAAAAA", "title": "Unavailable first", "isAvailable": False},
+            {"videoId": "BBBBBBBBBBB", "title": "First available", "isAvailable": True},
+            {"videoId": None, "title": "Deleted track", "isAvailable": False},
+            {"videoId": "CCCCCCCCCCC", "title": "Availability omitted"},
+            {"videoId": "BBBBBBBBBBB", "title": "Repeated occurrence", "isAvailable": True},
+            {"videoId": "DDDDDDDDDDD", "title": "Unavailable last", "isAvailable": False},
+        ]
+        class Fake:
+            calls = 0
+            def get_playlist(self, _, limit):
+                assert limit == 500
+                self.calls += 1
+                return {"tracks": rows}
+            def get_album(self, _):
+                self.calls += 1
+                return {"tracks": rows, "thumbnails": [{"url": "https://example.invalid/album.png"}]}
+        provider = Fake()
+        self.service.client = lambda: provider
+        for kind in ("playlist", "album"):
+            with self.subTest(kind=kind):
+                result = self.service.browse({"kind": kind, "value": "fixture"})
+                self.assertEqual(["First available", "Availability omitted", "Repeated occurrence"],
+                                 [item["title"] for item in result["items"]])
+                self.assertTrue(all(item["kind"] == "song" for item in result["items"]))
+                self.assertEqual(["BBBBBBBBBBB", "CCCCCCCCCCC", "BBBBBBBBBBB"], [item["id"] for item in result["items"]])
+                if kind == "album":
+                    self.assertTrue(all(item["artwork"] == "https://example.invalid/album.png" for item in result["items"]))
+                self.assertEqual(result, self.service.browse({"kind": kind, "value": "fixture"}))
+        self.assertEqual(2, provider.calls)  # Cache hit; no fill-up or availability requests.
+
+    def test_unavailable_filter_preserves_collection_input_bound_and_empty_results(self):
+        class Fake:
+            def get_playlist(self, value, limit):
+                assert limit == 500
+                if value == "empty": return {"tracks": []}
+                return {"tracks": [{"videoId": "AAAAAAAAAAA", "title": "Unavailable", "isAvailable": False}] * 500 +
+                        [{"videoId": "BBBBBBBBBBB", "title": "Outside requested window", "isAvailable": True}]}
+            def get_album(self, _):
+                return {"tracks": [{"videoId": "AAAAAAAAAAA", "isAvailable": False}, {"videoId": None}]}
+        self.service.client = lambda: Fake()
+        self.assertEqual([], self.service.browse({"kind": "playlist", "value": "empty"})["items"])
+        self.assertEqual([], self.service.browse({"kind": "playlist", "value": "bounded"})["items"])
+        self.assertEqual([], self.service.browse({"kind": "album", "value": "unavailable"})["items"])
+        # The provider boolean is authoritative; omit no unflagged song and do
+        # not mistake similarly named collection metadata for song availability.
+        self.assertIsNotNone(music.normalize({"videoId": "AAAAAAAAAAA"}))
+        self.assertEqual("album", music.normalize({"browseId": "MPRE_album", "isAvailable": False})["kind"])
+
     def test_library_requests_recently_added_only_where_supported(self):
         class Fake:
             def get_library_playlists(self, limit):

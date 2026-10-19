@@ -230,6 +230,10 @@ def normalize(item, kind=None, *, fallback_artwork=""):
     kind = "song" if VIDEO_ID.fullmatch(video) else kind or inferred
     if kind not in {"song", "album", "artist", "playlist"}:
         return None
+    # ytmusicapi maps greyed-out playlist/album rows to this boolean.
+    # Keep unknown availability, but never queue a song explicitly unavailable.
+    if kind == "song" and item.get("isAvailable") is False:
+        return None
     # Library albums include a playback playlistId as well as their browseId.
     # get_album requires the latter; a playlist ID cannot open an album page.
     key = video if kind == "song" else browse_id if kind in {"album", "artist"} else playlist_id or browse_id
