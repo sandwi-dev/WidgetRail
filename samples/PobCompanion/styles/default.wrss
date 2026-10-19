@@ -8,7 +8,11 @@ text { color: var(--text); text-align: start; }
 .pob-small { color: var(--text-muted); font-size: 12px; }
 .pob-eyebrow { color: var(--text-muted); font-size: 11px; font-weight: 600; }
 .pob-toolbar { gap: 8px; align: center; }
-.pob-buildtools { gap: 6px; }
+.pob-buildtools { gap: 6px; align:center; }
+.pob-build-header { gap:16px; }
+.pob-build-identity { gap:4px; min-width:0px; }
+.pob-button.pob-header-action { background:transparent; border-color:transparent; min-height:44px; padding:8px 10px; }
+.pob-button.pob-header-action:focused { background:var(--surface-raised); border-color:var(--focus); }
 .pob-field { gap: 6px; }
 .pob-order-context { gap: 2px; }
 .pob-order-neighbor { max-lines: 1; text-overflow: ellipsis; }
@@ -17,9 +21,9 @@ text { color: var(--text); text-align: start; }
 .wrail-modal { width: 600px; height: 300px; }
 #pob-passive-choices { height: 450px; }
 #pob-timeless-detail { width: 900px; height: 650px; }
-.pob-button.pob-history-button { min-height: 32px; padding: 5px 12px; }
+.pob-button.pob-history-button { min-height:44px; padding:8px; font-size:14px; text-align:center; background:transparent; border-color:transparent; }
 .pob-history-button:disabled { opacity: 0.45; }
-.pob-loadout { max-width: 280px; }
+.pob-loadout { min-width:100px; }
 .pob-button { min-height: 44px; padding: 10px 12px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 8px; color: var(--text); font-size: 14px; text-align: start; }
 .pob-button:focused { background: var(--surface); color: var(--text); border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: -2px; }
 .pob-button:disabled, .pob-select:disabled, .pob-input:disabled, .pob-toggle:disabled { opacity: 0.45; color: var(--text-muted); }
@@ -74,7 +78,6 @@ text { color: var(--text); text-align: start; }
 .pob-inline.pob-emphasis { color: var(--text); font-weight:600; }
 .pob-root { background: var(--surface); }
 
-.pob-tree-title { font-size:24px; font-weight:700; color:var(--text); max-lines:1; text-overflow:ellipsis; }
 .pob-input { min-height:44px; padding:10px 12px; font-size:14px; text-align:start; }
 .pob-select { min-height:44px; padding:10px 12px; font-size:14px; text-align:start; }
 .pob-toggle { min-height:44px; padding:10px 12px; font-size:14px; text-align:start; }

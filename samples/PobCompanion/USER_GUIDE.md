@@ -125,6 +125,13 @@ Search supports custom upstream statistic weights, applicable advanced modifier/
 
 ## Controller navigation
 
+The header keeps loadout, Search, Build & import and Undo/Redo together. At narrow
+widths, these controls move below the build title. Return to listings and Ranked
+results appear separately beneath the section tabs when a trade session is available.
+
+Crafted items may retain PoB's default **New Item** title. The widget preserves
+upstream item names; the crafting dialog's item-title field is not currently exposed.
+
 Use **Build & import** to rename a build, open another saved build, import, export or change character details. LB/RB switches sections, with native controller symbols beside the tabs instead of a separate footer. Controller focus and list navigation remain native; the optional tree visualization uses a host-owned packaged web session.
 
 Tree preview actions stay above the scrolling comparison panel. Right from a skill or item row enters its details; Left returns to the selected row. Section switches explicitly focus the destination content and use the host's section transitions. Animation follows the user's motion preference. Startup shows a loading indicator while the calculation engine prepares the saved build.

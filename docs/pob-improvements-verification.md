@@ -1369,3 +1369,39 @@ external URLs and fragments are outside that check. Prior follow-up matrices and
 Configuration before/after measurements above remain applicable. Remaining limits
 are physical controller/couch acceptance, actual Windows contrast-theme switching,
 authenticated Spotify and the previously recorded hardware/prerequisite variants.
+
+## Header refinement and item-title investigation — 2026-10-18
+
+The build header now uses one quiet action row beside the build identity, reflowing
+below it at constrained widths through the existing responsive grid. Search,
+Build & import, loadout and labelled Undo/Redo keep their stable action/focus IDs.
+History remains its own remembered focus group. Trade-return/ranking controls
+are grouped separately below section navigation, rather than mixed with history.
+The duplicate widget-name eyebrow and unused Tree-specific title style are removed.
+All toolbar targets retain at least 44 DIP height. There are no new services,
+render-time engine calls or shared production-host changes.
+
+Both real-engine quick-control suites pass **119 checks each**. Native matrices
+pass **304 assertions** for the short-name layout and **304** for the final
+long-name layout, including 1320/820 DIP viewports, both game projections,
+Mono Ink/Mineral Light/Velvet Dusk and simulated high-contrast at 150% text.
+Visual review corrected a floating capped selector and toolbar style specificity;
+the long-name/150% test then caught Redo overflow. The selector now receives the
+remaining width so fixed actions stay visible. Wide and narrow Velvet Dusk renders
+were inspected. Evidence: `header-20261018/{final,long-fit}/native-result.json`,
+`long-fit/native-header-1320.png`, and `poe{1,2}-qualified.log`.
+The `long` matrix is failing pre-correction evidence, not a passing result.
+
+Upstream PoB's Craft dialog has a Name field and assigns `New Item` when the rare
+item title is blank; Item.lua combines the title and base for display. Our adapter
+does not expose that title field. Per the user's correction, no item-name
+suppression is delivered: equipment, inventory, drafts and other item surfaces
+retain PoB names and source build data. Adding a suitable item-title editing
+control remains an identified gap, not part of this header change.
+
+Both PoB packages are **0.1.4.14**, published/validated using the qualified .13
+upstream payload, with unchanged engine/web/runtime assets. The cumulative host
+remains candidate k; only its validation harness changed in this source revision.
+The normal-profile candidate is relaunched hidden with controller enabled, PID
+28228 at this checkpoint; launch and payload evidence are under `header-20261018`.
+No merge, push or release. Native automation does not replace physical acceptance.

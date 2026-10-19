@@ -33,15 +33,16 @@ internal sealed partial class WidgetStylesValidationPage
         {
             var disclosures=Environment.GetCommandLineArgs().Contains("--pob-disclosures-only");
             var density=Environment.GetCommandLineArgs().Contains("--pob-density-only");
+            var headerOnly=Environment.GetCommandLineArgs().Contains("--pob-header-only");
             foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"widgetrail.builtin.velvet-dusk","high-contrast"})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
                 var contrast=themeId=="high-contrast";
                 WidgetViewPresenter.SetHighContrastStyleOverride(contrast);
-                page.ApplyAppearance(AppearanceSettings.Default with{Motion=MotionPreference.Reduced,TextScale=contrast?1.25:1},false);
+                page.ApplyAppearance(AppearanceSettings.Default with{Motion=MotionPreference.Reduced,TextScale=contrast?(headerOnly?1.5:1.25):1},false);
                 var theme=ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,new((WrssDocument[])[package.Document],[]),catalog.Load(contrast?ThemeIdentity.BuiltInMonoInk:themeId,"1.0.0").Package).Theme!;
                 var snapshot=SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{scenario}.json")));
                 ViewNode[] rows=scenario switch
@@ -87,6 +88,26 @@ internal sealed partial class WidgetStylesValidationPage
                     Check(bounds.Left>=15&&bounds.Top>=15&&bounds.Right<=page.ActualWidth-15&&bounds.Bottom<=page.ActualHeight-15,"Search modal stays inside the widget");
                     Check(Descendants(panel).OfType<ScrollViewer>().All(s=>s.ExtentWidth<=s.ViewportWidth+1),"Search modal avoids horizontal overflow");
                     Check(rows.Length>0&&Find<Button>("Widget."+rows[0].Id,root) is not null,"Exported search results materialize as native actionable rows");
+                }
+                if(headerOnly)
+                {
+                    var header=Find<FrameworkElement>("Widget.pob.header",root)!;
+                    var identity=Find<FrameworkElement>("Widget.pob.identity",root)!;
+                    var tools=Find<FrameworkElement>("Widget.pob.buildtools",root)!;
+                    var ib=identity.TransformToVisual(header).TransformBounds(new(0,0,identity.ActualWidth,identity.ActualHeight));
+                    var tb=tools.TransformToVisual(header).TransformBounds(new(0,0,tools.ActualWidth,tools.ActualHeight));
+                    Check(size.Width<1040?tb.Top>=ib.Bottom:tb.Left>=ib.Right,"Header reflows identity and toolbar without overlapping");
+                    foreach(var id in new[]{"pob.loadout","pob.unified-search","pob.menu","pob.undo","pob.redo"})
+                    {
+                        if(Find<Control>("Widget."+id,root) is not {} control)continue;
+                        var bounds=control.TransformToVisual(header).TransformBounds(new(0,0,control.ActualWidth,control.ActualHeight));
+                        Check(bounds.Left>=-1&&bounds.Right<=header.ActualWidth+1&&bounds.Top>=-1&&bounds.Bottom<=header.ActualHeight+1,"Toolbar action stays inside header: "+id);
+                        Check(control.ActualHeight>=43,"Toolbar action retains controller target height: "+id);
+                    }
+                    Check(AutomationProperties.GetName(Find<Control>("Widget.pob.undo",root)!)=="Undo","Undo symbol has a native accessible name");
+                    Check(Find<FrameworkElement>("Widget.pob.trade-session",root) is not null,"Trade actions occupy a distinct workspace row");
+                    if(themeId=="widgetrail.builtin.velvet-dusk"&&game==2)
+                        await Capture(Path.Combine(directory,$"native-header-{size.Width}.png"));
                 }
                 if(scenario=="skill-workspace")
                 {

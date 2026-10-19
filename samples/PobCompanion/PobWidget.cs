@@ -181,6 +181,7 @@ public sealed partial class PobWidget : Widget
                 children.Add(BuildHeader());
                 children.Add(CompactHeadlines());
                 children.Add(Navigation());
+                if(TradeSessionControls() is {} tradeSession)children.Add(tradeSession);
                 if (pendingBefore is not null && !CanReplaceTradeComparison && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
                 children.Add(UI.Stack("pob.section.content",WithUnifiedNavigationTarget(Workspace())).Classes("pob-workspace")

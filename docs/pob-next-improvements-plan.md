@@ -9,7 +9,8 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 ## Implementation order and tracking
 
 Current acceptance checkpoint (2026-10-18): candidate **k** contains the cumulative
-host changes, with PoE1/PoE2 packages **0.1.4.13**. Configuration now fits 11 options
+host changes, with PoE1/PoE2 packages **0.1.4.14** and a quiet responsive toolbar.
+Trade-session actions are separate from build/history controls. Configuration fits 11 options
 instead of 6 at the same viewport, comparisons use aligned named columns, and
 inspections fit their content. Search retains query/category/selected identity;
 the Tree RS and Skills LS handoffs pass installed native checks. Unique-library

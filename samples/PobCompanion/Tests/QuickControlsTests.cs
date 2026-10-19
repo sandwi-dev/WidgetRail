@@ -25,6 +25,16 @@ internal static class QuickControlsTests
             var order=new[]{"Calcs","Skills","Items","Configuration","Tree","Notes"};
             var nav=Nodes(View().Root).Single(n=>n.Id=="pob.navigation");
             check(Nodes(nav).Where(n=>n.ActionId?.StartsWith("section.")==true).Select(n=>n.Text).SequenceEqual(order),"Tree is immediately before Notes in the navigation rail");
+            Set("savedTradeUrl","https://www.pathofexile.com/trade/search/Standard/fixture");
+            var headerView=View();var headerNodes=Nodes(headerView.Root).ToArray();
+            check(!Nodes(headerNodes.Single(n=>n.Id=="pob.buildtools")).Any(n=>n.ActionId=="website-resume")&&
+                Nodes(headerNodes.Single(n=>n.Id=="pob.trade-session")).Any(n=>n.Id=="pob.website-return"),
+                "Trade return keeps its identity outside the build history toolbar");
+            check(headerNodes.Single(n=>n.Id=="pob.undo").AccessibilityLabel=="Undo"&&headerNodes.Single(n=>n.Id=="pob.redo").AccessibilityLabel=="Redo",
+                "Compact history controls retain explicit accessible action names");
+            if(Environment.GetEnvironmentVariable("POB_HEADER_FIXTURES") is {Length:>0} output)
+            {Directory.CreateDirectory(output);File.WriteAllBytes(Path.Combine(output,$"poe{game}-header.json"),SnapshotJson.Serialize(headerView));}
+            Set("savedTradeUrl",null);
             foreach(var section in new[]{"Calcs","Tree","Skills","Items","Configuration","Notes"})
             {
                 Set("section",section);Set("detailKind","");

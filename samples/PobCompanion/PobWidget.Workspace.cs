@@ -21,25 +21,33 @@ public sealed partial class PobWidget
             if (!choices.Any(c => c.IsSelected)) choices.Insert(0, new("custom", "Independent sets", "noop", true));
             controls.Add(UI.Select("Loadout", choices, "pob.loadout").Disabled(pendingBefore is not null).Classes("pob-select", "pob-loadout"));
         }
-        controls.Add(UI.Button("Build & import", "menu", "pob.menu").Disabled(pendingBefore is not null).Classes("pob-button"));
-        controls.Add(Button("Search","unified-search").Disabled(pendingBefore is not null));
+        controls.Add(UI.Button("Search","unified-search","pob.unified-search").Disabled(pendingBefore is not null).Classes("pob-button","pob-header-action"));
+        controls.Add(UI.Button("Build & import", "menu", "pob.menu").Disabled(pendingBefore is not null).Classes("pob-button","pob-header-action"));
         var historyControls=new List<WidgetElement>{
-            UI.Button("Undo","undo","pob.undo").Disabled(undo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"),
-            UI.Button("Redo","redo","pob.redo").Disabled(redo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button")};
-        if(websiteSession is not null||savedTradeUrl is not null)historyControls.Add(UI.Button("Return to listings","website-resume","pob.website-return").Classes("pob-button"));
-        if(HasRanking)historyControls.Add(Button("Ranked results","trade-rank-show").Disabled((pendingBefore is not null||pastedItem is not null)&&!CanReplaceTradeComparison));
+            (UI.Button("↶ Undo","undo","pob.undo") with{AccessibilityLabel="Undo"}).Disabled(undo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button"),
+            (UI.Button("↷ Redo","redo","pob.redo") with{AccessibilityLabel="Redo"}).Disabled(redo.Count==0||pendingBefore is not null).Classes("pob-button","pob-history-button")};
         var history=UI.Row("pob.history",historyControls.ToArray())
             .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
-        if (section != "Tree") heading.Add(Text(WidgetName, "eyebrow", "pob-eyebrow"));
-        heading.Add(Text(BuildName(), "title", section == "Tree" ? "pob-tree-title" : "pob-title"));
+        heading.Add(Text(BuildName(), "title", "pob-title"));
         heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}", "context", "pob-muted"));
-        var tools=UI.Stack("pob.buildtools",UI.Row("pob.buildcontrols", controls.ToArray()).Classes("pob-toolbar"),history)
+        controls.Add(history);
+        var tools=UI.Grid("pob.buildtools",[GridTrack.Auto()],
+            controls.Select((_,i)=>i==0&&loadouts.Length>0?GridTrack.Star():GridTrack.Auto()).ToArray(),
+            controls.Select((control,i)=>control.InGrid(column:i)).ToArray()).Spacing(0,6)
             .RememberChildFocus(loadouts.Length>0?"pob.loadout":"pob.menu").Classes("pob-buildtools");
         if(BuildControlsAvailable)tools=tools.Shortcut(ControllerButton.RightStick,"quick-controls.pob.body","Return to content");
-        return UI.Grid("pob.header", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto()],
-            UI.Stack("pob.identity", heading.ToArray()),
-            tools.InGrid(column: 1)).Spacing(0, 20);
+        return UI.ResponsiveGrid("pob.header",520,2,
+            UI.Stack("pob.identity", heading.ToArray()).Classes("pob-build-identity"),tools).Classes("pob-build-header");
+    }
+
+    private WidgetElement? TradeSessionControls()
+    {
+        var actions=new List<WidgetElement>();
+        if(websiteSession is not null||savedTradeUrl is not null)
+            actions.Add(UI.Button("Return to listings","website-resume","pob.website-return").Classes("pob-button","pob-header-action"));
+        if(HasRanking)actions.Add(Button("Ranked results","trade-rank-show").Disabled((pendingBefore is not null||pastedItem is not null)&&!CanReplaceTradeComparison));
+        return actions.Count==0?null:UI.Row("pob.trade-session",actions.ToArray()).Classes("pob-toolbar");
     }
 
     private WidgetElement Navigation()
