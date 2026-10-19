@@ -180,7 +180,7 @@ public sealed partial class PobWidget
         }
         else if (buildComparison is not null) content.Add(Text("The current build changed. Compare again for current results.", "build-comparison.stale", "pob-muted"));
         var information = UI.VerticalScroll("pob.build-comparison.content", content.ToArray()).Classes("pob-scroll", "pob-build-comparison-context-scroll");
-        var body = BuildComparisonCurrent ? UI.Grid("pob.build-comparison.body", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+        WidgetElement body = BuildComparisonCurrent ? UI.Grid("pob.build-comparison.body", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
             information, BuildComparisonRows().InGrid(row: 1)).Spacing(8, 0).Classes("pob-workspace") : information;
         return UI.Stack("pob.build-comparison.page", UI.Stack("pob.build-comparison.tools", tools.ToArray()).RememberChildFocus(choices.Length > 0 ? "pob.build-comparison.target" : "pob.back"), body).Classes("pob-workspace");
     }

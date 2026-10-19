@@ -41,8 +41,10 @@ Pending work and saved history survive widget unloading and restart. Recovery ca
 ## Loadouts and skills
 
 Gem, inventory and unique-library candidates offer **X → Inspect** (or the pointer
-context menu). A keeps its normal selection action. Focus previews show already
-loaded information; inspection keeps the list and search in place. Use the explicit
+context menu). A keeps its normal selection action. Gem and unique-library focus
+previews show already-loaded information and fit their content within the available
+space. Inventory uses its existing details pane instead of covering it with a
+duplicate floating preview. Inspection keeps the list and search in place. Use the explicit
 Add, Replace, Equip or Open item draft action when ready. Inventory inspection lets
 you choose an eligible equipment slot. Inspection opens at the first detail and
 keeps its actions visible while you scroll. Back/Close returns to the same candidate.

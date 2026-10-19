@@ -51,20 +51,27 @@ public sealed partial class PobWidget
     {
         var unique=query.Context!.Unique;
         var label=entry.Title+(unique?"":entry.Uses.Length>0?" · In use":" · Unequipped");
-        var candidate=UI.ActionSurface("select",context.Id("entry"),label,ActionSurfaceOrientation.Horizontal,
-            UI.Text(label,context.Id("title")).Classes("pob-inline")) with{ContextActions=[new("inspect","Inspect item")]};
+        var summary=unique?entry.Description.Split('\n')[0]:entry.Rarity.ToLowerInvariant()+
+            (entry.Uses.Length>0?" · In use":" · Unequipped");
+        var candidate=UI.ActionSurface("select",context.Id("entry"),label,ActionSurfaceOrientation.Vertical,
+            UI.Text(entry.Title,context.Id("title")).Classes("pob-list-title",RarityClass(entry.Rarity)),
+            UI.Text(summary,context.Id("summary")).Classes("pob-candidate-summary")) with{ContextActions=[new("inspect","Inspect item")]};
         candidate=candidate.Selected(entry.Selected).Shortcut(ControllerButton.X,"Inspect",actionId:"inspect");
         if(!unique)candidate=candidate.FocusRight("pob.inventory-edit");
-        var preview=new List<WidgetElement>{UI.Text(entry.Title,context.Id("preview-title")).Classes("pob-heading")};
-        if(entry.Rarity.Length>0)preview.Add(UI.Text(entry.Rarity,context.Id("preview-rarity")).Classes("pob-small","pob-gold"));
-        if(entry.Description.Length>0)preview.Add(UI.Text(CandidateText(entry.Description,320),context.Id("preview-description")).Classes("pob-small"));
-        if(!unique)preview.Add(UI.Text(entry.Uses.Length==0?"Not equipped in any set":"Used by: "+CandidateText(entry.Uses,180),context.Id("preview-uses")).Classes("pob-small","pob-muted"));
+        // Inventory already has an item-details pane. A floating metadata-only
+        // duplicate obscures that pane; explicit X inspection remains available.
+        if(!unique)return candidate.Classes("pob-list-item","pob-candidate-row");
+        var preview=new List<WidgetElement>{UI.Text(entry.Title,context.Id("preview-title")).Classes("pob-preview-title",RarityClass(entry.Rarity))};
+        if(entry.Rarity.Length>0)preview.Add(UI.Text(entry.Rarity,context.Id("preview-rarity")).Classes("pob-preview-meta"));
+        if(entry.Description.Length>0)preview.Add(UI.Text(CandidateText(entry.Description,480),context.Id("preview-description")).Classes("pob-preview-description"));
         if(entry.Variants)preview.Add(UI.Text("Variants available in the item editor",context.Id("preview-variants")).Classes("pob-small","pob-muted"));
-        preview.Add(UI.ControllerHint(ControllerPrompt.X,"Inspect item",context.Id("preview-inspect")));
-        return candidate.Classes("pob-list-item").PresentOnFocus(UI.Stack(context.Id("preview"),preview.ToArray()));
+        preview.Add(UI.ControllerHint(ControllerPrompt.X,"Inspect item",context.Id("preview-inspect")).Classes("pob-preview-footer"));
+        return candidate.Classes("pob-list-item","pob-candidate-row").PresentOnFocus(UI.Stack(context.Id("preview"),preview.ToArray()).Classes("pob-preview-content"));
     }
+    private static string RarityClass(string rarity)=>rarity.ToUpperInvariant() switch
+    {"MAGIC"=>"pob-blue","RARE"=>"pob-gold","UNIQUE"=>"pob-orange",_=>"pob-text"};
     private static WidgetElement ItemCandidatePreview(WidgetElement list,string id)=>
-        UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with{Preview=new(Width:420,Height:280)};
+        UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with{Preview=new(Width:420,Height:360){SizeToContentHeight=true}};
 
     private WidgetElement UniqueCandidateWorkspace(JsonElement[] choices)
     {
@@ -154,9 +161,9 @@ public sealed partial class PobWidget
         if(!ItemCandidateIsCurrent(inspection.Query)){candidateInspection=null;return view;}
         var unique=inspection.Query.Context!.Unique;var close="candidate-inspection-close."+inspection.Token;
         var rows=new List<WidgetElement>();
-        if(!unique)rows.Add(Text(inspection.Entry.Uses.Length==0?"Not equipped in any set.":"Used by: "+inspection.Entry.Uses,"candidate-inspection.uses","pob-small pob-muted"));
         foreach(var (line,i) in A(inspection.Item,"details").Select((line,i)=>(line,i)))
             AddFormatted(rows,line,"text","runs","candidate-inspection.line."+i,emphasizeStats:true);
+        if(!unique)rows.Add(Text(inspection.Entry.Uses.Length==0?"Not equipped in any set.":"Used by: "+inspection.Entry.Uses,"candidate-inspection.uses","pob-preview-usage"));
         var actions=new List<WidgetElement>{Button("Back to items",close),Button(unique?"Open item draft":"Select item","candidate-inspection-choose."+inspection.Token)};
         if(!unique&&inspection.Slots.Length>0)actions.Add(Button("Equip in "+inspection.Slot,"candidate-inspection-equip."+inspection.Token));
         var controls=new List<WidgetElement>{UI.Row("pob.candidate-inspection.actions",actions.ToArray()).Classes("pob-toolbar")};
@@ -164,13 +171,13 @@ public sealed partial class PobWidget
             "candidate-inspection-slot."+inspection.Token+"."+i,slot==inspection.Slot)).ToArray(),"pob.candidate-inspection.slot").Classes("pob-select"));
         return view.WithModal(new("pob.candidate-inspection",inspection.Entry.Title,
             InspectionWorkspace("pob.candidate-inspection",rows,UI.Stack("pob.candidate-inspection.controls",controls.ToArray())),
-            "pob."+close,close){ScrollContent=false,AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:620,Height:620)});
+            "pob."+close,close){ScrollContent=false,AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:620,Height:620){SizeToContentHeight=true}});
     }
 
     // Keep the initial action outside the reading viewport. Otherwise native
     // focus scrolls a long description to its bottom as soon as inspection opens.
     private static WidgetElement InspectionWorkspace(string id,List<WidgetElement> details,WidgetElement controls)=>
         UI.Grid(id+".content",[GridTrack.Auto(),GridTrack.Star()],[GridTrack.Star()],
-            controls,UI.VerticalScroll(id+".details",UI.Stack(id+".body",details.ToArray()).Classes("pob-card"))
+            controls,UI.VerticalScroll(id+".details",UI.Stack(id+".body",details.ToArray()).Classes("pob-inspection-body"))
                 .InGrid(row:1).Classes("pob-workspace")).Spacing(10,0).Classes("pob-workspace");
 }

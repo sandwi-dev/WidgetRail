@@ -187,6 +187,12 @@ internal static class BuildComparisonTests
             {
                 var declaration = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == "pob.build-comparison.rows").IndexedCollection!;
                 check(declaration.Count > 0 && !Has("pob.build-comparison-next"), "Differences use the shared indexed collection without pagination");
+                if(Environment.GetEnvironmentVariable("POB_BUILD_COMPARISON_FIXTURES") is {Length:>0} rowsDirectory)
+                {
+                    Directory.CreateDirectory(rowsDirectory);
+                    using var displayRows=await host.AcquireAsync("pob.build-comparison.rows",0,Math.Min(32,declaration.Count));
+                    File.WriteAllText(Path.Combine(rowsDirectory,$"poe{game}-build-comparison-rows.json"),JsonSerializer.Serialize(displayRows.Range.Items.Select(item=>item.Root).ToArray()));
+                }
                 using var lease = await host.AcquireAsync("pob.build-comparison.rows", 0, Math.Min(3, declaration.Count));
                 var row = lease.Range.Items[0];
                 var rowColumns = Nodes(row.Root).Single(node => node.GridLayout?.Columns.Count == 4);

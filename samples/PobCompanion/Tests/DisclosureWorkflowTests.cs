@@ -96,6 +96,9 @@ internal static class DisclosureWorkflowTests
             Set("calculationSources",Activator.CreateInstance(sourcesType,new object[]{Array.CreateInstance(items,0)}));
             check(!Has("pob.calculation.details-toggle")&&Has("pob.calculation.empty"),"A calculation with no optional breakdown has no empty disclosure");
             await Action("back");await Action("section.4");
+            Set("result",baseline);Set("filter","");Set("configChangedOnly",false);
+            Set("configSection",baseline.Configuration.Options.Select(option=>option.Section).FirstOrDefault(section=>section.Contains("Combat",StringComparison.OrdinalIgnoreCase))??baseline.Configuration.Options.GroupBy(option=>option.Section).OrderByDescending(group=>group.Count()).First().Key);
+            Set("configHelp",false);Export("configuration-density");
             var state=JsonNode.Parse(baseline.State.GetRawText())!.AsObject();
             var condition=state["conditions"]!.AsArray().OfType<JsonObject>().First(candidate=>candidate["value"]!.GetValueKind() is JsonValueKind.True or JsonValueKind.False);
             var conditionId=condition["id"]!.GetValue<string>();

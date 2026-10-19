@@ -71,14 +71,16 @@ public sealed partial class PobWidget
         {ContextActions=[new("inspect","Inspect gem")]};
         var action=candidate.Shortcut(ControllerButton.X,"Inspect",actionId:"inspect").Classes("pob-button");
         if(entry.Inspection is not {} data)return action;
-        var content=new List<WidgetElement>{UI.Text(data.Name,context.Id("preview-name")).Classes("pob-heading")};
-        if(data.Tags.Length>0)content.Add(UI.Text(GemInspectionText(data.Tags,160),context.Id("preview-tags")).Classes("pob-small","pob-gold"));
-        if(data.Description.Length>0)content.Add(UI.Text(GemInspectionText(data.Description,320),context.Id("preview-description")).Classes("pob-small"));
+        var content=new List<WidgetElement>{UI.Text(data.Name,context.Id("preview-name")).Classes("pob-preview-title","pob-blue")};
+        content.Add(UI.Text(data.Support?"Support gem":"Active skill gem",context.Id("preview-type")).Classes("pob-preview-meta"));
+        if(data.Description.Length>0)content.Add(UI.Text(GemInspectionText(data.Description,480),context.Id("preview-description")).Classes("pob-preview-description"));
+        if(data.Tags.Length>0)content.Add(UI.Text(GemInspectionText(data.Tags,160),context.Id("preview-tags")).Classes("pob-preview-meta"));
+        if(data.Support&&data.CanSupport is {} supports)content.Add(UI.Text(supports?"Supports the selected skill":"Does not support the selected skill",context.Id("preview-compatibility")).Classes("pob-small",supports?"pob-green":"pob-muted"));
         if(query.Context is {} picker&&GemComparisonText(data,picker) is {Length:>0} total)
             content.Add(UI.Text(total,context.Id("preview-comparison")).Classes("pob-small"));
         content.Add(UI.Row(context.Id("preview-inspect"),UI.ControllerGlyph(ControllerPrompt.X,context.Id("preview-inspect-glyph")),
-            UI.Text("Inspect",context.Id("preview-inspect-label")).Classes("pob-small","pob-muted")));
-        return action.PresentOnFocus(UI.Stack(context.Id("preview"),content.ToArray()));
+            UI.Text("Inspect",context.Id("preview-inspect-label")).Classes("pob-small","pob-muted")).Classes("pob-preview-footer"));
+        return action.PresentOnFocus(UI.Stack(context.Id("preview"),content.ToArray()).Classes("pob-preview-content"));
     }
     private static string GemComparisonText(GemInspectionData data,GemPickerContext context) =>
         context.Sort!="name"&&data.Comparison is {} total
@@ -131,6 +133,6 @@ public sealed partial class PobWidget
         var apply="gem-inspection-apply."+inspection.Token;
         var controls=UI.Row("pob.gem-inspection.actions",Button("Back to gems",close),Button(context.Gem==0?"Add gem":"Replace gem",apply)).Classes("pob-toolbar");
         return view.WithModal(new("pob.gem-inspection",data.Name,InspectionWorkspace("pob.gem-inspection",rows,controls),
-            "pob."+close,close){ScrollContent=false,AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:560,Height:440)});
+            "pob."+close,close){ScrollContent=false,AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:560,Height:560){SizeToContentHeight=true}});
     }
 }

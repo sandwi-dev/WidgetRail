@@ -52,7 +52,7 @@ public sealed partial class PobWidget
             categories.Add(category);
         }
         var quick=NeedsQuickControls(sections.Length);
-        ContainerElement categoryList=UI.Stack("pob.config.categories",categories.ToArray());
+        ContainerElement categoryList=UI.Stack("pob.config.categories",categories.ToArray()).Classes("pob-buildtools");
         if(sections.Length>0)categoryList=QuickControls(categoryList,"pob.config.category.0","pob.config.tools","Search / set",quick);
         var sidebar=UI.VerticalScroll("pob.config.navigation",
             QuickControls(UI.Stack("pob.config.tools",navigation.ToArray()).Classes("pob-buildtools"),"pob.search","pob.config.footer","Explanations",quick),
@@ -82,7 +82,7 @@ public sealed partial class PobWidget
         var customMatches=searching?A(State,"customModGroups").Where(g=>(S(g,"title")+" "+S(g,"text")).Contains(filter,StringComparison.OrdinalIgnoreCase)).ToArray():[];
         foreach(var group in customMatches)controls.Add(Button("Custom modifiers · "+S(group,"title"),"custom-open."+I(group,"id")));
         if(matching.Length==0&&customMatches.Length==0)controls.Add(Text(configChangedOnly?"No changed settings here. Choose another section or turn off Changed settings.":"No matching settings. Try another search.","config.empty","pob-muted"));
-        var right=UI.VerticalScroll(controlsId,controls.ToArray()).Classes("pob-scroll","pob-panel");
+        var right=UI.VerticalScroll(controlsId,controls.ToArray()).Classes("pob-scroll","pob-panel","pob-config-options");
         if(firstId is not null)right=right.RememberChildFocus(firstId);
         return Split("configuration",sidebar,!searching&&configSection=="Custom modifiers"?CustomModsPanel():right,1,2.6);
     }

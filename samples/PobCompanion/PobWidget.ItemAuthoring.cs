@@ -229,7 +229,7 @@ public sealed partial class PobWidget
             UI.Row("pob.stored.create",Button(pastedItem is null?"Craft item":"Continue item draft","item-create"),Button("Unique library","item-uniques").Disabled(pastedItem is not null),Button("Paste item","item-paste").Disabled(pastedItem is not null)).Classes("pob-toolbar"),
             SearchField(UI.TextEntry(inventorySearch,"Search inventory","inventory-search","pob.inventory-search",100),inventoryState,
                 ()=>all.Select(i=>(S(i,"title"),S(i,"title")+" "+S(i,"base"),S(i,"base")))).Classes("pob-input"),Text($"{entries.Length} of {all.Length} items","stored.count","pob-muted")),"pob.inventory-search","pob.stored.list","Items",NeedsQuickControls(entries.Length));
-        var list=QuickControls(UI.Stack("pob.stored.list",ItemCandidatePreview(UI.CollectionList("pob.stored.items",inventoryCollection,64,"Item inventory").Classes("pob-scroll"),"pob.stored.preview")).Classes("pob-workspace"),"pob.stored.items","pob.stored.tools","Search",NeedsQuickControls(entries.Length));
+        var list=QuickControls(UI.Stack("pob.stored.list",UI.CollectionList("pob.stored.items",inventoryCollection,64,"Item inventory").Classes("pob-scroll")).Classes("pob-workspace"),"pob.stored.items","pob.stored.tools","Search",NeedsQuickControls(entries.Length));
         var details=new List<WidgetElement>();
         if(inventoryId>0)
         {
