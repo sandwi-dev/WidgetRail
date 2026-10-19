@@ -24,6 +24,17 @@ if (args is ["--export-update-fixtures", var updateFixtureDirectory])
     return 0;
 }
 
+if (args is ["--export-settings-home-fixtures", var homeFixtureDirectory])
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    await Activate(widget);
+    foreach (var theme in new[] { "mono-ink", "mineral-light", "velvet-dusk" })
+        await ExportRendererSnapshotForTheme(Snapshot(widget), Path.Combine(homeFixtureDirectory, "home-" + theme + ".json"), "widgetrail.builtin." + theme);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+    return 0;
+}
+
 if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
 {
     using var temp = new TemporaryDirectory();
@@ -3170,6 +3181,9 @@ static async Task ExportRendererFixture(string outputPath)
 }
 
 static async Task ExportRendererSnapshot(ViewSnapshot snapshot, string outputPath)
+    => await ExportRendererSnapshotForTheme(snapshot, outputPath, ThemeIdentity.BuiltInMonoInk);
+
+static async Task ExportRendererSnapshotForTheme(ViewSnapshot snapshot, string outputPath, string themeId)
 {
     var validation = ViewSnapshotValidator.Validate(snapshot);
     Assert.Equal(0, validation.Count);
@@ -3177,7 +3191,9 @@ static async Task ExportRendererSnapshot(ViewSnapshot snapshot, string outputPat
     var package = WrssPackageLoader.LoadFile(
         Path.Combine(project, "styles", "default.wrss"),
         Path.Combine(project, "styles"));
-    var compiled = WrssThemeCompiler.Compile(package);
+    using var temp = new TemporaryDirectory();
+    var themes = new ThemeCatalog(new PlatformSettingsPaths(temp.Path));
+    var compiled = ThemeLayerCompiler.Compile(themes.BuiltInDefault.Package, package, themes.Load(themeId, "1.0.0").Package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
     using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));

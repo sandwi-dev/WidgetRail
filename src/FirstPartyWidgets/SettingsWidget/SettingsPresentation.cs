@@ -182,7 +182,7 @@ internal static partial class SettingsPresentation
                 // Loading and ready content share one stable home surface.
                 HeightMode = WidgetSurfaceAxisMode.Preferred,
                 PreferredWidth = 880,
-                PreferredHeight = 552,
+                PreferredHeight = 568,
                 MinimumWidth = 520,
                 MinimumHeight = 360,
             });

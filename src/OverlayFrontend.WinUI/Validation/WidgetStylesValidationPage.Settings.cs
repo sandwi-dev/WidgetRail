@@ -42,13 +42,33 @@ internal sealed partial class WidgetStylesValidationPage
             foreach (var width in new[] { 880d, 520d })
             foreach (var largeText in new[] { false, true })
             {
-                presenter.Width = width; presenter.Height = 520;
+                presenter.Width = width; presenter.Height = snapshot.Surface?.PreferredHeight ?? 520;
                 presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced, TextScale = largeText ? 1.5 : 1 }, false);
                 presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1,
                     descriptor.InstanceId, snapshot.Sequence, snapshot.ActiveInputScopeId), descriptor, snapshot, styles));
                 await Task.Delay(100);
                 presenter.UpdateLayout();
                 var label = Path.GetFileNameWithoutExtension(file) + " " + width + (largeText ? " large text" : "");
+                if (snapshot.ActiveInputScopeId == "settings-root" && Find<ScrollViewer>("Widget.settings.categories") is { } categories)
+                {
+                    if (width == snapshot.Surface?.PreferredWidth && !largeText)
+                    {
+                        Check(categories.ScrollableHeight <= 1,
+                            label + ": home categories fit without scrolling at the requested default size (overflow " + categories.ScrollableHeight + ")");
+                        var last = Find<Button>("Widget.category.diagnostics")!;
+                        var utilities = Find<FrameworkElement>("Widget.settings.home.utilities")!;
+                        var bottom = last.TransformToVisual(presenter).TransformPoint(new(0, last.ActualHeight)).Y;
+                        var top = utilities.TransformToVisual(presenter).TransformPoint(new()).Y;
+                        Check(top - bottom >= 8, label + ": last card has a clear gap above the utility row");
+                    }
+                    else
+                    {
+                        var last = Find<Button>("Widget.category.diagnostics")!;
+                        Check(last.Focus(FocusState.Keyboard), label + ": constrained home retains access to its last category");
+                        last.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                        await Wait(() => last.TransformToVisual(categories).TransformPoint(new(0, last.ActualHeight)).Y <= categories.ActualHeight + 1);
+                    }
+                }
                 foreach (var node in Walk(snapshot.Root).Where(node => node.StyleClasses.Contains("widget-detail-action")))
                 {
                     var button = Find<Button>("Widget." + node.Id)!;

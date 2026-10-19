@@ -1248,3 +1248,20 @@ The earlier invisible-overlay/shutdown observations were not reproduced in scope
 retests; no speculative production workaround was introduced. The plan retains
 those acceptance boxes rather than presenting synthetic input as physical proof.
 No merge, push, release or deferred CI repairs were performed.
+
+## Settings home overflow correction — 2026-10-18
+
+The user screenshot exposed 8.8 logical pixels of vertical overflow at the normal
+880×552 home size. The earlier increase from 520 to 552 was present, but insufficient.
+The home preference is now 880×568; subpages and minimum sizes are unchanged.
+Scrolling remains available when constrained or using enlarged text.
+
+The old layout fixture forced height 520 and compiled widget styles without the
+platform/user-theme layers, so it could not enforce the promised default fit.
+Fixtures now use the authored preferred height and actual theme layers. A focused
+home export covers Mono Ink, Mineral Light and Velvet Dusk, two widths and normal/
+150% text. It asserts no default overflow, a gap above Restart/Quit, constrained
+last-card access and stable focus. The old height fails; the corrected height passes
+**44 native assertions**. Two focused home-action/loading tests pass. Velvet Dusk
+was visually inspected. Evidence: `settings-home-fit-20261018/before-result.json`,
+`after-result.json` and `after-velvet.png`.
