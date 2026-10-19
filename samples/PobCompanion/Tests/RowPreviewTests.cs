@@ -70,6 +70,43 @@ internal static class RowPreviewTests
             var item = JsonSerializer.SerializeToElement(new { id = 99, name = "Test item", rarity = "RARE", @base = "Helmet", slot = "Helmet", details = new[] { new { lines = new[] { new { text = "+25 maximum Life", tone = "blue", runs = new[] { new { text = "+25", tone = "gold" }, new { text = " maximum Life", tone = "blue" } } } } } } });
             var equipment = Invoke("EquipmentSummaryPreview", item);
             check(Nodes(equipment).Any(n => n.Kind == ViewNodeKind.RichText) && Nodes(equipment).Any(n => n.StyleClasses.Contains("pob-gold")), "Equipment summary preserves rich modifier colors");
+            await widget.OnActionAsync(new("section.1","test"));await Idle();
+            var passiveBuild=(PobResult)Get("result")!;
+            var passiveNodes=passiveBuild.State.GetProperty("nodes").EnumerateArray().Where(node=>node.GetProperty("interactive").GetBoolean()).ToArray();
+            var repeatedName=passiveNodes.GroupBy(node=>node.GetProperty("name").GetString()!).First(group=>group.Count()>1).Key;
+            foreach(var search in new[]{"",repeatedName})
+            {
+                await widget.OnActionAsync(new("search","test"){CommittedText=search});await Idle();
+                using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"passive-previews");
+                var snapshot=host.CurrentSnapshot;
+                var surface=Nodes(snapshot.Root).Single(node=>node.Id=="pob.passives.preview");
+                var list=Nodes(snapshot.Root).Single(node=>node.Id=="pob.passives");
+                using var range=await host.AcquireAsync(list.Id,0,Math.Min(64,list.IndexedCollection!.Count));
+                check(range.Range.Items.Count>0&&range.Range.Items.All(row=>row.Root.FocusPreviewKey==row.Key&&row.Root.FocusPresentation is null),
+                    "Passive rows carry exact node keys without pre-rendering descriptions: "+search);
+                check(surface.FocusPreview is {EnterButton:null,SizeToContentHeight:true},"Passive preview is read-only and fits its content");
+                foreach(var row in range.Range.Items.Take(2))
+                {
+                    var selection=Get("detailId");
+                    using var preview=await host.AcquirePreviewAsync(surface.Id,row.Key);
+                    var content=preview.Range.Items.Single().Root;
+                    var node=passiveNodes.Single(node=>"node."+node.GetProperty("id").GetInt32()==row.Key);
+                    check(Nodes(content).Any(n=>n.Text==node.GetProperty("name").GetString())&&Nodes(content).Any(n=>n.Kind==ViewNodeKind.RichText),
+                        "Passive preview resolves exact node identity and formatted description: "+row.Key);
+                    check(ReferenceEquals(passiveBuild,Get("result"))&&Equals(selection,Get("detailId"))&&!Nodes(content).Any(n=>n.ActionId is not null||n.Shortcuts.Count>0)&&row.Root.ActionId=="open",
+                        "Reading a passive keeps A navigation and does not allocate or select it");
+                    check(preview.RoutePreviewAction(row.Key,content.Id,"node-change") is null,"Passive preview rejects forged allocation actions");
+                }
+                var generation=surface.FocusPreviewSource!.QueryGeneration;
+                await widget.OnActionAsync(new("search","test"){CommittedText=search+" no match fixture"});await Idle();host.PublishSnapshot();
+                check(Nodes(host.CurrentSnapshot.Root).Single(n=>n.Id==surface.Id).FocusPreviewSource!.QueryGeneration>generation,
+                    "Changing passive search retires the old preview source");
+                check(range.RouteAction(range.Range.Items[0].Key,ControllerButton.A) is null,"Old passive rows cannot navigate after the search changes");
+            }
+            var granted=Invoke("PassivePreview",JsonSerializer.SerializeToElement(new{id=99,name="Granted passive",granted=true,description="+10 to Intelligence",socketedItem="Test jewel",canChoose=true}));
+            check(Nodes(granted).Any(n=>n.Text=="Granted")&&Nodes(granted).Any(n=>n.Text=="Socketed: Test jewel")&&Nodes(granted).Any(n=>n.Text=="Effect choice available"),"Granted/socketed/choice passive context is readable without editing commands");
+            var longPassive=Invoke("PassivePreview",JsonSerializer.SerializeToElement(new{id=100,name="Long passive",description=string.Join("\n",Enumerable.Repeat(new string('x',700),8)),canAllocate=true,pathCount=3}));
+            check(Nodes(longPassive).Any(n=>n.Text=="Open passive for the full description")&&Nodes(longPassive).Any(n=>n.Text=="Allocation path: 3 node(s)"),"Long passive previews remain bounded and disclose the full-description route");
         }
         finally { await WidgetTestHost.DestroyAsync(widget); Directory.Delete(directory, true); }
     }

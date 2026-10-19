@@ -22,7 +22,7 @@ public sealed partial class PobWidget
                 return ValueTask.FromResult<IReadOnlyList<ListEntry>>(query.Entries.Skip(start).Take(count).ToArray());
             },
             ItemKey=entry=>new(entry.Key),
-            RenderItem=(_,entry,context)=>isPassive?UI.Button(entry.Label,"open",context.Id("entry")).Classes("pob-button"):
+            RenderItem=(_,entry,context)=>isPassive?UI.Button(entry.Label,"open",context.Id("entry")).Classes("pob-button").PresentOnFocus(entry.Key):
                 UI.Button(entry.Label,"open",context.Id("entry")).Selected(entry.Selected).FocusRight("pob.library.detail").Classes("pob-button"),
             OnAction=(query,entry,action,token)=>
             {
@@ -49,7 +49,7 @@ public sealed partial class PobWidget
             passiveQuery=next;passiveResult=result;passiveFilter=filter;
             if(same)passives.UpdateContent(next);else passives.PublishQuery(next,entries.Length);
         }
-        return UI.CollectionList("pob.passives",passives,64,"Passive skill results").Classes("pob-scroll");
+        return WithPassivePreviews(UI.CollectionList("pob.passives",passives,64,"Passive skill results").Classes("pob-scroll"));
     }
 
     private WidgetElement LibraryWorkspace()

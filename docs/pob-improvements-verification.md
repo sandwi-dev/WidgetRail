@@ -2,6 +2,26 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Passive list rich previews, 2026-10-19
+
+Allocated/granted passive lists and passive search results now expose deferred,
+read-only rich previews. Exact node IDs distinguish repeated names. Settled
+focus/hover resolves the existing build snapshot locally: formatted effects,
+allocation/granted state, socketed item, effect-choice availability and upstream
+allocation-path count when supplied. A continues to open the existing node detail;
+preview content has no commands or interactive-entry shortcut. Long descriptions
+are bounded with a full-description cue. Search/build/document changes publish a
+new preview context, retiring previous requests. No extra engine/network calls or
+eager rendering of every node description were added.
+
+Validation: **250 checks passed**: 35 row-preview and 90 unified-search checks per
+game. Includes actual indexed preview acquisition, repeated names, preserved
+selection/build, forged-action rejection, retired search contexts, granted/jewel/
+choice metadata and long descriptions. Release build and package/WRSS validation
+pass. Evidence: `artifacts/pob/passive-previews-*`, `passive-preview-packaging.log`.
+Both cumulative packages are **0.1.4.31**, in `passive-preview-packages-20261019`.
+No new physical/native visual checks under the user's existing waiver.
+
 ## Targetless search-warning layout, 2026-10-19
 
 Selecting the user's total-Strength-support-gem warning opened a second growing
