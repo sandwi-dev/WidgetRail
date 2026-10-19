@@ -34,6 +34,7 @@ public static partial class WrssPropertyCatalog
         LengthOrAuto,
         FlexWrap,
         BackgroundMaterial,
+        OpacityOrAuto,
     }
 
     private sealed record Definition(PropertyType Type, double Minimum = 0, double Maximum = 0, bool AllowNegative = false);
@@ -44,6 +45,7 @@ public static partial class WrssPropertyCatalog
             ["background"] = new(PropertyType.Color),
             ["background-material"] = new(PropertyType.BackgroundMaterial),
             ["background-tint-opacity"] = new(PropertyType.Opacity, 0, 1),
+            ["background-luminosity-opacity"] = new(PropertyType.OpacityOrAuto, 0, 1),
             ["surface-shading"] = new(PropertyType.BoundedNumber, -0.25, 0.25, true),
             ["color"] = new(PropertyType.Color),
             ["border-color"] = new(PropertyType.Color),
@@ -146,6 +148,13 @@ public static partial class WrssPropertyCatalog
                 return TryLength(value, definition, out computed, out clamped, out error);
             case PropertyType.Spacing:
                 return TrySpacing(value, definition, out computed, out clamped, out error);
+            case PropertyType.OpacityOrAuto:
+                if (value == "auto")
+                {
+                    computed = new WrssComputedValue(WrssValueKind.Keyword, value);
+                    return true;
+                }
+                goto case PropertyType.Opacity;
             case PropertyType.Opacity:
             case PropertyType.Scale:
                 if (!TryInvariantDouble(value, out var number))

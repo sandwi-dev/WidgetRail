@@ -38,6 +38,7 @@ WRSS styles the content; it does not replace this outer frame.
 preview {
   background-material: standard;
   background-tint-opacity: .65;
+  background-luminosity-opacity: auto;
   background: var(--surface-raised);
   opacity: 0.92;
   surface-shading: .035;
@@ -63,12 +64,17 @@ or `acrylic` (WinUI's native in-app frosted material). To opt in:
 preview {
   background-material: acrylic;
   background: var(--surface-raised);
-  background-tint-opacity: .65;
+  background-tint-opacity: .35;
+  background-luminosity-opacity: .25;
 }
 ```
 
 For acrylic, `background` supplies the tint colour and `background-tint-opacity`
-controls tint strength from 0 to 1 (default .65). Acrylic ignores `opacity`,
+controls tint strength from 0 to 1 (default .65).
+`background-luminosity-opacity` controls the additional luminosity tint from 0
+to 1; the default `auto` delegates it to WinUI. The lighter example above reveals
+more of the frosted backdrop; dense tint/automatic luminosity can look nearly
+solid over similarly coloured content. Acrylic ignores `opacity`,
 background colour alpha and `surface-shading`; its native material controls the
 backdrop/luminosity/noise combination. The brush and content stay fully opaque as
 composited layers, so an unavailable effect can fall back to a solid tint colour.

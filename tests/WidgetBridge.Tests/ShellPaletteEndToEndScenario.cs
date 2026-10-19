@@ -34,6 +34,7 @@ internal static class ShellPaletteEndToEndScenario
                     throw new InvalidOperationException("Categorical data colors did not survive the real theme projection.");
                 if (palette["preview"].Base["background-material"].Text != "standard" ||
                     palette["preview"].Base["background-tint-opacity"].Number != .65 ||
+                    palette["preview"].Base["background-luminosity-opacity"].Text != "auto" ||
                     palette["preview"].Base["shadow-blur"].Number != 12 || palette["preview"].Base["opacity"].Number != .92 ||
                     palette["preview"].Base["background"].Kind != WidgetRail.WidgetStyling.WrssValueKind.Color)
                     throw new InvalidOperationException("Preview theme roles did not survive real theme resolution and transport.");

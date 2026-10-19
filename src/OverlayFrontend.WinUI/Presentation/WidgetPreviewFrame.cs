@@ -45,6 +45,7 @@ internal sealed partial class WidgetPreviewFrame : Grid, IDisposable
             acrylic ??= new AcrylicBrush { TintTransitionDuration = TimeSpan.Zero };
             acrylic.TintColor = acrylic.FallbackColor = style.Surface with { A = byte.MaxValue };
             acrylic.TintOpacity = style.TintOpacity;
+            acrylic.TintLuminosityOpacity = style.LuminosityOpacity;
             Surface.Background = acrylic;
         }
         else
@@ -82,7 +83,7 @@ internal enum PreviewBackgroundMaterial { Standard, Acrylic }
 /// <summary>Bounded theme metrics in widget-local DIPs; portal scaling is applied only once.</summary>
 internal sealed record PreviewFrameStyle(Color Surface, double Shading, float Radius, double BorderWidth,
     Color Top, Color Side, Color Bottom, Color Shadow, float Blur, Vector2 Offset, bool HighContrast,
-    PreviewBackgroundMaterial Material = PreviewBackgroundMaterial.Standard, double TintOpacity = .65)
+    PreviewBackgroundMaterial Material = PreviewBackgroundMaterial.Standard, double TintOpacity = .65, double? LuminosityOpacity = null)
 {
     internal static PreviewFrameStyle Resolve(IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles,
         ShellChromePalette palette, AppearanceSettings appearance)
@@ -106,6 +107,7 @@ internal sealed record PreviewFrameStyle(Color Surface, double Shading, float Ra
         return new(fill, Number("surface-shading", .035, -.25, .25), radius, Number("border-width", 1, 0, 4),
             ColorValue("border-top-color", border), border, ColorValue("border-bottom-color", border),
             ColorValue("shadow-color", Color.FromArgb(90, 0, 0, 0)), (float)Number("shadow-blur", 12, 0, 24),
-            new((float)Number("shadow-offset-x", 0, -12, 12), (float)Number("shadow-offset-y", 4, -12, 12)), false, material, Number("background-tint-opacity", .65, 0, 1));
+            new((float)Number("shadow-offset-x", 0, -12, 12), (float)Number("shadow-offset-y", 4, -12, 12)), false, material, Number("background-tint-opacity", .65, 0, 1),
+            role?.GetValueOrDefault("background-luminosity-opacity")?.Text is null or "auto" ? null : Number("background-luminosity-opacity", .25, 0, 1));
     }
 }

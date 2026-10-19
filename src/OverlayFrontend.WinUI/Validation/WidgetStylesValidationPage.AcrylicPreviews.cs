@@ -42,7 +42,8 @@ internal sealed partial class WidgetStylesValidationPage
         var dispatches = 0; page.DispatchActionAsync = _ => { dispatches++; return Task.CompletedTask; };
         var themeId = ThemeIdentity.BuiltInCanopy;
         var material = "standard";
-        var tint = .65;
+        var tint = .35;
+        var luminosity = ".25";
         try
         {
             foreach (var id in new[] { ThemeIdentity.BuiltInCanopy, ThemeIdentity.BuiltInMineralLight })
@@ -60,12 +61,15 @@ internal sealed partial class WidgetStylesValidationPage
                 material = "acrylic"; Publish();
                 await Wait(() => chrome.Background is AcrylicBrush);
                 var brush = (AcrylicBrush)chrome.Background;
-                Check(brush.TintOpacity == .65 && brush.Opacity == 1 && brush.FallbackColor.A == 255 && brush.TintColor.A == 255,
+                Check(brush.TintOpacity == .35 && brush.TintLuminosityOpacity == .25 && brush.Opacity == 1 && brush.FallbackColor.A == 255 && brush.TintColor.A == 255,
                     id + ": acrylic has independent tint strength, opaque fallback and no subtree opacity");
                 Check(ReferenceEquals(page.FocusPreviewFrame, frame) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source) &&
                     bounds == (chrome.ActualWidth, chrome.ActualHeight) && dispatches == 0, id + $": material changes preserve source focus and geometry (frame={ReferenceEquals(page.FocusPreviewFrame, frame)}, focus={ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source)}, before={bounds}, after={(chrome.ActualWidth, chrome.ActualHeight)}, actions={dispatches})");
                 tint = .42; Publish();
                 Check(ReferenceEquals(chrome.Background, brush) && brush.TintOpacity == .42, id + ": tint changes reuse the connected native brush");
+                luminosity = "auto"; Publish();
+                Check(ReferenceEquals(chrome.Background, brush) && brush.TintLuminosityOpacity is null, id + ": automatic luminosity can be restored without replacing the brush");
+                luminosity = ".25"; Publish();
                 brush.AlwaysUseFallback = true;
                 Check(brush.FallbackColor.A == 255, id + ": native forced fallback is opaque");
                 brush.AlwaysUseFallback = false;
@@ -75,7 +79,7 @@ internal sealed partial class WidgetStylesValidationPage
                 appearance = appearance with { Transparency = TransparencyPreference.Full, Contrast = ContrastPreference.High }; Publish();
                 Check(chrome.Background is SolidColorBrush { Color.A: 255 } && chrome.BorderThickness == new Thickness(2),
                     id + ": high contrast detaches acrylic and restores the Windows outline");
-                appearance = appearance with { Contrast = AppearanceSettings.Default.Contrast }; material = "standard"; tint = .65; Publish();
+                appearance = appearance with { Contrast = AppearanceSettings.Default.Contrast }; material = "standard"; tint = .35; luminosity = ".25"; Publish();
                 Check(chrome.Background is LinearGradientBrush, id + ": switching back releases the acrylic background");
             }
             themeId = ThemeIdentity.BuiltInCanopy; material = "acrylic"; Publish();
@@ -91,8 +95,19 @@ internal sealed partial class WidgetStylesValidationPage
             {
                 if (page.FocusPreviewChrome is Border { Background: AcrylicBrush current })
                 {
-                    current.AlwaysUseFallback = !current.AlwaysUseFallback;
-                    File.WriteAllText(Path.Combine(directory, "fallback.json"), JsonSerializer.Serialize(new { fallback = current.AlwaysUseFallback }));
+                    var tuningPath = Path.Combine(directory, "tuning.json");
+                    if (File.Exists(tuningPath))
+                    {
+                        using var tuning = JsonDocument.Parse(File.ReadAllText(tuningPath));
+                        var tintValue = tuning.RootElement.GetProperty("tint").GetDouble();
+                        var luminosityValue = tuning.RootElement.GetProperty("luminosity").GetDouble();
+                        if (!double.IsFinite(tintValue) || !double.IsFinite(luminosityValue) || tintValue < 0 || tintValue > 1 || luminosityValue < 0 || luminosityValue > 1)
+                            throw new InvalidDataException("Invalid local material fixture tuning");
+                        current.AlwaysUseFallback = false; current.TintOpacity = tintValue; current.TintLuminosityOpacity = luminosityValue;
+                    }
+                    else current.AlwaysUseFallback = !current.AlwaysUseFallback;
+                    File.WriteAllText(Path.Combine(directory, "fallback.json"), JsonSerializer.Serialize(new {
+                        fallback = current.AlwaysUseFallback, tint = current.TintOpacity, luminosity = current.TintLuminosityOpacity }));
                 }
                 return Task.CompletedTask;
             };
@@ -108,7 +123,7 @@ internal sealed partial class WidgetStylesValidationPage
         {
             page.ApplyAppearance(appearance, false);
             var package = WrssParser.Parse("preview { background-material: " + material + "; background-tint-opacity: " +
-                tint.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; } .acrylic-content { gap: 12px; } text { color: var(--text); }", "acrylic.wrss");
+                tint.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; background-luminosity-opacity: " + luminosity + "; } .acrylic-content { gap: 12px; } text { color: var(--text); }", "acrylic.wrss");
             var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
                 new((WrssDocument[])[package.Document], []), catalog.Load(themeId, "1.0.0").Package).Theme!;
             var source = UI.Button("Preview source", "source", "acrylic.source").PresentOnFocus(

@@ -2,6 +2,27 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Acrylic density correction, 2026-10-19
+
+The user correctly found the enabled Canopy acrylic preview nearly solid. The
+native fixture reproduced the dense appearance with .65 tint and automatic
+WinUI luminosity. `background-luminosity-opacity` now accepts 0–1 or `auto`,
+independently of tint strength. Existing global defaults remain .65/auto;
+the user's local Canopy acrylic variant advances to 1.0.1 with .35 tint and .25
+luminosity. The palette, text opacity and accessibility fallbacks are unchanged.
+
+A compositor capture at `artifacts/pob/acrylic-tuning01/tuned.png` shows more of
+the softened backdrop with those values. **38/38** styling checks and **20**
+native material checks pass, including numeric bounds, non-finite rejection,
+restoring automatic luminosity on the same brush, focus preservation and
+opaque reduced-transparency/high-contrast behavior. Evidence:
+`acrylic-luminosity-styles.binlog` and `acrylic-luminosity-native01/result.json`.
+The full candidate is `cumulative-candidate-20261019-acrylic-luminosity`; the
+local theme is installed/selected through the normal validated package and
+ThemeCatalogMutationPolicy paths. Native acrylic's blur radius remains WinUI-owned;
+this tunes its covering layers rather than changing blur processing or adding
+capture work.
+
 ## Opt-in acrylic preview material, 2026-10-19
 
 Global themes can choose `background-material: standard` or `acrylic` on the

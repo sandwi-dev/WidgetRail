@@ -532,6 +532,14 @@ static void PreviewMaterials()
         Assert.Equal(expected, compiled.Theme!.Resolve(new WrssElement("preview")).Get("background-tint-opacity")!.Number!.Value);
     }
     Assert.True(!Compile("preview { background-tint-opacity: NaN; }").IsValid, "Non-finite tint was accepted");
+    foreach (var (input, expected) in new[] { ("-1", 0d), (".25", .25), ("2", 1d) })
+    {
+        var compiled = Compile($"preview {{ background-luminosity-opacity: {input}; }}");
+        Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
+        Assert.Equal(expected, compiled.Theme!.Resolve(new WrssElement("preview")).Get("background-luminosity-opacity")!.Number!.Value);
+    }
+    Assert.Equal("auto", Compile("preview { background-luminosity-opacity: auto; }").Theme!.Resolve(new WrssElement("preview")).Get("background-luminosity-opacity")!.Text);
+    Assert.True(!Compile("preview { background-luminosity-opacity: NaN; }").IsValid, "Non-finite luminosity was accepted");
 }
 
 static void Clamping()

@@ -1177,6 +1177,7 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 preview {
   background-material: standard;
   background-tint-opacity: .65;
+  background-luminosity-opacity: auto;
   background: var(--surface-raised);
   opacity: 0.92;
   surface-shading: 0.035;
