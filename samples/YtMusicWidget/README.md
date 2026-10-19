@@ -72,7 +72,10 @@ While signing in, **Cancel sign-in** closes the temporary browser session withou
 stopping playback. Music continues when the overlay closes. Windows media controls and
 WidgetRail's Now Playing widget can control the local player.
 
-Search offers whole-entry suggestions from your recent searches and music already loaded in the widget. Typing suggestions does not make extra YouTube requests.
+Search offers YouTube Music suggestions after a short typing pause. Selecting one
+fills the whole search field; Done runs the search. Requests are spaced and cached
+in memory. Recent searches and already-loaded music remain the fallback when the
+service is unavailable or has no suggestions.
 
 <!-- Screenshot: add screenshots/song-radio.png showing Start radio and its resulting queue. -->
 <!-- Screenshot: add screenshots/pinned-player.png showing the compact player beside a game. -->

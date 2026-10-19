@@ -11,18 +11,22 @@ internal sealed partial class WidgetTextEntryDialog
             ??throw new IOException("Completion vocabulary is unavailable.");
         using var reader=new StreamReader(stream);
         var words=new List<string>();
-        while(words.Count<10000&&reader.ReadLine() is {} line)words.Add(line);
+        while(reader.ReadLine() is {} line)words.Add(line);
         return new WordCompletion(words);
     }));
     private bool wordCompletion;
     private WordCompletionContext? completionContext;
 
+    private WordCompletionContext? CaptureCompletionContext() => text is null ? null :
+        WordCompletionContext.Capture(text.Text,text.SelectionStart,text.SelectionLength,
+            inputKind is TextEntryInputKind.Url or TextEntryInputKind.Email);
+
     private void EnableWordCompletion(ViewNode node)
     {
-        if(node.TextEntryInputKind is not (null or TextEntryInputKind.Prose)||node.TextEntrySuggestions is not null||IsLive||protectedInput||text is null||
+        if(node.TextEntryInputKind is not (null or TextEntryInputKind.Prose or TextEntryInputKind.Url or TextEntryInputKind.Email)||node.TextEntrySuggestions is not null||IsLive||protectedInput||text is null||
             CultureInfo.CurrentUICulture.TwoLetterISOLanguageName!="en")return;
         wordCompletion=true;
-        completionContext=WordCompletionContext.Capture(text.Text,text.SelectionStart,text.SelectionLength);
+        completionContext=CaptureCompletionContext();
         EnableSuggestions(node with{TextEntrySuggestions=new("host.english-words",2,5)},async(query,token)=>
         {
             var dictionary=await EnglishWords.Value.WaitAsync(token).ConfigureAwait(false);
@@ -34,7 +38,7 @@ internal sealed partial class WidgetTextEntryDialog
     private void UpdateWordCompletion()
     {
         if(!wordCompletion||text is null||completed||acceptingSuggestion)return;
-        var context=WordCompletionContext.Capture(text.Text,text.SelectionStart,text.SelectionLength);
+        var context=CaptureCompletionContext();
         if(context==completionContext)return;
         completionContext=context;
         // Moving the caret can change the target without changing the prefix.

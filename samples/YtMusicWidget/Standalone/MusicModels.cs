@@ -27,6 +27,7 @@ public interface IMusicService : IAsyncDisposable
     Task CancelSignInAsync(CancellationToken token);
     Task DisconnectAsync(CancellationToken token);
     Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token);
+    Task<IReadOnlyList<string>> SearchSuggestionsAsync(string query, CancellationToken token);
     Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token);
     Task SelectQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token);
     Task RemoveQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token);

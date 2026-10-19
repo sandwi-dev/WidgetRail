@@ -96,8 +96,14 @@ public sealed partial class MusicService : IMusicService
         lock (_gate) { _selection?.Cancel(); _generation++; }
         if (_player is not null) await _player.CallAsync("stop", null, token).ConfigureAwait(false);
         await InitializeAsync(token).ConfigureAwait(false);
-        await _backend!.CallAsync("disconnect", null, token).ConfigureAwait(false);
-        lock (_gate) { _state = MusicState.Empty with { Player = new(Volume: _preferredVolume) }; _originalQueue = []; }
+        var result = await _backend!.CallAsync("disconnect", null, token).ConfigureAwait(false);
+        lock (_gate)
+        {
+            _providerAccountGeneration = result.TryGetProperty("accountGeneration", out var account) ? account.GetInt64() : 0;
+            _ratingAccountChanging = false;
+            _state = MusicState.Empty with { Player = new(Volume: _preferredVolume), RatingGeneration = _ratingEpoch };
+            _originalQueue = [];
+        }
         Changed?.Invoke();
     }
 

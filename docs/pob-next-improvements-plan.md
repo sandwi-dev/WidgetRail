@@ -598,3 +598,15 @@ identity and focus eligibility; duplicate operations are coalesced rather than
 disabling the currently focused control. Native busy/idle identity and focus checks
 cover both players and pins. Spotify's pane and compact pin remain scrollable at
 constrained heights. Final native/controller integration remains separate.
+
+### Completion coverage and music search (2026-10-19)
+
+- [x] Expand the offline vocabulary from 10,000 to all 82,765 supported words in
+  the pinned SymSpell frequency dictionary; retain five-result prefix completion.
+- [x] Enable word completion for URL/email purposes and the browser address/search
+  draft, preserving separators, specialised layouts and widget-provider precedence.
+- [x] Connect YouTube Music's existing suggestion endpoint through the shared
+  suggestion API, with provider-side caching/backoff and local fallback. Selecting
+  a result fills the whole query and does not submit it.
+- [x] Publish the cumulative candidate and install YouTube Music 0.3.43.7. The user
+  requested skipping further physical checks and will perform installed acceptance.

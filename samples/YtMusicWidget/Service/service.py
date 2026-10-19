@@ -47,12 +47,16 @@ def browser_arguments(profile, port):
             "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F"]
 
 
-def make_client(auth):
+def make_client(auth, timeout=None):
     import requests
     from ytmusicapi import YTMusic
     class BoundedSession(requests.Session):
         def request(self, method, url, **kwargs):
-            kwargs.setdefault("timeout", (8, 15))
+            if timeout is not None:
+                # ytmusicapi injects timeout=30 even for a supplied session.
+                kwargs["timeout"] = timeout
+            else:
+                kwargs.setdefault("timeout", (8, 15))
             return super().request(method, url, **kwargs)
     return YTMusic(auth=json.dumps(auth) if auth else None, requests_session=BoundedSession())
 
@@ -355,6 +359,9 @@ class MusicService:
         self.lock = threading.RLock()
         self.auth_gate = threading.Lock()
         self.rating_gate = threading.Lock()
+        self.suggestion_gate = threading.Lock()
+        self.suggestion_cache = {}
+        self.suggestion_next_request = 0.0
         self.auth_cancel = threading.Event()
         self.generation = 0
         self.cache = {}
@@ -396,6 +403,8 @@ class MusicService:
                 self.auth = {}
                 self.generation += 1
                 self.cache.clear()
+                self.suggestion_cache.clear()
+                self.suggestion_next_request = 0.0
                 self.streams.clear()
                 self.stream_keys.clear()
                 self.url_cache.reset(self.auth)
@@ -473,6 +482,8 @@ class MusicService:
                         self.auth = headers
                         self.generation += 1
                         self.cache.clear()
+                        self.suggestion_cache.clear()
+                        self.suggestion_next_request = 0.0
                         self.streams.clear()
                         self.stream_keys.clear()
                         self.url_cache.reset(self.auth)
@@ -498,6 +509,57 @@ class MusicService:
                             pass
                 # Only the newly created, package-owned profile is eligible for deletion.
                 shutil.rmtree(profile, ignore_errors=True)
+
+    def search_suggestions(self, args):
+        query = args.get("query", "")
+        if not isinstance(query, str) or not 2 <= len(query.strip()) <= 96 or len(query) > 96 or any(ord(c) < 32 for c in query):
+            return []
+        query = query.strip()
+        with self.lock:
+            generation = self.generation
+            if args.get("accountGeneration") != generation or self.stopping.is_set():
+                return []
+            key = (generation, query)
+            cached = self.suggestion_cache.get(key)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+        # A cancelled host request may still be finishing in requests. Never
+        # queue autocomplete behind it or occupy additional playback workers.
+        if not self.suggestion_gate.acquire(blocking=False):
+            return []
+        try:
+            with self.lock:
+                if generation != self.generation or self.stopping.is_set() or time.monotonic() < self.suggestion_next_request:
+                    return []
+                self.suggestion_next_request = time.monotonic() + 1.0
+                auth = dict(self.auth)
+            try:
+                values = make_client(auth, timeout=(2, 2)).get_search_suggestions(query)
+                if not isinstance(values, list):
+                    raise ValueError("invalid_suggestions")
+                result, seen = [], set()
+                for value in values[:32]:
+                    if not isinstance(value, str) or not value.strip() or len(value) > 96 or any(ord(c) < 32 for c in value):
+                        continue
+                    if value.casefold() not in seen:
+                        seen.add(value.casefold())
+                        result.append(value)
+                    if len(result) == 6:
+                        break
+            except Exception:
+                with self.lock:
+                    if generation == self.generation:
+                        self.suggestion_next_request = time.monotonic() + 30.0
+                return []  # Quiet local fallback; do not retry each keystroke.
+            with self.lock:
+                if generation != self.generation or self.stopping.is_set():
+                    return []
+                if len(self.suggestion_cache) >= 64 and key not in self.suggestion_cache:
+                    self.suggestion_cache.pop(next(iter(self.suggestion_cache)))
+                self.suggestion_cache[key] = (time.monotonic() + 300.0, result)
+            return result
+        finally:
+            self.suggestion_gate.release()
 
     def browse(self, args):
         kind, value = str(args.get("kind", "")), str(args.get("value", ""))
@@ -747,7 +809,7 @@ class MusicService:
                 if self.prefetch_work is None or self.prefetch_work.done():
                     self.prefetch_work = self.prefetch.submit(self.safe_prefetch, dict(args))
             return {}
-        if method not in {"status", "signin", "cancel_signin", "disconnect", "browse", "resolve", "song_like"}:
+        if method not in {"status", "signin", "cancel_signin", "disconnect", "browse", "resolve", "song_like", "search_suggestions"}:
             raise ValueError("unknown_method")
         return getattr(self, method)(args)
 

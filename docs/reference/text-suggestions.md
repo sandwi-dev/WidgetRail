@@ -172,6 +172,13 @@ even when the prefix is unchanged. No server queries, history learning, automati
 correction or submission occur. Widget-supplied suggestions take priority and
 retain whole-field replacement semantics, including when they return no matches.
 
-`Integer`, `Decimal`, `Url` and `Email` choose specialised layouts and suppress
-word completion. Raw modifier syntax, identifiers and mixed link/file-path fields
+`Url` and `Email` retain their specialised layouts and allow word completion,
+including the browser address/search editor. Completion replaces only the alphabetic
+fragment at the caret, preserving dots, slashes, `@`, underscores and other separators;
+it does not infer domains, validate addresses or navigate. Live webpage editors remain excluded.
+`Integer` and `Decimal` suppress word completion. Raw modifier syntax, identifiers and mixed link/file-path fields
 use explicit `Ordinary`. Input purposes do not replace committed-value validation.
+
+The bundled vocabulary contains 82,765 frequency-ordered English words from
+SymSpell's Google Books/SCOWL-derived dictionary. It loads once on demand; no
+SymSpell library or network access is used. At most five completions are shown.

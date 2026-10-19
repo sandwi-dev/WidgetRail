@@ -2,6 +2,49 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Expanded completion and YouTube Music suggestions, 2026-10-19
+
+Offline completion now uses all 82,765 supported words from the pinned SymSpell
+frequency dictionary. The embedded text is 752,705 bytes (663,755 bytes more than
+the previous vocabulary); compressed installer delta was not measured. A pinned
+regeneration script replaces the arbitrary 10,000-word truncation. Index construction
+took 16.04 ms and allocated 14,024,232 bytes transiently in the test process;
+10,000 mixed lookups took 37.10 ms. This is a focused measurement, not a startup
+or retained-memory benchmark. Loading remains lazy and off the UI thread.
+
+URL/email fields and the browser address/search draft allow word completion while
+keeping their layouts. The alphabetic fragment at the caret is replaced only on
+explicit selection; dots, slashes, underscores and address suffixes are preserved.
+Sensitive/numeric fields, explicit Ordinary opt-out and live webpage editing keep
+their previous policy. Widget-provided suggestions retain precedence.
+
+YouTube Music now uses `get_search_suggestions`, preserving provider order and
+whole-entry semantics. Shared host settings supply two-character minimum, 500 ms
+debounce, 1,000 ms spacing and 4-second timeout. Package-side safeguards supply a
+3-second fallback deadline, one in-flight provider call, five-minute/64-query
+memory cache, 30-second failure backoff, and account-generation checks. Existing
+loaded titles/recent searches remain fallback data. No additional host API was
+needed for music suggestions. Exact remote duplicates are removed case-insensitively.
+
+Checks: 65 shell/keyboard logic tests, 197 native keyboard checks, 41 music C#
+checks and 46 offline Python service checks passed (349 total). Covered punctuation,
+caret placement, no submission on completion, provider precedence/lifecycle,
+cache expiry/bounds, cooldown, overlapping calls, cancellation and account changes.
+Production host publication and its cleanup verifier passed; all 138 deployed
+frontend DLLs match. Canonical YouTube Music package 0.3.43.7 passes all nine
+required asset checks and is installed/enabled with the existing profile retained.
+
+Candidate: `artifacts/pob/cumulative-candidate-20261019-address-completion`.
+Evidence: `address-completion-native.json`, `address-completion-deployed.json`,
+`music-suggestions-final-tests.log`, `music-suggestions-python-qualified.log`,
+`music-suggestions-qualified-package.log`, and `TestResults/expanded-completion.trx`.
+The final review found ytmusicapi injecting a 30-second timeout into supplied
+sessions; suggestion requests now explicitly override it, covered by an offline
+test. Other provider requests retain their existing timeout behavior.
+The user stopped further installed/physical checks before the browser/music
+walkthrough; no live suggestion endpoint call or physical-controller acceptance
+is claimed. Candidate left hidden on the normal profile. No merge/push/release.
+
 ## Default completion and build-name consistency, 2026-10-19
 
 Reproduced the reported missing `sa` suggestions in Saved builds. Its Build name

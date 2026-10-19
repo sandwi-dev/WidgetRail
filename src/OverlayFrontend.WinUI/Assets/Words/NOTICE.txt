@@ -1,6 +1,8 @@
-English completion vocabulary: first 10,000 alphabetic entries (2-24 characters),
+English completion vocabulary: all supported alphabetic entries (2-24 characters),
 in frequency order, from Wolf Garbe's SymSpell frequency_dictionary_en_82_765.txt.
 Retrieved 2026-10-19. No SymSpell algorithm code is included.
+Pinned revision: c239062ae02961df18ab7da1671d01b4388204e0.
+Regenerate with scripts/Update-EnglishCompletionVocabulary.ps1.
 https://github.com/wolfgarbe/SymSpell/blob/master/SymSpell/frequency_dictionary_en_82_765.txt
 
 SymSpell is copyright Wolf Garbe, MIT licensed; see SymSpell-LICENSE.txt.

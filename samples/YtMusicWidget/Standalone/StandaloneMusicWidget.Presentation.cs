@@ -135,7 +135,9 @@ public sealed partial class StandaloneMusicWidget
         var content = new List<WidgetElement>();
         var rows = new List<WidgetElement>();
         if (_tab == "search")
-            content.Add(UI.TextEntry(_query, "Search music — press A to type", "search", "search", 96).Suggest(_suggestionSource).Classes("music-search"));
+            content.Add(UI.TextEntry(_query, "Search music — press A to type", "search", "search", 96)
+                .Suggest(new(_suggestionSource, 2, 6) { DebounceMilliseconds = 500, MinimumRequestIntervalMilliseconds = 1000, TimeoutMilliseconds = 4000 })
+                .Classes("music-search"));
         if (_tab == "library" && _history.Count == 0)
         {
             var filters = new[] { "playlists", "songs", "albums", "artists" }.Select(filter =>

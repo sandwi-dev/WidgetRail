@@ -173,7 +173,7 @@ keypad; URL/email fields put their common punctuation on the main layer. Purpose
 choose presentation, not validation: widgets still validate committed values.
 Browser input type/inputmode selects compatible layouts without changing its DOM.
 
-An omitted kind or explicit `Prose` permits host-local English word completion
+An omitted kind or explicit `Prose`, `Url` or `Email` permits host-local English word completion
 when no widget suggestion source is declared and the UI language is English. It reuses the bounded suggestion
 controller/row, resolves only a prefix at the caret and replaces only that word.
 Selections, technical identifiers, sensitive fields and live browser editors do
@@ -181,7 +181,11 @@ not get this fallback. Widget-supplied suggestions retain whole-entry semantics.
 No typed text is stored in the dictionary or sent to a service. No automatic
 correction or acceptance occurs. Empty results collapse the local suggestion row.
 
-The first prose lookup lazily loads a 10,000-word, frequency-ordered vocabulary
+The first eligible lookup lazily loads an 82,765-word, frequency-ordered vocabulary
 from the embedded resource; lookups use two-letter groups and bounded results.
 Source and license notices are in `Assets/Words`. No prediction engine process,
 model download, package dependency or dictionary request is needed at runtime.
+`scripts/Update-EnglishCompletionVocabulary.ps1` regenerates the resource from a
+pinned upstream revision. URL/email fragments preserve their surrounding address;
+underscores are separators for these purposes while remaining identifier boundaries
+for ordinary prose. The browser address/search draft uses the same URL policy.

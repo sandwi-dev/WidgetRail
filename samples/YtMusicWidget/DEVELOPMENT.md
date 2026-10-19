@@ -166,6 +166,16 @@ this user smoke test; mocked tests do not establish them.
 
 ## Boundaries
 
+Search suggestions use `ytmusicapi.get_search_suggestions`, independently of
+full search and playback. The shared text-entry source requires two characters,
+500 ms debounce, 1,000 ms request spacing and a 4,000 ms host timeout. The adapter
+allows three seconds before returning the local fallback. Python enforces one
+in-flight suggestion request, one second between requests, a five-minute/64-query
+memory cache and 30-second backoff after provider errors. HTTP connect/read timeouts
+are two seconds each. Account changes clear the cache; both boundaries reject
+old-account results. Cancelled IPC calls cannot spawn overlapping provider calls.
+No suggestions are persisted, and selecting a suggestion does not run a search.
+
 Authentication prefers Chrome, with Edge as fallback, and uses an isolated temporary
 profile with an explicit nonzero loopback debugging port. Port zero is avoided
 because Chromium uses it as an automation signal. Session data is

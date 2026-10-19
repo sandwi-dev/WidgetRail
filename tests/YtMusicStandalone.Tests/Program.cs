@@ -148,7 +148,9 @@ var tests = new List<(string, Func<Task>)>
     ("Library controls stay in one row, Home keeps sections, and player hides scrollbar", BrowsePresentation),
     ("Queue refreshes after background changes without resetting on playback ticks", QueueRefresh),
     ("Queue membership preserves surviving row identities and exposes occurrence removal", QueueContinuity),
-    ("Music suggestions use loaded names and recent searches without provider calls", LocalSuggestions),
+    ("Music suggestions retain loaded names and recent searches as fallback without browsing", LocalSuggestions),
+    ("Provider search suggestions preserve ranking, fall back, and reject cancelled or retired requests", RemoteSuggestions),
+    ("Suggestion adapter binds account identity, rejects late replies and permits timeout fallback", SearchSuggestionTests.Run),
     ("Queue entry reveals the playing occurrence once without row focus", QueueEntryReveal),
     ("Song liking uses existing menus and updates every occurrence after acknowledgement", SongLikePresentation),
     ("Scrubber commands convert milliseconds to player seconds", SeekUnits),
@@ -813,6 +815,37 @@ static async Task QueueContinuity()
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
 
+static async Task RemoteSuggestions()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        await widget.OnActionAsync(new("tab.search", "test"));
+        var field = Nodes(widget.Render().CreateSnapshot("suggest", 1).Root).Single(node => node.Id == "search");
+        var source = field.TextEntrySuggestions!;
+        Check(source.MinimumLength == 2 && source.DebounceMilliseconds == 500 && source.MinimumRequestIntervalMilliseconds == 1000,
+            "Provider requests lack typing delay or spacing");
+        var query = new TextSuggestionQuery("search", source.Key, "11111111111111111111111111111111", 1, "Song", 6, 96);
+        service.Suggestions = (_, _) => Task.FromResult<IReadOnlyList<string>>(["Corrected query", "Song artist", "Song artist", "bad\nvalue"]);
+        var result = await widget.OnSuggestTextAsync(query, default);
+        Check(result.Items.Select(item => item.Value).SequenceEqual(new[] { "Corrected query", "Song artist" }), "Provider ordering, correction or sanitization lost");
+        service.Suggestions = (_, _) => throw new IOException("Offline");
+        Check((await widget.OnSuggestTextAsync(query, default)).Items.Count > 0, "Offline provider lost local fallback");
+        var pending = new TaskCompletionSource<IReadOnlyList<string>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.Suggestions = (_, _) => pending.Task;
+        using var cancel = new CancellationTokenSource();
+        var canceled = widget.OnSuggestTextAsync(query, cancel.Token).AsTask();
+        cancel.Cancel();pending.SetResult(["Late result"]);
+        try { await canceled; throw new Exception("Canceled suggestion returned"); } catch (OperationCanceledException) { }
+        pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retired = widget.OnSuggestTextAsync(query, default).AsTask();
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        pending.SetResult(["Late result"]);
+        Check((await retired).Unavailable, "Provider result outlived search page");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
 static async Task LocalSuggestions()
 {
     var (widget, service) = await Start();
@@ -1015,6 +1048,9 @@ sealed class FakeService : IMusicService
     public readonly System.Collections.Concurrent.ConcurrentBag<string> Commands = [];
     public readonly System.Collections.Concurrent.ConcurrentBag<MusicItem> NextSongs = [];
     public Task InitializeAsync(CancellationToken token) => Task.CompletedTask;
+    public Func<string, CancellationToken, Task<IReadOnlyList<string>>>? Suggestions;
+    public Task<IReadOnlyList<string>> SearchSuggestionsAsync(string query, CancellationToken token) =>
+        Suggestions?.Invoke(query, token) ?? Task.FromResult<IReadOnlyList<string>>([]);
     public Task<string> SignInAsync(CancellationToken token) { AuthCalls++; AuthToken = token; return PendingAuth?.Task.WaitAsync(token) ?? Task.FromResult("Connected"); }
     public Task CancelSignInAsync(CancellationToken token) { CancelCalls++; return Task.CompletedTask; }
     public Task DisconnectAsync(CancellationToken token) { State = MusicState.Empty; Changed?.Invoke(); return Task.CompletedTask; }

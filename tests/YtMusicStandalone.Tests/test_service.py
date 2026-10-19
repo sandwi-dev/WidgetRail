@@ -133,6 +133,73 @@ class ServiceTests(unittest.TestCase):
         self.service.close()
         self.directory.cleanup()
 
+    def test_suggestions_are_cached_bounded_and_rate_limited(self):
+        class Fake:
+            def get_search_suggestions(self, query):
+                return [query + " song", query + " song", "bad\nentry", 123] + [query + str(i) for i in range(20)]
+        with patch.object(music, "make_client", return_value=Fake()) as client, patch.object(music.time, "monotonic", return_value=100) as clock:
+            args = {"query": "fade", "accountGeneration": 0}
+            result = self.service.handle("search_suggestions", args)
+            self.assertEqual(6, len(result))
+            self.assertEqual("fade song", result[0])
+            self.assertEqual(result, self.service.search_suggestions(args))
+            self.assertEqual([], self.service.search_suggestions(dict(args, query="other")))
+            self.assertEqual(1, client.call_count)
+            client.assert_called_with({}, timeout=(2, 2))
+            for i in range(70):
+                clock.return_value = 102 + i * 2
+                self.service.search_suggestions(dict(args, query="query" + str(i)))
+            self.assertEqual(64, len(self.service.suggestion_cache))
+            clock.return_value = 500
+            before = client.call_count
+            self.service.search_suggestions(dict(args, query="query69"))
+            self.assertEqual(before, client.call_count)
+            clock.return_value = 550
+            self.service.search_suggestions(dict(args, query="query69"))
+            self.assertEqual(before + 1, client.call_count)
+
+    def test_suggestions_failure_backs_off_and_does_not_cache_errors(self):
+        with patch.object(music, "make_client", side_effect=OSError("offline")) as client, patch.object(music.time, "monotonic", return_value=100) as clock:
+            args = {"query": "fade", "accountGeneration": 0}
+            self.assertEqual([], self.service.search_suggestions(args))
+            clock.return_value = 110
+            self.assertEqual([], self.service.search_suggestions(args))
+            self.assertEqual(1, client.call_count)
+            self.assertEqual({}, self.service.suggestion_cache)
+            clock.return_value = 131
+            self.service.search_suggestions(args)
+            self.assertEqual(2, client.call_count)
+
+    def test_suggestions_do_not_overlap_or_survive_account_changes(self):
+        service = self.service
+        class Fake:
+            def get_search_suggestions(self, query):
+                self.assertion = service.search_suggestions({"query": "another", "accountGeneration": 0})
+                service.disconnect({})
+                return ["old account suggestion"]
+        fake = Fake()
+        with patch.object(music, "make_client", return_value=fake) as client:
+            self.assertEqual([], service.search_suggestions({"query": "fade", "accountGeneration": 0}))
+            self.assertEqual([], fake.assertion)
+            self.assertEqual({}, service.suggestion_cache)
+            self.assertEqual([], service.search_suggestions({"query": "fade", "accountGeneration": 0}))
+            self.assertEqual(1, client.call_count)
+
+    def test_invalid_suggestion_queries_never_call_provider(self):
+        with patch.object(music, "make_client") as client:
+            for query in ("", "f", "  f  ", "a" * 97, "hello\nworld", None, 5):
+                self.assertEqual([], self.service.search_suggestions({"query": query, "accountGeneration": 0}))
+            client.assert_not_called()
+
+    def test_suggestion_timeout_overrides_the_library_default(self):
+        with patch("ytmusicapi.YTMusic", side_effect=lambda **kwargs: kwargs["requests_session"]), patch("requests.Session.request") as request:
+            client = music.make_client({}, timeout=(2, 2))
+            try:
+                client.request("POST", "https://example.invalid", timeout=30)
+                self.assertEqual((2, 2), request.call_args.kwargs["timeout"])
+            finally:
+                client.close()
+
     def test_song_like_reads_exact_track_and_preserves_unknown(self):
         self.service.auth = {"cookie": "synthetic"}
         class Fake:

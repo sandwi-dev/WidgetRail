@@ -57,6 +57,25 @@ internal sealed partial class TextEntryValidationPage
         try
         {
             System.Globalization.CultureInfo.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("en-US");
+            foreach (var addressKind in new[] { TextEntryInputKind.Url, TextEntryInputKind.Email })
+            {
+                purpose=addressKind;
+                value=addressKind==TextEntryInputKind.Url?"https://example.com/hel?keep=yes":"first_hel+tag@example.com";
+                Apply();await Open();
+                dialog=(WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;editor=(TextBox)Editor();
+                var start=value.IndexOf("hel",StringComparison.Ordinal);
+                editor.Select(start+3,0);
+                var addressDeadline=Environment.TickCount64+6000;
+                while(!dialog.CanAcceptFirstSuggestion){if(Environment.TickCount64>addressDeadline)throw new TimeoutException("Address completion did not appear");await Task.Delay(20);}
+                var addressSuggestion=(Button)FindDialog("Widget.TextEntry.Suggestion.0")!;
+                var addressWord=((Grid)addressSuggestion.Content).Children.OfType<TextBlock>().Single().Text;
+                var beforeActions=actions.Count;
+                await presenter.HandleControllerButtonAsync(ControllerButton.LeftStick);
+                Check(editor.Text==value[..start]+addressWord+value[(start+3)..],addressKind+" completion preserves address separators and surrounding text");
+                Check(editor.SelectionStart==start+addressWord.Length&&actions.Count==beforeActions,addressKind+" completion does not submit or navigate");
+                Check(((Button)FindDialog("Widget.TextEntry.Key.37")!).Content?.ToString()==(addressKind==TextEntryInputKind.Url?":":"@"),addressKind+" completion preserves the address keyboard layout");
+                await presenter.HandleControllerButtonAsync(ControllerButton.B);await Closed();
+            }
             purpose=null;value="Twister · Gemling Legionnaire ";Apply();await Open();
             dialog=(WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
             foreach (var index in new[] { 21, 20 })

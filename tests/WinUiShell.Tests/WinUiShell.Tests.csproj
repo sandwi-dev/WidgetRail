@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\src\OverlayFrontend.WinUI\Assets\Words\english.txt" LogicalName="WidgetRail.EnglishWords" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\WordCompletion.cs" Link="WordCompletion.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\FocusPreviewDelayState.cs" Link="FocusPreviewDelayState.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ContentSizedPresentationState.cs" Link="ContentSizedPresentationState.cs" />

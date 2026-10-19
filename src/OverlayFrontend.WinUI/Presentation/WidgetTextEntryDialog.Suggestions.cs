@@ -26,7 +26,7 @@ internal sealed partial class WidgetTextEntryDialog
     private double suggestionTargetHeight = -1, suggestionAvailableHeight = double.PositiveInfinity;
     internal bool SuggestionsFocused => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Button button && suggestionButtons.Contains(button);
     internal bool CanAcceptFirstSuggestion => !completed && !IsSensitive && suggestionView is { Items.Count: > 0, Selectable: true } state &&
-        (!wordCompletion || text is not null && completionContext == WordCompletionContext.Capture(text.Text, text.SelectionStart, text.SelectionLength)) &&
+        (!wordCompletion || text is not null && completionContext == CaptureCompletionContext()) &&
         state.Text == (wordCompletion?completionContext?.Prefix:text?.Text) && suggestions?.IsCurrent(state) == true;
 
     internal void EnableSuggestions(ViewNode node, Func<TextSuggestionQuery, CancellationToken, Task<TextSuggestionResult>> query)
@@ -236,7 +236,7 @@ internal sealed partial class WidgetTextEntryDialog
             text.Text = edit.Value.Value; text.Select(edit.Value.Caret, 0);
         }
         finally { acceptingSuggestion = false; }
-        if(wordCompletion)completionContext=WordCompletionContext.Capture(text.Text,text.SelectionStart,text.SelectionLength);
+        if(wordCompletion)completionContext=CaptureCompletionContext();
         keyboardInputStarted = true;
         (rememberedKey ?? DefaultKey).Focus(FocusState.Keyboard);
         RefreshCaret();
