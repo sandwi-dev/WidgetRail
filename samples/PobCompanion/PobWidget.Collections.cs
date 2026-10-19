@@ -7,14 +7,12 @@ public sealed partial class PobWidget
 {
     private sealed record ListEntry(string Key,string Label,string Action,bool Selected=false);
     private sealed record ListQuery(string Context,ListEntry[] Entries);
-    private ListQuery passiveQuery=new("",[]),libraryQuery=new("",[]);
-    private WidgetIndexedCollection<ListQuery,ListEntry>? passives,library;
-    private PobResult? passiveResult;
-    private string? passiveFilter,passiveReturnKey;
+    private ListQuery libraryQuery=new("",[]);
+    private WidgetIndexedCollection<ListQuery,ListEntry>? library;
     private bool libraryOpenFocusRequested;
 
-    private WidgetIndexedCollection<ListQuery,ListEntry> CreateList(string id,bool isPassive)=>
-        CreateIndexedCollection<ListQuery,ListEntry>(id,isPassive?passiveQuery:libraryQuery,0,new()
+    private WidgetIndexedCollection<ListQuery,ListEntry> CreateLibraryList()=>
+        CreateIndexedCollection<ListQuery,ListEntry>("pob.saved-source",libraryQuery,0,new()
         {
             ReadRange=(query,start,count,token)=>
             {
@@ -22,39 +20,21 @@ public sealed partial class PobWidget
                 return ValueTask.FromResult<IReadOnlyList<ListEntry>>(query.Entries.Skip(start).Take(count).ToArray());
             },
             ItemKey=entry=>new(entry.Key),
-            RenderItem=(_,entry,context)=>isPassive?UI.Button(entry.Label,"open",context.Id("entry")).Classes("pob-button").PresentOnFocus(entry.Key):
-                UI.Button(entry.Label,"open",context.Id("entry")).Selected(entry.Selected).FocusRight("pob.library.detail").Classes("pob-button"),
+            RenderItem=(_,entry,context)=>UI.Button(entry.Label,"open",context.Id("entry")).Selected(entry.Selected).FocusRight("pob.library.detail").Classes("pob-button"),
             OnAction=(query,entry,action,token)=>
             {
                 lock(gate)
                 {
-                    if(!ReferenceEquals(query,isPassive?passiveQuery:libraryQuery)||action.ActionId!="open"||busy||pendingBefore is not null)
+                    if(!ReferenceEquals(query,libraryQuery)||action.ActionId!="open"||busy||pendingBefore is not null)
                         return ValueTask.CompletedTask;
-                    if(isPassive)passiveReturnKey=entry.Key;
                     return OnActionAsync(action with {ActionId=entry.Action},token);
                 }
             },
         });
 
-    private WidgetElement PassiveList()
-    {
-        passives??=CreateList("pob.passive-source",true);
-        if(!ReferenceEquals(passiveResult,result)||passiveFilter!=filter)
-        {
-            var entries=A(State,"nodes").Where(n=>B(n,"interactive")&&(filter.Length>0
-                ? (S(n,"name")+" "+S(n,"description")).Contains(filter,StringComparison.OrdinalIgnoreCase):B(n,"allocated")||B(n,"granted")))
-                .Select(n=>new ListEntry("node."+I(n,"id"),S(n,"name"),"node."+I(n,"id"))).ToArray();
-            var next=new ListQuery(documentId+":"+S(State,"treeVersion")+":"+filter,entries);
-            var same=passiveQuery.Context==next.Context&&passiveQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));
-            passiveQuery=next;passiveResult=result;passiveFilter=filter;
-            if(same)passives.UpdateContent(next);else passives.PublishQuery(next,entries.Length);
-        }
-        return WithPassivePreviews(UI.CollectionList("pob.passives",passives,64,"Passive skill results").Classes("pob-scroll"));
-    }
-
     private WidgetElement LibraryWorkspace()
     {
-        library??=CreateList("pob.saved-source",false);
+        library??=CreateLibraryList();
         if(libraryClass.Length>0&&!LibraryClasses().Contains(libraryClass))libraryClass="";
         var builds=savedBuilds.Where(b=>(b.Name+" "+libraryMetadata.GetValueOrDefault(b.Id).Class+" "+libraryMetadata.GetValueOrDefault(b.Id).Ascendancy).Contains(librarySearch,StringComparison.OrdinalIgnoreCase)&&
             (libraryClass.Length==0||libraryMetadata.GetValueOrDefault(b.Id).Class==libraryClass));

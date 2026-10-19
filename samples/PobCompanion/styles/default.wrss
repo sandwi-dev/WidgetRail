@@ -55,6 +55,9 @@ text { color: var(--text); text-align: start; }
 .pob-list-item { padding: 8px 10px; min-height: 48px; gap: 4px; text-align: start; align: start; background: var(--surface); border-color: transparent; border-width: 1px; corner-radius: 8px; }
 .pob-list-item:selected { background: var(--surface-raised); border-color: transparent; }
 .pob-list-item:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.pob-list-item.pob-passive-child { padding:8px 10px 8px 26px; background:transparent; }
+.pob-list-item.pob-passive-entry, .pob-list-item.pob-passive-child { align:stretch; text-align:start; }
+.pob-passive-heading { width:100%; min-width:0px; }
 .wrail-tile__content { flex-grow: 1; min-width: 0px; gap: 5px; }
 .wrail-tile__title { color: var(--text); font-size: 15px; font-weight: 600; max-lines: 2; text-overflow: ellipsis; }
 .wrail-tile__subtitle { color: var(--text-muted); font-size: 12px; max-lines: 2; }

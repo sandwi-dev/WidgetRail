@@ -90,8 +90,8 @@ internal static class RowPreviewTests
                     var selection=Get("detailId");
                     using var preview=await host.AcquirePreviewAsync(surface.Id,row.Key);
                     var content=preview.Range.Items.Single().Root;
-                    var node=passiveNodes.Single(node=>"node."+node.GetProperty("id").GetInt32()==row.Key);
-                    check(Nodes(content).Any(n=>n.Text==node.GetProperty("name").GetString())&&Nodes(content).Any(n=>n.Kind==ViewNodeKind.RichText),
+                    var entry=((PobWidget.PassiveQuery)Get("passiveQuery")!).Entries.Single(entry=>entry.Key==row.Key);
+                    check(Nodes(content).Any(n=>n.Text==entry.Name)&&(entry.IsGroup||Nodes(content).Any(n=>n.Kind==ViewNodeKind.RichText)),
                         "Passive preview resolves exact node identity and formatted description: "+row.Key);
                     check(ReferenceEquals(passiveBuild,Get("result"))&&Equals(selection,Get("detailId"))&&!Nodes(content).Any(n=>n.ActionId is not null||n.Shortcuts.Count>0)&&row.Root.ActionId=="open",
                         "Reading a passive keeps A navigation and does not allocate or select it");

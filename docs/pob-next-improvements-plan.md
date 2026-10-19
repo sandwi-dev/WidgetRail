@@ -22,7 +22,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 ## Implementation order and tracking
 
 Current acceptance checkpoint (2026-10-19): the cumulative candidate is running
-hidden with the normal profile, PoE1/PoE2 packages **0.1.4.31**, YouTube Music
+hidden with the normal profile, PoE1/PoE2 packages **0.1.4.32**, YouTube Music
 **0.3.43.7**, Spotify **0.3.90.2** and a quiet responsive toolbar.
 Trade-session actions are separate from build/history controls. Configuration fits 11 options
 instead of 6 at the same viewport, comparisons use aligned named columns, and
@@ -585,7 +585,7 @@ acceptance remains theirs.
 - League discovery caches the successful list in memory for the widget instance. Reopening equipment searches reuses it; a fresh instance after restart/unloading or explicit Refresh leagues fetches again. No timer, expiry or disk cache. The first returned league is the default; explicit saved selections are retained while available, and removed selections fall back to the first returned entry.
 - Floating selected-node name badge removed; selection outline and hover details retained.
 - PoB documentation split into [overview](../samples/PobCompanion/README.md), [user guide](../samples/PobCompanion/USER_GUIDE.md) and [developer documentation](../samples/PobCompanion/DEVELOPMENT.md).
-- Grouping duplicate passive names into expandable rows was discussed earlier. It is not yet part of the implementation scope. If revisited, preserve distinct node identities and investigate a reusable flattened virtualized-list pattern rather than assuming nested expandable lists exist.
+- Duplicate passive names now form initially collapsed groups in the existing flat virtualized list. A expands/collapses headers; individual children keep exact node identity, previews and navigation. Counts reflect filtered nodes. Expansion is remembered for the current session per build/tree (bounded to 32 contexts), and Back reveals the selected node. Group previews distinguish identical effects from differing effects without summing them. No nested scroll container or host change was needed.
 
 ## Efficient verification strategy
 

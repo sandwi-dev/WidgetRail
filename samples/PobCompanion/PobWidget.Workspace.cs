@@ -333,7 +333,7 @@ public sealed partial class PobWidget
                         (S(n,"name"), S(n,"name")+" "+S(n,"description"), S(n,"description")))).Classes("pob-input"),
                 Text("Search by name or modifier, including unallocated nodes.","tree.searchhint","pob-small pob-muted")).Classes("pob-buildtools"),
                 "pob.search","pob.tree.results","Passives",quick));
-            side.Add(Text($"{(filter.Length==0?"Allocated and granted passives":"Search results")} · {passiveQuery.Entries.Length}","tree.count","pob-muted"));
+            side.Add(Text($"{(filter.Length==0?"Allocated and granted passives":"Search results")} · {passiveQuery.NodeCount} nodes","tree.count","pob-muted"));
             side.Add(QuickControls(UI.Stack("pob.tree.results",list).Classes("pob-workspace"),
                 "pob.passives","pob.tree.search-controls","Search",quick));
         }

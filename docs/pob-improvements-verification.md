@@ -2,6 +2,34 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Expandable passive-name groups, 2026-10-19
+
+Repeated passive names now appear as collapsed group headers with matching-node
+counts. A toggles expansion inline in one flat virtualized list. Children retain
+stable node IDs, individual read-only previews, allocation-state labels and
+upstream allocation-path counts. Unique matches remain directly selectable.
+The total above the list counts nodes, not headers/visible rows. Group summaries
+show allocated/granted/unallocated counts; shared effects appear only when exact
+formatted descriptions match, never as a summed effect.
+
+Expansion is session-local per build, tree version and active tree slot, bounded
+to 32 contexts. Filtering preserves expansion. Group toggles explicitly restore
+header focus, while Back from details expands/reveals the exact child. Returning
+from an externally opened unallocated node adjusts the filter only when needed
+to make it visible. Stale rows check query, build, document/tree, filter, current
+page, lifecycle and pending-work authority. Passive behavior is separated from
+the saved-build list; host collection, focus and preview APIs are unchanged.
+
+Validation: **532 checks passed** across both games: row-preview/grouping 56 each,
+unified search 90 each, quick controls 120 each. Includes expansion/collapse,
+exact child return, quick-control focus precedence, stale child rejection,
+filtering, independent document/tree expansion, mixed effects and unchanged XML.
+Release build and both package/WRSS validations pass. Evidence:
+`artifacts/pob/passive-grouping-*-final.log`, `passive-grouping-build-qualified.binlog`,
+`passive-grouping-packaging.log`. Both packages: **0.1.4.32**, under
+`passive-grouping-packages-20261019`. No new physical/native visual checks or live
+service calls; physical acceptance remains with the user under their waiver.
+
 ## Passive list rich previews, 2026-10-19
 
 Allocated/granted passive lists and passive search results now expose deferred,

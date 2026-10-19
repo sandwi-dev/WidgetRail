@@ -5,7 +5,7 @@ namespace WidgetRail.Samples.PobCompanion;
 
 public sealed partial class PobWidget
 {
-    private sealed record PassivePreviewContext(ListQuery Query,PobResult Build,string? Document);
+    private sealed record PassivePreviewContext(PassiveQuery Query,PobResult Build,string? Document);
     private PassivePreviewContext? passivePreviewContext;
     private WidgetFocusPreviewSource<PassivePreviewContext>? passivePreviews;
 
@@ -20,10 +20,8 @@ public sealed partial class PobWidget
                 Resolve=(context,key,token)=>
                 {
                     token.ThrowIfCancellationRequested();
-                    if(!key.StartsWith("node.",StringComparison.Ordinal)||!int.TryParse(key[5..],out var id)||!context.Query.Entries.Any(entry=>entry.Key==key))
-                        throw new ArgumentException("Unknown passive preview key.");
-                    var node=A(context.Build.State,"nodes").Single(node=>I(node,"id")==id);
-                    return ValueTask.FromResult(PassivePreview(node));
+                    var entry=context.Query.Entries.SingleOrDefault(entry=>entry.Key==key)??throw new ArgumentException("Unknown passive preview key.");
+                    return ValueTask.FromResult(entry.IsGroup?PassiveGroupPreview(entry):PassivePreview(entry.Nodes[0]));
                 },
             });
             else passivePreviews.Publish(passivePreviewContext);
@@ -36,17 +34,38 @@ public sealed partial class PobWidget
     {
         var prefix="passive-preview."+I(node,"id");
         var rows=new List<WidgetElement>{Text(S(node,"name"),prefix+".title","pob-preview-title pob-gold")};
-        rows.Add(Text(B(node,"granted")?"Granted":B(node,"allocated")?"Allocated":"Unallocated",prefix+".state","pob-preview-meta"));
+        rows.Add(Text(PassiveState(node),prefix+".state","pob-preview-meta"));
+        AddPassivePreviewDescription(rows,node,prefix);
+        if(S(node,"socketedItem").Length>0)rows.Add(Text("Socketed: "+S(node,"socketedItem"),prefix+".socket","pob-preview-meta"));
+        if(B(node,"canChoose"))rows.Add(Text("Effect choice available",prefix+".choice","pob-preview-meta"));
+        if(!B(node,"allocated")&&!B(node,"granted")&&B(node,"canAllocate")&&I(node,"pathCount")>0)
+            rows.Add(Text("Allocation path: "+I(node,"pathCount")+" node(s)",prefix+".path","pob-preview-meta"));
+        return UI.Stack("pob."+prefix,rows.ToArray()).Classes("pob-preview-content");
+    }
+
+    private static void AddPassivePreviewDescription(List<WidgetElement> rows,JsonElement node,string prefix)
+    {
         var paragraphs=DescriptionParagraphs(node);
         foreach(var (paragraph,index) in paragraphs.Take(6).Select((paragraph,index)=>(paragraph,index)))
             AddRuns(rows,SummaryRuns(paragraph,600),prefix+".description."+index,"pob-text");
         if(paragraphs.Count==0)rows.Add(Text("No passive effect description supplied.",prefix+".empty","pob-preview-meta"));
         if(paragraphs.Count>6||paragraphs.Any(paragraph=>paragraph.Sum(run=>run.Text.Length)>600))
             rows.Add(Text("Open passive for the full description",prefix+".more","pob-preview-meta"));
-        if(S(node,"socketedItem").Length>0)rows.Add(Text("Socketed: "+S(node,"socketedItem"),prefix+".socket","pob-preview-meta"));
-        if(B(node,"canChoose"))rows.Add(Text("Effect choice available",prefix+".choice","pob-preview-meta"));
-        if(!B(node,"allocated")&&!B(node,"granted")&&B(node,"canAllocate")&&I(node,"pathCount")>0)
-            rows.Add(Text("Allocation path: "+I(node,"pathCount")+" node(s)",prefix+".path","pob-preview-meta"));
+    }
+
+    internal static WidgetElement PassiveGroupPreview(PassiveEntry group)
+    {
+        var prefix="passive-preview."+group.Key;
+        var states=group.Nodes.GroupBy(PassiveState).Select(state=>state.Count()+" "+state.Key.ToLowerInvariant());
+        var rows=new List<WidgetElement>{Text(group.Name,prefix+".title","pob-preview-title pob-gold"),
+            Text(group.Nodes.Length+" matching nodes · "+string.Join(" · ",states),prefix+".state","pob-preview-meta")};
+        var first=ReadFormattedRuns(group.Nodes[0],"description","descriptionRuns");
+        if(group.Nodes.All(node=>ReadFormattedRuns(node,"description","descriptionRuns").SequenceEqual(first)))
+        {
+            rows.Add(Text("Shared effect per node",prefix+".shared","pob-eyebrow pob-muted"));
+            AddPassivePreviewDescription(rows,group.Nodes[0],prefix);
+        }
+        else rows.Add(Text("Effects differ between these nodes. Expand the group to inspect each passive.",prefix+".different","pob-preview-meta"));
         return UI.Stack("pob."+prefix,rows.ToArray()).Classes("pob-preview-content");
     }
 }

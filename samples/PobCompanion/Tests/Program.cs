@@ -64,7 +64,7 @@ if(args.Length==5)
     var fixture=Directory.EnumerateFiles(fixtures,"*.xml").OrderBy(path=>path,StringComparer.Ordinal).First();
     var workXml=await BuildDocument.ReadAsync(fixture,game,default);
     if(args[4]=="--similar-only"){await SimilarSearchTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);await SimilarWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);}
-    else if(args[4]=="--row-previews-only")await RowPreviewTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    else if(args[4]=="--row-previews-only"){await RowPreviewTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);await PassiveGroupingTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);}
     else if(args[4]=="--render-resilience-only")await RenderingResilienceTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--ranking-settings-only")await RankingSettingsTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--disclosures-only") await DisclosureWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
@@ -333,6 +333,14 @@ if(firstXml is not null)
         var row=lease.Range.Items[1];
         Check(lease.Range.Items.Count==3,"Passive collection reads only its requested offscreen range");
         Check(lease.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Offscreen passive action is admitted through its captured row lease");
+        if(row.Key.StartsWith("group.",StringComparison.Ordinal))
+        {
+            for(var n=0;n<100&&Nodes(collectionHost.PublishSnapshot().Root).Single(v=>v.Id=="pob.passives").IndexedCollection!.QueryGeneration==list.IndexedCollection!.QueryGeneration;n++)await Task.Delay(20);
+            using var children=await collectionHost.AcquireAsync("pob.passives",11,1);
+            var child=children.Range.Items.Single();
+            Check(child.Key.StartsWith("node.",StringComparison.Ordinal)&&children.RouteAction(child.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"A grouped offscreen result expands before its exact child opens");
+            for(var n=0;n<100&&!Nodes(collectionHost.PublishSnapshot().Root).Any(v=>v.Id=="pob.node.name");n++)await Task.Delay(20);
+        }
         for(var n=0;n<100&&!Nodes(collectionHost.PublishSnapshot().Root).Any(v=>v.Id=="pob.node.name");n++)await Task.Delay(20);
         Check(Nodes(collectionHost.CurrentSnapshot.Root).Any(v=>v.Id=="pob.node.name"),"Leased passive action opens its inspector");
         await widget.OnActionAsync(new("back","pob.back"));
