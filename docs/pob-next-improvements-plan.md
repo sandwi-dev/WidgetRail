@@ -2,19 +2,19 @@
 
 Last updated: 2026-10-18
 
-**Status: pending follow-ups resumed on 2026-10-18 by explicit user instruction.** The planning hold is lifted for the approved visual/density, shared preview/scroll-cue, comparison and search follow-ups. Prior implementation and evidence remain the baseline; preserve exclusions and separate physical/service acceptance limits. Follow-up sections are now authorized for implementation even where they record the earlier hold.
+**Status: approved follow-up implementation and scoped verification complete (2026-10-18).** The visual/density, shared preview/scroll-cue, comparison and search changes are delivered in the cumulative candidate. Unchecked acceptance items retain physical, service or environment limits recorded below; they are not implied complete by implementation status.
 
 This plan covers the next round of PoE1 and PoE2 widget improvements discussed after reviewing PoB Redux. It supplements the [existing trade plan](pob-trade-completion-plan.md); it does not restart completed work or reopen deferred CI repairs.
 
 ## Implementation order and tracking
 
-Current acceptance checkpoint (2026-10-18): independent implementation and the
-scoped deterministic/native verification are complete for this handoff. Candidate
-**j** was last relaunched hidden with the normal profile and controller input; PoE1/PoE2 are
-**0.1.4.11** and YouTube Music is **0.3.43.3**. Final fixes cover long reading-block
-word boundaries, unavailable music entries, stale account results and light-theme
-options-glyph ink. Both installed games pass item/skill editing and Notes flows;
-the named cross-app pass and 269 populated-queue checks are recorded in the ledger.
+Current acceptance checkpoint (2026-10-18): candidate **k** contains the cumulative
+host changes, with PoE1/PoE2 packages **0.1.4.13**. Configuration now fits 11 options
+instead of 6 at the same viewport, comparisons use aligned named columns, and
+inspections fit their content. Search retains query/category/selected identity;
+the Tree RS and Skills LS handoffs pass installed native checks. Unique-library
+previews include three bounded upstream modifier lines loaded with the catalogue.
+See the latest verification-ledger entry for launch evidence and limitations.
 
 Unchecked compound acceptance items below retain their physical or unavailable
 environment/service portions. Authenticated Spotify actions, physical controller
@@ -84,22 +84,22 @@ The implementation reuses the host's `FillAvailable` height and preferred-width 
 
 Follow the architecture cleanup and dimension adjustment. Increase useful information per page and reduce navigation without making the interface difficult to read from a couch. Apply the same principles to subsequent new screens, then repeat the affected visual checks.
 
-### Planned follow-up: broader PoB visual hierarchy and density
+### Implemented follow-up: broader PoB visual hierarchy and density
 
-**Implementation resumed (2026-10-18).** The user finds the
+**Implemented and scoped native checks completed (2026-10-18).** The user finds the
 PoB Redux reference more readable and visually polished. Modifier rich text and
 isolated compact controls have not sufficiently improved the overall widget:
 most other content has similar visual emphasis, and too little useful information
 fits on a page. The previously checked layout changes below record delivered
 slices, not acceptance of the overall density or visual design.
 
-- [ ] Revisit the supplied Redux references for information hierarchy, grouping and useful information visible at once. Adapt those principles to controller/couch use rather than copying desktop-sized controls or claiming that two panes alone satisfy the design goal.
-- [ ] Establish consistent semantic emphasis across the PoB screens: clear section headings, primary values, secondary context, interactive actions, selected state, warnings and comparison changes. Use existing theme roles, typography, restrained surface differences and spacing together. Avoid arbitrary rainbow styling, a new hard-coded palette or making every important element the accent color. Preserve upstream modifier meaning; do not invent gameplay semantics for colors.
-- [ ] Apply that hierarchy beyond modifier text to overview statistics, equipment and gem lists, configuration, calculations, search results, comparisons and inspection panels. Keep secondary information readable from the couch; color must supplement labels/icons rather than become the only way to interpret a value or state. Preserve light/dark/high-contrast behavior and unmistakable focus.
-- [ ] Perform a genuine density pass across these screens: remove unnecessary nested cards, repeated labels/context, oversized row padding, redundant headings and fixed-height empty space. Place related short values and controls on shared rows with consistent alignment; use columns when they improve comparison. Use selective disclosure for secondary information without hiding information needed for the immediate decision or adding extra navigation to routine actions.
-- [ ] Correct excessive Configuration spacing shown in `codex-clipboard-5d499d5b-a3dc-436f-9dc6-b43480b63c20.png` (2026-10-18). Source inspection shows every option wrapped in `.pob-setting` with 12px top/bottom padding, inside a `.pob-panel` with 12px between children: adjacent single-control rows therefore have approximately 36 logical pixels of empty separation. This is widget-authored spacing, not an upstream PoB requirement. Reduce redundant wrapper spacing for simple options while retaining readable explanation/validation groups, comfortable control heights, and distinct section boundaries. Verify explanations both shown and hidden, mixed control types, scaling and focus navigation when implementation resumes.
-- [ ] Preserve readable type, practical controller/pointer targets, text/interface scaling, logical navigation and stable focus/scroll during updates. Do not achieve density by globally shrinking text or targets, and do not add a density preference as a substitute for a better default.
-- [ ] Record representative before/after views at the same viewport, theme, text scale and build. Compare useful rows/values visible, avoidable scrolling and actions needed for the task; numerical density is evidence, not a quota. Include dense and partially configured builds, short/long content and narrow layouts. Native visual review must assess coherent composition as well as clipping/accessibility. Use the user's reported preview/comparison screenshots as explicit unsatisfactory baselines.
+- [x] Revisit the supplied Redux references for information hierarchy, grouping and useful information visible at once. Adapt those principles to controller/couch use rather than copying desktop-sized controls or claiming that two panes alone satisfy the design goal.
+- [x] Establish consistent semantic emphasis across the PoB screens: clear section headings, primary values, secondary context, interactive actions, selected state, warnings and comparison changes. Use existing theme roles, typography, restrained surface differences and spacing together. Avoid arbitrary rainbow styling, a new hard-coded palette or making every important element the accent color. Preserve upstream modifier meaning; do not invent gameplay semantics for colors.
+- [x] Apply that hierarchy beyond modifier text to overview statistics, equipment and gem lists, configuration, calculations, search results, comparisons and inspection panels. Keep secondary information readable from the couch; color must supplement labels/icons rather than become the only way to interpret a value or state. Preserve light/dark/high-contrast behavior and unmistakable focus.
+- [x] Perform a genuine density pass across these screens: remove unnecessary nested cards, repeated labels/context, oversized row padding, redundant headings and fixed-height empty space. Place related short values and controls on shared rows with consistent alignment; use columns when they improve comparison. Use selective disclosure for secondary information without hiding information needed for the immediate decision or adding extra navigation to routine actions.
+- [x] Correct excessive Configuration spacing shown in `codex-clipboard-5d499d5b-a3dc-436f-9dc6-b43480b63c20.png` (2026-10-18). Source inspection shows every option wrapped in `.pob-setting` with 12px top/bottom padding, inside a `.pob-panel` with 12px between children: adjacent single-control rows therefore have approximately 36 logical pixels of empty separation. This is widget-authored spacing, not an upstream PoB requirement. Reduce redundant wrapper spacing for simple options while retaining readable explanation/validation groups, comfortable control heights, and distinct section boundaries. Verify explanations both shown and hidden, mixed control types, scaling and focus navigation when implementation resumes.
+- [x] Preserve readable type, practical controller/pointer targets, text/interface scaling, logical navigation and stable focus/scroll during updates. Do not achieve density by globally shrinking text or targets, and do not add a density preference as a substitute for a better default.
+- [x] Record representative before/after views at the same viewport, theme, text scale and build. Compare useful rows/values visible, avoidable scrolling and actions needed for the task; numerical density is evidence, not a quota. Include dense and partially configured builds, short/long content and narrow layouts. Native visual review must assess coherent composition as well as clipping/accessibility. Use the user's reported preview/comparison screenshots as explicit unsatisfactory baselines.
 
 ### Previously implemented slices and acceptance
 
@@ -138,24 +138,23 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 
 ## Shared rich previews and anchored popovers
 
-### Planned follow-up: content-aware sizing and presentation
+### Implemented follow-up: content-aware sizing and presentation
 
-**Implementation resumed (2026-10-18).** The user's inventory screenshot
+**Implemented and scoped native checks completed (2026-10-18).** The user's inventory screenshot
 (`codex-clipboard-8e800868-0b40-4122-ab27-4ad3ad65df47.png`, 2026-10-18)
 shows a passive item preview with substantial empty space beneath a small amount
 of text, covering much of the existing item-details pane. Its long usage metadata
-also needs a clearer hierarchy. The current rendering is not accepted as visually
-finished; passing geometry checks alone does not establish that it looks good.
+also needs a clearer hierarchy. That earlier rendering was not accepted as visually finished. The replacement now removes the redundant inventory overlay and uses content-sized previews, verified in native renders; passing geometry checks alone is not visual acceptance.
 
-- [ ] Extend shared preview/anchored-inspection sizing so height follows measured content within bounded minimum/maximum dimensions and available widget space. Longer interactive details scroll after reaching the bound; passive previews remain non-interactive and retain an explicit Inspect path for complete details.
-- [ ] Use a readable, bounded width appropriate to the presentation rather than one universal size. Keep width stable while browsing a candidate list so adjacent entries do not repeatedly rewrap or move the panel. Respect display/interface/text scaling and small viewports.
-- [ ] Prevent asynchronous content updates from repeatedly resizing an inspection during use. Preserve anchor placement, focused controls and reading position; retain existing cancellation, stale-result and lifetime safeguards. Avoid continuous measurement or new on-focus engine/service requests.
-- [ ] Choose preview content around the browsing decision. Item previews lead with name, rarity/base and relevant properties/modifiers already available; usage metadata is secondary. Gem previews emphasize description, tags and upstream compatibility where supplied. Wrap or summarize long usage lists while retaining complete details through Inspect. Use existing/upstream facts rather than inventing information or duplicating a full editor in the passive preview.
-- [ ] Replace the generic text-stack appearance with a deliberate composition: compact heading, grouped properties, readable modifier text and a restrained Inspect footer. Use typography, spacing and semantic theme roles together; merely shrinking the existing box or adding more colors is insufficient. Keep the shared component content-agnostic rather than baking item/gem layouts into the host.
-- [ ] Review placement against both the focused row and the existing details pane. Keep the source row visible, make the relationship to it clear and minimize obstruction of information the user is comparing. When an existing details pane already presents the same information, assess whether an automatic floating preview adds value; avoid redundant overlays and retain an explicit Inspect path. Preserve A's existing action.
-- [ ] Carry the same content hierarchy into X → Inspect, with clearly separated actions, stable reading/scroll position and predictable Back restoration. Keep passive browsing distinct from explicit Add/Replace/Equip. Do not resize or reposition interactive content repeatedly while the user is reading or operating it.
-- [ ] Keep sizing, placement, timing, bounds and focus/lifetime safeguards in the shared host; widget authors compose the content and choose appropriate bounded options. Establish any necessary shared contract changes before PoB adoption.
-- [ ] Compare short, dense and long-name preview examples at identical viewport, theme and text sizing, including the reported theme, light/high-contrast styling and constrained/enlarged layouts. Inspect the actual native inventory, unique and gem workflows for readability, balance, obstruction, usefulness, stable placement and return focus—not just bounds or absence of clipping. Add targeted geometry/lifecycle regressions. Use targeted native verification after implementation; no new mockup is required.
+- [x] Extend shared preview/anchored-inspection sizing so height follows measured content within bounded minimum/maximum dimensions and available widget space. Longer interactive details scroll after reaching the bound; passive previews remain non-interactive and retain an explicit Inspect path for complete details.
+- [x] Use a readable, bounded width appropriate to the presentation rather than one universal size. Keep width stable while browsing a candidate list so adjacent entries do not repeatedly rewrap or move the panel. Respect display/interface/text scaling and small viewports.
+- [x] Prevent asynchronous content updates from repeatedly resizing an inspection during use. Preserve anchor placement, focused controls and reading position; retain existing cancellation, stale-result and lifetime safeguards. Avoid continuous measurement or new on-focus engine/service requests.
+- [x] Choose preview content around the browsing decision. Item previews lead with name, rarity/base and relevant properties/modifiers already available; usage metadata is secondary. Gem previews emphasize description, tags and upstream compatibility where supplied. Wrap or summarize long usage lists while retaining complete details through Inspect. Use existing/upstream facts rather than inventing information or duplicating a full editor in the passive preview.
+- [x] Replace the generic text-stack appearance with a deliberate composition: compact heading, grouped properties, readable modifier text and a restrained Inspect footer. Use typography, spacing and semantic theme roles together; merely shrinking the existing box or adding more colors is insufficient. Keep the shared component content-agnostic rather than baking item/gem layouts into the host.
+- [x] Review placement against both the focused row and the existing details pane. Keep the source row visible, make the relationship to it clear and minimize obstruction of information the user is comparing. When an existing details pane already presents the same information, assess whether an automatic floating preview adds value; avoid redundant overlays and retain an explicit Inspect path. Preserve A's existing action.
+- [x] Carry the same content hierarchy into X → Inspect, with clearly separated actions, stable reading/scroll position and predictable Back restoration. Keep passive browsing distinct from explicit Add/Replace/Equip. Do not resize or reposition interactive content repeatedly while the user is reading or operating it.
+- [x] Keep sizing, placement, timing, bounds and focus/lifetime safeguards in the shared host; widget authors compose the content and choose appropriate bounded options. Establish any necessary shared contract changes before PoB adoption.
+- [x] Compare short, dense and long-name preview examples at identical viewport, theme and text sizing, including the reported theme, light/high-contrast styling and constrained/enlarged layouts. Inspect the actual native inventory, unique and gem workflows for readability, balance, obstruction, usefulness, stable placement and return focus—not just bounds or absence of clipping. Add targeted geometry/lifecycle regressions. Use targeted native verification after implementation; no new mockup is required.
 
 ### Existing implementation and verification
 
@@ -216,30 +215,30 @@ All 46 supported tree-version audits pass. The renderer uses lazy decoding with 
 
 The implemented comparison has categorized difference rows and a two-column detail view with return to the inspected row. Selective transfer remains outside scope; comparison has no Apply action.
 
-### Planned follow-up: identify both comparison sides
+### Implemented follow-up: identify both comparison sides
 
-**Implementation resumed (2026-10-18).** The comparison setup screenshot
+**Implemented and scoped native checks completed (2026-10-18).** The comparison setup screenshot
 (`codex-clipboard-6e0a4f58-9ed8-46dc-90da-b8bee11713ba.png`, 2026-10-18)
 shows “Compare current with” without identifying the source.
 
-- [ ] Show the actual source build name and active loadout before Compare is pressed, alongside the selected target's identity. “Current” may qualify that identity, but must not replace it.
-- [ ] Carry those names into the results and side-by-side detail headings so users can tell which build/loadout each value belongs to without returning to setup. Keep long names readable with sensible wrapping and avoid repeating redundant build names when comparing loadouts of the same build.
-- [ ] Bind displayed identities to the same source/target snapshots used by the comparison. Switching builds or loadouts must not leave stale labels beside newer results. Retain existing calculation-context distinctions and read-only behavior.
+- [x] Show the actual source build name and active loadout before Compare is pressed, alongside the selected target's identity. “Current” may qualify that identity, but must not replace it.
+- [x] Carry those names into the results and side-by-side detail headings so users can tell which build/loadout each value belongs to without returning to setup. Keep long names readable with sensible wrapping and avoid repeating redundant build names when comparing loadouts of the same build.
+- [x] Bind displayed identities to the same source/target snapshots used by the comparison. Switching builds or loadouts must not leave stale labels beside newer results. Retain existing calculation-context distinctions and read-only behavior.
 
-### Planned follow-up: comparison results presentation
+### Implemented follow-up: comparison results presentation
 
-**Implementation resumed (2026-10-18).** The user's results screenshot
+**Implemented and scoped native checks completed (2026-10-18).** The user's results screenshot
 (`codex-clipboard-80cb4b00-83c1-45c8-8de8-7765e35350af.png`, 2026-10-18)
 shows oversized centered statistic cards, repeated “Changed”/side labels, and a
 large context pane dominated by dense metadata. This presentation is not accepted
 as finished. Two panes alone do not make the comparison efficient or readable.
 
-- [ ] Replace the tall statistic cards with compact, consistently aligned comparison rows: left-aligned statistic name, clearly identified source and target values, and a useful absolute/percentage change where mathematically meaningful. Use shared column headings with actual build/loadout identities rather than repeating generic labels on every row. Keep one clear focus target per row and full detail inspection.
-- [ ] Format values consistently and align numeric columns for scanning. Do not show a misleading percentage for zero baselines, non-finite values or unavailable data. Distinguish a numeric increase/decrease from an improvement; use upstream comparison semantics where supplied and avoid new maintained gameplay rules or color-only meaning.
-- [ ] Reduce repeated status text such as “Changed” in a differences-only view. Preserve meaningful Added/Removed/Unavailable states and distinguish main-skill output, Full DPS and other genuinely different metrics.
-- [ ] Replace the dominant metadata pane with a compact, readable summary of both named builds/loadouts and decision-relevant differences such as level, main skill and weapon set. Put detailed set names, engine/tree versions and secondary calculation context behind an explicit expandable details action. Retain the explanation that these are whole-build differences, including different calculation contexts, rather than equipment-only gains.
-- [ ] Give the comparison results most of the available space and consolidate category/search controls without shrinking readable text or controller targets. Reuse existing layout/list/disclosure facilities. Adapt narrower layouts without misaligning values or hiding essential source/target identity.
-- [ ] Verify representative statistics, equipment, skills, passives and configuration results, long names, missing/added entries, zero/non-finite values, scrolling and return from detail inspection. Inspect the actual native page in the reported theme and representative constrained/enlarged layouts; check visible row density and information hierarchy, not only bounds. Keep the screenshot as the before-state reference. Implementation and targeted native verification are authorized.
+- [x] Replace the tall statistic cards with compact, consistently aligned comparison rows: left-aligned statistic name, clearly identified source and target values, and a useful absolute/percentage change where mathematically meaningful. Use shared column headings with actual build/loadout identities rather than repeating generic labels on every row. Keep one clear focus target per row and full detail inspection.
+- [x] Format values consistently and align numeric columns for scanning. Do not show a misleading percentage for zero baselines, non-finite values or unavailable data. Distinguish a numeric increase/decrease from an improvement; use upstream comparison semantics where supplied and avoid new maintained gameplay rules or color-only meaning.
+- [x] Reduce repeated status text such as “Changed” in a differences-only view. Preserve meaningful Added/Removed/Unavailable states and distinguish main-skill output, Full DPS and other genuinely different metrics.
+- [x] Replace the dominant metadata pane with a compact, readable summary of both named builds/loadouts and decision-relevant differences such as level, main skill and weapon set. Put detailed set names, engine/tree versions and secondary calculation context behind an explicit expandable details action. Retain the explanation that these are whole-build differences, including different calculation contexts, rather than equipment-only gains.
+- [x] Give the comparison results most of the available space and consolidate category/search controls without shrinking readable text or controller targets. Reuse existing layout/list/disclosure facilities. Adapt narrower layouts without misaligning values or hiding essential source/target identity.
+- [x] Verify representative statistics, equipment, skills, passives and configuration results, long names, missing/added entries, zero/non-finite values, scrolling and return from detail inspection. Inspect the actual native page in the reported theme and representative constrained/enlarged layouts; check visible row density and information hierarchy, not only bounds. Keep the screenshot as the before-state reference. Implementation and targeted native verification are authorized.
 
 ## 6. Unified search and direct navigation
 
@@ -252,15 +251,15 @@ as finished. Two panes alone do not make the comparison efficient or readable.
 
 Search opens from the build controls, supports category filtering and local whole-entry suggestions, and navigates through existing focus targets. Known item and disabled-main-skill warnings use supplied identities; ambiguous warnings remain informational. Inventory/calculation catalog failures identify unavailable categories and retry on reopening Search.
 
-### Planned follow-up: retain Search build context
+### Implemented follow-up: retain Search build context
 
-**Implementation resumed (2026-10-18).**
+**Implemented and scoped native checks completed (2026-10-18).**
 The user reports that Search build forgets the search after selecting a result.
 
-- [ ] Preserve the entered query and category filter when a result opens another section. Returning to or reopening Search build within the same build should restore that context instead of starting with an empty search.
-- [ ] Restore the selected result and list scroll position when the result still exists, so users can inspect several matches without retyping or searching through the list again. Use stable result identities and a valid fallback if the previous result is gone.
-- [ ] Revalidate results when the build changes; retaining search text must not retain stale destinations or action authority. Keep state scoped to the appropriate build/session. Cross-restart persistence is not required by this report.
-- [ ] Cover repeated search → destination → Search build round trips, changed/removed results, empty results and explicit query clearing. Coordinate with the shortcut-navigation regression below without coupling retained search state to stale focus/input ownership.
+- [x] Preserve the entered query and category filter when a result opens another section. Returning to or reopening Search build within the same build should restore that context instead of starting with an empty search.
+- [x] Restore and reveal the selected logical result when it still exists, so users can inspect several matches without retyping or searching through the list again. Use stable result identities and a valid fallback if the previous result is gone. The selected result is revealed in the recreated list; exact pixel-offset retention across modal recreation is not implemented.
+- [x] Revalidate results when the build changes; retaining search text must not retain stale destinations or action authority. Keep state scoped to the appropriate build/session. Cross-restart persistence is not required by this report.
+- [x] Cover repeated search → destination → Search build round trips, changed/removed results, empty results and explicit query clearing. Coordinate with the shortcut-navigation regression below without coupling retained search state to stale focus/input ownership.
 
 ### Reported regression: shortcuts after global-search navigation
 
@@ -270,14 +269,11 @@ The user reports two affected destinations:
 - Global search → select a “shock chance” result → Tree opens → RS no longer opens Build controls.
 - Global search → a Skills result opens Skills → LS no longer performs its contextual shortcut.
 
-Treat this as a potentially shared shortcut/input-ownership regression after search
-navigation, not a Tree-only issue. The exact selected result types, expected Skills
-LS target and root cause still need verification against the active controller guide;
-do not assume search results were misrouted.
+This affected more than Tree. The confirmed cause was an older retained search focus request outranking newer quick-control requests. Both now use the existing global focus-request sequence. The installed Skills group result declares LS → Group controls; native guide dispatch verifies that target.
 
-- [ ] Reproduce both sequences and compare RS/LS behavior after ordinary section entry versus entry through global search. Check the displayed controller guide, active input/focus scope, destination shortcut registration, tree/browser interaction ownership and completion of the search navigation handoff.
-- [ ] Restore each destination's intended shortcuts without consuming local controls incorrectly or leaving stale search/modal ownership. Determine the cause before changing shared input admission or introducing destination-specific shortcut workarounds.
-- [ ] Add focused regressions for search → Tree → RS → Build controls and return to the selected node, plus search → Skills → LS → its declared contextual target and return. Check other search destinations and normal section navigation for the same ownership problem, preserving existing contextual shortcuts and Back behavior.
+- [x] Reproduce both sequences and compare RS/LS behavior after ordinary section entry versus entry through global search. Check the displayed controller guide, active input/focus scope, destination shortcut registration, tree/browser interaction ownership and completion of the search navigation handoff.
+- [x] Restore each destination's intended shortcuts without consuming local controls incorrectly or leaving stale search/modal ownership. Determine the cause before changing shared input admission or introducing destination-specific shortcut workarounds.
+- [x] Add focused regressions for search → Tree → RS → Build controls and return to the selected node, plus search → Skills → LS → its declared contextual target and return. Check other search destinations and normal section navigation for the same ownership problem, preserving existing contextual shortcuts and Back behavior.
 
 ## Host-wide naming: WidgetRail Catalogue
 
@@ -368,7 +364,7 @@ Read-only references checked: [Spotify queue](https://developer.spotify.com/docu
 Show whether content remains above or below a vertically scrolling container. This is a reusable host presentation feature, not PoB-specific drawing.
 
 - [x] Initial implementation: short, centered themed lines at the inside top/bottom edges, 40 logical pixels wide and 2 thick. The planned viewport-relative sizing below supersedes this fixed width when implementation resumes.
-- [ ] Pending follow-up: increase cue width modestly and derive it from the actual scrolling viewport width. Start with **8% of viewport width, clamped to 48–80 logical pixels**, retaining **2-pixel thickness**. Resize with the panel, not with scroll progress. Keep centered placement, existing theme/high-contrast ink, reserved strips and non-interactive behavior. Verify small and wide panels, scaling, nested scrollers and fitting content without adding polling or layout feedback loops.
+- [x] Implemented follow-up: increase cue width modestly and derive it from the actual scrolling viewport width. Start with **8% of viewport width, clamped to 48–80 logical pixels**, retaining **2-pixel thickness**. Resize with the panel, not with scroll progress. Keep centered placement, existing theme/high-contrast ink, reserved strips and non-interactive behavior. Verify small and wide panels, scaling, nested scrollers and fitting content without adding polling or layout feedback loops.
 - [x] Show the top cue only when content is hidden above, and the bottom cue only when content is hidden below. Show both between the ends and neither when content fits.
 - [x] Keep length independent of scroll progress. The proposed growing/shrinking lines were rejected because they would duplicate a scrollbar. Preserve existing scrollbars for position and extent information.
 - [x] Place cues in stable edge padding or a narrow reserved strip, outside the text/control viewport. Never obscure useful content, intercept input, participate in focus navigation or change layout as cues appear/disappear.
@@ -432,7 +428,7 @@ Run this after implementation decisions settle, then recheck changed links and e
 - [x] Resolve Game Help distribution guidance from the final Bare/Production package contents and Catalogue listing. Getting Started and README must agree on what is preinstalled versus installed separately. Apply the same check to every optional widget and remove retired Developer edition guidance.
 - [x] Remove superseded plans, old discussion documents and redundant status/specification copies after transferring any still-current requirements, operational instructions or useful rationale into maintained guides. Use Git history for obsolete discussion rather than creating another stale documentation archive. Keep the active execution plan/verification record authoritative until delivery; do not delete requirements that remain open.
 - [x] Update navigation/index pages and incoming links for removed/renamed documents. Check file links, commands, screenshots/captions, feature names, version assumptions and permission claims. Retain required license/copyright notices and accurate adopted-project credits.
-- [ ] Recheck documentation affected by the remaining implementation/acceptance corrections before delivery. Retain exact limitations for Spotify authentication, physical controller/couch checks and environment-specific acceptance; do not describe representative earlier screenshots as the current candidate.
+- [x] Recheck documentation affected by the remaining implementation/acceptance corrections before delivery. Retain exact limitations for Spotify authentication, physical controller/couch checks and environment-specific acceptance; do not describe representative earlier screenshots as the current candidate.
 - [x] Keep the front-facing README concise and approachable; place technical architecture, provider limitations and maintainer procedures in their appropriate dedicated guides. Report any remaining documentation uncertainty rather than implying unsupported behavior is available.
 
 The three reported contradictions are corrected. The final source/documentation pass also corrected two obsolete collection fragment links and remaining music-guide installation wording. Current command paths/options were checked against their scripts/CLI definitions without executing builds. Representative README, Spotify and PoB calculation/trade screenshot captions were checked against their pixels; older PoB captures are dated and explicitly illustrative. External destinations were not requested, and the owner demonstration remains a placeholder. Recheck subsequent corrections against these maintained guides without restoring obsolete behavior.

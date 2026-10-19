@@ -1320,3 +1320,52 @@ use the pinned PoE2 beta. Missing C# type annotations/imports were fixed before
 qualified builds. One stale native launch after a failed build was closed and is
 excluded. Gem fixture result naming was corrected in the evidence collection;
 `workflow-result.json` preserves the earlier workflow report separately.
+
+## Final follow-up candidate — 2026-10-18
+
+Candidate **k** is running hidden with the normal profile and controller enabled,
+PID **2776** at this checkpoint. Both PoB packages are **0.1.4.13**, enabled in the
+normal AppData catalogue. The isolated frontend and preceding normal candidate
+were closed first. Exactly one frontend remains; UIA reports no visible windows.
+All **138 frontend DLLs** match the qualified publication. Evidence is in
+`cumulative-candidate-20261018-k/final-{launch,live-process,live-payload,windows}.json`.
+The host publication comes from `4e94de9e`; subsequent changes affect only PoB
+packages and documentation. Package provenance records source state, copied adapter
+hashes and unchanged upstream engine archive/web/runtime hashes. No merge, push,
+release or CI repair was performed.
+
+Unique-library focus previews now include up to three upstream-formatted modifier
+lines, explicitly labelled as library ranges. Generation occurs during catalogue
+loading, not focus changes; it adds no service calls or replacement calculations.
+The compatibility helper uses upstream variant eligibility and formatting. Empty
+previews omit the modifier heading. Passive fragments remain bounded Text; full
+inline rich formatting stays in explicit Inspect. Both engine item suites pass:
+**PoE1 84, PoE2 82**. This covers fresh/empty inventory, authoring, inspection,
+stale actions, draft recovery and the new bounded modifier summaries. The final
+managed packages publish and validate successfully; no separate throughput claim
+is made for this small bounded catalogue extension.
+
+Installed PoE2 native checks confirmed Search "shock chance" → Tree → the declared
+RS guide focuses Build controls; Search "twister" → Skill group → the declared LS
+guide focuses Group controls. Reopening Search restores each query and selected
+logical result (rows 5 and 0). These checks use native semantic guide dispatch,
+not physical stick presses. Exact pixel-scroll restoration across a recreated
+Search modal is not implemented; selected-result visibility is restored.
+Evidence: `followups-20261018/installed/{result,tree-rs-focus,skills-ls-focus,
+search-retained}.json` (package .12; the later .13 change is the unique preview).
+
+The final installed .13 Goldrim preview and explicit inspection were visually
+reviewed in Velvet Dusk. The passive preview keeps the source row visible and fits
+three modifiers without an empty lower panel; explicit inspection shows full
+upstream properties/modifiers with readable action separation. Native Back returns
+to the exact unique-library row. Evidence:
+`followups-20261018/installed-final/{passive-crop,inspection}.png` and
+`return-focus.json`. Initial startup/overlapped captures are excluded from visual
+evidence; settled captures were used after closing the preceding candidate.
+
+Documentation was reconciled with the delivered behavior. The local-link audit
+checks **244 tracked Markdown files / 761 relative targets**, with none missing;
+external URLs and fragments are outside that check. Prior follow-up matrices and
+Configuration before/after measurements above remain applicable. Remaining limits
+are physical controller/couch acceptance, actual Windows contrast-theme switching,
+authenticated Spotify and the previously recorded hardware/prerequisite variants.
