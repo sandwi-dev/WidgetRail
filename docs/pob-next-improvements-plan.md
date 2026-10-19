@@ -84,6 +84,24 @@ The implementation reuses the host's `FillAvailable` height and preferred-width 
 
 Follow the architecture cleanup and dimension adjustment. Increase useful information per page and reduce navigation without making the interface difficult to read from a couch. Apply the same principles to subsequent new screens, then repeat the affected visual checks.
 
+### Planned follow-up: broader PoB visual hierarchy and density
+
+**Agreed for the plan; implementation on hold (2026-10-18).** The user finds the
+PoB Redux reference more readable and visually polished. Modifier rich text and
+isolated compact controls have not sufficiently improved the overall widget:
+most other content has similar visual emphasis, and too little useful information
+fits on a page. The previously checked layout changes below record delivered
+slices, not acceptance of the overall density or visual design.
+
+- [ ] Revisit the supplied Redux references for information hierarchy, grouping and useful information visible at once. Adapt those principles to controller/couch use rather than copying desktop-sized controls or claiming that two panes alone satisfy the design goal.
+- [ ] Establish consistent semantic emphasis across the PoB screens: clear section headings, primary values, secondary context, interactive actions, selected state, warnings and comparison changes. Use existing theme roles, typography, restrained surface differences and spacing together. Avoid arbitrary rainbow styling, a new hard-coded palette or making every important element the accent color. Preserve upstream modifier meaning; do not invent gameplay semantics for colors.
+- [ ] Apply that hierarchy beyond modifier text to overview statistics, equipment and gem lists, configuration, calculations, search results, comparisons and inspection panels. Keep secondary information readable from the couch; color must supplement labels/icons rather than become the only way to interpret a value or state. Preserve light/dark/high-contrast behavior and unmistakable focus.
+- [ ] Perform a genuine density pass across these screens: remove unnecessary nested cards, repeated labels/context, oversized row padding, redundant headings and fixed-height empty space. Place related short values and controls on shared rows with consistent alignment; use columns when they improve comparison. Use selective disclosure for secondary information without hiding information needed for the immediate decision or adding extra navigation to routine actions.
+- [ ] Preserve readable type, practical controller/pointer targets, text/interface scaling, logical navigation and stable focus/scroll during updates. Do not achieve density by globally shrinking text or targets, and do not add a density preference as a substitute for a better default.
+- [ ] Record representative before/after views at the same viewport, theme, text scale and build. Compare useful rows/values visible, avoidable scrolling and actions needed for the task; numerical density is evidence, not a quota. Include dense and partially configured builds, short/long content and narrow layouts. Native visual review must assess coherent composition as well as clipping/accessibility. Use the user's reported preview/comparison screenshots as explicit unsatisfactory baselines.
+
+### Previously implemented slices and acceptance
+
 - [x] Improve shared host layouts and PoB screens by reducing excess padding/gaps, redundant headings/descriptions and unnecessary navigation. Keep meaningful explanations and distinctions; do not remove information solely to fit more rows.
 - [x] Use the larger workspace, appropriate two-column layouts and compact rows for related values. Keep reading-line lengths reasonable and group related controls clearly.
 - [ ] Preserve readable text, unmistakable focus indicators, comfortable pointer/controller targets and existing text/interface scaling. Do not apply indiscriminate font or target shrinking.
