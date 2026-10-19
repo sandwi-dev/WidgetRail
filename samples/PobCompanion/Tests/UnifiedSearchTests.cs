@@ -31,12 +31,21 @@ internal static class UnifiedSearchTests
         PobSearchResult[] Results(){_=View();var query=Get("unifiedQuery")!;return (PobSearchResult[])query.GetType().GetProperty("Results")!.GetValue(query)!;}
         async Task Select(PobSearchTargetKind kind,Func<PobSearchResult,bool>? condition=null)
         {
-            await Action("unified-search");var entries=Results();var index=Array.FindIndex(entries,e=>e.Target.Kind==kind&&(condition?.Invoke(e)??true));
+            await Action("unified-search");await Action("unified-search-text","");await Action("unified-search-category.0");
+            var entries=Results();var index=Array.FindIndex(entries,e=>e.Target.Kind==kind&&(condition?.Invoke(e)??true));
             if(index<0)throw new InvalidOperationException("Missing search fixture kind "+kind);
             using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"unified-route",5000+sequence);
             using var range=await host.AcquireAsync("pob.unified.results",index,1);var row=range.Range.Items.Single();
             check(range.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Search admits captured "+kind+" result");
             await Until(()=>!(bool)Get("unifiedSearchOpen")!);await Idle();_=View();
+        }
+        async Task Jump(string target)
+        {
+            var previous=View().FocusGroupEntryRequest?.RequestId;
+            await Action("quick-controls."+target);
+            check(View().FocusGroupEntryRequest is {} next&&next.GroupId==target&&next.RequestId>previous,
+                "A newer shortcut owns focus after search navigation: "+target);
+            check(View().FocusGroupEntryRequest?.GroupId==target,"An additional render does not resurrect search focus: "+target);
         }
         void ExportTarget(string name)
         {
@@ -65,6 +74,8 @@ internal static class UnifiedSearchTests
                 check((await widget.OnSuggestTextAsync(suggestion,default)).Unavailable,"Closing search retires its suggestion source");
             }
             await Action("unified-search");check(ReferenceEquals(cache,Get("unifiedCache")),"Repeated search opening reuses exact-build catalogs");
+            check((string)Get("unifiedSearchText")! == "no-such-build-entry-zzzz"&&Results().Length==0,"Reopening preserves an empty-result query rather than silently clearing it");
+            await Action("unified-search-text","");check(Results().Length>0,"Explicit clearing restores the unfiltered results");
             using(var reopened=WidgetTestHost.CreateIndexedCollectionHost(widget,"unified-reopen",4000))
             {
                 using var lease=await reopened.AcquireAsync("pob.unified.results",0,1);var row=lease.Range.Items.Single();
@@ -83,9 +94,13 @@ internal static class UnifiedSearchTests
             await Select(PobSearchTargetKind.EquippedItem);
             ExportTarget("equipment");var equipped=View();check((string)Get("section")! == "Items"&&equipped.FocusGroupEntryRequest is {} itemFocus&&itemFocus.GroupId.StartsWith("pob.unified.",StringComparison.Ordinal)&&Nodes(equipped.Root).Any(n=>n.Id==itemFocus.GroupId&&n.InitialChildFocusId=="pob.item."+Get("detailId")),
                 "Equipment result opens the correct item and authors a narrow focus group for that actual row");
+            await Jump("pob.buildtools");await Jump("pob.body");
             await Select(PobSearchTargetKind.Gem);
             ExportTarget("gem");var gemView=View();check((string)Get("section")! == "Skills"&&gemView.FocusGroupEntryRequest is {} gemFocus&&Nodes(gemView.Root).Any(n=>n.Id==gemFocus.GroupId&&n.InitialChildFocusId!.StartsWith("pob.gem.",StringComparison.Ordinal)),
                 "Gem result identifies its group and focuses the actual gem field");
+            await Jump("pob.buildtools");await Jump("pob.body");
+            var skillShortcut=Nodes(View().Root).SelectMany(n=>n.Shortcuts??[]).FirstOrDefault(s=>s.Button==ControllerButton.LeftStick&&s.ActionId.StartsWith("quick-controls.",StringComparison.Ordinal));
+            if(skillShortcut is not null)await Jump(skillShortcut.ActionId["quick-controls.".Length..]);
             await Select(PobSearchTargetKind.Configuration,e=>{var option=Result().Configuration.Options.Single(c=>c.Id==e.Target.Key);return option.Id!="customMods"&&option.Raw.GetProperty("kind").GetString()!="customMods"&&option.Raw.GetProperty("value").ToString().Length<=2048;});
             ExportTarget("configuration");var config=View();var focus=config.FocusGroupEntryRequest!;
             check((string)Get("section")! == "Configuration"&&Nodes(config.Root).Any(n=>n.Id==focus.GroupId&&n.InitialChildFocusId!.StartsWith("pob.condition.",StringComparison.Ordinal)),
@@ -93,14 +108,53 @@ internal static class UnifiedSearchTests
             await Select(PobSearchTargetKind.Calculation);
             check((string)Get("detailKind")! == "calculations"&&View().FocusGroupEntryRequest?.IndexedItem?.CollectionId=="pob.calculation.cells",
                 "Calculation result opens upstream details and targets its exact indexed cell");
+            await Jump("pob.buildtools");await Jump("pob.body");
             await Select(PobSearchTargetKind.InventoryItem);
             check((string)Get("detailKind")! == "inventory"&&View().FocusGroupEntryRequest?.IndexedItem?.ItemKey==Get("inventoryId")!.ToString(),
                 "Inventory result selects the correct item and restores an exact indexed focus target without equipping");
+            await Jump("pob.buildtools");await Jump("pob.body");
             await Select(PobSearchTargetKind.Passive);
             check((string)Get("section")! == "Tree"&&(string)Get("detailKind")! == "node"&&ReferenceEquals(before,Result()),"Passive result opens the exact node without allocating it; map selection uses the existing center-on-select message");
+            var passiveId=Get("detailId");await Jump("pob.buildtools");await Jump("pob.body");
+            check(Equals(passiveId,Get("detailId")),"Tree RS round trip retains the selected passive");
             await Select(PobSearchTargetKind.SavedBuild);
             check((string)Get("detailKind")! == "library"&&(string)Get("documentId")! == build&&View().FocusGroupEntryRequest?.IndexedItem?.ItemKey==build,
                 "Saved-build result selects the library entry without replacing the currently open build");
+            // Choose a filtered result through the real deferred action route,
+            // then reopen repeatedly with a fresh lease but unchanged list identity.
+            await Action("unified-search");await Action("unified-search-category.0");
+            var retained=Results().First(e=>e.Target.Kind==PobSearchTargetKind.EquippedItem);
+            var categories=Nodes(View().Root).Single(n=>n.Id=="pob.unified.category").SelectOptions;
+            var category=categories.Single(option=>option.Label==retained.Category);
+            await Action(category.ActionId);await Action("unified-search-text",retained.Title);
+            for(var pass=0;pass<2;pass++)
+            {
+                var position=Array.FindIndex(Results(),e=>e.Key==retained.Key);
+                var descriptor=Nodes(View().Root).Single(n=>n.Id=="pob.unified.results").IndexedCollection!;
+                using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"unified-retained-"+pass,8000+pass);
+                using var range=await host.AcquireAsync("pob.unified.results",position,1);var row=range.Range.Items.Single();
+                check(range.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Filtered search result opens on round trip "+pass);
+                await Until(()=>!(bool)Get("unifiedSearchOpen")!);await Idle();
+                await Action("unified-search");host.PublishSnapshot();
+                var reopened=View();var restored=reopened.FocusGroupEntryRequest?.IndexedItem;
+                check((string)Get("unifiedSearchText")! == retained.Title&&(string)Get("unifiedCategory")! == retained.Category&&restored is not null&&restored.ItemKey==retained.Key&&restored.Index==position,
+                    "Search retains query, category and exact selected result on round trip "+pass);
+                check(Nodes(reopened.Root).Single(n=>n.Id=="pob.unified.results").IndexedCollection!.QueryGeneration==descriptor.QueryGeneration,
+                    "Unchanged search membership retains logical viewport generation on round trip "+pass);
+                check(range.RouteAction(row.Key,ControllerButton.A) is null,"Fresh search presentation rejects the previous row lease on round trip "+pass);
+            }
+            var removedProjection=JsonNode.Parse(before.State.GetRawText())!.AsObject();
+            var items=removedProjection["items"]!.AsArray();
+            items.Remove(items.Single(item=>item!["id"]!.GetValue<int>()==retained.Target.Id));
+            await Action("unified-search-close");Set("result",new PobResult(JsonSerializer.SerializeToElement(removedProjection),before.Xml));
+            await Action("unified-search");
+            check((string)Get("unifiedSearchText")! == retained.Title&&!Results().Any(e=>e.Key==retained.Key)&&View().FocusGroupEntryRequest is null,
+                "Changed build revalidates retained text and safely falls back when the selected destination is removed");
+            await Action("unified-search-close");Set("result",before);
+            Set("documentId","another-document");await Action("unified-search");
+            check((string)Get("unifiedSearchText")! == ""&&(string)Get("unifiedCategory")! == "All"&&View().FocusGroupEntryRequest is null,
+                "Opening search in another document resets prior build context and selected destination");
+            await Action("unified-search-close");Set("documentId",build);
             await Action("unified-search");await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Background);
             check(!(bool)Get("unifiedSearchOpen")!&&(await widget.OnSuggestTextAsync(suggestion,default)).Unavailable,"Lifecycle suspension closes search and revokes delayed completion authority");
             await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);await Idle();
@@ -117,6 +171,19 @@ internal static class UnifiedSearchTests
             await Action("unified-search-close");await Select(PobSearchTargetKind.Skill,e=>e.Target.Key=="main-disabled");
             check((string)Get("section")! == "Skills"&&(int)Get("detailId")! == mainGroup&&ReferenceEquals(disabledResult,Result()),
                 "Main-skill warning navigates to the supplied group without enabling, replacing or recalculating it");
+            await Action("unified-search-close");
+            var longSkillsProjection=JsonNode.Parse(before.State.GetRawText())!.AsObject();
+            var longGroup=longSkillsProjection["skills"]!.AsArray().First(group=>group!["gems"]!.AsArray().Count>0)!;
+            var sourceGem=longGroup["gems"]!.AsArray()[0]!;
+            longGroup["gems"]=new JsonArray(Enumerable.Range(1,5).Select(index=>
+            {var copy=sourceGem.DeepClone();copy["id"]=index;return copy;}).ToArray());
+            Set("result",new PobResult(JsonSerializer.SerializeToElement(longSkillsProjection),before.Xml));
+            var longGroupId=longGroup["id"]!.GetValue<int>();
+            await Select(PobSearchTargetKind.Gem,entry=>entry.Target.Id==longGroupId);
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.detail.scroll").Shortcuts!.Any(shortcut=>shortcut.Button==ControllerButton.LeftStick&&shortcut.ActionId=="quick-controls.pob.skill.actions"),
+                "Search-to-gem destination exposes its ordinary Skills LS shortcut");
+            await Jump("pob.skill.actions");await Jump("pob.detail.scroll");
+            check((int)Get("detailId")! == longGroupId,"Skills LS round trip retains the searched skill group");
             Set("result",before);
             await Action("unified-search");Set("documentId","changed-document");await Action("unified-search-text","life");
             check(!(bool)Get("unifiedSearchOpen")!&&ReferenceEquals(before,Result()),"Document change rejects stale search instead of navigating another build");Set("documentId",build);

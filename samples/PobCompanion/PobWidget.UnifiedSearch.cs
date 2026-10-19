@@ -8,7 +8,7 @@ public sealed partial class PobWidget
 {
     private sealed record UnifiedSearchCache(PobResult Build,string? Document,CalculationSelection Calculation,string Saved,
         JsonElement Inventory,JsonElement Calculations,PobUnifiedSearchCatalog Index,string[] Limitations);
-    private sealed record UnifiedQuery(UnifiedSearchCache? Cache,string Text,string Category,PobSearchResult[] Results);
+    private sealed record UnifiedQuery(UnifiedSearchCache? Cache,string Text,string Category,PobSearchResult[] Results,long Epoch=0);
     private UnifiedSearchCache? unifiedCache;
     private UnifiedQuery unifiedQuery=new(null,"","All",[]);
     private WidgetIndexedCollection<UnifiedQuery,PobSearchResult>? unifiedCollection;
@@ -23,15 +23,17 @@ public sealed partial class PobWidget
     private long unifiedFocusRequest;
     private int? unifiedMapNode;
     private int? unifiedReadOnlyConfig;
+    private string? unifiedSearchDocument,unifiedSelectedResult;
+    private long unifiedSearchReturnRequest;
 
 
     private string UnifiedSavedSignature()=>string.Join("\n",savedBuilds.Select(b=>b.Id+":"+b.Name));
     private bool UnifiedCacheCurrent(UnifiedSearchCache? cache)=>cache is not null&&ReferenceEquals(cache.Build,result)&&cache.Document==documentId&&
         cache.Calculation==calculationSelection&&cache.Saved==UnifiedSavedSignature();
-    private bool UnifiedQueryCurrent(UnifiedQuery query)=>unifiedSearchOpen&&ReferenceEquals(query,unifiedQuery)&&UnifiedCacheCurrent(query.Cache)&&
+    private bool UnifiedQueryCurrent(UnifiedQuery query)=>unifiedSearchOpen&&query.Epoch==unifiedSearchEpoch&&ReferenceEquals(query,unifiedQuery)&&UnifiedCacheCurrent(query.Cache)&&
         query.Text==unifiedSearchText&&query.Category==unifiedCategory&&LifecycleState==WidgetLifecycleState.Interactive;
 
-    private void OpenUnifiedSearch(string category="All")
+    private void OpenUnifiedSearch(string? category=null)
     {
         if(result is null||LifecycleState!=WidgetLifecycleState.Interactive)return;
         if(gemInspection is not null||candidateInspection is not null||featureReading is not null||featureRemoval is not null||timelessDetail is not null||
@@ -40,8 +42,14 @@ public sealed partial class PobWidget
         var before=result;var document=documentId;var selection=calculationSelection;var epoch=++unifiedSearchEpoch;
         void Open(UnifiedSearchCache cache)
         {
-            unifiedCache=cache;unifiedSearchOpen=true;unifiedSearchText="";unifiedCategory=category;unifiedNotice="";
-            unifiedQuery=new(null,"","All",[]);
+            if(unifiedSearchDocument!=document)
+            {unifiedSearchText="";unifiedCategory="All";unifiedSelectedResult=null;unifiedSearchDocument=document;}
+            // The Warnings entry point is an explicit filter command; ordinary
+            // Search reopens the user's last query instead.
+            if(category is not null){unifiedCategory=category;unifiedSearchText="";unifiedSelectedResult=null;}
+            if(unifiedCategory!="All"&&!cache.Index.Categories.Contains(unifiedCategory)){unifiedCategory="All";unifiedSelectedResult=null;}
+            unifiedCache=cache;unifiedSearchOpen=true;unifiedNotice="";
+            unifiedSearchReturnRequest=unifiedSelectedResult is null?0:++focusRequestSequence;
             unifiedSuggestionSource="pob.unified."+Guid.NewGuid().ToString("N");
             unifiedSuggestions=new(cache.Index.Entries.Select(e=>(e.Title,e.SearchText,e.Category+" · "+e.Context)),160);
             Invalidate();
@@ -71,12 +79,17 @@ public sealed partial class PobWidget
         if(!unifiedSearchOpen)return id.StartsWith("unified-search-",StringComparison.Ordinal);
         if(id=="unified-search-close"){unifiedSearchOpen=false;unifiedSearchEpoch++;return true;}
         if(!UnifiedCacheCurrent(unifiedCache)){unifiedSearchOpen=false;MissingSearchTarget();return true;}
-        if(id=="unified-search-text"){unifiedSearchText=action.CommittedText??"";unifiedNotice="";return true;}
+        if(id=="unified-search-text")
+        {
+            var text=action.CommittedText??"";
+            if(text!=unifiedSearchText){unifiedSearchText=text;unifiedSelectedResult=null;}
+            unifiedNotice="";return true;
+        }
         if(id.StartsWith("unified-search-category.",StringComparison.Ordinal))
         {
             var categories=new[]{"All"}.Concat(unifiedCache!.Index.Categories).ToArray();
             if(int.TryParse(id["unified-search-category.".Length..],out var index)&&index>=0&&index<categories.Length)
-            {unifiedCategory=categories[index];unifiedNotice="";}
+            {if(unifiedCategory!=categories[index]){unifiedCategory=categories[index];unifiedSelectedResult=null;}unifiedNotice="";}
         }
         return true;
     }
@@ -97,12 +110,22 @@ public sealed partial class PobWidget
                 {
                     if(busy||action.ActionId!="open")return ValueTask.CompletedTask;
                     if(!UnifiedQueryCurrent(query)){MissingSearchTarget();Invalidate();return ValueTask.CompletedTask;}
+                    unifiedSelectedResult=entry.Key;
                     NavigateSearchResult(entry,query.Cache!);Invalidate();return ValueTask.CompletedTask;
                 }
             },
         });
-        if(!ReferenceEquals(unifiedQuery.Cache,unifiedCache)||unifiedQuery.Text!=unifiedSearchText||unifiedQuery.Category!=unifiedCategory)
-        {var computed=unifiedCache!.Index.Match(unifiedSearchText,unifiedCategory);unifiedQuery=new(unifiedCache,unifiedSearchText,unifiedCategory,computed);unifiedCollection.PublishQuery(unifiedQuery,computed.Length);}
+        if(unifiedQuery.Epoch!=unifiedSearchEpoch||!ReferenceEquals(unifiedQuery.Cache,unifiedCache)||unifiedQuery.Text!=unifiedSearchText||unifiedQuery.Category!=unifiedCategory)
+        {
+            var computed=unifiedCache!.Index.Match(unifiedSearchText,unifiedCategory);
+            // Refresh callback authority on every open without discarding the
+            // host's logical list position when membership/order are unchanged.
+            var same=unifiedQuery.Cache?.Document==unifiedCache.Document&&unifiedQuery.Text==unifiedSearchText&&unifiedQuery.Category==unifiedCategory&&
+                unifiedQuery.Results.Select(e=>e.Key).SequenceEqual(computed.Select(e=>e.Key));
+            unifiedQuery=new(unifiedCache,unifiedSearchText,unifiedCategory,computed,unifiedSearchEpoch);
+            if(same)unifiedCollection.UpdateContent(unifiedQuery);else unifiedCollection.PublishQuery(unifiedQuery,computed.Length);
+            if(unifiedSelectedResult is {} selected&&!computed.Any(e=>e.Key==selected))unifiedSelectedResult=null;
+        }
         var matches=unifiedQuery.Results;
         var rows=new List<WidgetElement>{UI.Grid("pob.unified.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
             UI.TextEntry(unifiedSearchText,"Name, modifier or page","unified-search-text","pob.unified.search",160).Suggest(unifiedSuggestionSource).Classes("pob-input"),
@@ -114,8 +137,12 @@ public sealed partial class PobWidget
         if(unifiedNotice.Length>0)rows.Add(UI.VerticalScroll("pob.unified.notice",Text(unifiedNotice,"unified.notice-text")).Classes("pob-scroll"));
         rows.Add(matches.Length==0?Text("No matching content.","unified.empty","pob-muted"):
             UI.CollectionList("pob.unified.results",unifiedCollection,88,"Build search results").Classes("pob-scroll"));
-        return view.WithModal(new("pob.unified","Search build",UI.Stack("pob.unified.content",rows.ToArray()).Classes("pob-workspace"),
+        var modal=view.WithModal(new("pob.unified","Search build",UI.Stack("pob.unified.content",rows.ToArray()).Classes("pob-workspace"),
             "pob.unified.search",busy?"cancel-operation":"unified-search-close"){ScrollContent=false,AnchoredPresentation=new(new("pob.unified-search"),Width:900,Height:700)});
+        if(!busy&&unifiedSearchReturnRequest>0&&unifiedSelectedResult is {} selectedKey&&Array.FindIndex(matches,e=>e.Key==selectedKey) is var selectedIndex&&selectedIndex>=0)
+            modal=modal with{FocusGroupEntryRequest=unifiedCollection.Enter("pob.unified.results",unifiedSearchReturnRequest,
+                unifiedCollection.FocusTarget("pob.unified.results",new(selectedKey),selectedIndex))};
+        return modal;
     }
     private void MissingSearchTarget()=>ShowFeedback("Search result no longer available","The build or source changed. Open Search again to choose a current result.",ToastTone.Warning);
 

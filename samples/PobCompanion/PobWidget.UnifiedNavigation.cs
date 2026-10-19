@@ -49,7 +49,9 @@ public sealed partial class PobWidget
     }
     private WidgetView WithUnifiedNavigationFocus(WidgetView view)
     {
-        if(unifiedTargetId is null||unifiedTargetSection!=section||unifiedTargetDetail!=detailKind)return view;
+        // Search owns only its navigation request. A later explicit focus intent
+        // (quick controls, Back, editing, etc.) must supersede that handoff.
+        if(unifiedFocusRequest!=focusRequestSequence||unifiedTargetId is null||unifiedTargetSection!=section||unifiedTargetDetail!=detailKind)return view;
         if(unifiedRenderedFocusGroup is not {} groupId)
         {
             unifiedTargetId=null;unifiedReadOnlyConfig=null;MissingSearchTarget();Invalidate();return view;
@@ -58,7 +60,7 @@ public sealed partial class PobWidget
     }
     private FocusGroupEntryRequest? UnifiedIndexedFocusRequest()
     {
-        if(unifiedSearchOpen||unifiedTargetSection!=section||unifiedTargetDetail!=detailKind||unifiedIndexedKey is not {} key)return null;
+        if(unifiedFocusRequest!=focusRequestSequence||unifiedSearchOpen||unifiedTargetSection!=section||unifiedTargetDetail!=detailKind||unifiedIndexedKey is not {} key)return null;
         if(unifiedIndexedKind=="inventory"&&inventoryCollection is not null)
         {
             var index=Array.FindIndex(inventoryQuery.Entries,e=>e.Key==key);
