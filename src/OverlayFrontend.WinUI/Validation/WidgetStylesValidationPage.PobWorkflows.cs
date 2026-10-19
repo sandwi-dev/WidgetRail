@@ -34,9 +34,10 @@ internal sealed partial class WidgetStylesValidationPage
             var disclosures=Environment.GetCommandLineArgs().Contains("--pob-disclosures-only");
             var density=Environment.GetCommandLineArgs().Contains("--pob-density-only");
             var headerOnly=Environment.GetCommandLineArgs().Contains("--pob-header-only");
+            var editorOnly=Environment.GetCommandLineArgs().Contains("--pob-editor-only");
             foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"widgetrail.builtin.velvet-dusk","high-contrast"})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
@@ -108,6 +109,27 @@ internal sealed partial class WidgetStylesValidationPage
                     Check(Find<FrameworkElement>("Widget.pob.trade-session",root) is not null,"Trade actions occupy a distinct workspace row");
                     if(themeId=="widgetrail.builtin.velvet-dusk"&&game==2)
                         await Capture(Path.Combine(directory,$"native-header-{size.Width}.png"));
+                }
+                if(editorOnly)
+                {
+                    if(scenario=="trade-options")
+                    {
+                        var group=Find<FrameworkElement>("Widget.pob.trade.options",root)!;
+                        foreach(var id in new[]{"pob.trade-batch","pob.trade-advanced"})
+                        {
+                            var control=Find<FrameworkElement>("Widget."+id,root)!;
+                            var bounds=control.TransformToVisual(group).TransformBounds(new(0,0,control.ActualWidth,control.ActualHeight));
+                            Check(Math.Abs(bounds.Left)<1&&bounds.Width>=group.ActualWidth-1,"Trade option stays left-aligned and stretched: "+id);
+                        }
+                    }
+                    else
+                    {
+                        var name=Find<Control>("Widget.pob.author-title",root)!;
+                        Check(name is not null&&name.IsEnabled&&name.ActualHeight>=43,"Rare item name is a reachable normal-size text-entry control");
+                        Check(AutomationProperties.GetName(name!)=="Item name","Item name control has a meaningful accessible label");
+                    }
+                    if(themeId=="widgetrail.builtin.velvet-dusk"&&game==2&&size.Width==1320)
+                        await Capture(Path.Combine(directory,$"native-{scenario}.png"));
                 }
                 if(scenario=="skill-workspace")
                 {

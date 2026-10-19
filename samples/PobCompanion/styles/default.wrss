@@ -8,7 +8,7 @@ text { color: var(--text); text-align: start; }
 .pob-small { color: var(--text-muted); font-size: 12px; }
 .pob-eyebrow { color: var(--text-muted); font-size: 11px; font-weight: 600; }
 .pob-toolbar { gap: 8px; align: center; }
-.pob-buildtools { gap: 6px; align:center; }
+.pob-buildtools { gap: 6px; }
 .pob-build-header { gap:16px; }
 .pob-build-identity { gap:4px; min-width:0px; }
 .pob-button.pob-header-action { background:transparent; border-color:transparent; min-height:44px; padding:8px 10px; }

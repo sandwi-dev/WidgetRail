@@ -168,7 +168,7 @@ public sealed partial class PobWidget
         });
         var tools=QuickControls(UI.Stack("pob.calculation.tools",Button("Back to overview","back"),
             CalculationSkillControls(),
-            UI.Select("Calculation section",sections.Select(s=>new SelectOption(S(s,"id"),S(s,"title"),"calculation-section."+S(s,"id"),S(s,"id")==calculationSection)).ToArray(),"pob.calculation.section").Classes("pob-select"),
+            SelectWithUnavailable("Calculation section",sections.Select(s=>new SelectOption(S(s,"id"),S(s,"title"),"calculation-section."+S(s,"id"),S(s,"id")==calculationSection)).ToArray(),"pob.calculation.section").Classes("pob-select"),
             SearchField(UI.TextEntry(calculationSearch,"Search this section","calculation-search","pob.calculation.search",100),calculationCatalog,
                 ()=>A(selected,"items").Select(c=>(S(c,"title"),S(c,"title"),S(selected,"title")))).Classes("pob-input"),Text($"{entries.Length} calculations","calculation.count","pob-small pob-muted")),"pob.calculation.section","pob.calculation.cells","Calculations",NeedsQuickControls(entries.Length));
         var list=QuickControls(UI.Stack("pob.calculation.list",UI.CollectionList("pob.calculation.cells",calculationCollection,80,"Calculations").Classes("pob-scroll")).Classes("pob-workspace"),"pob.calculation.cells","pob.calculation.tools","Section and search",NeedsQuickControls(entries.Length));
@@ -217,9 +217,9 @@ public sealed partial class PobWidget
     {
         var options=new List<SelectOption>{new("follow","Follow main skill: "+S(State,"mainSkill"),"calculation-group.0",calculationSelection.Group==0)};
         options.AddRange(A(State,"skills").Select(g=>new SelectOption("group"+I(g,"id"),InlineLabel(I(g,"id")+". "+S(g,"title"),"Group "+I(g,"id")),"calculation-group."+I(g,"id"),I(g,"id")==calculationSelection.Group)));
-        var rows=new List<WidgetElement>{UI.Select("Inspect skill group",options,"pob.calculation.group").Classes("pob-select")};
+        var rows=new List<WidgetElement>{SelectWithUnavailable("Inspect skill group",options,"pob.calculation.group").Classes("pob-select")};
         var skills=A(calculationCatalog.GetProperty("context"),"skills");
-        if(calculationSelection.Group!=0&&skills.Length>1)rows.Add(UI.Select("Skill in group",skills.Select(s=>new SelectOption("skill"+I(s,"id"),S(s,"title"),"calculation-skill."+I(s,"id"),B(s,"active"))).ToArray(),"pob.calculation.skill").Classes("pob-select"));
+        if(calculationSelection.Group!=0&&skills.Length>1)rows.Add(SelectWithUnavailable("Skill in group",skills.Select(s=>new SelectOption("skill"+I(s,"id"),S(s,"title"),"calculation-skill."+I(s,"id"),B(s,"active"))).ToArray(),"pob.calculation.skill").Classes("pob-select"));
         return UI.Stack("pob.calculation.skill-controls",rows.ToArray()).Classes("pob-buildtools");
     }
 

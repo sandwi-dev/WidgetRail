@@ -14,8 +14,9 @@ internal static class TradeMenuTests
         var fixture=await engine.ExecuteAsync(new{op="item",slot="Weapon 1 Swap",raw="Rarity: NORMAL\n"+(game==1?"Driftwood Wand":"Attuned Wand")},default,xml);
         File.WriteAllText(Path.Combine(directory,id+".xml"),fixture.Xml);File.WriteAllText(Path.Combine(directory,"selected.txt"),id);
         var leagueRequests=0;
+        string[] leagues=["Newest league","HC Newest league","Standard","Hardcore"];
         var widget=new PobWidget(game,engine,directory){TradeLeagueLoader=(_,_)=>
-        {leagueRequests++;return Task.FromResult(new[]{"Standard","Hardcore"});}};
+        {leagueRequests++;return Task.FromResult(leagues);}};
         WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().Build());var sequence=0;
         IEnumerable<ViewNode> Nodes(ViewNode n)=>new[]{n}.Concat((n.Children??[]).SelectMany(Nodes));
         ViewSnapshot View()=>widget.Render().CreateSnapshot("trade-menu",++sequence);
@@ -45,6 +46,18 @@ internal static class TradeMenuTests
             check(leagueRequests==2,"Explicit Refresh leagues fetches a new list");
             await Action("back");await Action("trade");
             check(leagueRequests==2,"Successful manual refresh also populates the league cache");
+            if(Environment.GetEnvironmentVariable("POB_EDITOR_FIXTURES") is {Length:>0} editorFixtures)
+            {Directory.CreateDirectory(editorFixtures);File.WriteAllBytes(Path.Combine(editorFixtures,$"poe{game}-trade-options.json"),SnapshotJson.Serialize(View()));}
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.trade-league").SelectOptions.Single(o=>o.IsSelected).Label=="Newest league",
+                "First discovered league is the default without promoting Standard");
+            await Action("trade-league.2");await Action("back");await Action("trade");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.trade-league").SelectOptions.Single(o=>o.IsSelected).Label=="Standard"&&leagueRequests==2,
+                "Explicit league choice is preserved while reusing cached discovery");
+            leagues=["Next league","Hardcore"];
+            await Action("trade-refresh");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.trade-league").SelectOptions.Single(o=>o.IsSelected).Label=="Next league"&&
+                !Nodes(View().Root).Single(n=>n.Id=="pob.trade-league").SelectOptions.Any(o=>o.Label=="Standard"),
+                "Removed saved league falls back to the first returned league without appending stale entries");
             var slots=Nodes(View().Root).Single(n=>n.Id=="pob.trade-slot").SelectOptions.Where(o=>o.Id!="requested").ToArray();
             foreach(var slot in slots)
             {

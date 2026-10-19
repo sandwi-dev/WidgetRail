@@ -92,7 +92,7 @@ public sealed partial class PobWidget
     {
         var controls=new List<WidgetElement>();
         var bases=A(tradeCatalog,"bases");
-        if(bases.Length>1)controls.Add(UI.Select("Empty-slot item category",bases.Select((b,i)=>new SelectOption("base"+i,S(b,"title"),"trade-base."+i,S(b,"base")==tradeBase)).Prepend(new SelectOption("choose","Choose category","noop",tradeBase.Length==0)).ToArray(),"pob.trade-base").Classes("pob-select"));
+        if(bases.Length>1)controls.Add(SelectWithUnavailable("Empty-slot item category",bases.Select((b,i)=>new SelectOption("base"+i,S(b,"title"),"trade-base."+i,S(b,"base")==tradeBase)).Prepend(new SelectOption("choose","Choose category","noop",tradeBase.Length==0)).ToArray(),"pob.trade-base").Classes("pob-select"));
         controls.Add(UI.Select("Evaluation limit",new[]{20,50,100}.Select(n=>new SelectOption("limit"+n,n+" listings","trade-batch."+n,n==tradeBatchLimit)).ToArray(),"pob.trade-batch").Classes("pob-select"));
         controls.Add(Text("On the website, choose Load and evaluate results. More listings load automatically up to your evaluation limit. Ranking covers the evaluated items, not the whole market.","trade.batch-help","pob-small pob-muted"));
         if(tradePriority=="custom")

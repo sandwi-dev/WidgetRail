@@ -12,6 +12,16 @@ internal static class ItemAuthoringTests
         var created=await engine.ExecuteAsync(new{op="item-draft",mode="create",kind=basis.GetProperty("kind").GetString(),@base=basis.GetProperty("base").GetString(),rarity="RARE"},default,before.Xml);
         var draft=created.State.GetProperty("authoring");
         string Raw()=>draft.GetProperty("raw").GetString()!;
+        check(draft.GetProperty("canEditTitle").GetBoolean(),"Rare draft exposes upstream item title editing");
+        var unnamedRaw=Raw();var oldTitle=draft.GetProperty("title").GetString()!;
+        var renamed=await engine.ExecuteAsync(new{op="item-draft",mode="title",raw=unnamedRaw,text="Planning Helmet"},default,before.Xml);
+        var renamedInfo=renamed.State.GetProperty("authoring");
+        check(renamedInfo.GetProperty("title").GetString()=="Planning Helmet"&&
+            renamedInfo.GetProperty("raw").GetString()!.Replace("Planning Helmet",oldTitle,StringComparison.Ordinal)==unnamedRaw&&
+            WorkStateTests.SameBuild(before.Xml,renamed.Xml),"Draft rename changes only the title and leaves the committed build intact");
+        foreach(var invalid in new[]{"", "   ", "Name\n+999 to maximum Life",new string('a',401)})
+        {var invalidRejected=false;try{await engine.ExecuteAsync(new{op="item-draft",mode="title",raw=unnamedRaw,text=invalid},default,before.Xml);}catch(IOException){invalidRejected=true;}check(invalidRejected,"Invalid item name is rejected without applying raw item text");}
+        draft=renamedInfo;
         check(draft.GetProperty("crafted").GetBoolean()&&draft.GetProperty("affixes").GetArrayLength()>0,"Created draft exposes upstream prefix and suffix slots");
         check(WorkStateTests.SameBuild(before.Xml,created.Xml),"Creating a draft does not equip or save an item into the build");
         foreach(var rarity in new[]{"NORMAL","MAGIC"})
@@ -19,6 +29,7 @@ internal static class ItemAuthoringTests
             var other=await engine.ExecuteAsync(new{op="item-draft",mode="create",kind=basis.GetProperty("kind").GetString(),@base=basis.GetProperty("base").GetString(),rarity},default,before.Xml);
             var info=other.State.GetProperty("authoring");
             check(info.GetProperty("rarity").GetString()==rarity&&info.GetProperty("affixes").GetArrayLength()==(rarity=="MAGIC"?2:0),rarity+" uses upstream rarity and affix limits");
+            check(!info.GetProperty("canEditTitle").GetBoolean(),rarity+" derived names do not offer rare title editing");
         }
         var quality=await engine.ExecuteAsync(new{op="item-draft",mode="control",raw=Raw(),control="displayItemQualityEdit",value=20},default,before.Xml);
         check(quality.State.GetProperty("authoring").GetProperty("raw").GetString()!.Contains("Quality: 20"),"Draft quality uses the same upstream control as equipped items");
@@ -43,6 +54,10 @@ internal static class ItemAuthoringTests
         check(inventory.State.GetProperty("inventory").EnumerateArray().Any(i=>i.GetProperty("id").GetInt32()==id),"Crafted draft can be stored without equipping");
         var equipped=await engine.ExecuteAsync(new{op="inventory-edit",mode="equip",id,slot="Helmet"},default,saved.Xml);
         check(equipped.State.GetProperty("items").EnumerateArray().Any(i=>i.GetProperty("slot").GetString()=="Helmet"&&i.GetProperty("itemId").GetInt32()==id),"Equip from inventory preserves item identity");
+        var equippedRenamed=await engine.ExecuteAsync(new{op="item-author",mode="title",itemId=id,text="Boss Helmet"},default,equipped.Xml);
+        check(equippedRenamed.State.GetProperty("items").EnumerateArray().Any(i=>i.GetProperty("itemId").GetInt32()==id&&i.GetProperty("name").GetString()!.StartsWith("Boss Helmet",StringComparison.Ordinal))&&
+            equippedRenamed.State.GetProperty("stats").GetRawText()==equipped.State.GetProperty("stats").GetRawText(),
+            "Equipped rename preserves item identity, slot assignment and calculated stats");
         var duplicated=await engine.ExecuteAsync(new{op="inventory-edit",mode="copy",id},default,equipped.Xml);
         var copyId=duplicated.State.GetProperty("editedInventoryId").GetInt32();
         check(copyId!=id,"Duplicate creates an independent item identity");
@@ -66,6 +81,9 @@ internal static class ItemAuthoringTests
         // load normalizes whitespace in historical custom-modifier blocks.
         var unique=await engine.ExecuteAsync(new{op="item-unique-draft",key=goldrim.GetProperty("key").GetString()},default,library.Xml);
         var uniqueRaw=unique.State.GetProperty("authoring").GetProperty("raw").GetString();
+        check(!unique.State.GetProperty("authoring").GetProperty("canEditTitle").GetBoolean(),"Unique identity names are not exposed as editable rare titles");
+        var uniqueRenameRejected=false;try{await engine.ExecuteAsync(new{op="item-draft",mode="title",raw=uniqueRaw,text="Other unique"},default,before.Xml);}catch(IOException){uniqueRenameRejected=true;}
+        check(uniqueRenameRejected,"Direct rename cannot bypass unique identity protection");
         check(unique.State.GetProperty("authoring").GetProperty("rarity").GetString()=="UNIQUE"&&WorkStateTests.SameBuild(library.Xml,unique.Xml),"Choosing a library unique creates an unequipped draft only");
         await engine.ExecuteAsync(new{op="item-draft",mode="control",raw=uniqueRaw,control="displayItemQualityEdit",value=7},default,before.Xml);
         var originalUnique=await engine.ExecuteAsync(new{op="item-unique-draft",key=goldrim.GetProperty("key").GetString()},default,before.Xml);

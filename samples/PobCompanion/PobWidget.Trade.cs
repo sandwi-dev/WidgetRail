@@ -7,10 +7,11 @@ namespace WidgetRail.Samples.PobCompanion;
 
 public sealed partial class PobWidget
 {
-    private string tradeSlot="",tradeLeague="Standard",tradeBudget="",tradeCurrency="divine",tradePriority="balanced",tradeMode="securable";
+    private string tradeSlot="",tradeLeague="",tradeBudget="",tradeCurrency="divine",tradePriority="balanced",tradeMode="securable";
     private string? cachedTradeKey,cachedTradeUrl;
-    private string[] tradeLeagues=["Standard","Hardcore"];
+    private string[] tradeLeagues=[];
     private bool tradeLeaguesLoaded;
+    private bool TradeSearchAvailable=>TradeCatalogReady&&TradeSlotAvailable&&tradeLeagues.Contains(tradeLeague,StringComparer.Ordinal);
     internal Func<int,CancellationToken,Task<string[]>> TradeLeagueLoader { get; init; } = PobTradeSearch.ReadLeaguesAsync;
     private static readonly (string Key,string Label)[] TradeModes=[("securable","Instant buyout"),("available","Instant buyout and in person"),("onlineleague","In person (online in league)"),("online","In person (online)"),("any","Any (includes offline)")];
     private static readonly (string Key,string Label,string Help)[] TradePriorities=[
@@ -31,9 +32,9 @@ public sealed partial class PobWidget
             RefreshTradeLeagues();return true;
         }
         if(id=="trade-browse")
-        {if(detailKind!="trade")tradeSlot=ItemSlot;ReadTradePreferences();Work(token=>OpenWebsiteAsync(BrowseTradeUrl(),token),"Opening trade website…");return true;}
+        {if(detailKind!="trade")tradeSlot=ItemSlot;ReadTradePreferences();Work(async token=>{await LoadTradeLeaguesAsync(token);await OpenWebsiteAsync(BrowseTradeUrl(),token);},"Opening trade website…");return true;}
         if(detailKind!="trade")return false;
-        if(id=="trade-open"&&TradeCatalogReady&&TradeSlotAvailable&&result is {} current)
+        if(id=="trade-open"&&TradeSearchAvailable&&result is {} current)
         {
             var slot=tradeSlot;var priority=tradePriority;var league=tradeLeague;var price=tradeBudget;var currency=tradeCurrency;var mode=tradeMode;
             Work(async token=>await OpenWebsiteAsync(await CalculateTradeUrlAsync(current.Xml,slot,priority,league,price,currency,mode,token),token),"Calculating upgrade search…");
@@ -53,7 +54,7 @@ public sealed partial class PobWidget
     private string BrowseTradeUrl()=>PobTradeSearch.SearchUrl(game,tradeLeague,
         gameDefinition.CompressedSearch?JsonSerializer.SerializeToElement(new{status=new{option=tradeMode}}):JsonSerializer.SerializeToElement(new{query=new{status=new{option=tradeMode}}}));
     private ButtonElement BrowseTradeButton()=>Button("Browse trade website","trade-browse");
-    private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open").Disabled(!TradeCatalogReady||!TradeSlotAvailable);
+    private ButtonElement TradeSearchButton()=>Button("Search trade","trade-open").Disabled(!TradeSearchAvailable);
     private async Task<string> CalculateTradeUrlAsync(string xml,string slot,string priority,string league,string price,string currency,string mode,CancellationToken token)
     {
         var budget=0d;
@@ -84,27 +85,34 @@ public sealed partial class PobWidget
             if(root.TryGetProperty("numbers",out var numbers)&&numbers.ValueKind==JsonValueKind.Object)
             {tradeNumbers.Clear();foreach(var n in numbers.EnumerateObject())if(n.Name is "maxLevel" or "sockets" or "links"&&n.Value.TryGetInt32(out var value)&&value>=0&&value<=100)tradeNumbers[n.Name]=value;}
             if(root.TryGetProperty("batchLimit",out var batch)&&batch.TryGetInt32(out var count)&&count is 20 or 50 or 100)tradeBatchLimit=count;
-            tradeLeagues=tradeLeagues.Append(tradeLeague).Distinct(StringComparer.Ordinal).ToArray();
+            if(tradeLeaguesLoaded&&!tradeLeagues.Contains(tradeLeague,StringComparer.Ordinal))tradeLeague=tradeLeagues[0];
         }
         catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException){ }
     }
     private void RefreshTradeLeagues(bool force=false)=>Work(async token=>
     {
         await ReadTradeCatalogAsync(token);
+        await LoadTradeLeaguesAsync(token,force);
+    },"Loading trade leagues…");
+    private async Task LoadTradeLeaguesAsync(CancellationToken token,bool force=false)
+    {
         // Reuse successful discovery for this widget instance; explicit refresh
         // or a fresh instance after unloading/restart fetches the list again.
-        lock(gate)if(tradeLeaguesLoaded&&!force)return;
+        lock(gate)if(tradeLeaguesLoaded&&!force)
+        {if(!tradeLeagues.Contains(tradeLeague,StringComparer.Ordinal))tradeLeague=tradeLeagues[0];return;}
         var leagues=await TradeLeagueLoader(game,token);
         token.ThrowIfCancellationRequested();
+        if(leagues.Length==0)throw new IOException("No trade leagues were returned. Use Refresh leagues to retry.");
         lock(gate)
         {
-            tradeLeagues=leagues.Append(tradeLeague).Distinct(StringComparer.Ordinal).ToArray();
+            tradeLeagues=leagues.Distinct(StringComparer.Ordinal).ToArray();
+            if(!tradeLeagues.Contains(tradeLeague,StringComparer.Ordinal))tradeLeague=tradeLeagues[0];
             tradeLeaguesLoaded=true;
         }
-    },"Loading trade leagues…");
+    }
 
     private WidgetElement TradeWorkspace()=>UI.Stack("pob.trade.page",ManagementHeader("Find equipment upgrades"),
-        QuickControls(UI.Row("pob.trade.actions",new WidgetElement[]{TradeSearchButton(),BrowseTradeButton()}.Concat(websiteSession is not null||savedTradeUrl is not null?new[]{Button("Return to listings","website-resume")}:Array.Empty<WidgetElement>()).ToArray()).Classes("pob-toolbar"),TradeCatalogReady&&TradeSlotAvailable?"pob.trade-open":"pob.trade-browse","pob.trade.scroll","Search options",true),
+        QuickControls(UI.Row("pob.trade.actions",new WidgetElement[]{TradeSearchButton(),BrowseTradeButton()}.Concat(websiteSession is not null||savedTradeUrl is not null?new[]{Button("Return to listings","website-resume")}:Array.Empty<WidgetElement>()).ToArray()).Classes("pob-toolbar"),TradeSearchAvailable?"pob.trade-open":"pob.trade-browse","pob.trade.scroll","Search options",true),
         QuickControls(UI.VerticalScroll("pob.trade.scroll",
             TradeSlotControl(),
             Text(!TradeCatalogReady?"Equipment options are not ready. Wait for loading to finish, or choose Refresh leagues to retry.":!TradeSlotAvailable
@@ -112,7 +120,7 @@ public sealed partial class PobWidget
                 :"","trade.slot-status","pob-small pob-muted"),
             Text("Search for non-unique equipment that may improve this build. PoB calculates the filters; listings and trading stay on the official website.","trade.help","pob-muted"),
             Text("Trade opens in the overlay so you can compare listings beside your build. Sign in once; this widget remembers your login.","trade.website-help","pob-small pob-muted"),
-            UI.Select("League",tradeLeagues.Select((l,i)=>new SelectOption("league"+i,l,"trade-league."+i,l==tradeLeague)).ToArray(),"pob.trade-league").Classes("pob-select"),
+            SelectWithUnavailable("League",tradeLeagues.Select((l,i)=>new SelectOption("league"+i,l,"trade-league."+i,l==tradeLeague)).ToArray(),"pob.trade-league","Load leagues to choose a league").Classes("pob-select"),
             UI.Select("Trade method",TradeModes.Select(m=>new SelectOption(m.Key,m.Label,"trade-mode."+m.Key,m.Key==tradeMode)).ToArray(),"pob.trade-mode").Classes("pob-select"),
             Text("Instant buyout lets you travel to the merchant and buy in game. In-person listings require contacting the seller.","trade.mode-help","pob-small"),
             UI.Select("Prioritize",TradePriorities.Select(p=>new SelectOption(p.Key,p.Label,"trade-priority."+p.Key,p.Key==tradePriority)).ToArray(),"pob.trade-priority").Classes("pob-select"),

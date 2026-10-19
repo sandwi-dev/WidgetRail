@@ -287,7 +287,9 @@ public sealed partial class PobWidget : Widget
     }
     private List<WidgetElement> NodeDetails()
     {
-        var n=A(State,"nodes").First(n=>I(n,"id")==detailId);
+        var n=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
+        if(n.ValueKind!=JsonValueKind.Object)
+            return [Button("Back to tree","back"),Text("This passive is no longer available in the current tree.","node.unavailable","pob-muted")];
         if(pendingBefore is not null&&!B(n,"allocated"))
         {
             var original=A(pendingBefore.State,"nodes").FirstOrDefault(node=>I(node,"id")==detailId);
@@ -339,7 +341,7 @@ public sealed partial class PobWidget : Widget
     private void AddSet(List<WidgetElement> rows,string field,string kind)
     {
         var sets=A(State,field); if(sets.Length<2)return;
-        rows.Add(UI.Select("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Disabled(pendingBefore is not null).Classes("pob-select"));
+        rows.Add(SelectWithUnavailable("Set",sets.Select(s=>new SelectOption("set"+I(s,"id"),S(s,"title"),"set."+kind+"."+I(s,"id"),B(s,"active"))).ToArray(),"pob.set."+kind).Disabled(pendingBefore is not null).Classes("pob-select"));
     }
     public override ValueTask<bool> OnIntentCompletedAsync(WidgetIntentFeedback feedback,CancellationToken cancellationToken=default)
     {

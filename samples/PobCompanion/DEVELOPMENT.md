@@ -4,6 +4,9 @@
 
 This document covers the implementation and its compatibility checks. Installation and everyday workflows are documented in the overview and user guide.
 
+The [editor capability audit](../../docs/pob-editor-capability-audit.md) maps the
+pinned upstream dialogs to delivered controls and records remaining omissions.
+
 ## Architecture
 
 Two controller-first widgets share one implementation and run pinned Path of Building Community calculation engines. PoE 1 and PoE 2 remain separate because their build formats and game data differ. Calculation rules remain upstream; the adapter translates editor actions and presentation.

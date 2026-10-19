@@ -103,6 +103,7 @@ end
 function M.inspect(req,clean,textRuns)
   local item=display(req);local tab=build.itemsTab
   local result={raw=item:BuildRaw(),name=clean(item.name or item.baseName),rarity=item.rarity,crafted=item.crafted==true,
+    title=item.title or'',canEditTitle=item.rarity=='RARE'and type(item.title)=='string'and type(tab.EditDisplayItemText)=='function',
     canAddCustom=tab.controls.displayItemAddCustom:IsShown(),affixes={},custom={},ranges={},details={},controls=itemSettings.inspectDisplayItem(textRuns,clean).controls}
   if item.crafted then
     tab:UpdateAffixControls()
@@ -131,7 +132,21 @@ end
 function M.draft(req,clean,textRuns)
   local item=req.mode=='create'and create(req)or display(req);local tab=build.itemsTab
   if req.mode=='choices'then return{choices=affixChoices(item,req.slot,clean)}end
-  if req.mode=='affix'then
+  if req.mode=='title'then
+    -- Rare titles are author-provided. Unique names identify gameplay behavior;
+    -- normal/magic names are derived from their base/affixes, so do not rename them.
+    assert(item.rarity=='RARE'and type(item.title)=='string','This item does not have an editable rare name')
+    assert(type(req.text)=='string'and #req.text<=400 and req.text:match('%S')and not req.text:find('%c'),'Enter an item name without line breaks')
+    local title=req.text:match('^%s*(.-)%s*$')
+    withDialog(function()tab:EditDisplayItemText(false)end,function(controls)
+      local first,remaining=controls.edit.buf:match('^([^\n]*)\n(.*)$')
+      assert(first==item.title and remaining,'The upstream item name format changed')
+      controls.edit:SetText(title..'\n'..remaining)
+      assert(controls.save:IsEnabled(),'PoB did not accept this item name')
+      controls.save.onClick()
+    end)
+    item=tab.displayItem
+  elseif req.mode=='affix'then
     local choices,drop=affixChoices(item,req.slot,clean);local allowed=false
     for _,choice in ipairs(choices)do if choice.modId==req.modId then allowed=true end end
     assert(allowed,'This affix is not available for this item or conflicts with another affix')

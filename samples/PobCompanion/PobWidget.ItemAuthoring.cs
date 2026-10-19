@@ -189,6 +189,15 @@ public sealed partial class PobWidget
             return true;
         }
         if(detailKind!="item-author")return false;
+        if(id=="author-title")
+        {
+            var title=(action.CommittedText??"").Trim();
+            if(!B(authoredItem,"canEditTitle"))return true;
+            if(title.Length is 0 or >100||title.Any(char.IsControl))
+                ShowFeedback("Invalid item name","Enter a name of up to 100 characters without line breaks.",ToastTone.Warning);
+            else if(title!=S(authoredItem,"title"))ChangeAuthoredItem(AuthorCommand("title",text:title));
+            return true;
+        }
         if(parts is ["author-setting",var setting]&&int.TryParse(setting,out var settingNumber)&&settingNumber>=0&&settingNumber<A(authoredItem,"controls").Length)
         {
             var control=A(authoredItem,"controls")[settingNumber];if(!B(control,"enabled"))return true;
@@ -260,6 +269,8 @@ public sealed partial class PobWidget
             Text(authoringId>0?"Edit item":"Crafted / imported item draft","author.title","pob-heading"),
             Text(authoringId>0?"Edits save immediately and affect every set using this item. Duplicate it first for an independent version. Undo restores edits.":"Your draft is saved automatically. Save to inventory to keep it unequipped, or compare it with your equipment.","author.help","pob-small pob-muted")};
         if(authoringId==0)controls.Add(UI.Row("pob.author.draft-actions",Button("Save to inventory","draft-store"),Button("Compare equipment","draft-compare")).Classes("pob-toolbar"));
+        if(B(authoredItem,"canEditTitle"))controls.Add(Field("Item name",
+            UI.TextEntry(S(authoredItem,"title"),"Item name","author-title","pob.author-title",100).Classes("pob-input"),"author-title"));
         foreach(var (control,i) in A(authoredItem,"controls").Select((c,i)=>(c,i)))
         {
             var options=A(control,"options");

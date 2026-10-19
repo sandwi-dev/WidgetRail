@@ -142,7 +142,7 @@ public sealed partial class PobWidget
         if(showSkillContext)
         {
             var skills=A(State,"skills");
-            if(skills.Length>0)notes.Add(UI.Select("Main skill group",skills.Select(s=>new SelectOption("group"+I(s,"id"),InlineLabel(S(s,"title"),"Group "+I(s,"id")),"main-group."+I(s,"id"),B(s,"main"))).ToArray(),"pob.main-group")
+            if(skills.Length>0)notes.Add(SelectWithUnavailable("Main skill group",skills.Select(s=>new SelectOption("group"+I(s,"id"),InlineLabel(S(s,"title"),"Group "+I(s,"id")),"main-group."+I(s,"id"),B(s,"main"))).ToArray(),"pob.main-group")
                 .Disabled(pendingBefore is not null).Classes("pob-select"));
             if(!string.IsNullOrWhiteSpace(S(State,"mainSkillDisabledReason")))
                 notes.Add(Text(S(State,"mainSkill")+": "+S(State,"mainSkillDisabledReason"),"main-skill.warning","pob-life"));
@@ -303,6 +303,8 @@ public sealed partial class PobWidget
 
     private WidgetElement TreeWorkspace()
     {
+        if(detailKind=="node"&&!A(State,"nodes").Any(n=>I(n,"id")==detailId))
+        {detailKind="";detailId=0;attributeChoices=null;passiveChoicePopup=null;}
         var main = new List<WidgetElement>();
         AddSet(main, "trees", "tree");
         if(Capabilities.TimelessFinder)main.Add(Button("Find a Timeless Jewel…","timeless-open"));

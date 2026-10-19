@@ -44,6 +44,15 @@ internal static class ItemWorkflowTests
             var basis=catalog.State.GetProperty("choices").EnumerateArray().First(c=>c.GetProperty("kind").GetString()!.Contains("Helmet",StringComparison.OrdinalIgnoreCase));
             await Action("craft-base."+basis.GetProperty("id").GetInt32());
             check(Has("pob.author.controls")&&Has("pob.author-custom")&&Has("pob.draft-store"),"Crafted item opens the reusable affix editor with a distinct modifier input");
+            check(Has("pob.author-title"),"Crafted rare editor exposes an item name field");
+            await Action("author-title","Couch planning helmet");
+            check(Work().ItemDraft!.Contains("Couch planning helmet")&&Work().Undo.Length==0,
+                "Item name commits into the recoverable draft without changing build history");
+            if(Environment.GetEnvironmentVariable("POB_EDITOR_FIXTURES") is {Length:>0} editorFixtures)
+            {Directory.CreateDirectory(editorFixtures);File.WriteAllBytes(Path.Combine(editorFixtures,$"poe{game}-item-name.json"),SnapshotJson.Serialize(Snapshot()));}
+            var namedDraft=Work().ItemDraft;
+            await Action("author-title","Bad\nInjected line");
+            check(Work().ItemDraft==namedDraft,"Invalid multiline name leaves the draft unchanged");
             var compact=Nodes(Snapshot().Root).FirstOrDefault(n=>n.Id.StartsWith("pob.author-setting.")&&n.Kind==ViewNodeKind.Select&&n.IsDisabled!=true&&n.SelectOptions.Count>1);
             if(compact is not null)
             {
@@ -77,6 +86,11 @@ internal static class ItemWorkflowTests
             check(edited.Contains("+30 to maximum Life")&&Work().Undo.Length==2,"Editing a saved item persists its modifier and history immediately");
             await Action("undo");check(WorkStateTests.SameBuild(Work().CommittedXml,saved),"Undo from the item editor restores the prior item and refreshes its fields");
             await Action("redo");check(WorkStateTests.SameBuild(Work().CommittedXml,edited),"Redo from the item editor restores the edited item");
+            await Action("author-title","Saved boss helmet");
+            var named=Work().CommittedXml;
+            check(named.Contains("Saved boss helmet")&&Work().Undo.Length==3,"Saved item rename creates one history entry");
+            await Action("undo");check(WorkStateTests.SameBuild(Work().CommittedXml,edited),"Undo restores the previous item name and modifiers");
+            await Action("redo");check(WorkStateTests.SameBuild(Work().CommittedXml,named),"Redo restores the new item name");
             await Action("back");await Action("inventory-copy");
             var copied=Work().CommittedXml;
             await Action("inventory-compare");

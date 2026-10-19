@@ -23,6 +23,7 @@ public sealed partial class PobWidget
     private CurrencyRateSnapshot? rankingRates;
     private static readonly (string Key,string Label)[] RankingSorts=[("strength","Strongest improvement"),("value","PoB price-adjusted score"),("price","Lowest price")];
     private JsonElement[] rankingSlots=[];
+    private bool RankingTargetAvailable=>rankingSlots.Any(s=>S(s,"name")==rankingSlot);
     private string rankingSelected="";
     private sealed record RankEntry(string Key,string Label,string Price,string Summary,string Tone,string Action,bool Selected,int WarningCount);
     private sealed record RankQuery(string Context,RankEntry[] Entries);
@@ -191,7 +192,11 @@ public sealed partial class PobWidget
             rankingSlot=previewSlot??tradeSlot;rankingBuild=documentId??"";rankingVisible=true;
             Work(async token=>{await OpenWebsiteAsync(websiteUrl??rankingInputs[0].Listing.Url,token);await EvaluateTradeBatchAsync(token);},"Evaluating recent comparisons…");return true;
         }
-        if(id=="trade-rank-evaluate"&&HasRanking){Work(LoadAndEvaluateTradeAsync,"Loading trade results…");return true;}
+        if(id=="trade-rank-evaluate"&&HasRanking)
+        {
+            if(!RankingTargetAvailable){rankingEditing=true;ShowFeedback("Choose an active target","The saved equipment slot is unavailable in this loadout. Choose a target in Edit ranking before evaluating.",ToastTone.Info);return true;}
+            Work(LoadAndEvaluateTradeAsync,"Loading trade results…");return true;
+        }
         if(parts is ["trade-rank-limit",var count]&&int.TryParse(count,out var limit)&&limit is 20 or 50 or 100)
         {tradeBatchLimit=limit;SaveTradePreferences();return true;}
         if(parts is ["trade-rank-priority",var priority]&&TradePriorities.Any(p=>p.Key==priority))
@@ -220,6 +225,12 @@ public sealed partial class PobWidget
         var damage=A(row.Evaluation,"changes").FirstOrDefault(c=>S(c,"stat")=="CombinedDPS");
         return score+(damage.ValueKind==JsonValueKind.Object?$" · Player DPS {damage.GetProperty("delta").GetDouble():+#,0.##;-#,0.##;0}":"");
     }
+    private WidgetElement RankingTargetControl()
+    {
+        var options=rankingSlots.Select((s,i)=>new SelectOption("slot"+i,S(s,"title"),"trade-rank-slot."+i,S(s,"name")==rankingSlot)).ToList();
+        return SelectWithUnavailable("Compare against",options,"pob.rank.slot",
+            (rankingSlot.Length>0?rankingSlot:"Saved target")+" — unavailable in this loadout").FocusLeft("pob.website.browser").Classes("pob-select");
+    }
     private WidgetElement TradeRankingPanel()
     {
         rankingCollection??=CreateIndexedCollection<RankQuery,RankEntry>("pob.rank.source",rankingQuery,0,new()
@@ -246,7 +257,7 @@ public sealed partial class PobWidget
         if(rankingEditing)
         {
             controls.Add(UI.Stack("pob.rank.setup",
-            rankingSlots.Length==0?Text(rankingSlot,"rank.slot","pob-small"):UI.Select("Compare against",rankingSlots.Select((s,i)=>new SelectOption("slot"+i,S(s,"title"),"trade-rank-slot."+i,S(s,"name")==rankingSlot)).ToArray(),"pob.rank.slot").FocusLeft("pob.website.browser").Classes("pob-select"),
+            RankingTargetControl(),
             UI.Grid("pob.rank.options",[GridTrack.Auto()],[GridTrack.Star(2),GridTrack.Star()],
                 UI.Select("Priority",TradePriorities.Select(p=>new SelectOption(p.Key,p.Label,"trade-rank-priority."+p.Key,p.Key==tradePriority)).ToArray(),"pob.rank.priority").FocusLeft("pob.website.browser").Classes("pob-select"),
                 UI.Select("Limit",new[]{20,50,100}.Select(n=>new SelectOption("limit"+n,n.ToString(),"trade-rank-limit."+n,n==tradeBatchLimit)).ToArray(),"pob.rank.limit").Classes("pob-select").InGrid(column:1)).Spacing(0,8),
@@ -256,7 +267,7 @@ public sealed partial class PobWidget
         else controls.Add(Text($"{rankingSlot} · {TradePriorities.First(p=>p.Key==tradePriority).Label} · up to {tradeBatchLimit}\n{RankingSorts.First(s=>s.Key==rankingSort).Label}","rank.context","pob-small pob-muted"));
         var actions=new List<WidgetElement>{
             Button(rankingEditing?"Done":"Edit ranking…","trade-rank-edit","rank.edit").FocusLeft("pob.website.browser"),
-            Button("Evaluate again","trade-rank-evaluate","rank.evaluate")};
+            Button("Evaluate again","trade-rank-evaluate","rank.evaluate").Disabled(!RankingTargetAvailable)};
         if(rankingSkipped.Length>0)actions.Add(Button((rankingSkippedExpanded?"Hide ":"")+$"{rankingSkipped.Length} skipped","trade-rank-skipped","rank.skipped-toggle"));
         controls.Add(UI.Row("pob.rank.actions",actions.ToArray()).Classes("pob-toolbar"));
         controls.Add(Text(stale?"Scores need recalculation for this build, slot or priority.":rankingSummary,"rank.summary","pob-small pob-muted"));

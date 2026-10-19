@@ -48,7 +48,7 @@ public sealed partial class PobWidget
             Field("Character level",UI.TextEntry(S(State,"level"),"Character level","level","pob.level").Classes("pob-input"),"level").InGrid(column:1)).Spacing(0,12)};
         var choices=new List<WidgetElement>();
         foreach(var (field,kind,title) in new[]{("classes","class","Class"),("ascendancies","ascendancy","Ascendancy")})
-            if(A(State,field).Length>0)choices.Add(UI.Select(title,A(State,field).Select(o=>new SelectOption(kind+I(o,"id"),S(o,"title"),kind+"."+I(o,"id"),B(o,"active"))).ToArray(),"pob."+kind).Classes("pob-select").InGrid(column:choices.Count));
+            if(A(State,field).Length>0)choices.Add(SelectWithUnavailable(title,A(State,field).Select(o=>new SelectOption(kind+I(o,"id"),S(o,"title"),kind+"."+I(o,"id"),B(o,"active"))).ToArray(),"pob."+kind).Classes("pob-select").InGrid(column:choices.Count));
         if(choices.Count>0)character.Add(UI.Grid("pob.manage.class",[GridTrack.Auto()],choices.Select(_=>GridTrack.Star()).ToArray(),choices.ToArray()).Spacing(0,12));
         if(recoveryReadOnly)character.Insert(0,Text("Recovered build is read-only. Duplicate it from Saved builds to continue editing.","recovery.readonly","pob-muted"));
         character.Add(Text("PoB engine · "+S(State,"engineVersion","Unknown"),"engine-version","pob-small pob-muted"));

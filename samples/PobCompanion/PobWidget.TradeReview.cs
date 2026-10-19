@@ -115,13 +115,13 @@ public sealed partial class PobWidget
             tradeCandidates.Count>1?Button("Rank recent","trade-rank-recent",prefix+".rank-back"):null;
         if(tradeCandidates.Count>1)
         {
-            var recent=UI.Select("Recent",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
+            var recent=SelectWithUnavailable("Recent",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
                 TradeItemName(c.Listing),"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob."+prefix+".recent").FocusLeft("pob.website.browser").Classes("pob-select");
             rows.Add(rankingAction is null?recent:UI.Grid("pob."+prefix+".navigation",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],recent,rankingAction.InGrid(column:1)).Spacing(0,8));
         }
         else if(rankingAction is not null)rows.Add(rankingAction.FocusLeft("pob.website.browser"));
         if(itemDraftSlots.Length>0)
-            rows.Add(UI.Select("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").FocusLeft("pob.website.browser").Classes("pob-select"));
+            rows.Add(SelectWithUnavailable("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").FocusLeft("pob.website.browser").Classes("pob-select"));
         rows.Add(UI.Row("pob."+prefix+".actions",
             Button("Find seller’s item","trade-review-find",prefix+".find").FocusLeft("pob.website.browser").FocusRight("pob."+prefix+".equip"),
             Button("Equip in build","trade-review-equip",prefix+".equip").FocusLeft("pob."+prefix+".find").Disabled(pendingBefore is null)).Classes("pob-toolbar"));
@@ -210,9 +210,9 @@ public sealed partial class PobWidget
         var columns=Split("equipment-comparison",leftPanel,rightPanel,1,1);
         if(!CanReplaceTradeComparison)return columns;
         var selectors=new List<WidgetElement>();
-        if(tradeCandidates.Count>1)selectors.Add(UI.Select("Recent comparisons",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
+        if(tradeCandidates.Count>1)selectors.Add(SelectWithUnavailable("Recent comparisons",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
             TradeItemName(c.Listing)+" · "+c.Listing.Price,"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob.item.compare.recent").Classes("pob-select"));
-        if(itemDraftSlots.Length>0)selectors.Add(UI.Select("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob.item.compare.slot").Classes("pob-select"));
+        if(itemDraftSlots.Length>0)selectors.Add(SelectWithUnavailable("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob.item.compare.slot").Classes("pob-select"));
         else selectors.Add(Text("COMPARISON · "+previewSlot+" · not equipped","item.compare.status","pob-eyebrow pob-gold"));
         var controls=UI.Stack("pob.item.compare.controls",
             UI.Row("pob.item.compare.selectors",selectors.ToArray()).Classes("pob-toolbar"),

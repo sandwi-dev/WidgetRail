@@ -51,7 +51,7 @@ public sealed partial class PobWidget
         foreach(var control in A(gemOptions,"controls"))
         {
             var id=S(control,"id");var choices=A(control,"options");
-            if(choices.Length>0)rows.Add(UI.Select(S(control,"title"),choices.Select(c=>new SelectOption(I(c,"id").ToString(),S(c,"title"),$"gem-extra.{id}.{I(c,"id")}",B(c,"active"))).ToArray(),"pob.gem-extra."+id).Disabled(!B(control,"enabled")).Classes("pob-select"));
+            if(choices.Length>0)rows.Add(SelectWithUnavailable(S(control,"title"),choices.Select(c=>new SelectOption(I(c,"id").ToString(),S(c,"title"),$"gem-extra.{id}.{I(c,"id")}",B(c,"active"))).ToArray(),"pob.gem-extra."+id).Disabled(!B(control,"enabled")).Classes("pob-select"));
             else rows.Add(UI.Switch(S(control,"title").TrimEnd(' ',':'),B(control,"value"),"gem-extra."+id,"pob.gem-extra."+id).Disabled(!B(control,"enabled")).Classes("pob-toggle"));
         }
         return UI.VerticalScroll("pob.gem-options.page",rows.ToArray()).RememberChildFocus("pob.back").Classes("pob-scroll","pob-panel");

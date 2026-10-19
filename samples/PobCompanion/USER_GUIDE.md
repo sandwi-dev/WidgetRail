@@ -115,6 +115,10 @@ Search supports custom upstream statistic weights, applicable advanced modifier/
 
 **Search trade** calculates the query using upstream PoB and opens the official trade website in the overlay in one action. Generated searches use descending Weighted Sum; PoE2 applies this through the website's visible sorting control and waits for the replacement results before enabling comparisons. Ordinary browsing and subsequent manual ordering remain user-controlled. **Browse trade website** opens it without calculating upgrade filters. Progress is cancellable; a calculation failure opens nothing. **Compare in PoB** appears beside individual listings whose item response has loaded. Choose a compatible equipment slot to see PoB's calculated differences beside the retained website. **Equip in build** applies the item to the build; **Finish comparing** ends the comparison and returns to Items without equipping it. The widget preserves the listed price, seller, and return link; purchases use the official site's controls. Incomplete conversions and unrevealed modifiers are rejected. Like desktop PoB, recognized display-only modifiers are accepted, and items containing unmodeled effects are evaluated using their recognized modifiers. Ranked rows flag unmodeled effects; comparisons list the exact affected text. Warnings survive saved-result restoration. Owned items can still be copied in game with Ctrl+C and pasted for comparison.
 
+The league list keeps the official returned order. The first league is the default; an explicit saved choice is retained while available. If it disappears, the first returned league is selected. Discovery is cached for this widget instance; Refresh leagues or a fresh instance fetches it again.
+
+Saved ranking targets that are inactive in the current loadout remain visible as unavailable. Choose an active target before evaluating; the widget does not substitute another slot or discard the saved results merely to open ranking settings.
+
 ### Evaluating and ranking results
 
 **Load and evaluate results** loads up to the selected limit through the website's normal batched loading, then evaluates the received items. The default is 20, configurable to 50 or 100. Loading and evaluation show progress and support Cancel; the page returns to its previous scroll position afterward. If the website supplies fewer items, the summary reports the actual count. A virtualized shortlist remains beside the website; its controls show the exact equipment target, priority and limit. Select a result to inspect the complete comparison, then return to the shortlist. Changing the build, target or weights invalidates the displayed scores. Evaluated item copies and listing metadata survive unloading; website price and availability must still be checked before buying. **Order by** can retain strongest improvement, use PoB's price-adjusted score, or show lowest price. Price orders reuse already calculated scores and convert prices with PoB's own logic using GGG's public hourly Currency Exchange history. The selected league and market hour are shown; rates are cached for 61 minutes. This is a historical estimate, not a live exchange quote or a simple improvement-per-price division. Missing numeric prices or conversion rates are reported rather than guessed.
@@ -129,8 +133,11 @@ The header keeps loadout, Search, Build & import and Undo/Redo together. At narr
 widths, these controls move below the build title. Return to listings and Ranked
 results appear separately beneath the section tabs when a trade session is available.
 
-Crafted items may retain PoB's default **New Item** title. The widget preserves
-upstream item names; the crafting dialog's item-title field is not currently exposed.
+Rare items have an **Item name** field in their shared editor: use Item inventory
+→ Edit item, or an equipped item's settings → Edit affixes and modifiers. Draft
+names are saved with the draft; stored-item names update every set using that item
+and support Undo/Redo. PoB's **New Item** title remains until you change it. Unique
+names and normal/magic base-derived names are not treated as editable rare titles.
 
 Use **Build & import** to rename a build, open another saved build, import, export or change character details. LB/RB switches sections, with native controller symbols beside the tabs instead of a separate footer. Controller focus and list navigation remain native; the optional tree visualization uses a host-owned packaged web session.
 
