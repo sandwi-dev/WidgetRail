@@ -338,6 +338,8 @@ This is independent of the PoB architecture work. Technical identifiers and hist
 
 ### Shared rich preview appearance (2026-10-19)
 
+- [x] Support `standard` and opt-in native in-app `acrylic` preview materials through WRSS, with independent bounded tint strength. Keep standard as the default; disconnect acrylic for reduced transparency, high contrast, closure and material changes. Verify real compositor rendering and interactive focus retention. Gameplay GPU impact and separate HWND/WebView backdrop coverage remain unqualified; neither is a prerequisite for shipping this opt-in theme capability.
+
 - [x] Reuse the banner's native outer-shadow renderer for a shaded, theme-aware preview frame with subtle edge lighting.
 - [x] Expose bounded frame properties through the global `preview` theme role; opacity affects the background without fading text. Preserve high contrast and reduced transparency.
 - [x] Reserve shadow space in preview placement, reuse/dispose native resources, and remove Catalogue's redundant outer content padding.

@@ -24,7 +24,9 @@ internal sealed partial class WidgetStylesValidationPage
         long sequence = 0; var sourceVisible = true; var busy = false; var primary = 0; var applied = 0;
         var selected = "one"; var delay = 0;
         var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Reduced };
-        var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, new([], []),
+        var materialStyle = WrssParser.Parse(Environment.GetCommandLineArgs().Contains("--interactive-preview-acrylic")
+            ? "preview { background-material: acrylic; }" : "", "interactive-preview.wrss");
+        var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, new((WrssDocument[])[materialStyle.Document], []),
             catalog.Load("widgetrail.builtin.velvet-dusk", "1.0.0").Package).Theme!;
         page.ApplyAppearance(appearance, false); page.Failed = error => failure ??= error;
         page.DispatchActionAsync = request =>
@@ -112,7 +114,7 @@ internal sealed partial class WidgetStylesValidationPage
             var styles = new Dictionary<string, BridgeNodeRenderStyles>();
             void Visit(ViewNode node) { styles[node.Id] = Compute(theme, node); foreach (var child in node.Children) Visit(child);
                 if (node.FocusPresentation is { } content) Visit(content); if (node.DefaultFocusPresentation is { } empty) Visit(empty); }
-            Visit(snapshot.Root); foreach (var role in new[] { "body", "canvas", "panel", "hint", "tray-item" }) styles[role] = Compute(theme, role, role, []);
+            Visit(snapshot.Root); foreach (var role in new[] { "body", "canvas", "panel", "preview", "hint", "tray-item" }) styles[role] = Compute(theme, role, role, []);
             popup.Update(styles, appearance);
             var descriptor = new BridgeWidgetDescriptor { Id = "preview", Name = "Interactive preview", InstanceId = snapshot.WidgetInstanceId,
                 RuntimeGeneration = "interactive-preview", PresentationGeneration = "interactive-preview", Icon = WidgetGlyph.Settings, PackageContentDigest = "" };

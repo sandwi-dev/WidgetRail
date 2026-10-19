@@ -40,8 +40,10 @@ the row batch.
 The shared frame supplies theme-aware shading, an outer shadow, edge highlights
 and 12 DIP of padding. Style the content rather than adding another padded frame.
 Theme authors can configure the global [`preview` role](../reference/wrss.md#rich-preview-frame);
-background opacity does not fade text. High contrast and reduced transparency
-override decoration.
+background opacity does not fade text. Themes can opt into native in-app acrylic
+with `background-material: acrylic` and an independent `background-tint-opacity`.
+Standard remains the default. High contrast and reduced transparency override
+decoration; widget activation and focus rules are unchanged.
 
 Leave `EnterButton` unset for read-only previews such as Undo/Redo. Their passive
 content validation and focus behavior remain unchanged. Ordinary blocking dialogs

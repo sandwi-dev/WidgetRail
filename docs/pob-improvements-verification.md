@@ -2,6 +2,39 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Opt-in acrylic preview material, 2026-10-19
+
+Global themes can choose `background-material: standard` or `acrylic` on the
+`preview` role. `background-tint-opacity` is bounded to 0–1 and defaults to .65.
+Standard keeps its existing fill opacity/shading and remains the default.
+Acrylic uses WinUI's in-app AcrylicBrush with an opaque fallback; it uses the
+tint colour/strength instead of standard fill alpha, opacity and shading.
+There is no new graphics dependency, screenshot-based blur, or managed blur loop.
+
+The native brush is reused for tint updates and disconnected on material changes
+or preview closure. High contrast uses the Windows solid palette/outline, while
+reduced transparency removes acrylic and uses opaque shading. Windows owns its
+additional fallback for unavailable advanced effects. Per-widget input, source
+selection, focus entry and B return are unchanged.
+
+Verification: **38/38** styling checks (closed material values, bounded tint,
+invalid/non-finite values and existing themes), **1** real Bridge palette test,
+**18** native material/lifecycle checks, and **15** interactive-preview checks
+with acrylic pass. The first material fixture sampled geometry before its first
+layout; waiting for realized native depth corrected the fixture, without changing
+production navigation. Compositor screenshots of the same patterned in-app
+backdrop were compared with acrylic enabled and native fallback forced. They
+show a softened/tinted backdrop with sharp foreground text versus the opaque
+fallback. Only synthetic local content was used. Separate HWND/WebView inputs
+and gameplay GPU cost are not verified; standard remains the default.
+
+Evidence: `artifacts/pob/acrylic-styles02.binlog`, `acrylic-bridge.binlog`,
+`acrylic-native03/{result.json,acrylic-window.png,fallback-window.png}` and
+`acrylic-interactive01/result.json`. A full production candidate is staged at
+`artifacts/pob/cumulative-candidate-20261019-preview-materials`; its native inputs,
+self-contained publication and trimmed cleanup checks pass. It uses the normal
+profile and starts hidden; no current theme is silently switched to acrylic.
+
 ## Preview transparency and Catalogue search shortcut, 2026-10-19
 
 Preview backgrounds default to 92% opacity (8% transparency); content remains

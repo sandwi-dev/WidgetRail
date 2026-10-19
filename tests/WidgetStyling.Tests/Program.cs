@@ -24,6 +24,7 @@ var tests = new (string Name, Action Run)[]
     ("Explicit theme layers outrank selector specificity", LayerPrecedence),
     ("Selected disabled busy and focused states compose", InteractionStateComposition),
     ("Typed values clamp bounded renderer inputs", Clamping),
+    ("Preview materials use closed choices and bounded tint strength", PreviewMaterials),
     ("Surface shading is typed bounded and theme-owned", SurfaceShading),
     ("Scrollbar parts have independent colors and bounded widths", ScrollbarStyles),
     ("Original built-in themes supply scrollbar colors, depth and two-DIP focus edges", BuiltinScrollbarPalettes),
@@ -509,6 +510,28 @@ static void LayerPrecedence()
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
     var style = compile.Theme!.Resolve(new WrssElement("button", "play"));
     Assert.Equal("#333333", style.Get("color")!.Text);
+}
+
+static void PreviewMaterials()
+{
+    foreach (var material in new[] { "standard", "acrylic" })
+    {
+        var compiled = Compile($"preview {{ background-material: {material}; background-tint-opacity: .65; }}");
+        Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
+        var style = compiled.Theme!.Resolve(new WrssElement("preview"));
+        Assert.Equal(material, style.Get("background-material")!.Text);
+        Assert.Equal(WrssValueKind.Keyword, style.Get("background-material")!.Kind);
+        Assert.Equal(.65, style.Get("background-tint-opacity")!.Number!.Value);
+    }
+    foreach (var invalid in new[] { "mica", "glass", "acrylic standard" })
+        Assert.True(!Compile($"preview {{ background-material: {invalid}; }}").IsValid, "Unexpected material accepted");
+    foreach (var (input, expected) in new[] { ("-1", 0d), ("2", 1d) })
+    {
+        var compiled = Compile($"preview {{ background-tint-opacity: {input}; }}");
+        Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
+        Assert.Equal(expected, compiled.Theme!.Resolve(new WrssElement("preview")).Get("background-tint-opacity")!.Number!.Value);
+    }
+    Assert.True(!Compile("preview { background-tint-opacity: NaN; }").IsValid, "Non-finite tint was accepted");
 }
 
 static void Clamping()

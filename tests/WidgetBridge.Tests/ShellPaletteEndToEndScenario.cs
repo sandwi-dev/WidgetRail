@@ -32,7 +32,9 @@ internal static class ShellPaletteEndToEndScenario
                     throw new InvalidOperationException("Class-based shell typography did not survive real theme resolution and transport.");
                 if(palette["data-red"].Base["color"].Text != "#ff9fb4" || palette["data-purple"].Base["color"].Text != "#d4b3ff")
                     throw new InvalidOperationException("Categorical data colors did not survive the real theme projection.");
-                if (palette["preview"].Base["shadow-blur"].Number != 12 || palette["preview"].Base["opacity"].Number != .92 ||
+                if (palette["preview"].Base["background-material"].Text != "standard" ||
+                    palette["preview"].Base["background-tint-opacity"].Number != .65 ||
+                    palette["preview"].Base["shadow-blur"].Number != 12 || palette["preview"].Base["opacity"].Number != .92 ||
                     palette["preview"].Base["background"].Kind != WidgetRail.WidgetStyling.WrssValueKind.Color)
                     throw new InvalidOperationException("Preview theme roles did not survive real theme resolution and transport.");
                 if (palette["tray-item:focused"].Base["outline-color"].Text != "#3fe0ff")

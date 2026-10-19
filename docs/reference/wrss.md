@@ -36,6 +36,8 @@ WRSS styles the content; it does not replace this outer frame.
 
 ```css
 preview {
+  background-material: standard;
+  background-tint-opacity: .65;
   background: var(--surface-raised);
   opacity: 0.92;
   surface-shading: .035;
@@ -54,9 +56,36 @@ preview {
 Here `opacity` affects only the background fill, multiplied by its colour alpha;
 text and controls remain opaque. It defaults to 0.92: a slight transparency that
 reveals underlying content.
-The host supports a solid/alpha background and subtle directional shading, not
-backdrop blur. High contrast replaces decoration with the Windows surface/text
-pair and a two-DIP outline. Reduced transparency makes the fill opaque.
+`background-material` accepts `standard` (the default shaded solid/alpha fill)
+or `acrylic` (WinUI's native in-app frosted material). To opt in:
+
+```css
+preview {
+  background-material: acrylic;
+  background: var(--surface-raised);
+  background-tint-opacity: .65;
+}
+```
+
+For acrylic, `background` supplies the tint colour and `background-tint-opacity`
+controls tint strength from 0 to 1 (default .65). Acrylic ignores `opacity`,
+background colour alpha and `surface-shading`; its native material controls the
+backdrop/luminosity/noise combination. The brush and content stay fully opaque as
+composited layers, so an unavailable effect can fall back to a solid tint colour.
+The separate tint setting is intentional: tint density is not subtree opacity.
+`background-blur` does not configure acrylic's blur radius.
+
+High contrast replaces either material with the Windows surface/text pair and
+a two-DIP outline. Reduced transparency detaches acrylic and makes the fill
+opaque. Windows also controls acrylic's native fallback when advanced effects
+are unavailable. These properties currently apply only to the global `preview`
+role; they do not enable acrylic on arbitrary widget nodes.
+
+In-app acrylic samples compatible content in the same compositor. It is not a
+desktop/game backdrop or a screen-capture effect; separate HWND/WebView surfaces
+are not guaranteed backdrop inputs. The host reuses one brush per open preview,
+detaches it when switching material or closing, and has no managed blur loop.
+Standard remains the default pending gameplay/GPU qualification.
 
 Frame lengths use logical pixels: radius is bounded to 0–24, border width to 0–4,
 shadow blur to 0–24 and each shadow offset to −12–12. Shading is bounded to
