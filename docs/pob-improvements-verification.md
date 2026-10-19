@@ -42,6 +42,8 @@ native item and gem screenshots were reviewed. No live service calls were needed
 Evidence: `artifacts/pob/preview-correction-*`, `navigation-restore-{1,2}.log`.
 Physical controller acceptance remains separate from these automated checks.
 
+Delivery: source commit `b2e4cd01` is published in `cumulative-candidate-20261019-preview-final` (clean source). PoE1/PoE2 0.1.4.18 are installed and enabled. The normal-profile candidate was launched hidden, PID 24464. All 138 frontend DLLs and 16 selected installed widget/adapter/style files match their qualified outputs. Spotify 0.3.90.2 and YouTube Music 0.3.43.5 remain enabled. No merge, push or release was performed.
+
 ## Undo/Redo previews, 2026-10-19
 
 History retains its existing XML snapshots and loadout-switch behavior. A passive
