@@ -347,7 +347,7 @@ This is independent of the PoB architecture work. Technical identifiers and hist
 
 - [x] Keep browse cards aligned with a compact title, two-line summary and status/setup badges. Full wording and prerequisites remain in details and a deferred read-only focus preview.
 - [x] Add local catalogue search and whole-entry name suggestions, retain the query when returning from details, and reject retired suggestion/preview contexts. Typing and previews make no catalogue/network requests.
-- [x] Put Check for updates beside the search field. Keyboard Done commits the search; no extra submit button.
+- [x] Put Check for updates beside the search field. Keyboard Done commits the search; no extra submit button. L3 returns to the search field from the list or details, retaining the query and tab without opening the keyboard. Installation review keeps its own input scope.
 - [x] Prefer a 640-DIP surface height instead of filling available height. Keep navigation outside the scrolling content and preserve review/install actions.
 - [x] Check native card alignment and clipping at wide/constrained widths and verify search, preview, review and focus flows automatically. Physical acceptance remains with the user under the existing waiver.
 

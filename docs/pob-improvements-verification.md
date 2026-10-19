@@ -2,13 +2,36 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Preview transparency and Catalogue search shortcut, 2026-10-19
+
+Preview backgrounds default to 92% opacity (8% transparency); content remains
+fully opaque. Reduced transparency and high contrast still use opaque fills.
+The real Bridge palette check passes with the new default. The native preview
+fixture checks default alpha, opacity overrides, focus retention and contrast
+composited over both black and white underlying content.
+
+Catalogue L3 returns from the list or details to the search field without opening
+the keyboard, submitting text, changing the tab, or clearing the query. The host
+uses a monotonic focus request targeting a single-control group, so it cannot
+restore to Clear or Check for updates instead. Ordinary actions retire the pending
+request; installation review cannot be escaped with this shortcut. **16/16**
+Catalogue checks pass, including repeated requests and empty filtered sections.
+
+The full production candidate is
+`artifacts/pob/cumulative-candidate-20261019-preview-transparency`;
+Catalogue was republished and resealed after the shortcut addition. Evidence:
+`preview-transparency-bridge.binlog`, `preview-transparency-native02/result.json`,
+`catalogue-search-shortcut.binlog` and `catalogue-search-shortcut-publish.binlog`.
+Physical controller checks remain with the user.
+
 ## Shared rich preview frame, 2026-10-19
 
 Read-only and interactive previews now use theme-derived shading, edge lighting
 and the banner's existing native outer-shadow renderer. The global `preview`
 WRSS role controls background, background-only opacity, shading, corners,
 border colour/width, top/bottom edge colour and shadow colour/blur/offset.
-Text and control opacity are unchanged. High contrast uses a solid Windows
+The default fill is 92% opaque (8% transparent); text and control opacity remain
+unchanged. High contrast uses a solid Windows
 surface and two-DIP outline; reduced transparency forces an opaque fill.
 There is no backdrop capture or blur loop. Native depth resources are reused
 while the frame is open and released with it.

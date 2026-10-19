@@ -1176,7 +1176,7 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 /* Host-owned focus previews. Opacity affects the fill, never the content. */
 preview {
   background: var(--surface-raised);
-  opacity: 1;
+  opacity: 0.92;
   surface-shading: 0.035;
   corner-radius: 10px;
   border-width: 1px;

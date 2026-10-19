@@ -129,10 +129,14 @@ internal sealed partial class WidgetStylesValidationPage
                 var frame = page.FocusPreviewFrame!;
                 Check(frame.Surface.Background is LinearGradientBrush { GradientStops.Count: 2 } &&
                     frame.Depth is { IsRealized: true, UsesOuterMask: true }, "Preview uses shaded fill and an exterior-only native shadow");
-                Check(frame.Surface.Opacity == 1 && frame.Opacity == 1, "Preview chrome does not reduce text opacity");
+                Check(frame.Surface.Opacity == 1 && frame.Opacity == 1 &&
+                    ((LinearGradientBrush)frame.Surface.Background).GradientStops.All(stop => stop.Color.A == 235),
+                    "Default preview fill is 92 percent opaque without reducing text opacity");
                 var fills = ((LinearGradientBrush)frame.Surface.Background).GradientStops.Select(stop => stop.Color);
-                var contrast = fills.Min(fill => (Math.Max(Luminance(textInk), Luminance(fill)) + .05) /
-                    (Math.Min(Luminance(textInk), Luminance(fill)) + .05));
+                var contrast = fills.SelectMany(fill => new[] { Microsoft.UI.Colors.Black, Microsoft.UI.Colors.White }
+                    .Select(backdrop => Shell.ShellChromePalette.Composite(backdrop, fill)))
+                    .Min(fill => (Math.Max(Luminance(textInk), Luminance(fill)) + .05) /
+                        (Math.Min(Luminance(textInk), Luminance(fill)) + .05));
                 var point = frame.TransformToVisual(page).TransformPoint(new());
                 Check(point.X >= frame.ShadowInset - .1 && point.Y >= frame.ShadowInset - .1 &&
                     point.X + frame.ActualWidth + frame.ShadowInset <= page.ActualWidth + .1 &&

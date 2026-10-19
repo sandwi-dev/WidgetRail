@@ -6,6 +6,7 @@ using WidgetRail.WidgetStyling;
 
 if (args is ["--export-native", var output]) { await ExportNative(output); return 0; }
 var tests = new (string Name,Func<Task> Run)[] {
+    ("Catalogue L3 returns to the search field without editing or losing context", SearchShortcut),
     ("Catalogue local search retains filters and rejects stale suggestions", Search),
     ("Catalogue previews are deferred read-only metadata and retire on navigation", Previews),
     ("Catalog navigation filters updates and restores the selected card", Navigation),
@@ -252,6 +253,32 @@ static async Task Search()
     catch (OperationCanceledException) { }
 }
 
+static async Task SearchShortcut()
+{
+    await using var f = new Fixture(); await f.Start();
+    await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
+    var before = f.Commands.Count;
+    await f.Act("marketplace.search", "First");
+    var card = Walk(f.View().Root).Single(n => n.Kind == ViewNodeKind.ActionSurface);
+    await f.Act(card.ActionId!);
+    var shortcut = f.View().Root.Shortcuts.Single(s => s.Button == ControllerButton.LeftStick);
+    Check(shortcut.ActionId == "marketplace.search.focus", "L3 does not return to Search from details");
+    await f.Act(shortcut.ActionId);
+    var view = f.View();
+    Check(Node(f, "marketplace.search")?.TextEntryValue == "First" && Node(f, "marketplace.description") is null, "L3 lost the query or retained details");
+    var request = view.FocusGroupEntryRequest!;
+    var target = Node(f, request.GroupId)!;
+    Check(target.InitialChildFocusId == "marketplace.search" && target.Children.Single().Id == "marketplace.search", "Search target can restore to Clear or Refresh");
+    await f.Act(shortcut.ActionId);
+    Check(f.View().FocusGroupEntryRequest!.RequestId > request.RequestId, "Repeated L3 did not issue a fresh focus request");
+    await f.Act("marketplace.search", "Second");
+    Check(f.View().FocusGroupEntryRequest is null, "Old focus request survived a normal action");
+    await f.Act("marketplace.tab.updates"); await f.Act(shortcut.ActionId);
+    Check(Node(f, "marketplace.tab.updates")?.IsSelected == true && Node(f, "marketplace.search")?.TextEntryValue == "Second",
+        "L3 changed tabs or cleared an empty search");
+    Check(f.Commands.Count == before, "L3 issued a catalogue request");
+}
+
 static async Task Previews()
 {
     await using var f = new Fixture();
@@ -314,6 +341,8 @@ static async Task Review()
     await Until(()=>Node(f,"marketplace.primary")?.Text=="Review installation");
     await f.Act("marketplace.install");Check(!f.Commands.Any(c=>c.Action=="install"),"Hidden review was approved");
     await f.Act("marketplace.review.open");Check(f.View().InitialFocusId=="marketplace.review.cancel","Review does not start at Cancel");
+    await f.Act("marketplace.search.focus");
+    Check(f.View().InitialFocusId == "marketplace.review.cancel" && f.View().FocusGroupEntryRequest is null, "L3 escaped installation review");
     Check(ViewSnapshotValidator.Validate(f.View()).Count==0,"Review snapshot invalid");
     await f.Act("marketplace.review.cancel");Check(!f.Commands.Any(c=>c.Action=="install"),"Cancelling review installed");
     await f.Act("marketplace.review.open");await f.Act("marketplace.install");

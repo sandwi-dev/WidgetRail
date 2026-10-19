@@ -37,7 +37,7 @@ WRSS styles the content; it does not replace this outer frame.
 ```css
 preview {
   background: var(--surface-raised);
-  opacity: 1;
+  opacity: 0.92;
   surface-shading: .035;
   corner-radius: 10px;
   border-width: 1px;
@@ -52,7 +52,8 @@ preview {
 ```
 
 Here `opacity` affects only the background fill, multiplied by its colour alpha;
-text and controls remain opaque. It defaults to 1 for reading over busy content.
+text and controls remain opaque. It defaults to 0.92: a slight transparency that
+reveals underlying content.
 The host supports a solid/alpha background and subtle directional shading, not
 backdrop blur. High contrast replaces decoration with the Windows surface/text
 pair and a two-DIP outline. Reduced transparency makes the fill opaque.

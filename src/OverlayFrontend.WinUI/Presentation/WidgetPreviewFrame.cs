@@ -78,7 +78,7 @@ internal sealed record PreviewFrameStyle(Color Surface, double Shading, float Ra
                 Microsoft.UI.Colors.Transparent, 0, Vector2.Zero, true);
         var fill = ColorValue("background", palette.Surface);
         fill.A = appearance.Transparency == TransparencyPreference.Reduced ? byte.MaxValue :
-            (byte)Math.Round(fill.A * Number("opacity", 1, 0, 1));
+            (byte)Math.Round(fill.A * Number("opacity", .92, 0, 1));
         var border = ColorValue("border-color", ShellChromePalette.Blend(palette.Surface, palette.Text, .16));
         return new(fill, Number("surface-shading", .035, -.25, .25), radius, Number("border-width", 1, 0, 4),
             ColorValue("border-top-color", border), border, ColorValue("border-bottom-color", border),
