@@ -15,6 +15,7 @@ public sealed partial class PobWidget
             if (action.ActionId == "cancel-operation") { Operations.Cancel("pob.work"); return ValueTask.CompletedTask; }
             if (busy) return ValueTask.CompletedTask;
             skillWorkspaceFocusRequested=false;
+            skillWorkspaceReturnControl=null;
             if(HandleUnifiedSearchAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleDisclosureAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleItemCandidateInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}

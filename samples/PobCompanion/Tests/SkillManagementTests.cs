@@ -57,6 +57,13 @@ internal static class SkillManagementTests
             await Action("group-name","Controller group");check(Group().GetProperty("title").GetString()=="Controller group","Rename applies the authored label");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.inventory.rows"),"Creating and renaming retain the group rail");
             await Action("group-manage");
+            await Action("back");
+            check(View().FocusGroupEntryRequest?.GroupId=="pob.skill.actions","Back from group settings restores the skill controls rather than the gem list");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.skill.actions").InitialChildFocusId=="pob.group-manage","Group settings Back targets its exact opener after controls are recreated");
+            await Action("skill-options");await Action("back");
+            check(View().FocusGroupEntryRequest?.GroupId=="pob.skill.actions","Back from skill options restores the skill controls");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.skill.actions").InitialChildFocusId=="pob.skill-options","Skill options Back targets its exact opener after controls are recreated");
+            await Action("group-manage");
             if(Result().State.GetProperty("skillWeaponSets").GetBoolean())
             {
                 check(!Nodes(View().Root).Any(n=>n.Id=="pob.group-slot")&&Nodes(View().Root).Count(n=>n.Id.StartsWith("pob.group-weapon-set."))==2,"Beta exposes weapon sets instead of removed equipment slot control");

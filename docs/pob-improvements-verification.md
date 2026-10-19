@@ -1034,3 +1034,23 @@ run (`music-shutdown-recheck-20261018/close-result.json`) also passes all 381 ch
 and exits promptly after actual WM_CLOSE, with no prior disposal/drain. The earlier
 isolated shutdown observation is therefore unreproduced, not attributed to an
 unproven production cause. No timeout/resource-lifetime workaround was added.
+
+## Installed skill return-focus correction — 2026-10-18
+
+The installed editing pass found Back from Group settings/More skill options
+landing on Add gem. The selected group and Full DPS calculation state were correct,
+but the return request entered the gem-list focus group. It now enters the skill
+controls with the exact opener as that newly recreated group's default child.
+The existing gem-picker return path remains unchanged; the return target is cleared
+by the next admitted action rather than retained across unrelated selections.
+
+Both pinned engines pass **79/81 skill-management checks**. Installed packages
+**0.1.4.9** pass native Full DPS toggle/restore, stable toggle focus, group settings
+and options navigation, exact opener focus and selected-group preservation in both
+games. Evidence: `skill-return-poe{1,2}-exact.log` and
+`installed-skill-return-exact-20261018/result.json`. The first implementation fixed
+Group settings but still defaulted More skill options to Group settings; the native
+check caught this and the corrected test covers both. The initial engine command
+incorrectly included `.zip` instead of the bundle stem and is excluded.
+Package preparation reuses hash-verified 0.1.4.7 engine/web/artwork assets; only the
+managed widget binaries and package version change. No live service calls.

@@ -27,6 +27,7 @@ public sealed partial class PobWidget
     private string? gemPickerXml;
     private bool skillOrderFocusRequested;
     private bool skillWorkspaceFocusRequested;
+    private string? skillWorkspaceReturnControl;
     private (int Group,int Gem,string Name)? skillRemoval;
     private sealed record GemEntry(string Key,string Name,string Action,string Description="",GemInspectionData? Inspection=null);
     private sealed record GemQuery(GemEntry[] Entries,GemPickerContext? Context=null);
@@ -54,7 +55,7 @@ public sealed partial class PobWidget
         if(id=="group-paste"){Edit((Func<object>)(()=>new{op="skill-group",mode="paste",text=readClipboard()}),skillDestination:"skill");return true;}
         if(id=="group-delete-all"){skillRemoval=(0,0,"All editable groups in this skill set. Automatically granted groups are kept.");return true;}
         if(id=="back"&&detailKind is "skill-manage" or "gem-picker" or "skill-options")
-        {detailKind="skill";skillWorkspaceFocusRequested=true;focusRequestSequence++;return true;}
+        {skillWorkspaceReturnControl=detailKind switch{"skill-manage"=>"pob.group-manage","skill-options"=>"pob.skill-options",_=>null};detailKind="skill";skillWorkspaceFocusRequested=true;focusRequestSequence++;return true;}
         if(detailKind=="gem-picker")
         {
             if(id=="gem-search"){gemSearch=action.CommittedText??"";return true;}

@@ -54,7 +54,7 @@ public sealed partial class PobWidget
         rows.AddRange(SkillGemCards(group));
         if(gems.Length==0)rows.Add(Text("No gems yet. Add an active skill, then its supports.","group-empty","pob-muted"));
         var quick=NeedsQuickControls(gems.Length*2);
-        var tools=QuickControls(UI.Stack("pob.skill.actions",heading.Select(row=>LinkLeft(row,returnId)).ToArray()),"pob.group-manage","pob.detail.scroll","Gems",quick);
+        var tools=QuickControls(UI.Stack("pob.skill.actions",heading.Select(row=>LinkLeft(row,returnId)).ToArray()),skillWorkspaceReturnControl??"pob.group-manage","pob.detail.scroll","Gems",quick);
         var first=gems.Length==0?"pob.group-name":!generated?"pob.gem-add":"pob.gem."+I(gems[0],"id")+(B(gems[0],"levelReadOnly")?"quality":"level");
         // The group rail remains fixed; the entire selected-group editor scrolls.
         // A fixed context header otherwise consumes nearly all compact view height.
