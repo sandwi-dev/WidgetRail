@@ -56,18 +56,16 @@ public sealed partial class PobWidget
     {
         var content = new List<WidgetElement>();
         if(lines.Length==0)content.Add(Text("Not on "+side+" item",prefix+".empty","pob-modifier-absent"));
-        var (symbol,tone)=status switch
+        var tone=status switch
         {
-            "removed"=>("− ","warning"), "added"=>("+ ","green"),
-            "same"=>("= ","muted"), _=>("↔ ","gold"),
+            "removed"=>"warning", "added"=>"green", "same"=>"muted", _=>"gold",
         };
         foreach (var (line, index) in lines.Select((line, index) => (line, index)))
         {
             // Diff colour describes membership/change, not PoB's gameplay valuation.
             // Full items retains the untouched upstream formatting and warning colours.
-            var runs=new List<FormattedRun>{new(symbol,tone)};
-            runs.AddRange(ReadFormattedRuns(line.Formatted,"text","runs").Select(run=>run with{Tone=tone}));
-            if(index==0||lines[index-1].Kind!=line.Kind)
+            var runs=ReadFormattedRuns(line.Formatted,"text","runs").Select(run=>run with{Tone=tone}).ToList();
+            if(line.Kind!="Explicit"&&(index==0||lines[index-1].Kind!=line.Kind))
                 runs.Add(new(" · "+line.Kind,"muted"));
             AddRuns(content,runs,prefix+".line."+index,"pob-modifier-text");
         }
@@ -76,13 +74,22 @@ public sealed partial class PobWidget
 
     internal static WidgetElement ModifierDifferenceRow(PobModifierDifference row,string prefix)
     {
+        var (label,tone,fallback)=row.Status switch
+        {
+            "added"=>("Added","pob-green",WidgetGlyph.Check),
+            "removed"=>("Removed","pob-life",WidgetGlyph.Warning),
+            "same"=>("Unchanged","pob-muted",WidgetGlyph.Repeat),
+            _=>("Changed","pob-gold",WidgetGlyph.Refresh),
+        };
         return UI.ActionSurface("inspect",prefix+".row",
             row.Status+" modifier. Equipped: "+string.Join("; ",row.Before.Select(line=>S(line.Formatted,"text")))+
             ". Proposed: "+string.Join("; ",row.After.Select(line=>S(line.Formatted,"text")))+". View full items.",ActionSurfaceOrientation.Vertical,
-            UI.Grid(prefix+".values", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
-                ModifierCell(row.Before,row.Status,"equipped",prefix+".before"), ModifierCell(row.After,row.Status,"proposed",prefix+".after").InGrid(column: 1))
+            UI.Grid(prefix+".values", [GridTrack.Auto()], [GridTrack.Pixel(24), GridTrack.Star(), GridTrack.Star()],
+                UI.Icon(WidgetIcon.PackageSvg("change."+row.Status,WidgetPackageIconColorMode.ThemeTint,fallback),prefix+".status",label+" modifier").Classes("pob-modifier-status",tone),
+                ModifierCell(row.Before,row.Status,"equipped",prefix+".before").InGrid(column:1), ModifierCell(row.After,row.Status,"proposed",prefix+".after").InGrid(column:2))
                 .Spacing(0,12).Classes("pob-modifier-values"))
-            .Classes("pob-modifier-row");
+            .Classes("pob-modifier-row")
+            .PresentOnFocus(UI.Text(label+" modifier",prefix+".status-label").Classes("pob-modifier-status-label",tone));
     }
 
     private WidgetElement ModifierChanges(string prefix)
@@ -114,7 +121,10 @@ public sealed partial class PobWidget
             return UI.VerticalScroll("pob." + prefix + ".details", Text("PoB modifier matching is unavailable for this comparison. Full items and Build impact remain available.", prefix + ".unavailable", "pob-muted")).Classes("pob-scroll");
         if (itemModifierQuery.Rows.Length == 0)
             return UI.VerticalScroll("pob." + prefix + ".details", Text("No modifier changes. Full items includes base properties, requirements and sockets.", prefix + ".empty", "pob-muted")).Classes("pob-scroll");
-        return UI.CollectionList("pob." + prefix + ".details", itemModifierCollection, 52, "Equipped and proposed modifier changes").Classes("pob-scroll","pob-modifier-diff");
+        return UI.FocusPresentationSurface(
+            UI.CollectionList("pob." + prefix + ".details", itemModifierCollection, 52, "Equipped and proposed modifier changes").Classes("pob-scroll","pob-modifier-diff"),
+            UI.Text("","pob."+prefix+".status-empty"),"pob."+prefix+".status-preview").Classes("pob-workspace")
+            with{Preview=new(Width:240,Height:96){SizeToContentHeight=true}};
     }
 
     private WidgetElement ComparisonReading(string prefix)
@@ -139,7 +149,7 @@ public sealed partial class PobWidget
         }
         var reading=UI.Stack("pob." + prefix + ".reading", body)
             .Shortcut(ControllerButton.LeftStick, "trade-review-focus", "Comparison controls").Classes("pob-workspace");
-        return body is IndexedCollectionElement?reading.RememberChildFocus("pob."+prefix+".details"):reading;
+        return body is FocusPresentationSurfaceElement?reading.RememberChildFocus("pob."+prefix+".details"):reading;
     }
 
     private WidgetElement BuildTradeComparison(string prefix, bool expanded)
@@ -175,16 +185,15 @@ public sealed partial class PobWidget
         controls.Add(UI.Grid("pob."+prefix+".view-options",[GridTrack.Auto()],viewOptions.Select(_=>GridTrack.Star()).ToArray(),viewOptions.Select((element,index)=>element.InGrid(column:index)).ToArray()).Spacing(0,8));
         if (CanReplaceTradeComparison)
         {
-            var actions = new List<WidgetElement>();
-            if (expanded) actions.Add(Button("Back to results", "trade-review-back", prefix + ".browse"));
-            else actions.Add(Button("Expand", "trade-review-expand", prefix + ".expand"));
-            var find=Button("Find listing", "trade-review-find", prefix + ".find");
-            actions.Add(expanded?find:find.FocusLeft("pob.website.browser"));
-            actions.Add(Button("Equip in build", "trade-review-equip", prefix + ".equip"));
+            var first=expanded?Button("Back to results","trade-review-back",prefix+".browse"):
+                Button("Expand","trade-review-expand",prefix+".expand").FocusLeft("pob.website.browser");
+            var actions = new List<WidgetElement>{first.FocusRight("pob."+prefix+".find"),
+                Button("Find listing","trade-review-find",prefix+".find").FocusLeft(first.Id).FocusRight("pob."+prefix+".equip"),
+                Button("Equip in build","trade-review-equip",prefix+".equip").FocusLeft("pob."+prefix+".find")};
             controls.Add(UI.Row("pob." + prefix + ".actions", actions.ToArray()).Classes("pob-toolbar"));
             controls.Add(UI.Row("pob." + prefix + ".secondary-actions",
-                Button(tradePurchaseExpanded ? "Hide purchase details" : "Purchase details", "trade-review-purchase." + tradeListing!.Id, prefix + ".purchase-toggle"),
-                Button("Finish comparing", "trade-review-close", prefix + ".close")).Classes("pob-toolbar"));
+                Button(tradePurchaseExpanded ? "Hide purchase details" : "Purchase details", "trade-review-purchase." + tradeListing!.Id, prefix + ".purchase-toggle").FocusRight("pob."+prefix+".close"),
+                Button("Finish comparing", "trade-review-close", prefix + ".close").FocusLeft("pob."+prefix+".purchase-toggle").Classes("pob-button","pob-discard")).Classes("pob-toolbar"));
             if (tradePurchaseExpanded) AddTradeContext(controls, prefix);
         }
         if(!CanReplaceTradeComparison)
@@ -201,9 +210,10 @@ public sealed partial class PobWidget
             header = UI.Stack("pob.item.compare.controls", tools).RememberChildFocus("pob." + prefix + ".view");
             if (HasRanking&&rankedItems.Length>0) header = ((ContainerElement)header).Shortcut(ControllerButton.LeftStick, "trade-review-candidates", "Ranked candidates");
         }
-        var columns = UI.Grid("pob." + prefix + ".columns", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
-            UI.Stack("pob." + prefix + ".before-heading", Text("EQUIPPED", prefix + ".before-label", "pob-eyebrow pob-muted"), Text(S(before, "name", "Empty slot"), prefix + ".before-name", "pob-list-title")),
-            UI.Stack("pob." + prefix + ".after-heading", Text("PROPOSED", prefix + ".after-label", "pob-eyebrow pob-blue"), Text(S(after, "name"), prefix + ".after-name", "pob-list-title")).InGrid(column: 1)).Spacing(0, 12).Classes("pob-comparison-columns");
+        var gutter=tradeComparisonView=="changes"?1:0;
+        var columns = UI.Grid("pob." + prefix + ".columns", [GridTrack.Auto()], gutter==1?[GridTrack.Pixel(24),GridTrack.Star(),GridTrack.Star()]:[GridTrack.Star(),GridTrack.Star()],
+            UI.Stack("pob." + prefix + ".before-heading", Text("EQUIPPED", prefix + ".before-label", "pob-eyebrow pob-muted"), Text(S(before, "name", "Empty slot"), prefix + ".before-name", "pob-list-title")).InGrid(column:gutter),
+            UI.Stack("pob." + prefix + ".after-heading", Text("PROPOSED", prefix + ".after-label", "pob-eyebrow pob-blue"), Text(S(after, "name"), prefix + ".after-name", "pob-list-title")).InGrid(column:gutter+1)).Spacing(0, 12).Classes("pob-comparison-columns");
         var panel = UI.Stack("pob." + prefix + ".panel", header, columns,
             expanded&&websiteVisible?Text("Comparison open beside listings",prefix+".covered","pob-muted"):ComparisonReading(prefix)).Classes("pob-panel", "pob-tree-main");
         return expanded && !websiteVisible && CanReplaceTradeComparison && HasRanking && rankedItems.Length > 0

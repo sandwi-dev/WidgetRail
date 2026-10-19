@@ -10,27 +10,31 @@ internal static class TradeWorkflowTests
     {
         // Reproduce the one-to-many modifier shape from the reported armour comparison.
         PobModifierLine Line(string text,string kind="Explicit")=>new(kind,JsonSerializer.SerializeToElement(new{text}));
+        ViewSnapshot DiffSnapshot(WidgetElement row)=>new WidgetView(UI.FocusPresentationSurface(row,UI.Text("","empty"),"preview")
+            with{Preview=new(Width:240,Height:96){SizeToContentHeight=true}}).CreateSnapshot("modifier-layout",1);
         var modifierRow=PobWidget.ModifierDifferenceRow(new("armour","changed",
             [Line("+141 to Evasion Rating")],[Line("+161 to Evasion Rating"),Line("+49 to Evasion Rating")]),"fixture");
-        var modifierSnapshot=new WidgetView(modifierRow).CreateSnapshot("modifier-layout",1);
+        var modifierSnapshot=DiffSnapshot(modifierRow);
         IEnumerable<ViewNode> Flatten(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Flatten));
-        check(Flatten(modifierSnapshot.Root).Count(node=>node.Text==" · Explicit")==2&&
-            !Flatten(modifierSnapshot.Root).Any(node=>node.Text is "CHANGED" or "Explicit"),
-            "Compact diff uses inline section metadata without repeated status headings");
+        check(!Flatten(modifierSnapshot.Root).Any(node=>node.Text is " · Explicit" or "CHANGED" or "Explicit"),
+            "Compact diff omits repetitive Explicit metadata and status headings");
         foreach(var value in new[]{"+141 to Evasion Rating","+161 to Evasion Rating","+49 to Evasion Rating"})
-            check(Flatten(modifierSnapshot.Root).Where(node=>node.Kind==ViewNodeKind.RichText).Any(node=>string.Concat(node.Children.Select(span=>span.Text)).Contains(value,StringComparison.Ordinal)),
+            check(Flatten(modifierSnapshot.Root).Where(node=>node.Kind==ViewNodeKind.RichText).Any(node=>string.Concat(node.Children.Select(span=>span.Text))==value),
                 "Compact comparison retains complete upstream modifier: "+value);
-        var mixed=new WidgetView(PobWidget.ModifierDifferenceRow(new("mixed","changed",[],
-            [Line("+10 to maximum Life","Implicit"),Line("+20 to maximum Life")]),"mixed")).CreateSnapshot("modifier-layout",2);
-        check(Flatten(mixed.Root).Any(node=>node.Text==" · Implicit")&&Flatten(mixed.Root).Any(node=>node.Text==" · Explicit")&&Flatten(mixed.Root).Any(node=>node.Text=="Not on equipped item"),
+        var mixed=DiffSnapshot(PobWidget.ModifierDifferenceRow(new("mixed","changed",[],
+            [Line("+10 to maximum Life","Implicit"),Line("-20 to maximum Life")]),"mixed"));
+        check(Flatten(mixed.Root).Any(node=>node.Text==" · Implicit")&&!Flatten(mixed.Root).Any(node=>node.Text==" · Explicit")&&Flatten(mixed.Root).Any(node=>node.Text=="Not on equipped item")&&Flatten(mixed.Root).Any(node=>node.Text=="-20 to maximum Life"),
             "Compact labels preserve section changes and the empty equipped side");
-        foreach(var (status,symbol,colour) in new[]{("removed","− ","pob-life"),("added","+ ","pob-green"),("changed","↔ ","pob-gold"),("same","= ","pob-muted")})
+        foreach(var (status,label,colour) in new[]{("removed","Removed","pob-life"),("added","Added","pob-green"),("changed","Changed","pob-gold"),("same","Unchanged","pob-muted")})
         {
-            var diff=new WidgetView(PobWidget.ModifierDifferenceRow(new(status,status,
-                status=="added"?[]:[Line("+20 to Intelligence")],status=="removed"?[]:[Line("+30 to Intelligence")]),"diff")).CreateSnapshot("modifier-layout",3);
-            check(Flatten(diff.Root).Where(node=>node.Text==symbol||node.Text?.Contains("Intelligence")==true&&node.Kind==ViewNodeKind.Text)
-                .All(node=>node.StyleClasses.Contains(colour))&&Flatten(diff.Root).Any(node=>node.Text==symbol),
-                "Diff text and symbol distinguish status independently of original modifier colour: "+status);
+            var diff=DiffSnapshot(PobWidget.ModifierDifferenceRow(new(status,status,
+                status=="added"?[]:[Line("+20 to Intelligence")],status=="removed"?[]:[Line("+30 to Intelligence")]),"diff"));
+            var icon=Flatten(diff.Root).Single(node=>node.Kind==ViewNodeKind.Icon);
+            check(icon.PackageIcon?.AssetId=="change."+status&&(icon.GridCell?.Column??0)==0&&icon.AccessibilityLabel==label+" modifier"&&icon.StyleClasses.Contains(colour)&&
+                Flatten(diff.Root).Where(node=>node.Text?.Contains("Intelligence")==true&&node.Kind==ViewNodeKind.Text).All(node=>node.StyleClasses.Contains(colour)),
+                "Separate gutter icon and diff colour distinguish status without prefixing values: "+status);
+            check(Flatten(diff.Root).Single(node=>node.Kind==ViewNodeKind.ActionSurface).FocusPresentation?.Text==label+" modifier"&&diff.Root.FocusPreview?.EnterButton is null,
+                "Focus/hover label is passive and does not take over the row action: "+status);
         }
         foreach(var (text,label,value) in new[]{("+4,305.6 Average Damage (+14.4%)","Average Damage","+4,305.6 (+14.4%)"),("-35.51% Crit Chance","Crit Chance","-35.51%")})
         {
@@ -195,7 +199,10 @@ internal static class TradeWorkflowTests
                 "Only explicit Hide panel hides the unranked sidebar and leaves a visible restore action");
             await Action("trade-review-show");
             var tools=Nodes(View().Root).Single(n=>n.Id=="pob.website.review.tools");
-            check(Nodes(tools).Single(n=>n.Id=="pob.website.review.find").ActionId=="trade-review-find"&&Nodes(tools).Single(n=>n.Id=="pob.website.review.find").Focus?.Left=="pob.website.browser"&&!Nodes(View().Root).Any(n=>n.Text=="Browse listings"||n.Text=="Comparison controls"),"Find seller item replaces redundant focus buttons and links Left to the website");
+            check(Nodes(tools).Single(n=>n.Id=="pob.website.review.find").Focus?.Left=="pob.website.review.expand"&&
+                Nodes(tools).Single(n=>n.Id=="pob.website.review.expand").Focus is {Left:"pob.website.browser",Right:"pob.website.review.find"}&&
+                Nodes(tools).Single(n=>n.Id=="pob.website.review.equip").Focus?.Left=="pob.website.review.find",
+                "Sidebar actions navigate Equip to Find listing to Expand before entering the website");
             await Action("trade-review-focus");
             check(View().FocusGroupEntryRequest?.GroupId=="pob.website.review.tools","LS explicitly enters comparison controls rather than the panel's remembered scroll child");
             var originalComparison=work.Pending!.Xml;
@@ -251,6 +258,9 @@ internal static class TradeWorkflowTests
             check(File.Exists(Path.Combine(directory,id+".ranking.json")),"Ranked candidates are retained for restart");
             await Action("trade-review-expand");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.workspace.trade-candidates")&&Nodes(View().Root).Any(n=>n.Id=="pob.rank.results"),"Expanded comparison keeps ranked candidates alongside item comparison");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.item.compare.find").Focus?.Left=="pob.item.compare.browse"&&
+                Nodes(View().Root).Single(n=>n.Id=="pob.item.compare.close").Focus?.Left=="pob.item.compare.purchase-toggle",
+                "Expanded comparison and secondary actions preserve adjacent button navigation");
             using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"expanded-candidates",900))
             {using var range=await host.AcquireAsync("pob.rank.results",0,2);check(range.Range.Items.All(row=>row.Root.Focus?.Right=="pob.item.compare.controls"&&row.Root.Focus?.Left is null),"Expanded candidate rows navigate to comparison controls without an absent browser target");}
             await Action("trade-review-candidates");

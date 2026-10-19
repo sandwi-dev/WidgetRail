@@ -2,6 +2,34 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Status icons, button navigation and discard theme, 2026-10-19
+
+Changes now uses four small package SVGs in a separate 24-DIP gutter, keeping
+equipment headings aligned with their columns. Modifier text is no longer
+prefixed with +/−/↔/=; original positive/negative values and duplicate occurrences
+remain intact. Common Explicit metadata is hidden only in Changes; other sections
+remain inline. Full items is unchanged. The nearest shared passive preview shows
+a short status label on settled focus/hover without adding an action or taking
+focus. The icons use theme tint and semantic glyph fallbacks. Both canonical
+packaging and the cumulative candidate declare/copy the four assets.
+
+Find listing's incorrect Left→website link now points to Expand in the sidebar
+and Back to results in the expanded view. The browser link belongs to the first
+sidebar action. Equip and the secondary action row retain adjacent horizontal
+targets. Finish comparing uses `--danger` for text/border and `--focus` for the
+focus outline. The shipped theme definitions provide danger colours; Windows
+high-contrast rendering retains the host's system-colour substitution.
+
+Validation: **241 workflow checks passed** (120 PoE1 / 121 PoE2), including exact
+modifier text, signed values, separate icon identities, passive status previews,
+indexed materialization and button neighbors. Release build, both package/WRSS
+validations, canonical builder syntax and packaged icon hashes pass. Evidence:
+`artifacts/pob/trade-status-*-ready.log`, `trade-status-icons-build-ready.binlog`,
+`trade-status-packaging-ready.log`. Both packages are **0.1.4.28** under
+`trade-status-packages-20261019-ready`; .27 was staged but not installed.
+No new physical/native visual checks or live trade requests. Theme support was
+checked against the style tokens/host contrast handling, not a visual tour.
+
 ## Compact modifier diff and browser return, 2026-10-19
 
 User screenshots exposed two follow-ups. Back from an expanded comparison without

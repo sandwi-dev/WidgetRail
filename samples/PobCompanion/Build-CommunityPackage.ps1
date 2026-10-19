@@ -34,6 +34,11 @@ Copy-Item (Join-Path $root 'src/WidgetSdk/WebSessionRuntime.js') (Join-Path $pay
 if($LASTEXITCODE -ne 0){throw 'Tree artwork preparation failed. Install requirements-artwork.txt into your build Python environment.'}
 Copy-Item (Join-Path $PSScriptRoot 'styles/default.wrss') (Join-Path $stage 'styles/default.wrss')
 Copy-Item (Join-Path $PSScriptRoot 'assets/companion.svg') (Join-Path $stage 'assets/icons/companion.svg')
+$iconAssets=@{'companion.mark'=@{path='assets/icons/companion.svg'}}
+foreach($change in 'added','removed','changed','same'){
+    Copy-Item (Join-Path $PSScriptRoot "assets/change-$change.svg") (Join-Path $stage "assets/icons/change-$change.svg")
+    $iconAssets["change.$change"]=@{path="assets/icons/change-$change.svg"}
+}
 $engineTarget=Join-Path $out 'engine-source';New-Item -ItemType Directory -Force -Path $engineTarget,(Join-Path $payload 'runtime'),(Join-Path $payload 'licenses') | Out-Null
 # Preserve upstream code and data. Drawing-only assets and exporter tooling are not needed by headless calculations.
 $tracked = & git -C $EngineCheckout ls-files -- src runtime/lua runtime/zlib1.dll
@@ -71,7 +76,7 @@ $manifest=[ordered]@{
     hostApi=@{minimum='1.0';maximumMajor=1}
     entrypoint=@{runtime='full-trust-application-v1';executable="payload/Poe${Game}Companion.exe"}
     presentation=@{icon='connection';packageIcon=@{assetId='companion.mark';colorMode='themeTint'}}
-    iconAssets=@{'companion.mark'=@{path='assets/icons/companion.svg'}}
+    iconAssets=$iconAssets
     permissions=@();optionalPermissions=@()
     intents=@{requests=@(
         @{id='widgetrail.web.open';version=1;payloadSchema=@{type='object';additionalProperties=$false;properties=@{url=@{type='string';minLength=1;maxLength=2048}};required=@('url')}},
