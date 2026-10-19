@@ -88,3 +88,9 @@ title, .wrail-section-header__title, .wrail-dialog__title,
   border-left-color: var(--accent);
   border-left-width: 2px;
 }
+
+/* Keep dark preview text legible over darker underlying content. */
+preview {
+  background-tint-opacity: .55;
+  background-luminosity-opacity: .5;
+}

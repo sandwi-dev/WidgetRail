@@ -6,6 +6,7 @@ using WidgetRail.WidgetStyling;
 
 if (args is ["--export-native", var output]) { await ExportNative(output); return 0; }
 var tests = new (string Name,Func<Task> Run)[] {
+    ("Catalogue bumpers cycle sections locally and stay out of details and reviews", SectionShortcuts),
     ("Catalogue L3 returns to the search field without editing or losing context", SearchShortcut),
     ("Catalogue local search retains filters and rejects stale suggestions", Search),
     ("Catalogue previews are deferred read-only metadata and retire on navigation", Previews),
@@ -253,6 +254,41 @@ static async Task Search()
     catch (OperationCanceledException) { }
 }
 
+static async Task SectionShortcuts()
+{
+    await using var f = new Fixture { RefreshGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+    await f.Start();
+    var before = f.Commands.Count;
+    await f.Act("marketplace.search", "First");
+    foreach (var section in new[] { "installed", "updates", "browse" })
+        await Move(ControllerButton.RightBumper, section);
+    foreach (var section in new[] { "updates", "installed", "browse" })
+        await Move(ControllerButton.LeftBumper, section);
+    Check(f.Commands.Count == before && !f.RefreshGate.Task.IsCompleted, "Section changes issued requests or waited for refresh");
+    var card = Walk(f.View().Root).Single(n => n.Kind == ViewNodeKind.ActionSurface);
+    await f.Act(card.ActionId!);
+    Check(!f.View().Root.Shortcuts.Any(s => s.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
+        "Section bumpers escaped into item details without screenshots");
+    await f.Act("marketplace.tab.updates");
+    Check(Node(f, "marketplace.description") is not null, "A stale section shortcut escaped item details");
+    await f.Act("marketplace.back");
+    Check(Node(f, "marketplace.tab.browse")?.IsSelected == true && f.View().InitialFocusId == card.Id,
+        "Back lost the originating section or card");
+    f.RefreshGate.SetResult();
+    async Task Move(ControllerButton button, string section)
+    {
+        var shortcut = f.View().Root.Shortcuts.Single(s => s.Button == button);
+        Check(shortcut.ActionId == "marketplace.tab." + section, "Bumper chose the wrong adjacent section");
+        await f.Act(shortcut.ActionId);
+        Check(Node(f, "marketplace.tab." + section)?.IsSelected == true && Node(f, "marketplace.search")?.TextEntryValue == "First",
+            "Bumper lost the selected tab or search query");
+        Check(Node(f, "marketplace.section.previous.hint") is not null && Node(f, "marketplace.section.next.hint") is not null,
+            "Section bumper hints missing");
+        Check(ViewSnapshotValidator.Validate(f.View()).Count == 0 && WinUiPresentationContract.Validate(f.View()).Count == 0,
+            "Section navigation produced an invalid view");
+    }
+}
+
 static async Task SearchShortcut()
 {
     await using var f = new Fixture(); await f.Start();
@@ -343,6 +379,8 @@ static async Task Review()
     await f.Act("marketplace.review.open");Check(f.View().InitialFocusId=="marketplace.review.cancel","Review does not start at Cancel");
     await f.Act("marketplace.search.focus");
     Check(f.View().InitialFocusId == "marketplace.review.cancel" && f.View().FocusGroupEntryRequest is null, "L3 escaped installation review");
+    await f.Act("marketplace.tab.updates");
+    Check(f.View().InitialFocusId == "marketplace.review.cancel", "A stale bumper action escaped installation review");
     Check(ViewSnapshotValidator.Validate(f.View()).Count==0,"Review snapshot invalid");
     await f.Act("marketplace.review.cancel");Check(!f.Commands.Any(c=>c.Action=="install"),"Cancelling review installed");
     await f.Act("marketplace.review.open");await f.Act("marketplace.install");

@@ -21,3 +21,6 @@ text { color: var(--text); }
 .diagnostic-error { color: var(--danger, var(--text)); text-align: start; }
 .diagnostic-ok { color: var(--text); text-align: start; }
 .marketplace-review-actions { gap: 8px; }
+
+.marketplace-section-navigation { gap: 8px; align: center; }
+.marketplace-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; }

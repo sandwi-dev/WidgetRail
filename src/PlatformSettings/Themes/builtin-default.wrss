@@ -1175,9 +1175,9 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 
 /* Host-owned focus previews. Opacity affects the fill, never the content. */
 preview {
-  background-material: standard;
-  background-tint-opacity: .65;
-  background-luminosity-opacity: auto;
+  background-material: acrylic;
+  background-tint-opacity: .35;
+  background-luminosity-opacity: .25;
   background: var(--surface-raised);
   opacity: 0.92;
   surface-shading: 0.035;

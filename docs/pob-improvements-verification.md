@@ -2,6 +2,39 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Built-in acrylic defaults and Catalogue section bumpers, 2026-10-19
+
+The approved lighter acrylic preset is now the shared built-in preview default:
+.35 tint and .25 luminosity, with each theme retaining its surface/text colours.
+Mineral Light uses .55/.5 to keep its dark text clearer over dark content.
+High contrast, reduced transparency and native fallback remain opaque; explicit
+`standard` remains available. Compositor captures of Mineral Light were inspected
+before and after this adjustment. No game/GPU benchmark or WebView backdrop
+qualification is claimed.
+
+Validation: **38/38** styling tests, **1/1** real shell-palette transport test,
+**102** native material checks across all ten built-in theme entries, **82**
+standard-preview/focus/accessibility checks, and **15** interactive-preview checks.
+Evidence: `artifacts/pob/acrylic-themes-native02/result.json`,
+`acrylic-themes-focus01/result.json`, and `acrylic-themes-interactive01/result.json`.
+The standard-material fixture now explicitly requests standard; the acrylic
+matrix checks each actual theme default before exercising overrides and fallbacks.
+
+Catalogue adds LB/RB hints beside its sections and cycles Browse, Installed and
+Updates in both directions. This uses the existing local tab actions, retains the
+query, works during refresh, and does not fetch the catalogue again. Details keep
+screenshot bumpers; stale section actions cannot escape details or installation
+review. **17/17** Catalogue tests pass, including both wraparound directions,
+slow-refresh navigation, retained queries, screenshots and review containment.
+The native compact Catalogue fixture passes **13** layout checks at 900 and 560
+DIP; the narrow capture was inspected for tab/hint alignment. Evidence:
+`artifacts/pob/catalogue-bumpers-native01/native-result.json`.
+
+The full production build passed. Cumulative candidate
+`artifacts/pob/cumulative-candidate-20261019-themes-bumpers` was launched hidden
+with the normal profile. ThemeCatalogMutationPolicy restored built-in Canopy
+and retired the two temporary local acrylic variants.
+
 ## Acrylic density correction, 2026-10-19
 
 The user correctly found the enabled Canopy acrylic preview nearly solid. The

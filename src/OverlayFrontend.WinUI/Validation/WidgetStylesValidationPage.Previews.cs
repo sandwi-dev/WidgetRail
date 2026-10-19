@@ -48,7 +48,7 @@ internal sealed partial class WidgetStylesValidationPage
                     TextScale = highContrast ? 1.25 : 1 };
                 WidgetViewPresenter.SetHighContrastStyleOverride(highContrast);
                 page.ApplyAppearance(appearance, false);
-                var package = WrssParser.Parse(".preview-page { padding: 16px; background: var(--surface); } text { color: var(--text); } .preview-details { gap: 8px; } .preview-explicit { font-size: 16px; }", "preview-fixture.wrss");
+                var package = WrssParser.Parse("preview { background-material: standard; } .preview-page { padding: 16px; background: var(--surface); } text { color: var(--text); } .preview-details { gap: 8px; } .preview-explicit { font-size: 16px; }", "preview-fixture.wrss");
                 var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
                     new((WrssDocument[])[package.Document], []), catalog.Load(highContrast ? ThemeIdentity.BuiltInMonoInk : themeId, "1.0.0").Package);
                 var theme = compiled.Theme ?? throw new InvalidOperationException("Invalid preview fixture theme");
@@ -131,7 +131,7 @@ internal sealed partial class WidgetStylesValidationPage
                     frame.Depth is { IsRealized: true, UsesOuterMask: true }, "Preview uses shaded fill and an exterior-only native shadow");
                 Check(frame.Surface.Opacity == 1 && frame.Opacity == 1 &&
                     ((LinearGradientBrush)frame.Surface.Background).GradientStops.All(stop => stop.Color.A == 235),
-                    "Default preview fill is 92 percent opaque without reducing text opacity");
+                    "Explicit standard preview fill is 92 percent opaque without reducing text opacity");
                 var fills = ((LinearGradientBrush)frame.Surface.Background).GradientStops.Select(stop => stop.Color);
                 var contrast = fills.SelectMany(fill => new[] { Microsoft.UI.Colors.Black, Microsoft.UI.Colors.White }
                     .Select(backdrop => Shell.ShellChromePalette.Composite(backdrop, fill)))

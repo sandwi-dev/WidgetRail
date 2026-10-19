@@ -36,9 +36,9 @@ WRSS styles the content; it does not replace this outer frame.
 
 ```css
 preview {
-  background-material: standard;
-  background-tint-opacity: .65;
-  background-luminosity-opacity: auto;
+  background-material: acrylic;
+  background-tint-opacity: .35;
+  background-luminosity-opacity: .25;
   background: var(--surface-raised);
   opacity: 0.92;
   surface-shading: .035;
@@ -54,11 +54,14 @@ preview {
 }
 ```
 
-Here `opacity` affects only the background fill, multiplied by its colour alpha;
+For the `standard` material, `opacity` affects only the background fill, multiplied by its colour alpha;
 text and controls remain opaque. It defaults to 0.92: a slight transparency that
 reveals underlying content.
-`background-material` accepts `standard` (the default shaded solid/alpha fill)
-or `acrylic` (WinUI's native in-app frosted material). To opt in:
+`background-material` accepts `standard` (a shaded solid/alpha fill)
+or `acrylic` (WinUI's native in-app frosted material). Built-in themes use
+acrylic with the following preset; Mineral Light increases tint to .55 and
+luminosity to .5 to support dark text over darker content. Custom themes can
+override these settings:
 
 ```css
 preview {
@@ -70,9 +73,9 @@ preview {
 ```
 
 For acrylic, `background` supplies the tint colour and `background-tint-opacity`
-controls tint strength from 0 to 1 (default .65).
+controls tint strength from 0 to 1 (built-in default .35).
 `background-luminosity-opacity` controls the additional luminosity tint from 0
-to 1; the default `auto` delegates it to WinUI. The lighter example above reveals
+to 1 (built-in default .25); `auto` delegates it to WinUI. The preset above reveals
 more of the frosted backdrop; dense tint/automatic luminosity can look nearly
 solid over similarly coloured content. Acrylic ignores `opacity`,
 background colour alpha and `surface-shading`; its native material controls the
@@ -91,7 +94,8 @@ In-app acrylic samples compatible content in the same compositor. It is not a
 desktop/game backdrop or a screen-capture effect; separate HWND/WebView surfaces
 are not guaranteed backdrop inputs. The host reuses one brush per open preview,
 detaches it when switching material or closing, and has no managed blur loop.
-Standard remains the default pending gameplay/GPU qualification.
+Gameplay GPU impact has not been measured. Themes can select `standard` for
+a shaded fill without native blur.
 
 Frame lengths use logical pixels: radius is bounded to 0–24, border width to 0–4,
 shadow blur to 0–24 and each shadow offset to −12–12. Shading is bounded to

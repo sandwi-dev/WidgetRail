@@ -68,7 +68,7 @@ public sealed partial class MarketplaceWidget : Widget
         {
             var section = action.ActionId switch { "marketplace.tab.browse" => Section.Browse, "marketplace.tab.installed" => Section.Installed,
                 "marketplace.tab.updates" => Section.Updates, _ => (Section?)null };
-            if (section is not null) model.Update(s => s with { Section = section.Value, Selected = null, ReviewToken = null });
+            if (section is not null && state.Selected is null && state.ReviewToken is null) model.Update(s => s with { Section = section.Value, Selected = null, ReviewToken = null });
             return ValueTask.CompletedTask;
         }
         if (action.ActionId.StartsWith("marketplace.select.",StringComparison.Ordinal))
@@ -164,10 +164,14 @@ public sealed partial class MarketplaceWidget : Widget
         if (selected is null)
         {
             var updates = state.Snapshot.Items.Count(UpdateAvailable);
-            header.Add(UI.SegmentedTabs("marketplace.tabs", "marketplace.tab." + state.Section.ToString().ToLowerInvariant(),
+            header.Add(UI.Row("marketplace.section.navigation",
+                UI.ControllerGlyph(ControllerButton.LeftBumper, "marketplace.section.previous.hint", "Previous section").Classes("marketplace-bumper-key"),
+                UI.SegmentedTabs("marketplace.tabs", "marketplace.tab." + state.Section.ToString().ToLowerInvariant(),
                 new SegmentedTab("marketplace.tab.browse", "Browse", "marketplace.tab.browse"),
                 new SegmentedTab("marketplace.tab.installed", "Installed", "marketplace.tab.installed"),
-                new SegmentedTab("marketplace.tab.updates", $"Updates ({updates})", "marketplace.tab.updates")));
+                new SegmentedTab("marketplace.tab.updates", $"Updates ({updates})", "marketplace.tab.updates")),
+                UI.ControllerGlyph(ControllerButton.RightBumper, "marketplace.section.next.hint", "Next section").Classes("marketplace-bumper-key"))
+                .Classes("marketplace-section-navigation"));
             if (state.Section == Section.Updates && updates > 0)
                 commands.Add(UI.Button(updates > 16 ? "Update next 16" : $"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
             header.Add(UI.Grid("marketplace.search.row", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto(), GridTrack.Auto()],
@@ -277,7 +281,14 @@ public sealed partial class MarketplaceWidget : Widget
         else root = root.Shortcut(ControllerButton.X,"marketplace.tab.updates",label: "Updates");
         if (state.ReviewToken is null) root = root.Shortcut(ControllerButton.LeftStick, "marketplace.search.focus", label: "Search");
         if (!busy) root = root.Shortcut(ControllerButton.Y,"marketplace.refresh",label: "Check updates");
-        if (selected?.Screenshots.Count > 1) root = root.Shortcut(ControllerButton.LeftBumper,"marketplace.screenshot.previous",label: "Previous screenshot")
+        if (selected is null && state.ReviewToken is null)
+        {
+            var previous = state.Section switch { Section.Browse => "updates", Section.Installed => "browse", _ => "installed" };
+            var next = state.Section switch { Section.Browse => "installed", Section.Installed => "updates", _ => "browse" };
+            root = root.Shortcut(ControllerButton.LeftBumper, "marketplace.tab." + previous, label: "Previous section")
+                .Shortcut(ControllerButton.RightBumper, "marketplace.tab." + next, label: "Next section");
+        }
+        else if (state.ReviewToken is null && selected?.Screenshots.Count > 1) root = root.Shortcut(ControllerButton.LeftBumper,"marketplace.screenshot.previous",label: "Previous screenshot")
             .Shortcut(ControllerButton.RightBumper,"marketplace.screenshot.next",label: "Next screenshot");
         var view = new WidgetView(root,initial, Surface: new WidgetSurfaceHints
         {

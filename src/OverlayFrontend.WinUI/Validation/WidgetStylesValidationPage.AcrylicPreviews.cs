@@ -41,14 +41,14 @@ internal sealed partial class WidgetStylesValidationPage
         page.Failed = error => failure ??= error;
         var dispatches = 0; page.DispatchActionAsync = _ => { dispatches++; return Task.CompletedTask; };
         var themeId = ThemeIdentity.BuiltInCanopy;
-        var material = "standard";
+        string? material = null;
         var tint = .35;
         var luminosity = ".25";
         try
         {
-            foreach (var id in new[] { ThemeIdentity.BuiltInCanopy, ThemeIdentity.BuiltInMineralLight })
+            foreach (var id in catalog.BuiltInThemes.Select(entry => entry.Descriptor.Id))
             {
-                themeId = id;
+                themeId = id; material = null;
                 Publish();
                 await Wait(() => Find<Button>("Widget.acrylic.source", root) is { IsLoaded: true });
                 var source = Find<Button>("Widget.acrylic.source", root)!; source.Focus(FocusState.Keyboard);
@@ -57,7 +57,12 @@ internal sealed partial class WidgetStylesValidationPage
                 var frame = page.FocusPreviewFrame!;
                 var chrome = frame.Surface;
                 var bounds = (chrome.ActualWidth, chrome.ActualHeight);
-                Check(chrome.Background is LinearGradientBrush, id + ": standard remains the default material");
+                var lightTheme = id == ThemeIdentity.BuiltInMineralLight;
+                Check(chrome.Background is AcrylicBrush defaults &&
+                    defaults.TintOpacity == (lightTheme ? .55 : .35) && defaults.TintLuminosityOpacity == (lightTheme ? .5 : .25),
+                    id + ": actual built-in acrylic preset preserves light or dark text readability");
+                material = "standard"; Publish();
+                Check(chrome.Background is LinearGradientBrush, id + ": explicit standard material remains supported");
                 material = "acrylic"; Publish();
                 await Wait(() => chrome.Background is AcrylicBrush);
                 var brush = (AcrylicBrush)chrome.Background;
@@ -82,7 +87,8 @@ internal sealed partial class WidgetStylesValidationPage
                 appearance = appearance with { Contrast = AppearanceSettings.Default.Contrast }; material = "standard"; tint = .35; luminosity = ".25"; Publish();
                 Check(chrome.Background is LinearGradientBrush, id + ": switching back releases the acrylic background");
             }
-            themeId = ThemeIdentity.BuiltInCanopy; material = "acrylic"; Publish();
+            themeId = Environment.GetCommandLineArgs().Contains("--acrylic-light-specimen")
+                ? ThemeIdentity.BuiltInMineralLight : ThemeIdentity.BuiltInCanopy; material = null; Publish();
             var visibleFrame = page.FocusPreviewFrame!;
             await page.SetPresentationActiveAsync(false);
             Check(!page.IsFocusPreviewOpen && visibleFrame.Surface.Background is null, "Hiding preview disconnects its material brush");
@@ -122,10 +128,14 @@ internal sealed partial class WidgetStylesValidationPage
         void Publish()
         {
             page.ApplyAppearance(appearance, false);
-            var package = WrssParser.Parse("preview { background-material: " + material + "; background-tint-opacity: " +
-                tint.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; background-luminosity-opacity: " + luminosity + "; } .acrylic-content { gap: 12px; } text { color: var(--text); }", "acrylic.wrss");
+            var materialOverride = material is null ? "" : "preview { background-material: " + material + "; background-tint-opacity: " +
+                tint.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; background-luminosity-opacity: " + luminosity + "; } ";
+            var package = WrssParser.Parse(".acrylic-content { gap: 12px; } text { color: var(--text); }", "acrylic.wrss");
+            var selected = catalog.Load(themeId, "1.0.0").Package;
+            var overrideDocument = WrssParser.Parse(materialOverride, "acrylic-material-override.wrss").Document;
             var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
-                new((WrssDocument[])[package.Document], []), catalog.Load(themeId, "1.0.0").Package).Theme!;
+                new((WrssDocument[])[package.Document], []),
+                new((WrssDocument[])[.. selected.Documents, overrideDocument], [])).Theme!;
             var source = UI.Button("Preview source", "source", "acrylic.source").PresentOnFocus(
                 UI.Stack("acrylic.content", UI.Text("Rich preview", "acrylic.title"),
                     UI.Text("Text stays sharp while content behind the panel is softened.", "acrylic.description"),
