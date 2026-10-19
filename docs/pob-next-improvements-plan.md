@@ -8,16 +8,20 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 ## Implementation order and tracking
 
-Current acceptance checkpoint (2026-10-18): implementation is present, but the
-goal remains active. Keyboard Escape, preview text scaling/high-contrast colours
-and updater warning wrapping now have targeted native fixes and evidence. The
-additional Bare upgrade case now passes optional package preservation, native
-launch, removal and restart; the earlier failure was test-path redirection. Spotify
-authentication, the earlier unreproduced invisible-overlay observation, remaining
-physical controller/couch checks and environment-specific installer variants remain distinct
-from completed automated checks. See the latest verification-ledger entries.
-Both installed games now pass item edit/cancel and skill toggle/restore round
-trips; Group settings and More skill options return to their exact openers.
+Current acceptance checkpoint (2026-10-18): independent implementation and the
+scoped deterministic/native verification are complete for this handoff. Candidate
+**i** runs hidden with the normal profile and controller input; PoE1/PoE2 are
+**0.1.4.11** and YouTube Music is **0.3.43.3**. Final fixes cover long reading-block
+word boundaries, unavailable music entries, stale account results and light-theme
+options-glyph ink. Both installed games pass item/skill editing and Notes flows;
+the named cross-app pass and 269 populated-queue checks are recorded in the ledger.
+
+Unchecked compound acceptance items below retain their physical or unavailable
+environment/service portions. Authenticated Spotify actions, physical controller
+and couch readability, actual Windows contrast-theme changes and selected
+hardware/prerequisite/UAC variants are not claimed verified. The earlier transient
+visibility/shutdown observations remain unreproduced after scoped passing retests.
+See the final verification-ledger handoff for the candidate and precise limits.
 
 | Order | Work item | Status |
 | --- | --- | --- |

@@ -1222,3 +1222,29 @@ after opening/using context menus. The first new check ran before post-release
 layout settled; awaiting the badge's bounded native readiness corrected that test
 race. Mineral Light was visually re-inspected and the glyph is readable.
 Evidence: `music-queues-contrast2-20261018/native-result.json`; fix `5a946113`.
+
+## Cumulative candidate i handoff — 2026-10-18
+
+Candidate **i** is running hidden with the normal profile and controller input,
+PID **67784** at this checkpoint. The sole frontend command line contains only
+`--hidden` and its installation root. UIA reports no visible windows. All **138
+frontend DLLs** match the qualified production publication. Publication source is
+`5a946113`; its dirty marker consists only of the verification/plan documentation
+subsequently committed as `8269c872`, not additional executable changes.
+
+Normal installed packages are enabled: PoE1 and PoE2 **0.1.4.11**, YouTube Music
+**0.3.43.3**, Spotify **0.3.90.1** and Browser **0.1.6**. Updates used the ordinary
+disable/reviewed-update/enable CLI flow. The normal profile was not replaced.
+Evidence: `final-installed-20261018/launch.json`, `normal-process.json`,
+`live-payload.json`, `hidden-windows.json`, `normal-packages.txt` and candidate i's
+`publication.json`. Current file-link audit again passes **244 / 761**; the prior
+**44-fragment** audit is unaffected by the appended evidence and tracking edits.
+
+Independent implementation and the scoped deterministic/native checks are complete
+for this handoff. Open acceptance limits remain authenticated Spotify actions,
+physical controller/couch-distance use, Windows contrast-theme switching, display
+cable/hardware variants and installer prerequisite/UAC/environment-specific paths.
+The earlier invisible-overlay/shutdown observations were not reproduced in scoped
+retests; no speculative production workaround was introduced. The plan retains
+those acceptance boxes rather than presenting synthetic input as physical proof.
+No merge, push, release or deferred CI repairs were performed.
