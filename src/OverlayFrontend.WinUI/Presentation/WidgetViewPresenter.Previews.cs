@@ -29,6 +29,7 @@ internal sealed partial class WidgetViewPresenter
     private PresentationPortal? previewPortal;
     private Grid? previewLayer;
     private Border? previewChrome;
+    private WidgetPreviewFrame? previewFrame;
     private IDisposable? previewTheme;
     private WidgetPresentationSurface? previewSurface;
     private long? previewFontSizeSubscription;
@@ -49,6 +50,7 @@ internal sealed partial class WidgetViewPresenter
     private Control? previewReturnTarget;
     internal bool IsFocusPreviewOpen => previewPortal?.Visibility == Visibility.Visible;
     internal FrameworkElement? FocusPreviewChrome => previewChrome;
+    internal WidgetPreviewFrame? FocusPreviewFrame => previewFrame;
     internal object FocusPreviewDiagnostics() => new
     {
         source = previewSource?.Source.Identity.Id, current = CurrentPreviewSource()?.Source.Identity.Id,
@@ -284,13 +286,15 @@ internal sealed partial class WidgetViewPresenter
             previewEnterLabel = new TextBlock { FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
             enterHint.Children.Add(previewEnterGlyph); enterHint.Children.Add(previewEnterLabel);
             Grid.SetRow(enterHint, 1); previewContentPanel.Children.Add(enterHint);
-            previewChrome = new Border { Child = previewContentPanel, IsHitTestVisible = PreviewEnterButton(source) is not null,
-                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+            previewFrame = new();
+            previewChrome = previewFrame.Surface;
+            previewChrome.Child = previewContentPanel;
+            previewChrome.IsHitTestVisible = PreviewEnterButton(source) is not null;
             previewChrome.PointerEntered += (_, _) => { previewExitRevision++; previewPointerIntent = true; previewPointerOverChrome = true; };
             previewChrome.PointerExited += (_, _) => { previewPointerOverChrome = false; _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); };
 
             previewLayer = new Grid { IsHitTestVisible = true };
-            previewLayer.Children.Add(previewChrome);
+            previewLayer.Children.Add(previewFrame);
             previewPortal = new(layers, this, previewLayer, PresentationLayer.ContentPreview, passive: PreviewEnterButton(source) is null, followComposition: false, attachInput: false);
             // NativeTextScaleScope follows the portal's logical owner for authored
             // font sizes. WinUI property inheritance follows its paint parent instead.
@@ -300,7 +304,8 @@ internal sealed partial class WidgetViewPresenter
             fragment.FontSize = FontSize;
             previewFontSizeSubscription = RegisterPropertyChangedCallback(FontSizeProperty,
                 (_, _) => fragment.FontSize = FontSize);
-            previewTheme = NativePopupTheme.Preview(previewChrome, this, presentation?.RenderStyles, appearance);
+            previewTheme = NativePopupTheme.Preview(previewFrame, this, presentation?.RenderStyles, appearance,
+                () => { previewHeight.Reset(); previewBounds = null; });
             LayoutUpdated += PreviewLayoutChanged;
         }
         UpdatePreviewEnterHint(source);
@@ -408,20 +413,22 @@ internal sealed partial class WidgetViewPresenter
     }
     private void PositionFocusPreview()
     {
-        if (previewSource is not { } source || previewChrome is null || previewLayer is null) return;
+        if (previewSource is not { } source || previewChrome is null || previewFrame is null || previewLayer is null) return;
         if (VisibleAnchorBounds(source.Anchor, this) is not { Valid: true } anchor) { ClearFocusPreview(); return; }
-        var width = Math.Max(0, Math.Min(source.Options.Width, ActualWidth - 32));
-        var maximumHeight = Math.Max(0, Math.Min(source.Options.Height, ActualHeight - 32));
+        var inset = previewFrame.ShadowInset;
+        var width = Math.Max(0, Math.Min(source.Options.Width, ActualWidth - 2 * inset));
+        var maximumHeight = Math.Max(0, Math.Min(source.Options.Height, ActualHeight - 2 * inset));
         previewChrome.Width = width;
         var height = source.Options.SizeToContentHeight
             ? previewHeight.Resolve(width, 96, maximumHeight, appearance.TextScale,
                 () => ContentSizedPresentationMeasure.Height(previewChrome, width, maximumHeight))
             : maximumHeight;
-        var bounds = AnchoredPresentationGeometry.Place(ActualWidth, ActualHeight, anchor, width, height, source.Options.Placement);
+        var bounds = AnchoredPresentationGeometry.Place(ActualWidth, ActualHeight, anchor, width, height, source.Options.Placement, inset);
         if (previewBounds == bounds) return;
         previewBounds = bounds;
-        previewChrome.Width = bounds.Width; previewChrome.Height = bounds.Height;
-        previewChrome.Margin = new(bounds.X, bounds.Y, 0, 0);
+        previewFrame.Width = previewChrome.Width = bounds.Width;
+        previewFrame.Height = previewChrome.Height = bounds.Height;
+        previewFrame.Margin = new(bounds.X, bounds.Y, 0, 0);
         previewChrome.Clip = new RectangleGeometry { Rect = new(0, 0, bounds.Width, bounds.Height) };
     }
     private void HideFocusPreview()
@@ -436,6 +443,7 @@ internal sealed partial class WidgetViewPresenter
         previewFontSizeSubscription = null;
         previewPortal?.Dispose(); previewPortal = null;
         previewTheme?.Dispose(); previewTheme = null;
+        previewFrame?.Dispose(); previewFrame = null;
         if (previewChrome is not null) previewChrome.Child = null;
         previewContentPanel?.Children.Clear(); previewContentPanel = null; previewEnterGlyph = null; previewEnterLabel = null;
         previewChrome = null; previewLayer = null;

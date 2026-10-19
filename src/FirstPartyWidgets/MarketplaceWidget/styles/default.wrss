@@ -15,7 +15,7 @@ text { color: var(--text); }
 .marketplace-browse-card { padding: 12px; gap: 6px; }
 .marketplace-card-title { min-height: 22px; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; }
 .marketplace-card-description { min-height: 38px; line-height: 1.25; max-lines: 2; text-overflow: ellipsis; }
-.marketplace-rich-preview { padding: 16px; gap: 10px; }
+.marketplace-rich-preview { gap: 10px; }
 .marketplace-preview { height: 280px; }
 .diagnostic-line { font-size: 15px; text-align: start; }
 .diagnostic-error { color: var(--danger, var(--text)); text-align: start; }

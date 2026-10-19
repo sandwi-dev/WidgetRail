@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetBridge;
+using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
@@ -17,11 +18,20 @@ internal sealed partial class WidgetStylesValidationPage
     private async Task MarketplaceAsync(string directory)
     {
         Exception? failure = null;
+        Grid? previewRoot = null;
         try
         {
             var scale = XamlRoot.RasterizationScale;
             App.Window.AppWindow.Resize(new((int)(1080 * scale), (int)(900 * scale)));
             var compactOnly = Environment.GetCommandLineArgs().Contains("--catalogue-compact-only");
+            var previewOnly = Environment.GetCommandLineArgs().Contains("--catalogue-preview-only");
+            if (previewOnly)
+            {
+                previewRoot = new Grid { Height = 640 };
+                host.Children.Remove(presenter); previewRoot.Children.Add(presenter); host.Children.Add(previewRoot);
+                PresentationLayers.Attach(previewRoot);
+            }
+            var popupTheme = new NativePopupTheme(); popupTheme.Attach(presenter);
             presenter.Height = 640;
             var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
             options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
@@ -30,12 +40,15 @@ internal sealed partial class WidgetStylesValidationPage
             foreach (var width in new[] { 900, 560 })
             {
                 presenter.Width = width;
-                foreach (var name in compactOnly ? new[] { "browse" } : new[] { "browse", "details", "installed", "updates", "review", "completed",
+                if (previewRoot is not null) previewRoot.Width = width;
+                foreach (var name in previewOnly ? new[] { "browse-preview" } : compactOnly ? new[] { "browse" } : new[] { "browse", "details", "installed", "updates", "review", "completed",
                     "empty", "loading", "stale-error", "requirements-long", "requirements-absent" })
                 {
                     using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, name + ".json")));
                     var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(document.RootElement.GetProperty("snapshot").GetRawText())) with { Sequence = ++sequence };
                     var styles = document.RootElement.GetProperty("renderStyles").Deserialize<Dictionary<string, BridgeNodeRenderStyles>>(options)!;
+                    if (document.RootElement.TryGetProperty("shellStyles", out var shellStyles))
+                        popupTheme.Update(shellStyles.Deserialize<Dictionary<string, BridgeNodeRenderStyles>>(options)!, AppearanceSettings.Default);
                     var descriptor = new BridgeWidgetDescriptor { Id = "marketplace", Name = "Marketplace fixture", InstanceId = snapshot.WidgetInstanceId,
                         RuntimeGeneration = name + width, PresentationGeneration = name + width, Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
                     presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1,
@@ -138,9 +151,16 @@ internal sealed partial class WidgetStylesValidationPage
                         var install = Find<Button>("Widget.marketplace.batch.review.install");
                         Check(install is { IsEnabled: true, IsTabStop: true }, "Aggregate approval remains an explicit reachable control");
                     }
+                    if (previewOnly)
+                    {
+                        await Wait(() => presenter.IsFocusPreviewOpen && presenter.FocusPreviewFrame?.Depth.IsRealized == true);
+                        Check(presenter.FocusPreviewChrome?.IsHitTestVisible == false && dispatched.Count == 0,
+                            $"Catalogue preview at {width}: passive content does not select or install");
+                        Check(presenter.FocusPreviewChrome is Border { Padding.Left: 12 }, "Catalogue uses one host padding layer");
+                    }
                     await CaptureAsync(Path.Combine(directory, $"{name}-{width}.png"));
                 }
-                if (!compactOnly) await ScreenshotFlowAsync(width,options,dispatched);
+                if (!compactOnly && !previewOnly) await ScreenshotFlowAsync(width,options,dispatched);
             }
         }
         catch (Exception error) { failure = error; }
@@ -263,7 +283,7 @@ internal sealed partial class WidgetStylesValidationPage
         {
             // Synthetic XAML pixels only, including transparent regions.
             var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
-            await bitmap.RenderAsync(presenter);
+            await bitmap.RenderAsync((UIElement?)previewRoot ?? presenter);
             using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
             var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream);
             encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,

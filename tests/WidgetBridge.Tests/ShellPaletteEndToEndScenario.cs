@@ -22,7 +22,7 @@ internal static class ShellPaletteEndToEndScenario
             await using (var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token))
             {
                 var palette = await session.ReadShellStylesAsync(deadline.Token);
-                var expected = new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected", "tray-item:focused",
+                var expected = new[] { "canvas", "backdrop", "panel", "preview", "tray", "tray-item", "tray-item:selected", "tray-item:focused",
                     "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status", "tray-clock", "tray-date", "tray-status-icon",
                     "dialog", "dialog-title", "dialog-description", "dialog-footer", "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused", "data-red", "data-blue", "data-green", "data-gold", "data-purple", "data-orange" };
                 if (!palette.Keys.OrderBy(value => value).SequenceEqual(expected.OrderBy(value => value)))
@@ -32,6 +32,9 @@ internal static class ShellPaletteEndToEndScenario
                     throw new InvalidOperationException("Class-based shell typography did not survive real theme resolution and transport.");
                 if(palette["data-red"].Base["color"].Text != "#ff9fb4" || palette["data-purple"].Base["color"].Text != "#d4b3ff")
                     throw new InvalidOperationException("Categorical data colors did not survive the real theme projection.");
+                if (palette["preview"].Base["shadow-blur"].Number != 12 || palette["preview"].Base["opacity"].Number != 1 ||
+                    palette["preview"].Base["background"].Kind != WidgetRail.WidgetStyling.WrssValueKind.Color)
+                    throw new InvalidOperationException("Preview theme roles did not survive real theme resolution and transport.");
                 if (palette["tray-item:focused"].Base["outline-color"].Text != "#3fe0ff")
                     throw new InvalidOperationException("The selected built-in theme accent was lost.");
             }

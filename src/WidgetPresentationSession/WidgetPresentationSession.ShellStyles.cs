@@ -11,10 +11,10 @@ public sealed partial class WidgetPresentationSession
         var response = await RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new BridgeEmptyPayload(),
             BridgeMessageTypes.PlatformAppearance, cancellationToken).ConfigureAwait(false);
         if (response.Payload.ValueKind != JsonValueKind.Object || !response.Payload.TryGetProperty("shellStyles", out var raw) ||
-            raw.ValueKind != JsonValueKind.Object || raw.EnumerateObject().Count() > 31)
+            raw.ValueKind != JsonValueKind.Object || raw.EnumerateObject().Count() > 32)
             throw new BridgeProtocolException("Shell style inventory exceeds its bound.");
         var styles = new Dictionary<string, BridgeNodeRenderStyles>(StringComparer.Ordinal);
-        var allowed = new HashSet<string>(["canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected",
+        var allowed = new HashSet<string>(["canvas", "backdrop", "panel", "preview", "tray", "tray-item", "tray-item:selected",
             "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status",
             "tray-clock", "tray-date", "tray-status-icon", "dialog", "dialog-title", "dialog-description", "dialog-footer",
             "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused",

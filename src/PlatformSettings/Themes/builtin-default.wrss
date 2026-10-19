@@ -1172,3 +1172,19 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 .wrail-data-gold { color: var(--data-gold); }
 .wrail-data-purple { color: var(--data-purple); }
 .wrail-data-orange { color: var(--data-orange); }
+
+/* Host-owned focus previews. Opacity affects the fill, never the content. */
+preview {
+  background: var(--surface-raised);
+  opacity: 1;
+  surface-shading: 0.035;
+  corner-radius: 10px;
+  border-width: 1px;
+  border-color: var(--depth-lowlight);
+  border-top-color: var(--depth-highlight);
+  border-bottom-color: var(--depth-lowlight);
+  shadow-color: var(--depth-shadow);
+  shadow-blur: 12px;
+  shadow-offset-x: 0px;
+  shadow-offset-y: 4px;
+}

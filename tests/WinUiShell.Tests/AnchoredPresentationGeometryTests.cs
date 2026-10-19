@@ -28,6 +28,19 @@ public sealed class AnchoredPresentationGeometryTests
     }
 
     [TestMethod]
+    public void PreviewShadowsReserveSpaceWithoutChangingDefaultPopupPlacement()
+    {
+        foreach (var inset in new[] { 16d, 29, 61 })
+        foreach (var side in Enum.GetValues<AnchorPlacement>())
+        {
+            var placed = AnchoredPresentationGeometry.Place(420, 320, new(390, 280, 30, 40), 400, 300, side, inset);
+            Assert.IsTrue(placed.X >= inset && placed.Y >= inset && placed.Right <= 420 - inset && placed.Bottom <= 320 - inset);
+        }
+        var tiny = AnchoredPresentationGeometry.Place(20, 10, null, 360, 240, inset: 61);
+        Assert.AreEqual(new AnchorRectangle(10, 5, 0, 0), tiny);
+    }
+
+    [TestMethod]
     public void FractionalSizesAndAllPlacementsStayInsideWidget()
     {
         foreach (var width in new[] { 0d, 20, 400.4, 800.8, 1320 })

@@ -45,6 +45,20 @@ static async Task ExportNative(string directory)
         new("example.music", "YouTube Music", "Browse music and keep playback controls pinned while playing.", [], "1.0.0") ] };
     await fixture.Start();
     await Write("browse");
+    await Until(() => Node(fixture, "marketplace.refresh")?.IsBusy != true);
+    using (var previewHost = WidgetTestHost.CreateIndexedCollectionHost(fixture.Widget, "catalogue-visual-preview"))
+    {
+        var card = Walk(previewHost.CurrentSnapshot.Root).First(node => node.Kind == ViewNodeKind.ActionSurface);
+        using var lease = await previewHost.AcquirePreviewAsync("marketplace.previews", card.FocusPreviewKey!);
+        var fragment = lease.Range.Items.Single().Root;
+        ViewNode Materialize(ViewNode node) => node with {
+            FocusPreviewKey = null, FocusPreviewSource = null,
+            FocusPresentation = node.Id == card.Id ? fragment : node.FocusPresentation,
+            Children = node.Children.Select(Materialize).ToArray(),
+        };
+        var previewSnapshot = previewHost.CurrentSnapshot with { Root = Materialize(previewHost.CurrentSnapshot.Root), InitialFocusId = card.Id };
+        await File.WriteAllBytesAsync(Path.Combine(directory, "browse-preview.snapshot.json"), SnapshotJson.Serialize(previewSnapshot));
+    }
     await fixture.Act(Walk(fixture.View().Root).First(n => n.Kind == ViewNodeKind.ActionSurface).ActionId!);
     await Write("details");
     await fixture.Act("marketplace.back");

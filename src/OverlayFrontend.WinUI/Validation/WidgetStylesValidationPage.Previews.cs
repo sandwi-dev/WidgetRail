@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
@@ -37,7 +38,7 @@ internal sealed partial class WidgetStylesValidationPage
         try
         {
             var themeIds = Environment.GetCommandLineArgs().Contains("--preview-high-contrast")
-                ? new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight, "high-contrast" }
+                ? new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInCanopy, ThemeIdentity.BuiltInMineralLight, "high-contrast" }
                 : new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight };
             foreach (var themeId in themeIds)
             {
@@ -92,6 +93,9 @@ internal sealed partial class WidgetStylesValidationPage
                         "High-contrast preview chrome and content use the same Windows window-color pair");
                     Check((Math.Max(Luminance(ink), Luminance(fill)) + .05) / (Math.Min(Luminance(ink), Luminance(fill)) + .05) >= 4.5,
                         "High-contrast preview text contrasts with its native chrome");
+                    Check(page.FocusPreviewFrame!.Depth.NativeShadow?.Opacity == 0 &&
+                        ((Border)page.FocusPreviewChrome!).BorderThickness == new Thickness(2),
+                        "High contrast replaces decoration with a solid two-DIP outline");
                     await Capture(Path.Combine(directory, "high-contrast.png"));
                     continue;
                 }
@@ -122,11 +126,34 @@ internal sealed partial class WidgetStylesValidationPage
                         "Late same-source content update does not move or resize an open preview");
                 var textInk = ColorOf(Find<TextBlock>("Widget.preview.first.details", root)!.Foreground);
                 previewBaseFontSize = Find<TextBlock>("Widget.preview.first.details", root)!.FontSize;
-                var panelInk = ColorOf(((Border)page.FocusPreviewChrome!).Background);
-                var contrast = (Math.Max(Luminance(textInk), Luminance(panelInk)) + .05) /
-                    (Math.Min(Luminance(textInk), Luminance(panelInk)) + .05);
+                var frame = page.FocusPreviewFrame!;
+                Check(frame.Surface.Background is LinearGradientBrush { GradientStops.Count: 2 } &&
+                    frame.Depth is { IsRealized: true, UsesOuterMask: true }, "Preview uses shaded fill and an exterior-only native shadow");
+                Check(frame.Surface.Opacity == 1 && frame.Opacity == 1, "Preview chrome does not reduce text opacity");
+                var fills = ((LinearGradientBrush)frame.Surface.Background).GradientStops.Select(stop => stop.Color);
+                var contrast = fills.Min(fill => (Math.Max(Luminance(textInk), Luminance(fill)) + .05) /
+                    (Math.Min(Luminance(textInk), Luminance(fill)) + .05));
+                var point = frame.TransformToVisual(page).TransformPoint(new());
+                Check(point.X >= frame.ShadowInset - .1 && point.Y >= frame.ShadowInset - .1 &&
+                    point.X + frame.ActualWidth + frame.ShadowInset <= page.ActualWidth + .1 &&
+                    point.Y + frame.ActualHeight + frame.ShadowInset <= page.ActualHeight + .1,
+                    "Preview placement reserves the native shadow gutter");
                 Check(contrast >= 4.5, "Preview text contrasts with native chrome in " + themeId);
                 await Capture(Path.Combine(directory, themeId + ".png"));
+                var colors = new Dictionary<string, BridgeNodeRenderStyles>();
+                foreach (var role in new[] { "body", "canvas", "panel", "preview", "hint", "tray-item" }) colors[role] = Compute(theme, role, role, []);
+                colors["preview"] = Compute("preview { background: #254535; opacity: .65; surface-shading: .02; shadow-blur: 18px; shadow-offset-y: 6px; }", "preview", "preview");
+                var resources = frame.Depth.NativeResourceCreates;
+                popupTheme.Update(colors, appearance);
+                await Wait(() => ((LinearGradientBrush)frame.Surface.Background).GradientStops[0].Color.A == 166);
+                Check(frame.Depth.NativeResourceCreates == resources && ReferenceEquals(page.FocusPreviewFrame, frame) &&
+                    ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), first), "Live preview style changes preserve native resources and source focus");
+                Check(frame.ShadowInset == 43 && frame.Opacity == 1 && frame.Surface.Opacity == 1,
+                    "Configured shadow bounds and background-only opacity are applied");
+                popupTheme.Update(colors, appearance with { Transparency = TransparencyPreference.Reduced });
+                Check(((LinearGradientBrush)frame.Surface.Background).GradientStops.All(stop => stop.Color.A == 255),
+                    "Reduced transparency forces an opaque preview fill");
+                Publish();
                 page.SetPreviewPointerTarget(second);
                 // Lightweight WinUI TextBlocks can be laid out without IsLoaded;
                 // verify their current pixels and presentation ownership instead.
@@ -185,7 +212,7 @@ internal sealed partial class WidgetStylesValidationPage
                     }
                     Visit(snapshot.Root);
                     // Native chrome consumes the same resolved semantic palette as the fragments.
-                    foreach (var role in new[] { "body", "canvas", "panel", "hint", "tray-item" })
+                    foreach (var role in new[] { "body", "canvas", "panel", "preview", "hint", "tray-item" })
                         styles[role] = Compute(theme, role, role, []);
                     popupTheme.Update(styles, appearance);
                     var descriptor = new BridgeWidgetDescriptor { Id = "preview", Name = "Preview fixture", InstanceId = snapshot.WidgetInstanceId,

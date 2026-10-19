@@ -28,6 +28,46 @@ button.primary:focused {
 }
 ```
 
+## Rich preview frame
+
+Global themes can style the host-owned `preview` role. This applies to both
+read-only and interactive focus previews, including deferred content. Widget-local
+WRSS styles the content; it does not replace this outer frame.
+
+```css
+preview {
+  background: var(--surface-raised);
+  opacity: 1;
+  surface-shading: .035;
+  corner-radius: 10px;
+  border-width: 1px;
+  border-color: var(--depth-lowlight);
+  border-top-color: var(--depth-highlight);
+  border-bottom-color: var(--depth-lowlight);
+  shadow-color: var(--depth-shadow);
+  shadow-blur: 12px;
+  shadow-offset-x: 0px;
+  shadow-offset-y: 4px;
+}
+```
+
+Here `opacity` affects only the background fill, multiplied by its colour alpha;
+text and controls remain opaque. It defaults to 1 for reading over busy content.
+The host supports a solid/alpha background and subtle directional shading, not
+backdrop blur. High contrast replaces decoration with the Windows surface/text
+pair and a two-DIP outline. Reduced transparency makes the fill opaque.
+
+Frame lengths use logical pixels: radius is bounded to 0–24, border width to 0–4,
+shadow blur to 0–24 and each shadow offset to −12–12. Shading is bounded to
+−.25–.25. Placement reserves the shadow footprint inside the widget viewport;
+a large shadow can reduce the available content size on small surfaces. Theme
+changes update the existing frame without changing focus or recreating controls.
+
+The frame provides 12 DIP of content padding. Avoid adding another outer padded
+card around preview content. Internal sections, spacing and typography remain
+widget-owned. The existing preview width, height, content-fitting and input
+options are unchanged.
+
 ## Scrollbars
 
 Scrollbars use the `scroll` container's computed style. Their appearance is

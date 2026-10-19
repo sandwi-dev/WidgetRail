@@ -2,6 +2,46 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Shared rich preview frame, 2026-10-19
+
+Read-only and interactive previews now use theme-derived shading, edge lighting
+and the banner's existing native outer-shadow renderer. The global `preview`
+WRSS role controls background, background-only opacity, shading, corners,
+border colour/width, top/bottom edge colour and shadow colour/blur/offset.
+Text and control opacity are unchanged. High contrast uses a solid Windows
+surface and two-DIP outline; reduced transparency forces an opaque fill.
+There is no backdrop capture or blur loop. Native depth resources are reused
+while the frame is open and released with it.
+
+Placement reserves the shadow footprint without modifying other anchored
+surfaces' default geometry. Catalogue no longer adds another 16-DIP padding
+layer inside the host's 12 DIP. Existing preview activation, A primary action,
+optional entry shortcut and B return behavior remain unchanged.
+
+Verification: **10** geometry/timing/content-size tests, **2** real Bridge palette
+checks (including all 32 allowed roles), and **15/15** Catalogue checks pass.
+Native fixtures pass **82** preview assertions across Mono Ink, Canopy, Mineral
+Light and high contrast, **15** interactive-entry/selector/return/admission
+assertions, and **8** actual Catalogue-content assertions at two widths.
+Live theme changes preserve focus and resources; background-only opacity and
+reduced-transparency overrides are exercised. Canopy, Mineral Light and the
+actual Catalogue preview renders were visually inspected. Catalogue's visual
+fixture materializes one real deferred fragment for offline rendering; it does
+not substitute for physical controller or live-service acceptance.
+
+Evidence: `artifacts/pob/preview-chrome-{geometry,bridge,catalogue}.binlog`,
+`preview-chrome-native01/result.json`, `preview-chrome-interactive01/result.json`,
+and `preview-chrome-catalogue-native01/native-result.json`. The initial Catalogue
+visual harness lacked a presentation-layer root; its fixture-only correction
+allows the same production preview portal to render. No live service calls or
+physical controller testing were used.
+
+A full cumulative production payload is built in
+`artifacts/pob/cumulative-candidate-20261019-preview-chrome`, with fresh host,
+Bridge, Settings and bundled packages. Publication verifies native inputs,
+self-contained runtime and trimmed asynchronous cleanup. Launch uses the normal
+profile and starts hidden.
+
 ## Compact catalogue, local search and deferred previews, 2026-10-19
 
 Browse and Installed use aligned compact cards: one title line, two summary lines,

@@ -14,12 +14,13 @@ internal readonly record struct AnchorRectangle(double X, double Y, double Width
 internal static class AnchoredPresentationGeometry
 {
     internal static AnchorRectangle Place(double viewportWidth, double viewportHeight, AnchorRectangle? anchor,
-        double width, double height, AnchorPlacement preferred = AnchorPlacement.Auto)
+        double width, double height, AnchorPlacement preferred = AnchorPlacement.Auto, double inset = 16)
     {
         if (!double.IsFinite(viewportWidth) || !double.IsFinite(viewportHeight) || viewportWidth <= 0 || viewportHeight <= 0)
             return default;
-        var insetX = Math.Min(16, viewportWidth / 2);
-        var insetY = Math.Min(16, viewportHeight / 2);
+        inset = double.IsFinite(inset) ? Math.Clamp(inset, 0, 128) : 16;
+        var insetX = Math.Min(inset, viewportWidth / 2);
+        var insetY = Math.Min(inset, viewportHeight / 2);
         width = Math.Clamp(double.IsFinite(width) ? width : 360, 0, viewportWidth - 2 * insetX);
         height = Math.Clamp(double.IsFinite(height) ? height : 280, 0, viewportHeight - 2 * insetY);
         var center = new AnchorRectangle((viewportWidth - width) / 2, (viewportHeight - height) / 2, width, height);

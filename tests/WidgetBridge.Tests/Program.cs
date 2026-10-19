@@ -107,6 +107,12 @@ if (args.Length is 4 or 5 && args[0] == "--export-styled-fixture")
     {
         snapshot = document.RootElement,
         renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme),
+        shellStyles = new[] { "body", "canvas", "panel", "preview", "hint", "tray-item" }.ToDictionary(role => role, role =>
+        {
+            var values = compiled.Theme!.Resolve(new WrssElement(role, "shell." + role)).Properties.ToDictionary(pair => pair.Key,
+                pair => new BridgeComputedStyleValue { Kind = pair.Value.Kind, Text = pair.Value.Text, Number = pair.Value.Number, Unit = pair.Value.Unit });
+            return new BridgeNodeRenderStyles { Base = values, Focused = values, Pressed = values };
+        }),
     }, options));
     return 0;
 }
@@ -4985,7 +4991,7 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(1.5d, response.Payload.GetProperty("widgetAnimationSpeed").GetDouble());
     Assert.Equal(false, response.Payload.GetProperty("animateWidgetModals").GetBoolean());
     var shellStyles = response.Payload.GetProperty("shellStyles");
-    Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected",
+    Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "preview", "tray", "tray-item", "tray-item:selected",
         "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph",
         "status", "tray-clock", "tray-date", "tray-status-icon", "dialog", "dialog-title", "dialog-description", "dialog-footer",
         "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused",

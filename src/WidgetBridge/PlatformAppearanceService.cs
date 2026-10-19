@@ -261,6 +261,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             ("canvas", "canvas", EmptyStates()),
             ("backdrop", "backdrop", EmptyStates()),
             ("panel", "panel", EmptyStates()),
+            ("preview", "preview", EmptyStates()),
             ("tray", "tray", EmptyStates()),
             ("tray-item", "tray-item", EmptyStates()),
             ("tray-item:selected", "tray-item", States(WrssPseudoState.Selected)),

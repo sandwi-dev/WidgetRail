@@ -37,6 +37,12 @@ limits apply to inline fragments; deferred content has its own bound below. Keep
 pending controls busy rather than removing or disabling them. For catalogs, resolve content on demand rather than attaching every preview to
 the row batch.
 
+The shared frame supplies theme-aware shading, an outer shadow, edge highlights
+and 12 DIP of padding. Style the content rather than adding another padded frame.
+Theme authors can configure the global [`preview` role](../reference/wrss.md#rich-preview-frame);
+background opacity does not fade text. High contrast and reduced transparency
+override decoration.
+
 Leave `EnterButton` unset for read-only previews such as Undo/Redo. Their passive
 content validation and focus behavior remain unchanged. Ordinary blocking dialogs
 continue to use `WithModal`; interactive previews do not wrap that API.
