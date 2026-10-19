@@ -75,9 +75,10 @@ public abstract record WidgetElement(string Id)
         new FocusBackgroundElement(this, artwork);
 
     /// <summary>
-    /// Associates one bounded presentation-only fragment with this exact
+    /// Associates one bounded presentation fragment with this exact
     /// focusable element. Its nearest enclosing FocusPresentationSurface may
-    /// project the fragment while native host focus is on this element.
+    /// project the fragment while native host focus is on this element. Anchored
+    /// consumers may opt into host-managed interaction through Preview.EnterButton.
     /// </summary>
     public WidgetElement PresentOnFocus(WidgetElement presentation) =>
         new FocusPresentationElement(this, presentation);

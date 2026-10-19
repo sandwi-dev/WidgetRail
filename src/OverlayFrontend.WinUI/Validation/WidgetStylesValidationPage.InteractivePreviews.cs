@@ -21,8 +21,8 @@ internal sealed partial class WidgetStylesValidationPage
         root.Children.Add(page); PresentationLayers.Attach(root); presenter.Visibility = Visibility.Collapsed; host.Children.Add(root);
         var popup = new NativePopupTheme(); popup.Attach(page);
         var catalog = new ThemeCatalog(new PlatformSettingsPaths(directory));
-        long sequence = 0; var opened = false; var sourceVisible = true; var busy = false; var primary = 0; var applied = 0;
-        var selected = "one";
+        long sequence = 0; var sourceVisible = true; var busy = false; var primary = 0; var applied = 0;
+        var selected = "one"; var delay = 0;
         var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Reduced };
         var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, new([], []),
             catalog.Load("widgetrail.builtin.velvet-dusk", "1.0.0").Package).Theme!;
@@ -31,8 +31,6 @@ internal sealed partial class WidgetStylesValidationPage
         {
             switch (request.Action.ActionId)
             {
-                case "enter": opened = true; break;
-                case "back": opened = false; break;
                 case "choose": primary++; break;
                 case "apply": applied++; break;
                 case "one": selected = "one"; break;
@@ -46,34 +44,53 @@ internal sealed partial class WidgetStylesValidationPage
             page.Enter(restoreNativeFocus: false);
             var source = Find<Button>("Widget.preview.source", root)!; source.Focus(FocusState.Keyboard);
             await Wait(() => page.IsFocusPreviewOpen);
-            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source) && primary == 0 && !opened, "Opening an enterable preview never activates or takes source focus");
-            Check(page.FocusPreviewChrome?.IsHitTestVisible == true, "Enterable preview accepts mouse entry");
-            page.SetPreviewPointerTarget(source); page.SetPreviewPointerTarget(null); await Task.Delay(40);
-            page.SetPreviewPointerTarget(source); await Task.Delay(180);
-            Check(page.IsFocusPreviewOpen, "Returning across the hover gap cancels pending preview dismissal");
-            page.ActivateFocused(); Check(primary == 1 && !opened, "A retains the source primary action");
+            await Wait(() => Find<Button>("Widget.preview.apply", root) is { IsLoaded: true });
+            var apply = Find<Button>("Widget.preview.apply", root)!;
+            var chrome = page.FocusPreviewChrome;
+            Check(apply is { IsLoaded: true } && Find<Button>("Widget.preview.select", root) is not null,
+                "Full actions and selector are visible before entry");
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source) && primary == 0 && applied == 0,
+                "Showing full preview keeps source focus without dispatch");
+            var bounds = (chrome!.ActualWidth, chrome.ActualHeight);
             await page.HandleControllerButtonAsync(ControllerButton.RightStick);
-            await Wait(() => opened && Find<Button>("Widget.preview.apply", root) is { IsLoaded: true });
-            await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Find<Button>("Widget.preview.apply", root)));
-            Check(!page.IsFocusPreviewOpen, "Interactive publication replaces the passive preview");
-            Check(Descendants(root).OfType<WidgetModalLayer>().Single().Chrome.Visibility == Visibility.Collapsed, "Interactive preview has no dimmed backdrop");
-            var apply = Find<Button>("Widget.preview.apply", root)!; busy = true; Publish();
-            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), apply) && apply.IsEnabled, "Pending preview action keeps the same focusable control");
-            page.ActivateFocused(); Check(applied == 0, "Busy preview action suppresses duplicates"); busy = false; Publish();
-            var select = Find<Button>("Widget.preview.select", root)!; select.Focus(FocusState.Keyboard); page.ActivateFocused();
-            Check(page.HasTransientControl, "Nested selector opens within interactive preview");
-            await page.HandleControllerButtonAsync(ControllerButton.B); Check(opened && !page.HasTransientControl, "First B closes the nested selector only");
+            await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), apply));
+            Check(ReferenceEquals(page.FocusPreviewChrome, chrome) && ReferenceEquals(apply, Find<Button>("Widget.preview.apply", root)),
+                "Entry preserves panel and action control instances");
+            Check(bounds == (chrome.ActualWidth, chrome.ActualHeight) && sequence == 1 && applied == 0,
+                "Entry changes no geometry and sends no widget action");
+            busy = true; Publish(); await Task.Delay(80);
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), apply) && apply.IsEnabled,
+                "Busy updates retain focus and the original control");
+            page.ActivateFocused(); Check(applied == 0, "Busy action does not dispatch");
+            busy = false; Publish(); await Task.Delay(80);
+            var select = Find<Button>("Widget.preview.select", root)!;
+            select.Focus(FocusState.Keyboard); page.ActivateFocused();
             await page.HandleControllerButtonAsync(ControllerButton.B);
-            await Wait(() => !opened && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Find<Button>("Widget.preview.source", root)));
-            await Wait(() => page.IsFocusPreviewOpen); Check(true, "Second B returns to the exact source and restores its passive preview");
-            source = Find<Button>("Widget.preview.source", root)!; page.SetPreviewPointerTarget(source);
-            await Wait(() => page.IsFocusPreviewOpen); await page.EnterPreviewFromPointerAsync();
-            await Wait(() => opened); Check(primary == 1, "Mouse preview entry does not invoke the source primary action");
-            sourceVisible = false; Publish();
-            await Wait(() => !opened); Check(true, "Removing the exact source dismisses the interactive preview instead of centering stale controls");
-            sourceVisible = true; Publish(); source = Find<Button>("Widget.preview.source", root)!; source.Focus(FocusState.Keyboard);
-            await page.HandleControllerButtonAsync(ControllerButton.RightStick); await Wait(() => opened);
-            await page.SetPresentationActiveAsync(false); Check(!page.IsFocusPreviewOpen, "Suspending the widget revokes preview presentation");
+            Check(!ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source), "First B closes only nested selector");
+            await page.HandleControllerButtonAsync(ControllerButton.B);
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source), "Second B returns to exact source");
+            Check(ReferenceEquals(page.FocusPreviewChrome, chrome) && ReferenceEquals(apply, Find<Button>("Widget.preview.apply", root)),
+                "Return leaves the same complete preview visible");
+            await page.HandleControllerButtonAsync(ControllerButton.RightStick);
+            apply.Focus(FocusState.Keyboard); page.ActivateFocused(); await Wait(() => applied == 1);
+            Check(primary == 0, "Preview Apply does not activate the source");
+            var admission=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            page.EnsureInteractionAsync=(_,_)=>admission.Task;
+            page.ActivateFocused();
+            sourceVisible = false; Publish(); await Wait(() => !page.IsFocusPreviewOpen);
+            admission.SetResult(true); await Task.Delay(60);
+            Check(applied==1,"Late admission after source removal cannot dispatch");
+            page.EnsureInteractionAsync=null;
+            Check(true, "Source removal revokes the preview");
+            sourceVisible = true; delay=1500; Publish(); source = Find<Button>("Widget.preview.source", root)!;
+            source.Focus(FocusState.Keyboard);
+            await page.HandleControllerButtonAsync(ControllerButton.RightStick);
+            await Wait(()=>ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.preview.apply",root)));
+            Check(page.IsFocusPreviewOpen,"Explicit entry does not wait for the hover settling delay");
+            await page.HandleControllerButtonAsync(ControllerButton.B);
+            Find<Button>("Widget.preview.apply", root)!.Focus(FocusState.Pointer);
+            Check(primary == 0, "Pointer entry transfers focus without choosing the source");
+            await page.SetPresentationActiveAsync(false); Check(!page.IsFocusPreviewOpen, "Suspension revokes the preview");
             if (failure is not null) throw failure;
         }
         catch (Exception error) { failure = error; }
@@ -83,16 +100,14 @@ internal sealed partial class WidgetStylesValidationPage
 
         void Publish()
         {
-            var source = UI.Button("Choose item", "choose", "preview.source").Shortcut(ControllerButton.RightStick, "Interact", actionId: "enter")
-                .PresentOnFocus(UI.Text("Item details", "preview.summary"));
+            var source = UI.Button("Choose item", "choose", "preview.source")
+                .PresentOnFocus(UI.Stack("preview.content", UI.Text("Item details", "preview.summary"),
+                    UI.Button("Apply", "apply", "preview.apply").Busy(busy),
+                    UI.Select("Option", (SelectOption[])[new("one", "One", "one", selected == "one"), new("two", "Two", "two", selected == "two")], "preview.select"))).TransitionLayout("preview-source", "one", 0);
             var view = new WidgetView(UI.Stack("preview.page",
                 UI.FocusPresentationSurface(UI.Stack("preview.sources", sourceVisible ? source : UI.Text("Removed", "preview.removed")),
-                    UI.Text("", "preview.empty"), "preview.surface") with { Preview = new(360, 240, DelayMilliseconds: 0) { EnterButton = ControllerButton.RightStick, SizeToContentHeight = true } })
+                    UI.Text("", "preview.empty"), "preview.surface") with { Preview = new(360, 240, DelayMilliseconds: delay) { EnterButton = ControllerButton.RightStick, SizeToContentHeight = true } })
                 .InputScope("preview.page"), sourceVisible ? "preview.source" : null);
-            if (opened) view = view.WithInteractivePreview(new("preview.interactive", "Item details",
-                UI.Stack("preview.content", UI.Button("Apply", "apply", "preview.apply").Busy(busy),
-                    UI.Select("Option", (SelectOption[])[new("one", "One", "one", selected == "one"), new("two", "Two", "two", selected == "two")], "preview.select")),
-                "preview.apply", "back", new("preview.source")) { Width = 360, Height = 240 });
             var snapshot = view.CreateSnapshot("interactive-preview-fixture", ++sequence);
             var styles = new Dictionary<string, BridgeNodeRenderStyles>();
             void Visit(ViewNode node) { styles[node.Id] = Compute(theme, node); foreach (var child in node.Children) Visit(child);

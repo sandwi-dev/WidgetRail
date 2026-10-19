@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -41,7 +42,9 @@ internal sealed partial class WidgetViewPresenter
     private Grid? previewContentPanel;
     private FontIcon? previewEnterGlyph;
     private TextBlock? previewEnterLabel;
-    private bool previewEntering;
+    private bool previewEntered;
+    private WidgetViewPresenter? previewOwner;
+    private Control? previewReturnTarget;
     internal bool IsFocusPreviewOpen => previewPortal?.Visibility == Visibility.Visible;
     internal FrameworkElement? FocusPreviewChrome => previewChrome;
     internal object FocusPreviewDiagnostics() => new
@@ -105,7 +108,7 @@ internal sealed partial class WidgetViewPresenter
     internal void SetPreviewPointerTarget(DependencyObject? target)
     {
         if (previewPointerIntent && ReferenceEquals(previewPointerTarget, target)) { previewExitRevision++; return; }
-        if (PreviewEnterShortcut(previewSource) is not null && FindBinding(target) is null)
+        if (PreviewEnterButton(previewSource) is not null && FindBinding(target) is null)
         { _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); return; }
         previewExitRevision++;
         previewPointerIntent = true; previewPointerTarget = target;
@@ -115,24 +118,29 @@ internal sealed partial class WidgetViewPresenter
     private void PreviewPointerExited(object sender, PointerRoutedEventArgs args)
     {
         previewPointerIntent = true;
-        if (PreviewEnterShortcut(previewSource) is not null) { _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); return; }
+        if (PreviewEnterButton(previewSource) is not null) { _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); return; }
         previewPointerTarget = null; ClearFocusPreview();
     }
     private async Task DismissPreviewAfterPointerExitAsync(long revision)
     {
         await Task.Delay(150);
-        if (!disposed && revision == previewExitRevision && !previewPointerOverChrome)
+        if (!disposed && revision == previewExitRevision && !previewPointerOverChrome && !previewEntered)
         { previewPointerTarget = null; ClearFocusPreview(); }
     }
-    private ControllerShortcut? PreviewEnterShortcut(PreviewSource? source)
-    {
-        if (source?.Options.EnterButton is not { } button) return null;
-        var node = source.Row?.Item.Root ?? declarations.GetValueOrDefault(source.Source.Identity.Id)?.Node;
-        if (node is null || node.IsDisabled == true || node.IsBusy == true || node.ContextMenuButton == button && node.ContextActions.Count > 0) return null;
-        return node.Shortcuts.FirstOrDefault(shortcut => shortcut.Button == button && shortcut.Phase == ControllerEventPhase.Pressed);
-    }
+    private ControllerButton? PreviewEnterButton(PreviewSource? source) => source?.Options.EnterButton;
+    private bool RetainedPreviewIsCurrent(PreviewSource source) =>
+        bindings.GetValueOrDefault(source.Source.Identity.Id)?.Token == source.Source.Token &&
+        bindings.GetValueOrDefault(source.Owner.Identity.Id)?.Token == source.Owner.Token &&
+        source.Source.Identity.Scope == activeScope &&
+        declarations[source.Owner.Identity.Id].Node.FocusPreview == source.Options &&
+        (source.Row is not null || declarations[source.Source.Identity.Id].Node.FocusPresentation is not null) &&
+        declarations[source.Source.Identity.Id].Node.IsDisabled != true &&
+        (source.Row is null || source.Row.Lease.IsCurrent) &&
+        VisibleAnchorBounds(source.Anchor, this) is { Valid: true };
+
     private void PreviewGotFocus(object sender, RoutedEventArgs args)
     {
+        if (previewEntered && previewSurface?.Fragment?.FocusedBinding() is null) ExitFocusPreview(restoreFocus: false);
         // Routed GotFocus can trail an already-completed native focus change.
         // Do not let that older event replace a newer pointer hover choice.
         if (!previewPointerIntent || XamlRoot is null || !ReferenceEquals(previewPointerFocus, FocusManager.GetFocusedElement(XamlRoot)))
@@ -140,7 +148,12 @@ internal sealed partial class WidgetViewPresenter
         QueueSurfaceUpdate();
     }
     private void PreviewLostFocus(object sender, RoutedEventArgs args) => QueueSurfaceUpdate();
-    private void PreviewKeyPressed(object sender, KeyRoutedEventArgs args) => UseFocusedPreviewSource();
+    private void PreviewKeyPressed(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key == Windows.System.VirtualKey.F6 && PreviewEnterButton(CurrentPreviewSource()) is not null)
+        { args.Handled = true; EnterFocusPreview(); return; }
+        UseFocusedPreviewSource();
+    }
     private void UseFocusedPreviewSource()
     {
         if (!previewPointerIntent) return;
@@ -155,9 +168,9 @@ internal sealed partial class WidgetViewPresenter
             !IsLoaded || presentation?.IsCurrent != true || HasTransientControl || activeTransition is not null ||
             surfaceResize?.Playback is { IsCompleted: false } || effectiveView?.Root.Kind == ViewNodeKind.ModalLayer)
             return null;
-        if (previewPointerIntent && previewPointerOverChrome && previewSource is { } retained && PreviewEnterShortcut(retained) is not null &&
-            bindings.GetValueOrDefault(retained.Source.Identity.Id)?.Token == retained.Source.Token &&
-            (retained.Row is null || retained.Row.Lease.IsCurrent) && VisibleAnchorBounds(retained.Anchor, this) is { Valid: true }) return retained;
+        if ((previewEntered || previewPointerIntent && previewPointerOverChrome) && previewSource is { } retained &&
+            PreviewEnterButton(retained) is not null && RetainedPreviewIsCurrent(retained))
+            return retained with { Content = retained.Row?.Item.Root.FocusPresentation ?? declarations[retained.Source.Identity.Id].Node.FocusPresentation! };
         var target = previewPointerIntent ? previewPointerTarget : XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
         var source = FindBinding(target);
         if (source is null || source.Identity.Scope != activeScope || !Navigable(source)) return null;
@@ -263,14 +276,14 @@ internal sealed partial class WidgetViewPresenter
             previewEnterLabel = new TextBlock { FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
             enterHint.Children.Add(previewEnterGlyph); enterHint.Children.Add(previewEnterLabel);
             Grid.SetRow(enterHint, 1); previewContentPanel.Children.Add(enterHint);
-            previewChrome = new Border { Child = previewContentPanel, IsHitTestVisible = PreviewEnterShortcut(source) is not null,
+            previewChrome = new Border { Child = previewContentPanel, IsHitTestVisible = PreviewEnterButton(source) is not null,
                 HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
             previewChrome.PointerEntered += (_, _) => { previewExitRevision++; previewPointerIntent = true; previewPointerOverChrome = true; };
             previewChrome.PointerExited += (_, _) => { previewPointerOverChrome = false; _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); };
-            previewChrome.PointerPressed += (_, args) => { if (PreviewEnterShortcut(previewSource) is not null) { args.Handled = true; _ = EnterPreviewFromPointerAsync(); } };
+
             previewLayer = new Grid { IsHitTestVisible = true };
             previewLayer.Children.Add(previewChrome);
-            previewPortal = new(layers, this, previewLayer, PresentationLayer.ContentPreview, passive: PreviewEnterShortcut(source) is null, followComposition: false);
+            previewPortal = new(layers, this, previewLayer, PresentationLayer.ContentPreview, passive: PreviewEnterButton(source) is null, followComposition: false, attachInput: false);
             // NativeTextScaleScope follows the portal's logical owner for authored
             // font sizes. WinUI property inheritance follows its paint parent instead.
             // Forward the already-scaled default once at the fragment root; explicit
@@ -287,6 +300,10 @@ internal sealed partial class WidgetViewPresenter
         { PositionFocusPreview(); return; }
         previewPaintedContent = source.Content; previewPaintedPresentation = presentation;
         var row = source.Row;
+        fragment.previewOwner = source.Options.EnterButton is null ? null : this;
+        fragment.DispatchActionAsync = DispatchActionAsync;
+        fragment.EnsureInteractionAsync = async (authority, token) =>
+            PreviewInputCurrent(fragment) && await AdmitInteractionAsync(authority, token) && PreviewInputCurrent(fragment);
         fragment.Session = Session;
         fragment.ResolveArtworkAsync = row is null ? ResolveArtworkAsync : async (handle, token) =>
         {
@@ -303,48 +320,80 @@ internal sealed partial class WidgetViewPresenter
     private void UpdatePreviewEnterHint(PreviewSource source)
     {
         if (previewEnterGlyph is null || previewEnterLabel is null) return;
-        var shortcut = PreviewEnterShortcut(source);
-        if (previewChrome is not null) previewChrome.IsHitTestVisible = shortcut is not null;
-        ((FrameworkElement)VisualTreeHelper.GetParent(previewEnterGlyph)).Visibility = shortcut is null ? Visibility.Collapsed : Visibility.Visible;
-        if (shortcut is null) return;
+        var button = PreviewEnterButton(source);
+        if (previewChrome is not null) previewChrome.IsHitTestVisible = button is not null;
+        ((FrameworkElement)VisualTreeHelper.GetParent(previewEnterGlyph)).Visibility = button is null ? Visibility.Collapsed : Visibility.Visible;
+        if (button is null) return;
         previewEnterGlyph.FontSize = 22 * appearance.TextScale;
         previewEnterLabel.FontSize = 14 * appearance.TextScale;
         WidgetGlyphs.Apply(previewEnterGlyph, new() { Id = "preview-enter", Kind = ViewNodeKind.ControllerGlyph,
-            ControllerPrompt = shortcut.Button switch { ControllerButton.X => ControllerPrompt.X, ControllerButton.Y => ControllerPrompt.Y,
+            ControllerPrompt = previewEntered ? ControllerPrompt.B : button switch
+            { ControllerButton.X => ControllerPrompt.X, ControllerButton.Y => ControllerPrompt.Y,
                 ControllerButton.LeftStick => ControllerPrompt.LeftStickPress, _ => ControllerPrompt.RightStickPress } }, WidgetControllerPrompts.PlayStation);
-        previewEnterLabel.Text = shortcut.Label ?? "Interact";
+        previewEnterLabel.Text = previewEntered ? "Back to source" : "Interact";
         var palette = Shell.ShellChromePalette.Resolve(presentation?.RenderStyles, appearance);
         previewEnterGlyph.Foreground = previewEnterLabel.Foreground = new SolidColorBrush(palette.Muted);
     }
-    internal async Task EnterPreviewFromPointerAsync()
+    private bool TryEnterFocusPreview(ControllerButton button, ControllerEventPhase phase)
     {
-        if (previewEntering || previewSource is not { } source || PreviewEnterShortcut(source) is not { } shortcut ||
-            CurrentPreviewSource()?.Key.Equals(source.Key) != true) return;
-        if (source.Anchor is Control control && control.Focus(FocusState.Pointer)) await EnterFocusPreviewAsync(source, shortcut);
-    }
-    private async Task<bool> TryEnterFocusPreviewAsync(ControllerButton button, ControllerEventPhase phase)
-    {
-        if (CurrentPreviewSource() is not { } source || PreviewEnterShortcut(source) is not { } shortcut || shortcut.Button != button) return false;
-        if (phase == ControllerEventPhase.Pressed) await EnterFocusPreviewAsync(source, shortcut);
+        if (PreviewEnterButton(CurrentPreviewSource()) != button) return false;
+        if (phase == ControllerEventPhase.Pressed) EnterFocusPreview();
         return true;
     }
-    private async Task EnterFocusPreviewAsync(PreviewSource source, ControllerShortcut shortcut)
+    private bool EnterFocusPreview(bool focusFirst = true)
     {
-        if (previewEntering || presentation is not { } displayed || CurrentPreviewSource()?.Key.Equals(source.Key) != true) return;
-        previewEntering = true;
-        try
+        if (previewEntered) return true;
+        if (CurrentPreviewSource() is not { } source || PreviewEnterButton(source) is null) return false;
+        if (!IsFocusPreviewOpen)
         {
-            if (source.Row is { } row && source.Source.Element is WidgetIndexedCollectionView indexed)
-                await indexed.InvokePreviewShortcutAsync(row, shortcut.Button);
-            else if (IsBindingCurrent(displayed))
-                await DispatchCapturedActionAsync(displayed, new(shortcut.ActionId, source.Source.Identity.Id, shortcut.Button,
-                    Sequence: ++actionSequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
-                    InputScopeId: displayed.Scope) { FocusedElementId = source.Source.Identity.Id });
+            UpdateFocusPreview();
+            previewTimer?.Stop(); previewDelay.Complete(Environment.TickCount64);
+            ShowFocusPreview(source);
         }
-        catch (WidgetRail.WidgetPresentationSession.WidgetPresentationSessionException error) when (IsRetiredInput(error)) { Session?.RequestInputRefresh(displayed.Frame); }
-        catch (OperationCanceledException) when (disposed) { }
-        catch (Exception error) { ReportFailure(error, IsBindingCurrent(displayed)); }
-        finally { previewEntering = false; }
+        if (previewSurface?.Fragment is not { } fragment || !IsFocusPreviewOpen) return false;
+        RememberFocus(source.Source);
+        CancelGroupEntry(); needsEntry = false; pendingRestore = null; restoreNativeFocus = false;
+        previewReturnTarget = source.Row is null ? source.Source.Element as Control : source.Anchor as Control;
+        previewEntered = true;
+        fragment.SetAutomaticFocusEnabled(true);
+        // The first control is in authored order. Re-entry retains its control and scroll.
+        if (focusFirst && (fragment.RememberedBinding() ?? fragment.bindings.Values.FirstOrDefault(fragment.Navigable)) is { } target)
+            if (!fragment.FocusBinding(target)) fragment.Enter();
+        UpdatePreviewEnterHint(source);
+        NotifyControllerGuideChanged();
+        return true;
+    }
+    private bool PreviewInputCurrent(WidgetViewPresenter fragment) => previewEntered &&
+        ReferenceEquals(previewSurface?.Fragment, fragment) && previewSource is { } source &&
+        presentationInputEnabled && presentationActive && !disposed && !applying && presentation?.IsCurrent == true &&
+        RetainedPreviewIsCurrent(source);
+
+    private async Task DispatchPreviewActionAsync(WidgetViewPresenter fragment, WidgetPresentationBinding displayed, WidgetActionEvent action)
+    {
+        if (!PreviewInputCurrent(fragment) || previewSource is not { } source ||
+            declarations[source.Source.Identity.Id].Node.IsBusy == true ||
+            !await AdmitInteractionAsync(displayed.Frame.Authority) || !PreviewInputCurrent(fragment) ||
+            previewSource?.Key.Equals(source.Key) != true) return;
+        if (source.Row is { } row)
+            await row.Lease.AdmitPreviewActionAsync(displayed.Frame, row.Item.Key,
+                new(action.SourceElementId, action.ActionId), action.Sequence, action.MonotonicTimestampMicroseconds);
+        else await DispatchCapturedActionAsync(displayed, action);
+    }
+    private void ExitFocusPreview(bool restoreFocus = true)
+    {
+        if (!previewEntered) return;
+        previewSurface?.Fragment?.SetAutomaticFocusEnabled(false);
+        previewSurface?.Fragment?.DismissTransientControl();
+        previewEntered = false;
+        previewExitRevision++;
+        previewPointerIntent = false;
+        previewPointerTarget = null;
+        if (previewSource is { } source && RetainedPreviewIsCurrent(source))
+        {
+            if (restoreFocus) previewReturnTarget?.Focus(FocusState.Keyboard);
+            UpdatePreviewEnterHint(source);
+        }
+        NotifyControllerGuideChanged();
     }
     private void PositionFocusPreview()
     {
@@ -366,6 +415,10 @@ internal sealed partial class WidgetViewPresenter
     }
     private void HideFocusPreview()
     {
+        var restoreSource = previewEntered;
+        needsEntry |= restoreSource;
+        previewEntered = false; previewReturnTarget = null;
+        previewSurface?.Fragment?.SetAutomaticFocusEnabled(false);
         LayoutUpdated -= PreviewLayoutChanged;
         if (previewFontSizeSubscription is { } subscription)
             UnregisterPropertyChangedCallback(FontSizeProperty, subscription);
@@ -379,6 +432,7 @@ internal sealed partial class WidgetViewPresenter
         {
             if (ReferenceEquals(previewOriginalFontSize, DependencyProperty.UnsetValue)) fragment.ClearValue(FontSizeProperty);
             else fragment.SetValue(FontSizeProperty, previewOriginalFontSize);
+            fragment.previewOwner = null;
             var suspended = fragment.SetPresentationActiveAsync(false);
             if (!suspended.IsCompleted)
             {
@@ -389,6 +443,7 @@ internal sealed partial class WidgetViewPresenter
         previewOriginalFontSize = DependencyProperty.UnsetValue;
         previewSurface = null; previewBounds = null; previewPaintedContent = null; previewPaintedPresentation = null;
         previewHeight.Reset();
+        if (restoreSource && !applying && presentationInputEnabled) QueueEntryFocus();
     }
     private async Task ResumePreviewAfterSuspensionAsync(WidgetPresentationSurface surface, Task task)
     {

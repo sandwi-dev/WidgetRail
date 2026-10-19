@@ -6,6 +6,41 @@ public sealed partial class PobWidget
 {
     private bool recoveryReadOnly;
     private string[] itemDraftSlots=[];
+    private string? savedNavigationSection;
+    private string NavigationPath => Path.Combine(dataDirectory,"navigation.txt");
+
+    private string ReadNavigationSection()
+    {
+        savedNavigationSection=null;
+        try
+        {
+            var file=new FileInfo(NavigationPath);
+            if(file.Exists&&file.Length<=64)
+            {
+                var value=File.ReadAllText(NavigationPath).Trim();
+                if(NavigationSections.Contains(value,StringComparer.Ordinal))return savedNavigationSection=value;
+            }
+        }
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException){ }
+        return "Calcs";
+    }
+
+    private void SetSection(string value)
+    {
+        if(!NavigationSections.Contains(value,StringComparer.Ordinal))throw new ArgumentOutOfRangeException(nameof(value));
+        section=value;
+        if(savedNavigationSection==value)return;
+        try
+        {
+            // A tiny atomic UI preference, separate from build XML and Undo history.
+            // Stored in this game's data directory; the shared website preference is untouched.
+            BuildDocument.SaveAtomic(NavigationPath,value);
+            savedNavigationSection=value;
+        }
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException)
+        {ShowFeedback("Navigation not saved","The last tab could not be remembered. Your build is unchanged.",ToastTone.Warning);}
+    }
+
     private async Task<string[]> ItemSlotsAsync(string text,string xml,CancellationToken token)
     {
         var response=await engine.ExecuteAsync(new{op="item-slots",raw=text},token,xml);
@@ -106,13 +141,13 @@ public sealed partial class PobWidget
             tradeCandidates.Clear();tradeCandidates.AddRange(work?.TradeCandidates??[]);
             RestoreRanking(id);
             RestoreTradeReturn(id);
-            selections.Clear(); detailId = 0; section = "Calcs"; detailKind = ""; filter = "";
+            selections.Clear(); detailId = 0; section = ReadNavigationSection(); detailKind = ""; filter = "";
             passiveReturnKey = null; nodeReturnToMap = false; historyFocusRequested = false; compatibilityNotice = "";
             // Restore only the context needed to finish the user's pending work.
-            if (work?.Pending is { Kind: "node" } node) { section = "Tree"; detailKind = "node"; detailId = node.NodeId; }
-            else if (work?.Pending is { Kind: "item" }) { section = "Items"; detailKind = "choose-slot"; }
+            if (work?.Pending is { Kind: "node" } node) { SetSection("Tree"); detailKind = "node"; detailId = node.NodeId; }
+            else if (work?.Pending is { Kind: "item" }) { SetSection("Items"); detailKind = "choose-slot"; }
             else if (work?.Pending is not null) detailKind = "menu";
-            else if (pastedItem is not null) { section = "Items"; detailKind = "choose-slot"; }
+            else if (pastedItem is not null) { SetSection("Items"); detailKind = "choose-slot"; }
             focusRequestSequence++;
             if(recovered)ShowFeedback("Opened saved build",readOnly
                 ?"Pending work could not be restored or safely preserved. This build is read-only; duplicate it to continue editing."
@@ -142,7 +177,7 @@ public sealed partial class PobWidget
         {throw new IOException("PoB could not recognize an item in the copied text. Copy the complete item description, not a build code or website link.");}
         if(slots.Length==0)throw new IOException("PoB recognized the item, but it has no compatible equipment slot in this build’s current setup.");
         SaveWork(result!, new(result!.Xml,undo.ToArray(),redo.ToArray(),ItemDraft:text), refreshXml: false);
-        lock (gate) { tradeBrowsing=false;tradeListing=null;pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; section = "Items"; }
+        lock (gate) { tradeBrowsing=false;tradeListing=null;pastedItem = text; itemDraftSlots=slots; detailKind = "choose-slot"; SetSection("Items"); }
     }, "Reading item…");
 
     private void DiscardItemDraft() => Work(_ =>

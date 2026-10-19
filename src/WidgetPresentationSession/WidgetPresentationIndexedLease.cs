@@ -81,5 +81,16 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         owner.ResolveIndexedArtworkAsync(this, itemKey, artworkHandle, cancellationToken);
 
+    public Task<WidgetOperationAdmission?> AdmitPreviewActionAsync(WidgetPresentationFrame displayed,
+        string itemKey, IndexedCollectionPreviewAction action, long sequence = 0,
+        long monotonicTimestampMicroseconds = 0, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(displayed);
+        ArgumentNullException.ThrowIfNull(action);
+        return owner.AdmitIndexedInputAsync(this, displayed.Authority,
+            new(new(LeaseId, itemKey), ControllerButton.A) { PreviewAction = action },
+            new(ScopeId, displayed.Authority.SnapshotSequence, sequence, monotonicTimestampMicroseconds), cancellationToken, displayed);
+    }
+
     public ValueTask DisposeAsync() => new(owner.ReleaseIndexedLeaseAsync(this));
 }

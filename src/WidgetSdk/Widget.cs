@@ -78,22 +78,19 @@ public sealed record WidgetView(
         if (modal.AnchoredPresentation is { } anchor) AnchoredPresentationContract.Validate(anchor);
         if (Root is ModalLayerElement || EmbeddedMediaSession is not null)
             throw new InvalidOperationException("A modal requires an ordinary widget view without embedded media.");
-        var interactivePreview = modal.AnchoredPresentation?.IsInteractivePreview == true;
         var scope = StableIdentifier.Child(modal.Id, "scope");
         var dialog = UI.Stack(modal.Id,
             UI.Row(StableIdentifier.Child(modal.Id, "header"),
-                UI.Text(modal.Title, StableIdentifier.Child(modal.Id, "title")).Classes(interactivePreview ? "wrail-interactive-preview__title" : "wrail-modal__title"),
-                modal.HeaderActions ?? (interactivePreview
-                    ? UI.ControllerHint(ControllerButton.B, "Back", StableIdentifier.Child(modal.Id, "back-hint"))
-                    : UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close"))))
+                UI.Text(modal.Title, StableIdentifier.Child(modal.Id, "title")).Classes("wrail-modal__title"),
+                modal.HeaderActions ?? UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close")))
                 .Classes("wrail-modal__header"),
             modal.ScrollContent
                 ? (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
                     { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll")
                 : modal.Content)
             .InputScope(scope)
-            .Shortcut(ControllerButton.B, modal.DismissActionId, interactivePreview ? "Back to source" : "Close")
-            .Classes(interactivePreview ? "wrail-interactive-preview" : "wrail-modal");
+            .Shortcut(ControllerButton.B, modal.DismissActionId, "Close")
+            .Classes("wrail-modal");
         return this with
         {
             Root = new ModalLayerElement(StableIdentifier.Child(modal.Id, "layer"), Root,
@@ -104,19 +101,6 @@ public sealed record WidgetView(
             FocusGroupEntryRequest = null,
             ScrollRevealRequest = null,
         };
-    }
-
-    /// <summary>Enter the interactive state of an anchored rich preview without dimming its source view.
-    /// Focus, nested popups, action admission and restoration use the shared scoped-layer machinery.</summary>
-    public WidgetView WithInteractivePreview(WidgetInteractivePreview preview)
-    {
-        ArgumentNullException.ThrowIfNull(preview);
-        return WithModal(new(preview.Id, preview.Title, preview.Content, preview.InitialFocusId, preview.DismissActionId)
-        {
-            ScrollContent = preview.ScrollContent,
-            AnchoredPresentation = new(preview.Anchor, preview.Width, preview.Height, preview.Placement)
-            { SizeToContentHeight = preview.SizeToContentHeight, IsInteractivePreview = true },
-        });
     }
 
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
@@ -1103,6 +1087,7 @@ public abstract partial class Widget
     {
         if (!isScopeRoot && node.InputScopeId is not null) return null;
         if (string.Equals(node.Id, id, StringComparison.Ordinal)) return node;
+        if (node.FocusPresentation is { } preview && FindNodeInScope(preview, id, false) is { } matchPreview) return matchPreview;
         foreach (var child in node.Children)
         {
             var match = FindNodeInScope(child, id, isScopeRoot: false);

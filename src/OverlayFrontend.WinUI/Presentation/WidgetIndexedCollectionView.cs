@@ -307,7 +307,6 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (args.ClickedItem is IndexedItem<WidgetIndexedRow> { Value: { } row }) _ = InvokeAsync(row, ControllerButton.A);
     }
     internal bool ActivateFocused() => ActivateDiscoveryFooter() || InvokeFocused(ControllerButton.A);
-    internal Task<bool> InvokePreviewShortcutAsync(WidgetIndexedRow row, ControllerButton button) => InvokeAsync(row, button);
     internal bool InvokeFocused(ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
         if (button != ControllerButton.A && phase == ControllerEventPhase.Pressed) CancelPendingActivation();

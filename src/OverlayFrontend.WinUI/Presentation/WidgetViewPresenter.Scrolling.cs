@@ -32,6 +32,7 @@ internal sealed partial class WidgetViewPresenter
     /// </summary>
     internal bool ScrollBy(double horizontalDelta, double verticalDelta)
     {
+        if (previewEntered && previewSurface?.Fragment is { } preview) return preview.ScrollBy(horizontalDelta, verticalDelta);
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Scroll on the widget dispatcher.");
         if (!presentationActive || disposed || applying || !IsLoaded || frame is null || !double.IsFinite(horizontalDelta) || !double.IsFinite(verticalDelta)) return false;
         if (HasTransientControl) return true;

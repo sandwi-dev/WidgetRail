@@ -358,12 +358,13 @@ local function command(req)
   if op=='trade-item' then local raw,warnings=tradeItem.convert(req.entry);return {state={raw=raw,warnings=warnings},xml=build:SaveDB('code')}end
   if op=='item-bases' then return{state={choices=itemAuthoring.bases(clean)},xml=build:SaveDB('code')}end
   if op=='item-modifiers' then return{state=itemAuthoring.modifiers(req,clean),xml=build:SaveDB('code')}end
-  if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean,textRuns)},xml=build:SaveDB('code')}end
+  if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean)},xml=build:SaveDB('code')}end
   if op=='item-unique-draft' then return{state={authoring=itemAuthoring.uniqueDraft(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='passive-choices'then return{state={choices=passiveChoices.choices(req,clean)},xml=build:SaveDB('code')}end
   if op=='calculation-catalog'or op=='calculation-detail'then return calculationViews.read(req,clean,textRuns,recalc,loadBuildFromXML)end
   if op=='item-draft' then assert(not req.itemId,'Draft edits cannot modify saved items');return{state={authoring=itemAuthoring.draft(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='inventory-list'then return{state={inventory=itemAuthoring.inventory(clean)},xml=build:SaveDB('code')}end
+  if op=='item-previews'then return{state={previews=itemAuthoring.previews(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='inventory-inspect'then return{state={authoring=itemAuthoring.inspect(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='gem-catalog' then return {state={gemCatalog=skillManagement.catalog(req)},xml=build:SaveDB('code')}end
   if op=='gem-controls'then return{state=skillManagement.gemControls(req,clean),xml=build:SaveDB('code')}end

@@ -6,7 +6,13 @@ public sealed record IndexedCollectionItemReference(string LeaseId, string ItemK
 public sealed record IndexedCollectionInputContext(string InputScopeId, long SnapshotSequence, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 public sealed record IndexedCollectionInputRequest(IndexedCollectionItemReference Item,
     ControllerButton Button, ControllerEventPhase Phase = ControllerEventPhase.Pressed,
-    string? ContextActionOwnerId = null, string? ContextActionId = null);
+    string? ContextActionOwnerId = null, string? ContextActionId = null)
+{
+    public IndexedCollectionPreviewAction? PreviewAction { get; init; }
+}
+
+/// <summary>An action declared inside the exact leased row's interactive preview.</summary>
+public sealed record IndexedCollectionPreviewAction(string OwnerId, string ActionId);
 
 internal sealed record IndexedInputBinding(string ActionId, string OwnerId, ViewNodeKind OwnerKind, bool IsItem);
 
@@ -39,6 +45,11 @@ public static class IndexedCollectionInputContract
             request.ContextActionId is { } action && !ProtocolValidationIdentifierContext.IsSafeIdentifier(action) ||
             request.ContextActionOwnerId is { } owner && !ProtocolValidationIdentifierContext.IsSafeIdentifier(owner))
             throw new ArgumentException("Indexed context selection identity is invalid.", nameof(request));
+        if (request.PreviewAction is { } preview &&
+            (request.ContextActionId is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed ||
+             preview.OwnerId is null || preview.ActionId is null ||
+             !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.OwnerId) || !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.ActionId)))
+            throw new ArgumentException("Indexed preview action identity is invalid.", nameof(request));
     }
 
     internal static IReadOnlyList<ViewNode> ResolveOwnerPath(ViewSnapshot parent, IndexedCollectionRangeRequest request)
@@ -77,6 +88,13 @@ public static class IndexedCollectionInputContract
         var path = owners.Append(item).ToArray();
         var collectionAvailable = owners.Where(node => node.Kind == ViewNodeKind.IndexedCollection)
             .All(ControllerShortcutResolutionContract.OwnerAvailable);
+        if (request.PreviewAction is { } preview)
+        {
+            var surface = owners.LastOrDefault(node => node.Kind == ViewNodeKind.FocusPresentationSurface);
+            return surface?.FocusPreview?.EnterButton is not null && collectionAvailable &&
+                ControllerShortcutResolutionContract.OwnerAvailable(item) && item.FocusPresentation is { } fragment
+                ? ResolvePreview(fragment, preview, available: true) : null;
+        }
         if (request.ContextActionId is not null || request.ContextActionOwnerId is not null)
         {
             if (request.ContextActionId is null || request.ContextActionOwnerId is null || request.Phase != ControllerEventPhase.Pressed)
@@ -93,5 +111,17 @@ public static class IndexedCollectionInputContract
         var shortcut = ControllerShortcutResolver.ResolvePath(path, request.Button, request.Phase);
         return shortcut.Status == ControllerShortcutResolutionStatus.Resolved && (!ReferenceEquals(shortcut.Owner, item) || collectionAvailable)
             ? new(shortcut.Shortcut!.ActionId, shortcut.Owner!.Id, shortcut.Owner.Kind, ReferenceEquals(shortcut.Owner, item)) : null;
+    }
+
+    private static IndexedInputBinding? ResolvePreview(ViewNode node, IndexedCollectionPreviewAction action, bool available)
+    {
+        available &= ControllerShortcutResolutionContract.OwnerAvailable(node);
+        if (node.Id == action.OwnerId)
+            return available && (node.ActionId == action.ActionId || node.Kind == ViewNodeKind.Select &&
+                node.SelectOptions.Any(option => option.ActionId == action.ActionId && !option.IsDisabled && !option.IsBusy))
+                ? new(action.ActionId, node.Id, node.Kind, true) : null;
+        foreach (var child in node.Children)
+            if (ResolvePreview(child, action, available) is { } match) return match;
+        return null;
     }
 }

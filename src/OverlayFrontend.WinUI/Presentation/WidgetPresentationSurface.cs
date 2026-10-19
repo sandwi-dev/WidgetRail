@@ -56,14 +56,16 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
     internal WidgetArtworkCrossfade ArtworkMotion => artwork;
     internal static void SetMotionAppearance(AppearanceSettings value, bool animationsEnabled) => WidgetArtworkCrossfade.SetAppearance(value, animationsEnabled);
     internal static void SetSystemHighContrast(bool value) => WidgetArtworkCrossfade.SetHighContrast(value);
-    internal WidgetPresentationSurface(ViewNodeKind kind)
+    internal WidgetPresentationSurface(ViewNodeKind kind, bool interactivePreview = false)
     {
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         if (kind == ViewNodeKind.FocusPresentationSurface)
         {
-            Fragment = new(presentationOnly: true) { IsHitTestVisible = false };
+            Fragment = new(presentationOnly: !interactivePreview) { IsHitTestVisible = interactivePreview };
+            Fragment.SetAutomaticFocusEnabled(false);
+            if (interactivePreview) Fragment.TabFocusNavigation = Microsoft.UI.Xaml.Input.KeyboardNavigationMode.Cycle;
             root.RowDefinitions.Add(new() { Height = GridLength.Auto });
             root.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
             root.Children.Add(Fragment);

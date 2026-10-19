@@ -13,6 +13,8 @@ internal sealed partial class WidgetViewPresenter
 
     private void ModalKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        if (!args.Handled && args.Key == Windows.System.VirtualKey.Escape && previewOwner is { } owner && !HasTransientControl)
+        { args.Handled = true; owner.ExitFocusPreview(); return; }
         if (args.Handled || args.Key != Windows.System.VirtualKey.Escape ||
             Input.GamepadKeyBoundary.Owns(this, args) || HasTransientControl ||
             FocusedBrowser?.Surface?.HasNativeKeyboardFocus == true ||
@@ -62,15 +64,7 @@ internal sealed partial class WidgetViewPresenter
             // need the page renderer's synchronized placement contract; until a
             // dialog has that contract, keep it stable instead of fading a live
             // swap chain or moving a WebView on a different clock.
-            layer.ApplyAppearance(HasDialogSurface(dialog) || node.AnchoredPresentation?.IsInteractivePreview == true ? appearance with { AnimateWidgetModals = false } : appearance, systemAnimationsEnabled);
-            layer.DismissPreview = node.AnchoredPresentation?.IsInteractivePreview == true ? () =>
-            {
-                if (presentation is not { } displayed || !IsBindingCurrent(displayed) || !bindings.TryGetValue(dialog.Id, out var owner) ||
-                    dialog.Shortcuts.FirstOrDefault(shortcut => shortcut.Button == ControllerButton.B && shortcut.Phase == ControllerEventPhase.Pressed) is not { } dismiss) return;
-                if (modalKeyboardDismissPending is { } pending && ReferenceEquals(pending.DialogToken, owner.Token)) return;
-                var dismissal = new PendingModalDismissal(displayed, owner.Token, dismiss.ActionId);
-                modalKeyboardDismissPending = dismissal; _ = DismissModalFromKeyboardAsync(dismissal, dialog.Id);
-            } : null;
+            layer.ApplyAppearance(HasDialogSurface(dialog) ? appearance with { AnimateWidgetModals = false } : appearance, systemAnimationsEnabled);
             layer.Configure(bindings[node.Children[0].Id].LayoutElement, bindings[dialog.Id].LayoutElement,
                 Length(dialog, "width") ?? 760, Length(dialog, "height") ?? 640,
                 Length(dialog, "max-width") ?? double.PositiveInfinity,

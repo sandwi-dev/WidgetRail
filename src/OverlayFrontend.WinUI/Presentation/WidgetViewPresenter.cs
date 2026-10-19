@@ -132,9 +132,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ArgumentNullException.ThrowIfNull(nextPresentation);
         var next = nextPresentation.Frame;
         var sameOwner = nextPresentation.SameSurface(presentation);
-        if (!presentationOnly && sameOwner && (frame!.Authority.SnapshotSequence > next.Authority.SnapshotSequence ||
+        if (fragmentRootId is null && !presentationOnly && sameOwner && (frame!.Authority.SnapshotSequence > next.Authority.SnapshotSequence ||
             frame.Authority.SnapshotSequence == next.Authority.SnapshotSequence && frame.AppearanceRevision >= next.AppearanceRevision)) return;
-        if (!presentationOnly && nextPresentation.IsAppearanceUpdateOf(presentation))
+        if (fragmentRootId is null && !presentationOnly && nextPresentation.IsAppearanceUpdateOf(presentation))
         { ApplyAppearanceFrame(nextPresentation); return; }
         var plan = Plan(root, rootScope);
         // Transition preparation already revokes and detaches native controls.
@@ -240,7 +240,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || focused?.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false }
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
                     || !ReferenceEquals(current, focused) || !Navigable(current)));
-            if (!presentationOnly) UpdateFocusPolicy(nextPresentation.View);
+            if (!presentationOnly && fragmentRootId is null) UpdateFocusPolicy(nextPresentation.View);
             else needsEntry = false;
             pendingRestore = !needsEntry && focused is not null && Navigable(focused)
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
@@ -252,7 +252,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         QueueMediaRefresh();
         RestorePageMemory();
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
-        UpdateScrollReveal(nextPresentation.View);
+        if (fragmentRootId is null) UpdateScrollReveal(nextPresentation.View);
         QueueSurfaceUpdate();
         if (presentationActive) { StartTransitions(transition); StartModalExit(modalExit); }
         else { SettleTransitions(); SettleModalExit(); }
@@ -312,6 +312,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     private bool MoveFocusCore(FocusNavigationDirection direction, bool isRepeat)
     {
+        if (previewEntered && previewSurface?.Fragment is { } preview) { preview.MoveFocus(direction, isRepeat); return true; }
         if (!presentationActive || applying || !IsLoaded || frame is null) return true;
         if (!presentationInputEnabled) return true;
         UseFocusedPreviewSource();
@@ -328,6 +329,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     public void ActivateFocused()
     {
+        if (previewEntered && previewSurface?.Fragment is { } preview) { preview.ActivateFocused(); return; }
         if (!presentationActive || applying || disposed || presentationOnly) return;
         // Parking is not an actionable row. Do not cancel its pending entry or
         // activate a future row which the user has not seen yet.
@@ -395,6 +397,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (applying || presentationOnly || frame is null || !CanDispatchAction || !bindings.TryGetValue(identity.Id, out var binding)
             || binding.Identity != identity || !ReferenceEquals(binding.Token, token) || !Eligible(binding)
             || declarations[identity.Id].Node.ActionId is not { } action) return;
+        if (previewOwner is { } owner && !owner.EnterFocusPreview(focusFirst: false)) return;
         CancelGroupEntry();
         var displayed = presentation!;
         try
@@ -443,7 +446,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 break;
             case ViewNodeKind.BackgroundSurface:
             case ViewNodeKind.FocusPresentationSurface:
-                var surface = new WidgetPresentationSurface(node.Kind);
+                var surface = new WidgetPresentationSurface(node.Kind, node.FocusPreview?.EnterButton is not null);
                 element = surface;
                 children = surface.ContentPanel;
                 break;

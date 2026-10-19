@@ -53,6 +53,7 @@ internal sealed partial class WidgetViewPresenter
         if (applying || disposed || presentationOnly || !presentationInputEnabled || frame is null ||
             !bindings.TryGetValue(identity.Id, out var binding) || binding.Identity != identity ||
             !ReferenceEquals(binding.Token, token) || !Eligible(binding) || !binding.Element.IsLoaded) return;
+        if (previewOwner is { } owner && !owner.EnterFocusPreview(focusFirst: false)) return;
         DismissTransientControl();
         var options = declarations[identity.Id].Node.SelectOptions.ToArray();
         var flyout = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };

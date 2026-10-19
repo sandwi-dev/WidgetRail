@@ -44,6 +44,14 @@ internal static class FocusPreviewTests
         var interactive = before with { Root = before.Root with { Children = [before.Root.Children[0] with {
             FocusPresentation = new() { Id = "invalid.preview", Kind = ViewNodeKind.Button, Text = "Click", ActionId = "action" } }] } };
         Check(ViewSnapshotValidator.Validate(interactive).Any(error => error.Code == "interactive_focus_presentation_fragment"));
+        var enabled = interactive with { ProtocolVersion = 94, Root = interactive.Root with { FocusPreview = new() { EnterButton = ControllerButton.X } } };
+        Check(ViewSnapshotValidator.Validate(enabled).Count == 0);
+        foreach (var forbidden in new[] { ViewNodeKind.TextEntry, ViewNodeKind.IndexedCollection, ViewNodeKind.ModalLayer, ViewNodeKind.FocusPresentationSurface })
+        {
+            var invalid = enabled with { Root = enabled.Root with { Children = [enabled.Root.Children[0] with {
+                FocusPresentation = enabled.Root.Children[0].FocusPresentation! with { Kind = forbidden } }] } };
+            Check(ViewSnapshotValidator.Validate(invalid).Any(error=>error.Code=="invalid_interactive_preview"));
+        }
         const string generation = "abababababababababababababababab";
         var after = fitted with { Sequence = 2, Root = fitted.Root with { FocusPreview = new(420, 320, AnchorPlacement.Above, DelayMilliseconds: 500) { SizeToContentHeight = true } } };
         var update = WidgetPresentationDiff.Create(fitted, after, generation, 1, PresentationUpdateCapabilities.Current,

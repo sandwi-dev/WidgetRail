@@ -113,7 +113,7 @@ public abstract partial class Widget
             action = new WidgetActionEvent(current.ActionId, current.OwnerId, input.Button, input.Phase,
                 correlation.Sequence, correlation.MonotonicTimestampMicroseconds, InputScopeId: lease.Lease.Range.ScopeId)
                 {
-                    FocusedElementId = item.Declaration.Root.Id,
+                    FocusedElementId = input.PreviewAction?.OwnerId ?? item.Declaration.Root.Id,
                     FocusedCollectionItem = new(lease.Request.CollectionId, lease.Request.Source.SourceId,
                         lease.Request.Source.QueryGeneration, item.Declaration.Key,
                         lease.Request.StartIndex + lease.Read.Items.TakeWhile(candidate => candidate.Declaration.Key != item.Declaration.Key).Count()),

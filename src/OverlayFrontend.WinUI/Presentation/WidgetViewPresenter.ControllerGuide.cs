@@ -9,10 +9,11 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     internal event Action? ControllerGuideChanged;
-    internal object ControllerGuideContext => (activeScope, HasTransientControl, adjustingSlider?.Identity.Id,
+    internal object ControllerGuideContext => previewEntered && previewSurface?.Fragment is { } preview ? ("preview", preview.ControllerGuideContext) : (activeScope, HasTransientControl, adjustingSlider?.Identity.Id,
         FocusedBrowser?.IsInteracting, FocusedBrowser?.IsBrowsing, FocusedBrowser?.Surface?.HasDialog, FocusedBrowser?.PresentedInPin, FocusedBrowser?.Surface?.RequiresActivation, FocusedBrowser?.Surface?.IsProviderContent, FocusedBrowser?.Surface?.SessionStopped, FocusedBrowser?.Surface?.NeedsRecovery);
     internal bool IsGuidePresentationReady(bool requireFocus)
     {
+        if (previewEntered && previewSurface?.Fragment is { } preview) return preview.IsGuidePresentationReady(requireFocus);
         if (disposed || applying || !presentationActive || frame is null || !IsLoaded) return false;
         if (HasTransientControl) return true;
         if (requireFocus && (restoreNativeFocus || pendingRestore is not null || pendingGroupEntry is not null ||
@@ -35,11 +36,12 @@ internal sealed partial class WidgetViewPresenter
         return true;
     }
     private void NotifyControllerGuideChanged()
-    { if (HasTransientControl) ClearFocusPreview(); RefreshContextIndicators(); ControllerGuideChanged?.Invoke(); }
+    { if (HasTransientControl) ClearFocusPreview(); RefreshContextIndicators(); ControllerGuideChanged?.Invoke(); previewOwner?.ControllerGuideChanged?.Invoke(); }
 
     internal IReadOnlyList<ControllerGuideHint> CaptureControllerGuide()
     {
         if (disposed || applying || presentationOnly || !presentationActive || presentation is null) return [];
+        if (previewEntered && previewSurface?.Fragment is { } preview) return preview.CaptureControllerGuide();
         if (ControllerTextEntry is { } keyboard) return CaptureKeyboardGuide(keyboard);
         if (HasTransientControl) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)];
         if (FocusedMediaPlayer is { IsExpanded: true, CanControl: false })
@@ -94,6 +96,10 @@ internal sealed partial class WidgetViewPresenter
                 .. (adjusting ? (ControllerGuideHint[])[new(ControllerPrompt.DPadHorizontal, "Adjust")] : []),
                 .. (adjusting || activation ? (ControllerGuideHint[])[new(ControllerPrompt.A, adjusting ? "Done" : "Adjust", ControllerButton.A)] : [])];
         }
+        if (previewOwner is not null) return (ControllerGuideHint[])[..hints, new(ControllerPrompt.B,"Back to source",ControllerButton.B)];
+        if (PreviewEnterButton(CurrentPreviewSource()) is { } enter) return (ControllerGuideHint[])[..hints.Where(hint=>hint.Button!=enter),
+            new(enter switch {ControllerButton.X=>ControllerPrompt.X,ControllerButton.Y=>ControllerPrompt.Y,
+                ControllerButton.LeftStick=>ControllerPrompt.LeftStickPress,_=>ControllerPrompt.RightStickPress},"Interact",enter)];
         return hints;
     }
     internal static IReadOnlyList<ControllerGuideHint> CaptureKeyboardGuide(WidgetTextEntryDialog keyboard) =>

@@ -56,6 +56,16 @@ internal static class PinnedActionContract
             if (!FindOwner(scope, focusId, true, focusPath)) throw new InvalidOperationException("Pinned focus owner retired.");
             focused = Identity(focusPath);
         }
+        if (path.Zip(path.Skip(1)).Any(pair => ReferenceEquals(pair.First.FocusPresentation,pair.Second)))
+        {
+            if (action.ControllerButton is not (null or ControllerButton.A) || action.CommittedText is not null ||
+                focused is not null && focused.Id != node.Id) throw new InvalidOperationException("Pinned preview input retired.");
+            var option=node.SelectOptions.SingleOrDefault(option=>option.ActionId==action.ActionId&&!option.IsDisabled&&!option.IsBusy);
+            if (node.Kind is ViewNodeKind.Button or ViewNodeKind.ActionSurface && node.ActionId==action.ActionId ||
+                node.Kind==ViewNodeKind.Select&&option is not null)
+                return new("preview",owner,focused,action.ActionId,(node.Kind,option));
+            throw new InvalidOperationException("Pinned preview action retired.");
+        }
         if (action.CommittedText is { } text)
         {
             if (node.Kind != ViewNodeKind.TextEntry || action.ActionId != node.ActionId ||
@@ -101,6 +111,7 @@ internal static class PinnedActionContract
         if (!root && node.InputScopeId is not null) return false;
         path.Add(node);
         if (node.Id == id) return true;
+        if (node.FocusPresentation is { } preview && FindOwner(preview, id, false, path)) return true;
         foreach (var child in node.Children) if (FindOwner(child, id, false, path)) return true;
         path.RemoveAt(path.Count - 1); return false;
     }

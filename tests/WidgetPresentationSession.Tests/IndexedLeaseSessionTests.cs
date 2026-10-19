@@ -84,6 +84,8 @@ public sealed partial class IndexedRangeSessionTests
             Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(copy, "key-0", ControllerButton.A));
             await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(copy, "key-0", ControllerButton.A));
             Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(displayed, "missing-key", ControllerButton.A));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitPreviewActionAsync(copy,"key-0",new("preview.apply","apply")));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitPreviewActionAsync(displayed,"missing-key",new("preview.apply","apply")));
         });
     }
 

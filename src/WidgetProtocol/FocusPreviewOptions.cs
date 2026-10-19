@@ -13,8 +13,9 @@ public sealed record FocusPreviewOptions(double Width = 360, double Height = 240
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool SizeToContentHeight { get; init; }
 
-    /// <summary>Optional source shortcut used to enter this preview. The source must declare a
-    /// pressed shortcut for this button. Its label supplies the host's enter hint; A keeps its normal action.</summary>
+    /// <summary>Enables interactive content. This host-owned button moves focus into the
+    /// already visible fragment; it does not dispatch an action or replace its content.
+    /// B returns to the source. Omit for a read-only preview.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public ControllerButton? EnterButton { get; init; }
 }

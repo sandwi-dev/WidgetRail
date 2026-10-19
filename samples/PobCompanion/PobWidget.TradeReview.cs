@@ -22,7 +22,7 @@ public sealed partial class PobWidget
         lock(gate)
         {
             pendingBefore=before;result=next;tradeListing=candidate.Listing;pastedItem=candidate.Raw;
-            previewSlot=candidate.Slot;itemDraftSlots=slots;tradeBrowsing=true;section="Items";detailKind="choose-slot";
+            previewSlot=candidate.Slot;itemDraftSlots=slots;tradeBrowsing=true;SetSection("Items");detailKind="choose-slot";
             tradeCandidates.Clear();tradeCandidates.AddRange(recent);websiteReview=true;
             websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
             rankingVisible=false;

@@ -3,9 +3,10 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.WidgetSdk;
 
 /// <summary>
-/// A non-interactive focus-associated presentation consumer. The host lays out
+/// A focus-associated presentation consumer. The host lays out
 /// exactly one admitted presentation fragment followed by the ordinary content
-/// subtree. Only the content owns focus, actions, input, and navigation.
+/// subtree. Inline fragments remain passive; an anchored preview can explicitly
+/// opt into host-managed interaction through Preview.EnterButton.
 /// </summary>
 public sealed record FocusPresentationSurfaceElement : WidgetElement
 {
@@ -25,7 +26,7 @@ public sealed record FocusPresentationSurfaceElement : WidgetElement
     /// <summary>Retains the last valid associated fragment when focus leaves it. Defaults to false.</summary>
     public bool RetainLastPresentation { get; init; }
 
-    /// <summary>Optional passive anchored preview; omission preserves immediate inline presentation.</summary>
+    /// <summary>Optional anchored preview; omission preserves immediate passive inline presentation.</summary>
     public FocusPreviewOptions? Preview { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()

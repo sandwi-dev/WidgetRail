@@ -30,23 +30,4 @@ function M.capabilities(build)
   }
 end
 
--- Library previews use upstream variant eligibility and formatting, without
--- constructing a display item or evaluating a replacement on focus.
-function M.itemPreviewLines(item,clean,textRuns)
-  local lines={}
-  if type(item.GetModLineVariantCount)~='function'or not itemLib or type(itemLib.formatModLine)~='function'then return lines end
-  for _,key in ipairs({'implicitModLines','explicitModLines'})do
-    for _,mod in ipairs(item[key]or{})do
-      if item:GetModLineVariantCount(mod)>0 then
-        local formatted=itemLib.formatModLine(mod,true)
-        if type(formatted)=='string'and #formatted<=384 then
-          lines[#lines+1]={text=clean(formatted),runs=textRuns(formatted)}
-          if #lines==3 then return lines end
-        end
-      end
-    end
-  end
-  return lines
-end
-
 return M

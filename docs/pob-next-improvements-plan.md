@@ -176,24 +176,24 @@ also needs a clearer hierarchy. That earlier rendering was not accepted as visua
 
 ### Existing implementation and verification
 
-Audit (2026-10-18): `PresentOnFocus` and `FocusPresentationSurface` already provide widget-authored, bounded passive content selected locally by host focus, including indexed-row ownership. Reuse these instead of adding a duplicate passive inspector. Extend placement/activation for anchored previews; retain passive-fragment validation. Explicit interactive inspection should reuse the modal focus scope, Back handling and restoration with an anchored presentation option. Existing presentation identities, row leases and transient input admission must remain authoritative. The implemented API extends these facilities with `FocusPreviewOptions` and modal `AnchoredPresentation`; see [presentation retention](developers/presentation-retention.md). Generic native fixtures precede the implemented PoB adoption.
+Audit (2026-10-18): `PresentOnFocus` and `FocusPresentationSurface` already provide widget-authored, bounded passive content selected locally by host focus, including indexed-row ownership. Reuse these instead of adding a duplicate passive inspector. Extend placement/activation for anchored previews; retain passive-fragment validation. Interactive previews retain their original control tree and use host-local entry and return; explicit modal workflows remain separate. Existing presentation identities, row leases and transient input admission must remain authoritative. The implemented API extends these facilities with `FocusPreviewOptions` and modal `AnchoredPresentation`; see [presentation retention](developers/presentation-retention.md). Generic native fixtures precede the implemented PoB adoption.
 
-Control-flow decision (2026-10-19): rich previews follow settled focus/hover without
-moving focus. Optional `EnterButton` matches a source shortcut; its host-rendered
-hint and a preview click enter the interactive state. PoB uses X and preserves
-Select/Add/Replace on A. `WithInteractivePreview` uses compact anchored chrome,
-no dimmed backdrop, nested-control-first B handling and exact source restoration.
-It reuses scoped-layer admission internally. Missing/stale anchors dismiss rather
-than center. Redundant Close/Back buttons were removed from item/gem inspection;
-query/token guards remain necessary. Undo/Redo stays passive. Ordinary dialogs and
-Search build retain their existing modal semantics.
+Navigation follow-up (2026-10-19): remember the last main tab separately for each game and restore it on reload, preserving pending-work recovery precedence. Implemented and checked on empty and populated builds.
+
+Control-flow decision (2026-10-19, corrected): complete preview content and controls
+are shown on focus/hover. Optional `EnterButton` is host-owned: X enters the existing
+control tree and B returns to its source without replacing the panel. Entry does
+not call PoB or publish a modal. Native selectors consume B first. Exact indexed
+lease/action checks reject stale commands. Redundant modal wrappers and PoB
+inspection state have been removed. Undo/Redo stays passive; Search build retains
+its ordinary modal semantics.
 
 
 Provide reusable widget-authored content anchored to an existing element. Content is composed from the normal widget UI elements; it is not restricted to item descriptions, artwork or statistics and does not require another layout language.
 
 - [x] Audit existing native flyout/tooltip facilities, widget declarations, modal/navigation support and controller input handling before designing an API. Tooltips, widget context menus and controller menu navigation already exist; do not list them as missing features or build competing replacements. Extend existing facilities only where the audit establishes a gap.
 - [x] Support a passive preview and explicit interactive inspection using a common foundation. Passive previews never take focus or change the build. Interactive inspection accepts supported controls/scrolling, owns an appropriate focus scope and restores focus to the opener on dismissal, or a valid fallback if it has disappeared.
-- [x] Allow authors to supply content and bounded options for supported activation modes: mouse hover, settled controller focus or an explicit action. The host owns consistent timing defaults, placement, bounds, dismissal, input admission and focus behaviour. The implemented bounded options and timing defaults are documented in the presentation guide. PoB candidate lists use local X Inspect while retaining A for selection.
+- [x] Allow authors to supply content and bounded options for supported activation modes: mouse hover, settled controller focus or an explicit action. The host owns consistent timing defaults, placement, bounds, dismissal, input admission and focus behaviour. The implemented bounded options and timing defaults are documented in the presentation guide. PoB candidate lists use host-owned X entry while retaining A for selection.
 - [x] Anchor placement must respect widget bounds and scaling, avoid obscuring the anchor or important controls where possible, and constrain long content. Do not reproduce desktop hover windows that cover much of the usable couch interface.
 - [x] Reuse loaded data and valid caches. Delay expensive inspection work until selection settles; cancel or disregard superseded requests. Bind updates to the current anchor, request and widget lifetime. Late results must not replace a newer preview, reopen a dismissed popover or steal focus.
 - [x] Bound content/resource use through the existing protocol and host safeguards. Handle rapid navigation, repeated activation, removed/recycled anchors, build switches, errors, nested-surface conflicts and unload safely. No continuous polling or calculation engine per preview.

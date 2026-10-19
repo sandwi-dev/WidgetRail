@@ -12,9 +12,6 @@ public sealed partial class PobWidget
         double? Comparison,bool? CanSupport);
     private sealed record GemPickerContext(PobResult Build,string? DocumentId,int Group,int Gem,long CatalogRevision,
         string Search,string Type,string Sort,string GroupName,string ReplacedGem,string MainSkill,string Metric,PobInspectionContext InspectionContext);
-    private sealed record GemInspection(long Token,GemQuery Query,GemEntry Entry,IndexedCollectionFocusTarget Anchor);
-    private GemInspection? gemInspection;
-    private long gemInspectionToken;
     private PobResult? gemInspectionContextBuild;
     private int gemInspectionContextGroup;
     private PobInspectionContext? gemInspectionContext;
@@ -67,70 +64,27 @@ public sealed partial class PobWidget
     private static WidgetElement RenderGemCandidate(GemQuery query,GemEntry entry,WidgetIndexedItemContext context)
     {
         var candidate=UI.ActionSurface("choose",context.Id("gem"),entry.Name,ActionSurfaceOrientation.Horizontal,
-            UI.Text(entry.Name,context.Id("name")).Classes("pob-inline")) with
-        {ContextActions=[new("inspect","Inspect gem")]};
-        var action=candidate.Shortcut(ControllerButton.X,"Inspect",actionId:"inspect").Classes("pob-button");
-        if(entry.Inspection is not {} data)return action;
-        var content=new List<WidgetElement>{UI.Text(data.Name,context.Id("preview-name")).Classes("pob-preview-title","pob-blue")};
-        content.Add(UI.Text(data.Support?"Support gem":"Active skill gem",context.Id("preview-type")).Classes("pob-preview-meta"));
-        if(data.Description.Length>0)content.Add(UI.Text(GemInspectionText(data.Description,480),context.Id("preview-description")).Classes("pob-preview-description"));
-        if(data.Tags.Length>0)content.Add(UI.Text(GemInspectionText(data.Tags,160),context.Id("preview-tags")).Classes("pob-preview-meta"));
-        if(data.Support&&data.CanSupport is {} supports)content.Add(UI.Text(supports?"Supports the selected skill":"Does not support the selected skill",context.Id("preview-compatibility")).Classes("pob-small",supports?"pob-green":"pob-muted"));
-        if(query.Context is {} picker&&GemComparisonText(data,picker) is {Length:>0} total)
-            content.Add(UI.Text(total,context.Id("preview-comparison")).Classes("pob-small"));
-        return action.PresentOnFocus(UI.Stack(context.Id("preview"),content.ToArray()).Classes("pob-preview-content"));
+            UI.Text(entry.Name,context.Id("name")).Classes("pob-inline")).Classes("pob-button");
+        if(entry.Inspection is not {} data||query.Context is not {} picker)return candidate;
+        var rows=new List<WidgetElement>{UI.Text(data.Support?"Support gem":"Active skill gem",context.Id("type")).Classes("pob-eyebrow","pob-gold")};
+        if(data.Tags.Length>0)rows.Add(UI.Text(data.Tags,context.Id("tags")).Classes("pob-gold"));
+        if(data.Description.Length>0)rows.Add(UI.Text(data.Description,context.Id("description")).Classes("pob-text"));
+        rows.Add(UI.Text(picker.Gem==0?"Add to "+picker.GroupName:"Replace "+picker.ReplacedGem+" in "+picker.GroupName,context.Id("target")).Classes("pob-muted"));
+        if(picker.InspectionContext.Summary.Length>0)rows.Add(UI.Text(picker.InspectionContext.Summary,context.Id("context")).Classes("pob-small","pob-muted"));
+        if(GemComparisonText(data,picker) is {Length:>0} total)
+        {
+            rows.Add(UI.Text(total,context.Id("comparison")).Classes("pob-heading"));
+            if(picker.MainSkill.Length>0)rows.Add(UI.Text("Main skill · "+picker.MainSkill,context.Id("main")).Classes("pob-small","pob-muted"));
+            if(data.Support&&data.CanSupport is {} supports)rows.Add(UI.Text(supports?"Supports the current skill":"Does not support the current skill",context.Id("support")).Classes("pob-small"));
+            rows.Add(UI.Text("PoB's selected comparison total, not the change from your equipped gem.",context.Id("total-help")).Classes("pob-small","pob-muted"));
+        }
+        return candidate.PresentOnFocus(InspectionWorkspace(context.Id("preview"),rows,
+            UI.Stack(context.Id("controls"),UI.Text(data.Name,context.Id("title")).Classes("pob-preview-title","pob-blue"),
+                UI.Button(picker.Gem==0?"Add gem":"Replace gem","choose",context.Id("apply")).Classes("pob-button"))));
     }
     private static string GemComparisonText(GemInspectionData data,GemPickerContext context) =>
         context.Sort!="name"&&data.Comparison is {} total
             ?(context.Metric.Length>0?context.Metric:context.Sort)+" · "+total.ToString("N0",CultureInfo.InvariantCulture)+" total"
             :"";
 
-    private void OpenGemInspection(GemQuery query,GemEntry entry)
-    {
-        if(!GemQueryIsCurrent(query)||entry.Inspection is null||gemCollection is null)return;
-        var index=Array.FindIndex(query.Entries,candidate=>ReferenceEquals(candidate,entry));
-        if(index<0)return;
-        gemInspection=new(++gemInspectionToken,query,entry,gemCollection.FocusTarget("pob.gems",new(entry.Key),index));
-    }
-    private bool HandleGemInspectionAction(WidgetActionEvent action)
-    {
-        var id=action.ActionId;
-        if(gemInspection is not {} inspection)return id.StartsWith("gem-inspection-",StringComparison.Ordinal);
-        if(!GemQueryIsCurrent(inspection.Query)){gemInspection=null;return true;}
-        if(id=="gem-inspection-close."+inspection.Token){gemInspection=null;return true;}
-        if(id=="gem-inspection-apply."+inspection.Token)
-        {
-            gemInspection=null;
-            var context=inspection.Query.Context!;
-            Edit(new{op="gem-manage",mode=context.Gem==0?"add":"replace",group=context.Group,gem=context.Gem,
-                gemId=inspection.Entry.Inspection!.Id},skillDestination:"skill");
-        }
-        // Inspection owns its scope. Background/superseded callbacks cannot alter its picker or build.
-        return true;
-    }
-    private WidgetView WithGemInspection(WidgetView view)
-    {
-        if(gemInspection is not {} inspection)return view;
-        if(!GemQueryIsCurrent(inspection.Query)){gemInspection=null;return view;}
-        var data=inspection.Entry.Inspection!;var context=inspection.Query.Context!;
-        var rows=new List<WidgetElement>{Text(data.Support?"Support gem":"Active skill gem","gem-inspection.type","pob-eyebrow pob-gold")};
-        if(data.Tags.Length>0)rows.Add(Text(data.Tags,"gem-inspection.tags","pob-gold"));
-        if(data.Description.Length>0)rows.Add(Text(data.Description,"gem-inspection.description"));
-        rows.Add(Text(context.Gem==0?"Add to "+context.GroupName:"Replace "+context.ReplacedGem+" in "+context.GroupName,
-            "gem-inspection.target","pob-muted"));
-        if(context.InspectionContext.Summary.Length>0)rows.Add(Text(context.InspectionContext.Summary,"gem-inspection.context","pob-small pob-muted"));
-        if(GemComparisonText(data,context) is {Length:>0} total)
-        {
-            rows.Add(Text(total,"gem-inspection.comparison","pob-heading"));
-            if(context.MainSkill.Length>0)rows.Add(Text("Main skill · "+context.MainSkill,"gem-inspection.main","pob-small pob-muted"));
-            if(data.Support&&data.CanSupport is {} supports)rows.Add(Text(supports?"PoB marks this gem as supporting the current skill.":
-                "PoB does not mark this gem as supporting the current skill.","gem-inspection.support","pob-small"));
-            rows.Add(Text("PoB's selected comparison total, not the change from your equipped gem.","gem-inspection.total-help","pob-small pob-muted"));
-        }
-        var close="gem-inspection-close."+inspection.Token;
-        var apply="gem-inspection-apply."+inspection.Token;
-        var controls=UI.Row("pob.gem-inspection.actions",Button(context.Gem==0?"Add gem":"Replace gem",apply)).Classes("pob-toolbar");
-        return view.WithInteractivePreview(new("pob.gem-inspection",data.Name,InspectionWorkspace("pob.gem-inspection",rows,controls),
-            "pob."+apply,close,new(IndexedItem:inspection.Anchor)){ScrollContent=false,Width=480,Height=560});
-    }
 }

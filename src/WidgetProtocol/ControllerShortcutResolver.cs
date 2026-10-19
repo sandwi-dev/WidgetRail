@@ -113,6 +113,7 @@ internal static class ControllerShortcutResolver
         if (!isScopeRoot && node.InputScopeId is not null) return false;
         path.Add(node);
         if (string.Equals(node.Id, targetId, StringComparison.Ordinal)) return true;
+        if (node.FocusPresentation is { } preview && FindPath(preview, targetId, false, path)) return true;
         foreach (var child in node.Children)
         {
             if (FindPath(child, targetId, isScopeRoot: false, path)) return true;

@@ -28,9 +28,11 @@ Edits save automatically. Tree and equipment proposals use **Apply** or **Discar
 Focus or hover Undo/Redo to preview the change before applying it. The preview is
 read-only; A or click still performs the action. Loadout switches remain part of history.
 
-Item inventory, unique-item and gem candidates show a preview on focus or hover.
+Item inventory, unique-item and gem candidates show their complete preview and controls on focus or hover.
 Press **X** (or click the preview) to interact with its controls; **B** returns to
-the same candidate. **A** on the candidate keeps its usual select/add action.
+the same candidate without replacing the panel. **A** on the candidate keeps its usual select/add action.
+
+Each PoE widget remembers its last main tab across reloads. Pending comparisons or item drafts still reopen where you can finish them.
 
 For a build on **poe.ninja** or **pob.cool**, copy its PoB code and use **Paste build from clipboard**. Direct poe.ninja profile-link import is unavailable, and pob.cool requires a mouse and keyboard.
 

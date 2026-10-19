@@ -27,88 +27,65 @@ internal static class ItemCandidateInspectionTests
         async Task Until(Func<bool> ready,int seconds=65){var watch=Stopwatch.StartNew();while(!ready()){if(watch.Elapsed.TotalSeconds>seconds)throw new TimeoutException("Item candidate operation did not settle");await Task.Delay(15);}}
         async Task Idle()=>await Until(()=>!(bool)Get("busy")!);
         async Task Action(string id,string? text=null){await widget.OnActionAsync(new(id,"test"){CommittedText=text});await Idle();_=View();}
-        string ModalAction(string prefix)=>Nodes(View().Root).SelectMany(n=>new[]{n.ActionId}.Concat(n.Shortcuts.Select(s=>s.ActionId))).Where(id=>id?.StartsWith(prefix,StringComparison.Ordinal)==true).Distinct(StringComparer.Ordinal).Single()!;
         try
         {
             await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);await Idle();await Action("inventory");
             var before=Result();var selected=(int)Get("inventoryId")!;
             var entries=((JsonElement)Get("inventoryState")!).GetProperty("inventory").EnumerateArray().ToArray();
             var index=Array.FindIndex(entries,e=>e.GetProperty("id").GetInt32()==added);
-            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"inventory-inspector",500))
+            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"inventory-preview",500))
             {
                 using var range=await host.AcquireAsync("pob.stored.items",index,1);var row=range.Range.Items.Single();
-                var query=Get("inventoryQuery");var source=Nodes(host.CurrentSnapshot.Root).Single(n=>n.Id=="pob.stored.items").IndexedCollection;
-                check(row.Root.ActionId=="select"&&row.Root.Shortcuts.Any(s=>s.Button==ControllerButton.X&&s.ActionId=="inspect")&&row.Root.ContextActions.Any(c=>c.ActionId=="inspect"),
-                    "Inventory preserves A selection and offers X and context item inspection");
-                check(row.Root.FocusPresentation is not null&&Nodes(host.CurrentSnapshot.Root).Any(n=>n.FocusPreview?.EnterButton==ControllerButton.X),"Inventory offers a passive preview with explicit X entry");
-                check(range.RouteAction(row.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Inventory inspection admits exact indexed item");
-                await Until(()=>Get("candidateInspection") is not null);await Idle();
-                var modal=View();var anchor=modal.Root.AnchoredPresentation!.Anchor.IndexedItem!;
-                check(modal.Root.AnchoredPresentation.SizeToContentHeight,"Item inspection fits content within its bounded height");
-                check(modal.Root.AnchoredPresentation.IsInteractivePreview&&!Nodes(modal.Root.Children[1]).Any(n=>n.Text is "Close" or "Back to items"),"Item interaction uses preview chrome without duplicate modal dismissal controls");
-                check(anchor.ItemKey==row.Key&&anchor.Index==index&&anchor.QueryGeneration==source!.QueryGeneration,"Inventory inspection anchors exact occurrence");
-                check(ReferenceEquals(before,Result())&&selected==(int)Get("inventoryId")!&&ReferenceEquals(query,Get("inventoryQuery")),
-                    "Inspecting an unselected inventory item does not select, equip, mutate build or reset query");
-                check(Nodes(modal.Root).Any(n=>n.Id.StartsWith("pob.candidate-inspection.line.",StringComparison.Ordinal)),"Inspector displays upstream item tooltip details");
-                var close=ModalAction("candidate-inspection-close.");var equip=ModalAction("candidate-inspection-equip.");
-                await Action("inventory-search","background attempt");check((string)Get("inventorySearch")! == "","Modal prevents background inventory actions");
-                await Action(close);await Action(equip);
-                check(ReferenceEquals(before,Result())&&View().Root.Kind!=ViewNodeKind.ModalLayer&&ReferenceEquals(query,Get("inventoryQuery")),"Close restores retained inventory and rejects late equip");
+                var content=row.Root.FocusPresentation!;var query=Get("inventoryQuery");
+                check(row.Root.ActionId=="select"&&row.Root.Shortcuts.Count==0,"Inventory preserves A and does not bind X to a widget action");
+                check(Nodes(host.CurrentSnapshot.Root).Any(n=>n.FocusPreview?.EnterButton==ControllerButton.X),"Host owns X entry");
+                check(content is not null&&Nodes(content).Any(n=>n.Kind==ViewNodeKind.Select),"Full item preview includes equipment actions before entry");
+                check(ReferenceEquals(before,Result())&&selected==(int)Get("inventoryId")!&&ReferenceEquals(query,Get("inventoryQuery")),"Reading full preview does not select, equip or mutate build");
+                var equip=Nodes(content!).Single(n=>n.Kind==ViewNodeKind.Select);var option=equip.SelectOptions.Last();
+                check(range.RoutePreviewAction(row.Key,equip.Id,"forged-action") is null,"Undeclared preview actions are rejected");
+                check(range.RoutePreviewAction(row.Key,"other-row",option.ActionId) is null,"Preview cannot target another row's control");
+                Set("documentId","other-build");
+                range.RoutePreviewAction(row.Key,equip.Id,option.ActionId);await Task.Delay(100);await Idle();Set("documentId",build);
+                check(ReferenceEquals(before,Result()),"Changed document rejects captured equipment action");
                 host.PublishSnapshot();
-                check(range.RouteAction(row.Key,ControllerButton.A,contextActionOwnerId:row.Root.Id,contextActionId:"inspect")==WidgetOperationAdmission.Enqueued,"Inventory right-click uses the same inspection path");
-                await Until(()=>Get("candidateInspection") is not null);await Idle();
-                var secondEquip=ModalAction("candidate-inspection-equip.");
-                await Action(equip);check(Get("candidateInspection") is not null&&ReferenceEquals(before,Result()),"Old inspector token cannot equip a new panel");
-                Set("documentId","other-build");await Action(secondEquip);Set("documentId",build);
-                check(ReferenceEquals(before,Result())&&Get("candidateInspection") is null,"Changed build rejects captured inventory equip");
-                host.PublishSnapshot();
-                using var fresh=await host.AcquireAsync("pob.stored.items",index,1);var freshRow=fresh.Range.Items.Single();
-                check(fresh.RouteAction(freshRow.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Fresh inventory source can inspect after context retirement");
-                await Until(()=>Get("candidateInspection") is not null);await Idle();
-                Export("inventory",View(),freshRow.Root);
-                var slot=Nodes(View().Root).Single(n=>n.Id=="pob.candidate-inspection.slot");
-                var option=slot.SelectOptions.Last();await Action(option.ActionId);
-                check(Nodes(View().Root).Single(n=>n.Id==slot.Id).SelectOptions.Single(o=>o.IsSelected).Id==option.Id,"Inspector slot selection is explicit and retained inside the panel");
-                await Action(ModalAction("candidate-inspection-equip."));
-                check(!WorkStateTests.SameBuild(before.Xml,Result().Xml)&&Get("candidateInspection") is null,"Only explicit Equip commits the captured inventory item and slot");
+                using var fresh=await host.AcquireAsync("pob.stored.items",index,1);var current=fresh.Range.Items.Single();
+                Export("inventory",host.CurrentSnapshot,current.Root);
+                equip=Nodes(current.Root.FocusPresentation!).Single(n=>n.Kind==ViewNodeKind.Select);option=equip.SelectOptions.Last();
+                check(fresh.RoutePreviewAction(current.Key,equip.Id,option.ActionId)==WidgetOperationAdmission.Enqueued,"Preview equipment selector uses exact leased action");
+                await Until(()=>!ReferenceEquals(before,Result()));await Idle();
+                check(!WorkStateTests.SameBuild(before.Xml,Result().Xml),"Explicit equipment option commits the captured item and slot");
+                await Action("inventory-search","missing-candidate-filter");host.PublishSnapshot();
+                check(fresh.RoutePreviewAction(current.Key,equip.Id,option.ActionId) is null,"Query retirement rejects late preview action");
+                await Action("inventory-search","");
             }
             using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"inventory-direct",800))
             {
                 using var range=await host.AcquireAsync("pob.stored.items",0,1);var row=range.Range.Items.Single();var committed=Result().Xml;
-                check(range.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Inventory A still selects without opening inspection");
+                check(range.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Inventory A still selects directly");
                 await Until(()=>(bool)Get("busy")!||(int)Get("inventoryId")! == int.Parse(row.Key));await Idle();
-                check((int)Get("inventoryId")! == int.Parse(row.Key)&&Get("candidateInspection") is null&&Result().Xml==committed,"Direct inventory selection preserves equipment and follows the existing details workflow");
-                await Action("inventory-search","missing-candidate-filter");host.PublishSnapshot();
-                check(range.RouteAction(row.Key,ControllerButton.X) is null&&Get("candidateInspection") is null,"Filtered-out inventory occurrence cannot reopen inspection");
-                await Action("inventory-search","");
+                check((int)Get("inventoryId")! == int.Parse(row.Key)&&Result().Xml==committed,"Selecting preserves equipped items");
             }
-            await Action("item-uniques");await Action("choice-search","Goldrim");
+            await Action("item-uniques");
+            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"unique-range-budget",850))
+            {
+                var timer=Stopwatch.StartNew();using var all=await host.AcquireAsync("pob.choices",0,64);var cold=timer.ElapsedMilliseconds;
+                timer.Restart();using var again=await host.AcquireAsync("pob.choices",0,64);var warm=timer.ElapsedMilliseconds;
+                check(all.Range.Items.Count==64&&again.Range.Items.Count==64,"Maximum preview range stays within protocol and time budgets");
+                Console.WriteLine($"Preview range 64: first {cold} ms; cached {warm} ms");
+            }
+            await Action("choice-search","Goldrim");
             var uniqueBefore=Result();
-            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"unique-inspector",900))
+            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"unique-preview",900))
             {
-                using var range=await host.AcquireAsync("pob.choices",0,1);var row=range.Range.Items.Single();var query=Get("uniqueCandidateQuery");
-                check(row.Root.ActionId=="select"&&row.Root.FocusPresentation is not null,"Unique library keeps direct A choice and previews cached source metadata");
-                check(range.RouteAction(row.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Unique inspection opens through captured X action");
-                await Until(()=>Get("candidateInspection") is not null);await Idle();
-                check(ReferenceEquals(uniqueBefore,Result())&&Get("pastedItem") is null&&ReferenceEquals(query,Get("uniqueCandidateQuery")),"Unique inspection creates no draft, equipment edit or query reset");
-                Export("unique",View(),row.Root);
-                var close=ModalAction("candidate-inspection-close.");var choose=ModalAction("candidate-inspection-choose.");
-                await Action(close);await Action(choose);check(Get("pastedItem") is null,"Closed unique inspector cannot create a draft from a late callback");
-                host.PublishSnapshot();check(range.RouteAction(row.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Unique inspection can reopen without refiltering results");
-                await Until(()=>Get("candidateInspection") is not null);await Idle();
-                var currentChoose=ModalAction("candidate-inspection-choose.");await Action(choose);check(Get("pastedItem") is null,"Prior unique inspector token cannot choose the reopened candidate");
-                await Action(currentChoose);
-                check((string)Get("detailKind")! == "item-author"&&((string)Get("pastedItem")!).Contains("Goldrim",StringComparison.Ordinal)&&
-                    WorkStateTests.SameBuild(uniqueBefore.Xml,Result().Xml),"Explicit unique choice opens its cached recoverable draft without equipping or changing the build");
-            }
-            await Action("draft-compare");await Action("back");await Action("item-uniques");await Action("choice-search","Goldrim");
-            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"unique-direct",1200))
-            {
-                using var range=await host.AcquireAsync("pob.choices",0,1);var row=range.Range.Items.Single();var committed=Result().Xml;
-                check(range.RouteAction(row.Key,ControllerButton.A)==WidgetOperationAdmission.Enqueued,"Unique A still opens the selected draft directly");
+                using var range=await host.AcquireAsync("pob.choices",0,1);var row=range.Range.Items.Single();
+                check(Nodes(row.Root.FocusPresentation!).Any(n=>n.Kind==ViewNodeKind.Scroll),"Unique preview includes complete scrollable tooltip");
+                check(ReferenceEquals(uniqueBefore,Result())&&Get("pastedItem") is null,"Reading unique details does not create a draft or edit the build");
+                Export("unique",host.CurrentSnapshot,row.Root);
+                var choose=Nodes(row.Root.FocusPresentation!).Single(n=>n.ActionId=="select");
+                check(range.RoutePreviewAction(row.Key,choose.Id,"select")==WidgetOperationAdmission.Enqueued,"Unique preview action routes through exact lease");
                 await Until(()=>Get("pastedItem") is not null);await Idle();
-                check(((string)Get("pastedItem")!).Contains("Goldrim",StringComparison.Ordinal)&&Get("candidateInspection") is null&&
-                    WorkStateTests.SameBuild(committed,Result().Xml),"Direct unique choice preserves the existing unequipped draft workflow");
+                check((string)Get("detailKind")! == "item-author"&&((string)Get("pastedItem")!).Contains("Goldrim",StringComparison.Ordinal)&&
+                    WorkStateTests.SameBuild(uniqueBefore.Xml,Result().Xml),"Choosing opens an unequipped recoverable draft");
             }
         }
         finally{await WidgetTestHost.DestroyAsync(widget);Directory.Delete(directory,true);}

@@ -319,7 +319,6 @@ public sealed partial class PobWidget
 
     private WidgetView WithPlanningModal(WidgetView view)
     {
-        if(candidateInspection is not null)return WithItemCandidateInspection(view);
         if(timelessDetail is {} jewel)return view.WithModal(new("pob-timeless-detail",jewel.Row.Title,
             UI.Stack("pob.timeless.detail.body",UI.Row("pob.timeless.detail.actions",Button("Back to results","timeless-detail-close"),Button("Add to item inventory","timeless-add."+jewel.Row.Id)),
                 UI.VerticalScroll("pob.timeless.detail.lines",jewel.Lines).Classes("pob-scroll")).Classes("pob-card","pob-workspace"),"pob.timeless-detail-close","timeless-detail-close"){ScrollContent=false});

@@ -7,7 +7,7 @@ internal sealed partial class WidgetViewPresenter
 {
     internal WidgetPresentationBinding? CurrentBinding => presentation;
     private bool IsBindingCurrent(WidgetPresentationBinding origin) => presentationInputEnabled && presentationActive && !disposed && !applying &&
-        !presentationOnly && origin.SameInput(presentation);
+        !presentationOnly && origin.SameInput(presentation) && (previewOwner is null || previewOwner.PreviewInputCurrent(this));
 
     private async Task<bool> AdmitBindingAsync(WidgetPresentationBinding origin, CancellationToken token = default) =>
         IsBindingCurrent(origin) && await AdmitInteractionAsync(origin.Frame.Authority, token) && IsBindingCurrent(origin);
@@ -15,9 +15,7 @@ internal sealed partial class WidgetViewPresenter
     private async Task DispatchCapturedActionAsync(WidgetPresentationBinding origin, WidgetActionEvent action)
     {
         if (!IsBindingCurrent(origin)) return;
-        if (effectiveView?.Root is { AnchoredPresentation: { IsInteractivePreview: true } preview } layer &&
-            ResolvePresentationAnchor(preview.Anchor, this) is not { Valid: true } &&
-            !layer.Children[1].Shortcuts.Any(shortcut => shortcut.Button == WidgetProtocol.ControllerButton.B && shortcut.ActionId == action.ActionId)) return;
+        if (previewOwner is { } owner) { await owner.DispatchPreviewActionAsync(this, origin, action); return; }
         if (origin.Selection is { } selection && origin.Projection is { } projection)
         {
             if (Session is not { } session || !await AdmitBindingAsync(origin)) return;

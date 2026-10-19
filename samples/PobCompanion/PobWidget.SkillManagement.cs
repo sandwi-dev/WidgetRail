@@ -18,7 +18,7 @@ public sealed partial class PobWidget
         var items=value.EnumerateArray().ToArray();
         var search=new PobGemSearchCatalog(items);
         var inspection=items.Select(ReadGemInspection).ToArray();
-        gemCatalog=items;gemSearchCatalog=search;gemInspectionCatalog=inspection;gemCatalogRevision++;gemInspection=null;
+        gemCatalog=items;gemSearchCatalog=search;gemInspectionCatalog=inspection;gemCatalogRevision++;
     }
     private string gemSearch="",gemType="all";
     private string gemSort="name";
@@ -163,8 +163,7 @@ public sealed partial class PobWidget
             ItemKey=entry=>new(entry.Key),
             RenderItem=RenderGemCandidate,
             OnAction=(query,entry,action,token)=>
-            {lock(gate){if(!GemQueryIsCurrent(query)||busy||gemInspection is not null)return ValueTask.CompletedTask;
-                if(action.ActionId=="inspect"){OpenGemInspection(query,entry);Invalidate();return ValueTask.CompletedTask;}
+            {lock(gate){if(!GemQueryIsCurrent(query)||busy)return ValueTask.CompletedTask;
                 return action.ActionId=="choose"?OnActionAsync(action with{ActionId=entry.Action},token):ValueTask.CompletedTask;}},
         });
         var entries=gemSearchCatalog.Entries.Where(entry=>(gemType=="all"||entry.Support==(gemType=="support"))&&entry.Matches(gemSearch))
@@ -189,7 +188,7 @@ public sealed partial class PobWidget
 
     private WidgetView WithSkillConfirmation(WidgetView view)
     {
-        if(skillRemoval is not {} removal)return WithGemInspection(view);
+        if(skillRemoval is not {} removal)return view;
         var what=removal.Group==0?"all editable groups":removal.Gem==0?"group":"gem";
         return view.WithModal(new("pob.skill-remove-confirmation","Remove "+what+"?",UI.Stack("pob.skill-remove.content",
             Text(removal.Name,"skill-remove.name","pob-heading"),Text("This change is saved immediately. You can Undo it.","skill-remove.help"),

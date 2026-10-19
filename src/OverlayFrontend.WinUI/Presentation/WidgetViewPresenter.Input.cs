@@ -19,6 +19,13 @@ internal sealed partial class WidgetViewPresenter
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Route widget input on its WinUI dispatcher.");
         if (!presentationInputEnabled || !presentationActive || disposed || applying || presentationOnly || frame is null) return false;
+        if (previewEntered && previewSurface?.Fragment is { } preview)
+        {
+            if (button == ControllerButton.B && !preview.HasTransientControl)
+            { if (phase == ControllerEventPhase.Pressed) ExitFocusPreview(); return true; }
+            await preview.HandleControllerButtonAsync(button, phase, origin, cancellationToken);
+            return true;
+        }
         UseFocusedPreviewSource();
         if (textEntryPopup is { } edit) { edit.Dialog.Handle(button, phase); return true; }
         if (FocusedBrowser is { } browser && browser.HandleButton(button, phase)) return true;
@@ -36,17 +43,7 @@ internal sealed partial class WidgetViewPresenter
             return true;
         }
         if (HandleSliderButton(button, phase)) return true;
-        if (effectiveView?.Root.AnchoredPresentation is { IsInteractivePreview: true } interactive)
-        {
-            if (button == ControllerButton.B)
-            {
-                if (phase == ControllerEventPhase.Pressed)
-                    bindings.Values.Select(binding => binding.Element).OfType<WidgetModalLayer>().FirstOrDefault()?.DismissPreview?.Invoke();
-                return true;
-            }
-            if (ResolvePresentationAnchor(interactive.Anchor, this) is not { Valid: true }) return true;
-        }
-        if (await TryEnterFocusPreviewAsync(button, phase)) return true;
+        if (TryEnterFocusPreview(button, phase)) return true;
         if (phase == ControllerEventPhase.Pressed && OpenContextMenu(button)) return true;
         if (button == ControllerButton.A)
         {
@@ -61,6 +58,7 @@ internal sealed partial class WidgetViewPresenter
             if (phase == ControllerEventPhase.Pressed && !collection.IsFocusParked) CancelGroupEntry();
             return await collection.InvokeFocusedInputAsync(button, phase);
         }
+        if (previewOwner is not null) return true;
         if (Session is not { } session) return false;
         var displayed = presentation!;
         var authority = displayed.Frame.Authority;

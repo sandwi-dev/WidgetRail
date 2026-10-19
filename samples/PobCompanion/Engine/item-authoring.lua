@@ -32,10 +32,10 @@ local function uniqueItems()
   end
   return main.uniqueDB.list
 end
-function M.uniques(clean,textRuns)
+function M.uniques(clean)
   local rows={}
   for name,item in pairs(uniqueItems())do
-    rows[#rows+1]={key=name,title=clean(name),preview=compatibility.itemPreviewLines(item,clean,textRuns),hasVariants=(item.variantList and #item.variantList>1)or false,description=clean(item.baseName)..' · '..clean(item.type)..
+    rows[#rows+1]={key=name,title=clean(name),hasVariants=(item.variantList and #item.variantList>1)or false,description=clean(item.baseName)..' · '..clean(item.type)..
       (item.source and '\n'..clean(build.itemsTab:FormatItemSource(item.source))or'')}
   end
   table.sort(rows,function(a,b)return a.title<b.title end)
@@ -100,6 +100,32 @@ function M.modifiers(req,clean)
     return {sources=sources,source=selected,choices=choices}
   end)
 end
+local function previewDetails(item,clean,textRuns)
+  local tab=build.itemsTab;local details={}
+  -- Item information is separate from our explicit Compare action. Upstream's
+  -- default hover also includes desktop hotkeys and comparisons to other slots.
+  local tooltip=compatibility.create('Tooltip')
+  local previous=tab.showStatDifferences;tab.showStatDifferences=false
+  local ok,err=pcall(tab.AddItemTooltip,tab,tooltip,item,nil,false,600)
+  tab.showStatDifferences=previous;assert(ok,err)
+  for _,line in ipairs(tooltip.lines)do if line.text and not clean(line.text):match('^Tip:')then
+    details[#details+1]={text=clean(line.text),runs=textRuns(line.text)}
+  end end
+  return details
+end
+function M.previews(req,clean,textRuns)
+  assert(type(req.items)=='table'and #req.items<=64,'Invalid preview range')
+  local rows={};local tab=build.itemsTab
+  for _,entry in ipairs(req.items)do
+    local item=entry.uniqueKey and assert(uniqueItems()[entry.uniqueKey],'Unique item no longer exists')or assert(tab.items[entry.itemId],'Item no longer exists')
+    local slots={}
+    if not entry.uniqueKey then for _,slot in ipairs(tab.orderedSlots)do
+      if slot:IsShown()and not slot.inactive and tab:IsItemValidForSlot(item,slot.slotName)then slots[#slots+1]=slot.slotName end
+    end end
+    rows[#rows+1]={key=entry.key,details=previewDetails(item,clean,textRuns),slots=slots}
+  end
+  return rows
+end
 function M.inspect(req,clean,textRuns)
   local item=display(req);local tab=build.itemsTab
   local result={raw=item:BuildRaw(),name=clean(item.name or item.baseName),rarity=item.rarity,crafted=item.crafted==true,
@@ -118,15 +144,7 @@ function M.inspect(req,clean,textRuns)
     result.custom[#result.custom+1]={id=i,text=clean(c.label),runs=textRuns(c.label)}
   end
   for i,line in ipairs(item.rangeLineList or{})do result.ranges[#result.ranges+1]={id=i,title=clean(line.line),roll=math.floor((line.range or .5)*100+.5)}end
-  -- Item information is separate from our explicit Compare action. Upstream's
-  -- default hover also includes desktop hotkeys and comparisons to other slots.
-  local tooltip=compatibility.create('Tooltip')
-  local previous=tab.showStatDifferences;tab.showStatDifferences=false
-  local ok,err=pcall(tab.AddItemTooltip,tab,tooltip,item,nil,false,600)
-  tab.showStatDifferences=previous;assert(ok,err)
-  for _,line in ipairs(tooltip.lines)do if line.text and not clean(line.text):match('^Tip:')then
-    result.details[#result.details+1]={text=clean(line.text),runs=textRuns(line.text)}
-  end end
+  result.details=previewDetails(item,clean,textRuns)
   return result
 end
 function M.draft(req,clean,textRuns)

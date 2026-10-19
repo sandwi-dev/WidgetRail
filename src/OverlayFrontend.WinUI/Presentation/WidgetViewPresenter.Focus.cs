@@ -46,7 +46,7 @@ internal sealed partial class WidgetViewPresenter
     }
 
     internal bool CanLeaveRootScope => !disposed && !applying && presentationActive && presentationInputEnabled &&
-        frame is not null && !HasTransientControl && effectiveView is { Root.Kind: not ViewNodeKind.ModalLayer } &&
+        frame is not null && !previewEntered && previewOwner is null && !HasTransientControl && effectiveView is { Root.Kind: not ViewNodeKind.ModalLayer } &&
         declarations.Values.Where(declaration => declaration.Node.IsFocusable && bindings[declaration.Node.Id].Element.Visibility == Visibility.Visible)
             .All(declaration => declaration.Identity.Scope == activeScope);
     private sealed record GroupMemory(WidgetElementIdentity Group, WidgetElementIdentity Child);
@@ -201,6 +201,10 @@ internal sealed partial class WidgetViewPresenter
 
     private void OnGettingFocus(UIElement sender, GettingFocusEventArgs args)
     {
+        if (previewOwner is { } owner && !owner.previewEntered && FindBinding(args.NewFocusedElement) is not null)
+        {
+            if (args.FocusState is not (FocusState.Pointer or FocusState.Programmatic) || !owner.EnterFocusPreview(focusFirst: false)) { args.TryCancel(); return; }
+        }
         if (RejectInactiveFocus(args)) return;
         if (!applying && !redirectingGroupFocus && args.Direction != FocusNavigationDirection.None) CancelGroupEntry();
         // Pointer focus and explicit programmatic focus retain their exact target.

@@ -53,7 +53,7 @@ public sealed partial class PobWidget
     private void OpenInventory(int selected=0)=>Work(async token=>
     {
         var view=await ReadInventoryAsync(result!.Xml,selected,token);
-        lock(gate){var entering=detailKind!="inventory";PublishInventory(view);detailKind="inventory";section="Items";if(entering)focusRequestSequence++;}
+        lock(gate){var entering=detailKind!="inventory";PublishInventory(view);detailKind="inventory";SetSection("Items");if(entering)focusRequestSequence++;}
     },"Reading inventory…");
 
     private void OpenItemAuthoring(int itemId)=>Work(async token=>
@@ -222,13 +222,13 @@ public sealed partial class PobWidget
 
     private WidgetElement StoredInventoryWorkspace()
     {
-        inventoryCollection??=CreateItemCandidateCollection("pob.stored.source",inventoryQuery,"pob.stored.items");
+        inventoryCollection??=CreateItemCandidateCollection("pob.stored.source",inventoryQuery);
         var all=A(inventoryState,"inventory");
         var context=ItemCandidateContextFor(inventoryState,inventorySearch,unique:false);
         var entries=all.Where(i=>(S(i,"title")+" "+S(i,"base")).Contains(inventorySearch,StringComparison.OrdinalIgnoreCase))
             .Select(i=>new ItemCandidateEntry(I(i,"id").ToString(),CandidateText(S(i,"title"),512),"inventory-select."+I(i,"id"),I(i,"id"),"",
                 CandidateText(S(i,"base"),512),CandidateText(S(i,"rarity"),64),
-                CandidateText(string.Join("; ",A(i,"uses").Select(u=>u.GetString()??"")),1800),false,I(i,"id")==inventoryId)).ToArray();
+                CandidateText(string.Join("; ",A(i,"uses").Select(u=>u.GetString()??"")),1800),I(i,"id")==inventoryId)).ToArray();
         if(!inventoryQuery.Entries.SequenceEqual(entries)||inventoryQuery.Context!=context||!ReferenceEquals(inventoryQuery.Context?.Build,result))
         {
             var same=inventoryQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));inventoryQuery=new(context,entries);

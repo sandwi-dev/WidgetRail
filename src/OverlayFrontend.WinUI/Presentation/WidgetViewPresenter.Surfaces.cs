@@ -22,7 +22,8 @@ internal sealed partial class WidgetViewPresenter
     private bool SameSurfaceOwnership(Declaration incoming, Dictionary<string, Declaration> plan)
     {
         if (incoming.Node.Kind is not (ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface)) return true;
-        return Owners(incoming, plan).SequenceEqual(Owners(declarations[incoming.Node.Id], declarations));
+        return (incoming.Node.FocusPreview?.EnterButton is null) == (declarations[incoming.Node.Id].Node.FocusPreview?.EnterButton is null) &&
+            Owners(incoming, plan).SequenceEqual(Owners(declarations[incoming.Node.Id], declarations));
 
         static IEnumerable<WidgetElementIdentity> Owners(Declaration declaration, Dictionary<string, Declaration> tree)
         {

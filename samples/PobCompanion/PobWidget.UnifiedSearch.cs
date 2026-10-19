@@ -36,7 +36,7 @@ public sealed partial class PobWidget
     private void OpenUnifiedSearch(string? category=null)
     {
         if(result is null||LifecycleState!=WidgetLifecycleState.Interactive)return;
-        if(gemInspection is not null||candidateInspection is not null||featureReading is not null||featureRemoval is not null||timelessDetail is not null||
+        if(featureReading is not null||featureRemoval is not null||timelessDetail is not null||
             pendingImport is not null||deleteBuildId is not null||passiveChoicePopup is not null||skillRemoval is not null||websiteVisible)return;
         if(pendingBefore is not null){ShowFeedback("Finish the comparison first","Apply or discard the current comparison before navigating to another part of the build.",ToastTone.Info);return;}
         var before=result;var document=documentId;var selection=calculationSelection;var epoch=++unifiedSearchEpoch;
@@ -156,7 +156,7 @@ public sealed partial class PobWidget
         {
             case PobSearchTargetKind.Passive:
                 if(!A(State,"nodes").Any(n=>I(n,"id")==target.Id&&B(n,"interactive"))){MissingSearchTarget();return;}
-                section="Tree";detailKind="node";detailId=target.Id;selections["node"]=target.Id;nodeReturnToMap=false;passiveReturnKey="node."+target.Id;
+                SetSection("Tree");detailKind="node";detailId=target.Id;selections["node"]=target.Id;nodeReturnToMap=false;passiveReturnKey="node."+target.Id;
                 SetUnifiedFocus("pob.back");unifiedSearchOpen=false;unifiedMapNode=mapSession is null?target.Id:null;SendNodeSelection(target.Id);
                 if(mapSession is null)Work(OpenMapAsync,"Opening selected passive…");
                 return;
@@ -164,16 +164,16 @@ public sealed partial class PobWidget
             case PobSearchTargetKind.Gem:
                 var group=A(State,"skills").FirstOrDefault(g=>I(g,"id")==target.Id);
                 if(group.ValueKind!=JsonValueKind.Object||target.Kind==PobSearchTargetKind.Gem&&!A(group,"gems").Any(g=>I(g,"id")==target.Child)){MissingSearchTarget();return;}
-                section="Skills";detailKind="skill";detailId=target.Id;selections["skill"]=target.Id;
+                SetSection("Skills");detailKind="skill";detailId=target.Id;selections["skill"]=target.Id;
                 var gem=A(group,"gems").FirstOrDefault(g=>I(g,"id")==target.Child);
                 SetUnifiedFocus(target.Kind==PobSearchTargetKind.Skill?"pob.skill."+target.Id:"pob.gem."+target.Child+(B(gem,"levelReadOnly")?"quality":"level"));break;
             case PobSearchTargetKind.EquippedItem:
                 if(!A(State,"items").Any(i=>I(i,"id")==target.Id&&I(i,"itemId").ToString()==target.Key)){MissingSearchTarget();return;}
-                section="Items";detailKind="item";detailId=target.Id;selections["item"]=target.Id;SetUnifiedFocus("pob.item."+target.Id);break;
+                SetSection("Items");detailKind="item";detailId=target.Id;selections["item"]=target.Id;SetUnifiedFocus("pob.item."+target.Id);break;
             case PobSearchTargetKind.Configuration:
                 var option=ConfigurationCatalog.Options.FirstOrDefault(c=>c.Id==target.Key&&c.Index==target.Id);
                 if(option is null){MissingSearchTarget();return;}
-                section="Configuration";detailKind="";configSection=option.Section;filter="";configChangedOnly=false;
+                SetSection("Configuration");detailKind="";configSection=option.Section;filter="";configChangedOnly=false;
                 RevealConfigurationSummary(option);
                 var readOnly=option.Id=="customMods"||S(option.Raw,"kind")=="customMods"||S(option.Raw,"value").Length>2048;
                 if(readOnly)unifiedReadOnlyConfig=option.Index;
@@ -191,7 +191,7 @@ public sealed partial class PobWidget
                 if(target.Key=="inventory"){NavigateSearchInventory(0,cache);return;}
                 if(target.Key=="library"){detailKind="library";SetUnifiedFocus("pob.library.search");break;}
                 if(target.Key=="sets"){detailKind="sets";SetUnifiedFocus("pob.back");break;}
-                section=target.Key switch{"calcs"=>"Calcs","skills"=>"Skills","items"=>"Items","configuration"=>"Configuration","tree"=>"Tree","notes"=>"Notes",_=>section};
+                SetSection(target.Key switch{"calcs"=>"Calcs","skills"=>"Skills","items"=>"Items","configuration"=>"Configuration","tree"=>"Tree","notes"=>"Notes",_=>section});
                 detailKind="";SetUnifiedFocus(target.Key switch{"skills"=>"pob.group-create","items"=>"pob.inventory","configuration"=>"pob.search","calcs"=>"pob.calculations",_=>SectionEntry()});break;
         }
         unifiedSearchOpen=false;
@@ -206,7 +206,7 @@ public sealed partial class PobWidget
             {
                 if(epoch!=unifiedSearchEpoch||!UnifiedCacheCurrent(cache)||LifecycleState!=WidgetLifecycleState.Interactive)return;
                 if(itemId>0&&inventory.Id!=itemId){MissingSearchTarget();return;}
-                PublishInventory(inventory);section="Items";detailKind="inventory";inventorySearch="";unifiedSearchOpen=false;
+                PublishInventory(inventory);SetSection("Items");detailKind="inventory";inventorySearch="";unifiedSearchOpen=false;
                 if(itemId>0)SetUnifiedIndexedFocus("inventory",itemId.ToString());else SetUnifiedFocus("pob.inventory-search");
             }
         },"Opening inventory item…");
@@ -222,7 +222,7 @@ public sealed partial class PobWidget
             lock(gate)
             {
                 if(epoch!=unifiedSearchEpoch||!UnifiedCacheCurrent(cache)||LifecycleState!=WidgetLifecycleState.Interactive)return;
-                PublishCalculations(new(cache.Calculations,detail,target.Section,target.Key,cache.Calculation));section="Calcs";detailKind="calculations";calculationSearch="";
+                PublishCalculations(new(cache.Calculations,detail,target.Section,target.Key,cache.Calculation));SetSection("Calcs");detailKind="calculations";calculationSearch="";
                 unifiedSearchOpen=false;SetUnifiedIndexedFocus("calculation",target.Key);
             }
         },"Opening calculation sources…");

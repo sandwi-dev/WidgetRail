@@ -13,11 +13,6 @@ public sealed record AnchoredPresentation(PresentationAnchor Anchor,
     /// for viewport/text-size changes, not late updates to the same inspection. Requires protocol 93.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool SizeToContentHeight { get; init; }
-
-    /// <summary>Interactive continuation of a rich preview. No backdrop dimming or centered fallback;
-    /// losing the exact source dismisses it. It shares the scoped input contract of an anchored dialog.</summary>
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
-    public bool IsInteractivePreview { get; init; }
 }
 
 public static class AnchoredPresentationContract

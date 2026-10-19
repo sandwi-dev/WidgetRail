@@ -28,14 +28,14 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
     internal FrameworkElement Anchor => anchor;
 
     internal PresentationPortal(PresentationLayers layers, FrameworkElement anchor, FrameworkElement content,
-        PresentationLayer layer = PresentationLayer.WidgetDialog, bool passive = false, bool followComposition = true)
+        PresentationLayer layer = PresentationLayer.WidgetDialog, bool passive = false, bool followComposition = true, bool attachInput = true)
     {
         this.anchor = anchor; root = layers.Root; Content = content;
         this.followComposition = followComposition; paintOnly = passive;
         HorizontalAlignment = HorizontalAlignment.Left; VerticalAlignment = VerticalAlignment.Top;
         RenderTransform = placement; Clip = clip;
         for (DependencyObject? item = anchor; item is not null; item = VisualTreeHelper.GetParent(item))
-            if (item is WidgetViewPresenter presenter) { owner = presenter; if (!passive) input = presenter.AttachPresentationInput(content); break; }
+            if (item is WidgetViewPresenter presenter) { owner = presenter; if (!passive && attachInput) input = presenter.AttachPresentationInput(content); break; }
         // XAML owns the outer rectangular clip/transform. A separate visual
         // carries the rounded compositor clip; putting both on one visual makes
         // WinUI attempt to treat a geometric clip as an inset clip (E_NOINTERFACE).

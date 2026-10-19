@@ -738,7 +738,7 @@ public static class ViewSnapshotValidator
                     $"The {label} height must be finite and between {minimumHeight} and {maximumHeight} DIPs.");
         }
 
-        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey, ViewNode? parent = null)
+        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey, ViewNode? parent = null, bool interactivePreview = false)
         {
             if (node is null)
             {
@@ -1762,7 +1762,7 @@ public static class ViewSnapshotValidator
             if (node.FocusPresentation is { } focusPresentation)
             {
                 ValidateFocusPresentationContent(
-                    focusPresentation, $"{path}.focusPresentation");
+                    focusPresentation, $"{path}.focusPresentation", interactivePreview);
                 Visit(focusPresentation, $"{path}.focusPresentation", depth + 1, scopeKey);
             }
             if (node.DefaultFocusPresentation is { } defaultFocusPresentation)
@@ -1773,7 +1773,8 @@ public static class ViewSnapshotValidator
                     $"{path}.defaultFocusPresentation", depth + 1, scopeKey);
             }
             for (var index = 0; index < children.Count; index++)
-                Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey, node);
+                Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey, node,
+                    node.Kind == ViewNodeKind.FocusPresentationSurface ? node.FocusPreview?.EnterButton is not null : interactivePreview);
         }
 
         void ValidateFocusPresentationOwnership(
@@ -1829,7 +1830,7 @@ public static class ViewSnapshotValidator
                     child.Kind, ref contentBudget);
         }
 
-        void ValidateFocusPresentationContent(ViewNode root, string path)
+        void ValidateFocusPresentationContent(ViewNode root, string path, bool interactive = false)
         {
             var fragmentNodes = 0;
             VisitFragment(root, path, 1);
@@ -1844,6 +1845,26 @@ public static class ViewSnapshotValidator
                 if (relativeDepth > ProtocolConstants.MaximumFocusPresentationDepth)
                     Add(nodePath, "focus_presentation_too_deep",
                         $"A focus-associated presentation may be at most {ProtocolConstants.MaximumFocusPresentationDepth} levels deep.");
+                if (interactive)
+                {
+                    // A preview is a bounded contextual workspace, not another page or runtime.
+                    // Native controls retain their normal validation below. Nested surfaces,
+                    // independent scopes and background services cannot escape its lifetime.
+                    if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
+                        ViewNodeKind.Text or ViewNodeKind.RichText or ViewNodeKind.Button or ViewNodeKind.ActionSurface or
+                        ViewNodeKind.Select or ViewNodeKind.Scroll or ViewNodeKind.Progress or ViewNodeKind.LineGraph or
+                        ViewNodeKind.Spacer or ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
+                        node.InputScopeId is not null || node.Focus is not null || node.FocusPersistenceId is not null ||
+                        node.FocusPresentation is not null || node.DefaultFocusPresentation is not null || node.FocusPreview is not null ||
+                        node.Transition is not null || node.AnchoredPresentation is not null ||
+                        node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
+                        node.VirtualCollectionWindow is not null || node.IndexedCollection is not null ||
+                        node.Shortcuts.Count != 0 || node.ContextActions.Count != 0)
+                        Add(nodePath, "invalid_interactive_preview", "Interactive previews support bounded reading content, buttons and selectors without nested scopes or services.");
+                    for (var index = 0; index < node.Children.Count; index++)
+                        VisitFragment(node.Children[index], $"{nodePath}.children[{index}]", relativeDepth + 1);
+                    return;
+                }
                 if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
                     ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LineGraph or ViewNodeKind.Spacer or
                     ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||

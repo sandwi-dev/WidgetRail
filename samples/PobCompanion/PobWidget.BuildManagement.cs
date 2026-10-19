@@ -146,7 +146,7 @@ public sealed partial class PobWidget
         tradeListing=null;tradeBrowsing=false;websiteReview=false;
         documentId=id;result=loaded;pendingImport=null;replaceOnImport=false;pendingBefore=null;pastedItem=null;previewSlot=null;
         RestoreRanking(id);RestoreTradeReturn(id);
-        recoveryReadOnly=false;selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;
+        recoveryReadOnly=false;selections.Clear();detailKind="";SetSection("Calcs");filter="";passiveReturnKey=null;
         compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version.":"";
     }
 

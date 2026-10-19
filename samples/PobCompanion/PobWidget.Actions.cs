@@ -18,8 +18,6 @@ public sealed partial class PobWidget
             skillWorkspaceReturnControl=null;
             if(HandleUnifiedSearchAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleDisclosureAction(action)){Invalidate();return ValueTask.CompletedTask;}
-            if(HandleItemCandidateInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
-            if(HandleGemInspectionAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleWebsiteAction(action))return ValueTask.CompletedTask;
             if(HandleRankingAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleTradeReviewAction(action)){Invalidate();return ValueTask.CompletedTask;}
@@ -95,7 +93,7 @@ public sealed partial class PobWidget
             {
                 var loaded=await engine.ExecuteAsync(new{op="new"},token);var newId=Guid.NewGuid().ToString("N");
                 token.ThrowIfCancellationRequested();Persist(loaded,newId);
-                lock(gate){tradeCandidates.Clear();tradeListing=null;tradeBrowsing=false;websiteReview=false;documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;recoveryReadOnly=false;undo.Clear();redo.Clear();selections.Clear();detailKind="";section="Calcs";filter="";passiveReturnKey=null;compatibilityNotice="";RestoreRanking(newId);RestoreTradeReturn(newId);}
+                lock(gate){tradeCandidates.Clear();tradeListing=null;tradeBrowsing=false;websiteReview=false;documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;recoveryReadOnly=false;undo.Clear();redo.Clear();selections.Clear();detailKind="";SetSection("Calcs");filter="";passiveReturnKey=null;compatibilityNotice="";RestoreRanking(newId);RestoreTradeReturn(newId);}
                 await RefreshMapAsync(token);
             },"Creating build…");
             else if(id=="rename" && documentId is not null) RenameBuild(documentId,action.CommittedText??"");
@@ -118,11 +116,11 @@ public sealed partial class PobWidget
                 int.TryParse(numberGroup,out var numericGroup)&&numericGroup==detailId&&CurrentSkillOptions is {} options&&
                 options.Options.Any(o=>o.Id==numberControl&&o.Numeric))
                 Edit(new{op="skill-number",group=numericGroup,control=numberControl,value=action.CommittedText??""});
-            else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";section="Calcs";}
+            else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";SetSection("Calcs");}
             else if(id=="back"&&detailKind=="choose-slot"&&pastedItem is not null) DiscardItemDraft();
             else if(id=="back") { detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;if(section=="Tree")focusRequestSequence++; }
-            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(NavigationSections,section);section=NavigationSections[(index+(id=="next-section"?1:NavigationSections.Length-1))%NavigationSections.Length];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++; }
-            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {section=Sections[selected];detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++;}
+            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(NavigationSections,section);SetSection(NavigationSections[(index+(id=="next-section"?1:NavigationSections.Length-1))%NavigationSections.Length]);detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++; }
+            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {SetSection(Sections[selected]);detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++;}
             else if(id=="search") {filter=action.CommittedText??"";passiveReturnKey=null;}
             else if(parts[0]=="config-section"&&parts.Length==2&&int.TryParse(parts[1],out var category)&&category>=0&&category<ConfigurationSections().Length)
             {configSection=ConfigurationSections()[category];filter="";passiveReturnKey=null;}
@@ -160,7 +158,7 @@ public sealed partial class PobWidget
                 if(changed is not null)Edit(new{op="config",key=S(c,"id"),value=changed});
             }
             else if(id=="item-paste") SetItemDraft(null);
-            else if(id=="item-resume"&&pastedItem is not null) {section="Items";detailKind="choose-slot";}
+            else if(id=="item-resume"&&pastedItem is not null) {SetSection("Items");detailKind="choose-slot";}
             else if(parts[0]=="replace-slot"&&parts.Length==2&&int.TryParse(parts[1],out var slotIndex)&&slotIndex>=0&&slotIndex<A(State,"slots").Length&&pastedItem is not null)
             {previewSlot=S(A(State,"slots")[slotIndex],"name");Preview(new{op="item",raw=pastedItem,slot=previewSlot});}
             else if(id=="map") Work(OpenMapAsync,"Opening tree map…");

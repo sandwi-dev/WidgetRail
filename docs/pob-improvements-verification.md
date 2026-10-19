@@ -2,41 +2,45 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
-## Interactive rich previews, 2026-10-19
+## Complete rich previews and navigation restoration, 2026-10-19
 
-Protocol 94 adds `FocusPreviewOptions.EnterButton` and the SDK's
-`WidgetInteractivePreview` / `WithInteractivePreview`. The passive source content
-and primary A action stay unchanged; its configured pressed shortcut supplies the
-enter action and hint. Clicking an enterable preview uses that same admitted source
-action. PoB inventory, unique and gem candidates use X. Interactive chrome is compact,
-undimmed and anchored; B/Escape/outside-click returns to the source. A nested selector
-consumes B first. Removed/recycled anchors dismiss instead of centering stale controls.
-The existing scoped-layer input/lease/focus machinery is deliberately reused, while
-the old PoB modal wrappers and duplicate Close/Back button rows have been replaced.
-Passive Undo/Redo previews retain their original behavior.
+Protocol 94 now places complete interactive content inside `PresentOnFocus`.
+`FocusPreviewOptions.EnterButton` is a host-owned focus transfer, not a widget
+shortcut. X enters the existing controls; B returns to the source while the same
+panel remains visible. Nested selectors consume B first. Keyboard F6/Escape,
+pointer and automation entry use the same controls. Entry does not publish a
+snapshot, resize the panel, reset reading position or call the engine.
+The rejected modal wrapper, separate PoB inspection state and eager three-line
+unique-library summaries have been removed. Ordinary modals and passive
+Undo/Redo previews remain separate.
 
-Validation: SDK suite 164/164; reviewed API baseline 1/1. Real-engine item suites
-102 PoE1 / 100 PoE2; skill-management suites 80 / 82. Native item inspection 528
-checks, gem inspection 168 checks; default passive/content-sized/high-contrast
-preview regression 45 checks. Shared interactive-native checks (14 passed) cover primary A,
-configured entry, busy focus, nested B, exact source return, pointer entry, source
-removal and suspension. A hover-gap re-entry regression was added during review.
-Representative native item presentation was visually inspected. No live trade or
-music-service requests were required.
+PoB requests full item tooltip metadata in bounded batches and retains at most
+128 entries in each live build/query cache. Gem details use existing catalog data.
+A maximum 64-item range was validated against the protocol budget. Measured first
+reads were about 109–131 ms and cached reads 2 ms on this machine; these are local
+warm-engine measurements, not cold-start promises.
 
-Evidence: `artifacts/pob/interactive-{items,gems}-20261019`,
-`interactive-preview-native-final-20261019`, `interactive-passive-regression-20261019`,
-`interactive-{items,skill-management}-{1,2}-final.log` and `interactive-sdk-tests.log`.
-Candidate publication: `cumulative-candidate-20261019-interactive`; widget packages:
-`interactive-preview-packages-20261019` (PoE1/PoE2 0.1.4.17). Ordinary modal/Search
-build behavior remains separate; a physical controller acceptance run is still
-user-owned. No merge, push, release or deferred CI repairs.
+Preview commands retain original displayed-frame authority and the exact indexed
+lease, item key, owner and declared action. Tests reject forged owners/actions,
+disabled/busy options, retired queries, copied frames and late admission after
+source removal. Native tests also cover unchanged controls/geometry on X/B,
+busy focus retention, nested selectors, pointer entry, suspension and explicit
+entry during the hover delay.
 
-Delivery: both PoB packages are installed/enabled at 0.1.4.17. The final cumulative
-candidate is running hidden with the normal profile/controller configuration,
-PID 23040 at delivery. All 138 deployed frontend DLLs match the qualified
-publication; installed PoB code, SDK, protocol and styles match staged hashes.
-Validation windows are closed. Spotify 0.3.90.2 and YouTube Music 0.3.43.5 remain enabled.
+Each game's last main tab is saved atomically in its own small navigation file.
+Every main-tab route uses the same persistence method, including bumpers and
+search destinations. Unknown saved values fall back to Calcs. Pending build work
+continues to take precedence. This preference does not change build XML or Undo.
+Both games pass all six tab restart checks plus empty-build and fallback cases.
+
+Validation: SDK 165/165; API baseline 1/1; displayed indexed session checks 4/4;
+real-engine item workflows 91 PoE1 / 89 PoE2; skill workflows 69 / 71; navigation
+restoration 17 / 17. Native item/theme/size matrix 256 checks, gem matrix 128;
+shared interaction 15 checks and passive preview regression 32 checks. Representative
+native item and gem screenshots were reviewed. No live service calls were needed.
+
+Evidence: `artifacts/pob/preview-correction-*`, `navigation-restore-{1,2}.log`.
+Physical controller acceptance remains separate from these automated checks.
 
 ## Undo/Redo previews, 2026-10-19
 

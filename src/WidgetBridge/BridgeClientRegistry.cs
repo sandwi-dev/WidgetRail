@@ -2595,6 +2595,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
     {
         if (!isScopeRoot && node.InputScopeId is not null) return null;
         if (string.Equals(node.Id, id, StringComparison.Ordinal)) return node;
+        if (node.FocusPresentation is { } preview && FindNodeInScope(preview, id, false) is { } previewMatch) return previewMatch;
         foreach (var child in node.Children)
         {
             var match = FindNodeInScope(child, id, isScopeRoot: false);

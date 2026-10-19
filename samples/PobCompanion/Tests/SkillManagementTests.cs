@@ -34,17 +34,11 @@ internal static class SkillManagementTests
             using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"gem-apply-test",900);
             using var lease=await host.AcquireAsync("pob.gems",index,1);
             var row=lease.Range.Items.Single();var before=Result();
-            check(lease.RouteAction(row.Key,inspect?ControllerButton.X:ControllerButton.A)==WidgetOperationAdmission.Enqueued,
-                inspect?"Inspect admission captures the chosen indexed gem":"A still chooses directly from the indexed gem row");
-            if(inspect)
-            {
-                await Until(()=>Get("gemInspection") is not null);
-                check(ReferenceEquals(Result(),before),"Inspecting a candidate performs no engine edit");
-                var apply=Nodes(View().Root).Single(n=>n.ActionId?.StartsWith("gem-inspection-apply.",StringComparison.Ordinal)==true).ActionId!;
-                await Action(apply);
-                check(Get("gemInspection") is null&&(string)Get("detailKind")! == "skill","Explicit inspector apply returns to inline group editing");
-            }
-            else {await Until(()=>!ReferenceEquals(Result(),before));await Idle();}
+            var apply=Nodes(row.Root.FocusPresentation!).Single(n=>n.ActionId=="choose");
+            check((inspect?lease.RoutePreviewAction(row.Key,apply.Id,"choose"):lease.RouteAction(row.Key,ControllerButton.A))==WidgetOperationAdmission.Enqueued,
+                inspect?"Preview applies the exact captured gem":"A still chooses the indexed gem directly");
+            await Until(()=>!ReferenceEquals(Result(),before));await Idle();
+            check((string)Get("detailKind")! == "skill","Explicit gem selection returns to inline group editing");
         }
         try
         {
@@ -99,70 +93,32 @@ internal static class SkillManagementTests
                 using var later=await host.AcquireAsync("pob.gems",visible/2,12);
                 check(first.Range.Items.Count==12&&later.Range.Items.Count==12,"Gem identities materialize into valid native rows at the start and middle of the catalog");
             }
-            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"gem-inspection-test",700))
+            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"gem-preview-test",700))
             {
                 using var lease=await host.AcquireAsync("pob.gems",0,3);
-                var row=lease.Range.Items[1];var before=Result();
-                var queryBefore=Get("gemQuery");var sourceBefore=Nodes(View().Root).Single(n=>n.Id=="pob.gems").IndexedCollection!;
-                check(row.Root.Kind==ViewNodeKind.ActionSurface&&row.Root.ActionId=="choose"&&row.Root.Shortcuts.Any(s=>s.Button==ControllerButton.X&&s.ActionId=="inspect")&&
-                    row.Root.ContextActions.Any(a=>a.ActionId=="inspect"),"Gem rows retain A choose and expose local X Inspect and context inspection");
-                check(row.Root.FocusPresentation is not null&&Nodes(View().Root).Single(n=>n.Id=="pob.gem-preview").FocusPreview is not null,
-                    "Gem picker adopts shared host passive previews without replacing indexed navigation");
-                check(Nodes(row.Root.FocusPresentation!).All(n=>!n.IsFocusable&&n.ActionId is null),"Gem preview has no action or focus authority");
-                check(lease.RouteAction(row.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Indexed X opens the exact captured gem");
-                await Until(()=>Get("gemInspection") is not null);
-                var opened=View();var anchor=opened.Root.AnchoredPresentation!.Anchor.IndexedItem!;
-                check(opened.Root.AnchoredPresentation.IsInteractivePreview,"Gem inspection enters shared interactive preview presentation");
-                check(anchor.CollectionId=="pob.gems"&&anchor.ItemKey==row.Key&&anchor.Index==1&&anchor.QueryGeneration==sourceBefore.QueryGeneration,
-                    "Gem inspection anchors to exact indexed occurrence, not an index or stale display name");
-                check(ReferenceEquals(Result(),before)&&ReferenceEquals(queryBefore,Get("gemQuery"))&&Group().GetProperty("gems").GetArrayLength()==0,
-                    "Opening inspection leaves engine result, saved build and picker query unchanged");
-                var expectedContext=PobInspectionContext.Read(before.State,before.Xml,Group()).Summary;
-                check(expectedContext.Length==0?!Nodes(opened.Root).Any(n=>n.Id=="pob.gem-inspection.context"):
-                    Nodes(opened.Root).Any(n=>n.Id=="pob.gem-inspection.context"&&n.Text==expectedContext),
-                    "Gem inspection presents active loadout and calculation weapon context separately from the group's weapon eligibility");
-                var close=Nodes(opened.Root).SelectMany(n=>n.Shortcuts).First(s=>s.ActionId.StartsWith("gem-inspection-close.",StringComparison.Ordinal)).ActionId;
-                var apply=Nodes(opened.Root).First(n=>n.ActionId?.StartsWith("gem-inspection-apply.",StringComparison.Ordinal)==true).ActionId!;
-                var fixtureDirectory=Environment.GetEnvironmentVariable("POB_GEM_INSPECTION_FIXTURES");
-                if(!string.IsNullOrWhiteSpace(fixtureDirectory))
+                var row=lease.Range.Items[1];var before=Result();var queryBefore=Get("gemQuery");
+                check(row.Root.ActionId=="choose"&&row.Root.Shortcuts.Count==0,"Gem source retains A and X is host-owned");
+                var content=row.Root.FocusPresentation!;var apply=Nodes(content).Single(n=>n.ActionId=="choose");
+                check(Nodes(content).Any(n=>n.Kind==ViewNodeKind.Scroll)&&apply.Text=="Add gem","Full gem content and Add gem appear together before entry");
+                check(ReferenceEquals(Result(),before)&&ReferenceEquals(queryBefore,Get("gemQuery")),"Reading preview performs no engine edit or query reset");
+                var expected=PobInspectionContext.Read(before.State,before.Xml,Group()).Summary;
+                check(expected.Length==0||Nodes(content).Any(n=>n.Text==expected),"Full preview retains calculation context");
+                var output=Environment.GetEnvironmentVariable("POB_GEM_INSPECTION_FIXTURES");
+                if(!string.IsNullOrWhiteSpace(output))
                 {
-                    Directory.CreateDirectory(fixtureDirectory);
-                    File.WriteAllBytes(Path.Combine(fixtureDirectory,"poe"+game+"-gem-inspection.json"),SnapshotJson.Serialize(opened));
-                    File.WriteAllText(Path.Combine(fixtureDirectory,"poe"+game+"-gem-row.json"),JsonSerializer.Serialize(row.Root));
-                    File.WriteAllBytes(Path.Combine(fixtureDirectory,"poe"+game+"-gem-picker.json"),SnapshotJson.Serialize(host.CurrentSnapshot));
+                    Directory.CreateDirectory(output);
+                    File.WriteAllBytes(Path.Combine(output,"poe"+game+"-gem-inspection.json"),SnapshotJson.Serialize(host.CurrentSnapshot));
+                    File.WriteAllText(Path.Combine(output,"poe"+game+"-gem-row.json"),JsonSerializer.Serialize(row.Root));
+                    File.WriteAllBytes(Path.Combine(output,"poe"+game+"-gem-picker.json"),SnapshotJson.Serialize(host.CurrentSnapshot));
                 }
-                await Action("gem-search","unexpected background change");
-                check((string)Get("gemSearch")! == ""&&Get("gemInspection") is not null,"Inspection blocks background picker actions");
-                await Action(close);
-                check(View().Root.Kind!=ViewNodeKind.ModalLayer&&ReferenceEquals(queryBefore,Get("gemQuery"))&&
-                    Nodes(View().Root).Single(n=>n.Id=="pob.gems").IndexedCollection!.QueryGeneration==sourceBefore.QueryGeneration,
-                    "Closing inspection returns to the same search, indexed query and scroll ownership");
-                await Action(apply);check(ReferenceEquals(Result(),before),"Closed inspector apply callbacks cannot mutate the build");
-                host.PublishSnapshot();
-                check(lease.RouteAction(row.Key,ControllerButton.A,contextActionOwnerId:row.Root.Id,contextActionId:"inspect")==WidgetOperationAdmission.Enqueued,
-                    "Mouse context inspection uses the same candidate action");
-                await Until(()=>Get("gemInspection") is not null);
-                var reopened=View();var currentApply=Nodes(reopened.Root).First(n=>n.ActionId?.StartsWith("gem-inspection-apply.",StringComparison.Ordinal)==true).ActionId!;
-                await Action(apply);check(ReferenceEquals(Result(),before)&&Get("gemInspection") is not null,"Superseded inspection token cannot apply a newer panel");
+                check(lease.RoutePreviewAction(row.Key,apply.Id,"forged") is null,"Gem preview rejects undeclared action");
                 typeof(PobWidget).GetField("pickerGem",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(widget,99);
-                await Action(currentApply);
-                check(ReferenceEquals(Result(),before)&&Get("gemInspection") is null,"Changed target context rejects captured apply without a build mutation");
+                lease.RoutePreviewAction(row.Key,apply.Id,"choose");await Task.Delay(100);
+                check(ReferenceEquals(Result(),before),"Changed target rejects captured preview apply");
                 typeof(PobWidget).GetField("pickerGem",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(widget,0);
                 host.PublishSnapshot();
-                using(var currentLease=await host.AcquireAsync("pob.gems",0,1))
-                {
-                    var current=currentLease.Range.Items.Single();
-                    check(currentLease.RouteAction(current.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Fresh query can inspect after retiring a stale target");
-                    await Until(()=>Get("gemInspection") is not null);
-                    var buildAction=Nodes(View().Root).Single(n=>n.ActionId?.StartsWith("gem-inspection-apply.",StringComparison.Ordinal)==true).ActionId!;
-                    typeof(PobWidget).GetField("documentId",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(widget,"another-build");
-                    await Action(buildAction);
-                    check(ReferenceEquals(Result(),before)&&Get("gemInspection") is null,"Build identity change rejects captured inspector apply");
-                    typeof(PobWidget).GetField("documentId",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(widget,id);
-                }
-                host.PublishSnapshot();
                 await Action("gem-search","not-present-in-catalog");host.PublishSnapshot();
-                check(lease.RouteAction(row.Key,ControllerButton.X) is null&&Get("gemInspection") is null,"Retired query cannot reopen a stale gem inspector");
+                check(lease.RoutePreviewAction(row.Key,apply.Id,"choose") is null,"Retired gem query rejects late preview apply");
                 await Action("gem-search","");
             }
             var oldQuery=Get("gemQuery");
