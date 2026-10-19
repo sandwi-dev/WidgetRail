@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-18
 
-**Status: implementation resumed on 2026-10-18. All implementation scope listed below is agreed.** All rows in the implementation tracking table have the same scope approval. Deferred, excluded and explicitly out-of-scope discussion items remain outside that approval. Scope approval is distinct from acceptance of the finished implementation. The latest instruction resumes implementation, including the music follow-up. Checked items record implemented scope and its focused verification; they do not replace the separate integrated/native/controller acceptance items. The verification ledger records the evidence and its limits.
+**Status: planning only — implementation is on hold at the user's request on 2026-10-18.** Keep adding agreed improvements to this document; do not implement them, build, test the application, or launch another candidate until the user explicitly says to start. Earlier implementation authorization does not override this hold. All rows in the implementation tracking table have the same scope approval, but approval to record scope is distinct from permission to start it and acceptance of the finished result. Deferred, excluded and explicitly out-of-scope discussion items remain outside that approval. Checked items record previously implemented scope and its focused verification; they do not replace the separate integrated/native/controller acceptance items. The verification ledger records the evidence and its limits.
 
 This plan covers the next round of PoE1 and PoE2 widget improvements discussed after reviewing PoB Redux. It supplements the [existing trade plan](pob-trade-completion-plan.md); it does not restart completed work or reopen deferred CI repairs.
 
@@ -10,7 +10,7 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 Current acceptance checkpoint (2026-10-18): independent implementation and the
 scoped deterministic/native verification are complete for this handoff. Candidate
-**i** runs hidden with the normal profile and controller input; PoE1/PoE2 are
+**j** was last relaunched hidden with the normal profile and controller input; PoE1/PoE2 are
 **0.1.4.11** and YouTube Music is **0.3.43.3**. Final fixes cover long reading-block
 word boundaries, unavailable music entries, stale account results and light-theme
 options-glyph ink. Both installed games pass item/skill editing and Notes flows;
@@ -118,6 +118,24 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 - [x] Complete the named cross-app native pass and record its evidence. Installed item edit/cancel, skill toggle/restore and long Notes scrolling pass in both games; Settings/Appearance, Audio, Games & Apps, Task Switcher, Network/Power, Browser and populated music queues are covered. Physical controller/couch and unavailable authenticated-service acceptance remain separate.
 
 ## Shared rich previews and anchored popovers
+
+### Planned follow-up: content-aware sizing and presentation
+
+**Agreed for the plan; implementation on hold.** The user's inventory screenshot
+(`codex-clipboard-8e800868-0b40-4122-ab27-4ad3ad65df47.png`, 2026-10-18)
+shows a passive item preview with substantial empty space beneath a small amount
+of text, covering much of the existing item-details pane. Its long usage metadata
+also needs a clearer hierarchy. The current rendering is not accepted as visually
+finished; passing geometry checks alone does not establish that it looks good.
+
+- [ ] Extend shared preview/anchored-inspection sizing so height follows measured content within bounded minimum/maximum dimensions and available widget space. Longer interactive details scroll after reaching the bound; passive previews remain non-interactive and retain an explicit Inspect path for complete details.
+- [ ] Use a readable, bounded width appropriate to the presentation rather than one universal size. Keep width stable while browsing a candidate list so adjacent entries do not repeatedly rewrap or move the panel. Respect display/interface/text scaling and small viewports.
+- [ ] Prevent asynchronous content updates from repeatedly resizing an inspection during use. Preserve anchor placement, focused controls and reading position; retain existing cancellation, stale-result and lifetime safeguards. Avoid continuous measurement or new on-focus engine/service requests.
+- [ ] Improve PoB preview composition using the supplied inventory example: remove empty fixed-height space; make title, rarity/base, useful item/gem information, usage metadata and the Inspect action a deliberate hierarchy; wrap or summarize long usage lists while keeping complete details available through Inspect. Use existing/upstream facts rather than inventing information or duplicating a full editor in the passive preview.
+- [ ] Review placement against both the focused row and the existing details pane. Keep the relationship to the source clear and minimize unnecessary obstruction of information the user is comparing. Preserve the distinction between passive preview and explicit interactive inspection, and preserve A's existing action.
+- [ ] Visually inspect short, dense and long-label previews in inventory, unique and gem lists, including the reported theme, light/high-contrast styling and constrained/enlarged layouts. Verify actual content fit, readable hierarchy, stable placement and return focus; add targeted geometry/lifecycle regressions. No new visualization or application testing during the planning hold.
+
+### Existing implementation and verification
 
 Audit (2026-10-18): `PresentOnFocus` and `FocusPresentationSurface` already provide widget-authored, bounded passive content selected locally by host focus, including indexed-row ownership. Reuse these instead of adding a duplicate passive inspector. Extend placement/activation for anchored previews; retain passive-fragment validation. Explicit interactive inspection should reuse the modal focus scope, Back handling and restoration with an anchored presentation option. Existing presentation identities, row leases and transient input admission must remain authoritative. The implemented API extends these facilities with `FocusPreviewOptions` and modal `AnchoredPresentation`; see [presentation retention](developers/presentation-retention.md). Generic native fixtures precede the implemented PoB adoption.
 
@@ -275,7 +293,8 @@ Read-only references checked: [Spotify queue](https://developer.spotify.com/docu
 
 Show whether content remains above or below a vertically scrolling container. This is a reusable host presentation feature, not PoB-specific drawing.
 
-- [x] Use short, centered, fixed-length themed lines at the inside top/bottom edges: approximately 32–48 logical pixels wide and 1–2 pixels thick, finalized through native visual inspection.
+- [x] Initial implementation: short, centered themed lines at the inside top/bottom edges, 40 logical pixels wide and 2 thick. The planned viewport-relative sizing below supersedes this fixed width when implementation resumes.
+- [ ] Planned, on hold: increase cue width modestly and derive it from the actual scrolling viewport width. Start with **8% of viewport width, clamped to 48–80 logical pixels**, retaining **2-pixel thickness**. Resize with the panel, not with scroll progress. Keep centered placement, existing theme/high-contrast ink, reserved strips and non-interactive behavior. Verify small and wide panels, scaling, nested scrollers and fitting content without adding polling or layout feedback loops.
 - [x] Show the top cue only when content is hidden above, and the bottom cue only when content is hidden below. Show both between the ends and neither when content fits.
 - [x] Keep length independent of scroll progress. The proposed growing/shrinking lines were rejected because they would duplicate a scrollbar. Preserve existing scrollbars for position and extent information.
 - [x] Place cues in stable edge padding or a narrow reserved strip, outside the text/control viewport. Never obscure useful content, intercept input, participate in focus navigation or change layout as cues appear/disappear.
