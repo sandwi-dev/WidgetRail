@@ -1276,3 +1276,47 @@ windows. The copied seal was removed only from the new staging root before
 regeneration; the first seal attempt correctly rejected existing integrity metadata.
 Evidence: `cumulative-candidate-20261018-j/provenance.json`, `live-process.json`
 and `live-payload.json`. No release, merge or profile changes.
+
+## Follow-up implementation and native review — 2026-10-18
+
+Resumed the agreed follow-ups. Search's retained navigation focus request was
+outranking newer quick-control requests; both direct and indexed targets now yield
+to the newer focus sequence. Search retains query/category/selected identity,
+revalidates changed builds and refreshes callback authority on reopening. The
+selected logical result is restored; exact pixel-offset retention across removed
+modal instances is not claimed. Both engines pass 80 search checks; quick controls
+pass 117 per engine. Native installed handoff verification follows packaging.
+
+Shared opt-in `SizeToContentHeight` uses bounded initial measurement, stable width
+and cached geometry across same-source late updates. Protocol 93 is feature gated;
+legacy constructor/default JSON compatibility is retained. Six deterministic host
+checks, 164 SDK checks, native passive 45, anchored 184 and scroll cues 24 pass.
+Cues are 8% of viewport width, clamped 48–80 DIP, still 2 DIP thick. Inspection is
+adopted in gems/items; inventory no longer overlays its existing details pane with
+a redundant metadata-only preview. Unique/gem passive content has clearer hierarchy
+and item rarity uses appropriate semantic theme colors.
+
+Build comparison now has named source/target snapshots, shared aligned columns,
+signed numeric changes with zero/non-finite guards, useful non-stat summaries and
+bounded context disclosure. Both engines pass 60 comparison checks. Native visual
+review exposed two misses in the initial matrix: composed action content could
+shrink despite star columns, and a materialized fixture dropped the collection's
+GridCell placement. Rich action content now stretches while text retains its own
+alignment, and the fixture preserves placement. Explicit native alignment/header
+assertions now pass: **592 workflow checks**. Separate disclosure checks pass 704,
+item inspection 544 and gem inspection 168; music queue regressions pass 269 after
+the shared row change. Host high-contrast is a renderer override, not an OS switch.
+
+The Configuration before/after uses identical engine snapshot, theme and viewport:
+PoE2, Velvet Dusk, 1320×900 logical. Inter-control empty space falls from **36 to 8
+DIP**; **11 options instead of 6** fit fully, without reducing control height or
+text size. Both normal and enlarged text/constrained layouts pass. Representative
+comparison, Configuration and item inspection renders were visually inspected.
+Evidence: `followups-20261018/{host-passive,host-anchored,host-cues,workflows-aligned3,
+disclosure,inspection,density-before,density-after,music-shared-regression}`.
+
+Excluded attempts: the first PoE2 engine run used a PoE1 cache path; corrected runs
+use the pinned PoE2 beta. Missing C# type annotations/imports were fixed before
+qualified builds. One stale native launch after a failed build was closed and is
+excluded. Gem fixture result naming was corrected in the evidence collection;
+`workflow-result.json` preserves the earlier workflow report separately.

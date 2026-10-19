@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-18
 
-**Status: planning only — implementation is on hold at the user's request on 2026-10-18.** Keep adding agreed improvements to this document; do not implement them, build, test the application, or launch another candidate until the user explicitly says to start. Earlier implementation authorization does not override this hold. All rows in the implementation tracking table have the same scope approval, but approval to record scope is distinct from permission to start it and acceptance of the finished result. Deferred, excluded and explicitly out-of-scope discussion items remain outside that approval. Checked items record previously implemented scope and its focused verification; they do not replace the separate integrated/native/controller acceptance items. The verification ledger records the evidence and its limits.
+**Status: pending follow-ups resumed on 2026-10-18 by explicit user instruction.** The planning hold is lifted for the approved visual/density, shared preview/scroll-cue, comparison and search follow-ups. Prior implementation and evidence remain the baseline; preserve exclusions and separate physical/service acceptance limits. Follow-up sections are now authorized for implementation even where they record the earlier hold.
 
 This plan covers the next round of PoE1 and PoE2 widget improvements discussed after reviewing PoB Redux. It supplements the [existing trade plan](pob-trade-completion-plan.md); it does not restart completed work or reopen deferred CI repairs.
 
@@ -86,7 +86,7 @@ Follow the architecture cleanup and dimension adjustment. Increase useful inform
 
 ### Planned follow-up: broader PoB visual hierarchy and density
 
-**Agreed for the plan; implementation on hold (2026-10-18).** The user finds the
+**Implementation resumed (2026-10-18).** The user finds the
 PoB Redux reference more readable and visually polished. Modifier rich text and
 isolated compact controls have not sufficiently improved the overall widget:
 most other content has similar visual emphasis, and too little useful information
@@ -140,7 +140,7 @@ Redux references include its Overview, Skills, Items, Config and Calcs views at 
 
 ### Planned follow-up: content-aware sizing and presentation
 
-**Agreed for the plan; implementation on hold.** The user's inventory screenshot
+**Implementation resumed (2026-10-18).** The user's inventory screenshot
 (`codex-clipboard-8e800868-0b40-4122-ab27-4ad3ad65df47.png`, 2026-10-18)
 shows a passive item preview with substantial empty space beneath a small amount
 of text, covering much of the existing item-details pane. Its long usage metadata
@@ -155,7 +155,7 @@ finished; passing geometry checks alone does not establish that it looks good.
 - [ ] Review placement against both the focused row and the existing details pane. Keep the source row visible, make the relationship to it clear and minimize obstruction of information the user is comparing. When an existing details pane already presents the same information, assess whether an automatic floating preview adds value; avoid redundant overlays and retain an explicit Inspect path. Preserve A's existing action.
 - [ ] Carry the same content hierarchy into X → Inspect, with clearly separated actions, stable reading/scroll position and predictable Back restoration. Keep passive browsing distinct from explicit Add/Replace/Equip. Do not resize or reposition interactive content repeatedly while the user is reading or operating it.
 - [ ] Keep sizing, placement, timing, bounds and focus/lifetime safeguards in the shared host; widget authors compose the content and choose appropriate bounded options. Establish any necessary shared contract changes before PoB adoption.
-- [ ] Compare short, dense and long-name preview examples at identical viewport, theme and text sizing, including the reported theme, light/high-contrast styling and constrained/enlarged layouts. Inspect the actual native inventory, unique and gem workflows for readability, balance, obstruction, usefulness, stable placement and return focus—not just bounds or absence of clipping. Add targeted geometry/lifecycle regressions. No new visualization or application testing during the planning hold.
+- [ ] Compare short, dense and long-name preview examples at identical viewport, theme and text sizing, including the reported theme, light/high-contrast styling and constrained/enlarged layouts. Inspect the actual native inventory, unique and gem workflows for readability, balance, obstruction, usefulness, stable placement and return focus—not just bounds or absence of clipping. Add targeted geometry/lifecycle regressions. Use targeted native verification after implementation; no new mockup is required.
 
 ### Existing implementation and verification
 
@@ -218,7 +218,7 @@ The implemented comparison has categorized difference rows and a two-column deta
 
 ### Planned follow-up: identify both comparison sides
 
-**Agreed for the plan; implementation on hold.** The comparison setup screenshot
+**Implementation resumed (2026-10-18).** The comparison setup screenshot
 (`codex-clipboard-6e0a4f58-9ed8-46dc-90da-b8bee11713ba.png`, 2026-10-18)
 shows “Compare current with” without identifying the source.
 
@@ -228,7 +228,7 @@ shows “Compare current with” without identifying the source.
 
 ### Planned follow-up: comparison results presentation
 
-**Agreed for the plan; implementation on hold.** The user's results screenshot
+**Implementation resumed (2026-10-18).** The user's results screenshot
 (`codex-clipboard-80cb4b00-83c1-45c8-8de8-7765e35350af.png`, 2026-10-18)
 shows oversized centered statistic cards, repeated “Changed”/side labels, and a
 large context pane dominated by dense metadata. This presentation is not accepted
@@ -239,7 +239,7 @@ as finished. Two panes alone do not make the comparison efficient or readable.
 - [ ] Reduce repeated status text such as “Changed” in a differences-only view. Preserve meaningful Added/Removed/Unavailable states and distinguish main-skill output, Full DPS and other genuinely different metrics.
 - [ ] Replace the dominant metadata pane with a compact, readable summary of both named builds/loadouts and decision-relevant differences such as level, main skill and weapon set. Put detailed set names, engine/tree versions and secondary calculation context behind an explicit expandable details action. Retain the explanation that these are whole-build differences, including different calculation contexts, rather than equipment-only gains.
 - [ ] Give the comparison results most of the available space and consolidate category/search controls without shrinking readable text or controller targets. Reuse existing layout/list/disclosure facilities. Adapt narrower layouts without misaligning values or hiding essential source/target identity.
-- [ ] Verify representative statistics, equipment, skills, passives and configuration results, long names, missing/added entries, zero/non-finite values, scrolling and return from detail inspection. Inspect the actual native page in the reported theme and representative constrained/enlarged layouts; check visible row density and information hierarchy, not only bounds. Keep the screenshot as the before-state reference. No implementation or application testing until the hold is lifted.
+- [ ] Verify representative statistics, equipment, skills, passives and configuration results, long names, missing/added entries, zero/non-finite values, scrolling and return from detail inspection. Inspect the actual native page in the reported theme and representative constrained/enlarged layouts; check visible row density and information hierarchy, not only bounds. Keep the screenshot as the before-state reference. Implementation and targeted native verification are authorized.
 
 ## 6. Unified search and direct navigation
 
@@ -254,7 +254,7 @@ Search opens from the build controls, supports category filtering and local whol
 
 ### Planned follow-up: retain Search build context
 
-**Recorded for the plan; implementation and application testing remain on hold.**
+**Implementation resumed (2026-10-18).**
 The user reports that Search build forgets the search after selecting a result.
 
 - [ ] Preserve the entered query and category filter when a result opens another section. Returning to or reopening Search build within the same build should restore that context instead of starting with an empty search.
@@ -264,7 +264,7 @@ The user reports that Search build forgets the search after selecting a result.
 
 ### Reported regression: shortcuts after global-search navigation
 
-**Recorded for investigation; implementation and application testing remain on hold.**
+**Investigation and implementation resumed (2026-10-18).**
 The user reports two affected destinations:
 
 - Global search → select a “shock chance” result → Tree opens → RS no longer opens Build controls.
@@ -368,7 +368,7 @@ Read-only references checked: [Spotify queue](https://developer.spotify.com/docu
 Show whether content remains above or below a vertically scrolling container. This is a reusable host presentation feature, not PoB-specific drawing.
 
 - [x] Initial implementation: short, centered themed lines at the inside top/bottom edges, 40 logical pixels wide and 2 thick. The planned viewport-relative sizing below supersedes this fixed width when implementation resumes.
-- [ ] Planned, on hold: increase cue width modestly and derive it from the actual scrolling viewport width. Start with **8% of viewport width, clamped to 48–80 logical pixels**, retaining **2-pixel thickness**. Resize with the panel, not with scroll progress. Keep centered placement, existing theme/high-contrast ink, reserved strips and non-interactive behavior. Verify small and wide panels, scaling, nested scrollers and fitting content without adding polling or layout feedback loops.
+- [ ] Pending follow-up: increase cue width modestly and derive it from the actual scrolling viewport width. Start with **8% of viewport width, clamped to 48–80 logical pixels**, retaining **2-pixel thickness**. Resize with the panel, not with scroll progress. Keep centered placement, existing theme/high-contrast ink, reserved strips and non-interactive behavior. Verify small and wide panels, scaling, nested scrollers and fitting content without adding polling or layout feedback loops.
 - [x] Show the top cue only when content is hidden above, and the bottom cue only when content is hidden below. Show both between the ends and neither when content fits.
 - [x] Keep length independent of scroll progress. The proposed growing/shrinking lines were rejected because they would duplicate a scrollbar. Preserve existing scrollbars for position and extent information.
 - [x] Place cues in stable edge padding or a narrow reserved strip, outside the text/control viewport. Never obscure useful content, intercept input, participate in focus navigation or change layout as cues appear/disappear.
