@@ -116,6 +116,7 @@ text { color: var(--text); text-align: start; }
 .pob-preview-title { color:var(--text); font-size:18px; font-weight:600; max-lines:2; }
 .pob-preview-meta { color:var(--text-muted); font-size:13px; max-lines:3; }
 .pob-preview-description { color:var(--text); font-size:14px; max-lines:8; }
+.pob-preview-modifiers { color:var(--text); font-size:14px; max-lines:2; text-overflow:ellipsis; }
 .pob-preview-footer { gap:8px; padding:8px 0px 0px; align:center; }
 .pob-preview-usage { color:var(--text-muted); font-size:13px; padding:8px 0px 0px; }
 .pob-inspection-body { gap:6px; padding:4px 0px; }

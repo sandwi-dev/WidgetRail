@@ -32,10 +32,10 @@ local function uniqueItems()
   end
   return main.uniqueDB.list
 end
-function M.uniques(clean)
+function M.uniques(clean,textRuns)
   local rows={}
   for name,item in pairs(uniqueItems())do
-    rows[#rows+1]={key=name,title=clean(name),hasVariants=(item.variantList and #item.variantList>1)or false,description=clean(item.baseName)..' · '..clean(item.type)..
+    rows[#rows+1]={key=name,title=clean(name),preview=compatibility.itemPreviewLines(item,clean,textRuns),hasVariants=(item.variantList and #item.variantList>1)or false,description=clean(item.baseName)..' · '..clean(item.type)..
       (item.source and '\n'..clean(build.itemsTab:FormatItemSource(item.source))or'')}
   end
   table.sort(rows,function(a,b)return a.title<b.title end)

@@ -358,7 +358,7 @@ local function command(req)
   if op=='trade-item' then local raw,warnings=tradeItem.convert(req.entry);return {state={raw=raw,warnings=warnings},xml=build:SaveDB('code')}end
   if op=='item-bases' then return{state={choices=itemAuthoring.bases(clean)},xml=build:SaveDB('code')}end
   if op=='item-modifiers' then return{state=itemAuthoring.modifiers(req,clean),xml=build:SaveDB('code')}end
-  if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean)},xml=build:SaveDB('code')}end
+  if op=='item-uniques' then return{state={choices=itemAuthoring.uniques(clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='item-unique-draft' then return{state={authoring=itemAuthoring.uniqueDraft(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='passive-choices'then return{state={choices=passiveChoices.choices(req,clean)},xml=build:SaveDB('code')}end
   if op=='calculation-catalog'or op=='calculation-detail'then return calculationViews.read(req,clean,textRuns,recalc,loadBuildFromXML)end

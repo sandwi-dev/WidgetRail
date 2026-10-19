@@ -43,7 +43,7 @@ Pending work and saved history survive widget unloading and restart. Recovery ca
 Gem, inventory and unique-library candidates offer **X → Inspect** (or the pointer
 context menu). A keeps its normal selection action. Gem and unique-library focus
 previews show already-loaded information and fit their content within the available
-space. Inventory uses its existing details pane instead of covering it with a
+space. Unique previews include up to three upstream modifier lines, labelled as library ranges; Inspect shows the full item. Inventory uses its existing details pane instead of covering it with a
 duplicate floating preview. Inspection keeps the list and search in place. Use the explicit
 Add, Replace, Equip or Open item draft action when ready. Inventory inspection lets
 you choose an eligible equipment slot. Inspection opens at the first detail and

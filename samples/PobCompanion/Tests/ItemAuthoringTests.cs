@@ -60,6 +60,8 @@ internal static class ItemAuthoringTests
         var uniques=library.State.GetProperty("choices").EnumerateArray().ToArray();
         check(uniques.Length>50&&uniques.Select(u=>u.GetProperty("key").GetString()).Distinct().Count()==uniques.Length,"Unique library exposes stable upstream identities");
         var goldrim=uniques.First(u=>u.GetProperty("title").GetString()!.Contains("Goldrim",StringComparison.Ordinal));
+        check(goldrim.GetProperty("preview").GetArrayLength() is >0 and <=3&&uniques.All(item=>item.GetProperty("preview").GetArrayLength()<=3),"Unique catalogue contains bounded upstream-formatted modifier previews");
+        check(goldrim.GetProperty("preview").EnumerateArray().All(line=>line.GetProperty("runs").GetArrayLength()>0),"Unique modifier previews preserve upstream formatting and unsupported-effect tones");
         // Compare against the state already loaded for the library: upstream
         // load normalizes whitespace in historical custom-modifier blocks.
         var unique=await engine.ExecuteAsync(new{op="item-unique-draft",key=goldrim.GetProperty("key").GetString()},default,library.Xml);

@@ -8,7 +8,7 @@ public sealed partial class PobWidget
 {
     private sealed record ItemCandidateContext(PobResult Build,string? Document,object Catalog,string Search,bool Unique);
     private sealed record ItemCandidateEntry(string Key,string Title,string Action,int ItemId,string UniqueKey,string Description,
-        string Rarity,string Uses,bool Variants,bool Selected=false);
+        string Rarity,string Uses,bool Variants,bool Selected=false,JsonElement Preview=default);
     private sealed record ItemCandidateQuery(ItemCandidateContext? Context,ItemCandidateEntry[] Entries);
     private sealed record ItemCandidateInspection(long Token,ItemCandidateQuery Query,ItemCandidateEntry Entry,
         IndexedCollectionFocusTarget Anchor,JsonElement Item,string[] Slots,string Slot);
@@ -64,6 +64,18 @@ public sealed partial class PobWidget
         var preview=new List<WidgetElement>{UI.Text(entry.Title,context.Id("preview-title")).Classes("pob-preview-title",RarityClass(entry.Rarity))};
         if(entry.Rarity.Length>0)preview.Add(UI.Text(entry.Rarity,context.Id("preview-rarity")).Classes("pob-preview-meta"));
         if(entry.Description.Length>0)preview.Add(UI.Text(CandidateText(entry.Description,480),context.Id("preview-description")).Classes("pob-preview-description"));
+        if(entry.Preview.ValueKind==JsonValueKind.Array&&entry.Preview.GetArrayLength()>0)
+        {
+            preview.Add(UI.Text("Modifier preview · library ranges",context.Id("preview-modifier-heading")).Classes("pob-preview-meta"));
+            foreach(var (line,index) in entry.Preview.EnumerateArray().Take(3).Select((line,index)=>(line,index)))
+            {
+                // Passive fragments support bounded text. Keep the upstream line
+                // tone here; full inline formatting remains in explicit Inspect.
+                var runs=ReadFormattedRuns(line,"text","runs");
+                var tone=runs.Any(run=>run.Tone=="warning")?"warning":runs.FirstOrDefault(run=>run.Tone!="text")?.Tone??"text";
+                preview.Add(UI.Text(S(line,"text"),context.Id("preview-modifier-"+index)).Classes("pob-preview-modifiers",ToneClass(tone)));
+            }
+        }
         if(entry.Variants)preview.Add(UI.Text("Variants available in the item editor",context.Id("preview-variants")).Classes("pob-small","pob-muted"));
         preview.Add(UI.ControllerHint(ControllerPrompt.X,"Inspect item",context.Id("preview-inspect")).Classes("pob-preview-footer"));
         return candidate.Classes("pob-list-item","pob-candidate-row").PresentOnFocus(UI.Stack(context.Id("preview"),preview.ToArray()).Classes("pob-preview-content"));
@@ -71,7 +83,7 @@ public sealed partial class PobWidget
     private static string RarityClass(string rarity)=>rarity.ToUpperInvariant() switch
     {"MAGIC"=>"pob-blue","RARE"=>"pob-gold","UNIQUE"=>"pob-orange",_=>"pob-text"};
     private static WidgetElement ItemCandidatePreview(WidgetElement list,string id)=>
-        UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with{Preview=new(Width:420,Height:360){SizeToContentHeight=true}};
+        UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with{Preview=new(Width:420,Height:420){SizeToContentHeight=true}};
 
     private WidgetElement UniqueCandidateWorkspace(JsonElement[] choices)
     {
@@ -79,7 +91,7 @@ public sealed partial class PobWidget
         var context=ItemCandidateContextFor(choices,choiceSearch,unique:true);
         var entries=choices.Where(c=>Plain(S(c,"title")+" "+S(c,"description")).Contains(choiceSearch,StringComparison.OrdinalIgnoreCase))
             .Select(c=>new ItemCandidateEntry("unique"+I(c,"id"),CandidateText(S(c,"title"),512),"unique-item."+I(c,"id"),0,S(c,"key"),
-                CandidateText(S(c,"description"),2400),"Unique","",B(c,"hasVariants"))).ToArray();
+                CandidateText(S(c,"description"),2400),"Unique","",B(c,"hasVariants"),Preview:c.TryGetProperty("preview",out var preview)?preview:default)).ToArray();
         if(!uniqueCandidateQuery.Entries.SequenceEqual(entries)||uniqueCandidateQuery.Context!=context||!ReferenceEquals(uniqueCandidateQuery.Context?.Build,result))
         {uniqueCandidateQuery=new(context,entries);uniqueCandidateCollection.PublishQuery(uniqueCandidateQuery,entries.Length);}
         var tools=QuickControls(UI.Stack("pob.choice-tools",
