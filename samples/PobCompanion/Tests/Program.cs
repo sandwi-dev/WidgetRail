@@ -5,6 +5,11 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
+if(args is ["--formatted-reading-only"])
+{
+    Console.WriteLine($"Formatted reading: {FormattedReadingTests.Run()} passed");return 0;
+}
+
 if(args is ["--architecture-only"])
 {
     var passed=0;var failed=0;

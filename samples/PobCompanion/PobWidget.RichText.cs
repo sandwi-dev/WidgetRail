@@ -162,10 +162,22 @@ public sealed partial class PobWidget
             {
                 if(length>=2400||spans.Count>=128)Flush();
                 var count=Math.Min(2400-length,text.Length-offset);
+                var split=count<text.Length-offset;
+                if(split)
+                {
+                    // A new RichText node begins a new layout paragraph. Prefer
+                    // existing line/word boundaries instead of tearing a word in two.
+                    var boundary=text.LastIndexOf('\n',offset+count-1,count);
+                    if(boundary<offset)
+                        for(var index=offset+count-1;index>=offset;index--)
+                            if(char.IsWhiteSpace(text[index])){boundary=index;break;}
+                    if(boundary>=offset)count=boundary-offset+1;
+                }
                 if(offset+count<text.Length&&char.IsHighSurrogate(text[offset+count-1]))count--;
                 if(count==0){Flush();continue;}
                 spans.Add(UI.Text(text.Substring(offset,count),"pob."+id+".run."+serial++).Classes(css,"pob-inline",accent));
                 offset+=count;length+=count;
+                if(split)Flush();
             }
         }
         Flush();
