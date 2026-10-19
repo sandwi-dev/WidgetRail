@@ -194,6 +194,16 @@ All 46 supported tree-version audits pass. The renderer uses lazy decoding with 
 
 The implemented comparison has categorized difference rows and a two-column detail view with return to the inspected row. Selective transfer remains outside scope; comparison has no Apply action.
 
+### Planned follow-up: identify both comparison sides
+
+**Agreed for the plan; implementation on hold.** The comparison setup screenshot
+(`codex-clipboard-6e0a4f58-9ed8-46dc-90da-b8bee11713ba.png`, 2026-10-18)
+shows “Compare current with” without identifying the source.
+
+- [ ] Show the actual source build name and active loadout before Compare is pressed, alongside the selected target's identity. “Current” may qualify that identity, but must not replace it.
+- [ ] Carry those names into the results and side-by-side detail headings so users can tell which build/loadout each value belongs to without returning to setup. Keep long names readable with sensible wrapping and avoid repeating redundant build names when comparing loadouts of the same build.
+- [ ] Bind displayed identities to the same source/target snapshots used by the comparison. Switching builds or loadouts must not leave stale labels beside newer results. Retain existing calculation-context distinctions and read-only behavior.
+
 ## 6. Unified search and direct navigation
 
 - [x] Search passives, skills/gems, equipped and inventory items, configuration options, calculation rows, saved builds and useful actions from one entry point.
