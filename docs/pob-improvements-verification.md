@@ -2,6 +2,24 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Changes view alignment correction, 2026-10-19
+
+The user's screenshot exposed centred modifier groups that did not line up with
+the equipped/proposed headings. The row now explicitly stretches its value grid
+across the available width, uses two equal columns and left-aligned text/status,
+and top-aligns unequal-height cells. Repeated consecutive section labels such as
+Explicit appear once per side; all original modifier occurrences and rich text
+remain intact. Matching and calculation rules are unchanged.
+
+The screenshot's +141 versus +161/+49 shape is now a fixture, including retained
+rich text, grouped labels, mixed implicit/explicit types and an empty side.
+Both trade workflow suites pass: **108 PoE1 / 109 PoE2 checks**. Release build and
+both package/stylesheet validations pass. Evidence:
+`artifacts/pob/trade-alignment-*-workflow.log`, `trade-alignment-build.binlog`,
+`trade-alignment-packaging.log`. Packages **0.1.4.24** are under
+`trade-alignment-packages-20261019`. The supplied screenshot was inspected;
+no new physical or native visual check is claimed (the user's waiver remains).
+
 ## Trade modifier comparison and equipment transitions, 2026-10-19
 
 Both games now use their pinned engine's `TradeHelpers.modLineTemplate`, upstream

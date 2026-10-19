@@ -52,16 +52,30 @@ public sealed partial class PobWidget
         tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
     }
 
-    private WidgetElement ModifierCell(PobModifierLine[] lines, string prefix)
+    private static WidgetElement ModifierCell(PobModifierLine[] lines, string prefix)
     {
         var content = new List<WidgetElement>();
         if (lines.Length == 0) content.Add(Text("—", prefix + ".empty", "pob-muted"));
         foreach (var (line, index) in lines.Select((line, index) => (line, index)))
         {
-            content.Add(Text(line.Kind, prefix + ".kind." + index, "pob-small pob-muted"));
+            if(index==0||lines[index-1].Kind!=line.Kind)
+                content.Add(Text(line.Kind, prefix + ".kind." + index, "pob-small pob-muted"));
             AddFormatted(content, line.Formatted, "text", "runs", prefix + ".line." + index, "pob-modifier-text", emphasizeStats: true);
         }
         return UI.Stack("pob." + prefix, content.ToArray()).Classes("pob-modifier-cell");
+    }
+
+    internal static WidgetElement ModifierDifferenceRow(PobModifierDifference row,string prefix)
+    {
+        return UI.ActionSurface("inspect",prefix+".row",
+            row.Status+" modifier. Equipped: "+string.Join("; ",row.Before.Select(line=>S(line.Formatted,"text")))+
+            ". Proposed: "+string.Join("; ",row.After.Select(line=>S(line.Formatted,"text")))+". View full items.",ActionSurfaceOrientation.Vertical,
+            UI.Text(row.Status switch { "added" => "ADDED", "removed" => "REMOVED", "same" => "UNCHANGED", _ => "CHANGED" }, prefix+".status")
+                .Classes("pob-eyebrow", row.Status switch { "removed" => "pob-orange", "added" => "pob-blue", "same" => "pob-muted", _ => "pob-gold" }),
+            UI.Grid(prefix+".values", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
+                ModifierCell(row.Before, prefix+".before"), ModifierCell(row.After, prefix+".after").InGrid(column: 1))
+                .Spacing(0,12).Classes("pob-modifier-values"))
+            .Classes("pob-modifier-row");
     }
 
     private WidgetElement ModifierChanges(string prefix)
@@ -72,14 +86,7 @@ public sealed partial class PobWidget
             ReadRange = (query, start, count, token) =>
             { token.ThrowIfCancellationRequested(); return ValueTask.FromResult<IReadOnlyList<PobModifierDifference>>(query.Rows.Skip(start).Take(count).ToArray()); },
             ItemKey = row => new(row.Id),
-            RenderItem = (_, row, context) => UI.ActionSurface("inspect",context.Id("row"),
-                row.Status+" modifier. Equipped: "+string.Join("; ",row.Before.Select(line=>S(line.Formatted,"text")))+
-                ". Proposed: "+string.Join("; ",row.After.Select(line=>S(line.Formatted,"text")))+". View full items.",ActionSurfaceOrientation.Vertical,
-                UI.Text(row.Status switch { "added" => "ADDED", "removed" => "REMOVED", "same" => "UNCHANGED", _ => "CHANGED" }, context.Id("status"))
-                    .Classes("pob-eyebrow", row.Status switch { "removed" => "pob-orange", "added" => "pob-blue", "same" => "pob-muted", _ => "pob-gold" }),
-                UI.Grid(context.Id("values"), [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
-                    ModifierCell(row.Before, context.Id("before")), ModifierCell(row.After, context.Id("after")).InGrid(column: 1)).Spacing(0, 12))
-                .Classes("pob-modifier-row"),
+            RenderItem = (_, row, context) => ModifierDifferenceRow(row,context.Id("modifier")),
             OnAction = (query, _, action, _) =>
             {
                 lock(gate)

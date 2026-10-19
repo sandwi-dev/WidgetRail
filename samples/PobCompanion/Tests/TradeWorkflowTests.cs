@@ -8,6 +8,21 @@ internal static class TradeWorkflowTests
 {
     internal static async Task RunAsync(int game,string root,string runtime,string adapter,string xml,Action<bool,string> check)
     {
+        // Reproduce the one-to-many modifier shape from the reported armour comparison.
+        PobModifierLine Line(string text,string kind="Explicit")=>new(kind,JsonSerializer.SerializeToElement(new{text}));
+        var modifierRow=PobWidget.ModifierDifferenceRow(new("armour","changed",
+            [Line("+141 to Evasion Rating")],[Line("+161 to Evasion Rating"),Line("+49 to Evasion Rating")]),"fixture");
+        var modifierSnapshot=new WidgetView(modifierRow).CreateSnapshot("modifier-layout",1);
+        IEnumerable<ViewNode> Flatten(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Flatten));
+        check(Flatten(modifierSnapshot.Root).Count(node=>node.Text=="Explicit")==2,
+            "Repeated modifier type is labelled once per side rather than once per roll");
+        foreach(var value in new[]{"+141 to Evasion Rating","+161 to Evasion Rating","+49 to Evasion Rating"})
+            check(Flatten(modifierSnapshot.Root).Where(node=>node.Kind==ViewNodeKind.RichText).Any(node=>string.Concat(node.Children.Select(span=>span.Text))==value),
+                "Compact comparison retains complete upstream modifier: "+value);
+        var mixed=new WidgetView(PobWidget.ModifierDifferenceRow(new("mixed","changed",[],
+            [Line("+10 to maximum Life","Implicit"),Line("+20 to maximum Life")]),"mixed")).CreateSnapshot("modifier-layout",2);
+        check(Flatten(mixed.Root).Any(node=>node.Text=="Implicit")&&Flatten(mixed.Root).Any(node=>node.Text=="Explicit")&&Flatten(mixed.Root).Any(node=>node.Text=="—"),
+            "Compact labels preserve section changes and the empty equipped side");
         foreach(var (text,label,value) in new[]{("+4,305.6 Average Damage (+14.4%)","Average Damage","+4,305.6 (+14.4%)"),("-35.51% Crit Chance","Crit Chance","-35.51%")})
         {
             var formatted=new List<WidgetElement>();
