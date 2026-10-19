@@ -78,8 +78,6 @@ public sealed partial class PobWidget
         if(data.Support&&data.CanSupport is {} supports)content.Add(UI.Text(supports?"Supports the selected skill":"Does not support the selected skill",context.Id("preview-compatibility")).Classes("pob-small",supports?"pob-green":"pob-muted"));
         if(query.Context is {} picker&&GemComparisonText(data,picker) is {Length:>0} total)
             content.Add(UI.Text(total,context.Id("preview-comparison")).Classes("pob-small"));
-        content.Add(UI.Row(context.Id("preview-inspect"),UI.ControllerGlyph(ControllerPrompt.X,context.Id("preview-inspect-glyph")),
-            UI.Text("Inspect",context.Id("preview-inspect-label")).Classes("pob-small","pob-muted")).Classes("pob-preview-footer"));
         return action.PresentOnFocus(UI.Stack(context.Id("preview"),content.ToArray()).Classes("pob-preview-content"));
     }
     private static string GemComparisonText(GemInspectionData data,GemPickerContext context) =>
@@ -131,8 +129,8 @@ public sealed partial class PobWidget
         }
         var close="gem-inspection-close."+inspection.Token;
         var apply="gem-inspection-apply."+inspection.Token;
-        var controls=UI.Row("pob.gem-inspection.actions",Button("Back to gems",close),Button(context.Gem==0?"Add gem":"Replace gem",apply)).Classes("pob-toolbar");
-        return view.WithModal(new("pob.gem-inspection",data.Name,InspectionWorkspace("pob.gem-inspection",rows,controls),
-            "pob."+close,close){ScrollContent=false,AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:560,Height:560){SizeToContentHeight=true}});
+        var controls=UI.Row("pob.gem-inspection.actions",Button(context.Gem==0?"Add gem":"Replace gem",apply)).Classes("pob-toolbar");
+        return view.WithInteractivePreview(new("pob.gem-inspection",data.Name,InspectionWorkspace("pob.gem-inspection",rows,controls),
+            "pob."+apply,close,new(IndexedItem:inspection.Anchor)){ScrollContent=false,Width=480,Height=560});
     }
 }

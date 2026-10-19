@@ -2,6 +2,42 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Interactive rich previews, 2026-10-19
+
+Protocol 94 adds `FocusPreviewOptions.EnterButton` and the SDK's
+`WidgetInteractivePreview` / `WithInteractivePreview`. The passive source content
+and primary A action stay unchanged; its configured pressed shortcut supplies the
+enter action and hint. Clicking an enterable preview uses that same admitted source
+action. PoB inventory, unique and gem candidates use X. Interactive chrome is compact,
+undimmed and anchored; B/Escape/outside-click returns to the source. A nested selector
+consumes B first. Removed/recycled anchors dismiss instead of centering stale controls.
+The existing scoped-layer input/lease/focus machinery is deliberately reused, while
+the old PoB modal wrappers and duplicate Close/Back button rows have been replaced.
+Passive Undo/Redo previews retain their original behavior.
+
+Validation: SDK suite 164/164; reviewed API baseline 1/1. Real-engine item suites
+102 PoE1 / 100 PoE2; skill-management suites 80 / 82. Native item inspection 528
+checks, gem inspection 168 checks; default passive/content-sized/high-contrast
+preview regression 45 checks. Shared interactive-native checks (14 passed) cover primary A,
+configured entry, busy focus, nested B, exact source return, pointer entry, source
+removal and suspension. A hover-gap re-entry regression was added during review.
+Representative native item presentation was visually inspected. No live trade or
+music-service requests were required.
+
+Evidence: `artifacts/pob/interactive-{items,gems}-20261019`,
+`interactive-preview-native-final-20261019`, `interactive-passive-regression-20261019`,
+`interactive-{items,skill-management}-{1,2}-final.log` and `interactive-sdk-tests.log`.
+Candidate publication: `cumulative-candidate-20261019-interactive`; widget packages:
+`interactive-preview-packages-20261019` (PoE1/PoE2 0.1.4.17). Ordinary modal/Search
+build behavior remains separate; a physical controller acceptance run is still
+user-owned. No merge, push, release or deferred CI repairs.
+
+Delivery: both PoB packages are installed/enabled at 0.1.4.17. The final cumulative
+candidate is running hidden with the normal profile/controller configuration,
+PID 23040 at delivery. All 138 deployed frontend DLLs match the qualified
+publication; installed PoB code, SDK, protocol and styles match staged hashes.
+Validation windows are closed. Spotify 0.3.90.2 and YouTube Music 0.3.43.5 remain enabled.
+
 ## Undo/Redo previews, 2026-10-19
 
 History retains its existing XML snapshots and loadout-switch behavior. A passive

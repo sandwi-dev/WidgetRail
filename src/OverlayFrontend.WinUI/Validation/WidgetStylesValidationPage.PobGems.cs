@@ -89,13 +89,13 @@ internal sealed partial class WidgetStylesValidationPage
                 if (size.Width == 1320)
                     await Capture(Path.Combine(directory, $"native-poe{game}-{themeId}.png"));
                 Find<Button>("Widget." + inspection.InitialFocusId, root)!.Focus(FocusState.Keyboard);
-                page.ActivateFocused();
+                await page.HandleControllerButtonAsync(ControllerButton.B);
                 await Wait(() => !open && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener));
                 Check(chosen == 0, "Closing returns to the same native candidate without choosing it");
                 open=true;Publish();
                 await Wait(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject reopened&&AutomationProperties.GetAutomationId(reopened)=="Widget."+inspection.InitialFocusId);
                 Check(Find<ScrollViewer>("Widget.pob.gem-inspection.details",root)!.VerticalOffset<1,"Reopening gem inspection starts at the first detail after the previous view was scrolled");
-                page.ActivateFocused();await Wait(()=>!open&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),opener));
+                await page.HandleControllerButtonAsync(ControllerButton.B);await Wait(()=>!open&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),opener));
                 page.ActivateFocused();
                 Check(chosen == 1, "A still chooses the focused gem after returning from inspection");
                 void Publish()

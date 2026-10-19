@@ -1,6 +1,47 @@
 # Focus presentation retention
 
-## Interactive anchored inspection
+## Rich previews with optional interaction
+
+Protocol 94 adds an opt-in interactive state to rich previews. Keep the existing
+bounded `PresentOnFocus` summary and set `FocusPreviewOptions.EnterButton` to X,
+Y, LeftStick or RightStick. Declare a pressed shortcut for that same button on
+each source that supports interaction; its label becomes the host-rendered hint.
+A source without that shortcut remains passive. A and B cannot be enter shortcuts.
+
+```csharp
+var source = UI.Button("Select item", "select", "candidate")
+    .Shortcut(ControllerButton.X, "Interact", actionId: "inspect")
+    .PresentOnFocus(summary);
+var surface = UI.FocusPresentationSurface(source, UI.Text("", "empty"), "preview")
+    with { Preview = new(480, 560) { EnterButton = ControllerButton.X, SizeToContentHeight = true } };
+
+// In response to inspect, publish the interactive state over the retained source view.
+view.WithInteractivePreview(new("inspection", "Item details", controlsAndDetails,
+    "inspection.first-action", "inspection.back", new("candidate"))
+    { Width = 480, Height = 560, ScrollContent = false });
+```
+
+Focus/hover shows the summary without fetching or moving focus. The configured
+shortcut, or clicking the preview, enters; A on the source retains its primary
+action. The interactive state has compact preview chrome and no dimmed backdrop.
+B closes native child popups first, then returns to the remembered source. Escape
+and clicking outside also leave. The passive preview returns while its source is
+focused. Handle the dismissal action by publishing the ordinary source view.
+Undo/Redo and other read-only previews leave `EnterButton` unset.
+
+Use exact indexed occurrence anchors for lists. Hidden/removed/recycled anchors
+dismiss an interactive preview; they never fall back to a centered panel. Keep
+request tokens and query/lifetime checks around asynchronous inspection work, so
+late results cannot open or act on a different item. Loading belongs to explicit
+entry, not focus. Keep action IDs stable across busy updates and mark them busy
+rather than disabling them, so focus stays where the user put it.
+
+Internally the interactive state reuses the existing scoped-layer action admission,
+nested-popup handling and focus restoration. It does not introduce another input
+router. Passive fragments retain their validation limits; interactive controls are
+declared in the entered view, rather than giving hover content action authority.
+
+## Anchored dialogs
 
 Use the existing `WidgetModal` for explicit inspection with controls. Its optional
 `AnchoredPresentation` places the panel beside an element or an exact indexed item:
@@ -141,8 +182,8 @@ The default is settled focus and mouse hover after 350 ms. `OnFocus` and `OnHove
 can independently disable either source; at least one must remain enabled.
 `DelayMilliseconds` accepts 0–1500, width 160–960 DIP and height 96–800 DIP. The
 host can shrink and flip the panel to keep it within the widget. Long content is
-clipped; put essential information and controls behind an explicit inspect action
-using a normal or anchored modal. Passive fragments retain their existing 64-node,
+clipped; put complete information and controls in the optional interactive state
+described above. Passive fragments retain their existing 64-node,
 8-level limits and cannot contain focusable controls, actions or scrolling.
 
 Preview activation does not invoke the widget or calculate data. Reuse content
@@ -156,8 +197,9 @@ when their source is removed, leaves the viewport or loses current occurrence
 authority. Suspension, input handoff, modal entry and unloading revoke them and
 cancel their pending deadline. Indexed previews inspect resident rows only, without
 fetching, retaining or scrolling. They share placement geometry and scaled host
-presentation layers with interactive inspection, but never take focus or pointer
-input. Leaving `Preview` unset preserves existing inline presentation behaviour.
+presentation layers with interactive inspection. Read-only previews never take
+focus or pointer input; enterable previews accept a click to request entry.
+Leaving `Preview` unset preserves existing inline presentation behaviour.
 
 ## Keyboard dismissal
 

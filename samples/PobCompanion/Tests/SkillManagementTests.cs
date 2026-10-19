@@ -112,6 +112,7 @@ internal static class SkillManagementTests
                 check(lease.RouteAction(row.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Indexed X opens the exact captured gem");
                 await Until(()=>Get("gemInspection") is not null);
                 var opened=View();var anchor=opened.Root.AnchoredPresentation!.Anchor.IndexedItem!;
+                check(opened.Root.AnchoredPresentation.IsInteractivePreview,"Gem inspection enters shared interactive preview presentation");
                 check(anchor.CollectionId=="pob.gems"&&anchor.ItemKey==row.Key&&anchor.Index==1&&anchor.QueryGeneration==sourceBefore.QueryGeneration,
                     "Gem inspection anchors to exact indexed occurrence, not an index or stale display name");
                 check(ReferenceEquals(Result(),before)&&ReferenceEquals(queryBefore,Get("gemQuery"))&&Group().GetProperty("gems").GetArrayLength()==0,
@@ -120,7 +121,7 @@ internal static class SkillManagementTests
                 check(expectedContext.Length==0?!Nodes(opened.Root).Any(n=>n.Id=="pob.gem-inspection.context"):
                     Nodes(opened.Root).Any(n=>n.Id=="pob.gem-inspection.context"&&n.Text==expectedContext),
                     "Gem inspection presents active loadout and calculation weapon context separately from the group's weapon eligibility");
-                var close=Nodes(opened.Root).First(n=>n.ActionId?.StartsWith("gem-inspection-close.",StringComparison.Ordinal)==true).ActionId!;
+                var close=Nodes(opened.Root).SelectMany(n=>n.Shortcuts).First(s=>s.ActionId.StartsWith("gem-inspection-close.",StringComparison.Ordinal)).ActionId;
                 var apply=Nodes(opened.Root).First(n=>n.ActionId?.StartsWith("gem-inspection-apply.",StringComparison.Ordinal)==true).ActionId!;
                 var fixtureDirectory=Environment.GetEnvironmentVariable("POB_GEM_INSPECTION_FIXTURES");
                 if(!string.IsNullOrWhiteSpace(fixtureDirectory))

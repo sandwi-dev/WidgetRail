@@ -17,8 +17,8 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 ## Implementation order and tracking
 
-Current acceptance checkpoint (2026-10-18): candidate **k** contains the cumulative
-host changes, with PoE1/PoE2 packages **0.1.4.16**, YouTube Music **0.3.43.5**, Spotify **0.3.90.2** and a quiet responsive toolbar.
+Current acceptance checkpoint (2026-10-19): candidate **interactive** contains the cumulative
+host changes, with PoE1/PoE2 packages **0.1.4.17**, YouTube Music **0.3.43.5**, Spotify **0.3.90.2** and a quiet responsive toolbar.
 Trade-session actions are separate from build/history controls. Configuration fits 11 options
 instead of 6 at the same viewport, comparisons use aligned named columns, and
 inspections fit their content. Search retains query/category/selected identity;
@@ -178,12 +178,15 @@ also needs a clearer hierarchy. That earlier rendering was not accepted as visua
 
 Audit (2026-10-18): `PresentOnFocus` and `FocusPresentationSurface` already provide widget-authored, bounded passive content selected locally by host focus, including indexed-row ownership. Reuse these instead of adding a duplicate passive inspector. Extend placement/activation for anchored previews; retain passive-fragment validation. Explicit interactive inspection should reuse the modal focus scope, Back handling and restoration with an anchored presentation option. Existing presentation identities, row leases and transient input admission must remain authoritative. The implemented API extends these facilities with `FocusPreviewOptions` and modal `AnchoredPresentation`; see [presentation retention](developers/presentation-retention.md). Generic native fixtures precede the implemented PoB adoption.
 
-Control-flow decision (2026-10-18): passive previews follow settled focus or hover
-without moving focus, selecting an entry or consuming A/B. PoB keeps the existing
-Select/Add/Replace action on A. Interactive inspection is a separately labelled
-contextual action, using the existing modal scope and B/Close restoration. Choose
-its shortcut per screen only after checking existing bindings; no globally reserved
-Inspect button. Host prerequisites remain ahead of PoB adoption.
+Control-flow decision (2026-10-19): rich previews follow settled focus/hover without
+moving focus. Optional `EnterButton` matches a source shortcut; its host-rendered
+hint and a preview click enter the interactive state. PoB uses X and preserves
+Select/Add/Replace on A. `WithInteractivePreview` uses compact anchored chrome,
+no dimmed backdrop, nested-control-first B handling and exact source restoration.
+It reuses scoped-layer admission internally. Missing/stale anchors dismiss rather
+than center. Redundant Close/Back buttons were removed from item/gem inspection;
+query/token guards remain necessary. Undo/Redo stays passive. Ordinary dialogs and
+Search build retain their existing modal semantics.
 
 
 Provide reusable widget-authored content anchored to an existing element. Content is composed from the normal widget UI elements; it is not restricted to item descriptions, artwork or statistics and does not require another layout language.

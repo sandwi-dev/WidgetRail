@@ -85,8 +85,7 @@ internal sealed partial class WidgetStylesValidationPage
                 await Wait(() => Find<Button>("Widget." + row.Id, root) is { IsLoaded: true });
                 var opener = Find<Button>("Widget." + row.Id, root)!;
                 opener.Focus(FocusState.Keyboard);
-                if(kind=="unique")await Wait(() => page.IsFocusPreviewOpen);
-                else Check(!page.IsFocusPreviewOpen,"Inventory retains its details pane without a redundant floating preview");
+                await Wait(() => page.IsFocusPreviewOpen);
                 Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener), "Item browsing keeps source row focus");
                 Check(selected == 0 && equipped == 0, "Preview does not select or equip an item");
                 Check(row.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.X && shortcut.ActionId == "inspect") &&
@@ -140,13 +139,13 @@ internal sealed partial class WidgetStylesValidationPage
                     .Contains("candidate-inspection-equip.", StringComparison.Ordinal)), "Unique inspection exposes a draft action without an implicit Equip action");
                 if (size.Width == 1320) await Capture(Path.Combine(directory, $"native-poe{game}-{kind}-{themeId}.png"));
                 Find<Button>("Widget." + inspection.InitialFocusId, root)!.Focus(FocusState.Keyboard);
-                page.ActivateFocused();
+                await page.HandleControllerButtonAsync(ControllerButton.B);
                 await Wait(() => !open && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener));
                 Check(selected == 0 && equipped == 0, "Close returns inspection to the same native item without selecting or equipping");
                 open=true;Publish();
                 await Wait(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject reopened&&AutomationProperties.GetAutomationId(reopened)=="Widget."+inspection.InitialFocusId);
                 Check(Find<ScrollViewer>("Widget.pob.candidate-inspection.details",root)!.VerticalOffset<1,"Reopening item inspection starts at the first detail after the previous view was scrolled");
-                page.ActivateFocused();await Wait(()=>!open&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),opener));
+                await page.HandleControllerButtonAsync(ControllerButton.B);await Wait(()=>!open&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),opener));
                 page.ActivateFocused();
                 Check(selected == 1 && equipped == 0, "A retains the item's existing selection action after inspection");
 

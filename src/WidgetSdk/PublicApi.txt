@@ -104,6 +104,7 @@ ctor WidgetRail.WidgetSdk.WidgetDisplayProfilesState(string Mode, System.Collect
 ctor WidgetRail.WidgetSdk.WidgetEncodedArtwork(WidgetRail.WidgetSdk.WidgetArtworkContentType contentType, System.ReadOnlyMemory<byte> bytes)
 ctor WidgetRail.WidgetSdk.WidgetFocusTargetResult(string? Id, WidgetRail.WidgetSdk.WidgetFocusTargetState State)
 ctor WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>()
+ctor WidgetRail.WidgetSdk.WidgetInteractivePreview(string Id, string Title, WidgetRail.WidgetSdk.WidgetElement Content, string InitialFocusId, string DismissActionId, WidgetRail.WidgetProtocol.PresentationAnchor Anchor)
 ctor WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs(long Revision)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader(string Name, string Value)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest(string Path, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader> Headers, string? BearerSecretSlot, string? JsonBody, int TimeoutMilliseconds, bool InvalidateBearerSecretOnUnauthorized = false)
@@ -1320,6 +1321,11 @@ method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.PublishSnapshot() ->
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RouteAction(string itemKey, WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? contextActionOwnerId = null, string? contextActionId = null, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
 method WidgetRail.WidgetSdk.WidgetIndexedItemContext.Id(string name) -> string
+method WidgetRail.WidgetSdk.WidgetInteractivePreview.<Clone>$() -> WidgetRail.WidgetSdk.WidgetInteractivePreview
+method WidgetRail.WidgetSdk.WidgetInteractivePreview.Deconstruct(out string Id, out string Title, out WidgetRail.WidgetSdk.WidgetElement Content, out string InitialFocusId, out string DismissActionId, out WidgetRail.WidgetProtocol.PresentationAnchor Anchor) -> void
+method WidgetRail.WidgetSdk.WidgetInteractivePreview.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetInteractivePreview.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetInteractivePreview.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Deconstruct(out long Revision) -> void
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Equals(object? obj) -> bool
@@ -1713,6 +1719,7 @@ method WidgetRail.WidgetSdk.WidgetView.Deconstruct(out WidgetRail.WidgetSdk.Widg
 method WidgetRail.WidgetSdk.WidgetView.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetView.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetView.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetView.WithInteractivePreview(WidgetRail.WidgetSdk.WidgetInteractivePreview preview) -> WidgetRail.WidgetSdk.WidgetView
 method WidgetRail.WidgetSdk.WidgetView.WithModal(WidgetRail.WidgetSdk.WidgetModal modal) -> WidgetRail.WidgetSdk.WidgetView
 method WidgetRail.WidgetSdk.WidgetWebSession.AuthorizeLocalResourceAsync(System.Uri resource, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetWebSession.NavigateAsync(string destination, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -2115,6 +2122,8 @@ method static WidgetRail.WidgetSdk.WidgetIcon.op_Inequality(WidgetRail.WidgetSdk
 method static WidgetRail.WidgetSdk.WidgetIds.Scope(string rootId) -> WidgetRail.WidgetSdk.WidgetIdScope
 method static WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>? left, WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>? left, WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetInteractivePreview.op_Equality(WidgetRail.WidgetSdk.WidgetInteractivePreview? left, WidgetRail.WidgetSdk.WidgetInteractivePreview? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetInteractivePreview.op_Inequality(WidgetRail.WidgetSdk.WidgetInteractivePreview? left, WidgetRail.WidgetSdk.WidgetInteractivePreview? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Equality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Inequality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.CapabilityId(int port) -> string
@@ -2427,6 +2436,7 @@ method virtual WidgetRail.WidgetSdk.WidgetIcon.Equals(WidgetRail.WidgetSdk.Widge
 method virtual WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.Equals(WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.Dispose() -> void
+method virtual WidgetRail.WidgetSdk.WidgetInteractivePreview.Equals(WidgetRail.WidgetSdk.WidgetInteractivePreview? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Equals(WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.Equals(WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest? other) -> bool
@@ -2620,6 +2630,7 @@ property TState WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAu
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
+property WidgetRail.WidgetProtocol.AnchorPlacement WidgetRail.WidgetSdk.WidgetInteractivePreview.Placement { get; set; }
 property WidgetRail.WidgetProtocol.AnchoredPresentation? WidgetRail.WidgetSdk.WidgetModal.AnchoredPresentation { get; set; }
 property WidgetRail.WidgetProtocol.CaptureAttachment WidgetRail.WidgetSdk.CapturedMediaElement.Attachment { get; set; }
 property WidgetRail.WidgetProtocol.CollectionLayout WidgetRail.WidgetSdk.IndexedCollectionElement.Layout { get; }
@@ -2660,6 +2671,7 @@ property WidgetRail.WidgetProtocol.IndexedCollectionRange WidgetRail.WidgetSdk.W
 property WidgetRail.WidgetProtocol.LineGraphDefinition WidgetRail.WidgetSdk.LineGraphElement.Graph { get; set; }
 property WidgetRail.WidgetProtocol.LoadingIndicatorSize WidgetRail.WidgetSdk.LoadingIndicatorElement.Size { get; set; }
 property WidgetRail.WidgetProtocol.MediaPlayerDefinition WidgetRail.WidgetSdk.MediaPlayerElement.Media { get; set; }
+property WidgetRail.WidgetProtocol.PresentationAnchor WidgetRail.WidgetSdk.WidgetInteractivePreview.Anchor { get; set; }
 property WidgetRail.WidgetProtocol.ResponsiveVisibility WidgetRail.WidgetSdk.ResponsiveBranchElement.Visibility { get; set; }
 property WidgetRail.WidgetProtocol.ScrollAxis WidgetRail.WidgetSdk.IndexedCollectionElement.Axis { get; }
 property WidgetRail.WidgetProtocol.ScrollAxis WidgetRail.WidgetSdk.ScrollElement.Axis { get; set; }
@@ -2768,6 +2780,7 @@ property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.GridCellElement
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.NavigationShellParts.Body { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.NavigationShellParts.CompactNavigation { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
+property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetInteractivePreview.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetModal.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement? WidgetRail.WidgetSdk.WidgetModal.HeaderActions { get; set; }
@@ -2893,6 +2906,8 @@ property bool WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.IsPrimary { get; 
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Available { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.MatchesCurrent { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetFocusTargetResult.IsEnabled { get; }
+property bool WidgetRail.WidgetSdk.WidgetInteractivePreview.ScrollContent { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetInteractivePreview.SizeToContentHeight { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanNext { get; set; }
@@ -2968,6 +2983,8 @@ property double WidgetRail.WidgetSdk.WidgetAudioOutput.Volume { get; set; }
 property double WidgetRail.WidgetSdk.WidgetAudioSession.Volume { get; set; }
 property double WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshRate { get; }
 property double WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.RefreshRate { get; set; }
+property double WidgetRail.WidgetSdk.WidgetInteractivePreview.Height { get; set; }
+property double WidgetRail.WidgetSdk.WidgetInteractivePreview.Width { get; set; }
 property double WidgetRail.WidgetSdk.WidgetMediaSession.PlaybackRate { get; set; }
 property double WidgetRail.WidgetSdk.WindowPreviewElement.AspectRatio { get; set; }
 property double? WidgetRail.WidgetSdk.ControllerInputEvent.RequestedValue { get; set; }
@@ -3298,6 +3315,10 @@ property string WidgetRail.WidgetSdk.WidgetDisplayProfilesState.Mode { get; set;
 property string WidgetRail.WidgetSdk.WidgetElement.Id { get; set; }
 property string WidgetRail.WidgetSdk.WidgetIdScope.Prefix { get; }
 property string WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.LeaseId { get; }
+property string WidgetRail.WidgetSdk.WidgetInteractivePreview.DismissActionId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetInteractivePreview.Id { get; set; }
+property string WidgetRail.WidgetSdk.WidgetInteractivePreview.InitialFocusId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetInteractivePreview.Title { get; set; }
 property string WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Name { get; set; }
 property string WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Value { get; set; }
 property string WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.Path { get; set; }
@@ -3632,6 +3653,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TIt
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedItemContext
+type sealed class WidgetRail.WidgetSdk.WidgetInteractivePreview : System.IEquatable<WidgetRail.WidgetSdk.WidgetInteractivePreview>
 type sealed class WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs>
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader>
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackHttpService

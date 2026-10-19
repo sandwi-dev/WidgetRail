@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--interactive-previews-output") is { } interactivePreviewsOutput)
+        { await InteractivePreviewsAsync(interactivePreviewsOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pob-workflow-fixtures") is { } workflowFixtures)
         { await PobWorkflowsAsync(workflowFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pob-item-inspection-fixtures") is { } itemFixtures)

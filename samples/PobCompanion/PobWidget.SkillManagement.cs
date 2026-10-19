@@ -175,7 +175,7 @@ public sealed partial class PobWidget
         if(!gemQuery.Entries.SequenceEqual(entries)||gemQuery.Context!=context||!ReferenceEquals(gemQuery.Context?.Build,context.Build)){gemQuery=new(entries,context);gemCollection.PublishQuery(gemQuery,entries.Length);}
         ContainerElement results=UI.Stack("pob.gem-picker.results",entries.Length==0?Text("No matching gems.","gem-picker.empty","pob-muted"):
             UI.FocusPresentationSurface(UI.CollectionList("pob.gems",gemCollection,64,"Available gems").Classes("pob-scroll"),
-                UI.Text("","pob.gem-preview.empty"),"pob.gem-preview") with{Preview=new(Width:420,Height:380){SizeToContentHeight=true}}).Classes("pob-workspace");
+                UI.Text("","pob.gem-preview.empty"),"pob.gem-preview") with{Preview=new(Width:480,Height:560){SizeToContentHeight=true,EnterButton=ControllerButton.X}}).Classes("pob-workspace");
         if(entries.Length>0)results=QuickControls(results,"pob.gems","pob.gem-picker.tools","Search / type",NeedsQuickControls(entries.Length));
         return UI.Stack("pob.gem-picker",
             QuickControls(UI.Stack("pob.gem-picker.tools",UI.Row("pob.gem-picker.header",Button("Back to group","back"),Text((pickerGem==0?"Add gem · ":"Replace gem · ")+S(A(State,"skills").FirstOrDefault(g=>I(g,"id")==detailId),"title"),"gem-picker.title","pob-heading")).Classes("pob-toolbar"),

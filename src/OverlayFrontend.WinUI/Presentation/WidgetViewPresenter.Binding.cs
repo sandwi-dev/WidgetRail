@@ -15,6 +15,9 @@ internal sealed partial class WidgetViewPresenter
     private async Task DispatchCapturedActionAsync(WidgetPresentationBinding origin, WidgetActionEvent action)
     {
         if (!IsBindingCurrent(origin)) return;
+        if (effectiveView?.Root is { AnchoredPresentation: { IsInteractivePreview: true } preview } layer &&
+            ResolvePresentationAnchor(preview.Anchor, this) is not { Valid: true } &&
+            !layer.Children[1].Shortcuts.Any(shortcut => shortcut.Button == WidgetProtocol.ControllerButton.B && shortcut.ActionId == action.ActionId)) return;
         if (origin.Selection is { } selection && origin.Projection is { } projection)
         {
             if (Session is not { } session || !await AdmitBindingAsync(origin)) return;

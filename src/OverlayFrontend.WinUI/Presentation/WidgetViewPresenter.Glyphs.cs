@@ -33,6 +33,7 @@ internal sealed partial class WidgetViewPresenter
         var next = WidgetControllerPrompts.PlayStation;
         if (next == playStationPrompts) return;
         playStationPrompts = next;
+        if (previewSource is { } source) UpdatePreviewEnterHint(source);
         foreach (var binding in bindings.Values)
             if (binding.Element is FontIcon icon && binding.Identity.Kind == ViewNodeKind.ControllerGlyph)
                 WidgetGlyphs.Apply(icon, declarations[binding.Identity.Id].Node, next);

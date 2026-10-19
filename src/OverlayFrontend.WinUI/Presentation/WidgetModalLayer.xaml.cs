@@ -33,6 +33,8 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     internal Task<WidgetMotionOutcome> CloseAsync() => motion?.CloseAsync() ?? Task.FromResult(WidgetMotionOutcome.Completed);
     private AppearanceSettings appearance = AppearanceSettings.Default;
     private bool systemAnimationsEnabled = true;
+    internal Action? DismissPreview { get; set; }
+    private bool dismissalQueued;
     internal void ApplyAppearance(AppearanceSettings value, bool animationsEnabled)
     {
         appearance = value; systemAnimationsEnabled = animationsEnabled;
@@ -44,6 +46,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         InitializeComponent();
         Clip = boundsClip;
         SizeChanged += (_, _) => ConstrainDialog();
+        PreviewDismissSurface.PointerPressed += (_, args) => { args.Handled = true; DismissPreview?.Invoke(); };
     }
 
     internal void Configure(FrameworkElement parent, FrameworkElement panel,
@@ -58,6 +61,8 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         }
         dialog = panel;
         anchoredPresentation = anchored; resolveAnchor = anchor;
+        Scrim.Visibility = anchored?.IsInteractivePreview == true ? Visibility.Collapsed : Visibility.Visible;
+        PreviewDismissSurface.Visibility = anchored?.IsInteractivePreview == true ? Visibility.Visible : Visibility.Collapsed;
         if (observingAnchor) LayoutUpdated -= AnchorLayoutUpdated;
         observingAnchor = anchored is not null;
         if (observingAnchor) LayoutUpdated += AnchorLayoutUpdated;
@@ -100,7 +105,20 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
             : maximumHeight;
         if (anchoredPresentation is { } anchored)
         {
-            var placed = AnchoredPresentationGeometry.Place(ActualWidth, ActualHeight, resolveAnchor?.Invoke(),
+            var source = resolveAnchor?.Invoke();
+            if (anchored.IsInteractivePreview && source is not { Valid: true })
+            {
+                dialog.IsHitTestVisible = false;
+                if (!dismissalQueued && IsLoaded && ActualWidth > 0)
+                {
+                    dismissalQueued = true;
+                    DispatcherQueue.TryEnqueue(() => { dismissalQueued = false;
+                        if (anchoredPresentation?.IsInteractivePreview == true && resolveAnchor?.Invoke() is not { Valid: true }) DismissPreview?.Invoke(); });
+                }
+                return;
+            }
+            dialog.IsHitTestVisible = true;
+            var placed = AnchoredPresentationGeometry.Place(ActualWidth, ActualHeight, source,
                 dialog.Width, dialog.Height, anchored.Placement);
             dialog.Margin = new Thickness(placed.X, placed.Y, 0, 0);
         }
@@ -111,6 +129,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     {
         if (observingAnchor) LayoutUpdated -= AnchorLayoutUpdated;
         observingAnchor = false; resolveAnchor = null;
+        DismissPreview = null;
         motion?.Dispose(); motion = null;
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new ModalPeer(this);

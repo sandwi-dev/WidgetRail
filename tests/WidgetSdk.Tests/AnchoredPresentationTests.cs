@@ -25,6 +25,14 @@ internal static class AnchoredPresentationTests
         Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(fitted)).Root.AnchoredPresentation?.SizeToContentHeight == true);
         Check(ViewSnapshotValidator.Validate(fitted with { ProtocolVersion = 92 }).Any(error => error.Code == "feature_requires_version"));
         Check(Snapshot(null).ProtocolVersion < 92);
+        var preview = new WidgetView(UI.Button("Choose", "choose", "source"))
+            .WithInteractivePreview(new("interactive", "Details", UI.Button("Apply", "apply", "apply"), "apply", "back", new("source")))
+            .CreateSnapshot("interactive.widget", 1);
+        Check(preview.ProtocolVersion == 94 && preview.Root.AnchoredPresentation?.IsInteractivePreview == true);
+        Check(WinUiPresentationContract.Validate(preview).Count == 0);
+        Check(preview.Root.Children[1].Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.B && shortcut.ActionId == "back"));
+        Check(!preview.Root.Children[1].Children[0].Children.Any(node => node.Kind == ViewNodeKind.Button));
+        Check(ViewSnapshotValidator.Validate(preview with { ProtocolVersion = 93 }).Any(error => error.Code == "feature_requires_version"));
         Check(ViewSnapshotValidator.Validate(Snapshot(new(new("removed-anchor")))).Count == 0);
         // Missing/recycled indexed occurrences fall back without granting index-only authority.
         Check(ViewSnapshotValidator.Validate(Snapshot(new(new(IndexedItem: new("collection", "source", 4, "exact-key", 75))))).Count == 0);

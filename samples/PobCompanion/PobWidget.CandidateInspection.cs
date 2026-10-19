@@ -58,9 +58,6 @@ public sealed partial class PobWidget
             UI.Text(summary,context.Id("summary")).Classes("pob-candidate-summary")) with{ContextActions=[new("inspect","Inspect item")]};
         candidate=candidate.Selected(entry.Selected).Shortcut(ControllerButton.X,"Inspect",actionId:"inspect");
         if(!unique)candidate=candidate.FocusRight("pob.inventory-edit");
-        // Inventory already has an item-details pane. A floating metadata-only
-        // duplicate obscures that pane; explicit X inspection remains available.
-        if(!unique)return candidate.Classes("pob-list-item","pob-candidate-row");
         var preview=new List<WidgetElement>{UI.Text(entry.Title,context.Id("preview-title")).Classes("pob-preview-title",RarityClass(entry.Rarity))};
         if(entry.Rarity.Length>0)preview.Add(UI.Text(entry.Rarity,context.Id("preview-rarity")).Classes("pob-preview-meta"));
         if(entry.Description.Length>0)preview.Add(UI.Text(CandidateText(entry.Description,480),context.Id("preview-description")).Classes("pob-preview-description"));
@@ -77,13 +74,12 @@ public sealed partial class PobWidget
             }
         }
         if(entry.Variants)preview.Add(UI.Text("Variants available in the item editor",context.Id("preview-variants")).Classes("pob-small","pob-muted"));
-        preview.Add(UI.ControllerHint(ControllerPrompt.X,"Inspect item",context.Id("preview-inspect")).Classes("pob-preview-footer"));
         return candidate.Classes("pob-list-item","pob-candidate-row").PresentOnFocus(UI.Stack(context.Id("preview"),preview.ToArray()).Classes("pob-preview-content"));
     }
     private static string RarityClass(string rarity)=>rarity.ToUpperInvariant() switch
     {"MAGIC"=>"pob-blue","RARE"=>"pob-gold","UNIQUE"=>"pob-orange",_=>"pob-text"};
     private static WidgetElement ItemCandidatePreview(WidgetElement list,string id)=>
-        UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with{Preview=new(Width:420,Height:420){SizeToContentHeight=true}};
+        UI.FocusPresentationSurface(list,UI.Text("",id+".empty"),id) with{Preview=new(Width:480,Height:560){SizeToContentHeight=true,EnterButton=ControllerButton.X}};
 
     private WidgetElement UniqueCandidateWorkspace(JsonElement[] choices)
     {
@@ -176,18 +172,17 @@ public sealed partial class PobWidget
         foreach(var (line,i) in A(inspection.Item,"details").Select((line,i)=>(line,i)))
             AddFormatted(rows,line,"text","runs","candidate-inspection.line."+i,emphasizeStats:true);
         if(!unique)rows.Add(Text(inspection.Entry.Uses.Length==0?"Not equipped in any set.":"Used by: "+inspection.Entry.Uses,"candidate-inspection.uses","pob-preview-usage"));
-        var actions=new List<WidgetElement>{Button("Back to items",close),Button(unique?"Open item draft":"Select item","candidate-inspection-choose."+inspection.Token)};
+        var actions=new List<WidgetElement>{Button(unique?"Open item draft":"Select item","candidate-inspection-choose."+inspection.Token)};
         if(!unique&&inspection.Slots.Length>0)actions.Add(Button("Equip in "+inspection.Slot,"candidate-inspection-equip."+inspection.Token));
         var controls=new List<WidgetElement>{UI.Row("pob.candidate-inspection.actions",actions.ToArray()).Classes("pob-toolbar")};
         if(!unique&&inspection.Slots.Length>0)controls.Add(UI.Select("Equip in",inspection.Slots.Select((slot,i)=>new SelectOption("slot"+i,slot,
             "candidate-inspection-slot."+inspection.Token+"."+i,slot==inspection.Slot)).ToArray(),"pob.candidate-inspection.slot").Classes("pob-select"));
-        return view.WithModal(new("pob.candidate-inspection",inspection.Entry.Title,
+        return view.WithInteractivePreview(new("pob.candidate-inspection",inspection.Entry.Title,
             InspectionWorkspace("pob.candidate-inspection",rows,UI.Stack("pob.candidate-inspection.controls",controls.ToArray())),
-            "pob."+close,close){ScrollContent=false,AnchoredPresentation=new(new(IndexedItem:inspection.Anchor),Width:620,Height:620){SizeToContentHeight=true}});
+            "pob.candidate-inspection-choose."+inspection.Token,close,new(IndexedItem:inspection.Anchor)){ScrollContent=false,Width=480,Height=560});
     }
 
-    // Keep the initial action outside the reading viewport. Otherwise native
-    // focus scrolls a long description to its bottom as soon as inspection opens.
+    // Enter the first action above the reading viewport so opening never scrolls the details to their bottom.
     private static WidgetElement InspectionWorkspace(string id,List<WidgetElement> details,WidgetElement controls)=>
         UI.Grid(id+".content",[GridTrack.Auto(),GridTrack.Star()],[GridTrack.Star()],
             controls,UI.VerticalScroll(id+".details",UI.Stack(id+".body",details.ToArray()).Classes("pob-inspection-body"))

@@ -137,6 +137,9 @@ internal sealed class ProtocolVersionRequirements
             bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
+            if (node.FocusPreview?.EnterButton is not null || node.AnchoredPresentation?.IsInteractivePreview == true)
+                Add("interactive-preview", ProtocolConstants.InteractivePreviewVersion, path,
+                    "Interactive rich previews require protocol version 94 or later.");
             if (node.FocusPreview?.SizeToContentHeight == true || node.AnchoredPresentation?.SizeToContentHeight == true)
                 Add("content-sized-presentation", ProtocolConstants.ContentSizedPresentationVersion, path,
                     "Content-sized presentations require protocol version 93 or later.");

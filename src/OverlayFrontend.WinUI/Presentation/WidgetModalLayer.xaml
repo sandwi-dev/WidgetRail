@@ -4,4 +4,5 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border x:Name="Scrim" Background="{ThemeResource SmokeFillColorDefaultBrush}"
             Canvas.ZIndex="1" />
+    <Border x:Name="PreviewDismissSurface" Background="Transparent" Visibility="Collapsed" Canvas.ZIndex="1" />
 </Grid>

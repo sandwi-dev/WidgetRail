@@ -27,7 +27,7 @@ internal static class ItemCandidateInspectionTests
         async Task Until(Func<bool> ready,int seconds=65){var watch=Stopwatch.StartNew();while(!ready()){if(watch.Elapsed.TotalSeconds>seconds)throw new TimeoutException("Item candidate operation did not settle");await Task.Delay(15);}}
         async Task Idle()=>await Until(()=>!(bool)Get("busy")!);
         async Task Action(string id,string? text=null){await widget.OnActionAsync(new(id,"test"){CommittedText=text});await Idle();_=View();}
-        string ModalAction(string prefix)=>Nodes(View().Root).Where(n=>n.ActionId?.StartsWith(prefix,StringComparison.Ordinal)==true).Select(n=>n.ActionId!).Distinct(StringComparer.Ordinal).Single();
+        string ModalAction(string prefix)=>Nodes(View().Root).SelectMany(n=>new[]{n.ActionId}.Concat(n.Shortcuts.Select(s=>s.ActionId))).Where(id=>id?.StartsWith(prefix,StringComparison.Ordinal)==true).Distinct(StringComparer.Ordinal).Single()!;
         try
         {
             await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);await Idle();await Action("inventory");
@@ -40,11 +40,12 @@ internal static class ItemCandidateInspectionTests
                 var query=Get("inventoryQuery");var source=Nodes(host.CurrentSnapshot.Root).Single(n=>n.Id=="pob.stored.items").IndexedCollection;
                 check(row.Root.ActionId=="select"&&row.Root.Shortcuts.Any(s=>s.Button==ControllerButton.X&&s.ActionId=="inspect")&&row.Root.ContextActions.Any(c=>c.ActionId=="inspect"),
                     "Inventory preserves A selection and offers X and context item inspection");
-                check(row.Root.FocusPresentation is null&&!Nodes(host.CurrentSnapshot.Root).Any(n=>n.FocusPreview is not null),"Inventory uses its existing details pane without an obstructive metadata-only hover");
+                check(row.Root.FocusPresentation is not null&&Nodes(host.CurrentSnapshot.Root).Any(n=>n.FocusPreview?.EnterButton==ControllerButton.X),"Inventory offers a passive preview with explicit X entry");
                 check(range.RouteAction(row.Key,ControllerButton.X)==WidgetOperationAdmission.Enqueued,"Inventory inspection admits exact indexed item");
                 await Until(()=>Get("candidateInspection") is not null);await Idle();
                 var modal=View();var anchor=modal.Root.AnchoredPresentation!.Anchor.IndexedItem!;
                 check(modal.Root.AnchoredPresentation.SizeToContentHeight,"Item inspection fits content within its bounded height");
+                check(modal.Root.AnchoredPresentation.IsInteractivePreview&&!Nodes(modal.Root.Children[1]).Any(n=>n.Text is "Close" or "Back to items"),"Item interaction uses preview chrome without duplicate modal dismissal controls");
                 check(anchor.ItemKey==row.Key&&anchor.Index==index&&anchor.QueryGeneration==source!.QueryGeneration,"Inventory inspection anchors exact occurrence");
                 check(ReferenceEquals(before,Result())&&selected==(int)Get("inventoryId")!&&ReferenceEquals(query,Get("inventoryQuery")),
                     "Inspecting an unselected inventory item does not select, equip, mutate build or reset query");

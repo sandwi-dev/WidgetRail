@@ -36,6 +36,17 @@ internal sealed partial class WidgetViewPresenter
             return true;
         }
         if (HandleSliderButton(button, phase)) return true;
+        if (effectiveView?.Root.AnchoredPresentation is { IsInteractivePreview: true } interactive)
+        {
+            if (button == ControllerButton.B)
+            {
+                if (phase == ControllerEventPhase.Pressed)
+                    bindings.Values.Select(binding => binding.Element).OfType<WidgetModalLayer>().FirstOrDefault()?.DismissPreview?.Invoke();
+                return true;
+            }
+            if (ResolvePresentationAnchor(interactive.Anchor, this) is not { Valid: true }) return true;
+        }
+        if (await TryEnterFocusPreviewAsync(button, phase)) return true;
         if (phase == ControllerEventPhase.Pressed && OpenContextMenu(button)) return true;
         if (button == ControllerButton.A)
         {

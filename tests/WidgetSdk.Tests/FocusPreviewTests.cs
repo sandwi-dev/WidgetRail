@@ -17,6 +17,10 @@ internal static class FocusPreviewTests
         Check(Snapshot().ProtocolVersion < 92);
         Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(before)).Root.FocusPreview == before.Root.FocusPreview);
         Check(before.Root.FocusPreview?.SizeToContentHeight == false);
+        var enterable = Snapshot(new() { EnterButton = ControllerButton.RightStick });
+        Check(enterable.ProtocolVersion == 94 && WinUiPresentationContract.Validate(enterable).Count == 0);
+        Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(enterable)).Root.FocusPreview?.EnterButton == ControllerButton.RightStick);
+        Check(ViewSnapshotValidator.Validate(enterable with { ProtocolVersion = 93 }).Any(error => error.Code == "feature_requires_version"));
         Check(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(before)).Contains("sizeToContentHeight"));
         var fitted = Snapshot(new() { SizeToContentHeight = true });
         Check(fitted.ProtocolVersion == 93 && WinUiPresentationContract.Validate(fitted).Count == 0);
@@ -25,7 +29,8 @@ internal static class FocusPreviewTests
         Check(ViewSnapshotValidator.Validate(before with { ProtocolVersion = 91 }).Any(error => error.Code == "feature_requires_version"));
         foreach (var invalid in new[] { new FocusPreviewOptions(Width: double.NaN), new(Height: double.PositiveInfinity),
             new(Width: 159), new(Width: 961), new(Height: 95), new(Height: 801), new(Placement: (AnchorPlacement)99),
-            new(OnFocus: false, OnHover: false), new(DelayMilliseconds: -1), new(DelayMilliseconds: 1501) })
+            new(OnFocus: false, OnHover: false), new(DelayMilliseconds: -1), new(DelayMilliseconds: 1501),
+            new() { EnterButton = ControllerButton.A }, new() { EnterButton = ControllerButton.B }, new() { EnterButton = (ControllerButton)999 } })
         {
             try { Snapshot(invalid); throw new Exception("Invalid preview accepted"); }
             catch (ProtocolValidationException error) when (error.Errors.Any(item => item.Code == "invalid_focus_preview")) { }
