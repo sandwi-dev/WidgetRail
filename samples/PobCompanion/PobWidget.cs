@@ -208,7 +208,7 @@ public sealed partial class PobWidget : Widget
             {
                 if(!ManagementView)root = root.Shortcut(ControllerButton.LeftBumper, "previous-section").Shortcut(ControllerButton.RightBumper, "next-section");
                 if (!busy && !CanReplaceTradeComparison && ((detailKind.Length != 0 && !InlineDetail) || pendingBefore is not null)) root = root.Shortcut(ControllerButton.B, pendingBefore is not null ? "cancel" : "back");
-                if(!busy&&CanReplaceTradeComparison)root=root.Shortcut(ControllerButton.B,"website-resume","Listings");
+                if(!busy&&CanReplaceTradeComparison)root=root.Shortcut(ControllerButton.B,"trade-review-back",HasRanking?"Ranked results":"Listings");
             }
             var view=new WidgetView(websiteVisible?root.InputScope(scope):WithFeedback(root,scope), initial, ActiveInputScopeId: scope,
                 Surface: new WidgetSurfaceHints

@@ -99,14 +99,14 @@ public sealed partial class PobWidget
             HeaderActions=UI.Row("pob.website.header-actions",
                 (ranking
                     ?new[]{Button("Return to website","trade-rank-hide","website.rank-hide"),Button("Close","website-close","website.close")}
+                    :reviewing
+                    ?new[]{Button("Return to website","trade-review-hide","website.review-hide"),Button("Close","website-close","website.close")}
                     :!reviewing&&CanReplaceTradeComparison
                     ?new[]{Button("Show comparison","trade-review-show","website.review-shortcut"),Button("Close","website-close","website.close")}
                     :new[]{Button("Close","website-close","website.close")}).Cast<WidgetElement>().ToArray()).Classes("pob-toolbar")
         });
         if(!busy&&websiteFocusSequence>0)
             modal=modal with{FocusGroupEntryRequest=new(){RequestId=websiteFocusSequence,GroupId=reviewing||ranking?websiteFocus:"pob.website.browser"}};
-        if(!busy&&reviewing&&websiteReviewRevealSequence>0)
-            modal=modal with{ScrollRevealRequest=new(websiteReviewRevealSequence,"pob.website.review.details","pob.website.review.skill")};
         return modal;
     }
 }

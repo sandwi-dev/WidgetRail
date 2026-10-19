@@ -9,7 +9,6 @@ public sealed partial class PobWidget
     private bool websiteReview;
     private string websiteFocus="pob.website.browser";
     private long websiteFocusSequence;
-    private long websiteReviewRevealSequence;
 
     private async Task CompareTradeCandidateAsync(PobTradeCandidate candidate,PobResult before,string[] slots,CancellationToken token)
     {
@@ -26,19 +25,18 @@ public sealed partial class PobWidget
             tradeCandidates.Clear();tradeCandidates.AddRange(recent);websiteReview=true;
             websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
             rankingVisible=false;
-            websiteReviewRevealSequence=focusRequestSequence;
+            tradePurchaseExpanded=false;tradeWorkspaceFocus="pob.item.compare.controls";
         }
     }
 
     private bool HandleTradeReviewAction(WidgetActionEvent action)
     {
         var id=action.ActionId;
-        if(id=="trade-review-details")
-        {websiteFocus="pob.website.review.reading";websiteFocusSequence=++focusRequestSequence;return true;}
+        if(HandleComparisonViewAction(id))return true;
         if(id=="trade-review-focus")
-        {websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
+        {tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-expand")
-        {websiteVisible=false;focusRequestSequence++;return true;}
+        {websiteVisible=false;tradeWorkspaceFocus="pob.item.compare.controls";focusRequestSequence++;return true;}
         if(id=="trade-review-hide")
         {websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-review-show")
@@ -60,13 +58,21 @@ public sealed partial class PobWidget
             },"Resuming comparisons…");return true;
         }
         if(!CanReplaceTradeComparison)return false;
+        if(id=="trade-review-back")
+        {
+            Work(async token=>
+            {
+                await OpenWebsiteAsync(websiteUrl??tradeListing!.Url,token);
+                lock(gate){rankingVisible=HasRanking;websiteReview=false;websiteFocus=HasRanking?"pob.rank.list":"pob.website.browser";websiteFocusSequence=++focusRequestSequence;}
+            },"Returning to results…");return true;
+        }
         if(id=="trade-review-close")
         {
             var before=pendingBefore??result!;
             Work(_=>
             {
                 SaveWork(before,new(before.Xml,undo.ToArray(),redo.ToArray()),refreshXml:false);
-                lock(gate){result=before;pendingBefore=null;pastedItem=null;tradeListing=null;tradeBrowsing=false;websiteReview=false;detailKind="";focusRequestSequence++;}
+                lock(gate){result=before;pendingBefore=null;pastedItem=null;tradeListing=null;tradeBrowsing=false;websiteReview=false;websiteVisible=false;detailKind="";focusRequestSequence++;}
                 return Task.CompletedTask;
             },"Finishing comparison…");return true;
         }
@@ -108,26 +114,6 @@ public sealed partial class PobWidget
         return false;
     }
 
-    private List<WidgetElement> TradeReviewControls(string prefix)
-    {
-        var rows=new List<WidgetElement>();
-        var rankingAction=HasRanking?Button("Ranked results","trade-rank-show",prefix+".rank-back"):
-            tradeCandidates.Count>1?Button("Rank recent","trade-rank-recent",prefix+".rank-back"):null;
-        if(tradeCandidates.Count>1)
-        {
-            var recent=SelectWithUnavailable("Recent",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
-                TradeItemName(c.Listing),"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob."+prefix+".recent").FocusLeft("pob.website.browser").Classes("pob-select");
-            rows.Add(rankingAction is null?recent:UI.Grid("pob."+prefix+".navigation",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],recent,rankingAction.InGrid(column:1)).Spacing(0,8));
-        }
-        else if(rankingAction is not null)rows.Add(rankingAction.FocusLeft("pob.website.browser"));
-        if(itemDraftSlots.Length>0)
-            rows.Add(SelectWithUnavailable("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob."+prefix+".slot").FocusLeft("pob.website.browser").Classes("pob-select"));
-        rows.Add(UI.Row("pob."+prefix+".actions",
-            Button("Find seller’s item","trade-review-find",prefix+".find").FocusLeft("pob.website.browser").FocusRight("pob."+prefix+".equip"),
-            Button("Equip in build","trade-review-equip",prefix+".equip").FocusLeft("pob."+prefix+".find").Disabled(pendingBefore is null)).Classes("pob-toolbar"));
-        return rows;
-    }
-
     private static string TradeItemName(PobTradeListing listing)=>!string.IsNullOrEmpty(listing.ItemName)&&!string.IsNullOrEmpty(listing.BaseType)&&
         (listing.ItemName==listing.BaseType||listing.ItemName.EndsWith(", "+listing.BaseType,StringComparison.Ordinal))?listing.ItemName:
         string.Join(", ",new[]{listing.ItemName,listing.BaseType}.Where(s=>!string.IsNullOrWhiteSpace(s)));
@@ -162,66 +148,7 @@ public sealed partial class PobWidget
         return rows;
     }
 
-    private WidgetElement TradeReviewPanel()
-    {
-        const string prefix="website.review";
-        var item=A(State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
-        var details=TradeImpact(prefix);
-        var reading=new List<WidgetElement>{Button("Expand comparison","trade-review-expand",prefix+".expand"),
-            Text("Proposed item",prefix+".item.heading","pob-heading")};
-        reading.AddRange(ItemDetails(item,prefix+".item"));
-        reading.Add(Text("Purchase details",prefix+".purchase.heading","pob-heading"));
-        AddTradeContext(reading,prefix);
-        reading.Add(Button("Hide panel","trade-review-hide",prefix+".hide"));
-        details.Add(UI.Stack("pob.website.review.reading",reading.ToArray()).RememberChildFocus("pob."+prefix+".expand").Classes("pob-buildtools"));
-        var controls=TradeReviewControls(prefix);
-        controls.Insert(0,Text(S(item,"name",TradeItemName(tradeListing!)),prefix+".title","pob-heading"));
-        controls.Insert(1,Text(tradeListing!.Price+" · "+previewSlot,prefix+".summary","pob-gold"));
-        var tools=UI.Stack("pob.website.review.tools",controls.ToArray()).RememberChildFocus("pob."+prefix+".find").Classes("pob-buildtools");
-        var scroll=UI.VerticalScroll("pob.website.review.details",details.ToArray()).Classes("pob-scroll","pob-comparison-details")
-            .Shortcut(ControllerButton.LeftStick,"trade-review-focus","Comparison controls");
-        return UI.Stack("pob.website.review",tools,scroll).RememberChildFocus("pob."+prefix+".find")
-            .Shortcut(ControllerButton.X,"trade-review-details","Item details").Classes("pob-panel","pob-tree-main");
-    }
+    private WidgetElement TradeReviewPanel() => BuildTradeComparison("website.review", expanded: false);
 
-    private WidgetElement EquipmentComparisonWorkspace()
-    {
-        var item=A(State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
-        var left=new List<WidgetElement>{Text("Proposed item","item.compare.proposed","pob-eyebrow")};
-        if(tradeListing is {} listing)left.Add(Text(listing.Price,"item.compare.price","pob-gold"));
-        if(item.ValueKind==JsonValueKind.Object)left.AddRange(ItemDetails(item));
-        if(tradeListing is not null)left.Add(Text("Purchase details","item.compare.purchase.heading","pob-heading"));
-        AddTradeContext(left,"item.compare.listing");
-        var right=new List<WidgetElement>{Text("Equipment comparison · "+previewSlot,"item.compare.heading","pob-heading"),
-            Text("Replacing "+S(A(pendingBefore!.State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot),"name","empty slot")+" with "+S(item,"name"),"item.compare.names")};
-        right.AddRange(TradeImpact("item.compare"));
-        if(!CanReplaceTradeComparison)
-        {
-            AddTradeListing(right);
-            if(tradeListing is not null)right.Add(Button("Keep this item and continue comparing","trade-review-adopt"));
-        }
-        var leftPanel=(ContainerElement)Panel("item.compare.item",left);
-        var rightPanel=(ContainerElement)Panel("item.compare.impact",right);
-        if(CanReplaceTradeComparison)
-        {
-            if(NeedsQuickControls(left.Count))leftPanel=leftPanel.Shortcut(ControllerButton.LeftStick,"trade-review-focus","Comparison controls");
-            if(NeedsQuickControls(right.Count))rightPanel=rightPanel.Shortcut(ControllerButton.LeftStick,"trade-review-focus","Comparison controls");
-        }
-        var columns=Split("equipment-comparison",leftPanel,rightPanel,1,1);
-        if(!CanReplaceTradeComparison)return columns;
-        var selectors=new List<WidgetElement>();
-        if(tradeCandidates.Count>1)selectors.Add(SelectWithUnavailable("Recent comparisons",tradeCandidates.Select(c=>new SelectOption(c.Listing.Id,
-            TradeItemName(c.Listing)+" · "+c.Listing.Price,"trade-review-recent."+c.Listing.Id,c.Listing.Id==tradeListing?.Id)).ToArray(),"pob.item.compare.recent").Classes("pob-select"));
-        if(itemDraftSlots.Length>0)selectors.Add(SelectWithUnavailable("Compare against",itemDraftSlots.Select((slot,i)=>new SelectOption("slot"+i,ComparisonSlotLabel(slot),"trade-review-slot."+i,slot==previewSlot)).ToArray(),"pob.item.compare.slot").Classes("pob-select"));
-        else selectors.Add(Text("COMPARISON · "+previewSlot+" · not equipped","item.compare.status","pob-eyebrow pob-gold"));
-        var controls=UI.Stack("pob.item.compare.controls",
-            UI.Row("pob.item.compare.selectors",selectors.ToArray()).Classes("pob-toolbar"),
-            UI.Row("pob.item.compare.actions",
-                Button("Return to listings","website-resume","item.compare.browse"),
-                Button("Equip in build","trade-review-equip","item.compare.equip"),
-                Button("Find seller’s item","trade-review-find","item.compare.find"),
-                Button("Finish comparing","trade-review-close","item.compare.close")).Classes("pob-toolbar"))
-            .RememberChildFocus("pob.item.compare.browse").Classes("pob-buildtools");
-        return UI.Stack("pob.item.compare.page",controls,columns).Classes("pob-workspace","pob-tree-main");
-    }
+    private WidgetElement EquipmentComparisonWorkspace() => BuildTradeComparison("item.compare", expanded: true);
 }

@@ -15,6 +15,7 @@ local tradeSimilar=dofile(adapterDirectory..'trade-similar.lua')
 local tradeRanking=dofile(adapterDirectory..'trade-ranking.lua')
 local currencyRates=dofile(adapterDirectory..'currency-rates.lua')
 local tradeItem=dofile(adapterDirectory..'trade-item.lua')
+local itemComparison=dofile(adapterDirectory..'item-comparison.lua')
 local itemAuthoring=dofile(adapterDirectory..'item-authoring.lua')
 itemAuthoring.configure(planningFeatures)
 local passiveChoices=dofile(adapterDirectory..'passive-choices.lua')
@@ -339,6 +340,7 @@ local function comparison(base)
 end
 local function command(req)
   local compareBase=req.compare==true and copyTable(build.calcsTab.mainOutput,true)or nil
+  local compareItems=compareBase and itemComparison.capture()or nil
   local op=req.op
   local editedTimeless
   if req.allocationMode~=nil then treeEditing.mode(req.allocationMode)end
@@ -554,7 +556,11 @@ local function command(req)
     state.editedSkillGroup=0
     for i,g in ipairs(build.skillsTab.socketGroupList)do if g==editedGroup then state.editedSkillGroup=i;break end end
   end
-  if compareBase then state.comparison=comparison(compareBase)end
+  if compareBase then
+    state.comparison=comparison(compareBase)
+    local ok,details=pcall(itemComparison.compare,compareItems,itemComparison.capture(),req.op=='item'and req.slot or nil,clean,textRuns)
+    if ok then state.itemComparisons=details else state.itemComparisonUnavailable=true end
+  end
   return {state=state,xml=build:SaveDB('code')}
 end
 output:write(json.encode({ready=true,version=launch.versionNumber})..'\n')

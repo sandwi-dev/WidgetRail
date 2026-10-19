@@ -21,8 +21,9 @@ This plan covers the next round of PoE1 and PoE2 widget improvements discussed a
 
 ## Implementation order and tracking
 
-Current acceptance checkpoint (2026-10-19): candidate **interactive** contains the cumulative
-host changes, with PoE1/PoE2 packages **0.1.4.17**, YouTube Music **0.3.43.5**, Spotify **0.3.90.2** and a quiet responsive toolbar.
+Current acceptance checkpoint (2026-10-19): the cumulative candidate is running
+hidden with the normal profile, PoE1/PoE2 packages **0.1.4.23**, YouTube Music
+**0.3.43.7**, Spotify **0.3.90.2** and a quiet responsive toolbar.
 Trade-session actions are separate from build/history controls. Configuration fits 11 options
 instead of 6 at the same viewport, comparisons use aligned named columns, and
 inspections fit their content. Search retains query/category/selected identity;
@@ -530,6 +531,25 @@ Implemented direction:
 Use isolated tests first, then a bounded installed-candidate walkthrough. Keep live trade requests limited.
 
 ## Resource and trade decisions
+
+### Item comparison and navigation follow-up (2026-10-19)
+
+- [x] Use the pinned PoB engines' `TradeHelpers.modLineTemplate` for modifier
+  pairing, with upstream variant filtering and formatted text. Preserve duplicate
+  occurrences; show added, removed, changed and optional unchanged groups without
+  interpreting larger rolls as universally better.
+- [x] Share Changes / Full items / Build impact between the website sidebar and
+  expanded workspace. Keep equipped/proposed columns aligned, retain rich text,
+  collapse purchase details and materialize modifier rows on demand.
+- [x] Keep ranked candidates beside expanded comparisons; return to results with
+  B/Back, preserve candidate focus while switching, and commit only through Equip.
+- [x] Starting an explicit new search for different equipment retires the old
+  ranking and recent comparisons. Resume remains separate. Reject stale scores
+  and old-row actions; verify Ring 2 to Helmet and saved-preview recovery.
+
+Automated evidence and package status are in the verification ledger. Physical
+checks were waived by the user for this follow-up; native visual/controller
+acceptance remains theirs.
 
 - **One calculation engine per active widget session. No parallel worker-engine pool.**
 - Reuse calculator setup, committed baselines and valid caches; batch requests where possible. Batching reduces overhead but does not make sequential calculations parallel.

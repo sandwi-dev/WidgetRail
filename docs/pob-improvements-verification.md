@@ -2,6 +2,50 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Trade modifier comparison and equipment transitions, 2026-10-19
+
+Both games now use their pinned engine's `TradeHelpers.modLineTemplate`, upstream
+variant selection and `itemLib.formatModLine` to align equipped/proposed modifier
+groups. Duplicate occurrences are retained rather than overwritten by a map.
+Changes are labelled added/removed/changed/unchanged, with no invented gameplay
+valuation. Full items retains both rich descriptions; Build impact retains PoB's
+calculation output and unsupported-effect warnings. Matching is included in the
+existing comparison response, with no additional service request. An unavailable
+matching helper falls back explicitly to the other views.
+
+The website sidebar and expanded workspace share the comparison presentation.
+Expanded mode keeps virtualized ranked candidates beside it, preserving candidate
+focus while switching. Purchase details are collapsed. Back returns to ranked
+results; Finish comparing returns to equipment and discards the preview. Only
+Equip changes the saved build. Ranking target/weight/build changes reject stale
+candidate selection. Explicit new searches, including Find similar, clear the
+previous ranking session and saved ranking; Return to listings preserves it.
+
+The Ring 2 → Helmet regression is covered with real engines and a fake web session:
+the fresh search clears the old rows, ignores their late action, ranks against
+Helmet, and leaves committed XML untouched. Recovery, manual-draft protection,
+rich-row materialization, expanded row navigation, all three comparison views and
+explicit equip/undo history are covered too. Old duplicated comparison controls,
+the absent scroll-reveal target and its state/style were removed.
+
+Validation: **323 checks passed**: trade workflows 103/104, comparison engine tests
+19/19, Find similar 28/28 and rendering resilience 11/11 (PoE1/PoE2). Release build
+passed without warnings. Evidence: `artifacts/pob/trade-review-*-workflow-qualified.log`,
+`trade-comparison-*-final.log`, `trade-review-*-similar-final.log` and
+`trade-review-*-render-resilience-final.log`. Packaging validation also checks WRSS;
+an unsupported border shorthand was caught and replaced before delivery.
+
+Candidate packages: **0.1.4.23** for both games, under
+`artifacts/pob/trade-review-packages-20261019-final`. Existing upstream archives,
+runtime and web assets are retained by hash. No host changes, GGG requests,
+purchases or seller messages were needed for these checks. Physical checks were
+waived by the user; this entry does not claim native visual/controller acceptance.
+
+Both packages installed enabled using the existing user settings. The cumulative
+candidate was relaunched hidden with the normal profile and controller input
+enabled, PID 4420. Evidence: `trade-review-install-1.log`,
+`trade-review-install-2.log`, `trade-review-launch.json`. No merge/push/release.
+
 ## Build toolbar and search destination focus, 2026-10-19
 
 Undo/Redo no longer declare a nested remembered-focus group inside the shared

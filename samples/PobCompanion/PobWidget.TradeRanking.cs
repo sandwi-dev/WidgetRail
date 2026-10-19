@@ -46,6 +46,20 @@ public sealed partial class PobWidget
     private string RankingWeightKey()=>JsonSerializer.Serialize(new{tradePriority,weights=TradeWeights()});
     private bool RankingStale=>rankingBuild!=documentId||rankingBaseline!=XmlHash((pendingBefore??result)!.Xml)||rankingWeights!=RankingWeightKey();
     private bool HasRanking=>rankingBuild==documentId&&(rankedItems.Length>0||rankingInputs.Count>0);
+    // An explicit new search owns its target. Resuming a page never calls this.
+    private async Task OpenTradeSearchAsync(string url,CancellationToken token)
+    {
+        await OpenWebsiteAsync(url,token);
+        lock(gate)
+        {
+            rankingInputs.Clear();rankedItems=[];rankingSkipped=[];rankingSlots=[];
+            rankingSlot=tradeSlot;rankingBuild="";rankingBaseline="";rankingWeights="";rankingSummary="";rankingSelected="";
+            rankingVisible=false;rankingEditing=false;rankingSkippedExpanded=false;rankingRates=null;
+            tradeCandidates.Clear();tradeListing=null;tradeBrowsing=false;previewSlot=null;websiteReview=false;
+            websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;
+            File.Delete(Path.Combine(dataDirectory,documentId+".ranking.json"));
+        }
+    }
     private async Task LoadAndEvaluateTradeAsync(CancellationToken token)
     {
         var session=websiteSession??throw new IOException("Open the trade website first.");
@@ -180,7 +194,7 @@ public sealed partial class PobWidget
         if(id=="trade-rank-edit"){rankingEditing=!rankingEditing;websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-rank-skipped"){rankingSkippedExpanded=!rankingSkippedExpanded;return true;}
         if(id=="trade-rank-hide"){rankingVisible=false;websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
-        if(id=="trade-rank-focus"){websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;return true;}
+        if(id=="trade-rank-focus"){tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;return true;}
         if(id=="trade-rank-show"&&HasRanking)
         {
             rankingVisible=true;
@@ -205,13 +219,15 @@ public sealed partial class PobWidget
         {rankingSlot=S(rankingSlots[si],"name");rankingBaseline="";return true;}
         if(parts is ["trade-rank-select",var selected]&&int.TryParse(selected,out var ri)&&rankedItems.FirstOrDefault(r=>r.Index==ri)is {} row)
         {
+            if(RankingStale){ShowFeedback("Evaluate again","The build, target or weights changed. Recalculate before comparing a ranked item.",ToastTone.Warning);return true;}
+            var fromWorkspace=!websiteVisible;
             rankingSelected=row.Candidate.Listing.Id;
             Work(async token=>
             {
                 var before=pendingBefore??result!;var slots=await ItemSlotsAsync(row.Candidate.Raw,before.Xml,token);
                 if(!slots.Contains(rankingSlot))throw new IOException("This item does not fit the selected target. Choose another slot and evaluate again.");
                 await CompareTradeCandidateAsync(row.Candidate with{Slot=rankingSlot},before,slots,token);
-                lock(gate)rankingVisible=false;
+                lock(gate){rankingVisible=false;if(fromWorkspace)tradeWorkspaceFocus="pob.rank.list";}
             },"Comparing selected result…");return true;
         }
         return false;
@@ -231,12 +247,12 @@ public sealed partial class PobWidget
         return SelectWithUnavailable("Compare against",options,"pob.rank.slot",
             (rankingSlot.Length>0?rankingSlot:"Saved target")+" — unavailable in this loadout").FocusLeft("pob.website.browser").Classes("pob-select");
     }
-    private WidgetElement TradeRankingPanel()
+    private WidgetElement TradeRankingPanel(bool workspace=false)
     {
         rankingCollection??=CreateIndexedCollection<RankQuery,RankEntry>("pob.rank.source",rankingQuery,0,new()
         {
             ReadRange=(q,start,count,token)=>ValueTask.FromResult<IReadOnlyList<RankEntry>>(q.Entries.Skip(start).Take(count).ToArray()),ItemKey=e=>new(e.Key),
-            RenderItem=(_,e,c)=>UI.ActionSurface("select",c.Id("row"),e.Label+" · "+e.Price+(e.WarningCount>0?$" · PoB does not model {e.WarningCount} modifiers":""),ActionSurfaceOrientation.Vertical,
+            RenderItem=(q,e,c)=>UI.ActionSurface("select",c.Id("row"),e.Label+" · "+e.Price+(e.WarningCount>0?$" · PoB does not model {e.WarningCount} modifiers":""),ActionSurfaceOrientation.Vertical,
                 UI.Grid(c.Id("identity"),[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],
                     UI.Text(e.Label,c.Id("title")).Classes("pob-list-title","pob-rank-title"),
                     UI.Text(e.Price,c.Id("price")).Classes("pob-small","pob-gold").InGrid(column:1)).Spacing(0,8),
@@ -244,15 +260,22 @@ public sealed partial class PobWidget
                     UI.Text(e.Summary.Split(" · Player DPS",2)[0],c.Id("score")).Classes("pob-small","pob-inline",e.Tone),
                     UI.Text(e.Summary.Contains(" · Player DPS",StringComparison.Ordinal)?" · Player DPS"+e.Summary.Split(" · Player DPS",2)[1]:"",c.Id("damage")).Classes("pob-small","pob-inline","pob-muted"),
                     UI.Text(e.WarningCount>0?$" · {e.WarningCount} unmodeled":"",c.Id("warnings")).Classes("pob-small","pob-inline","pob-gold"))
-                    .Classes("pob-small","pob-rank-metrics")).Selected(e.Selected).FocusLeft("pob.website.browser").Classes("pob-list-item","pob-rank-item"),
+                    .Classes("pob-small","pob-rank-metrics")).Selected(e.Selected).Classes("pob-list-item","pob-rank-item") with
+                    {FocusNeighbors=q.Context.StartsWith("workspace:",StringComparison.Ordinal)?new(){Right="pob.item.compare.controls"}:new(){Left="pob.website.browser"}},
             OnAction=(q,e,a,token)=>{lock(gate){if(!ReferenceEquals(q,rankingQuery)||busy||a.ActionId!="select")return ValueTask.CompletedTask;return OnActionAsync(a with{ActionId=e.Action},token);}}
         });
         var stale=RankingStale;
         var entries=rankedItems.Select((r,i)=>new RankEntry(r.Candidate.Listing.Id,$"{i+1}. {TradeItemName(r.Candidate.Listing)}",r.Candidate.Listing.Price,RankingRowSummary(r,stale),
             !stale&&r.Evaluation.TryGetProperty("scorePercent",out var p)?p.GetDouble()<0?"pob-life":"pob-green":"pob-muted","trade-rank-select."+r.Index,r.Candidate.Listing.Id==rankingSelected,A(r.Evaluation,"warnings").Length)).ToArray();
-        var revision=stale?"stale":rankingWeights+rankingBaseline;
+        var revision=(workspace?"workspace:":"website:")+(stale?"stale":rankingWeights+rankingBaseline);
         if(rankingQuery.Context!=revision||!rankingQuery.Entries.SequenceEqual(entries))
         {var same=rankingQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));rankingQuery=new(revision,entries);if(same)rankingCollection.UpdateContent(rankingQuery);else rankingCollection.PublishQuery(rankingQuery,entries.Length);}
+        if(workspace)return UI.Stack("pob.rank.panel",
+            Text("Ranked candidates", "rank.heading", "pob-heading"),
+            Text(rankingSlot+" · "+rankedItems.Length+" results", "rank.context", "pob-small pob-muted"),
+            UI.Stack("pob.rank.list",UI.CollectionList("pob.rank.results",rankingCollection,92,"Evaluated trade listings").Classes("pob-scroll"))
+                .RememberChildFocus("pob.rank.results").Shortcut(ControllerButton.LeftStick,"trade-review-focus","Comparison controls").Classes("pob-workspace"))
+            .Classes("pob-panel","pob-tree-main");
         var controls=new List<WidgetElement>{Text("Ranked listings","rank.heading","pob-heading")};
         if(rankingEditing)
         {

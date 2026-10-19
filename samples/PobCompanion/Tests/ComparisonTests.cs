@@ -32,6 +32,22 @@ internal static class ComparisonTests
         double Life(PobResult result)=>result.State.GetProperty("stats").EnumerateArray().Single(s=>s.GetProperty("name").GetString()=="Life").GetProperty("value").GetDouble();
         check(Life(upgrade)>Life(baseline)&&Lines(upgrade).Length>0,"Item comparison exercises an actual increase in calculated life");
         check(Lines(upgrade).SequenceEqual(await Oracle(baseline.Xml,upgrade.Xml)),"Item upgrade summary matches every desktop PoB comparison line");
+        var changes=PobItemModifierComparison.Read(upgrade.State,"Helmet");
+        check(changes.Available&&changes.Rows.Any(row=>row.Status is "added" or "changed"&&row.After.Any(line=>line.Formatted.GetProperty("text").GetString()!.Contains("37"))),"Modifier comparison retains added life and exposes upstream formatted text");
+        var restoredItem=await engine.ExecuteAsync(new{op="load",xml=upgrade.Xml,name="Restored item comparison"},default,baseline.Xml,compare:true);
+        check(JsonSerializer.Serialize(PobItemModifierComparison.Read(restoredItem.State,"Helmet"))==JsonSerializer.Serialize(changes),"Restored item preview has identical modifier pairings and formatting");
+        var sameItem=await engine.ExecuteAsync(new{op="item",slot="Helmet",raw=originalRaw},default,baseline.Xml,compare:true);
+        var same=PobItemModifierComparison.Read(sameItem.State,"Helmet");
+        check(same.Available&&same.Rows.Length>0&&same.Rows.All(row=>row.Status=="same"),"Comparing the equipped item retains unchanged modifiers without invented differences");
+        var duplicateRaw="Rarity: RARE\nComparison fixture\nGold Ring\nImplicits: 1\n15% increased Rarity of Items found\n+10 to maximum Life\n+20 to maximum Life\nAdds 1 to 4 Physical Damage to Attacks";
+        var firstRing=await engine.ExecuteAsync(new{op="item",slot="Ring 1",raw=duplicateRaw},default,baseline.Xml);
+        var changedRing=await engine.ExecuteAsync(new{op="item",slot="Ring 1",raw=duplicateRaw.Replace("+20","+25").Replace("1 to 4","2 to 8")+"\n+10 to maximum Mana"},default,firstRing.Xml,compare:true);
+        var ringChanges=PobItemModifierComparison.Read(changedRing.State,"Ring 1");
+        check(ringChanges.Available&&ringChanges.Rows.Any(row=>row.Status=="changed"&&row.Before.Length==2&&row.After.Length==2),"PoB template grouping preserves duplicate modifier occurrences instead of overwriting them");
+        check(ringChanges.Rows.Any(row=>row.Status=="changed"&&row.Before.Any(line=>line.Formatted.GetProperty("text").GetString()!.Contains("1 to 4")))&&ringChanges.Rows.Any(row=>row.Status=="added"&&row.Before.Length==0),"Range changes pair through PoB and added modifiers retain an empty equipped side");
+        var reverseRing=await engine.ExecuteAsync(new{op="item",slot="Ring 1",raw=duplicateRaw},default,changedRing.Xml,compare:true);
+        check(PobItemModifierComparison.Read(reverseRing.State,"Ring 1").Rows.Any(row=>row.Status=="removed"&&row.After.Length==0),"Removed modifiers retain an empty proposed side");
+        check(!PobItemModifierComparison.Read(default,"Helmet").Available&&!PobItemModifierComparison.Read(JsonSerializer.SerializeToElement(new{itemComparisons="bad"}),"Helmet").Available,"Missing or malformed comparison data falls back without a rendering failure");
         var downgrade=await engine.ExecuteAsync(new{op="item",slot="Helmet",raw=originalRaw},default,upgrade.Xml,compare:true);
         check(Life(downgrade)<Life(upgrade)&&Lines(downgrade).SequenceEqual(await Oracle(upgrade.Xml,downgrade.Xml)),
             "Weaker item replacement preserves desktop comparison losses and percentage formatting");

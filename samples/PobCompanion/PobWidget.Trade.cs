@@ -32,12 +32,12 @@ public sealed partial class PobWidget
             RefreshTradeLeagues();return true;
         }
         if(id=="trade-browse")
-        {if(detailKind!="trade")tradeSlot=ItemSlot;ReadTradePreferences();Work(async token=>{await LoadTradeLeaguesAsync(token);await OpenWebsiteAsync(BrowseTradeUrl(),token);},"Opening trade website…");return true;}
+        {if(detailKind!="trade")tradeSlot=ItemSlot;ReadTradePreferences();Work(async token=>{await LoadTradeLeaguesAsync(token);await OpenTradeSearchAsync(BrowseTradeUrl(),token);},"Opening trade website…");return true;}
         if(detailKind!="trade")return false;
         if(id=="trade-open"&&TradeSearchAvailable&&result is {} current)
         {
             var slot=tradeSlot;var priority=tradePriority;var league=tradeLeague;var price=tradeBudget;var currency=tradeCurrency;var mode=tradeMode;
-            Work(async token=>await OpenWebsiteAsync(await CalculateTradeUrlAsync(current.Xml,slot,priority,league,price,currency,mode,token),token),"Calculating upgrade search…");
+            Work(async token=>await OpenTradeSearchAsync(await CalculateTradeUrlAsync(current.Xml,slot,priority,league,price,currency,mode,token),token),"Calculating upgrade search…");
             return true;
         }
         if(id=="back"){detailKind="item";focusRequestSequence++;return true;}

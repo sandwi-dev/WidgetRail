@@ -147,9 +147,17 @@ internal static class TradeWorkflowTests
             check(work.ItemDraft?.Contains("Gold Ring")==true&&work.TradeListing?.Price=="2 × Chaos Orb"&&work.Pending?.Slot=="Ring 1"&&work.TradeBrowse&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved,"Compare calculates immediately against an explicit slot and persists recovery without equipping");
             check(View().Root.Kind==ViewNodeKind.ModalLayer&&Nodes(View().Root).Any(n=>n.Id=="pob.website")&&ViewSnapshotValidator.Validate(View()).Count==0,"Comparison remains beside the same browser in a valid modal snapshot");
             check(Nodes(View().Root).Single(n=>n.Id=="pob.website").WebBrowser?.InteractionMode==BrowserInteractionMode.ActivateToInteract,"Split website requires A to enter and supports B to leave interaction");
-            check(View().ScrollRevealRequest is {ScrollId:"pob.website.review.details",TargetId:"pob.website.review.skill"},"A newly compared item starts at its impact instead of retaining the previous item's scroll position");
-            var details=Nodes(View().Root).Single(n=>n.Id=="pob.website.review.details");var ordered=Nodes(details).ToArray();
-            check(Array.FindIndex(ordered,n=>n.Id=="pob.website.review.stats.heading")<Array.FindIndex(ordered,n=>n.Id=="pob.website.review.item.heading")&&Array.FindIndex(ordered,n=>n.Id=="pob.website.review.item.heading")<Array.FindIndex(ordered,n=>n.Id=="pob.website.review.purchase.heading"),"Comparison reading order is impact, item description, then purchase details");
+            check(View().ScrollRevealRequest is null,"Changes view does not request an absent impact anchor");
+            check(Nodes(View().Root).Single(n=>n.Id=="pob.website.review.view").SelectOptions.Single(o=>o.IsSelected).Label=="Changes"&&!Nodes(View().Root).Any(n=>n.Id=="pob.website.review.price"),"Comparison starts with modifier changes and collapsed purchase details");
+            await Action("trade-review-unchanged");
+            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"trade-modifiers",700))
+            {using var range=await host.AcquireAsync("pob.website.review.details",0,Math.Min(64,Nodes(View().Root).Single(n=>n.Id=="pob.website.review.details").IndexedCollection!.Count));check(range.Range.Items.Count>0,"Aligned rich modifier rows materialize through the indexed collection contract");}
+            await Action("trade-review-unchanged");
+            await Action("trade-review-view.items");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.full-items"),"Full items provides both original descriptions in one aligned reading panel");
+            await Action("trade-review-view.impact");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.skill"),"Build impact remains available as an explicit view");
+            await Action("trade-review-view.changes");
             await Action("trade-review-hide");
             check(Nodes(View().Root).Single(n=>n.Id=="pob.website").WebBrowser?.InteractionMode==BrowserInteractionMode.InteractOnFocus&&opened.Count==1,"Hiding the comparison restores automatic browsing on the same session");
             await Action("trade-review-show");
@@ -166,11 +174,13 @@ internal static class TradeWorkflowTests
             second["item"]!["explicitMods"]=new JsonArray(new JsonObject{["description"]=unmodeled});
             incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="compare-item",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test",entry=second}})));
             await WaitComparison(new string('c',64));
+            await Action("trade-review-view.impact");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.warnings.proposed.0"&&n.Text==unmodeled),"Unmodeled trade effects are explained beside the numerical comparison");
             work=PobWorkStore.Read(directory,id,game)!;
             check(work.TradeCandidates?.Length==2&&work.ItemDraft!.Contains("20% increased")&&WorkStateTests.SameBuild(work.CommittedXml,baseline.Xml),"Second listing replaces only the browsing preview and uses the same committed baseline");
             await Action("trade-review-recent."+entry.id);
             check(PobWorkStore.Read(directory,id,game)?.TradeListing?.Id==entry.id&&WorkStateTests.SameBuild(PobWorkStore.Read(directory,id,game)!.Pending!.Xml,originalComparison),"Recent comparison recalculates the original item against its original slot, not the previous candidate");
+            await Action("trade-review-purchase."+entry.id);
             check(Nodes(View().Root).Any(n=>n.Text=="2 × Chaos Orb · Test seller")&&!Nodes(View().Root).Any(n=>n.Text=="3 × Chaos Orb · Test seller"),"Displayed seller and price follow the selected comparison");
             var preserved=File.ReadAllText(Path.Combine(directory,id+".work.json"));
             incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="compare-item",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test",entry=unsupported}})));
@@ -188,7 +198,11 @@ internal static class TradeWorkflowTests
             check(Nodes(View().Root).Where(n=>n.Id.StartsWith("pob.rank.skipped.",StringComparison.Ordinal)&&n.Id!="pob.rank.skipped.title").Any(n=>n.Text=="Gold Ring: "+reason),"Incompatible listings display item name and readable reason without Lua locations");
             await Action("trade-rank-skipped");await Action("trade-rank-edit");
             var target=Nodes(View().Root).Single(n=>n.Id=="pob.rank.slot").SelectOptions.Single(o=>o.Label.StartsWith("Ring 2 —",StringComparison.Ordinal));
-            await Action(target.ActionId);await Action("trade-rank-evaluate");
+            await Action(target.ActionId);
+            var beforeStaleSelection=PobWorkStore.Read(directory,id,game)!.Pending!.Xml;
+            await Action("trade-rank-select.1");
+            check(PobWorkStore.Read(directory,id,game)!.Pending!.Xml==beforeStaleSelection,"Changing ranking target cannot reuse a stale candidate score or replace the preview");
+            await Action("trade-rank-evaluate");
             check(loadRequests==2&&requestedLimit is 20 or 50 or 100&&!Nodes(View().Root).Any(n=>n.Id=="pob.rank.help"),"Website and panel actions request bounded automatic loading and omit redundant priority guidance");
             check(Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("2 ranked"))&&ViewSnapshotValidator.Validate(View()).Count==0,"Received batch ranks both listings for an explicit equipment target in a valid native panel");
             using(var ranking=JsonDocument.Parse(File.ReadAllText(Path.Combine(directory,id+".ranking.json"))))
@@ -203,16 +217,38 @@ internal static class TradeWorkflowTests
             check(Nodes(View().Root).Any(n=>n.Id=="pob.website.review.title")&&navigated==navigationBeforeRank&&PobWorkStore.Read(directory,id,game)?.Pending?.Slot=="Ring 2","Selecting a ranked result compares against the chosen slot without navigating the website");
             check(File.Exists(Path.Combine(directory,id+".ranking.json")),"Ranked candidates are retained for restart");
             await Action("trade-review-expand");
-            check(Nodes(View().Root).Any(n=>n.Id=="pob.workspace.equipment-comparison")&&Nodes(View().Root).Any(n=>n.Id=="pob.item.name"),"Expanded comparison shows item details beside impact");
+            check(Nodes(View().Root).Any(n=>n.Id=="pob.workspace.trade-candidates")&&Nodes(View().Root).Any(n=>n.Id=="pob.rank.results"),"Expanded comparison keeps ranked candidates alongside item comparison");
+            using(var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"expanded-candidates",900))
+            {using var range=await host.AcquireAsync("pob.rank.results",0,2);check(range.Range.Items.All(row=>row.Root.Focus?.Right=="pob.item.compare.controls"&&row.Root.Focus?.Left is null),"Expanded candidate rows navigate to comparison controls without an absent browser target");}
+            await Action("trade-review-candidates");
+            check(View().FocusGroupEntryRequest?.GroupId=="pob.rank.list","LS enters the ranked candidates from comparison controls");
+            await Action("trade-rank-select.2");
+            check(View().Root.Kind!=ViewNodeKind.ModalLayer&&View().FocusGroupEntryRequest?.GroupId=="pob.rank.list"&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved,"Switching candidates stays expanded, retains candidate focus and leaves the build unchanged");
+            await Action("trade-rank-select.1");
+            await Action("trade-review-back");
+            check(View().FocusGroupEntryRequest?.GroupId=="pob.rank.list"&&Nodes(View().Root).Any(n=>n.Id=="pob.rank.results"),"Back from expanded comparison restores ranked results");
+            await Action("trade-rank-select.1");await Action("trade-review-expand");
             check(Nodes(View().Root).Single(n=>n.ActionId=="trade-review-close").Text=="Finish comparing","Exit action is labelled Finish comparing rather than implying it only hides the panel");
             await Action("website-resume");
             check(View().FocusGroupEntryRequest?.GroupId=="pob.website.browser"&&opened.Count==1&&navigated==0,"Browsing restores focus to the retained page without navigation or discard");
             await Action("website-close");
             var recoverySnapshot=PobWorkStore.Read(directory,id,game)!;
+            var recoveryRanking=File.ReadAllText(Path.Combine(directory,id+".ranking.json"));
             await Action("trade-review-close");
             check(PobWorkStore.Read(directory,id,game)?.Pending is null&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved&&Nodes(View().Root).Any(n=>n.Id=="pob.item-paste"),"Finish comparing returns to Items without equipping the preview");
+            await Action("item."+helmet);
             await Action("trade-browse");
             check(View().Root.Kind==ViewNodeKind.ModalLayer&&opened.Count==1&&navigated==1,"Browse trade website from Items opens in the overlay even with Windows preference");
+            check(!Nodes(View().Root).Any(n=>n.Id=="pob.rank.results")&&!File.Exists(Path.Combine(directory,id+".ranking.json")),"Starting another equipment search retires previous rankings and their restart cache");
+            await Action("trade-rank-select.1");
+            check(PobWorkStore.Read(directory,id,game)?.Pending is null,"A late action from the previous ranking cannot create a comparison in the new search");
+            incoming.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{kind="page-action",action="evaluate-request",payload=new{url=$"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard/test"}})));
+            var nextTargetDeadline=DateTime.UtcNow.AddSeconds(30);
+            while(!Nodes(View().Root).Any(n=>n.Id=="pob.rank.summary"&&n.Text!.StartsWith("0 ranked")))
+            {if(DateTime.UtcNow>nextTargetDeadline)throw new TimeoutException("New equipment ranking did not finish");await Task.Delay(30);}
+            await Idle();
+            using(var freshRanking=JsonDocument.Parse(File.ReadAllText(Path.Combine(directory,id+".ranking.json"))))
+                check(freshRanking.RootElement.GetProperty("Slot").GetString()=="Helmet"&&freshRanking.RootElement.GetProperty("Rows").GetArrayLength()==0&&File.ReadAllText(Path.Combine(directory,id+".xml"))==saved,"Ranking different equipment uses Helmet instead of the prior Ring 2 and preserves the build");
             await Action("website-close");await Action("item-paste");
             var manualDraft=PobWorkStore.Read(directory,id,game)!.ItemDraft;
             await Action("website-resume");incoming.Enqueue(Convert.ToBase64String(eventJson));
@@ -221,6 +257,7 @@ internal static class TradeWorkflowTests
             {if(DateTime.UtcNow>blockedUntil)throw new TimeoutException("Existing draft was not protected.");await Task.Delay(30);}
             check(PobWorkStore.Read(directory,id,game)!.ItemDraft==manualDraft&&!PobWorkStore.Read(directory,id,game)!.TradeBrowse,"Website browsing cannot replace a manually pasted or edited draft");
             PobWorkStore.Save(directory,id,game,recoverySnapshot);
+            File.WriteAllText(Path.Combine(directory,id+".ranking.json"),recoveryRanking);
             await WidgetTestHost.DestroyAsync(widget);
             check(closed==1,"Widget destruction closes its retained website session");
             await using var reopenedEngine=new PobEngine(root,runtime,adapter);
@@ -233,9 +270,9 @@ internal static class TradeWorkflowTests
                 while(Nodes(reopened.Render().CreateSnapshot("reopened",++sequence).Root).Any(n=>n.Id=="pob.cancel-operation"))
                 {if(DateTime.UtcNow>until)throw new TimeoutException("Reopening trade draft timed out.");await Task.Delay(30);}
                 var restored=Nodes(reopened.Render().CreateSnapshot("reopened",++sequence).Root).ToArray();
-                check(restored.Any(n=>n.Text=="2 × Chaos Orb · Test seller")&&restored.Any(n=>n.Text=="Return to listings")&&restored.Any(n=>n.Text=="Find seller’s item"),"Restart offers separate return-to-search and seller-lookup actions with restored comparison context");
+                check(restored.Any(n=>n.Text?.Contains("2 × Chaos Orb")==true)&&restored.Any(n=>n.Text=="Return to listings")&&restored.Any(n=>n.Text=="Find listing"),"Restart offers separate return-to-search and seller-lookup actions with restored comparison context");
                 check(restored.Any(n=>n.Text=="Ranked results"),"Saved ranking remains accessible after restart");
-                check(restored.Any(n=>n.Id=="pob.item.name")&&PobWorkStore.Read(directory,id,game)?.TradeCandidates?.Length==2,"Item identity and recent comparisons survive unloading");
+                check(restored.Any(n=>n.Id=="pob.item.compare.after-name")&&PobWorkStore.Read(directory,id,game)?.TradeCandidates?.Length==2,"Item identity and recent comparisons survive unloading");
                 await reopened.OnActionAsync(new("trade-review-equip","reopened"));
                 until=DateTime.UtcNow.AddSeconds(20);
                 while(Nodes(reopened.Render().CreateSnapshot("reopened",++sequence).Root).Any(n=>n.Id=="pob.cancel-operation"))

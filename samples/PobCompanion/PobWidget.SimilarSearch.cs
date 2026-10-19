@@ -105,7 +105,7 @@ public sealed partial class PobWidget
                 var query=await engine.ExecuteAsync(new{op="similar-search",raw=reference.Raw,league,mode,options},token,reference.Build.Xml);
                 token.ThrowIfCancellationRequested();
                 lock(gate)if(!SimilarCurrent||!ReferenceEquals(reference,similarReference)||detailKind!="similar-search")return;
-                await OpenWebsiteAsync(PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query")),token);
+                await OpenTradeSearchAsync(PobTradeSearch.SearchUrl(game,league,query.State.GetProperty("query")),token);
             },"Preparing similar-item search…");return true;
         }
         if(parts.Length!=4)return false;
