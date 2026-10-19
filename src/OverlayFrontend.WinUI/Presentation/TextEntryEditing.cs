@@ -19,6 +19,24 @@ internal static class TextEntryEditing
             : boundaries.FirstOrDefault(position => position > start, value.Length);
     }
 
+    internal static int MoveWord(string value, int start, int length, int direction, IReadOnlyList<int> words)
+    {
+        var boundaries = Boundaries(value);
+        var (first, end) = Selection(value, start, length);
+        if (length > 0) return direction < 0 ? first : end;
+        var target = direction < 0 ? words.LastOrDefault(position => position < first)
+            : words.FirstOrDefault(position => position > end, value.Length);
+        return direction < 0 ? Floor(boundaries, Math.Clamp(target, 0, value.Length)) : Ceiling(boundaries, Math.Clamp(target, 0, value.Length));
+    }
+
+    internal static Edit BackspaceWord(string value, int start, int length, IReadOnlyList<int> words)
+    {
+        if (length > 0) return Backspace(value, start, length);
+        var end = Ceiling(Boundaries(value), Math.Clamp(start, 0, value.Length));
+        var first = MoveWord(value, end, 0, -1, words);
+        return new(value.Remove(first, end - first), first);
+    }
+
     internal static Edit? Insert(string value, int start, int length, string inserted, int maximumLength)
     {
         var (first, end) = Selection(value, start, length);

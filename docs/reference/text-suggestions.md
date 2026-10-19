@@ -146,3 +146,23 @@ the shared process boundary so widgets do not each need timeout/recovery plumbin
 Default suggestions require protocol 88 (introduced in SDK 0.4.5-dev). Custom timing
 requires protocol 89 and SDK 0.4.6-dev; older hosts must reject that feature instead
 of silently using a shorter deadline. Existing fields remain commit-only.
+
+## Ordinary word completion
+
+Widget suggestions remain whole-field replacements. Separately, protocol 96 adds
+an opt-in host fallback for prose fields:
+
+```csharp
+var message = UI.TextEntry(draft, "Your message", "message", "message.entry", 2048)
+    with { InputKind = TextEntryInputKind.Prose };
+```
+
+With an English UI language and no declared widget source, the keyboard offers
+local word completions. L3 or choosing a result replaces only the word at the
+caret, preserves the surrounding text and leaves the keyboard open. Moving the
+caret invalidates older results even when the prefix is unchanged. Sensitive and
+technical fields must retain the appropriate input kind; existing ordinary fields
+are not automatically opted in. No server queries or typing-history learning occur.
+
+Other purposes are `Integer`, `Decimal`, `Url` and `Email`. These choose a suitable
+keyboard layout; they do not replace validation of committed input.

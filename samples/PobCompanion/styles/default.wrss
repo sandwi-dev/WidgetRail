@@ -132,3 +132,5 @@ text { color: var(--text); text-align: start; }
 .pob-preview-gem { gap:0px; }
 .pob-preview-gem-name { font-size:14px; max-lines:1; text-overflow:ellipsis; }
 .pob-preview-gem-name.pob-blue { color:var(--data-blue,var(--text)); }
+
+.pob-recent-builds { font-size:20px; font-weight:600; min-width:0px; }

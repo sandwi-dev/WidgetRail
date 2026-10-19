@@ -15,6 +15,7 @@ Use **PoE1 Path of Building (Beta)** for Path of Exile or **PoE2 Path of Buildin
 - Preview tree and equipment changes before applying them, and undo saved edits.
 - Inspect damage, defences, and the calculation breakdowns PoB provides.
 - Browse the official trade website beside item comparisons and rank possible upgrades.
+- Find similar items from a guide: select the modifiers you need and relax their roll requirements.
 - Export PoB XML or share codes; PoE2 also supports in-game build-planner files.
 
 ## Get started
@@ -31,6 +32,10 @@ read-only; A or click still performs the action. Loadout switches remain part of
 Item inventory, unique-item and gem candidates show their complete preview and controls on focus or hover.
 Press **X** (or click the preview) to interact with its controls; **B** returns to
 the same candidate without replacing the panel. **A** on the candidate keeps its usual select/add action.
+
+The **Build** dropdown at the top switches between up to 20 recent builds. **All saved builds** opens the full library.
+
+**Find similar** is available for equipped/inventory items, item drafts and either side of an equipment comparison. It uses PoB’s Buy similar filters; the guide item stays separate from the equipment used to evaluate results.
 
 Each PoE widget remembers its last main tab across reloads. Pending comparisons or item drafts still reopen where you can finish them.
 

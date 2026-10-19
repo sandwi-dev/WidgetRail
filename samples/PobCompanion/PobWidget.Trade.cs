@@ -126,7 +126,7 @@ public sealed partial class PobWidget
             UI.Select("Prioritize",TradePriorities.Select(p=>new SelectOption(p.Key,p.Label,"trade-priority."+p.Key,p.Key==tradePriority)).ToArray(),"pob.trade-priority").Classes("pob-select"),
             Text(TradePriorities.Single(p=>p.Key==tradePriority).Help,"trade.priority-help","pob-small pob-muted"),
             TradeOptionControls(),
-            UI.Row("pob.trade.price",Field("Maximum price (optional)",UI.TextEntry(tradeBudget,"No price limit","trade-budget","pob.trade-budget",20).Classes("pob-input"),"trade-budget"),
+            UI.Row("pob.trade.price",Field("Maximum price (optional)",(UI.TextEntry(tradeBudget,"No price limit","trade-budget","pob.trade-budget",20) with{InputKind=TextEntryInputKind.Decimal}).Classes("pob-input"),"trade-budget"),
                 UI.Select("Currency",new[]{"divine","chaos","exalted"}.Select(c=>new SelectOption(c,char.ToUpperInvariant(c[0])+c[1..]+" Orb","trade-currency."+c,c==tradeCurrency)).ToArray(),"pob.trade-currency").Classes("pob-select")).Classes("pob-toolbar","pob-price-fields"),
             Text("Weights estimate an upgrade; they do not guarantee it. Compare an item before applying it.","trade.caution","pob-small pob-muted"),
             UI.Row("pob.trade.return",Button("Paste item to compare","item-paste"),Button("Refresh leagues","trade-refresh")).Classes("pob-toolbar"),

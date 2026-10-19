@@ -57,10 +57,17 @@ internal sealed partial class BrowserSurface
             if (!Current()) return;
             using var metadata = JsonDocument.Parse(await Call("Runtime.callFunctionOn",
                 JsonSerializer.Serialize(new BrowserFieldCall(target.ObjectId,
-                    "function(){return {multiline:this instanceof HTMLTextAreaElement||this.isContentEditable};}"), BrowserJsonContext.Default.BrowserFieldCall)));
+                    "function(){return {multiline:this instanceof HTMLTextAreaElement||this.isContentEditable,kind:this.type||'',mode:this.inputMode||''};}"), BrowserJsonContext.Default.BrowserFieldCall)));
             var multiline = metadata.RootElement.GetProperty("result").GetProperty("value").GetProperty("multiline").GetBoolean();
+            var fieldMetadata=metadata.RootElement.GetProperty("result").GetProperty("value");
+            var purpose=initial.Sensitive?TextEntryInputKind.Sensitive:fieldMetadata.GetProperty("kind").GetString() switch
+            {
+                "email"=>TextEntryInputKind.Email,"url"=>TextEntryInputKind.Url,"number"=>TextEntryInputKind.Decimal,
+                _=>fieldMetadata.GetProperty("mode").GetString() switch {"numeric"=>TextEntryInputKind.Integer,"decimal"=>TextEntryInputKind.Decimal,_=>TextEntryInputKind.Ordinary},
+            };
             dialog = new(new ViewNode { Id = "browser.liveEdit", Kind = ViewNodeKind.TextEntry,
                 TextEntryValue = initial.Display, TextEntryMaximumLength = 2048,
+                TextEntryInputKind = purpose,
                 AccessibilityLabel = initial.Sensitive ? "Password" : "Type directly into the page",
                 TextEntryPlaceholder = "Live page text" }, _ => dialog!.Hide(),
                 multiline: multiline, allowSubmit: true, liveEdit: Send);
@@ -115,14 +122,14 @@ internal sealed partial class BrowserSurface
         }
         async Task<KeyboardTextState> Send(KeyboardEdit edit)
         {
-            await Read(); // Exact field must still own browser focus before every command.
+            var current=await Read(); // Exact field must still own browser focus before every command.
             if (edit.Kind == KeyboardEditKind.Insert)
                 await Call("Input.insertText", JsonSerializer.Serialize(new BrowserInsertText(edit.Text ?? ""), BrowserJsonContext.Default.BrowserInsertText));
             else if (edit.Kind == KeyboardEditKind.Clear)
             {
                 await Key("a", 65, 2); await Key("Backspace", 8, 0);
             }
-            else if (edit.Kind == KeyboardEditKind.Key) await Key(edit.Key!, edit.KeyCode, edit.Modifiers);
+            else if (edit.Kind == KeyboardEditKind.Key) await Key(edit.Key!, edit.KeyCode, edit.Wordwise&&current.Sensitive?edit.Modifiers&~2:edit.Modifiers);
             return await Read();
         }
         async Task Key(string key, int code, int modifiers)

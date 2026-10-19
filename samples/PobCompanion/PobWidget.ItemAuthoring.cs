@@ -243,7 +243,7 @@ public sealed partial class PobWidget
         if(inventoryId>0)
         {
             details.Add(Text(S(authoredItem,"name"),"stored.name","pob-heading"));
-            details.Add(UI.Row("pob.stored.actions",Button("Edit item","inventory-edit").FocusLeft("pob.stored.items"),Button("Duplicate","inventory-copy"),Button("Delete…","inventory-delete")).Classes("pob-toolbar"));
+            details.Add(UI.Row("pob.stored.actions",Button("Edit item","inventory-edit").FocusLeft("pob.stored.items"),Button("Duplicate","inventory-copy"),Button("Delete…","inventory-delete"),SimilarEntry("inventory")).Classes("pob-toolbar"));
             var uses=A(all.FirstOrDefault(i=>I(i,"id")==inventoryId),"uses").Select(u=>u.GetString()??"").ToArray();
             details.Add(Text(uses.Length==0?"Not equipped in any set.":"Used by: "+string.Join("; ",uses),"stored.uses","pob-small pob-muted"));
             if(inventorySlots.Length>0)
@@ -269,6 +269,7 @@ public sealed partial class PobWidget
             Text(authoringId>0?"Edit item":"Crafted / imported item draft","author.title","pob-heading"),
             Text(authoringId>0?"Edits save immediately and affect every set using this item. Duplicate it first for an independent version. Undo restores edits.":"Your draft is saved automatically. Save to inventory to keep it unequipped, or compare it with your equipment.","author.help","pob-small pob-muted")};
         if(authoringId==0)controls.Add(UI.Row("pob.author.draft-actions",Button("Save to inventory","draft-store"),Button("Compare equipment","draft-compare")).Classes("pob-toolbar"));
+        controls.Add(SimilarEntry("draft"));
         if(B(authoredItem,"canEditTitle"))controls.Add(Field("Item name",
             UI.TextEntry(S(authoredItem,"title"),"Item name","author-title","pob.author-title",100).Classes("pob-input"),"author-title"));
         foreach(var (control,i) in A(authoredItem,"controls").Select((c,i)=>(c,i)))

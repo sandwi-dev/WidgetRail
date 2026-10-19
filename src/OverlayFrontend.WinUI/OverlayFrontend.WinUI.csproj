@@ -72,6 +72,8 @@
     <Content Include="..\..\assets\fonts\promptfont\NOTICE.txt" Link="licenses\PromptFont-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Assets\Words\english.txt" LogicalName="WidgetRail.EnglishWords" />
+    <Content Include="Assets\Words\*-LICENSE.txt;Assets\Words\NOTICE.txt" Link="licenses\WordCompletion\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="..\WidgetSdk\EmbeddedMediaAdapterRuntime.js" LogicalName="WidgetRail.MediaValidation.AdapterRuntime.js" Condition="'$(EnableWidgetValidation)' == 'true'" />
     <EmbeddedResource Include="..\WidgetSdk\WebSessionRuntime.js" LogicalName="WidgetRail.SessionFixture.Runtime.js" Condition="'$(EnableWidgetValidation)' == 'true'" />
     <EmbeddedResource Include="..\..\samples\YtMusicWidget\web\player.html" LogicalName="WidgetRail.SessionFixture.YouTube.html" Condition="'$(EnableWidgetValidation)' == 'true'" />

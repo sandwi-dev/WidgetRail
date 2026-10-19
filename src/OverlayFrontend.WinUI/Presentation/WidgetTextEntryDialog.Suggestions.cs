@@ -26,7 +26,8 @@ internal sealed partial class WidgetTextEntryDialog
     private double suggestionTargetHeight = -1, suggestionAvailableHeight = double.PositiveInfinity;
     internal bool SuggestionsFocused => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Button button && suggestionButtons.Contains(button);
     internal bool CanAcceptFirstSuggestion => !completed && !IsSensitive && suggestionView is { Items.Count: > 0, Selectable: true } state &&
-        state.Text == text?.Text && suggestions?.IsCurrent(state) == true;
+        (!wordCompletion || text is not null && completionContext == WordCompletionContext.Capture(text.Text, text.SelectionStart, text.SelectionLength)) &&
+        state.Text == (wordCompletion?completionContext?.Prefix:text?.Text) && suggestions?.IsCurrent(state) == true;
 
     internal void EnableSuggestions(ViewNode node, Func<TextSuggestionQuery, CancellationToken, Task<TextSuggestionResult>> query)
     {
@@ -87,19 +88,20 @@ internal sealed partial class WidgetTextEntryDialog
         });
         text.TextChanged += SuggestionsTextChanged;
         ApplySuggestionMetrics(text.FontSize, text.FontWeight, text.FontFamily);
-        suggestions.Update(text.Text);
+        suggestions.Update(wordCompletion?completionContext?.Prefix??"":text.Text);
     }
 
     private void SuggestionsTextChanged(object sender, TextChangedEventArgs args)
     {
-        if (!completed && !acceptingSuggestion) suggestions?.Update(text!.Text);
+        if(wordCompletion)UpdateWordCompletion();
+        else if (!completed && !acceptingSuggestion) suggestions?.Update(text!.Text);
     }
 
     private void ApplySuggestions(TextSuggestionView state)
     {
         if (!state.Selectable || state.Items.Count == 0) RestoreKeyFromSuggestion();
         suggestionView = state;
-        suggestionStatus!.Text = state.Loading ? "Searching…" : state.Unavailable ? "Suggestions unavailable" :
+        suggestionStatus!.Text = wordCompletion ? "" : state.Loading ? "Searching…" : state.Unavailable ? "Suggestions unavailable" :
             state.Queried && state.Items.Count == 0 ? "No matches" : "";
         suggestionStatus.Visibility = state.Items.Count == 0 && suggestionStatus.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         suggestionProgress!.IsActive = state.Loading || state.Stale;
@@ -175,7 +177,7 @@ internal sealed partial class WidgetTextEntryDialog
 
     private void ToggleSuggestionFocus()
     {
-        if (SuggestionsFocused) { repeat.Reset(); (rememberedKey ?? characters[10]).Focus(FocusState.Keyboard); return; }
+        if (SuggestionsFocused) { repeat.Reset(); (rememberedKey ?? DefaultKey).Focus(FocusState.Keyboard); return; }
         if (!CanAcceptFirstSuggestion) return;
         repeat.Reset(); keyboardInputStarted = true;
         FocusSuggestion(suggestionButtons[0]);
@@ -224,12 +226,19 @@ internal sealed partial class WidgetTextEntryDialog
     private void AcceptSuggestion(int index)
     {
         if (!CanAcceptFirstSuggestion || text is null || suggestionView is not { } state || index < 0 || index >= state.Items.Count) return;
-        if (suggestions?.Accept(state.Revision, state.Items[index].Id) is not { } value) return;
+        var value = state.Items[index].Value;
+        var edit = wordCompletion ? completionContext?.Accept(value,maximumLength) : new TextEntryEditing.Edit(value,value.Length);
+        if(edit is null)return;
         acceptingSuggestion = true;
-        try { text.Text = value; text.Select(value.Length, 0); }
+        try
+        {
+            if (suggestions?.Accept(state.Revision, state.Items[index].Id) is null) return;
+            text.Text = edit.Value.Value; text.Select(edit.Value.Caret, 0);
+        }
         finally { acceptingSuggestion = false; }
+        if(wordCompletion)completionContext=WordCompletionContext.Capture(text.Text,text.SelectionStart,text.SelectionLength);
         keyboardInputStarted = true;
-        (rememberedKey ?? characters[10]).Focus(FocusState.Keyboard);
+        (rememberedKey ?? DefaultKey).Focus(FocusState.Keyboard);
         RefreshCaret();
     }
 
@@ -271,7 +280,7 @@ internal sealed partial class WidgetTextEntryDialog
             Button target;
             if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right)
                 target = visible[(index + visible.Length + (direction == FocusNavigationDirection.Left ? -1 : 1)) % visible.Length];
-            else target = rememberedKey ?? characters[10];
+            else target = rememberedKey ?? DefaultKey;
             if (suggestionButtons.Contains(target)) FocusSuggestion(target); else target.Focus(FocusState.Keyboard);
             return true;
         }
@@ -314,6 +323,6 @@ internal sealed partial class WidgetTextEntryDialog
     private void RestoreKeyFromSuggestion()
     {
         if (XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Button button && suggestionButtons.Contains(button))
-            (rememberedKey ?? characters[10]).Focus(FocusState.Keyboard);
+            (rememberedKey ?? DefaultKey).Focus(FocusState.Keyboard);
     }
 }

@@ -28,7 +28,7 @@ internal sealed partial class BrowserSurface
         {
             var accepted = false;
             dialog = new(new ViewNode { Id = "browser.address", Kind = ViewNodeKind.TextEntry,
-                TextEntryValue = BrowserAddressInput.EditorValue(current.Source), TextEntryMaximumLength = WebBrowserDocument.MaximumUrlLength,
+                TextEntryValue = BrowserAddressInput.EditorValue(current.Source), TextEntryMaximumLength = WebBrowserDocument.MaximumUrlLength, TextEntryInputKind=TextEntryInputKind.Url,
                 AccessibilityLabel = "Address or Google search", TextEntryPlaceholder = "Search Google or enter a URL" },
                 commit => { accepted = commit; dialog!.Hide(); }, commitLabel: "Open");
             dialog.BindRoot(XamlRoot);

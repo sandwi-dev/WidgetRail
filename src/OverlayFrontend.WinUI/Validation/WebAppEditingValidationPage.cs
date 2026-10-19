@@ -180,7 +180,25 @@ internal sealed partial class WebAppEditingValidationPage : Page, IAsyncDisposab
                 dialog.InsertForValidation("!");
                 await dialog.WaitForLiveInputAsync();
                 Check(await Eval("document.getElementById('plain').value==='change!'"), "Caret and backspace edit the browser's own text");
+                dialog.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true);
+                dialog.InsertForValidation("one two abcdefghijk");
+                await dialog.WaitForLiveInputAsync();
+                dialog.Handle(ControllerButton.X, ControllerEventPhase.Pressed);
+                dialog.SampleHeldButtons(0x4000, 0x4000, 0);
+                foreach (var time in new[] { 400, 490, 580, 670, 1000 }) dialog.SampleHeldButtons(0x4000, 0, time);
+                dialog.SampleHeldButtons(0, 0, 1010);
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('plain').value==='one two '"), "Sustained browser backspace changes from characters to native word deletion");
+                dialog.Handle(ControllerButton.LeftBumper, ControllerEventPhase.Repeated, byWord: true);
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('plain').selectionStart===4"), "Browser word movement uses the browser's native caret boundaries");
+                // Field sensitivity may change after a wordwise edit was queued.
+                await browser.EvaluateFixtureAsync("document.getElementById('plain').type='password';document.getElementById('plain').setSelectionRange(8,8)");
+                dialog.Handle(ControllerButton.X, ControllerEventPhase.Repeated, byWord: true);
+                await dialog.WaitForLiveInputAsync();
+                Check(await Eval("document.getElementById('plain').value==='one two'"), "Newly protected browser fields downgrade queued word deletion to one character");
                 await Close(dialog);
+                await browser.EvaluateFixtureAsync("document.getElementById('plain').type='text'");
                 dialog = await Open("area");
                 dialog.HandleKeyboardKey(Windows.System.VirtualKey.A, control: true);
                 dialog.InsertForValidation("first\nsecond");

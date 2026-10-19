@@ -47,7 +47,7 @@ if(args is ["--note-links-only"])
     Console.WriteLine($"Note links: {passed} passed, {failed} failed");return failed==0?0:1;
 }
 
-if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--build-comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only" or "--trade-improvements-only" or "--trade-menu-only" or "--tree-editing-only" or "--currency-ranking-only" or "--calculation-context-only" or "--suggestions-only" or "--empty-build-only" or "--configuration-only" or "--unified-search-only" or "--disclosures-only" or "--ranking-settings-only" or "--render-resilience-only" or "--navigation-restore-only" or "--row-previews-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
+if(args.Length is not (4 or 5) || args.Length==5&&args[4] is not ("--work-state-only" or "--management-only" or "--comparison-only" or "--build-comparison-only" or "--tree-only" or "--quick-controls-only" or "--skill-edits-only" or "--skill-management-only" or "--loadouts-only" or "--guide-workflow-only" or "--planning-features-only" or "--import-only" or "--import-export-only" or "--sets-only" or "--trade-only" or "--items-only" or "--skill-options-only" or "--passive-choices-only" or "--calculation-views-only" or "--engine-update-only" or "--engine-failure-only" or "--trade-workflow-only" or "--trade-improvements-only" or "--trade-menu-only" or "--tree-editing-only" or "--currency-ranking-only" or "--calculation-context-only" or "--suggestions-only" or "--empty-build-only" or "--configuration-only" or "--unified-search-only" or "--disclosures-only" or "--ranking-settings-only" or "--render-resilience-only" or "--navigation-restore-only" or "--row-previews-only" or "--similar-only")){Console.Error.WriteLine("Arguments: game engine-directory runtime-directory fixture-directory [--work-state-only|--management-only|--comparison-only|--tree-only|--quick-controls-only|--skill-edits-only|--skill-management-only|--loadouts-only|--guide-workflow-only]");return 2;}
 var game=int.Parse(args[0]);var engineRoot=args[1];var runtime=args[2];var fixtures=args[3];
 var adapter=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../Engine/bridge.lua"));
 // Explicit source override keeps probes independent of output layout.
@@ -63,7 +63,8 @@ if(args.Length==5)
     }
     var fixture=Directory.EnumerateFiles(fixtures,"*.xml").OrderBy(path=>path,StringComparer.Ordinal).First();
     var workXml=await BuildDocument.ReadAsync(fixture,game,default);
-    if(args[4]=="--row-previews-only")await RowPreviewTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
+    if(args[4]=="--similar-only"){await SimilarSearchTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);await SimilarWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);}
+    else if(args[4]=="--row-previews-only")await RowPreviewTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--render-resilience-only")await RenderingResilienceTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--ranking-settings-only")await RankingSettingsTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--disclosures-only") await DisclosureWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
@@ -576,7 +577,7 @@ if(firstXml is not null)
         WidgetTestHost.Attach(reopened,new WidgetTestHostServicesBuilder().Build());
         await WidgetTestHost.SetLifecycleStateAsync(reopened,WidgetLifecycleState.Interactive);
         for(var n=0;n<600&&!Nodes(Snapshot(reopened,109).Root).Any(v=>v.Id=="pob.section");n++)await Task.Delay(25);
-        Check(Nodes(Snapshot(reopened,110).Root).Any(v=>v.Id=="pob.title"&&v.Text=="Controller test build"),"A fresh widget and Lua process reopen the selected named working copy");
+        Check(Nodes(Snapshot(reopened,110).Root).Any(v=>v.Id=="pob.recent-builds"&&v.SelectOptions.Any(o=>o.IsSelected&&o.Label=="Controller test build")),"A fresh widget and Lua process reopen the selected named working copy");
         await WidgetTestHost.DestroyAsync(reopened);
     }
     using(var cancelled=new CancellationTokenSource())

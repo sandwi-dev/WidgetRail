@@ -300,6 +300,7 @@ public sealed partial class PobWidget
             var rows = new List<WidgetElement> { Text(label, "build-comparison.detail." + key + ".title", "pob-heading") };
             if (difference.Category == PobBuildComparisonCategory.Statistics && entry is not null)
                 rows.Add(Text(BuildComparisonStat(entry), "build-comparison.detail." + key + ".value", "pob-heading"));
+            if(difference.Category==PobBuildComparisonCategory.Equipment&&entry is not null)rows.Add(SimilarEntry(key));
             // Preserve long item/modifier text without relying on Text's display truncation.
             AddFormatted(rows, JsonSerializer.SerializeToElement(new { text }), "text", "runs", "build-comparison.detail." + key + ".text");
             return UI.Stack("pob.build-comparison.detail." + key, rows.ToArray()).Classes("pob-card");

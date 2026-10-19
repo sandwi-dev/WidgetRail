@@ -42,12 +42,12 @@ internal sealed class TextSuggestionController : IDisposable
     internal bool IsCurrent(TextSuggestionView state) { lock (gate) return !disposed && ReferenceEquals(view, state); }
     internal Task Completion { get { lock (gate) return pump ?? Task.CompletedTask; } }
 
-    internal void Update(string text)
+    internal void Update(string text, bool force = false)
     {
         TextSuggestionView state;
         lock (gate)
         {
-            if (disposed || revision > 0 && view.Text == text) return;
+            if (disposed || !force && revision > 0 && view.Text == text) return;
             CancelDemand();
             var retained = view.Items;
             ++revision;

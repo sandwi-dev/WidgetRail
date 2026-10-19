@@ -26,7 +26,7 @@ public sealed partial class PobWidget
         var history=UI.Row("pob.history",HistoryButton(true),HistoryButton(false))
             .RememberChildFocus(undo.Count>0?"pob.undo":"pob.redo").Classes("pob-toolbar");
         var heading = new List<WidgetElement>();
-        heading.Add(Text(BuildName(), "title", "pob-title"));
+        heading.Add(RecentBuildSelector());
         heading.Add(Text($"{identity}  ·  {(B(State,"autoLevel")?"Auto level":"Level")} {S(State, "level")}", "context", "pob-muted"));
         controls.Add(UI.FocusPresentationSurface(history, UI.Text("", "pob.history.preview.empty"), "pob.history.preview")
             with { Preview = new(Width: 440, Height: 440) { SizeToContentHeight = true } });
@@ -86,6 +86,7 @@ public sealed partial class PobWidget
         if(detailKind=="choose-slot"&&pendingBefore is not null)return EquipmentComparisonWorkspace();
         if(detailKind=="game-export")return GameExportWorkspace();
         if(detailKind=="trade")return TradeWorkspace();
+        if(detailKind=="similar-search")return SimilarSearchWorkspace();
         if(detailKind=="inventory")return StoredInventoryWorkspace();
         if(detailKind=="item-author")return ItemAuthoringWorkspace();
         if(detailKind=="calculations")return CalculationsWorkspace();
@@ -243,11 +244,12 @@ public sealed partial class PobWidget
             var action=pastedItem is null?"item-paste":"item-resume";
             detailPanel=UI.Stack("pob.detail",
                 Text("Item details","detail.heading","pob-eyebrow"),
-                UI.Grid("pob.item.tools",[GridTrack.Auto(),GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star()],
-                    Button(pastedItem is null?"Replace from clipboard":"Continue comparison",action).FocusLeft(returnId).FocusRight("pob.item-manage").FocusDown("pob.trade").Disabled(pendingBefore is not null),
-                    Button("Item settings","item-manage").FocusLeft("pob."+action).FocusDown("pob.trade-browse").Disabled(entries.Length==0).InGrid(column:1),
-                    Button("Find upgrades","trade").FocusLeft(returnId).FocusRight("pob.trade-browse").FocusUp("pob."+action).InGrid(row:1),
-                    BrowseTradeButton().FocusLeft("pob.trade").FocusUp("pob.item-manage").InGrid(row:1,column:1)).Spacing(8,8),
+                UI.Grid("pob.item.tools",[GridTrack.Auto(),GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star(),GridTrack.Star()],
+                    Button(pastedItem is null?"Replace from clipboard":"Continue comparison",action).FocusLeft(returnId).FocusRight("pob.item-manage").FocusDown("pob.trade").Disabled(pendingBefore is not null).InGrid(columnSpan:2),
+                    Button("Item settings","item-manage").FocusLeft("pob."+action).FocusDown("pob.trade-browse").Disabled(entries.Length==0).InGrid(column:2),
+                    Button("Find upgrades","trade").FocusLeft(returnId).FocusRight("pob.similar-start.equipped").FocusUp("pob."+action).InGrid(row:1),
+                    SimilarEntry("equipped").InGrid(row:1,column:1),
+                    BrowseTradeButton().FocusLeft("pob.similar-start.equipped").FocusUp("pob.item-manage").InGrid(row:1,column:2)).Spacing(8,8),
                 UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
                 .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
         }

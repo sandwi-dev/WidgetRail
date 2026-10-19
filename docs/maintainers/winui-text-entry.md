@@ -3,7 +3,8 @@
 `UI.TextEntry` and `UI.SensitiveTextEntry` publish a bounded value/placeholder and
 final-value action. Ordinary fields can explicitly opt into protocol 88
 [whole-entry suggestions](../reference/text-suggestions.md), receiving transient
-queries through a bounded read lane. Other fields remain commit-only.
+queries through a bounded read lane. Protocol 96 adds optional input purposes and local English word completion.
+Existing ordinary fields remain commit-only.
 
 The trusted presenter renders a focusable opener. Activation creates a native
 `ContentDialog` with `TextBox` or protected `PasswordBox`, plus native buttons in a
@@ -15,10 +16,20 @@ control and cannot open a keyboard.
 
 - A activates a virtual key; B cancels; X removes the preceding character; Y clears.
 - LT changes letter case; RT commits; LB/RB move the edit insertion point.
+- X and LB/RB repeat after 400 ms at 90 ms per character. After at least four
+  character repeats and one second of holding, ordinary fields advance by words
+  at 250 ms intervals. Character insertion and passwords never accelerate to words.
+  Release, direction/focus/owner changes and conflicting input reset the gesture;
+  there are no catch-up bursts. Buffered edits use Windows word segmentation;
+  browser edits use native Ctrl+Backspace/arrow commands after validating the field.
+- Menu inserts Space and View pastes on release. The View+Menu visibility chord,
+  conflicting buttons and interrupted ownership cancel these pending shortcuts.
+  Their ordinary clickable keys remain available; L3/R3 keep suggestion controls.
 - D-pad/normalized directional movement uses native XY focus within the keyboard.
 - Physical text editing/paste uses the native editor. Printable input also works
-  while a virtual key has focus. Enter commits from the editor; Enter/Space on a
-  focused virtual key activate that native button, including Cancel. Escape cancels.
+  while a virtual key has focus. Enter commits from the editor; Enter on a
+  focused virtual key activates that native button, including Cancel. Space inserts
+  a space. Escape cancels.
 - The host has no second controller reader or raw-button queue. The existing
   normalized input ingress routes the keyboard before widget shortcuts.
 - Prompts use the existing licensed controller fonts and update with controller
@@ -46,7 +57,8 @@ Managed/native string allocation is not represented as guaranteed memory zeroing
 Protocol 88 carries an ordinary field's source key and result limits. The host
 debounces transient queries, rejects stale session/revision/owner responses, and
 keeps fixed native button slots above the keys. Only result/status content changes;
-arrival cannot move focus or resize the keyboard. Selection replaces the whole
+arrival cannot move focus. The suggestion region grows upward while the editor
+and keys retain their positions. Selection replaces the whole
 field, keeps the keyboard open, and requires Done. There is no instructional text
 inside the suggestion area. Native buttons retain mouse, keyboard and controller
 activation, theme resources, accessible labels and full-label tooltips.
@@ -150,3 +162,25 @@ Validation:70 native text-entry checks pass, including15 new scaling/retention
 assertions and popup raster captures at0.5/1/1.25 zoom and1.5 text scale. Theme font
 removal, secret cleanup, native Enter/Space behavior and current-authority commit
 checks remain passing. Evidence: `artifacts/winui-shell/popup-typography-20260930/`.
+
+## Input purposes and offline completion
+
+Protocol 96 extends `TextEntryInputKind` with `Integer`, `Decimal`, `Url`, `Email`
+and `Prose`. Authors opt in through `TextEntryElement.InputKind`; existing
+`Ordinary` and `Sensitive` declarations keep their behavior. Numeric fields use a
+keypad; URL/email fields put their common punctuation on the main layer. Purposes
+choose presentation, not validation: widgets still validate committed values.
+Browser input type/inputmode selects compatible layouts without changing its DOM.
+
+`Prose` permits host-local English word completion when no widget suggestion source
+is declared and the UI language is English. It reuses the bounded suggestion
+controller/row, resolves only a prefix at the caret and replaces only that word.
+Selections, technical identifiers, sensitive fields and live browser editors do
+not get this fallback. Widget-supplied suggestions retain whole-entry semantics.
+No typed text is stored in the dictionary or sent to a service. No automatic
+correction or acceptance occurs. Empty results collapse the local suggestion row.
+
+The first prose lookup lazily loads a 10,000-word, frequency-ordered vocabulary
+from the embedded resource; lookups use two-letter groups and bounded results.
+Source and license notices are in `Assets/Words`. No prediction engine process,
+model download, package dependency or dictionary request is needed at runtime.

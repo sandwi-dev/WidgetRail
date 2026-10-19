@@ -2,6 +2,10 @@
 
 Last updated: 2026-10-19
 
+Current follow-up delivered: Find similar, a 20-build recent selector and shared
+keyboard improvements. The installed walkthrough and native/engine checks are
+recorded in the verification ledger; physical controller acceptance remains open.
+
 Undo/Redo now exposes passive focus/hover previews of the next saved-state change.
 The existing history behavior is unchanged, including loadout switches. Summaries
 are cached outside rendering and reconstructed from saved snapshots on reopening.
@@ -43,6 +47,7 @@ See the final verification-ledger handoff for the candidate and precise limits.
 
 | Order | Work item | Status |
 | --- | --- | --- |
+| Current follow-up | Find similar, recent builds and shared keyboard improvements | Implemented; engine/native checks and installed mouse/keyboard walkthrough passed; final candidate hidden |
 | Foundation | Clean up shared code and game-specific boundaries | Implemented for changed workflows; typed search/skill projections, owned skill-option lifecycle and bounded caches pass both-engine checks |
 | Host prerequisites | Extend reusable rich previews / anchored popovers | Implemented; 136 anchored, 32 passive and 14 indexed-source native assertions pass, including themes and motion; adopted in PoB; remaining integrated/controller acceptance is separate |
 | Host prerequisites | Add subtle scroll-container edge cues | Implemented; 22 cue, 42 reading-focus, 93 directional, 10 indexed-reveal and 16 indexed-continuity native assertions pass; final integrated app audit remains |
@@ -461,6 +466,67 @@ Run this after implementation decisions settle, then recheck changed links and e
 - [x] Keep the front-facing README concise and approachable; place technical architecture, provider limitations and maintainer procedures in their appropriate dedicated guides. Report any remaining documentation uncertainty rather than implying unsupported behavior is available.
 
 The three reported contradictions are corrected. The final source/documentation pass also corrected two obsolete collection fragment links and remaining music-guide installation wording. Current command paths/options were checked against their scripts/CLI definitions without executing builds. Representative README, Spotify and PoB calculation/trade screenshot captions were checked against their pixels; older PoB captures are dated and explicitly illustrative. External destinations were not requested, and the owner demonstration remains a placeholder. Recheck subsequent corrections against these maintained guides without restoring obsolete behavior.
+
+## Shared keyboard and recent-build follow-up
+
+Approved 2026-10-19. Continue the cumulative PoB work; do not replace it with the
+keyboard work. Physically exercise the installed UI before handing over a candidate.
+
+- Add a cached recent-build selector at the top, with at most 20 builds in most
+  recently opened order and an All saved builds route. Keep the current build
+  selected; reuse normal build loading and pending/draft recovery. Persist only
+  successful openings, and remove missing entries from the displayed list.
+- Preserve character taps and initial holds. Sustained Backspace and LB/RB holds
+  progress to word deletion/movement after a deliberate delay; word operations
+  repeat more slowly. Require actual initial repeats, avoid catch-up bursts, and
+  reset on release, direction/focus/owner changes. Passwords stay character-only.
+  This replaces the earlier proposal for separate word-editing modifier shortcuts.
+- Reuse Windows word segmentation for buffered fields and native modified editing
+  commands for live browser fields. Keep selection and Unicode boundaries safe.
+- Add Space/Paste shortcuts without changing L3/R3 suggestion behavior. Menu/Space
+  and View/Paste operate on release; View+Menu remains the overlay visibility chord
+  and must not insert content. Ownership loss cancels pending shortcut actions.
+- Add opt-in integer, decimal, URL, email and prose input kinds. Keep existing
+  ordinary/sensitive defaults compatible. Infer supported purposes from browser
+  input metadata; migrate known numeric and prose fields, not unknown fields.
+- Optional English word completion uses a bounded offline vocabulary and the
+  shared suggestion UI. No network, typing-history learning or silent correction.
+  It replaces only the word at the caret. Widget-provided whole-field suggestions
+  take priority; passwords, identifiers and browser live editors do not opt in.
+- Test races, middle-of-text editing, selection, punctuation/Unicode, paste,
+  release/chord cancellation, held input, lifecycle interruption and layout.
+  Document input-kind semantics, dictionary attribution and tested limitations.
+
+## Find similar items from a build guide
+
+**Status: implemented and verified in both pinned engines and the installed candidate (2026-10-19).**
+
+User need: use an item from a guide as a shopping target, including an affordable
+approximation of its important properties. This is a separate intent from finding
+an upgrade for the current build; retain Find upgrades alongside it.
+
+Verified upstream: the bundled PoE2 beta exposes **Buy similar** in its item editor
+and build-comparison view through `CompareBuySimilar.lua`. It maps the item's
+modifiers to trade filters, lets users choose required modifiers and adjust their
+minimum/maximum values, optionally restricts the base type, and supports item-level,
+defence, league and listing-status filters. Unique searches use the name and base.
+Both pinned engines have now been verified. The adapter uses each engine's own
+Buy similar implementation and retains the existing trade browser/comparison flow.
+
+Implemented direction:
+
+- Expose a distinct **Find similar** action for a reference item, using upstream
+  modifier mappings and query generation instead of maintaining gameplay rules.
+- Let users retain the important modifiers and relax roll requirements to find
+  practical alternatives; do not silently treat every guide-item stat as mandatory.
+- Open the generated search in the existing trade website workflow. Preserve the
+  distinction between the reference item being searched for and the equipment
+  used when comparing a returned listing against the player's build.
+- Entry points cover guide/build comparison, equipped items, inventory and item
+  editor drafts. Unsupported modifiers remain visible but disabled. Numeric ranges
+  use the shared decimal keyboard; invalid ranges are rejected before searching.
+
+Use isolated tests first, then a bounded installed-candidate walkthrough. Keep live trade requests limited.
 
 ## Resource and trade decisions
 

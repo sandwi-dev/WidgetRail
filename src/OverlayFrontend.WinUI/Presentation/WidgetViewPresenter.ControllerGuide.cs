@@ -112,7 +112,7 @@ internal sealed partial class WidgetViewPresenter
                 new(ControllerPrompt.X, "Delete (hold to repeat)", ControllerButton.X),
                 new(ControllerPrompt.LeftBumper, "Caret left", ControllerButton.LeftBumper),
                 new(ControllerPrompt.RightBumper, "Caret right", ControllerButton.RightBumper),
-                new(ControllerPrompt.LeftTrigger, "Shift", ControllerButton.LeftTrigger),
+                .. (keyboard.SupportsShift ? (ControllerGuideHint[])[new(ControllerPrompt.LeftTrigger, "Shift", ControllerButton.LeftTrigger)] : []),
                 new(ControllerPrompt.Y, "Clear", ControllerButton.Y),
                 new(ControllerPrompt.RightTrigger, keyboard.CommitLabel, ControllerButton.RightTrigger),
                 new(ControllerPrompt.B, keyboard.DismissLabel, ControllerButton.B),

@@ -2,6 +2,48 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Find similar, recent builds and keyboard, 2026-10-19
+
+Implementation uses protocol 96 and each pinned PoB engine's Buy similar query
+builder. The reference item never replaces equipped gear or modifies Undo history.
+The header offers up to 20 cached recent builds plus All saved builds, using the
+existing saved-work recovery path. In-progress comparisons prevent switching.
+
+Keyboard holds begin with characters and switch to words after four repeats and
+one second; protected fields remain character-based. Menu/Space and View/Paste
+act on release and cancel for conflicting buttons, lost ownership or View+Menu.
+Optional input purposes provide number/address layouts and offline English prose
+completion; widget suggestions retain whole-field semantics and precedence.
+
+Validation: 36 focused keyboard/suggestion tests; 189 native text-entry checks;
+33 native browser-editing checks (including a field becoming protected during
+queued input); SDK public API baseline 1/1; Game Help source build. Real engines:
+Find similar/workflow 28 per game, build comparison 60 per game, item authoring
+94 PoE1 and 92 PoE2. Additional previous SDK and navigation/trade runs remain
+recorded in the candidate artifacts. Native checks found and fixed a missing
+embedded dictionary and a caret/acceptance race before candidate delivery.
+
+Installed walkthrough: switched from Twister to the empty Ranger and back;
+compared the Ranger against the Twister guide; opened its helmet's Find similar
+form; changed a defence bound with the decimal keyboard; ran one live trade search
+and compared one returned listing against the empty helmet slot; finished without
+equipping. Inventory unique Skysliver opened upstream filters and Back restored
+the inventory opener. Empty PoE1 inventory remained usable. Prose completion
+accepted a word without submitting, and Cancel preserved the saved build name.
+The numeric utility row was tightened and its unavailable Shift hint removed after
+visual inspection, then qualified by the final native run. No GGG requests were
+needed for engine/native fixtures; no sellers were contacted.
+
+Final host: `artifacts/pob/cumulative-candidate-20261019-similar-keyboard-final/`.
+PoE1/PoE2 0.1.4.20 are installed and enabled. Final PID 14840 started hidden with
+the normal profile and connected Guide polling. All 138 deployed DLLs match the
+qualified publication. The original Twister build is selected. Evidence:
+`keyboard-native-final-layout.json`, `keyboard-web-editing-final.json`,
+`similar-keyboard-final-deployed-dlls.json`, `similar-keyboard-installed.json`,
+`cumulative-{1,2}--{similar,build-comparison,items}-only-final.log` under
+`artifacts/pob/`. Hardware controller acceptance remains separate from the native
+controller-route tests and live mouse/keyboard walkthrough. No merge or release.
+
 ## On-demand preview sources, 2026-10-19
 
 Protocol 95 adds a shared on-demand source to existing anchored previews. Rows

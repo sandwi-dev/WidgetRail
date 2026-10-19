@@ -178,6 +178,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
             if (!Environment.GetCommandLineArgs().Contains("--text-entry-no-clipboard")) await VerifyPasteAsync();
             await VerifyControllerEditingAsync();
             await VerifySuggestionsAsync();
+            await VerifyKeyboardEnhancementsAsync();
             await Open(); await presenter.DisposeAsync(); await Closed(); Check(!presenter.HasTransientControl, "disposal retires keyboard");
             status.Text = $"Passed {checks.Count} TextEntry checks"; Write(new { result = "passed", checks });
         }
@@ -267,7 +268,7 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
             ActiveInputScopeId = otherScope ? "other" : "page", InitialFocusId = otherScope ? "other.button" : "entry",
             Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 new() { Id = "entry", Kind = ViewNodeKind.TextEntry, AccessibilityLabel = "Text entry", TextEntryValue = value, TextEntryPlaceholder = "Enter text", TextEntryMaximumLength = maximumLength,
-                    TextEntryInputKind = sensitive ? TextEntryInputKind.Sensitive : null, ActionId = action, IsDisabled = disabled },
+                    TextEntryInputKind = sensitive ? TextEntryInputKind.Sensitive : purpose, ActionId = action, IsDisabled = disabled },
                 new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "other.button", Kind = ViewNodeKind.Button, Text = "Other", ActionId = "other" }] }
             ] } };

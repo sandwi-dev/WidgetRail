@@ -50,6 +50,7 @@ public sealed partial class PobWidget
                 return ValueTask.CompletedTask;
             }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
+            if(HandleSimilarSearchAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleBuildComparisonAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleGameExportAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleWebsitePreference(action)){Invalidate();return ValueTask.CompletedTask;}
@@ -86,6 +87,8 @@ public sealed partial class PobWidget
             else if(id=="cancel"&&pendingBefore is not null) Restore(pendingBefore.Xml,clearPreview:true);
             else if(id=="undo" && undo.Count>0) MoveHistory(true);
             else if(id=="redo" && redo.Count>0) MoveHistory(false);
+            else if(parts is ["recent-build",var recent]&&recent!=documentId&&!buildComparisonRunning&&recentBuildEntries.Any(entry=>entry.Id==recent))
+                Work(token=>OpenSavedWorkAsync(recent,token),"Opening recent build…");
             else if(parts[0]=="saved"&&parts.Length==2) Work(token=>OpenSavedWorkAsync(parts[1],token),"Opening saved work…");
             else if(id is "paste" or "import") ImportBuild(id=="paste"?null:action.CommittedText??"");
             else if(parts[0]=="import-mode"&&parts.Length==2&&parts[1] is "new" or "replace")replaceOnImport=parts[1]=="replace";
@@ -94,6 +97,7 @@ public sealed partial class PobWidget
                 var loaded=await engine.ExecuteAsync(new{op="new"},token);var newId=Guid.NewGuid().ToString("N");
                 token.ThrowIfCancellationRequested();Persist(loaded,newId);
                 lock(gate){tradeCandidates.Clear();tradeListing=null;tradeBrowsing=false;websiteReview=false;documentId=newId;result=loaded;pendingBefore=null;pastedItem=null;previewSlot=null;recoveryReadOnly=false;undo.Clear();redo.Clear();selections.Clear();detailKind="";SetSection("Calcs");filter="";passiveReturnKey=null;compatibilityNotice="";RestoreRanking(newId);RestoreTradeReturn(newId);}
+                RememberRecentBuild(newId);
                 await RefreshMapAsync(token);
             },"Creating build…");
             else if(id=="rename" && documentId is not null) RenameBuild(documentId,action.CommittedText??"");

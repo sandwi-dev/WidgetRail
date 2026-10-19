@@ -47,6 +47,7 @@ internal sealed partial class WidgetTextEntryDialog
             {
                 var state = await send(edit);
                 if (completed) break;
+                protectedInput = state.Sensitive;
                 text!.Text = state.Display;
                 text.Select(Math.Clamp(state.Caret, 0, state.Display.Length),
                     Math.Clamp(state.SelectionLength, 0, state.Display.Length - Math.Clamp(state.Caret, 0, state.Display.Length)));

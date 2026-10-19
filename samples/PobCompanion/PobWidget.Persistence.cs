@@ -158,6 +158,7 @@ public sealed partial class PobWidget
             try { await OpenMapAsync(token); }
             catch (WidgetCapabilityException) { /* The native comparison remains usable without the map. */ }
         }
+        RememberRecentBuild(id);
         await RefreshCommittedMapAsync(token);
     }
 

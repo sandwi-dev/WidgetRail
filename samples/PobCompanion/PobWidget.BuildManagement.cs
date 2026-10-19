@@ -44,8 +44,8 @@ public sealed partial class PobWidget
             return UI.VerticalScroll("pob.build-menu",comparison.ToArray()).Classes("pob-scroll","pob-panel");
         }
         var character=new List<WidgetElement>{UI.Grid("pob.manage.identity",[GridTrack.Auto()],[GridTrack.Star(3),GridTrack.Star()],
-            Field("Build name",UI.TextEntry(BuildName(),"Build name","rename","pob.rename",100).Classes("pob-input"),"name"),
-            Field("Character level",UI.TextEntry(S(State,"level"),"Character level","level","pob.level").Classes("pob-input"),"level").InGrid(column:1)).Spacing(0,12)};
+            Field("Build name",(UI.TextEntry(BuildName(),"Build name","rename","pob.rename",100) with{InputKind=TextEntryInputKind.Prose}).Classes("pob-input"),"name"),
+            Field("Character level",(UI.TextEntry(S(State,"level"),"Character level","level","pob.level") with{InputKind=TextEntryInputKind.Integer}).Classes("pob-input"),"level").InGrid(column:1)).Spacing(0,12)};
         var choices=new List<WidgetElement>();
         foreach(var (field,kind,title) in new[]{("classes","class","Class"),("ascendancies","ascendancy","Ascendancy")})
             if(A(State,field).Length>0)choices.Add(SelectWithUnavailable(title,A(State,field).Select(o=>new SelectOption(kind+I(o,"id"),S(o,"title"),kind+"."+I(o,"id"),B(o,"active"))).ToArray(),"pob."+kind).Classes("pob-select").InGrid(column:choices.Count));
@@ -145,6 +145,7 @@ public sealed partial class PobWidget
         if(documentId!=id)tradeCandidates.Clear();
         tradeListing=null;tradeBrowsing=false;websiteReview=false;
         documentId=id;result=loaded;pendingImport=null;replaceOnImport=false;pendingBefore=null;pastedItem=null;previewSlot=null;
+        RememberRecentBuild(id);
         RestoreRanking(id);RestoreTradeReturn(id);
         recoveryReadOnly=false;selections.Clear();detailKind="";SetSection("Calcs");filter="";passiveReturnKey=null;
         compatibilityNotice=renamed>0?$"PoB updated {renamed} gem names for this engine version.":"";

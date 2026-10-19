@@ -372,6 +372,8 @@ internal sealed class ProtocolVersionRequirements
                         ProtocolConstants.TextEntryVersion,
                         path,
                         $"Text entry requires protocol version {ProtocolConstants.TextEntryVersion} or later.");
+                    if (node.TextEntryInputKind is TextEntryInputKind.Integer or TextEntryInputKind.Decimal or TextEntryInputKind.Url or TextEntryInputKind.Email or TextEntryInputKind.Prose)
+                        Add("text-entry-purpose",ProtocolConstants.TextEntryPurposeVersion,path,"Text-entry purposes require protocol 96 or later.");
                     if (node.TextEntryInputKind is not null)
                         Add(
                             "sensitive-text-entry",

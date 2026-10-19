@@ -86,6 +86,8 @@ public sealed partial class PobWidget
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
         if(busy||focusRequestSequence==0)return null;
+        if(similarReturnGroup is {} similarReturn)return new(){RequestId=focusRequestSequence,GroupId=similarReturn};
+        if(detailKind=="similar-search"&&SimilarCurrent)return new(){RequestId=focusRequestSequence,GroupId="pob.similar.tools"};
         if(detailKind=="build-comparison")return BuildComparisonFocusRequest();
         if(UnifiedIndexedFocusRequest() is {} unified)return unified;
         if(CanReplaceTradeComparison&&pendingBefore is not null)return new(){RequestId=focusRequestSequence,GroupId="pob.item.compare.controls"};

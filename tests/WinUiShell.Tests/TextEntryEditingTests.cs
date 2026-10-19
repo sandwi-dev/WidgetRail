@@ -7,6 +7,20 @@ namespace WinUiShell.Tests;
 public sealed class TextEntryEditingTests
 {
     [TestMethod]
+    public void WordEditsPreserveSelectionAndUnicodeBoundaries()
+    {
+        const string value="one 👩‍💻 two";
+        int[] words=[0,4,10,value.Length];
+        Assert.AreEqual(10,TextEntryEditing.MoveWord(value,value.Length,0,-1,words));
+        Assert.AreEqual(4,TextEntryEditing.MoveWord(value,10,0,-1,words));
+        Assert.AreEqual(new TextEntryEditing.Edit("one 👩‍💻 ",10),TextEntryEditing.BackspaceWord(value,value.Length,0,words));
+        Assert.AreEqual(new TextEntryEditing.Edit("one two",4),TextEntryEditing.BackspaceWord(value,4,6,words));
+        Assert.AreEqual(4,TextEntryEditing.MoveWord(value,4,6,-1,words));
+        Assert.AreEqual(10,TextEntryEditing.MoveWord(value,4,6,1,words));
+        Assert.AreEqual(new TextEntryEditing.Edit("",0),TextEntryEditing.BackspaceWord("",0,0,[0]));
+    }
+
+    [TestMethod]
     [DataRow("😀")]
     [DataRow("e\u0301")]
     [DataRow("👩‍💻")]

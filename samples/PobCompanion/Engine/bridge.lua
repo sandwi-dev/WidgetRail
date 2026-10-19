@@ -11,6 +11,7 @@ local planningFeatures=dofile(adapterDirectory..'planning-features.lua')
 local gameExport=dofile(adapterDirectory..'build-export.lua')
 local setManagement=dofile(adapterDirectory..'set-management.lua')
 local tradeSearch=dofile(adapterDirectory..'trade-search.lua')
+local tradeSimilar=dofile(adapterDirectory..'trade-similar.lua')
 local tradeRanking=dofile(adapterDirectory..'trade-ranking.lua')
 local currencyRates=dofile(adapterDirectory..'currency-rates.lua')
 local tradeItem=dofile(adapterDirectory..'trade-item.lua')
@@ -364,6 +365,7 @@ local function command(req)
   if op=='calculation-catalog'or op=='calculation-detail'then return calculationViews.read(req,clean,textRuns,recalc,loadBuildFromXML)end
   if op=='item-draft' then assert(not req.itemId,'Draft edits cannot modify saved items');return{state={authoring=itemAuthoring.draft(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='inventory-list'then return{state={inventory=itemAuthoring.inventory(clean)},xml=build:SaveDB('code')}end
+  if op=='similar-catalog'or op=='similar-search'then return{state=tradeSimilar.read(req,clean,textRuns),xml=build:SaveDB('code')}end
   if op=='item-previews'then return{state={previews=itemAuthoring.previews(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='inventory-inspect'then return{state={authoring=itemAuthoring.inspect(req,clean,textRuns)},xml=build:SaveDB('code')}end
   if op=='gem-catalog' then return {state={gemCatalog=skillManagement.catalog(req)},xml=build:SaveDB('code')}end

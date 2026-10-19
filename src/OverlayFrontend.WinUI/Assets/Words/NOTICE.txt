@@ -1,0 +1,11 @@
+English completion vocabulary: first 10,000 alphabetic entries (2-24 characters),
+in frequency order, from Wolf Garbe's SymSpell frequency_dictionary_en_82_765.txt.
+Retrieved 2026-10-19. No SymSpell algorithm code is included.
+https://github.com/wolfgarbe/SymSpell/blob/master/SymSpell/frequency_dictionary_en_82_765.txt
+
+SymSpell is copyright Wolf Garbe, MIT licensed; see SymSpell-LICENSE.txt.
+Upstream credits Google Books Ngram data for word frequencies (CC BY 3.0,
+https://creativecommons.org/licenses/by/3.0/) and SCOWL for vocabulary.
+https://storage.googleapis.com/books/ngrams/books/datasetsv2.html
+https://wordlist.aspell.net/ — SCOWL notices are included in SCOWL-LICENSE.txt.
+The list is reduced and frequency counts are omitted. Typed text is never added.

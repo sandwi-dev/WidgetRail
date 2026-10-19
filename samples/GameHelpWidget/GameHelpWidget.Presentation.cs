@@ -209,7 +209,7 @@ public sealed partial class GameHelpWidget
         if (state.Preview is not null && !state.Capturing)
             controls.Add(UI.Button("Review attached capture", "preview.open", "help.preview-open").Classes("help-attachment"));
         var entry = UI.Stack("help.compose-focus",
-            UI.TextEntry(state.Draft, "Ask about the game…", "draft", "help.composer", 2048).Classes("help-composer"))
+            (UI.TextEntry(state.Draft, "Ask about the game…", "draft", "help.composer", 2048) with{InputKind=TextEntryInputKind.Prose}).Classes("help-composer"))
             .RememberChildFocus("help.composer");
         var compose = UI.Grid("help.composer-row", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto()], entry,
             UI.Button("Send", "ask", "help.send").Disabled(string.IsNullOrWhiteSpace(state.Draft)).Busy(state.Busy || state.Capturing).InGrid(0, 1)).Spacing(0, 12);
@@ -279,7 +279,7 @@ public sealed partial class GameHelpWidget
             UI.MediaPlayer(MediaPlayerSource.FromCapture(preview), "help.preview-media", preview.ContentType == "video/mp4" ? "Recorded game context" : "Game screenshot", new(Muted: true)).Classes("help-preview-media"),
             UI.Stack("help.preview-summary", UI.Text("Your question", "help.preview-question-label").Classes("help-section-title"),
                 UI.Stack("help.preview-question-group",
-                    UI.TextEntry(state.PendingQuestion ?? "", "Ask about this capture…", "preview.question", "help.preview-question", 2048).Disabled(state.Busy))
+                    (UI.TextEntry(state.PendingQuestion ?? "", "Ask about this capture…", "preview.question", "help.preview-question", 2048) with{InputKind=TextEntryInputKind.Prose}).Disabled(state.Busy))
                     .RememberChildFocus("help.preview-question"),
                 UI.Text("Send this capture and your question to Google Gemini?", "help.preview-consent").Classes("help-caption")),
             UI.Grid("help.preview-actions", [GridTrack.Auto(), GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],

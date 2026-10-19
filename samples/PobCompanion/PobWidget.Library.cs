@@ -23,6 +23,6 @@ public sealed partial class PobWidget
     private void RefreshLibrary()
     {
         var snapshot = buildLibrary.Read(dataDirectory);
-        lock (gate) librarySnapshot = snapshot;
+        lock (gate) { librarySnapshot = snapshot; RefreshRecentBuildEntries(); }
     }
 }

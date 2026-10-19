@@ -110,6 +110,11 @@ public enum TextEntryInputKind
 {
     Ordinary,
     Sensitive,
+    Integer,
+    Decimal,
+    Url,
+    Email,
+    Prose,
 }
 
 /// <summary>
