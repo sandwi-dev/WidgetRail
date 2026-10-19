@@ -66,6 +66,7 @@ var tests = new List<(string, Func<Task>)>
     ("Volume preference survives restart and rejects provider defaults", VolumePreferenceTests.Run),
     ("Queue removal preserves occurrence, shuffle, paused state and repeat semantics", QueueRemovalTests.Run),
     ("Song likes acknowledge writes, coalesce and reject old account responses", SongLikeTests.Run),
+    ("Delayed playlist album and radio results cannot mutate another account queue", QueueAccountRaceTests.Run),
     ("Compact pin declares artwork and admits the same transport shortcuts as the main player", PinnedPlayer),
     ("Section content and navigation share motion identity without moving the player", async () =>
     {

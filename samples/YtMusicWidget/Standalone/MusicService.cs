@@ -147,18 +147,24 @@ public sealed partial class MusicService : IMusicService
 
     public async Task RadioAsync(MusicItem song, CancellationToken token)
     {
+        await InitializeAsync(token).ConfigureAwait(false);
+        long account;
+        lock (_gate) account = _ratingEpoch;
         var radio = await BrowseAsync("radio", song.Id, token).ConfigureAwait(false);
         token.ThrowIfCancellationRequested();
         if (radio.Items.Count == 0) throw new IOException("No radio tracks were returned for this song.");
-        await PlayAsync(radio.Items, 0, token).ConfigureAwait(false);
+        await PlayAsync(radio.Items, 0, token, account).ConfigureAwait(false);
     }
 
-    public async Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token)
+    public Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token) => PlayAsync(tracks, index, token, null);
+
+    private async Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token, long? expectedAccount)
     {
         if (tracks.Count is < 1 or > 500 || index < 0 || index >= tracks.Count || tracks.Any(t => t.Kind != "song"))
             throw new ArgumentException("Select a song from a valid queue.");
         lock (_gate)
         {
+            if (expectedAccount is { } account) RequireQueueAccount(account, token);
             // A queue entry is an occurrence, even when callers repeat the same object.
             _originalQueue = tracks.Select(track => track with { }).ToArray();
             var queue = _state.Shuffle ? MusicQueue.Shuffled(_originalQueue, index, Random.Shared) : _originalQueue;
@@ -203,6 +209,9 @@ public sealed partial class MusicService : IMusicService
     public async Task<PlayNextResult> PlayNextAsync(MusicItem item, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        await InitializeAsync(token).ConfigureAwait(false);
+        long account;
+        lock (_gate) account = _ratingEpoch;
         IReadOnlyList<MusicItem> tracks;
         if (item.Kind is "playlist" or "album")
         {
@@ -218,7 +227,7 @@ public sealed partial class MusicService : IMusicService
         string nextId;
         lock (_gate)
         {
-            token.ThrowIfCancellationRequested();
+            RequireQueueAccount(account, token);
             startPlayback = _state.Current is null;
             addition = MusicQueue.AddNext(_state, _originalQueue, tracks);
             _originalQueue = addition.OriginalQueue;
@@ -232,6 +241,15 @@ public sealed partial class MusicService : IMusicService
             if (_backend is not null) await PrefetchAsync(nextId, token).ConfigureAwait(false);
         }
         return addition.Result;
+    }
+
+    // Account transitions and queue publication share the same lock. Checking at
+    // the mutation boundary also covers a disconnect after browse has completed.
+    private void RequireQueueAccount(long expected, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (expected != _ratingEpoch || _ratingAccountChanging || _lifetime.IsCancellationRequested)
+            throw new OperationCanceledException("The music account changed while loading songs.", token);
     }
 
     private async Task EnsurePlayerAsync(CancellationToken token)

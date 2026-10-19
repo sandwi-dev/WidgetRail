@@ -1096,3 +1096,19 @@ physical controller/couch/environment-specific acceptance. The two earlier nativ
 visibility/shutdown observations are unreproduced, with scoped passing retests;
 no broad reliability claim follows from those retests. The goal remains active.
 No merge, push, release or deferred CI repair.
+
+## YouTube Music account-change queue race — 2026-10-18
+
+The final deterministic audit reproduced a pending playlist/album Play next request
+accepting old-account results after disconnect/reconnect. Radio had the same delayed
+browse-to-queue boundary. Queue mutations now check the existing account epoch under
+the same lock used by account transitions, immediately before publishing entries.
+Cancellation and disposed-service state are also rejected there; no provider calls
+or new polling/cache layer were added.
+
+The new fake-provider regression deliberately ignores cancellation. It covers
+playlist, album and radio across disconnect and reconnect, explicit cancellation,
+disposal, and unchanged-account source order/normal playback. It fails against the
+original implementation; the corrected complete music suite passes **39/39 tests**.
+Evidence: `music-account-repro.log` and `music-account-final2.log`. A test property
+name typo was corrected before the qualified build. All traffic was local/fake.
