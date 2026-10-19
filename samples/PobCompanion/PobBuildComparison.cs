@@ -8,7 +8,7 @@ using System.Xml.Linq;
 namespace WidgetRail.Samples.PobCompanion;
 
 internal enum PobBuildComparisonCategory { Statistics, Equipment, Skills, Passives, Configuration }
-internal sealed record PobBuildComparisonEntry(string Key, string Label, string Value, string Details);
+internal sealed record PobBuildComparisonEntry(string Key, string Label, string Value, string Details, string? Summary = null);
 internal sealed record PobBuildComparisonContext(string Name, string Loadout, string MainSkill, string Class, string Level,
     string Tree, string Equipment, string Skills, string Configuration, string WeaponSet, string TreeVersion,
     string EngineVersion, string CalculationSkill, string SkillOptions);
@@ -24,6 +24,36 @@ internal sealed record PobBuildImpact(string Title, IReadOnlyList<PobBuildImpact
 internal sealed record PobBuildComparison(string InputKey, PobBuildProjection Current, PobBuildProjection Other,
     IReadOnlyList<PobBuildDifference> Differences, IReadOnlyList<PobBuildImpact> Impact);
 internal sealed record PobBuildComparisonInput(string Identity, string Name, string Xml, string? LoadoutName = null);
+
+/// <summary>Display-only comparison semantics. A numeric increase is not a gameplay improvement.</summary>
+internal static class PobBuildComparisonPresentation
+{
+    internal static string Identity(string name, string loadout) => string.IsNullOrWhiteSpace(loadout) ||
+        string.Equals(name, loadout, StringComparison.Ordinal) ? name : name + " · " + loadout;
+    internal static string Identity(PobBuildComparisonContext context) => Identity(context.Name, context.Loadout);
+
+    internal static string Change(PobBuildDifference difference)
+    {
+        if (difference.Current is null) return "Added";
+        if (difference.Other is null) return "Removed";
+        if (difference.Category != PobBuildComparisonCategory.Statistics) return "Changed";
+        if (!double.TryParse(difference.Current.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var before) ||
+            !double.TryParse(difference.Other.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var after) ||
+            !double.IsFinite(before) || !double.IsFinite(after)) return "Not comparable";
+        var delta = after - before;
+        if (!double.IsFinite(delta)) return "Not comparable";
+        if (delta == 0) return "No change";
+        var absolute = Signed(delta);
+        // These values are already displayed as percentages by the main stat formatter.
+        // Their subtraction is a percentage-point change, not a percentage change.
+        if (difference.Key.EndsWith("Resist", StringComparison.Ordinal)) return absolute + " pp";
+        if (before == 0) return absolute + " · from 0";
+        var percent = delta / Math.Abs(before) * 100;
+        return double.IsFinite(percent) ? absolute + " (" + Signed(percent) + "%)" : absolute;
+    }
+    private static string Signed(double value) => (value > 0 ? "+" : "−") +
+        Math.Abs(value).ToString(Math.Abs(value) < 0.01 || Math.Abs(value) >= 1e12 ? "G3" : "#,0.##", CultureInfo.CurrentCulture);
+}
 
 /// <summary>Bounded read-only projection cache; every calculation uses the existing serialized engine.</summary>
 internal sealed class PobBuildComparisonService
@@ -132,12 +162,13 @@ internal sealed class PobBuildComparisonService
         }).ToArray();
         entries[PobBuildComparisonCategory.Equipment] = Array(state, "items", 128).Select(item =>
             new PobBuildComparisonEntry(Text(item, "slot"), Text(item, "slot"), Text(item, "raw", 65536).Replace("\r\n", "\n").Trim(),
-                Text(item, "name") + "\n" + Text(item, "base") + "\n" + Text(item, "raw", 65536))).ToArray();
+                Text(item, "name") + "\n" + Text(item, "base") + "\n" + Text(item, "raw", 65536), Text(item, "name"))).ToArray();
         entries[PobBuildComparisonCategory.Passives] = Array(state, "nodes", 20000).Where(node => Flag(node, "allocated") || Flag(node, "granted"))
             .Select(node => new PobBuildComparisonEntry(context.TreeVersion + "/" + Text(node, "id"), Text(node, "name") + " · " + Text(node, "id"),
                 Text(node, "description", 16384) + "\n" + (Flag(node, "granted") ? "Granted" : "Allocated") + " · " + Allocation(node) + "\n" + Text(node, "socketedItem"),
                 Text(node, "description", 16384) + "\n" + (Flag(node, "granted") ? "Granted" : "Allocated") + " · " + Allocation(node) +
-                (Text(node, "socketedItem").Length > 0 ? "\nSocketed: " + Text(node, "socketedItem") : ""))).ToArray();
+                (Text(node, "socketedItem").Length > 0 ? "\nSocketed: " + Text(node, "socketedItem") : ""),
+                Text(node, "description", 16384).Split('\n')[0] + " · " + (Flag(node, "granted") ? "Granted" : "Allocated") + " · " + Allocation(node))).ToArray();
         var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
         entries[PobBuildComparisonCategory.Skills] = Array(state, "skills", 512).Select(group =>
         {
@@ -148,8 +179,11 @@ internal sealed class PobBuildComparisonService
                 string.Join("\n", Array(group, "weaponSets", 2).Select(set => "Weapon set " + Text(set, "id") + ": " + (Flag(set, "enabled") ? "Enabled" : "Disabled"))) + "\n" +
                 string.Join("\n", Array(group, "gems", 64).Select(gem => Text(gem, "name") + " · Level " + Text(gem, "level") + " · Quality " + Text(gem, "quality") +
                     " · Count " + Text(gem, "count") + (Flag(gem, "enabled") ? "" : " · Disabled")));
+            var gemSummary = string.Join("; ", Array(group, "gems", 64).Select(gem => Text(gem, "name") + " · Level " + Text(gem, "level") +
+                " · Quality " + Text(gem, "quality") + (Flag(gem, "enabled") ? "" : " · Disabled")));
             return new PobBuildComparisonEntry(identity + "/" + occurrence, Text(group, "title") + " · Group " + Text(group, "id"), text,
-                Text(group, "sourceName").Length > 0 ? "Source: " + Text(group, "sourceName") + "\n" + text : text);
+                Text(group, "sourceName").Length > 0 ? "Source: " + Text(group, "sourceName") + "\n" + text : text,
+                (Flag(group, "enabled") ? "" : "Disabled · ") + (gemSummary.Length == 0 ? "No gems" : gemSummary));
         }).ToArray();
         var configuration = result.Configuration.Options.Select(option =>
         {
@@ -158,7 +192,8 @@ internal sealed class PobBuildComparisonService
             var display = label.ValueKind == JsonValueKind.Object ? Text(label, "label") : value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() ? "On" : "Off" : value.ToString();
             return new PobBuildComparisonEntry(option.Id, option.Title, value.GetRawText() + "|" + Flag(option.Raw, "applicable"),
                 option.Section + "\n" + display + (Flag(option.Raw, "applicable") ? "" : "\nNot currently applicable") +
-                (option.Description.Length > 0 ? "\n\n" + Bounded(option.Description, 16384) : ""));
+                (option.Description.Length > 0 ? "\n\n" + Bounded(option.Description, 16384) : ""),
+                (display.Length == 0 ? "Empty" : display) + (Flag(option.Raw, "applicable") ? "" : " · Not currently applicable"));
         }).ToList();
         foreach (var block in Array(state, "customModGroups", 64))
         {
@@ -171,7 +206,7 @@ internal sealed class PobBuildComparisonService
         foreach (var values in entries.Values)
             if (values.Select(entry => entry.Key).Distinct(StringComparer.Ordinal).Count() != values.Count || values.Count > 4096)
                 throw new IOException("PoB returned ambiguous or excessive build comparison data.");
-        var bytes = entries.Values.Sum(values => values.Sum(entry => (long)(entry.Key.Length + entry.Label.Length + entry.Value.Length + entry.Details.Length) * 2 + 128));
+        var bytes = entries.Values.Sum(values => values.Sum(entry => (long)(entry.Key.Length + entry.Label.Length + entry.Value.Length + entry.Details.Length + (entry.Summary?.Length ?? 0)) * 2 + 128));
         if (bytes > 4 * 1024 * 1024) throw new IOException("This build has too much detailed data to compare safely.");
         return new(context, entries, bytes);
     }

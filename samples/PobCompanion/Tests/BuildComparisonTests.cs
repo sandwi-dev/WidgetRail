@@ -7,6 +7,7 @@ internal static class BuildComparisonTests
 {
     internal static async Task ModelsAsync(Action<bool, string> check)
     {
+        Presentation(check);
         var before = Fake(100, "First skill", false);
         var after = Fake(120, "Second skill", true);
         var service = new PobBuildComparisonService(); var requests = 0;
@@ -19,6 +20,14 @@ internal static class BuildComparisonTests
         check(comparison.Current.Context.MainSkill.StartsWith("First skill", StringComparison.Ordinal) && comparison.Other.Context.MainSkill.StartsWith("Second skill", StringComparison.Ordinal) &&
             comparison.Other.Context.WeaponSet == "Weapon set 2", "Comparison exposes distinct main skill and weapon-set context");
         check(comparison.Impact.Single().Lines.Single().Text == "+20 Life", "Calculated impact preserves upstream wording");
+        check(comparison.Current.Entries[PobBuildComparisonCategory.Configuration].Single().Summary == "Off" &&
+            comparison.Other.Entries[PobBuildComparisonCategory.Configuration].Single().Summary == "On",
+            "Configuration row summaries expose actual values instead of repeating section names");
+        check(comparison.Current.Entries[PobBuildComparisonCategory.Skills].Single().Summary!.Contains("First skill · Level 20", StringComparison.Ordinal) &&
+            comparison.Other.Entries[PobBuildComparisonCategory.Skills].Single().Summary!.Contains("Second skill · Level 21", StringComparison.Ordinal),
+            "Skill summaries expose candidate gems and levels rather than identical enabled labels");
+        check(comparison.Other.Entries[PobBuildComparisonCategory.Passives].Single().Summary!.Contains("Weapon set 2", StringComparison.Ordinal),
+            "Passive summary exposes allocation context when the description alone is unchanged");
         await service.CompareAsync(before, "current", "Current", input, Calculate, default);
         check(requests == 1, "Identical exact inputs reuse bounded projections");
         await service.CompareAsync(before, "current", "Current", input with { Xml = after.Xml + " " }, Calculate, default);
@@ -36,6 +45,33 @@ internal static class BuildComparisonTests
         check(requests == oldRequests + 1, "Engine identity participates in cache key");
         var noChanges = await new PobBuildComparisonService().CompareAsync(before, "current", "Current", new("same", "Same", before.Xml), (_, _, _) => Task.FromResult(before), default);
         check(noChanges.Differences.Count == 0, "Same build produces no invented differences");
+    }
+    private static void Presentation(Action<bool, string> check)
+    {
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        try
+        {
+            PobBuildDifference Stat(string? from, string? to, string key = "Life") => new(PobBuildComparisonCategory.Statistics, key, key,
+                from is null ? null : new(key, key, from, ""), to is null ? null : new(key, key, to, ""));
+            check(PobBuildComparisonPresentation.Change(Stat("100", "120")) == "+20 (+20%)", "Comparison shows signed absolute and relative numeric change");
+            check(PobBuildComparisonPresentation.Change(Stat("120", "100")) == "−20 (−16.67%)", "Comparison decrease uses the source as baseline");
+            check(PobBuildComparisonPresentation.Change(Stat("0", "120")) == "+120 · from 0", "Zero baseline omits misleading percentage change");
+            check(PobBuildComparisonPresentation.Change(Stat("-20", "-10")) == "+10 (+50%)", "Negative baseline change uses absolute baseline magnitude");
+            check(PobBuildComparisonPresentation.Change(Stat("50", "75", "FireResist")) == "+25 pp", "Percentage-valued statistics show percentage-point changes");
+            check(PobBuildComparisonPresentation.Change(Stat(null, "120")) == "Added" &&
+                PobBuildComparisonPresentation.Change(Stat("120", null)) == "Removed", "Missing values never pretend to be zero");
+            check(new[] { "NaN", "Infinity", "-Infinity", "invalid" }.All(value =>
+                PobBuildComparisonPresentation.Change(Stat(value, "120")) == "Not comparable"), "Invalid or non-finite values have no invented change");
+            check(PobBuildComparisonPresentation.Change(Stat("-1.7976931348623157E+308", "1.7976931348623157E+308")) == "Not comparable",
+                "Overflowing finite subtraction has no infinite delta");
+            check(!PobBuildComparisonPresentation.Change(Stat("1E-308", "1E308")).Contains('%'), "Overflowing percentage leaves the finite absolute change");
+            check(PobBuildComparisonPresentation.Change(Stat("0", "0")) == "No change" &&
+                PobBuildComparisonPresentation.Change(Stat("0", "0.0001")).Contains("0.0001", StringComparison.Ordinal), "Small changes do not silently round to zero");
+            check(PobBuildComparisonPresentation.Identity("Twister", "Campaign Start") == "Twister · Campaign Start" &&
+                PobBuildComparisonPresentation.Identity("Twister", "Twister") == "Twister", "Build identity includes active loadout without exact duplicated names");
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = culture; }
     }
     private static PobResult Fake(int life, string skill, bool other)
     {
@@ -120,6 +156,9 @@ internal static class BuildComparisonTests
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive); await Settled();
             var beforeFiles = Directory.GetFiles(directory).ToDictionary(path => Path.GetFileName(path)!, File.ReadAllBytes);
             await widget.OnActionAsync(new("build-comparison", "test"));
+            check(Nodes(View().Root).Single(node => node.Id == "pob.build-comparison.source").Text?.StartsWith("From: ", StringComparison.Ordinal) == true &&
+                Nodes(View().Root).Single(node => node.Id == "pob.build-comparison.target").AccessibilityLabel == "Compare with",
+                "Comparison setup names its actual source separately from the target selector");
             check(View().Surface?.PreferredWidth == 1320 && View().Surface?.HeightMode == WidgetSurfaceAxisMode.FillAvailable,
                 "Whole-build comparison uses the planning workspace dimensions");
             await widget.OnActionAsync(new("build-comparison-target.saved-" + otherId, "test"));
@@ -132,6 +171,17 @@ internal static class BuildComparisonTests
             await Settled();
             check(View().FocusGroupEntryRequest?.RequestId == focusBefore, "Comparison completion does not request a focus move");
             check(Has("pob.build-comparison.context.current") && Has("pob.build-comparison.context.other"), "Comparison displays both labelled contexts");
+            var resultView = View();
+            var heading = Nodes(resultView.Root).Single(node => node.Id == "pob.build-comparison.column.current").Text;
+            var otherHeading = Nodes(resultView.Root).Single(node => node.Id == "pob.build-comparison.column.other").Text;
+            check(!string.IsNullOrWhiteSpace(heading) && heading != "Current" && !string.IsNullOrWhiteSpace(otherHeading) && otherHeading != "Comparison",
+                "Result columns identify the actual source and target snapshots");
+            check(!Has("pob.build-comparison.context.current.value"), "Secondary engine and set metadata is collapsed initially");
+            var disclosureAction = Nodes(resultView.Root).Single(node => node.Id == "pob.build-comparison.context-toggle").ActionId!;
+            await widget.OnActionAsync(new(disclosureAction, "pob.build-comparison.context-toggle"));
+            check(Has("pob.build-comparison.context.current.value") && View().FocusGroupEntryRequest?.RequestId == focusBefore,
+                "Context disclosure reveals metadata without requesting a focus jump");
+            await widget.OnActionAsync(new(disclosureAction, "pob.build-comparison.context-toggle"));
             check(ViewSnapshotValidator.Validate(View()).Count == 0, "Whole-build comparison emits a valid bounded snapshot");
             using (var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "build-comparison-test", 500))
             {
@@ -139,10 +189,18 @@ internal static class BuildComparisonTests
                 check(declaration.Count > 0 && !Has("pob.build-comparison-next"), "Differences use the shared indexed collection without pagination");
                 using var lease = await host.AcquireAsync("pob.build-comparison.rows", 0, Math.Min(3, declaration.Count));
                 var row = lease.Range.Items[0];
+                var rowColumns = Nodes(row.Root).Single(node => node.GridLayout?.Columns.Count == 4);
+                var tableColumns = Nodes(View().Root).Single(node => node.Id == "pob.build-comparison.columns");
+                check(rowColumns.GridLayout!.Columns.SequenceEqual(tableColumns.GridLayout!.Columns) &&
+                    Nodes(row.Root).Count(node => node.ActionId is not null) == 1 &&
+                    !Nodes(row.Root).Any(node => node.Text == "Changed"), "Statistic rows share aligned columns and one inspection target without redundant Changed labels");
                 check(lease.RouteAction(row.Key, ControllerButton.A) == WidgetOperationAdmission.Enqueued, "Indexed inspection routes the exact comparison row");
                 var until = DateTime.UtcNow.AddSeconds(3);
                 while (!Has("pob.build-comparison.detail.current") && DateTime.UtcNow < until) await Task.Delay(10);
                 check(Has("pob.build-comparison.detail.current") && Has("pob.build-comparison.detail.other"), "Difference row navigates to both read-only details");
+                check(Nodes(View().Root).Single(node => node.Id == "pob.build-comparison.detail.current.title").Text == heading &&
+                    Nodes(View().Root).Single(node => node.Id == "pob.build-comparison.detail.other.title").Text == otherHeading,
+                    "Detail headings preserve the same snapshot identities as the result columns");
                 await widget.OnActionAsync(new("back", "test"));
                 check(View().FocusGroupEntryRequest?.GroupId == "pob.build-comparison.rows", "Back explicitly restores the inspected indexed occurrence");
                 if (Environment.GetEnvironmentVariable("POB_BUILD_COMPARISON_FIXTURES") is { Length: > 0 } rowFixtures)
