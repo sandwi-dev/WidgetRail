@@ -28,12 +28,14 @@ internal sealed partial class WidgetStylesValidationPage
         page.ApplyAppearance(AppearanceSettings.Default with{Motion=MotionPreference.Reduced},false);
         page.Failed=error=>failure??=error;
         long focusSerial=10000;
+        var densityMetrics=new List<object>();
         try
         {
             var disclosures=Environment.GetCommandLineArgs().Contains("--pob-disclosures-only");
-            foreach(var themeId in disclosures?new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"high-contrast"}:new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight})
+            var density=Environment.GetCommandLineArgs().Contains("--pob-density-only");
+            foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"widgetrail.builtin.velvet-dusk","high-contrast"})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
@@ -45,7 +47,9 @@ internal sealed partial class WidgetStylesValidationPage
                 ViewNode[] rows=scenario switch
                 {
                     "search"=>JsonSerializer.Deserialize<ViewNode[]>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-search-rows.json")))!,
-                    "build-comparison"=>(ViewNode[])[JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-build-comparison-row.json")))!],
+                    "build-comparison"=>File.Exists(Path.Combine(directory,$"poe{game}-build-comparison-rows.json"))
+                        ?JsonSerializer.Deserialize<ViewNode[]>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-build-comparison-rows.json")))!
+                        :(ViewNode[])[JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-build-comparison-row.json")))!],
                     _=>[],
                 };
                 var collection=scenario=="search"?"pob.unified.results":"pob.build-comparison.rows";
@@ -55,7 +59,7 @@ internal sealed partial class WidgetStylesValidationPage
                     ?new ViewNode{Id=node.Id,Kind=ViewNodeKind.Scroll,ScrollAxis=ScrollAxis.Vertical,StyleClasses=node.StyleClasses,InitialChildFocusId=detailRows.FirstOrDefault()?.Id,Children=detailRows}
                     :node.Kind==ViewNodeKind.IndexedCollection&&node.Id==collection
                     ?new ViewNode{Id=node.Id,Kind=ViewNodeKind.Scroll,ScrollAxis=ScrollAxis.Vertical,StyleClasses=node.StyleClasses,
-                        InitialChildFocusId=rows.FirstOrDefault()?.Id,Children=rows}
+                        GridCell=node.GridCell,InitialChildFocusId=rows.FirstOrDefault()?.Id,Children=rows}
                     :node with{Children=node.Children.Select(Materialize).ToArray()};
                 snapshot=snapshot with{Root=Materialize(snapshot.Root),WidgetInstanceId="pob-workflow-fixture"};
                 // The single resident row stands in only for native layout. Real SDK
@@ -92,9 +96,30 @@ internal sealed partial class WidgetStylesValidationPage
                     var detail=Find<FrameworkElement>("Widget.pob.detail",root)!;
                     Check(editor.ViewportHeight>=detail.ActualHeight*0.65,"Compact skill editor retains a usable scrolling viewport instead of a fixed oversized header");
                 }
+                if(density)
+                {
+                    var options=declared.Where(node=>node.StyleClasses.Contains("pob-setting"))
+                        .Select(node=>Find<FrameworkElement>("Widget."+node.Id,root)!).Where(element=>element is not null).ToArray();
+                    Check(options.Length>=2,"Configuration density uses actual populated option rows");
+                    var first=Descendants(options[0]).OfType<Button>().First();
+                    var second=Descendants(options[1]).OfType<Button>().First();
+                    var gap=second.TransformToVisual(page).TransformPoint(new()).Y-first.TransformToVisual(page).TransformPoint(new(0,first.ActualHeight)).Y;
+                    var visible=options.Count(VisibleInAncestorScrolls);
+                    densityMetrics.Add(new{game,themeId,size.Width,size.Height,gap,visible,total=options.Length});
+                    if(!Environment.GetCommandLineArgs().Contains("--pob-density-baseline"))
+                        Check(gap<=12,"Configuration controls retain targets without redundant empty inter-row padding");
+                }
                 if(scenario=="build-comparison")
                 {
-                    Check(rows.Length==1&&Find<Button>("Widget."+rows[0].Id,root) is not null,"Build comparison exposes its real read-only difference row");
+                    Check(rows.Length>0&&Find<Button>("Widget."+rows[0].Id,root) is not null,"Build comparison exposes its real read-only difference rows");
+                    Check(Descendants(page).OfType<ScrollViewer>().All(s=>s.ExtentWidth<=s.ViewportWidth+1),"Comparison columns have no horizontal overflow");
+                    var columns=rows[0].Children.Single();
+                    var firstColumns=Find<Grid>("Widget."+columns.Id,root)!;
+                    var owner=Find<Button>("Widget."+rows[0].Id,root)!;
+                    Check(firstColumns.ActualWidth>=owner.ActualWidth-owner.Padding.Left-owner.Padding.Right-4,"Rich comparison row fills its controller target rather than collapsing columns");
+                    var header=Find<FrameworkElement>("Widget.pob.build-comparison.columns",root)!;
+                    var list=Find<ScrollViewer>("Widget.pob.build-comparison.rows",root)!;
+                    Check(header.TransformToVisual(page).TransformPoint(new(0,header.ActualHeight)).Y<=list.TransformToVisual(page).TransformPoint(new()).Y+1,"Comparison rows do not overlap their column headings");
                     Check(!declared.Any(n=>n.ActionId is "apply" or "loadout-create"),"Comparison fixture exposes no apply or transfer control");
                 }
                 if(disclosures)
@@ -141,8 +166,8 @@ internal sealed partial class WidgetStylesValidationPage
                     await Wait(()=>VisibleInAncestorScrolls(control));
                     Check(true,"Focused workflow control is visible after scrolling and busy publication settle");
                 }
-                if(size.Width==820&&game==2)await Capture(Path.Combine(directory,$"native-{scenario}-{themeId}.png"));
-                if(size.Width==1320&&game==2&&themeId==ThemeIdentity.BuiltInMonoInk&&scenario is "skill-workspace" or "build-comparison")
+                if(size.Width==820&&game==2&&themeId==ThemeIdentity.BuiltInMineralLight&&scenario is "build-comparison" or "configuration-expanded")await Capture(Path.Combine(directory,$"native-{scenario}-{themeId}.png"));
+                if(size.Width==1320&&game==2&&themeId=="widgetrail.builtin.velvet-dusk"&&scenario is "skill-workspace" or "build-comparison" or "configuration-expanded" or "configuration-density")
                     await Capture(Path.Combine(directory,$"native-wide-{scenario}.png"));
                 if(failure is not null)throw failure;
 
@@ -166,7 +191,7 @@ internal sealed partial class WidgetStylesValidationPage
         }
         catch(Exception error){failure=error;await Capture(Path.Combine(directory,"native-failure.png"));}
         finally{await page.DisposeAsync();host.Children.Remove(root);}
-        await File.WriteAllTextAsync(Path.Combine(directory,"native-result.json"),JsonSerializer.Serialize(new{passed=failure is null,checks,error=failure?.ToString(),
+        await File.WriteAllTextAsync(Path.Combine(directory,"native-result.json"),JsonSerializer.Serialize(new{passed=failure is null,checks,densityMetrics,error=failure?.ToString(),
             scope="Native presentation and focus with materialized exported rows. Real provider routing, catalog caching and read-only engine/build invariants are tested separately."}));
         if(failure is not null)throw failure;
         static IEnumerable<ViewNode> Flatten(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Flatten));

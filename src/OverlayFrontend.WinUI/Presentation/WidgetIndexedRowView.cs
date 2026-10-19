@@ -98,6 +98,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         if (containerStyle is not null)
         {
             containerStyle.ContextHintHost = contentRoot;
+            containerStyle.StretchComposedContent = row.Item.Root.Kind == WidgetRail.WidgetProtocol.ViewNodeKind.ActionSurface;
             containerStyle.ContextHintButton = WidgetContextIndicator.Resolve(row.Item.Root);
             containerStyle.ContextHintAdmitted = () => !disposed && ReferenceEquals(Row, row) && row.Lease.IsCurrent &&
                 collection?.ContextHintsAdmitted == true && row.Owner.IsPresentationActive &&

@@ -30,14 +30,16 @@ internal sealed partial class WidgetStylesValidationPage
         page.Failed = error => failure ??= error;
         try
         {
-            foreach (var themeId in new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight })
+            foreach (var themeId in new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight, "widgetrail.builtin.velvet-dusk", "high-contrast" })
             foreach (var game in new[] { 1, 2 })
             foreach (var kind in new[] { "inventory", "unique" })
             foreach (var size in new[] { (Width: 1320d, Height: 900d), (Width: 820d, Height: 600d) })
             {
                 root.Width = page.Width = size.Width; root.Height = page.Height = size.Height;
+                var contrast=themeId=="high-contrast"; WidgetViewPresenter.SetHighContrastStyleOverride(contrast);
+                page.ApplyAppearance(AppearanceSettings.Default with { Motion=MotionPreference.Reduced, TextScale=contrast?1.25:1 }, false);
                 var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
-                    new((WrssDocument[])[package.Document], []), catalog.Load(themeId, "1.0.0").Package).Theme!;
+                    new((WrssDocument[])[package.Document], []), catalog.Load(contrast?ThemeIdentity.BuiltInMonoInk:themeId, "1.0.0").Package).Theme!;
                 var inspection = SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-{kind}-inspection.json")));
                 if(size.Width==820)inspection=inspection with{Root=WithInspectionOverflow(inspection.Root,"pob.candidate-inspection.body")};
                 var row = JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-{kind}-row.json")))!;
@@ -83,8 +85,9 @@ internal sealed partial class WidgetStylesValidationPage
                 await Wait(() => Find<Button>("Widget." + row.Id, root) is { IsLoaded: true });
                 var opener = Find<Button>("Widget." + row.Id, root)!;
                 opener.Focus(FocusState.Keyboard);
-                await Wait(() => page.IsFocusPreviewOpen);
-                Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener), "Item passive preview keeps source row focus");
+                if(kind=="unique")await Wait(() => page.IsFocusPreviewOpen);
+                else Check(!page.IsFocusPreviewOpen,"Inventory retains its details pane without a redundant floating preview");
+                Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), opener), "Item browsing keeps source row focus");
                 Check(selected == 0 && equipped == 0, "Preview does not select or equip an item");
                 Check(row.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.X && shortcut.ActionId == "inspect") &&
                     row.ContextActions.Any(action => action.ActionId == "inspect"), "Real item row declares local X and context inspection");

@@ -30,13 +30,15 @@ internal sealed partial class WidgetStylesValidationPage
         page.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         try
         {
-            foreach (var themeId in new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight })
+            foreach (var themeId in new[] { ThemeIdentity.BuiltInMonoInk, ThemeIdentity.BuiltInMineralLight, "widgetrail.builtin.velvet-dusk", "high-contrast" })
             foreach (var game in new[] { 1, 2 })
             foreach (var size in new[] { (Width: 1320d, Height: 900d), (Width: 820d, Height: 600d) })
             {
                 root.Width = page.Width = size.Width; root.Height = page.Height = size.Height;
+                var contrast=themeId=="high-contrast"; WidgetViewPresenter.SetHighContrastStyleOverride(contrast);
+                page.ApplyAppearance(AppearanceSettings.Default with { Motion=MotionPreference.Reduced, TextScale=contrast?1.25:1 }, false);
                 var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,
-                    new((WrssDocument[])[package.Document], []), catalog.Load(themeId, "1.0.0").Package).Theme!;
+                    new((WrssDocument[])[package.Document], []), catalog.Load(contrast?ThemeIdentity.BuiltInMonoInk:themeId, "1.0.0").Package).Theme!;
                 var picker = SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-gem-picker.json")));
                 var inspection = SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory, $"poe{game}-gem-inspection.json")));
                 if(size.Width==820)inspection=inspection with{Root=WithInspectionOverflow(inspection.Root,"pob.gem-inspection.body")};

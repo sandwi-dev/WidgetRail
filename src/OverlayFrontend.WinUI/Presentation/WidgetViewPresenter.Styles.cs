@@ -65,6 +65,7 @@ internal sealed partial class WidgetViewPresenter
         if (!nativeStyles.TryGetValue(binding, out var adapter))
             nativeStyles.Add(binding, adapter = new(target, node.IsFocusable || target is ScrollViewer or ListViewBase));
         adapter.ContextHintButton = WidgetContextIndicator.Resolve(node);
+        adapter.StretchComposedContent = node.Kind == ViewNodeKind.ActionSurface;
         adapter.ContextHintAdmitted = () => !disposed && presentationActive && presentationInputEnabled && ContextOwnerAvailable(binding);
         if (binding.Element is WidgetIndexedCollectionView indexed)
             indexed.ContextHintAdmitted = adapter.ContextHintAdmitted;
@@ -195,6 +196,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private WidgetScrollEdgeCues? scrollEdgeCues;
     internal WidgetScrollEdgeCues? ScrollEdgeCues => scrollEdgeCues;
     internal ControllerButton? ContextHintButton { get; set; }
+    internal bool StretchComposedContent { get; set; }
     internal Func<bool>? ContextHintAdmitted { get; set; }
     internal Panel? ContextHintHost { get; set; }
     internal WidgetContextIndicator? ContextIndicator => contextIndicator;
@@ -379,7 +381,9 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             // A live preview is a graphics viewport, not a text presenter.
             // Text alignment on its authored placeholder must not center the
             // empty capture Grid at its zero intrinsic width.
-            Put(Control.HorizontalContentAlignmentProperty, element is WidgetValueButton ? HorizontalAlignment.Stretch : element is Previews.WidgetWindowPreview ? null : Alignment(style) switch
+            // Text alignment controls text, not the width of a composed action's
+            // layout. Shrink-wrapping rich content collapses its star columns.
+            Put(Control.HorizontalContentAlignmentProperty, StretchComposedContent || element is WidgetValueButton ? HorizontalAlignment.Stretch : element is Previews.WidgetWindowPreview ? null : Alignment(style) switch
             {
                 TextAlignment.Left => HorizontalAlignment.Left, TextAlignment.Right => HorizontalAlignment.Right,
                 TextAlignment.Center => HorizontalAlignment.Center, _ => (HorizontalAlignment?)null,
