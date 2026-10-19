@@ -1017,3 +1017,20 @@ Normal installation registration and shortcut comparisons remain in the harness.
 Evidence is under `installed-update-20261018` and
 `bare-catalog-probe-20261018/executor-identity.json`. This supersedes the earlier
 open Bare discovery finding. Physical Guide/controller acceptance remains separate.
+
+## Media shutdown follow-up — 2026-10-18
+
+Added an opt-in Debug-only `--media-shutdown-audit` to the existing native music
+fixture. It records preparation/native-operation counts, performs the same
+hide → presenter disposal → icon-cache drain ordering, and reports the stage of
+any bounded observation timeout without force-releasing active native resources.
+The actual drain remains unmodified. This produces files only when explicitly
+requested and adds no production logging.
+
+`music-shutdown-final-20261018` passes the 381 media assertions and the disposal
+probe: no pending preparation/native operation remained before or after shutdown;
+SVG, render, pixels and surface stages were observed. A fresh unmodified-close-path
+run (`music-shutdown-recheck-20261018/close-result.json`) also passes all 381 checks
+and exits promptly after actual WM_CLOSE, with no prior disposal/drain. The earlier
+isolated shutdown observation is therefore unreproduced, not attributed to an
+unproven production cause. No timeout/resource-lifetime workaround was added.

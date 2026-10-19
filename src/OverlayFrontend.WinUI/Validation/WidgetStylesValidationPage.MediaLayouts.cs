@@ -23,6 +23,11 @@ internal sealed partial class WidgetStylesValidationPage
     private async Task NativeMediaLayoutsAsync(string directory)
     {
         Exception? failure = null;
+        var shutdownAudit = Environment.GetCommandLineArgs().Contains("--media-shutdown-audit");
+        var iconCache = shutdownAudit ? NativePackageIconTintCache.For(XamlRoot) : null;
+        var nativeStages = new List<string>();
+        if (iconCache is not null)
+            iconCache.NativeOperationStartedForTesting = (stage, pending) => nativeStages.Add(stage + ":" + pending);
         try { await RunNativeMediaLayoutsAsync(directory); }
         catch (Exception error) { failure = error; }
         finally { WidgetViewPresenter.SetHighContrastStyleOverride(null); }
@@ -31,6 +36,30 @@ internal sealed partial class WidgetStylesValidationPage
                 themeAudit = Environment.GetCommandLineArgs().Contains("--media-theme-audit"),
                 scope = "Native renderer with offline artwork and empty collection viewports. High contrast is a host style override, not an OS theme change; no service or physical controller acceptance." }));
         if (failure is not null) throw failure;
+        if (iconCache is not null)
+        {
+            var before = new { iconCache.PendingPreparations, iconCache.PendingNativeOperations };
+            string phase = "hide";
+            Exception? shutdownFailure = null;
+            App.Window.AppWindow.Hide();
+            try
+            {
+                phase = "presenter";
+                await DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+                phase = "icons";
+                await NativePackageIconTintCache.ShutdownAsync(DispatcherQueue).WaitAsync(TimeSpan.FromSeconds(10));
+                phase = "complete";
+            }
+            catch (Exception error) { shutdownFailure = error; }
+            finally
+            {
+                iconCache.NativeOperationStartedForTesting = null;
+                await File.WriteAllTextAsync(Path.Combine(directory, "shutdown-result.json"),
+                    JsonSerializer.Serialize(new { passed = shutdownFailure is null, phase, before,
+                        iconCache.PendingPreparations, iconCache.PendingNativeOperations, nativeStages,
+                        error = shutdownFailure?.ToString() }));
+            }
+        }
     }
 
     private async Task RunNativeMediaLayoutsAsync(string directory)
