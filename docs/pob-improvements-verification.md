@@ -32,6 +32,14 @@ checks, item suites (94 PoE1 / 92 PoE2) and skill suites (70 / 72). Representati
 reviewed. Tests use local fixtures with no live service requests. Artifacts are
 `artifacts/pob/deferred-*`. Physical controller acceptance remains separate.
 
+Delivery: source `84068d4d` was published cleanly in
+`cumulative-candidate-20261019-deferred-previews`. Both PoB packages 0.1.4.19 are
+installed and enabled. The cumulative normal-profile candidate is running hidden
+as PID 10084 with its controller backend enabled. All 138 deployed frontend DLLs
+match the qualified publication; selected installed widget/SDK/protocol/style
+files match their packages. Spotify and YouTube Music retain their selected
+versions and enabled state. No merge, push or release was performed.
+
 ## Complete rich previews and navigation restoration, 2026-10-19
 
 Protocol 94 now places complete interactive content inside `PresentOnFocus`.
