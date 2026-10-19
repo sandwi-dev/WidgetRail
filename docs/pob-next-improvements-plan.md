@@ -204,6 +204,21 @@ shows “Compare current with” without identifying the source.
 - [ ] Carry those names into the results and side-by-side detail headings so users can tell which build/loadout each value belongs to without returning to setup. Keep long names readable with sensible wrapping and avoid repeating redundant build names when comparing loadouts of the same build.
 - [ ] Bind displayed identities to the same source/target snapshots used by the comparison. Switching builds or loadouts must not leave stale labels beside newer results. Retain existing calculation-context distinctions and read-only behavior.
 
+### Planned follow-up: comparison results presentation
+
+**Agreed for the plan; implementation on hold.** The user's results screenshot
+(`codex-clipboard-80cb4b00-83c1-45c8-8de8-7765e35350af.png`, 2026-10-18)
+shows oversized centered statistic cards, repeated “Changed”/side labels, and a
+large context pane dominated by dense metadata. This presentation is not accepted
+as finished. Two panes alone do not make the comparison efficient or readable.
+
+- [ ] Replace the tall statistic cards with compact, consistently aligned comparison rows: left-aligned statistic name, clearly identified source and target values, and a useful absolute/percentage change where mathematically meaningful. Use shared column headings with actual build/loadout identities rather than repeating generic labels on every row. Keep one clear focus target per row and full detail inspection.
+- [ ] Format values consistently and align numeric columns for scanning. Do not show a misleading percentage for zero baselines, non-finite values or unavailable data. Distinguish a numeric increase/decrease from an improvement; use upstream comparison semantics where supplied and avoid new maintained gameplay rules or color-only meaning.
+- [ ] Reduce repeated status text such as “Changed” in a differences-only view. Preserve meaningful Added/Removed/Unavailable states and distinguish main-skill output, Full DPS and other genuinely different metrics.
+- [ ] Replace the dominant metadata pane with a compact, readable summary of both named builds/loadouts and decision-relevant differences such as level, main skill and weapon set. Put detailed set names, engine/tree versions and secondary calculation context behind an explicit expandable details action. Retain the explanation that these are whole-build differences, including different calculation contexts, rather than equipment-only gains.
+- [ ] Give the comparison results most of the available space and consolidate category/search controls without shrinking readable text or controller targets. Reuse existing layout/list/disclosure facilities. Adapt narrower layouts without misaligning values or hiding essential source/target identity.
+- [ ] Verify representative statistics, equipment, skills, passives and configuration results, long names, missing/added entries, zero/non-finite values, scrolling and return from detail inspection. Inspect the actual native page in the reported theme and representative constrained/enlarged layouts; check visible row density and information hierarchy, not only bounds. Keep the screenshot as the before-state reference. No implementation or application testing until the hold is lifted.
+
 ## 6. Unified search and direct navigation
 
 - [x] Search passives, skills/gems, equipped and inventory items, configuration options, calculation rows, saved builds and useful actions from one entry point.
