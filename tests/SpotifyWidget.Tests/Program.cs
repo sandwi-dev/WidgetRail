@@ -6,6 +6,37 @@ using WidgetRail.WidgetStyling;
 using System.Security.Cryptography;
 using System.Text;
 
+if (args is ["--export-queue-layout", var queueDirectory])
+{
+    Directory.CreateDirectory(queueDirectory);
+    var provider = SpotifyHarness.Ready();
+    provider.Queue = new(provider.Queue.CurrentlyPlaying, Enumerable.Range(0, 16).Select(index =>
+        new SpotifyMediaItemSummary(SpotifyPlaybackItemType.Track,
+            index is 7 or 12 ? "The same song appears twice" : index == 2 ? "An intentionally long song title with a live performance, remastered edition and several featured artists" : "Queue song " + index,
+            index == 2 ? "A long artist name with collaborators and an extended album title" : "Fixture artist", 201000,
+            "https://example.invalid/fixture.png", "spotify:track:" + (index is 7 or 12 ? "duplicate" : "queue" + index),
+            "https://open.spotify.com/track/" + (index is 7 or 12 ? "duplicate" : "queue" + index), true)).ToArray(), false);
+    var widget = await StartAsync(provider);
+    try
+    {
+        await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
+        await WaitUntil(() => ContainsId(widget.RenderSnapshot("queue-layout", 1).Root, "spotify.queue.scroll"));
+        using var indexed = WidgetTestHost.CreateIndexedCollectionHost(widget, "queue-layout");
+        using var lease = await indexed.AcquireAsync("spotify.queue.scroll", 0, 16);
+        Assert.Equal(16, lease.Range.Items.Select(item => item.Key).Distinct().Count());
+        Assert.True(lease.Range.Items.All(item => item.Root.IsSelected != true), "Spotify must not label an upcoming occurrence as playing");
+        using var snapshot = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(indexed.CurrentSnapshot));
+        await File.WriteAllTextAsync(Path.Combine(queueDirectory, "Spotify.queue.json"), System.Text.Json.JsonSerializer.Serialize(new
+        {
+            snapshot = snapshot.RootElement, collectionId = "spotify.queue.scroll",
+            rows = lease.Range.Items, currentInRows = false, duplicateIndexes = new[] { 7, 12 },
+        }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+        { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) } }));
+    }
+    finally { await StopAsync(widget); }
+    return;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Spotify music saved state batches deduplicates and fences account races", SpotifyMusicWorkflowTests.SavedState),

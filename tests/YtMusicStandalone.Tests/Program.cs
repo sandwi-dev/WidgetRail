@@ -3,6 +3,39 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
 
+if (args is ["--export-queue-layout", var queueDirectory])
+{
+    Directory.CreateDirectory(queueDirectory);
+    var (widget, service) = await Start();
+    try
+    {
+        service.SetPlayback(true, "queue-current");
+        service.ReplaceQueue(Enumerable.Range(0, 16).Select(index => new MusicItem(
+            index is 7 or 12 ? "duplicate" : "queue-" + index, "song",
+            index is 7 or 12 ? "The same song appears twice" : index == 2 ? "An intentionally long song title with a live performance, remastered edition and several featured artists" : "Queue song " + index,
+            index == 2 ? "A long artist name with collaborators and an extended album title" : "Fixture artist",
+            "https://example.invalid/fixture.png")).ToArray());
+        service.SelectCurrent(6);
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        await Until(() => BrowseScroll(widget).IndexedCollection?.Count == 16);
+        using var indexed = WidgetTestHost.CreateIndexedCollectionHost(widget, "queue-layout");
+        var declaration = Nodes(indexed.CurrentSnapshot.Root).Single(node => node.IndexedCollection is not null);
+        using var lease = await indexed.AcquireAsync(declaration.Id, 0, 16);
+        Check(lease.Range.Items.Select(item => item.Key).Distinct().Count() == 16, "Queue export collapsed duplicate occurrences");
+        Check(lease.Range.Items.Count(item => item.Root.IsSelected == true) == 1, "Queue export lost current occurrence");
+        Check(lease.Range.Items[6].Root.IsSelected == true, "Queue export selected a different occurrence");
+        using var snapshot = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(indexed.CurrentSnapshot));
+        await File.WriteAllTextAsync(Path.Combine(queueDirectory, "YouTubeMusic.queue.json"), System.Text.Json.JsonSerializer.Serialize(new
+        {
+            snapshot = snapshot.RootElement, collectionId = declaration.Id,
+            rows = lease.Range.Items, currentInRows = true, duplicateIndexes = new[] { 7, 12 },
+        }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+        { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) } }));
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+    return 0;
+}
+
 if (args is ["--export-layout", var directory])
 {
     Directory.CreateDirectory(directory);

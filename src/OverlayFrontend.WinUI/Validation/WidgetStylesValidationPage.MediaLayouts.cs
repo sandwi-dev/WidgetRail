@@ -28,13 +28,20 @@ internal sealed partial class WidgetStylesValidationPage
         var nativeStages = new List<string>();
         if (iconCache is not null)
             iconCache.NativeOperationStartedForTesting = (stage, pending) => nativeStages.Add(stage + ":" + pending);
-        try { await RunNativeMediaLayoutsAsync(directory); }
+        var queueAudit = Environment.GetCommandLineArgs().Contains("--media-queue-audit") ||
+            Environment.GetCommandLineArgs().Contains("--media-queues-only");
+        try
+        {
+            if (!Environment.GetCommandLineArgs().Contains("--media-queues-only")) await RunNativeMediaLayoutsAsync(directory);
+            if (queueAudit) await NativeMediaQueuesAsync(directory);
+        }
         catch (Exception error) { failure = error; }
         finally { WidgetViewPresenter.SetHighContrastStyleOverride(null); }
         await File.WriteAllTextAsync(Path.Combine(directory, "native-result.json"),
             JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString(),
                 themeAudit = Environment.GetCommandLineArgs().Contains("--media-theme-audit"),
-                scope = "Native renderer with offline artwork and empty collection viewports. High contrast is a host style override, not an OS theme change; no service or physical controller acceptance." }));
+                queueAudit,
+                scope = "Native renderer with offline artwork; opt-in queue rows are actual widget exports materialized for layout/context dispatch only. Indexed virtualization/lease admission, services and physical controller acceptance are separate. High contrast is a host override." }));
         if (failure is not null) throw failure;
         if (iconCache is not null)
         {
