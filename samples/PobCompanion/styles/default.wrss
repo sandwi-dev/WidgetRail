@@ -143,7 +143,6 @@ text { color: var(--text); text-align: start; }
 .pob-modifier-diff { gap:0px; }
 .pob-modifier-absent { font-size:13px; color:var(--text-muted); text-align:start; }
 .pob-modifier-status { width:20px; height:20px; }
-.pob-modifier-status-label { font-size:14px; font-weight:600; text-align:start; }
 .pob-button.pob-discard { color:var(--danger,var(--text)); border-color:var(--danger,var(--text)); }
 .pob-button.pob-discard:focused { color:var(--danger,var(--text)); border-color:var(--danger,var(--text)); outline-color:var(--focus); }
 .pob-comparison-columns { padding:4px 10px; background:var(--surface-raised); corner-radius:6px; }

@@ -88,8 +88,7 @@ public sealed partial class PobWidget
                 UI.Icon(WidgetIcon.PackageSvg("change."+row.Status,WidgetPackageIconColorMode.ThemeTint,fallback),prefix+".status",label+" modifier").Classes("pob-modifier-status",tone),
                 ModifierCell(row.Before,row.Status,"equipped",prefix+".before").InGrid(column:1), ModifierCell(row.After,row.Status,"proposed",prefix+".after").InGrid(column:2))
                 .Spacing(0,12).Classes("pob-modifier-values"))
-            .Classes("pob-modifier-row")
-            .PresentOnFocus(UI.Text(label+" modifier",prefix+".status-label").Classes("pob-modifier-status-label",tone));
+            .Classes("pob-modifier-row");
     }
 
     private WidgetElement ModifierChanges(string prefix)
@@ -121,10 +120,7 @@ public sealed partial class PobWidget
             return UI.VerticalScroll("pob." + prefix + ".details", Text("PoB modifier matching is unavailable for this comparison. Full items and Build impact remain available.", prefix + ".unavailable", "pob-muted")).Classes("pob-scroll");
         if (itemModifierQuery.Rows.Length == 0)
             return UI.VerticalScroll("pob." + prefix + ".details", Text("No modifier changes. Full items includes base properties, requirements and sockets.", prefix + ".empty", "pob-muted")).Classes("pob-scroll");
-        return UI.FocusPresentationSurface(
-            UI.CollectionList("pob." + prefix + ".details", itemModifierCollection, 52, "Equipped and proposed modifier changes").Classes("pob-scroll","pob-modifier-diff"),
-            UI.Text("","pob."+prefix+".status-empty"),"pob."+prefix+".status-preview").Classes("pob-workspace")
-            with{Preview=new(Width:240,Height:96){SizeToContentHeight=true}};
+        return UI.CollectionList("pob." + prefix + ".details", itemModifierCollection, 52, "Equipped and proposed modifier changes").Classes("pob-scroll","pob-modifier-diff");
     }
 
     private WidgetElement ComparisonReading(string prefix)
@@ -149,7 +145,7 @@ public sealed partial class PobWidget
         }
         var reading=UI.Stack("pob." + prefix + ".reading", body)
             .Shortcut(ControllerButton.LeftStick, "trade-review-focus", "Comparison controls").Classes("pob-workspace");
-        return body is FocusPresentationSurfaceElement?reading.RememberChildFocus("pob."+prefix+".details"):reading;
+        return body is IndexedCollectionElement?reading.RememberChildFocus("pob."+prefix+".details"):reading;
     }
 
     private WidgetElement BuildTradeComparison(string prefix, bool expanded)

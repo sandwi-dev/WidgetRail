@@ -2,6 +2,16 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Remove modifier status popup, 2026-10-19
+
+At the user's request, removed the Changes-list status focus/hover preview,
+its wrapper/default content and unused style. Separate status icons, colours and
+accessible labels remain. The list again owns its direct focus target; A still
+opens Full items. Both workflow suites pass (120 PoE1 / 121 PoE2), including no
+popup declarations, indexed rows, focus targets and navigation. Release build and
+package/WRSS validation pass. Evidence: `artifacts/pob/trade-no-status-popup-*`.
+Both cumulative packages are **0.1.4.29**. No new physical/native visual checks.
+
 ## Status icons, button navigation and discard theme, 2026-10-19
 
 Changes now uses four small package SVGs in a separate 24-DIP gutter, keeping

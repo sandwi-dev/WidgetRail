@@ -10,8 +10,7 @@ internal static class TradeWorkflowTests
     {
         // Reproduce the one-to-many modifier shape from the reported armour comparison.
         PobModifierLine Line(string text,string kind="Explicit")=>new(kind,JsonSerializer.SerializeToElement(new{text}));
-        ViewSnapshot DiffSnapshot(WidgetElement row)=>new WidgetView(UI.FocusPresentationSurface(row,UI.Text("","empty"),"preview")
-            with{Preview=new(Width:240,Height:96){SizeToContentHeight=true}}).CreateSnapshot("modifier-layout",1);
+        ViewSnapshot DiffSnapshot(WidgetElement row)=>new WidgetView(row).CreateSnapshot("modifier-layout",1);
         var modifierRow=PobWidget.ModifierDifferenceRow(new("armour","changed",
             [Line("+141 to Evasion Rating")],[Line("+161 to Evasion Rating"),Line("+49 to Evasion Rating")]),"fixture");
         var modifierSnapshot=DiffSnapshot(modifierRow);
@@ -33,8 +32,8 @@ internal static class TradeWorkflowTests
             check(icon.PackageIcon?.AssetId=="change."+status&&(icon.GridCell?.Column??0)==0&&icon.AccessibilityLabel==label+" modifier"&&icon.StyleClasses.Contains(colour)&&
                 Flatten(diff.Root).Where(node=>node.Text?.Contains("Intelligence")==true&&node.Kind==ViewNodeKind.Text).All(node=>node.StyleClasses.Contains(colour)),
                 "Separate gutter icon and diff colour distinguish status without prefixing values: "+status);
-            check(Flatten(diff.Root).Single(node=>node.Kind==ViewNodeKind.ActionSurface).FocusPresentation?.Text==label+" modifier"&&diff.Root.FocusPreview?.EnterButton is null,
-                "Focus/hover label is passive and does not take over the row action: "+status);
+            check(Flatten(diff.Root).All(node=>node.FocusPresentation is null&&node.FocusPreview is null)&&diff.Root.ActionId=="inspect",
+                "Status has no focus/hover popup and preserves the row action: "+status);
         }
         foreach(var (text,label,value) in new[]{("+4,305.6 Average Damage (+14.4%)","Average Damage","+4,305.6 (+14.4%)"),("-35.51% Crit Chance","Crit Chance","-35.51%")})
         {
