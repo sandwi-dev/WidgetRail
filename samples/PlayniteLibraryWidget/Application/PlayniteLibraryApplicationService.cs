@@ -562,8 +562,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 .Take(PlayniteLibraryPrivateState.MaximumRecentItems);
         if (context.Scope == PlayniteLibraryQueryScope.Home)
             return values
-                .OrderByDescending(game => game.Favorite)
-                .ThenBy(game => game.LastActivityUnixMilliseconds is null)
+                .OrderBy(game => game.LastActivityUnixMilliseconds is null)
                 .ThenByDescending(game => game.LastActivityUnixMilliseconds)
                 .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(game => game.Id, StringComparer.Ordinal);

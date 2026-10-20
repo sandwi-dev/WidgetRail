@@ -101,7 +101,7 @@ public sealed partial class PlayniteLibraryTests
             contextActionOwnerId: item.Root.Id, contextActionId: PlayniteLibraryActions.Favorite));
         await WaitIndexed(() => provider.Authority.FavoriteGameIds.Contains("saved-00080") && !widget.RenderState.Value.OrganizationBusy);
         var updated = host.PublishSnapshot();
-        var source = Nodes(updated.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection).IndexedCollection!;
+        var source = Nodes(updated.Root).Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId).IndexedCollection!;
         Assert.AreSame(owner, widget.RenderState.Value.IndexedHome.Publication!.QueryOwner);
         Assert.AreEqual(declaration.IndexedCollection!.QueryGeneration, source.QueryGeneration);
         Assert.IsGreaterThan(declaration.IndexedCollection.ContentRevision, source.ContentRevision);

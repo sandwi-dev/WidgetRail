@@ -102,8 +102,8 @@ Copy-Item -LiteralPath $manifestPath `
     -Destination (Join-Path $stagingRoot 'manifest.json')
 Copy-Item -LiteralPath (Join-Path $widgetRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss')
-Copy-Item -LiteralPath (Join-Path $widgetRoot 'assets\icons\playnite-library.svg') `
-    -Destination (Join-Path $stagingRoot 'assets\icons\playnite-library.svg')
+Get-ChildItem -LiteralPath (Join-Path $widgetRoot 'assets\icons') -Filter '*.svg' -File |
+    Copy-Item -Destination (Join-Path $stagingRoot 'assets\icons')
 
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar) +

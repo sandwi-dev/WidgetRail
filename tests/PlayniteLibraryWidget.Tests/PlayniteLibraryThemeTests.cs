@@ -23,6 +23,11 @@ public sealed partial class PlayniteLibraryLayoutTests
     [DataRow("builtin-neon-circuit")]
     [DataRow("builtin-redline")]
     [DataRow("builtin-arcade-rush")]
+    [DataRow("builtin-mineral-light")]
+    [DataRow("builtin-canopy")]
+    [DataRow("builtin-amber-signal")]
+    [DataRow("builtin-velvet-dusk")]
+    [DataRow("builtin-mono-ink")]
     public void AllScreensInheritSelectedThemeColors(string? themeName)
     {
         var theme = CompileStyles(themeName);
@@ -49,12 +54,16 @@ public sealed partial class PlayniteLibraryLayoutTests
         foreach (var style in new[] { "playnite-library-home-actions", "playnite-library-home-summary", "playnite-library-browse-foreground" })
         {
             var panel = Resolve("stack", style);
-            // Theme surfaces have .98 alpha; the panel multiplies that by .84,
-            // preserving each theme's RGB without dimming text or artwork.
-            StringAssert.EndsWith(surface, ", 0.98)");
-            Assert.AreEqual(surface.Replace(", 0.98)", ", 0.8232)"), panel.Get("background")?.Text, style);
+            // Both opaque modern themes and translucent legacy themes retain their RGB.
+            var tinted = surface.StartsWith('#')
+                ? $"rgba({Convert.ToInt32(surface[1..3], 16)}, {Convert.ToInt32(surface[3..5], 16)}, {Convert.ToInt32(surface[5..7], 16)}, 0.84)"
+                : surface.Replace(", 0.98)", ", 0.8232)");
+            Assert.AreEqual(tinted, panel.Get("background")?.Text, style);
             Assert.IsNull(panel.Get("opacity"), style);
         }
+        Assert.AreEqual(surface, Resolve("stack", "playnite-library-home-content").Get("background")?.Text);
+        Assert.AreEqual(text, Resolve("button", "playnite-library-section-link").Get("color")?.Text);
+        Assert.AreEqual("acrylic", Resolve("stack", "wrail-modal").Get("background-material")?.Text);
         Assert.AreEqual(raised, Resolve("action-surface", "playnite-library-category").Get("background")?.Text);
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-summary-title").Get("color")?.Text);
@@ -63,18 +72,18 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(text, Resolve("text", "playnite-library-details-description").Get("color")?.Text);
         Assert.AreEqual(Resolve("text", "playnite-library-details-meta").Get("color")?.Text,
             Resolve("text", "playnite-library-details-label").Get("color")?.Text);
-        Assert.AreEqual("13px", Resolve("text", "playnite-library-details-label").Get("font-size")?.Text);
+        Assert.AreEqual("14px", Resolve("text", "playnite-library-details-label").Get("font-size")?.Text);
         Assert.AreEqual("20px", Resolve("text", "playnite-library-details-section-title").Get("font-size")?.Text);
         Assert.AreEqual("400", Resolve("text", "playnite-library-details-description").Get("font-weight")?.Text);
         Assert.AreEqual("128", Resolve("text", "playnite-library-details-description").Get("max-lines")?.Text);
-        Assert.AreEqual(raised.Replace(", 0.98)", ", 0.8232)"), Resolve("stack", "wrail-modal").Get("background")?.Text);
+        Assert.AreEqual(raised, Resolve("stack", "wrail-modal").Get("background")?.Text);
         Assert.IsNull(Resolve("stack", "wrail-modal").Get("opacity"), "Panel alpha must not dim its children.");
         Assert.AreEqual(Resolve("backdrop").Get("background")?.Text,
             Resolve("modalLayer", "wrail-modal-layer").Get("background")?.Text);
         Assert.AreEqual("24px", Resolve("stack", "wrail-modal").Get("padding")?.Text);
         Assert.AreEqual("column", Resolve("row", "wrail-modal__header").Get("direction")?.Text);
         Assert.AreEqual("900px", Resolve("stack", "wrail-modal").Get("width")?.Text);
-        Assert.AreEqual("3", Resolve("text", "playnite-library-details-field").Get("flex-grow")?.Text);
+        Assert.AreEqual("0", Resolve("text", "playnite-library-details-field").Get("flex-grow")?.Text);
         Assert.AreEqual(accent, Resolve("text", "playnite-library-summary-badge-accent").Get("color")?.Text);
         var focusedControl = theme.Resolve(new WrssElement("button", null,
             new HashSet<string>(["playnite-library-control"]),
@@ -237,11 +246,11 @@ public sealed partial class PlayniteLibraryLayoutTests
                 Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count, route + " " + phase);
                 if (route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
                 {
-                    var navigation = Nodes(snapshot.Root).Where(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen).ToArray();
+                    var navigation = Nodes(snapshot.Root).Where(node => (node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen) && node.Id != "playnite-library.home.view-library").ToArray();
                     Assert.AreEqual(2, navigation.Length);
                     Assert.AreEqual(1, navigation.Count(node => node.IsSelected == true));
                     var theme = CompileStyles();
-                    foreach (var tab in navigation)
+                    foreach (var tab in navigation.Where(node => node.Id != "playnite-library.home.view-library"))
                     {
                         var tabStyle = theme.Resolve(new WrssElement("button", tab.Id,
                             tab.StyleClasses.ToHashSet(StringComparer.Ordinal)));

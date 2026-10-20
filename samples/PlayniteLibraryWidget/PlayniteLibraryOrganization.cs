@@ -156,7 +156,8 @@ internal static class PlayniteLibraryOrganizationPolicy
     {
         state = Normalize(state);
         var referenced = ReferencedSavedIds(state).ToHashSet(StringComparer.Ordinal);
-        var result = items.ToList();
+        var result = items.Select(item => item with
+        { DisplayName = BoundedDisplay(item.DisplayName, 96), SourceAttribution = BoundedDisplay(item.SourceAttribution, 64) }).ToList();
         var present = result.Select(item => item.SavedId).ToHashSet(StringComparer.Ordinal);
         foreach (var item in state.Items)
             if (referenced.Contains(item.SavedId) && present.Add(item.SavedId))
@@ -362,11 +363,15 @@ internal static class PlayniteLibraryOrganizationPolicy
 
     private static PlayniteLibraryDisplayItem Display(PlayniteLibraryItem item) => new(
         item.Value.SavedId,
-        item.Presentation.DisplayName.Length <= 96
-            ? item.Presentation.DisplayName : item.Presentation.DisplayName[..96],
-        item.Presentation.Source.DisplayName.Length <= 64
-            ? item.Presentation.Source.DisplayName :
-                item.Presentation.Source.DisplayName[..64]);
+        BoundedDisplay(item.Presentation.DisplayName, 96),
+        BoundedDisplay(item.Presentation.Source.DisplayName, 64));
+
+    private static string BoundedDisplay(string value, int maximum)
+    {
+        if (value.Length <= maximum) return value;
+        var length = char.IsHighSurrogate(value[maximum - 1]) ? maximum - 1 : maximum;
+        return value[..length];
+    }
 
     private static bool ValidDisplay(PlayniteLibraryDisplayItem? item) => item is not null &&
         ValidSavedId(item.SavedId) && item.DisplayName is { Length: > 0 and <= 96 } &&

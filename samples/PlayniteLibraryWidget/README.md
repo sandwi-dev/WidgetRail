@@ -42,9 +42,9 @@ You can reopen connection settings through **Menu → Playnite connection**.
 | LB / RB | Switch Home and Library, or details tabs while a game is open |
 | RS click | Jump to Library search |
 | Right stick movement | Scroll the focused list or panel |
-| Y | Refresh the current page or details tab |
+| Y | Play/install the focused game; refresh while inside details |
 | X | Open the focused game’s quick actions |
-| Menu | Page options: Categories, Hidden games, and Playnite connection |
+| Menu | Page options: Refresh, Categories, Hidden games, and Playnite connection |
 | B | Close details or a nested page; from Home/Library, return to the tray |
 
 Use the **Home** and **Library** navigation tabs to switch between peer destinations.
@@ -55,21 +55,25 @@ games; Library includes uninstalled games too. Selecting either destination ente
 its game list. Game details appears inside the widget with the page dimmed behind
 it; B restores the selected game. Each opening starts at Play/Install, while
 refreshing or switching detail tabs preserves your position. The poster and primary
-controls share the top row, with vertical actions beside the poster and full-width
-details tabs below. Header hints show X Game options, Y Refresh, and B Close; X
-offers the same game options as the poster, including category membership.
+controls share the top row, with Play/Install and a favorite icon beside the poster and full-width
+details tabs below. The tabs stay visible while their content scrolls. Header hints show X Game options, Y Refresh, and B Close; X
+offers game options including category membership, Refresh and Uninstall.
 Long details scroll inside the panel. Hiding and reopening the overlay preserves
 the open details, tab, focus, and scroll position while the widget remains loaded.
 Interrupted reads resume; installation requests are never replayed automatically.
 Source and the current completion status appear together beside the poster; the
-Completion dropdown lists Playnite's statuses, including custom ones, with the
+Completion dropdown below Play lists Playnite's statuses, including custom ones, with the
 current value selected. Choose a status to apply it; the confirmed value updates
 without reloading the dialog. Descriptions preserve paragraphs and bullet lists.
 B dismisses details explicitly. After the five-minute unload or an application
 restart, the widget returns to its ordinary page.
 
+Home prioritizes recently played installed games and shows up to three favorites, with a View all action. Library keeps a fixed summary above its cover grid. Game names remain in the summary and missing-artwork fallback, without extra captions below covers.
+
+Search suggests titles from the cached library without making provider requests while typing. All games, Installed and Favorites are quick filters; **Filters** holds Source, Category and Recently played. Changes in that panel take effect together on Apply; B cancels.
+
 The **Installed** filter narrows Library. Game details offers **Install** for uninstalled
-games and **Uninstall** for installed games, with confirmation before requesting
+games and **Game options → Uninstall** for installed games, with confirmation before requesting
 uninstallation. Follow any Playnite or launcher prompts, then refresh to see the result.
 Pinned views keep showing the page without its modal.
 
@@ -77,7 +81,7 @@ Pinned views keep showing the page without its modal.
 and **Activity** requires [GameActivity](https://github.com/Lacro59/playnite-gameactivity-plugin)
 in Playnite, with saved data for the selected game. Missing data is explained in the
 relevant tab. Locked secret achievements remain hidden until selected. Long achievement
-and activity lists show 20 entries per page.
+and activity lists show 20 entries per page. Focus an achievement to see its description in a read-only preview.
 
 The interface follows your selected WidgetRail theme. Categories open by selecting
 the row; game covers retain their original artwork colors.

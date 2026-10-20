@@ -36,7 +36,7 @@ public sealed partial class PackageRuntimeTests
         CollectionAssert.AreEqual(Enumerable.Range(0, 8).Reverse().Select(index => client.Games[index].Id).ToArray(), ids.ToArray(),
             "A mutation must not splice a newly sorted page into an older cursor window.");
         var refreshed = await service.QueryWithAuthorityAsync(AllGames, context, null, null, 2, true, CancellationToken.None);
-        Assert.AreEqual(client.Games[4].Id, refreshed.Page.Items[0].SavedId);
+        Assert.AreEqual(client.Games[7].Id, refreshed.Page.Items[0].SavedId, "Favoriting does not displace the most recently played game.");
         await Assert.ThrowsExactlyAsync<WidgetCapabilityException>(async () =>
             await service.QueryWithAuthorityAsync(AllGames, context, new(first.Page.After!),
                 WidgetCursorDirection.After, 2, false, CancellationToken.None));
@@ -67,7 +67,7 @@ public sealed partial class PackageRuntimeTests
             all.AddRange(result.Page.Items.Select(item => item.SavedId));
             cursor = result.Page.After is { } after ? new(after) : null;
         } while (cursor is not null);
-        CollectionAssert.AreEqual(new[] { 2, 1, 0, 9, 8, 7, 6, 5, 4, 3 }.Select(index => client.Games[index].Id).ToArray(), all.ToArray());
+        CollectionAssert.AreEqual(new[] { 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 }.Select(index => client.Games[index].Id).ToArray(), all.ToArray());
         var filtered = await service.QueryWithAuthorityAsync(AllGames with { SearchText = "Alpha" },
             new(PlayniteLibraryQueryScope.Library), null, null, 2, false, CancellationToken.None);
         Assert.AreEqual(1, filtered.MatchingGameCount);

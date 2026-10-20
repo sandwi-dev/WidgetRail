@@ -11,6 +11,11 @@ internal static class PlayniteLibraryActions
     internal const string DetailsClose = "playnite-library.details.close";
     internal const string SearchFocus = "playnite-library.search.focus";
     internal const string Launch = "playnite-library.launch";
+    internal const string QuickPlay = "playnite-library.quick-play";
+    internal const string FiltersOpen = "playnite-library.filters.open";
+    internal const string FiltersApply = "playnite-library.filters.apply";
+    internal const string FiltersCancel = "playnite-library.filters.cancel";
+    internal const string AllGames = "playnite-library.filters.all-games";
     internal const string Favorite = "playnite-library.favorite";
     internal const string Hide = "playnite-library.hide";
     internal const string Restore = "playnite-library.restore";

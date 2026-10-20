@@ -80,6 +80,7 @@ internal sealed class PlayniteLibraryActionFeedback(
 
 internal sealed record PlayniteLibraryRenderState
 {
+    internal PlayniteLibraryFilterDraft? FilterDraft { get; init; }
     // Collection is the Home route's independent query/selection model.
     internal required PlayniteLibraryCollectionState Collection { get; init; }
     internal required PlayniteLibraryCollectionState BrowseCollection { get; init; }
@@ -130,6 +131,8 @@ internal sealed record PlayniteLibraryRenderState
             HiddenQuery = query,
         };
 }
+
+internal sealed record PlayniteLibraryFilterDraft(PlayniteLibraryCollectionState Collection, string? CategoryId);
 
 internal enum PlayniteLibraryRoute
 {

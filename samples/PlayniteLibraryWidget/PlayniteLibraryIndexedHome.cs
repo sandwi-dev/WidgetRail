@@ -57,7 +57,7 @@ internal static class PlayniteLibraryIndexedHome
             string.Equals(content.LaunchingSavedId, item.Row.Display.SavedId, StringComparison.Ordinal),
             content.LaunchStates.TryGetValue(item.Row.Display.SavedId, out var launch) ? launch : null,
             item.Row.Current, item.Row.Favorite, content.ActionsEnabled, item.Key,
-            CollectionItem: item.Row.CollectionItem, content.Query.Categories, CompletionStatus: null,
+            CollectionItem: item.Row.CollectionItem, content.Query.Categories, CompletionStatus: item.Provider is { } captured ? captured.Query.Games[captured.Index].CompletionStatus : null,
             FocusSummaryContext: true, BrowseLayout: false));
 
     internal static WidgetElement Rail(

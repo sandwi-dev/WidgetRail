@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.playnite-library",
   "publisher": "widgetrail.samples",
   "name": "Playnite Library",
-  "version": "0.2.116",
+  "version": "0.2.119",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "full-trust-application-v1",
@@ -14,7 +14,10 @@
     "packageIcon": { "assetId": "playnite-library.mark", "colorMode": "originalColor" }
   },
   "iconAssets": {
-    "playnite-library.mark": { "path": "assets/icons/playnite-library.svg" }
+    "playnite-library.mark": { "path": "assets/icons/playnite-library.svg" },
+    "playnite.install": { "path": "assets/icons/install.svg" },
+    "playnite.favorite.outline": { "path": "assets/icons/heart-outline.svg" },
+    "playnite.favorite.filled": { "path": "assets/icons/heart-filled.svg" }
   },
   "permissions": [],
   "optionalPermissions": [],

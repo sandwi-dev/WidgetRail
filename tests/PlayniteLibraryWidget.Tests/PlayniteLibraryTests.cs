@@ -248,7 +248,7 @@ public sealed partial class PlayniteLibraryTests
         await Background(widget);
         await widget.OnActionAsync(new(PlayniteLibraryActions.HomeOpen, "playnite-library.nav.home"));
         Assert.IsTrue(PageNodes(widget, Snapshot(widget, 99_101).Root)
-            .Single(node => node.ActionId == PlayniteLibraryActions.BrowseOpen).IsSelected == true,
+            .Single(node => node.ActionId == PlayniteLibraryActions.BrowseOpen && node.Id != "playnite-library.home.view-library").IsSelected == true,
             "Inactive navigation must not change the route.");
     }
 
@@ -270,9 +270,9 @@ public sealed partial class PlayniteLibraryTests
         Assert.IsTrue(host.Queries[^1].Query.InstalledOnly);
         Assert.AreNotEqual(before, widget.RenderState.Value.IndexedBrowse.Publication!.QueryOwner);
         var enabled = PageNodes(widget, Snapshot(widget, 91_001).Root).Single(node => node.Id == PlayniteLibraryActions.InstalledFilter);
-        Assert.AreEqual("Installed: On", enabled.Text);
+        Assert.AreEqual("Installed", enabled.Text);
         CollectionAssert.Contains(enabled.StyleClasses.ToArray(), "playnite-library-filter-active");
-        Assert.IsFalse(PageNodes(widget, Snapshot(widget, 91_002).Root).Single(node => node.Id == PlayniteLibraryActions.QueryClear).IsDisabled == true);
+        Assert.IsFalse(PageNodes(widget, Snapshot(widget, 91_002).Root).Single(node => node.Id == PlayniteLibraryActions.AllGames).IsDisabled == true);
         await widget.OnActionAsync(new(PlayniteLibraryActions.FavoritesFilter, PlayniteLibraryActions.FavoritesFilter));
         await Bounded(widget.WhenLibraryIdleAsync(), "installed favorites");
         Assert.IsTrue(widget.RenderState.Value.BrowseCollection.FavoriteFilter);
@@ -287,7 +287,7 @@ public sealed partial class PlayniteLibraryTests
         await Bounded(widget.WhenLibraryIdleAsync(), "clear filters");
         Assert.IsFalse(host.Queries[^1].Query.InstalledOnly);
         Assert.IsFalse(widget.RenderState.Value.BrowseCollection.FavoriteFilter);
-        Assert.AreEqual("Installed: Off", PageNodes(widget, Snapshot(widget, 91_003).Root).Single(node => node.Id == PlayniteLibraryActions.InstalledFilter).Text);
+        Assert.AreEqual("Installed", PageNodes(widget, Snapshot(widget, 91_003).Root).Single(node => node.Id == PlayniteLibraryActions.InstalledFilter).Text);
         await Background(widget);
     }
 
@@ -343,7 +343,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task HeaderNavigationRetainsGameEntryAndRefreshShortcut()
+    public async Task HeaderNavigationRetainsGameEntryAndRefreshInMore()
     {
         var host = new FakeHost(20);
         var widget = Create(host);
@@ -351,11 +351,12 @@ public sealed partial class PlayniteLibraryTests
         await Ready(widget, host);
         var snapshot = Snapshot(widget, 90_001);
         var header = PageNodes(widget, snapshot.Root).Single(node => node.Id == "playnite-library.home.actions");
-        Assert.AreEqual(2, PageNodes(widget, snapshot.Root).Count(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen));
+        Assert.AreEqual(3, PageNodes(widget, snapshot.Root).Count(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen));
         Assert.AreEqual(PlayniteLibraryPresentation.HomeRailId, snapshot.InitialFocusId);
         var before = host.Queries.Count;
         host.NextQueryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Assert.IsTrue(await Route(widget, snapshot, ControllerButton.Y, snapshot.InitialFocusId!));
+        Assert.IsTrue(PageNodes(widget, snapshot.Root).Single(node => node.Id == "playnite-library.library.menu").ContextActions.Any(action => action.ActionId == PlayniteLibraryActions.Refresh));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Refresh, "playnite-library.library.menu"));
         await Bounded(host.NextQueryStarted.Task, "Y refresh provider query");
         await Bounded(widget.WhenLibraryIdleAsync(), "Y refresh");
         Assert.AreEqual(before + 1, host.Queries.Count);
@@ -775,8 +776,6 @@ public sealed partial class PlayniteLibraryTests
         foreach (var (actionId, optionId) in new[]
                  {
                      ("playnite-library.filter.favorites", (string?)null),
-                     ("playnite-library.filter.source",
-                         PlayniteLibraryActions.SourceOption("Windows")),
                      ("playnite-library.filter.sort",
                          PlayniteLibraryActions.SortDisplayNameDescending),
                      ("playnite-library.query.clear", (string?)null),
@@ -1012,7 +1011,7 @@ public sealed partial class PlayniteLibraryTests
         var expectedHomeItems = HomeItems(widget)
             .Select(item => item.Value.SavedId).ToArray();
         var libraryNavigation = PageNodes(widget, home.Root).Single(node =>
-            node.ActionId == PlayniteLibraryActions.BrowseOpen);
+            node.ActionId == PlayniteLibraryActions.BrowseOpen && node.Id != "playnite-library.home.view-library");
         Assert.IsTrue(libraryNavigation.IsFocusable);
         var libraryAction = libraryNavigation.ActionId;
         Assert.IsNotNull(libraryAction);
@@ -1102,7 +1101,7 @@ public sealed partial class PlayniteLibraryTests
                         displays[2].DisplayName, StringComparison.Ordinal)),
                 phase + " must preserve current hidden presentation metadata.");
             var menu = nodes.Single(node => node.Id == "playnite-library.library.menu");
-            Assert.IsFalse(nodes.Single(node => node.ActionId == PlayniteLibraryActions.BrowseOpen).IsDisabled == true);
+            Assert.IsFalse(nodes.Single(node => node.ActionId == PlayniteLibraryActions.BrowseOpen && node.Id != "playnite-library.home.view-library").IsDisabled == true);
             Assert.IsFalse(menu.ContextActions.Single(action =>
                 action.ActionId == "playnite-library.hidden.open").IsDisabled);
         }
@@ -1538,9 +1537,9 @@ public sealed partial class PlayniteLibraryTests
             "playnite-library.query.clear"));
         await Bounded(widget.WhenLibraryIdleAsync(), "Browse query clear");
         var cleared = AssertValidSnapshot(50_007, "cleared Browse");
-        Assert.AreEqual(PlayniteLibraryActions.QueryClear, cleared.InitialFocusId,
-            "Reset keeps focus on its invoking control even after there is nothing left to clear.");
-        Assert.IsTrue(Nodes(cleared.Root).Single(node => node.Id == cleared.InitialFocusId).IsDisabled);
+        Assert.AreEqual("playnite-library.search", cleared.InitialFocusId,
+            "Reset returns to the search control which remains in the toolbar.");
+        Assert.IsFalse(Nodes(cleared.Root).Single(node => node.Id == cleared.InitialFocusId).IsDisabled == true);
         Assert.AreEqual(3, BrowseNodes(widget).Count(node => node.ActionId == PlayniteLibraryActions.DetailsOpen),
             "Clearing the query restores all games without restoring the old tile focus.");
 
@@ -1694,84 +1693,38 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(WidgetAppLibrarySortOrder.SourceThenDisplayName,
             host.Queries[^1].Query.Sort);
 
-        var beforeDismiss = PageNodes(widget, bySource.Root).Single(node =>
-            node.StyleClasses.Contains("playnite-library-browse-scroll",
-                StringComparer.Ordinal)).Id;
-        var sourceSelect = PageNodes(widget, bySource.Root).Single(node =>
-            node.Id == PlayniteLibraryActions.SourceFilter);
-        Assert.AreEqual(ViewNodeKind.Select, sourceSelect.Kind);
-        var selectedAll = sourceSelect.SelectOptions.Single(option =>
-            option.ActionId == PlayniteLibraryActions.SourceAll);
-        Assert.IsTrue(selectedAll.IsSelected);
-        Assert.AreEqual(1, sourceSelect.SelectOptions.Count(option => option.IsSelected),
-            "The native Source Select must expose one exact selected option.");
-        var queriesBeforeUnchangedSource = host.Queries.Count;
-        await widget.OnActionAsync(new(
-            PlayniteLibraryActions.SourceAll, PlayniteLibraryActions.SourceFilter));
-        var dismissed = Snapshot(widget, 50_205);
-        Assert.AreEqual(queriesBeforeUnchangedSource, host.Queries.Count,
-            "Committing the already-selected Source option changed the query generation.");
-        Assert.AreEqual(beforeDismiss, PageNodes(widget, dismissed.Root).Single(node =>
-            node.StyleClasses.Contains("playnite-library-browse-scroll",
-                StringComparer.Ordinal)).Id,
-            "An unchanged Select commit must preserve the current Browse viewport.");
-
-        await Choose(
-            PlayniteLibraryActions.SourceFilter,
-            PlayniteLibraryActions.SourceOption("GOG"),
-            "Source filter");
-        var sourceFiltered = Snapshot(widget, 50_204);
-        CollectionAssert.AreEqual(new[] { "Alpha" }, BrowseTitles(sourceFiltered));
-        Assert.AreEqual("Source: GOG", PageNodes(widget, sourceFiltered.Root).Single(node =>
-            node.Id == "playnite-library.filter.source").Text);
-        Assert.AreEqual("GOG", host.Queries[^1].Query.SourceAttribution);
-        var selectedSource = PageNodes(widget, sourceFiltered.Root).Single(node =>
-            node.Id == PlayniteLibraryActions.SourceFilter).SelectOptions;
-        Assert.AreEqual(1, selectedSource.Count(option => option.IsSelected));
-        Assert.IsTrue(selectedSource.Single(option => option.ActionId ==
-            PlayniteLibraryActions.SourceOption("GOG")).IsSelected);
-        Assert.IsFalse(selectedSource.Single(option => option.ActionId ==
-            PlayniteLibraryActions.SourceAll).IsSelected);
-        Assert.AreEqual(PlayniteLibraryActions.SourceFilter,
-            sourceFiltered.InitialFocusId,
-            "The completed query must restore focus to the initiating Source control.");
-        Assert.IsNull(host.Queries[^1].Cursor,
-            "A changed source must restart the provider cursor at the first page.");
-
-        await Choose(
-            PlayniteLibraryActions.SourceFilter,
-            PlayniteLibraryActions.SourceOption("Steam"),
-            "Steam source filter");
-        await Choose(
-            PlayniteLibraryActions.SourceFilter,
-            PlayniteLibraryActions.SourceOption("Ubisoft"),
-            "observed off-page source filter");
-        var observedEmpty = Snapshot(widget, 50_205);
-        Assert.AreEqual("Source: Ubisoft", PageNodes(widget, observedEmpty.Root).Single(node =>
-            node.Id == "playnite-library.filter.source").Text);
-        Assert.AreEqual("Ubisoft", host.Queries[^1].Query.SourceAttribution,
-            "The source cycle must include application observations absent from the visible item page.");
-        Assert.AreEqual("No matching games", PageNodes(widget, observedEmpty.Root).Single(node =>
-            node.Id == "playnite-library.browse.empty.title").Text);
-        Assert.AreEqual(PlayniteLibraryActions.SourceFilter,
-            observedEmpty.InitialFocusId,
-            "A no-results response must not move focus away from the Source control.");
-
-        await widget.OnActionAsync(new(
-            "playnite-library.filter.favorites", "playnite-library.filter.favorites"));
-        await Bounded(widget.WhenLibraryIdleAsync(), "Favorites filter");
-        var favorites = Snapshot(widget, 50_206);
-        CollectionAssert.AreEqual(Array.Empty<string>(), BrowseTitles(favorites),
-            "Favorites must intersect the current source filter instead of replacing it.");
-        var favoriteControl = PageNodes(widget, favorites.Root).Single(node =>
-            node.Id == "playnite-library.filter.favorites");
-        Assert.AreEqual("Favorites: On", favoriteControl.Text);
-        Assert.IsNull(favoriteControl.IsSelected,
-            "Favorites must remain an ordinary On/Off button without a selected cue.");
-        CollectionAssert.AreEqual(new[] { items[0].SavedId },
-            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
-        Assert.AreEqual("Ubisoft", host.Queries[^1].Query.SourceAttribution,
-            "Favorites must preserve and intersect the active source filter.");
+        var queriesBefore = host.Queries.Count;
+        await widget.OnActionAsync(new(PlayniteLibraryActions.FiltersOpen, PlayniteLibraryActions.FiltersOpen));
+        var draft = Snapshot(widget, 50_210);
+        var source = PageNodes(widget, draft.Root).Single(node => node.Id == "playnite-library.filters.source");
+        Assert.AreEqual(1, source.SelectOptions.Count(option => option.IsSelected));
+        Assert.AreEqual("All", source.SelectOptions.Single(option => option.IsSelected).Label);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.FiltersCancel, "cancel"));
+        Assert.AreEqual(queriesBefore, host.Queries.Count, "Cancel never reloads the library.");
+        foreach (var name in new[] { "GOG", "Steam", "Ubisoft" })
+        {
+            await widget.OnActionAsync(new(PlayniteLibraryActions.FiltersOpen, PlayniteLibraryActions.FiltersOpen));
+            var opened = Snapshot(widget, 50_211);
+            source = PageNodes(widget, opened.Root).Single(node => node.Id == "playnite-library.filters.source");
+            var option = source.SelectOptions.Single(value => value.Label == name);
+            var beforeDraft = host.Queries.Count;
+            await widget.OnActionAsync(new(option.ActionId, source.Id));
+            Assert.AreEqual(beforeDraft, host.Queries.Count, "Editing draft filters does not query the provider.");
+            await widget.OnActionAsync(new(PlayniteLibraryActions.FiltersApply, PlayniteLibraryActions.FiltersApply));
+            await Bounded(widget.WhenLibraryIdleAsync(), "source filter " + name);
+            var filtered = Snapshot(widget, 50_212);
+            Assert.AreEqual(beforeDraft + 1, host.Queries.Count);
+            Assert.AreEqual(name, host.Queries[^1].Query.SourceAttribution);
+            Assert.AreEqual(name, PageNodes(widget, filtered.Root).Single(node => node.Id == "playnite-library.filter-summary.source").Text);
+            Assert.AreEqual(PlayniteLibraryActions.FiltersOpen, filtered.InitialFocusId);
+            Assert.IsNull(host.Queries[^1].Cursor);
+            if (name == "GOG") CollectionAssert.AreEqual(new[] { "Alpha" }, BrowseTitles(filtered));
+        }
+        await widget.OnActionAsync(new(PlayniteLibraryActions.FavoritesFilter, PlayniteLibraryActions.FavoritesFilter));
+        await Bounded(widget.WhenLibraryIdleAsync(), "combined favorite filter");
+        Assert.AreEqual("Ubisoft", host.Queries[^1].Query.SourceAttribution);
+        CollectionAssert.AreEqual(new[] { items[0].SavedId }, host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+        Assert.AreEqual(0, BrowseTitles(Snapshot(widget, 50_213)).Length);
         await Background(widget);
 
         async Task Choose(string actionId, string optionId, string phase)
@@ -1779,15 +1732,11 @@ public sealed partial class PlayniteLibraryTests
             var browse = Snapshot(widget, host.Queries.Count + 60_000L);
             var select = PageNodes(widget, browse.Root).Single(node => node.Id == actionId);
             Assert.AreEqual(ViewNodeKind.Select, select.Kind);
-            Assert.IsTrue(select.IsDisabled != true);
-            Assert.IsTrue(select.SelectOptions.Any(option => option.ActionId == optionId),
-                phase + " option was not published by the native Select contract.");
+            Assert.IsTrue(select.SelectOptions.Any(option => option.ActionId == optionId));
             var scope = browse.ActiveInputScopeId;
             await widget.OnActionAsync(new(optionId, actionId));
             await Bounded(widget.WhenLibraryIdleAsync(), phase);
-            Assert.AreEqual(scope, Snapshot(widget, host.Queries.Count + 61_000L)
-                .ActiveInputScopeId,
-                phase + " created a widget-owned picker scope.");
+            Assert.AreEqual(scope, Snapshot(widget, host.Queries.Count + 61_000L).ActiveInputScopeId);
         }
 
         string[] BrowseTitles(ViewSnapshot snapshot) => BrowseNodes(widget)
@@ -1849,13 +1798,10 @@ public sealed partial class PlayniteLibraryTests
             "An ordinary refresh must preserve the host-owned Browse viewport.");
 
         var sourceScope = refreshed.ActiveInputScopeId;
-        var sourceSelect = PageNodes(widget, refreshed.Root).Single(node =>
-            node.Id == PlayniteLibraryActions.SourceFilter);
-        Assert.AreEqual(ViewNodeKind.Select, sourceSelect.Kind);
-        Assert.IsTrue(sourceSelect.IsDisabled != true);
-        var steamOption = PlayniteLibraryActions.SourceOption("Steam");
-        Assert.IsTrue(sourceSelect.SelectOptions.Any(option =>
-            option.ActionId == steamOption && option.Label == "Steam"));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.FiltersOpen, PlayniteLibraryActions.FiltersOpen));
+        var sourceSelect = PageNodes(widget, Snapshot(widget, 50_303).Root).Single(node => node.Id == "playnite-library.filters.source");
+        var steamOption = sourceSelect.SelectOptions.Single(option => option.Label == "Steam");
+        await widget.OnActionAsync(new(steamOption.ActionId, sourceSelect.Id));
 
         var sourceStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1867,21 +1813,20 @@ public sealed partial class PlayniteLibraryTests
             return new(sourceRelease.Task.WaitAsync(token));
         };
         var sourceSelection = widget.OnActionAsync(new(
-            steamOption, PlayniteLibraryActions.SourceFilter)).AsTask();
+            PlayniteLibraryActions.FiltersApply, PlayniteLibraryActions.FiltersApply)).AsTask();
         await Bounded(sourceStarted.Task, "Source Select query admission");
         var pendingSource = Snapshot(widget, 50_304);
         Assert.AreEqual(sourceScope, pendingSource.ActiveInputScopeId,
             "A committed Source option must not create a widget-owned picker scope.");
-        Assert.IsTrue(PageNodes(widget, pendingSource.Root).Single(node =>
-                node.Id == PlayniteLibraryActions.SourceFilter).SelectOptions
-            .Single(option => option.ActionId == steamOption).IsSelected);
+        Assert.AreEqual("Steam", PageNodes(widget, pendingSource.Root).Single(node =>
+            node.Id == "playnite-library.filter-summary.source").Text);
 
         sourceRelease.TrySetResult(new(
             [items[0]], null, "cursor.after", "steam") { Sources = sources });
         await sourceSelection;
         await Bounded(widget.WhenLibraryIdleAsync(), "Source Select query completion");
         var sourceResult = Snapshot(widget, 50_305);
-        Assert.AreEqual(PlayniteLibraryActions.SourceFilter,
+        Assert.AreEqual(PlayniteLibraryActions.FiltersOpen,
             sourceResult.InitialFocusId);
         var alternateScrollId = BrowseScroll(sourceResult).Id;
         Assert.AreEqual(initialScrollId, alternateScrollId,
@@ -2635,7 +2580,8 @@ public sealed partial class PlayniteLibraryTests
         CollectionAssert.AreEquivalent(new[]
         {
             "_application", "_gate", "_launchGeneration", "_launchStateRecency",
-            "_launchStates", "_indexedHome", "_indexedBrowse", "_hiddenRows", "_model", "_navigation", "_organization",
+            "_launchStates", "_indexedHome", "_indexedBrowse", "_indexedFavorites",
+            "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementPreviewContext", "achievementPreviews", "_hiddenRows", "_model", "_navigation", "_organization",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",

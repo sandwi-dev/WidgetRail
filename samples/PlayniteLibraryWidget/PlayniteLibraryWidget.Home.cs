@@ -7,6 +7,17 @@ public sealed partial class PlayniteLibraryWidget
 {
     private const string IndexedHomeOperation = "playnite-library.indexed-home";
     private readonly WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> _indexedHome;
+    private readonly WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> _indexedFavorites;
+
+    private void PublishHomeContent(PlayniteLibraryHomeContent content, bool replace)
+    {
+        if (replace) _indexedHome.PublishQuery(content, content.Query.Count);
+        else _indexedHome.UpdateContent(content);
+        var keys = content.Query.FavoriteKeys.ToArray();
+        if (replace || !(HomeState.Publication?.Query.FavoriteKeys ?? []).SequenceEqual(keys))
+            _indexedFavorites.PublishQuery(content, keys.Length);
+        else _indexedFavorites.UpdateContent(content);
+    }
     private PlayniteLibraryIndexedHomeState HomeState => _model.Value.IndexedHome;
     private void UpdateHomeState(Func<PlayniteLibraryIndexedHomeState, PlayniteLibraryIndexedHomeState> update) =>
         _model.Update(state => state with { IndexedHome = update(state.IndexedHome) });
@@ -95,8 +106,8 @@ public sealed partial class PlayniteLibraryWidget
                         previous.Query.SameMembership(projected);
                     var content = CaptureHomeContent(projected,
                         sameQuery ? HomeState.Publication!.QueryOwner : new object());
-                    if (sameQuery) _indexedHome.UpdateContent(content);
-                    else _indexedHome.PublishQuery(content, projected.Count);
+                    if (sameQuery) PublishHomeContent(content, replace: false);
+                    else PublishHomeContent(content, replace: true);
                     _model.Update(state => state with
                     {
                         IndexedHome = state.IndexedHome with { Publication = content, Selection = selection,
@@ -124,7 +135,7 @@ public sealed partial class PlayniteLibraryWidget
                     {
                         var retirePriorQuery = HomeState.Publication is not null && !IndexedHomeSelectionIsCurrent();
                         if (retirePriorQuery)
-                            _indexedHome.PublishQuery(new(PlayniteLibraryHomeQuery.Empty), 0);
+                            PublishHomeContent(new(PlayniteLibraryHomeQuery.Empty), replace: true);
                         _model.Update(state => state with {
                             IndexedHome = state.IndexedHome with
                             {
@@ -160,7 +171,7 @@ public sealed partial class PlayniteLibraryWidget
             if (next.ActionsEnabled == previous.ActionsEnabled && next.LaunchingSavedId == previous.LaunchingSavedId &&
                 next.LaunchStates.Count == previous.LaunchStates.Count &&
                 next.LaunchStates.All(pair => previous.LaunchStates.TryGetValue(pair.Key, out var state) && state == pair.Value)) return;
-            _indexedHome.UpdateContent(next);
+            PublishHomeContent(next, replace: false);
             UpdateHomeState(state => state with { Publication = next });
         }
     }
@@ -176,7 +187,7 @@ public sealed partial class PlayniteLibraryWidget
                 _navigation.Value.Route == PlayniteLibraryRoute.Library &&
                 ReferenceEquals(HomeState.Publication?.QueryOwner, content.QueryOwner);
         });
-        if (action.ActionId == PlayniteLibraryActions.DetailsOpen && target.IsCurrent)
+        if (action.ActionId is (PlayniteLibraryActions.DetailsOpen or PlayniteLibraryActions.QuickPlay) && target.IsCurrent)
             lock (_gate) UpdateHomeState(state => state with { ModalReturn = action.FocusedCollectionItem, ModalReturnRequestId = 0 });
         return HandleCapturedGameActionAsync(target, action, token);
     }
@@ -205,8 +216,8 @@ public sealed partial class PlayniteLibraryWidget
             if (previous.Query.SameProjection(query)) return;
             var same = previous.Query.SameMembership(query);
             var next = CaptureHomeContent(query, same ? previous.QueryOwner : new object());
-            if (same) _indexedHome.UpdateContent(next);
-            else _indexedHome.PublishQuery(next, query.Count);
+            if (same) PublishHomeContent(next, replace: false);
+            else PublishHomeContent(next, replace: true);
             UpdateHomeState(state => state with { Publication = next, ModalReturn = same ? state.ModalReturn : null });
         }
     }
@@ -216,7 +227,7 @@ public sealed partial class PlayniteLibraryWidget
         Operations.Cancel(IndexedHomeOperation);
         lock (_gate)
         {
-            _indexedHome.PublishQuery(new(PlayniteLibraryHomeQuery.Empty), 0);
+            PublishHomeContent(new(PlayniteLibraryHomeQuery.Empty), replace: true);
             UpdateHomeState(state => new() { Attempt = state.Attempt + 1 });
         }
     }

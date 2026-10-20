@@ -178,7 +178,7 @@ public sealed partial class PlayniteLibraryWidget
                 _navigation.Value.Route == PlayniteLibraryRoute.Browse &&
                 ReferenceEquals(BrowseState.Publication?.QueryOwner, content.QueryOwner);
         });
-        if (action.ActionId == PlayniteLibraryActions.DetailsOpen && target.IsCurrent)
+        if (action.ActionId is (PlayniteLibraryActions.DetailsOpen or PlayniteLibraryActions.QuickPlay) && target.IsCurrent)
             lock (_gate) UpdateBrowseState(state => state with { ModalReturn = action.FocusedCollectionItem, ModalReturnRequestId = 0 });
         return HandleCapturedGameActionAsync(target, action, token);
     }

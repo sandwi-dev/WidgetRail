@@ -8,6 +8,40 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
+    public void NativeDetailsNavigationFixtureCoversOptionalTransitions()
+    {
+        var game = PlayniteLibraryItem.From(Item("navigation", "saved-navigation", "Navigation game", "Steam"));
+        var parent = new WidgetView(UI.Stack("native.parent", UI.Button("Game", "open", "game")));
+        PlayniteDetailsExtras[] states =
+        [
+            new() { Tab = PlayniteDetailsTab.Description },
+            new() { Tab = PlayniteDetailsTab.Information },
+            new() { Tab = PlayniteDetailsTab.Achievements, AchievementsLoading = true },
+            new() { Tab = PlayniteDetailsTab.Achievements, Achievements = new(true, 0, 0, []) },
+            new() { Tab = PlayniteDetailsTab.Activity, Activity = PlayniteActivity.Unavailable },
+            new() { Tab = PlayniteDetailsTab.Achievements, Achievements = PlayniteAchievements.Unavailable },
+            new() { Tab = PlayniteDetailsTab.Achievements, AchievementsError = "Unavailable" },
+            new() { Tab = PlayniteDetailsTab.Achievements, Achievements = new(true, 1, 1,
+                [new("Achievement", "Description", true, null, null, null, false)]) },
+            new() { Tab = PlayniteDetailsTab.Links },
+            new() { Tab = PlayniteDetailsTab.Description },
+        ];
+        var names = new List<string>();
+        for (var index = 0; index < states.Length; index++)
+        {
+            var modal = PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null, extras: states[index]);
+            var snapshot = new PresentationWidget(parent.WithModal(modal)).RenderSnapshot("native.details.navigation", index + 1);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            var name = "Native-Details-Navigation-" + index;
+            ExportFixture(name, snapshot);
+            names.Add(name + ".renderer.json");
+        }
+        if (Environment.GetEnvironmentVariable("WRAIL_PLAYNITE_LAYOUT_OUTPUT") is { Length: > 0 } directory)
+            File.WriteAllText(Path.Combine(directory, "Native-Details-Navigation.json"),
+                System.Text.Json.JsonSerializer.Serialize(new { navigationFrames = names }));
+    }
+
+    [TestMethod]
     public void NativeDetailsGeometryFixtureUsesProductionPresentationAndTheme()
     {
         var raw = Item("native-layout", "native-layout-game", "Native layout game", "Steam", "poster-handle");

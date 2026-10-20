@@ -10,6 +10,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal static class PlayniteLibraryDetailsPresentation
 {
     private const string Prefix = "playnite-library.details.";
+    internal const string FavoriteId = Prefix + "favorite";
     internal const string PlayId = Prefix + "play";
     internal const string ContentId = Prefix + "content";
     internal const string OptionsId = Prefix + "options";
@@ -19,7 +20,7 @@ internal static class PlayniteLibraryDetailsPresentation
         string? launchingSavedId, string status, PlayniteLibraryLaunchState? launchState,
         bool loading = false, string? error = null, PlayniteDetailsExtras? extras = null,
         IReadOnlyList<PlayniteLibraryCategory>? categories = null, string? openingId = null,
-        bool favorite = false, bool organizationBusy = false, string? completionStatus = null, long generation = 0)
+        bool favorite = false, bool organizationBusy = false, string? completionStatus = null, long generation = 0, IndexedCollectionDescriptor? achievementPreviews = null)
     {
         extras ??= new();
         var modalId = openingId ?? "playnite-library.details";
@@ -45,9 +46,10 @@ internal static class PlayniteLibraryDetailsPresentation
                 uninstalled ? Prefix + "install" : PlayniteLibraryActions.Launch, PlayId)
             .Disabled(!current || (!availability.Launchable && !uninstalled))
             .Busy(busy).Classes("playnite-library-details-play");
-        var buttons = UI.Stack(Prefix + "actions", play,
-            CompletionSelect(extras, completionStatus ?? game?.CompletionStatus, generation, !current || busy),
-            UI.Button("Uninstall", Prefix + "uninstall", Prefix + "uninstall").Disabled(!current || !installed || busy).Classes("playnite-library-details-button"))
+        var buttons = UI.Row(Prefix + "actions", play,
+            UI.IconButton(PlayniteLibraryPresentation.FavoriteIcon(favorite), PlayniteLibraryActions.Favorite,
+                FavoriteId, favorite ? "Remove favorite" : "Add favorite", size: IconButtonSize.Medium)
+                .Selected(favorite).Busy(organizationBusy).Disabled(!current))
             .Classes("playnite-library-details-buttons");
         var artwork = presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
         WidgetElement poster = artwork is { Handle.Length: > 0 }
@@ -57,21 +59,18 @@ internal static class PlayniteLibraryDetailsPresentation
         var completion = completionStatus ?? game?.CompletionStatus;
         var controlItems = new List<WidgetElement>
         {
-            UI.ResponsiveGrid(Prefix + "source-row", 180, 2,
-                UI.Text(presentation.Source.DisplayName, Prefix + "source").Classes("playnite-library-details-source"),
-                UI.Text(string.IsNullOrWhiteSpace(completion) ? "No completion status" : completion,
-                    Prefix + "completion.value").Classes("playnite-library-details-completion"))
-                .Classes("playnite-library-details-source-row"),
+            UI.Text(presentation.Source.DisplayName, Prefix + "source").Classes("playnite-library-details-source"),
         };
         if (!current || launching || launchState is not null)
             controlItems.Add(UI.Text(!current ? "Game no longer in the current results" : status,
                 Prefix + "status").Classes("playnite-library-details-meta"));
         controlItems.Add(buttons);
+        controlItems.Add(CompletionSelect(extras, completion, generation, !current));
         var controls = UI.Stack(Prefix + "controls", controlItems.ToArray())
             .Classes("playnite-library-details-controls");
         var tabName = extras.Tab.ToString().ToLowerInvariant();
         var tabs = Enum.GetValues<PlayniteDetailsTab>().Select(tab =>
-            new NavigationShellDestination(tab.ToString().ToLowerInvariant(), tab.ToString(),
+            new NavigationShellDestination(tab.ToString().ToLowerInvariant(), tab == PlayniteDetailsTab.Description ? "Overview" : tab.ToString(),
                 Prefix + "tab." + tab.ToString().ToLowerInvariant(), tab switch
                 {
                     PlayniteDetailsTab.Achievements => WidgetGlyph.Check,
@@ -84,10 +83,7 @@ internal static class PlayniteLibraryDetailsPresentation
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper, Prefix + "next.key").Classes("playnite-library-tab-key")).WithTransitions();
         var navigationRail = navigation.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
             .AddClasses("playnite-library-details-tabs");
-        var content = new List<WidgetElement>
-        {
-            navigationRail,
-        };
+        var content = new List<WidgetElement>();
         if (extras.OperationMessage is { } message) content.Add(Copy(message, "operation.message"));
         if (extras.CompletionStatusesError is { } completionError) content.Add(Copy(completionError, "completion.error"));
         var tabContent = new List<WidgetElement>();
@@ -95,26 +91,53 @@ internal static class PlayniteLibraryDetailsPresentation
         {
             if (loading) tabContent.Add(Loading("Loading game details..."));
             if (error is not null) tabContent.Add(Copy(error, "load.error"));
-            if (extras.Tab == PlayniteDetailsTab.Description) AddDescription(tabContent, item, game, loading, error);
-            else if (extras.Tab == PlayniteDetailsTab.Information) AddInformation(tabContent, item, game);
+            if (extras.Tab == PlayniteDetailsTab.Description)
+            {
+                var facts = new List<WidgetElement>();
+                var metadata = item.Presentation.Metadata;
+                if (metadata?.PlaytimeMinutes is > 0) facts.Add(Value("Time played", Duration(metadata.PlaytimeMinutes.Value * 60), Prefix + "overview.playtime"));
+                if (metadata?.LastPlayedAtUnixMilliseconds is { } last && last is >= -62135596800000 and <= 253402300799999)
+                    facts.Add(Value("Last played", DateTimeOffset.FromUnixTimeMilliseconds(last).ToLocalTime().ToString("d"), Prefix + "overview.last"));
+                if (facts.Count > 0) tabContent.Add(UI.ResponsiveGrid(Prefix + "overview.facts", 240, 2, facts.ToArray()).Classes("playnite-library-details-facts"));
+                AddDescription(tabContent, item, game, loading, error);
+            }
+            else if (extras.Tab == PlayniteDetailsTab.Information)
+            {
+                var facts = new List<WidgetElement>();
+                AddInformation(facts, item, game);
+                tabContent.Add(UI.ResponsiveGrid(Prefix + "information.facts", 240, 2, facts.ToArray()).Classes("playnite-library-details-facts"));
+            }
             else if (!loading && error is null) AddLinks(tabContent, game, busy);
         }
-        else if (extras.Tab == PlayniteDetailsTab.Achievements) AddAchievements(tabContent, extras);
+        else if (extras.Tab == PlayniteDetailsTab.Achievements) AddAchievements(tabContent, extras, achievementPreviews is not null);
         else AddActivity(tabContent, extras);
         content.Add(UI.Stack(Prefix + "tab.content", tabContent.ToArray()).Classes("playnite-library-details-content")
             .TransitionContent(Prefix + "navigation", tabName, (int)extras.Tab));
-        var body = UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+        var body = UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
                 UI.Row(Prefix + "overview-header", poster, controls).Classes("playnite-library-details-header"),
-                UI.VerticalScroll(modalId + ".scroll", content.ToArray()).Classes("playnite-library-details-scroll").InGrid(row: 1))
+                navigationRail.InGrid(row: 1),
+                UI.VerticalScroll(modalId + ".scroll", content.ToArray()).Classes("playnite-library-details-scroll").InGrid(row: 2))
             .Spacing(16, 0).Classes("playnite-library-details-layout")
             .Shortcut(ControllerButton.LeftBumper, Prefix + "tab.previous", "Previous details tab")
             .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab")
             .Shortcut(ControllerButton.Y, Prefix + "refresh", "Refresh details");
+        var menu = PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current)
+            .Take(ProtocolConstants.MaximumContextActionCount - 2)
+            .Concat(new WidgetContextAction[] {
+                new(Prefix + "refresh", "Refresh details", IsDisabled: busy || !current),
+                new(Prefix + "uninstall", "Uninstall…", IsDisabled: busy || !current || !installed)
+            }).ToArray();
         var options = UI.Row(OptionsId,
                 UI.ControllerHint(ControllerButton.X, "Game options", Prefix + "options.hint"))
             .ContextMenu(ControllerButton.X,
-                PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current));
-        return new(modalId, presentation.DisplayName, body, PlayId, PlayniteLibraryActions.DetailsClose)
+                menu);
+        // Keep the same native ancestry on every tab, including loading and empty results.
+        WidgetElement presentedBody = UI.FocusPresentationSurface(body, UI.Text("", Prefix + "preview.empty"), Prefix + "preview-surface") with
+            {
+                Preview = new(Width: 420, Height: 360) { SizeToContentHeight = true },
+                PreviewSource = achievementPreviews,
+            };
+        return new(modalId, presentation.DisplayName, presentedBody, PlayId, PlayniteLibraryActions.DetailsClose)
         {
             ScrollContent = false,
             HeaderActions = UI.Row(Prefix + "header-hints", options,
@@ -145,7 +168,7 @@ internal static class PlayniteLibraryDetailsPresentation
         }
         return UI.Select("Completion", options, Prefix + "completion.action", "Completion status")
             .Disabled(disabled || statuses.Count == 0)
-            .AddClasses("playnite-library-details-button");
+            .AddClasses("playnite-library-details-completion-select");
     }
 
     private static void AddInformation(List<WidgetElement> content, PlayniteLibraryItem item, PlayniteBridgeGame? game)
@@ -217,7 +240,7 @@ internal static class PlayniteLibraryDetailsPresentation
         else content.Add(Copy("No links are available for this game.", "links.empty"));
     }
 
-    private static void AddAchievements(List<WidgetElement> content, PlayniteDetailsExtras state)
+    private static void AddAchievements(List<WidgetElement> content, PlayniteDetailsExtras state, bool deferredPreviews)
     {
         if (state.AchievementsLoading) { content.Add(Loading("Loading achievements...")); return; }
         if (state.AchievementsError is { } error) { content.Add(Copy(error, "achievements.error")); return; }
@@ -235,20 +258,36 @@ internal static class PlayniteLibraryDetailsPresentation
             var item = data.Items[index];
             var secret = item.Hidden && !item.Unlocked && !state.RevealedAchievements.Contains(index);
             var name = secret ? "Secret achievement" : item.Name;
-            var description = secret ? "Press A to reveal" : item.Description;
             var status = item.Unlocked ? "Unlocked" : "Locked";
             if (item.UnlockedAt is { } date && item.Unlocked) status += " | " + date.ToLocalTime().ToString("d");
             if (item.Percent is { } percent) status += $" | {percent:0.#}% of players";
             if (item.GamerScore is { } points) status += $" | {points} points";
             var id = Prefix + "achievement." + index;
-            content.Add(UI.ActionSurface(id, id, name + ". " + description + ". " + status,
+            WidgetElement row = UI.ActionSurface(id, id, name + ". " + status,
                 ActionSurfaceOrientation.Vertical,
                 UI.Text(name, id + ".name").Classes("playnite-library-details-row-title"),
-                UI.Text(description, id + ".description").Classes("playnite-library-details-meta"),
                 UI.Text(status, id + ".status").Classes("playnite-library-details-meta"))
-                .Classes("playnite-library-details-row"));
+                .Classes("playnite-library-details-row");
+            content.Add(deferredPreviews ? row.PresentOnFocus("achievement." + index)
+                : row.PresentOnFocus(AchievementPreview(state, index)));
         }
         AddPaging(content, page, data.Items.Count);
+    }
+    internal static WidgetElement AchievementPreview(PlayniteDetailsExtras state, int index)
+    {
+        var item = state.Achievements!.Items[index];
+        var secret = item.Hidden && !item.Unlocked && !state.RevealedAchievements.Contains(index);
+        var id = Prefix + "preview." + index;
+        return UI.Stack(id,
+            UI.Text(secret ? "Secret achievement" : item.Name, id + ".title").Classes("playnite-library-preview-title"),
+            UI.Text(item.Unlocked ? "Unlocked" : "Locked", id + ".state")
+                .Classes(item.Unlocked ? ["playnite-library-preview-state", "playnite-library-positive"] : ["playnite-library-preview-state"]),
+            UI.Text(secret ? "Press A on the achievement to reveal it." : item.Description, id + ".description")
+                .Classes("playnite-library-preview-description"),
+            UI.Text(item.Unlocked && item.UnlockedAt is { } date ? date.ToLocalTime().ToString("d") :
+                !secret && item.Percent is { } percent ? $"{percent:0.#}% of players" : "", id + ".meta")
+                .Classes("playnite-library-details-meta"))
+            .Classes("playnite-library-rich-preview");
     }
     private static void AddActivity(List<WidgetElement> content, PlayniteDetailsExtras state)
     {
@@ -286,7 +325,7 @@ internal static class PlayniteLibraryDetailsPresentation
             .Classes("playnite-library-details-toolbar"));
     }
     private static WidgetElement Value(string label, string value, string id) =>
-        UI.Row(id,
+        UI.Stack(id,
             UI.Text(label, id + ".label").Classes("playnite-library-details-label"),
             UI.Text(value, id + ".value").Classes("playnite-library-details-field"))
             .Classes("playnite-library-details-value");

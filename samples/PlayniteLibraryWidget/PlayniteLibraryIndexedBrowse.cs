@@ -51,8 +51,8 @@ internal static class PlayniteLibraryIndexedBrowse
             string.Equals(content.LaunchingSavedId, item.Row.Display.SavedId, StringComparison.Ordinal),
             content.LaunchStates.TryGetValue(item.Row.Display.SavedId, out var launch) ? launch : null,
             item.Item, item.Row.Favorite, content.ActionsEnabled, item.Key,
-            CollectionItem: true, content.Query.Categories, CompletionStatus: null,
-            FocusSummaryContext: false, BrowseLayout: true)),
+            CollectionItem: true, content.Query.Categories, CompletionStatus: item.ProviderItem.Query.Games[item.ProviderItem.Index].CompletionStatus,
+            FocusSummaryContext: true, BrowseLayout: true)),
         OnAction = onAction ?? throw new ArgumentNullException(nameof(onAction)),
         ResolveArtwork = (content, item, handle, token) => content.Query.ResolveArtworkAsync(item, handle, token),
     };

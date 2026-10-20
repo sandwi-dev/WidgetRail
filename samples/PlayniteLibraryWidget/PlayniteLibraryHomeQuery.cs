@@ -11,6 +11,9 @@ internal sealed class PlayniteLibraryHomeQuery
     { internal WidgetCollectionItemKey Key => PlayniteLibraryIdentity.Key(Display.SavedId); }
     private readonly Entry[] entries;
     private readonly Dictionary<WidgetCollectionItemKey, int> indices;
+    private readonly int[] favoriteIndices;
+    internal int FavoriteCount => favoriteIndices.Length;
+    internal IEnumerable<WidgetCollectionItemKey> FavoriteKeys => favoriteIndices.Select(index => entries[index].Key);
     internal PlayniteLibraryCapturedQuery Source { get; }
     internal bool IsWarmDisplayOnly { get; }
     internal PlayniteLibraryFixedRows FixedRows { get; }
@@ -88,6 +91,8 @@ internal sealed class PlayniteLibraryHomeQuery
             if (used.Add(display.SavedId)) result.Add(Make(null, null, display, false));
         entries = result.ToArray();
         indices = entries.Select((entry, index) => (entry.Key, index)).ToDictionary(value => value.Key, value => value.index);
+        favoriteIndices = entries.Select((entry, index) => (entry, index))
+            .Where(value => value.entry.Favorite).Take(3).Select(value => value.index).ToArray();
         Categories = Array.AsReadOnly(organization.Categories.Select(category => category with
             { SavedIds = Array.AsReadOnly(category.SavedIds.ToArray()) }).ToArray());
     }
@@ -97,6 +102,12 @@ internal sealed class PlayniteLibraryHomeQuery
         Categories.Count == other.Categories.Count && Categories.Zip(other.Categories).All(pair => pair.First.Id == pair.Second.Id &&
             pair.First.Name == pair.Second.Name && pair.First.SavedIds.SequenceEqual(pair.Second.SavedIds));
     internal PlayniteLibraryHomeItem? Find(WidgetCollectionItemKey key) => indices.TryGetValue(key, out var index) ? ReadRange(index, 1)[0] : null;
+    internal IReadOnlyList<PlayniteLibraryHomeItem> ReadFavorites(int start, int count, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (start < 0 || count < 1 || start > favoriteIndices.Length - count) throw new ArgumentOutOfRangeException(nameof(start));
+        return favoriteIndices.Skip(start).Take(count).Select(index => ReadRange(index, 1, token)[0]).ToArray();
+    }
     internal IReadOnlyList<PlayniteLibraryHomeItem> ReadRange(int start, int count, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
