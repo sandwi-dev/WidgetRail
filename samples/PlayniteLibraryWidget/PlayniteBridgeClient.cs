@@ -34,6 +34,7 @@ internal enum PlayniteBridgeCommandKind
     Install,
     Uninstall,
     ResolveArtwork,
+    ResolveArtworkPaths,
     Launch,
     SetFavorite,
     SetHidden,
@@ -191,7 +192,8 @@ internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
 /// </summary>
 internal sealed partial class PlayniteBridgeClient(
     IPlayniteBridgeTransport transport,
-    IPlayniteCredentialStore credentials) : IPlayniteBridgeClient, IPlayniteLibraryBridgeClient
+    IPlayniteCredentialStore credentials,
+    bool preferLocalArtwork = false) : IPlayniteBridgeClient, IPlayniteLibraryBridgeClient
 {
     internal const int Port = 19821;
     internal const string CompatibilityPath = "/api/games?installed=true&limit=1&offset=0";
@@ -213,7 +215,8 @@ internal sealed partial class PlayniteBridgeClient(
 
     internal static PlayniteBridgeClient CreateDefault() => new(
         new PlayniteBridgeHttpTransport(),
-        new WindowsCredentialPlayniteTokenStore());
+        new WindowsCredentialPlayniteTokenStore(),
+        preferLocalArtwork: true);
 
     public async ValueTask<PlayniteBridgeConnectionResult> ProbeAsync(
         CancellationToken cancellationToken)
@@ -279,6 +282,8 @@ internal sealed partial class PlayniteBridgeClient(
                 new(PlayniteBridgeCommandKind.QueryGames, Query: query), cancellationToken)
             .ConfigureAwait(false);
         EnsureSuccess(response);
+        if (preferLocalArtwork && query.Offset == 0)
+            await LocalArtworkPathsAsync(cancellationToken).ConfigureAwait(false);
         return TryParsePage(response, query.Offset, query.Limit, out var page)
             ? page!
             : throw new PlayniteBridgeDataException("invalid_playnite_data");
@@ -304,9 +309,13 @@ internal sealed partial class PlayniteBridgeClient(
         PlayniteBridgeArtworkKind kind,
         CancellationToken cancellationToken)
     {
+        var id = CanonicalGameId(gameId);
+        if (preferLocalArtwork &&
+            await ReadLocalArtworkAsync(id, kind, cancellationToken).ConfigureAwait(false) is { } local)
+            return local;
         var response = await SendRequiredAsync(new(
                 PlayniteBridgeCommandKind.ResolveArtwork,
-                CanonicalGameId(gameId), ArtworkKind: kind), cancellationToken)
+                id, ArtworkKind: kind), cancellationToken)
             .ConfigureAwait(false);
         if (response.StatusCode == 404)
             return new(null, "not-found", "none");
@@ -520,7 +529,13 @@ internal sealed partial class PlayniteBridgeClient(
             : throw new PlayniteBridgeDataException("invalid_playnite_data");
     }
 
-    public void Dispose() => _transport.Dispose();
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _artworkLifetime.Cancel();
+        _transport.Dispose();
+        _artworkLifetime.Dispose();
+    }
 
     public ValueTask DisposeAsync()
     {
@@ -943,8 +958,10 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
             VersionPolicy = HttpVersionPolicy.RequestVersionExact,
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
-        if (command.JsonBody is not null)
-            request.Content = new StringContent(command.JsonBody, Encoding.UTF8, "application/json");
+        var jsonBody = command.Kind == PlayniteBridgeCommandKind.ResolveArtworkPaths
+            ? PlayniteBridgeClient.ArtworkPathsRequestBody : command.JsonBody;
+        if (jsonBody is not null)
+            request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(RequestTimeout);
         try
@@ -1004,6 +1021,8 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
                         ? string.Empty
                         : "?type=" + command.ArtworkKind!.Value.ToString().ToLowerInvariant()),
                     MaximumArtworkBytes),
+            PlayniteBridgeCommandKind.ResolveArtworkPaths =>
+                (HttpMethod.Post, "api/eval", PlayniteBridgeClient.MaximumArtworkPathsBytes),
             PlayniteBridgeCommandKind.Launch =>
                 (HttpMethod.Post, Game(command.GameId) + "/launch", MaximumJsonBytes),
             PlayniteBridgeCommandKind.SetFavorite or
