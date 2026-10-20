@@ -10,5 +10,6 @@ return await WidgetApplicationBootstrap.RunAsync(args, () =>
         PlayniteBridgeClient.CreateDefault(),
         new PlayniteLibraryStateFileStore(paths.StateFile),
         diagnostics);
-    return new PlayniteLibraryWidget(service);
+    return new PlayniteLibraryWidget(service, setupService: new PlayniteSetupService(paths.Root,
+        Path.Combine(AppContext.BaseDirectory, "bridge")));
 });

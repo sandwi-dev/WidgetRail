@@ -40,7 +40,7 @@
   {
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
     "description": "Browse and launch your Playnite games.",
-    "setupRequirements": ["Requires Playnite running with the separate Playnite Bridge extension installed.", "Enter the API token from Playnite Bridge settings when connecting the widget."],
+    "setupRequirements": ["Requires Playnite installed on this PC.", "Guided setup includes the Playnite Bridge integration and connects automatically. Playnite may need one restart.", "Keep Playnite running while browsing; the widget can start it in the tray."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/home.png"]
   },
   {

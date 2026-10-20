@@ -2607,7 +2607,7 @@ public sealed partial class PlayniteLibraryTests
             models[0].FieldType.GetGenericArguments()[0]);
         CollectionAssert.AreEquivalent(new[]
         {
-            "_application", "_gate", "_launchGeneration", "_launchStateRecency",
+            "_application", "_setupService", "_gate", "_launchGeneration", "_launchStateRecency",
             "_launchStates", "_indexedHome", "_indexedBrowse", "_indexedFavorites",
             "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementBrowse", "achievementRows", "_hiddenRows", "_model", "_navigation", "_organization",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",

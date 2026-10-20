@@ -21,6 +21,8 @@ internal sealed record PlayniteLibraryPresentationState(
 {
     internal string? ActiveCategoryId { get; init; }
     internal bool SearchFocusPending { get; init; }
+    internal bool CanStartPlaynite { get; init; }
+    internal bool PlayniteSetupBusy { get; init; }
     internal bool SearchExpanded { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
     internal long ContentEntryRequestId { get; init; }
@@ -126,7 +128,10 @@ internal static partial class PlayniteLibraryPresentation
             header = UI.Row("playnite-library.home.actions",
                     NavigationTabs(state),
                     UI.Row("playnite-library.home.utilities",
-                            LibraryNavigation(state, renderActionsEnabled))
+                            [.. state.CanStartPlaynite ? new WidgetElement[] {
+                                UI.Button("Start Playnite", PlayniteLibraryWidget.SetupStartAction, PlayniteLibraryWidget.SetupStartAction)
+                                    .Busy(state.PlayniteSetupBusy).Disabled(!state.Interactive).Classes("playnite-library-control") } : [],
+                            LibraryNavigation(state, renderActionsEnabled)])
                         .Classes("playnite-library-home-utilities"))
                 .Classes("playnite-library-home-actions");
         if (state.Route == PlayniteLibraryRoute.Categories)

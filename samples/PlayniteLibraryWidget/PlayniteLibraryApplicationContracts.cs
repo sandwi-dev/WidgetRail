@@ -35,6 +35,7 @@ internal sealed record PlayniteLibraryQueryResult(
 
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {
+    void ResetConnectionCache() { }
     async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token) =>
         await ResolveArtworkAsync(handle, token).ConfigureAwait(false);
     bool OwnsArtworkContent { get; }

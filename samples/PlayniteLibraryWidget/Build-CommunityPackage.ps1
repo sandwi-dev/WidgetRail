@@ -26,6 +26,8 @@ $buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
 $buildLogRoot = Join-Path $repositoryRoot 'logs\playnite-package'
 $manifestPath = Join-Path $widgetRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$bridgeOutput = Join-Path $artifactsRoot 'bridge-bundle'
+& (Join-Path $widgetRoot 'Build-BridgePackage.ps1') -OutputDirectory $bridgeOutput
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
 $applicationProject = Join-Path $widgetRoot 'Application\PlayniteLibraryApplication.csproj'
 $cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
@@ -100,6 +102,9 @@ Get-ChildItem -LiteralPath $publishRoot -File -Recurse | Where-Object {
 }
 Copy-Item -LiteralPath $manifestPath `
     -Destination (Join-Path $stagingRoot 'manifest.json')
+$bridgePayload = Join-Path $payloadRoot 'bridge'
+New-Item -ItemType Directory -Force -Path $bridgePayload | Out-Null
+Copy-Item -LiteralPath (Join-Path $bridgeOutput 'PlayniteBridge.WidgetRail.pext'), (Join-Path $bridgeOutput 'bridge-package.json') -Destination $bridgePayload
 Copy-Item -LiteralPath (Join-Path $widgetRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss')
 Get-ChildItem -LiteralPath (Join-Path $widgetRoot 'assets\icons') -Filter '*.svg' -File |
@@ -122,6 +127,8 @@ $required = @(
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
     'payload\Microsoft.Windows.SDK.NET.dll',
+    'payload\bridge\PlayniteBridge.WidgetRail.pext',
+    'payload\bridge\bridge-package.json',
     'styles\default.wrss'
 )
 $missing = @($required | Where-Object { $_ -notin $stagedFiles })

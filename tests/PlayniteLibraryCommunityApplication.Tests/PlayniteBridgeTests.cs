@@ -409,6 +409,17 @@ public sealed class PlayniteBridgeTests
                                 $"{value.GetProperty("version").GetString()}.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
+        var bridgeBytes = ReadEntry(archive, "payload/bridge/PlayniteBridge.WidgetRail.pext");
+        using var bundleMetadata = JsonDocument.Parse(ReadEntry(archive, "payload/bridge/bridge-package.json"));
+        Assert.AreEqual(bundleMetadata.RootElement.GetProperty("sha256").GetString(),
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bridgeBytes)));
+        using var bridgeStream = new MemoryStream(bridgeBytes);
+        using var bridgeArchive = new ZipArchive(bridgeStream, ZipArchiveMode.Read);
+        CollectionAssert.AreEquivalent(new[] { "PlayniteBridge.dll", "extension.yaml", "LICENSE", "WidgetRail.Build.json" },
+            bridgeArchive.Entries.Select(entry => entry.FullName).ToArray());
+        Assert.AreEqual(bundleMetadata.RootElement.GetProperty("dllSha256").GetString(),
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ReadEntry(bridgeArchive, "PlayniteBridge.dll"))));
+        Assert.IsTrue(ReadEntry(bridgeArchive, "LICENSE").Length > 0);
         var stylePath = Path.Combine(root, "samples", "PlayniteLibraryWidget",
             "styles", "default.wrss");
         CollectionAssert.AreEqual(File.ReadAllBytes(manifestPath),

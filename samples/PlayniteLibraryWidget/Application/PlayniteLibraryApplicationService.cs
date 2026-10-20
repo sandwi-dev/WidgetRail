@@ -55,6 +55,10 @@ internal sealed partial class PlayniteLibraryApplicationService(
             "eqhXUAAAAABJRU5ErkJggg=="));
 
     public bool OwnsArtworkContent => true;
+    public void ResetConnectionCache()
+    {
+        if (_client is PlayniteBridgeClient bridge) bridge.ResetArtworkPathCache();
+    }
 
     public async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token)
     {

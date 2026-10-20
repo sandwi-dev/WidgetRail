@@ -63,6 +63,11 @@ internal sealed partial class PlayniteBridgeClient
         return lookup.WaitAsync(token);
     }
 
+    internal void ResetArtworkPathCache()
+    {
+        lock (_artworkPathGate) _artworkPaths = null;
+    }
+
     private async Task<IReadOnlyDictionary<string, LocalArtworkPaths>> LoadLocalArtworkPathsAsync(CancellationToken token)
     {
         try

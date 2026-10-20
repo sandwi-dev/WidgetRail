@@ -57,10 +57,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
     internal PlayniteLibraryWidget(
         IPlayniteLibraryApplicationService application,
         IPlayniteBridgeClient? playniteClient = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IPlayniteSetupService? setupService = null)
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
         _playniteClient = playniteClient;
+        _setupService = setupService;
         var clock = timeProvider ?? TimeProvider.System;
         _actionFeedbackExpiry = CreateTimedMutation(
             WidgetOperationLifetime.Active, clock);
@@ -308,6 +310,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
+        RefreshStoppedPlaynite();
         ResumeDetails();
         var activation = _navigation.Value;
         var route = activation.Route;
@@ -433,6 +436,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         PlayniteLibraryGameTarget? capturedTarget, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (await TryHandleSetupActionAsync(action).ConfigureAwait(false)) return;
+        if (_model.Value.Setup.Busy && action.ActionId is PlayniteSaveActionId or PlayniteDeleteActionId or PlayniteRefreshActionId) return;
         if (action.ActionId is not (PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen))
             _model.Update(state => state.ContentEntryScopeId is null
                 ? state : state with { ContentEntryScopeId = null });
@@ -596,6 +601,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         action.SourceElementId) == WidgetNavigationResult.Changed)
                 {
                     _model.Update(state => state with { PlayniteFeedback = null });
+                    RefreshSetup();
                     var probe = _playniteConnection.Refresh();
                     await probe.Completion.WaitAsync(cancellationToken)
                         .ConfigureAwait(false);
@@ -1899,6 +1905,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         local.SourceObservations)
     {
         ActiveCategoryId = local.ActiveCategoryId,
+        CanStartPlaynite = local.StoppedPlaynite is not null,
+        PlayniteSetupBusy = local.Setup.Busy,
         SearchFocusPending = local.SearchFocusPending,
         SearchExpanded = local.SearchExpanded,
         BrowseInitialFocusId = local.BrowseInitialFocusId,

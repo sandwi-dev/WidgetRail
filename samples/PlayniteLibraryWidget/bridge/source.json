@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/sandwi-dev/playnite-bridge",
+  "commit": "66a32935703c658bfb5d829dcd8b9fe3b8e96f67",
+  "archive": "https://codeload.github.com/sandwi-dev/playnite-bridge/zip/66a32935703c658bfb5d829dcd8b9fe3b8e96f67",
+  "archiveSha256": "60980213F522D43197D7BDFA1719D9D05AAEE91EF385E46C14D261C4D801DFFB",
+  "version": "1.5.3.1",
+  "upstreamVersion": "1.5.3",
+  "upstreamPullRequest": "https://github.com/rollacode/playnite-bridge/pull/6",
+  "knownOriginalDllSha256": "EDDDF2CA645A6F4A69D07DDED35D9BD7AC11C511AA386B749AC5FDD74DEE9353"
+}

@@ -8,7 +8,8 @@ internal sealed record PlayniteLibraryConnectionState(
     bool Busy,
     string Code,
     bool Interactive,
-    PlayniteLibraryConnectionFeedback? Feedback);
+    PlayniteLibraryConnectionFeedback? Feedback,
+    PlayniteSetupView? Setup = null);
 
 internal sealed class PlayniteLibraryConnectionFeedback(
     string title,
@@ -20,10 +21,11 @@ internal sealed class PlayniteLibraryConnectionFeedback(
     internal ToastTone Tone { get; } = tone;
 }
 
-internal static class PlayniteLibraryConnectionPresentation
+internal static partial class PlayniteLibraryConnectionPresentation
 {
     internal static WidgetView Render(PlayniteLibraryConnectionState state)
     {
+        if (state.Setup is not null) return RenderSetup(state);
         var configured = state.Kind is not (
             PlayniteBridgeConnectionKind.NotConfigured or
             PlayniteBridgeConnectionKind.AuthenticationRequired);
@@ -161,7 +163,8 @@ public sealed partial class PlayniteLibraryWidget
                 WidgetResourceStatus.Refreshing,
             state.PlayniteCode,
             LifecycleState == WidgetLifecycleState.Interactive,
-            state.PlayniteFeedback);
+            state.PlayniteFeedback,
+            _setupService is null ? null : state.Setup);
     }
 
     private async ValueTask<PlayniteBridgeConnectionResult> LoadPlayniteConnectionAsync(
@@ -248,6 +251,8 @@ public sealed partial class PlayniteLibraryWidget
             _playniteConnection.Reset();
             var probe = _playniteConnection.Refresh();
             await probe.Completion.WaitAsync(lifetime.Token).ConfigureAwait(false);
+            if (_playniteConnection.Snapshot.Value?.Kind == PlayniteBridgeConnectionKind.Connected)
+                _application.ResetConnectionCache();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (PlayniteCredentialException)

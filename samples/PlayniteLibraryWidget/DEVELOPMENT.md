@@ -3,8 +3,8 @@
 [User guide and setup](README.md)
 
 Playnite Library is a controller-first, full-trust Community sample backed by a
-user-installed Playnite Bridge instance. The package owns its bounded localhost
-client, protected credential prompt, presentation, and organization state. It
+Playnite Bridge instance. The package owns its guided setup, bounded localhost
+client, protected credential controls, presentation, and organization state. It
 does not copy a product app-library provider into the package.
 
 ## Achievement providers
@@ -33,7 +33,8 @@ or polling is added.
 Achievement browsing uses an indexed collection over an immutable local query.
 Provider API names supply stable hashed keys; legacy data falls back to name and
 description. Filtering/search/sorting never calls the provider. Unrevealed secret
-names and descriptions do not participate in search or numerical-progress sorting.
+names and descriptions participate in search while result rows stay concealed;
+unrevealed secrets are excluded from suggestions and numerical-progress sorting.
 The parent snapshot contains only the viewport and tools, regardless of list size.
 Artwork resolves for realized rows. Descriptions and metadata render inline, with
 `UI.ReadingSurface` for ordinary rows and a primary reveal action only for secrets.
@@ -98,10 +99,12 @@ retain the last complete query; retired/superseded captures cannot publish.
 
 ## Setup and safety
 
-Install and enable Playnite Bridge in Playnite. Without a saved token, the widget
-shows **Set up Playnite Bridge** with a **Set up connection** button. Select it,
-paste the token from Playnite Bridge settings, and save. You can also open
-**Menu → Playnite connection** at any time. A rejected token shows **Update token**.
+Without a saved token, the widget offers **Set up connection**. Guided setup
+discovers installed, portable, and running custom-data profiles, reuses healthy
+integrations, and installs/enables the pinned bundle when explicitly selected.
+It imports the selected profile's generated token only after checking the returned
+application/data paths, games endpoint, and a constant read-only eval. You can open
+**Menu → Playnite connection** at any time; Advanced retains manual token controls.
 The token is stored under the package-scoped Windows Credential Manager target
 and is never rendered, logged, or copied into package or private state. The UI
 offers explicit replace and remove actions. Missing credentials produce an
@@ -111,8 +114,40 @@ The transport is structurally limited to `localhost:19821`, disables proxy,
 redirect, cookie, and decompression behavior, and exposes only the fixed routes
 needed for bounded library reads, artwork, launch request admission, favorites,
 hidden state, categories, completion status, installation/uninstallation, achievements,
-and activity. It does not expose arbitrary methods or paths, metadata refresh, deletion, evaluation, or
+and activity. Fixed eval scripts support artwork-path discovery and cached
+achievements; setup adds a constant compilation check. It does not expose
+caller-authored methods, paths or code, metadata refresh, deletion, or
 account operations.
+
+### Guided setup implementation
+
+`Application/PlayniteSetup*` separates process discovery, bounded file/package
+handling, recovery, and connection checks from the declarative setup UI.
+Setup operations use widget lifetime so hiding the overlay does not interrupt a
+deployment; no automatic installation runs on activation. A cheap process-name
+check on activation suppresses the start action while Playnite is running.
+When stopped, a unique detected profile with Bridge gets a start-in-tray action.
+Launch uses argument lists with `--startclosedtotray` and `--userdatadir`; it does
+not override normal library-update preferences. Shutdown uses Playnite's supported
+`--shutdown` command and a bounded wait, never process termination.
+
+`bridge/source.json` pins the temporary integration's source revision, source
+archive hash, and known original DLL hash. `Build-BridgePackage.ps1` builds the
+plugin, includes its MIT license and source attribution, and emits a deterministic
+`.pext` plus its digest metadata. `Build-CommunityPackage.ps1` includes both under
+`payload/bridge`. The temporary manifest version is `1.5.3.1`, retaining upstream's
+extension ID so later official versions can supersede it. Build downloads are
+cached and verified; setup itself requires no GitHub access.
+
+Before replacement, the bundle and selected installation are checked again.
+Staging, one rollback copy, and an atomic transaction journal live in
+`WidgetRail.Setup/PlayniteBridge` outside `Extensions`, on the target volume.
+Existing settings and auth data are preserved. Setup changes only the relevant
+disabled-plugin entry and the optional first-run network-prompt preference;
+it does not add firewall rules or request elevation. Failed verification restores
+the previous files/settings; interrupted transactions are recovered before retry.
+Unknown/newer builds, duplicate extension copies, linked folders, profile conflicts,
+and shutdown refusal produce an actionable result instead of forced replacement.
 
 ## Data and authority
 

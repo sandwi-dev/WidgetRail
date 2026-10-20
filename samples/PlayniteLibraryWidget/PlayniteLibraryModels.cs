@@ -123,6 +123,8 @@ internal sealed record PlayniteLibraryRenderState
         PlayniteBridgeConnectionKind.NotConfigured;
     internal string PlayniteCode { get; init; } = "credential_missing";
     internal bool PlayniteBusy { get; init; }
+    internal PlayniteSetupView Setup { get; init; } = new();
+    internal PlayniteSetupInstallation? StoppedPlaynite { get; init; }
     internal PlayniteLibraryConnectionFeedback? PlayniteFeedback { get; init; }
 
     internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new()

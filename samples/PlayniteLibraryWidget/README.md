@@ -18,14 +18,29 @@ to play, and launch it with your controller without leaving the overlay.
 
 This widget connects to [**Playnite Bridge**](https://github.com/rollacode/playnite-bridge)
 by [rollacode](https://github.com/rollacode), a Playnite plugin that provides a
-local API. Install the plugin separately from the WidgetRail widget.
+local API. Guided setup includes a tested integration package and connects it
+without requiring you to download a plugin or copy a token.
 
 1. Install Playnite Library's `.wrwidget` from [WidgetRail releases](https://github.com/sandwi-dev/WidgetRail/releases) through **Settings → Widgets**. Review the full-trust prompt and enable it.
-2. Download the `PlayniteBridge_vX.X.X.pext` plugin from [Playnite Bridge releases](https://github.com/rollacode/playnite-bridge/releases).
-3. Drag the `.pext` file onto Playnite, follow its installation prompts, and restart Playnite. Keep Playnite running while using the widget.
-4. In Playnite, open **Settings → Plugins → Playnite Bridge** and copy the API token.
-5. In WidgetRail, select **Set up connection**, paste the token, and save it.
-6. Confirm the connection, then select **Back** to load your library.
+2. Install [Playnite](https://playnite.link/) if you do not already have it.
+3. Open the widget and choose **Set up connection**. Setup detects Playnite and its data profile; choose a profile if more than one is found.
+4. Select the displayed connection action. When installation or repair is needed, the button explains that Playnite will restart. Setup preserves its library and integration preferences, connects, and returns to your library.
+
+If Playnite is stopped later, the widget offers **Start Playnite**. It starts
+Playnite Desktop in the tray with the selected data profile and your normal
+library-update settings, then loads the library automatically.
+
+Healthy existing Bridge builds are reused. Setup only replaces the specifically
+recognized older build; unfamiliar or newer integrations remain under your control.
+**Advanced** provides custom application/data folders and manual token controls.
+Keep Playnite running while using the widget.
+
+The bundled integration is a clearly labeled WidgetRail build of Bridge 1.5.3,
+with the framework-reference compatibility fix submitted as
+[upstream PR #6](https://github.com/rollacode/playnite-bridge/pull/6). It retains
+Bridge's extension identity and MIT license. A future compatible official release
+can replace it. The package is included with the widget, so setup does not download
+from GitHub.
 
 WidgetRail uses the plugin's local API. The optional Playnite Bridge sync backend
 is not required.
@@ -33,6 +48,11 @@ is not required.
 The supported bridge listens on `localhost:19821` and must provide the compatible
 games API. Tokens are stored privately in Windows Credential Manager.
 You can reopen connection settings through **Menu → Playnite connection**.
+
+If setup cannot finish, it reports the next step and restores its previous
+integration/settings when possible. Finish any Playnite startup or shutdown dialog
+and retry. Interrupted updates retain a recovery record and one backup outside
+Playnite's extension discovery folders. Setup never force-terminates Playnite.
 
 ## Use it with a controller
 
