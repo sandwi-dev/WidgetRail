@@ -22,7 +22,7 @@ internal sealed record BridgeClientPresentation(
 internal sealed record BridgeResolvedArtwork(
     ConfiguredWidget Configured,
     string WorkerFingerprint,
-    WidgetEncodedArtwork? Artwork);
+    WidgetArtworkSource? Artwork);
 
 internal sealed record BridgeClientWorkerStatus(
     string Id,
@@ -295,6 +295,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         string artworkHandle,
         CancellationToken cancellationToken) =>
         Task.FromResult<WidgetEncodedArtwork?>(null);
+    async Task<WidgetArtworkSource?> ResolveArtworkSourceAsync(string artworkHandle, bool allowFileSource, CancellationToken token) =>
+        await ResolveArtworkAsync(artworkHandle, token).ConfigureAwait(false);
     Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken, int expectedStartOrdinal);
@@ -385,6 +387,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         string artworkHandle,
         CancellationToken cancellationToken) =>
         client.ResolveArtworkAsync(artworkHandle, cancellationToken);
+    public Task<WidgetArtworkSource?> ResolveArtworkSourceAsync(string artworkHandle, bool allowFileSource, CancellationToken token) =>
+        client.ResolveArtworkSourceAsync(artworkHandle, allowFileSource, token);
     public Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken, int expectedStartOrdinal) =>
@@ -1348,7 +1352,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken,
         Func<CancellationToken, Task>? acknowledge = null,
-        BridgePinnedArtworkRequest? pinned = null)
+        BridgePinnedArtworkRequest? pinned = null, bool allowFileSource = false)
     {
         if (!BridgeRequestKey.IsBoundedIdentifier(artworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
@@ -1377,7 +1381,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 await acknowledge(cancellationToken).ConfigureAwait(false);
             var artwork = await ExecuteClientOperationAsync(
                     registration,
-                    (client, token) => client.ResolveArtworkAsync(artworkHandle, token),
+                    (client, token) => client.ResolveArtworkSourceAsync(artworkHandle, allowFileSource, token),
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
@@ -1396,7 +1400,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 new BridgeResolvedArtwork(
                     registration.Configured,
                     registration.Configured.WorkerFingerprint,
-                    artwork));
+                    AdmitArtworkSource(registration.Configured, artwork)));
         }
         finally
         {

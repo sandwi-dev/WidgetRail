@@ -1119,6 +1119,9 @@ public sealed partial class PackageRuntimeTests
 
     private sealed class FakeLibraryClient : IPlayniteLibraryBridgeClient
     {
+        internal bool FileArtworkEnabled { get; set; }
+        public ValueTask<WidgetFileArtwork?> ResolveArtworkFileAsync(string gameId, PlayniteBridgeArtworkKind kind, CancellationToken token) =>
+            ValueTask.FromResult<WidgetFileArtwork?>(FileArtworkEnabled ? new WidgetFileArtwork(@"C:\images\cover.png", "one") : null);
         internal const string TinyPng =
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XcF7WQAAAABJRU5ErkJggg==";
         internal FakeLibraryClient(int count)

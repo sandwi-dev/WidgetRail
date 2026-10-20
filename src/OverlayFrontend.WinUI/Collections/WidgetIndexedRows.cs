@@ -209,7 +209,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         if (!lifetime.IsCancellationRequested) StylesChanged?.Invoke();
     });
 
-    internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(WidgetIndexedRow row, string handle, CancellationToken cancellation)
+    internal async Task<WidgetArtworkSource?> ResolveArtworkAsync(WidgetIndexedRow row, string handle, CancellationToken cancellation, bool allowFileSource = true)
     {
         // A recycled native template can finish binding a retained row after its
         // query has retired. It may keep its pixels, but cannot start new work
@@ -217,7 +217,9 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         if (lifetime.IsCancellationRequested || !row.Lease.IsCurrent) return null;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, activity.Token, lifetime.Token);
         await admission.WaitAsync(linked.Token).ConfigureAwait(false);
-        try { return await row.Lease.ResolveArtworkAsync(row.Item.Key, handle, linked.Token).ConfigureAwait(false); }
+        try { return allowFileSource
+            ? await row.Lease.ResolveArtworkSourceAsync(row.Item.Key, handle, linked.Token).ConfigureAwait(false)
+            : await row.Lease.ResolveArtworkAsync(row.Item.Key, handle, linked.Token).ConfigureAwait(false); }
         finally { admission.Release(); }
     }
 

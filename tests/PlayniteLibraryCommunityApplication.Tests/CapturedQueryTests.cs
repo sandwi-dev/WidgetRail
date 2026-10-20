@@ -6,6 +6,22 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 
 public sealed partial class PackageRuntimeTests
 {
+    [TestMethod]
+    public async Task CapturedFileArtworkDoesNotAllocateEncodedCacheOrCrossItemAuthority()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(2) { FileArtworkEnabled = true };
+        await using var service = Service(directory.Path, client);
+        var query = await service.CaptureQueryAsync(AllGames, new(PlayniteLibraryQueryScope.Library), true, default);
+        var rows = query.ReadRange(0, 2);
+        var handle = new WidgetArtworkHandle(rows[0].Item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Cover)!.Handle);
+        Assert.IsInstanceOfType<WidgetFileArtwork>(await query.ResolveArtworkSourceAsync(rows[0], handle, default));
+        Assert.IsNull(await query.ResolveArtworkSourceAsync(rows[1], handle, default));
+        Assert.AreEqual(0, service.RetainedArtworkBytes);
+        Assert.AreEqual(0, client.ArtworkRequests.Count);
+        Assert.IsNotNull(await query.ResolveArtworkAsync(rows[0], handle));
+        Assert.IsTrue(service.RetainedArtworkBytes > 0, "Byte fallback should retain its existing bounded cache behavior.");
+    }
     [TestMethod, Timeout(30_000)]
     public async Task CapturedQuerySupportsRandomBoundedRangesWithoutRegisteringCatalogArtwork()
     {

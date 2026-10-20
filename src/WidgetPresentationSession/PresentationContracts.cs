@@ -160,7 +160,10 @@ public sealed record WidgetPresentationArtwork(
     WidgetPresentationAuthority Authority,
     string ArtworkHandle,
     WidgetArtworkContentType ContentType,
-    ReadOnlyMemory<byte> EncodedBytes);
+    ReadOnlyMemory<byte> EncodedBytes)
+{
+    public ArtworkFileReference? File { get; init; }
+}
 
 public sealed record WidgetPresentationDiagnostic(
     DateTimeOffset Timestamp,
@@ -208,7 +211,8 @@ internal sealed record PendingArtwork(
     CancellationToken CancellationToken,
     TaskCompletionSource<WidgetPresentationArtwork> Completion,
     WidgetPinnedSelection? PinnedSelection = null,
-    WidgetPinnedProjection? PinnedProjection = null);
+    WidgetPinnedProjection? PinnedProjection = null,
+    bool AllowFileSource = false);
 
 internal sealed record BridgeRequestFailure(string Code, string Message);
 

@@ -7,4 +7,5 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/WidgetPresentationSession/WidgetPresentationSession.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../src/OverlayFrontend.WinUI/Presentation/ArtworkFileStream.cs" Link="ArtworkFileStream.cs" /></ItemGroup>
 </Project>

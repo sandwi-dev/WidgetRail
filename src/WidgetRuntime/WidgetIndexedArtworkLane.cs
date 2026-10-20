@@ -7,10 +7,10 @@ internal sealed class WidgetIndexedArtworkLane
 {
     internal const int Capacity = 4;
     private readonly Widget widget;
-    private readonly Func<long, WidgetEncodedArtwork?, CancellationToken, Task> sendArtwork;
+    private readonly Func<long, WidgetArtworkSource?, CancellationToken, Task> sendArtwork;
     private readonly Func<RuntimeEnvelope, CancellationToken, Task> send;
     private readonly WidgetWorkerAsyncLane<long, ResolveIndexedArtworkPayload> lane;
-    internal WidgetIndexedArtworkLane(Widget widget, Func<long, WidgetEncodedArtwork?, CancellationToken, Task> sendArtwork,
+    internal WidgetIndexedArtworkLane(Widget widget, Func<long, WidgetArtworkSource?, CancellationToken, Task> sendArtwork,
         Func<RuntimeEnvelope, CancellationToken, Task> send, Action<Exception> failed, CancellationToken session)
     {
         this.widget = widget; this.sendArtwork = sendArtwork; this.send = send;
@@ -33,10 +33,10 @@ internal sealed class WidgetIndexedArtworkLane
     internal Task CloseAsync() => lane.CloseAsync();
     private async Task RunAsync(long requestId, ResolveIndexedArtworkPayload request, CancellationToken demand, CancellationToken session)
     {
-        WidgetEncodedArtwork? artwork;
+        WidgetArtworkSource? artwork;
         try
         {
-            artwork = await widget.ResolveIndexedArtworkAsync(request.Item, request.ArtworkHandle, demand).ConfigureAwait(false);
+            artwork = await widget.ResolveIndexedArtworkSourceAsync(request.Item, request.ArtworkHandle, request.AllowFileSource, demand).ConfigureAwait(false);
             demand.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException)

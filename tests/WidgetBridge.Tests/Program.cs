@@ -119,6 +119,7 @@ if (args.Length is 4 or 5 && args[0] == "--export-styled-fixture")
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Artwork file admission preserves full-access and package boundaries", ArtworkFileAdmissionTests.Run),
     ("Catalogue integrated widget review update revert retry and permission workflow", MarketplaceIntegratedWorkflow.RunAsync),
     ("Text suggestions preserve authority, cancellation and bounded admission", BridgeClientRegistryScenarios.TextSuggestions),
     ("Text suggestions cancellation preserves the real bridge connection", SuggestionCancellationPreservesConnection),

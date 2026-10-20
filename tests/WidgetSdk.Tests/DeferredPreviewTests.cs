@@ -11,7 +11,7 @@ internal static class DeferredPreviewTests
         {
             using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"deferred-preview");
             Check(widget.Reads==0&&host.CurrentSnapshot.Root.Children[0].Children[0].FocusPresentation is null,"Render carries references only");
-            Check(host.CurrentSnapshot.ProtocolVersion==ProtocolConstants.DeferredFocusPreviewVersion,"Deferred contract is versioned");
+            Check(host.CurrentSnapshot.ProtocolVersion==ProtocolConstants.CurrentVersion,"Deferred templates advertise the SDK capabilities they can resolve lazily");
             using var first=await host.AcquirePreviewAsync("surface","first");
             Check(widget.Reads==1&&first.Range.Items[0].Root.Children.Count==2,"One demand resolves one complete fragment");
             var content=first.Range.Items[0].Root;var rich=content.Children[1];

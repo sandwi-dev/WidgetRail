@@ -13,6 +13,41 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed class ArtworkDemandTests
 {
     [TestMethod]
+    public async Task FileArtworkUsesTheSameDemandAndWorkerAuthorityWithoutEncodedBytes()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await EstablishAsync(channel);
+            var old = await ReadDemandAsync(channel);
+            Assert.IsTrue(old.Payload.GetProperty("allowFileSource").GetBoolean());
+            await AckAsync(channel, old.RequestId);
+            var refresh = await ReadAsync(channel);
+            await SnapshotAsync(channel, refresh.RequestId, 2, workerRun: new(1, 1));
+            var current = await ReadDemandAsync(channel);
+            await AckAsync(channel, current.RequestId);
+            foreach (var demand in new[] { old, current })
+            {
+                var completion = Completion(demand, []);
+                completion["contentType"] = "";
+                completion["file"] = new ArtworkFileReference(@"C:\images\cover.png", "one");
+                await SendAsync(channel, 0, BridgeMessageTypes.Artwork, completion);
+            }
+            await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var initial = await EstablishAsync(session);
+            var pending = session.ResolveArtworkAsync(initial.Authority, Handle, allowFileSource: true);
+            var updated = await session.RefreshAsync(initial.Authority).WaitAsync(Deadline);
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(async () => await pending.WaitAsync(Deadline));
+            var current = await session.ResolveArtworkAsync(updated.Authority, Handle, allowFileSource: true).WaitAsync(Deadline);
+            Assert.AreEqual(@"C:\images\cover.png", current.File?.Path);
+            Assert.IsTrue(current.EncodedBytes.IsEmpty);
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+    [TestMethod]
     public async Task ReplacedWorkerCannotCompleteOldArtworkEvenWithIdenticalHandle()
     {
         await using var server = new ScriptedBridgeServer();

@@ -102,7 +102,15 @@ mutation authority remain shared and current across both presentation routes.
 
 ## Artwork retention
 
-Resolved artwork payloads use a package-owned, least-recently-used content cache
+The client performs one bounded, fixed read-only Bridge `eval` lookup per worker
+lifetime to resolve cover/background file paths. File-capable hosts receive
+file-backed artwork sources and decode directly from disk. Image bytes are not
+copied into the application cache or transferred over artwork IPC on that path.
+The path map stays private to the application; it is never UI state. Missing
+paths, incompatible lookup results and native read/decode failures retain the
+existing byte fallback. Setup and token handling are unchanged by this experiment.
+
+Fallback encoded artwork payloads use a package-owned, least-recently-used content cache
 bounded to 128 MiB. That byte budget is an application cache policy, not a
 process-memory limit. Cache hits promote recency, oversized payloads may serve
 the current request without being retained, and byte eviction never revokes a

@@ -12,6 +12,8 @@ internal interface IBridgeIndexedLease : IAsyncDisposable
     }
     Task<WidgetOperationAdmission?> AdmitInputAsync(IndexedCollectionInputRequest input, IndexedCollectionInputContext correlation, CancellationToken cancellationToken);
     Task<WidgetEncodedArtwork?> ResolveArtworkAsync(string itemKey, string artworkHandle, CancellationToken cancellationToken);
+    async Task<WidgetArtworkSource?> ResolveArtworkSourceAsync(string itemKey, string artworkHandle, bool allowFileSource, CancellationToken token) =>
+        await ResolveArtworkAsync(itemKey, artworkHandle, token).ConfigureAwait(false);
 }
 
 internal sealed class WidgetProcessBridgeIndexedLease(WidgetProcessIndexedLease lease) : IBridgeIndexedLease
@@ -21,6 +23,8 @@ internal sealed class WidgetProcessBridgeIndexedLease(WidgetProcessIndexedLease 
         lease.AdmitInputAsync(input, correlation, cancellationToken);
     public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(string itemKey, string artworkHandle, CancellationToken cancellationToken) =>
         lease.ResolveArtworkAsync(itemKey, artworkHandle, cancellationToken);
+    public Task<WidgetArtworkSource?> ResolveArtworkSourceAsync(string itemKey, string artworkHandle, bool allowFileSource, CancellationToken token) =>
+        lease.ResolveArtworkSourceAsync(itemKey, artworkHandle, allowFileSource, token);
     public ValueTask DisposeAsync() => lease.DisposeAsync();
 }
 
@@ -337,7 +341,7 @@ internal sealed partial class BridgeClientRegistry
         }
     }
 
-    internal async Task<WidgetEncodedArtwork?> ResolveIndexedArtworkAsync(BridgeIndexedArtworkRequest request, CancellationToken cancellationToken,
+    internal async Task<WidgetArtworkSource?> ResolveIndexedArtworkAsync(BridgeIndexedArtworkRequest request, CancellationToken cancellationToken,
         Func<ConfiguredWidget, string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolveBrokerArtwork = null)
     {
         IndexedCollectionInputContract.ValidateReference(request.Item);
@@ -368,14 +372,14 @@ internal sealed partial class BridgeClientRegistry
             // widget callback. The exact row lease guards both request and completion.
             var artwork = WidgetRail.PlatformBroker.AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle)
                 ? resolveBrokerArtwork is null ? null : await resolveBrokerArtwork(configured, request.ArtworkHandle, operation.Cancellation.Token).ConfigureAwait(false)
-                : await owner.Runtime.ResolveArtworkAsync(request.Item.ItemKey, request.ArtworkHandle, operation.Cancellation.Token).ConfigureAwait(false);
+                : await owner.Runtime.ResolveArtworkSourceAsync(request.Item.ItemKey, request.ArtworkHandle, request.AllowFileSource, operation.Cancellation.Token).ConfigureAwait(false);
             lock (_gate)
             {
                 operation.Cancellation.Token.ThrowIfCancellationRequested();
                 _ = DemandIndexedOwnerLocked(owner);
-                if (artwork is not null && !WidgetEncodedArtworkContract.IsValid(artwork))
+                if (artwork is not null && !WidgetArtworkSourceContract.IsValid(artwork))
                     throw new BridgeProtocolException("Indexed artwork is invalid.");
-                return artwork;
+                return AdmitArtworkSource(configured, artwork);
             }
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)

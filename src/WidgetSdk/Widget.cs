@@ -137,7 +137,7 @@ public sealed record WidgetView(
         // Deferred item declarations are not in the parent snapshot. Advertise
         // this SDK's supported protocol so lazily rendered templates can use
         // current controls without eagerly rendering the entire collection.
-        static bool HasIndexed(ViewNode node) => node.IndexedCollection is not null ||
+        static bool HasIndexed(ViewNode node) => node.IndexedCollection is not null || node.FocusPreviewSource is not null ||
             node.Children.Any(HasIndexed) || node.FocusPresentation is { } focus && HasIndexed(focus) ||
             node.DefaultFocusPresentation is { } fallback && HasIndexed(fallback);
         if (HasIndexed(snapshot.Root) || snapshot.PinnedLayouts.Any(layout => layout.Root is { } root && HasIndexed(root)))
@@ -589,10 +589,20 @@ public abstract partial class Widget
                 "Hosts may request only Background, Visible, or Interactive.");
     }
 
+    private ViewSnapshot AdvertiseArtworkSources(ViewSnapshot snapshot)
+    {
+        // The virtual delegate identifies an explicit source override without unbounded
+        // reflection. Legacy byte-only widgets retain their existing minimum protocol.
+        Func<WidgetArtworkHandle, CancellationToken, ValueTask<WidgetArtworkSource?>> resolver = OnResolveArtworkSourceAsync;
+        return resolver.Method.DeclaringType != typeof(Widget)
+            ? snapshot with { ProtocolVersion = Math.Max(snapshot.ProtocolVersion, ProtocolConstants.FileArtworkVersion) }
+            : snapshot;
+    }
+
     /// <summary>Renders and remembers the exact snapshot used for subsequent input resolution.</summary>
     public ViewSnapshot RenderSnapshot(string widgetInstanceId, long sequence)
     {
-        var snapshot = Render().CreateSnapshot(widgetInstanceId, sequence);
+        var snapshot = AdvertiseArtworkSources(Render().CreateSnapshot(widgetInstanceId, sequence));
         Volatile.Write(ref _latestSnapshot, snapshot);
         RetireIndexedLeases();
         return snapshot;
@@ -608,7 +618,7 @@ public abstract partial class Widget
         long recoveryOriginSequence = 0)
     {
         var previous = Volatile.Read(ref _latestSnapshot);
-        var snapshot = Render().CreateSnapshot(widgetInstanceId, sequence);
+        var snapshot = AdvertiseArtworkSources(Render().CreateSnapshot(widgetInstanceId, sequence));
         var publication = WidgetPresentationDiff.Create(
             previous,
             snapshot,
@@ -647,14 +657,24 @@ public abstract partial class Widget
 
     internal async ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        await ResolveArtworkSourceAsync(artworkHandle, false, cancellationToken).ConfigureAwait(false) as WidgetEncodedArtwork;
+
+    /// <summary>Resolves bytes or a file source. Override alongside the byte resolver to support hosts with either capability.</summary>
+    public virtual async ValueTask<WidgetArtworkSource?> OnResolveArtworkSourceAsync(
+        WidgetArtworkHandle handle, CancellationToken cancellationToken = default) =>
+        await OnResolveArtworkAsync(handle, cancellationToken).ConfigureAwait(false);
+
+    internal async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(
+        string artworkHandle, bool allowFileSource, CancellationToken cancellationToken)
     {
         StableIdentifier.Validate(artworkHandle, nameof(artworkHandle));
         var snapshot = Volatile.Read(ref _latestSnapshot);
         if (snapshot is null || !DeclaresArtwork(snapshot, artworkHandle))
             return null;
-        var result = await OnResolveArtworkAsync(
-            new WidgetArtworkHandle(artworkHandle), cancellationToken).ConfigureAwait(false);
+        var result = allowFileSource
+            ? await OnResolveArtworkSourceAsync(new(artworkHandle), cancellationToken).ConfigureAwait(false)
+            : await OnResolveArtworkAsync(new(artworkHandle), cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (!ReferenceEquals(snapshot, Volatile.Read(ref _latestSnapshot)) ||
             !DeclaresArtwork(snapshot, artworkHandle))

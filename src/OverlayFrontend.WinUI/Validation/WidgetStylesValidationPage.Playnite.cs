@@ -33,7 +33,7 @@ internal sealed partial class WidgetStylesValidationPage
         var scale = XamlRoot.RasterizationScale;
         App.Window.AppWindow.Resize(new((int)(1160 * scale), (int)(860 * scale)));
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
-        presenter.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png,
+        presenter.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png,
             Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII=")));
         presenter.Width = 1000; presenter.Height = 600;
         var descriptor = new BridgeWidgetDescriptor { Id = "playnite.layout", Name = "Production Playnite layout",

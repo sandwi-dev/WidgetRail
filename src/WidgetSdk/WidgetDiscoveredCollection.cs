@@ -19,6 +19,8 @@ public sealed record WidgetDiscoveredCollectionOptions<TQuery, TItem> where TQue
     public required Func<TQuery, TItem, WidgetIndexedItemContext, WidgetElement> RenderItem { get; init; }
     public required Func<TQuery, TItem, WidgetActionEvent, CancellationToken, ValueTask> OnAction { get; init; }
     public Func<TQuery, TItem, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork { get; init; }
+    /// <summary>Optional file-or-byte resolver; existing byte resolution remains the fallback.</summary>
+    public Func<TQuery, TItem, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetArtworkSource?>>? ResolveArtworkSource { get; init; }
     public Func<Exception, WidgetResourceError>? MapError { get; init; }
 }
 
@@ -71,6 +73,7 @@ public sealed class WidgetDiscoveredCollection<TQuery, TItem> : IWidgetIndexedCo
             RenderItem = (captured, item, context) => options.RenderItem(captured.Value, item, context),
             OnAction = (captured, item, action, token) => options.OnAction(captured.Value, item, action, token),
             ResolveArtwork = options.ResolveArtwork is { } resolver ? (captured, item, handle, token) => resolver(captured.Value, item, handle, token) : null,
+            ResolveArtworkSource = options.ResolveArtworkSource is { } sourceResolver ? (captured, item, handle, token) => sourceResolver(captured.Value, item, handle, token) : null,
         }, changed, widgetLifetime);
         indexed.AppendPrefix(0, new(++revision, true, DiscoveredCollectionStatus.Ready, options.MaximumItems));
     }

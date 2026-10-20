@@ -7,16 +7,17 @@ using WidgetRail.WidgetSdk;
 // This probe exercises read-only navigation/details. It never activates Play,
 // Install, connection editing, favorites or any other game mutation.
 if (args.Length is < 2 or > 3 ||
-    args.Length == 3 && args[2] is not ("--diagnose-refresh" or "--startup-only"))
-    throw new ArgumentException("Usage: WinUiPlayniteProbe <shell-options.json> <report.json> [--diagnose-refresh|--startup-only]");
+    args.Length == 3 && args[2] is not ("--diagnose-refresh" or "--startup-only" or "--artwork-source-only"))
+    throw new ArgumentException("Usage: WinUiPlayniteProbe <shell-options.json> <report.json> [--diagnose-refresh|--startup-only|--artwork-source-only]");
 var options = JsonSerializer.Deserialize<Options>(File.ReadAllText(args[0])) ?? throw new InvalidDataException("Missing options.");
 const string widgetId = "widgetrail.samples.playnite-library";
 if (options.InitialWidgetId != widgetId) throw new InvalidDataException("This probe admits only the Playnite sample.");
 var startupOnly = args.Contains("--startup-only");
+var artworkOnly = args.Contains("--artwork-source-only");
 // The full-trust sample owns its own private state independently of the bridge
 // profile. Navigation probes use an isolated override; startup-only checks the
 // supplied installation/profile without changing the widget's saved navigation.
-if (!startupOnly)
+if (!startupOnly && !artworkOnly)
     Environment.SetEnvironmentVariable("WRAIL_PLAYNITE_LIBRARY_DATA_ROOT", options.SettingsRoot);
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 await using var bridge = await OwnedBridgeProcess.StartAsync(new(options.InstallationRoot, options.SettingsRoot, options.InstalledCatalogRoot)
@@ -48,6 +49,32 @@ try
             invalidation = session.GetState(widgetId)?.InvalidationRevision, page = Inventory(after.Snapshot.Root) });
     }
     await CollectionReady();
+    if (artworkOnly)
+    {
+        var frame = Frame();
+        var collection = Nodes(frame.Snapshot.Root).First(node => node.IndexedCollection is { Count: > 0 });
+        await using var lease = await session.AcquireIndexedRangeAsync(frame.Authority, collection.Id, collection.IndexedCollection!, 0,
+            Math.Min(8, collection.IndexedCollection!.Count), cancellationToken: timeout.Token);
+        foreach (var row in lease.Range.Items)
+        {
+            var cover = Nodes(row.Root).FirstOrDefault(node => node.ArtworkHandle is not null);
+            if (cover is null) continue;
+            var source = await lease.ResolveArtworkSourceAsync(row.Key, cover.ArtworkHandle!, timeout.Token);
+            if (source is not WidgetFileArtwork file) continue;
+            var bytes = await lease.ResolveArtworkAsync(row.Key, cover.ArtworkHandle!, timeout.Token)
+                ?? throw new InvalidOperationException("Byte fallback unavailable.");
+            using var stream = WidgetRail.OverlayFrontend.WinUI.Presentation.ArtworkFileStream.Open(new(file.Path, file.Revision));
+            var fileHash = await System.Security.Cryptography.SHA256.HashDataAsync(stream, timeout.Token);
+            if (!fileHash.SequenceEqual(System.Security.Cryptography.SHA256.HashData(bytes.Bytes.Span)))
+                throw new InvalidOperationException("File and byte sources differed.");
+            Write(new { result = "passed", mode = "artwork-source-only", encodedBytes = bytes.Bytes.Length,
+                sourceDescriptorUtf8Bytes = System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(new { file.Path, file.Revision })),
+                fileBytesSentOverIpc = 0, byteSourcesRetained = true });
+            Console.WriteLine("Real indexed file source crossed worker and Bridge without image bytes; host stream matched byte fallback.");
+            return;
+        }
+        throw new InvalidOperationException("Sampled indexed rows returned no file sources.");
+    }
     await Inspect("Home", openDetails: true);
     var current = Frame();
     var library = Nodes(current.Snapshot.Root).First(node => node.ActionId == "playnite-library.browse.open");

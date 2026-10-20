@@ -129,6 +129,15 @@ internal sealed class PlayniteLibraryHomeQuery
         }
         return Array.AsReadOnly(result);
     }
+    internal async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(PlayniteLibraryHomeItem item, WidgetArtworkHandle handle,
+        Func<WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> fixedResolver, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(item.Query, this)) return null;
+        return item.Provider is { } provider ? await Source.ResolveArtworkSourceAsync(provider, handle, token).ConfigureAwait(false)
+            : await ResolveArtworkAsync(item, handle, fixedResolver, token).ConfigureAwait(false);
+    }
+
     internal ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(PlayniteLibraryHomeItem item, WidgetArtworkHandle handle,
         Func<WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> fixedResolver, CancellationToken token)
     {

@@ -510,8 +510,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 new BridgeIndexedArtworkResponse(artworkRequest.WidgetId, artworkRequest.InstanceId,
                     artworkRequest.RuntimeGeneration, artworkRequest.PresentationGeneration,
                     artworkRequest.Item, artworkRequest.ArtworkHandle, artworkRequest.DemandId,
-                    artwork is null ? string.Empty : WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType),
-                    artwork?.Bytes ?? ReadOnlyMemory<byte>.Empty), cancellationToken).ConfigureAwait(false);
+                    artwork is WidgetEncodedArtwork encoded ? WidgetEncodedArtworkContract.ContentTypeValue(encoded.ContentType) : string.Empty,
+                    (artwork as WidgetEncodedArtwork)?.Bytes ?? ReadOnlyMemory<byte>.Empty, (artwork as WidgetFileArtwork)?.File), cancellationToken).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.CancelIndexedArtwork:
@@ -569,7 +569,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             if (pinnedArtwork is not null) BridgePinnedRequestValidation.Validate(pinnedArtwork);
             var artworkRequest = pinnedArtwork is null ? BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload)
                 : new(pinnedArtwork.WidgetId, pinnedArtwork.ArtworkHandle, pinnedArtwork.RuntimeGeneration,
-                    pinnedArtwork.PresentationGeneration, pinnedArtwork.DemandId);
+                    pinnedArtwork.PresentationGeneration, pinnedArtwork.DemandId, pinnedArtwork.AllowFileSource);
             if (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
             if (artworkRequest.DemandId is { } demandId &&
@@ -587,7 +587,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             var legacyContentBase64 = string.Empty;
             ConfiguredWidget configured;
             string workerFingerprint;
-            WidgetEncodedArtwork? workerArtwork;
+            WidgetArtworkSource? workerArtwork;
             try
             {
                 using (var resolution = await _registry.ResolveArtworkAsync(
@@ -599,13 +599,13 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     cancellationToken,
                     token => ReplyAsync(
                         BridgeMessageTypes.Acknowledged,
-                        request.RequestId, new { }, token), pinnedArtwork).ConfigureAwait(false))
+                        request.RequestId, new { }, token), pinnedArtwork, artworkRequest.AllowFileSource).ConfigureAwait(false))
                 {
                     configured = resolution.Value.Configured;
                     workerFingerprint = resolution.Value.WorkerFingerprint;
                     workerArtwork = resolution.Value.Artwork;
                 }
-                if (workerArtwork is { } artwork)
+                if (workerArtwork is WidgetEncodedArtwork artwork)
                 {
                     contentType = WidgetEncodedArtworkContract.ContentTypeValue(
                         artwork.ContentType);
@@ -649,7 +649,8 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                         artworkRequest.RuntimeGeneration!,
                         artworkRequest.PresentationGeneration!,
                         contentType,
-                        encodedArtwork.Bytes, artworkRequest.DemandId),
+                        (encodedArtwork as WidgetEncodedArtwork)?.Bytes ?? ReadOnlyMemory<byte>.Empty, artworkRequest.DemandId,
+                        (encodedArtwork as WidgetFileArtwork)?.File),
                     _sessionCancellation).ConfigureAwait(false);
             }
             else

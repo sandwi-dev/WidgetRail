@@ -15,7 +15,7 @@ internal sealed partial class WidgetStylesValidationPage
         var bytes = await ArtworkPngAsync(480, 240);
         var requests = 0;
         presenter.ResolveArtworkAsync = (_, _) =>
-        { ++requests; return Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, bytes)); };
+        { ++requests; return Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes)); };
         presenter.ArtworkGeneration = "fit-fixture";
         presenter.Width = 120; presenter.Height = 120;
         var node = new ViewNode { Id = "fit", Kind = ViewNodeKind.Image, ArtworkHandle = "fit.art",

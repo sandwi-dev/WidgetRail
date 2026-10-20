@@ -103,6 +103,13 @@ internal sealed class PlayniteLibraryBrowseQuery
         return Array.AsReadOnly(result);
     }
 
+    internal async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(PlayniteLibraryBrowseItem item,
+        WidgetArtworkHandle handle, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return ReferenceEquals(item.Query, this) ? await source.ResolveArtworkSourceAsync(item.ProviderItem, handle, token).ConfigureAwait(false) : null;
+    }
+
     internal ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(PlayniteLibraryBrowseItem item,
         WidgetArtworkHandle handle, CancellationToken token = default)
     {

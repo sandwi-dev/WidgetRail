@@ -10,12 +10,15 @@ internal sealed class PlayniteLibraryCapturedQuery
 {
     private readonly Func<PlayniteBridgeGame, PlayniteLibraryItem> project;
     private readonly Func<PlayniteBridgeGame, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> resolveArtwork;
+    private readonly Func<PlayniteBridgeGame, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetArtworkSource?>>? resolveArtworkSource;
     internal PlayniteLibraryCapturedQuery(WidgetAppLibraryQuery query, PlayniteLibraryQueryContext context,
         IReadOnlyList<PlayniteBridgeGame> games, PlayniteLibraryAuthorityProjection authority,
         IReadOnlyList<WidgetAppLibrarySource> sources, string revision, long retrievedAt, bool stale,
         Func<PlayniteBridgeGame, PlayniteLibraryItem> project,
-        Func<PlayniteBridgeGame, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> resolveArtwork)
+        Func<PlayniteBridgeGame, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> resolveArtwork,
+        Func<PlayniteBridgeGame, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetArtworkSource?>>? resolveArtworkSource = null)
     {
+        this.resolveArtworkSource = resolveArtworkSource;
         Query = query; Context = context; Games = games; Authority = authority;
         Sources = sources; CatalogRevision = revision; RetrievedAt = retrievedAt; RetainedLastGood = stale;
         this.project = project; this.resolveArtwork = resolveArtwork;
@@ -51,6 +54,16 @@ internal sealed class PlayniteLibraryCapturedQuery
     /// The Bridge has no historic-image endpoint: an uncached read uses that exact
     /// game's current image, without substituting another game or query revision.
     /// </summary>
+    internal async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(PlayniteLibraryCapturedItem item,
+        WidgetArtworkHandle handle, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(item.Query, this)) return null;
+        return resolveArtworkSource is { } resolver
+            ? await resolver(Games[item.Index], handle, token).ConfigureAwait(false)
+            : await resolveArtwork(Games[item.Index], handle, token).ConfigureAwait(false);
+    }
+
     internal ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(PlayniteLibraryCapturedItem item,
         WidgetArtworkHandle handle, CancellationToken token = default)
     {

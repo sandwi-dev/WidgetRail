@@ -8,7 +8,8 @@ using Windows.Storage.Streams;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal readonly record struct ArtworkPixelSize(int Width, int Height);
-internal sealed record NativeArtworkPayload(ReadOnlyMemory<byte> Bytes, Uri? RemoteUri = null);
+internal sealed record NativeArtworkPayload(ReadOnlyMemory<byte> Bytes, Uri? RemoteUri = null,
+    ArtworkFileReference? File = null, Func<CancellationToken, Task<NativeArtworkPayload?>>? Fallback = null);
 internal sealed record NativeArtworkDecode(BitmapImage Image, ArtworkPixelSize Source, ArtworkPixelSize Decoded);
 
 /// <summary>Native metadata validation and target-sized asynchronous decode. No pixel or encoded-data cache.</summary>
@@ -30,16 +31,29 @@ internal static class NativeArtworkDecoder
     internal static async Task<NativeArtworkDecode?> DecodeAsync(NativeArtworkPayload? payload,
         ArtworkPixelSize target, ImageFit? fit, CancellationToken token, bool naturalSize = false)
     {
-        if (payload is null || payload.RemoteUri is null && payload.Bytes.IsEmpty) return null;
+        if (payload is null || payload.RemoteUri is null && payload.File is null && payload.Bytes.IsEmpty) return null;
+        if (payload.File is not null && payload.Fallback is not null)
+        {
+            try { return await DecodeAsync(payload with { Fallback = null }, target, fit, token, naturalSize); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException ||
+                error is COMException && (unchecked((uint)error.HResult) & 0xffffff00u) == 0x88982f00u)
+            {
+                token.ThrowIfCancellationRequested();
+                return await DecodeAsync(await payload.Fallback(token), target, fit, token, naturalSize);
+            }
+        }
         token.ThrowIfCancellationRequested();
         if (payload.RemoteUri is null && payload.Bytes.Length > ProtocolConstants.MaximumEncodedArtworkBytes)
             throw new InvalidDataException("Artwork exceeds its encoded resource bound.");
-        using var stream = payload.RemoteUri is { } uri
-            ? await NativeArtworkStream.OpenAsync(uri, token)
-            : OpenMemory(payload.Bytes);
-        if (stream.Size is 0 or > ProtocolConstants.MaximumEncodedArtworkBytes)
+        (IRandomAccessStream Stream, long? Length) opened;
+        if (payload.File is { } file) opened = await NativeArtworkFile.OpenAsync(file, token);
+        else if (payload.RemoteUri is { } uri) opened = (await NativeArtworkStream.OpenAsync(uri, token), null);
+        else opened = (OpenMemory(payload.Bytes), payload.Bytes.Length);
+        using var stream = opened.Stream;
+        var encodedLength = opened.Length ?? checked((long)stream.Size);
+        if (encodedLength is <= 0 or > ProtocolConstants.MaximumEncodedArtworkBytes)
             throw new InvalidDataException("Artwork exceeds its encoded resource bound.");
-        NativeArtworkCounters.Encoded((long)stream.Size);
+        NativeArtworkCounters.Encoded(encodedLength);
         var metadata = await BitmapDecoder.CreateAsync(stream).AsTask(token);
         if (metadata.PixelWidth is 0 or > ProtocolConstants.MaximumEncodedArtworkDimension ||
             metadata.PixelHeight is 0 or > ProtocolConstants.MaximumEncodedArtworkDimension ||

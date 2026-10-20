@@ -1326,6 +1326,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             .ToArray();
     }
 
+    public override ValueTask<WidgetArtworkSource?> OnResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token = default) =>
+        _application.OwnsArtworkContent ? _application.ResolveArtworkSourceAsync(handle, token) : ValueTask.FromResult<WidgetArtworkSource?>(null);
+
     public override ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
         WidgetArtworkHandle handle,
         CancellationToken cancellationToken = default) =>

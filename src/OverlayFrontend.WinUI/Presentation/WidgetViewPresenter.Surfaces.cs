@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetUi.State;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -142,6 +143,8 @@ internal sealed partial class WidgetViewPresenter
             // return null while its replacement is still queued; that is not an
             // authoritative declaration that the retained background is absent.
             Func<bool>? sourceCurrent = selectedRow is null ? ArtworkAuthorityCurrent : () => selectedRow.Lease.IsCurrent;
+            Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? fallback = selectedRow is null ? ResolveArtworkFallbackAsync
+                : async (handle, token) => await selectedRow.Owner.ResolveArtworkAsync(selectedRow, handle, token, allowFileSource: false) as WidgetEncodedArtwork;
             var resolve = selectedRow is null ? ResolveArtworkAsync : async (string handle, CancellationToken token) =>
             {
                 try { return await selectedRow.Owner.ResolveArtworkAsync(selectedRow, handle, token); }
@@ -153,13 +156,14 @@ internal sealed partial class WidgetViewPresenter
                 // source authority. Even an empty selection still retires demand.
                 surface.SetArtworkRetention(declarations[binding.Identity.Id].Node.RetainLastPresentation != false);
                 UpdateArtwork(binding, value.Node, surface.PublishArtwork, resolve, generation,
-                    sourceCurrent);
+                    sourceCurrent, fallback);
             }
             else if (surface.Fragment is { } fragment)
             {
                 if (previewSuspensions.GetValueOrDefault(surface) is { IsCompleted: false }) continue;
                 fragment.Session = Session;
                 fragment.ResolveArtworkAsync = resolve;
+                fragment.ResolveArtworkFallbackAsync = fallback;
                 fragment.ArtworkGeneration = generation;
                 fragment.ArtworkAuthorityCurrent = sourceCurrent;
                 fragment.Failed = ReportFailure;

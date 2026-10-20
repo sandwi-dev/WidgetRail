@@ -81,8 +81,13 @@ public sealed partial class WidgetProcessClient
     }
 
     internal async Task<WidgetEncodedArtwork?> ResolveIndexedArtworkAsync(WidgetProcessSession session,
-        IndexedCollectionRangeRequest request, IndexedCollectionItemReference item, string artworkHandle, CancellationToken cancellationToken)
+        IndexedCollectionRangeRequest request, IndexedCollectionItemReference item, string artworkHandle, CancellationToken cancellationToken) =>
+        await ResolveIndexedArtworkSourceAsync(session, request, item, artworkHandle, false, cancellationToken).ConfigureAwait(false) as WidgetEncodedArtwork;
+
+    internal async Task<WidgetArtworkSource?> ResolveIndexedArtworkSourceAsync(WidgetProcessSession session,
+        IndexedCollectionRangeRequest request, IndexedCollectionItemReference item, string artworkHandle, bool allowFileSource, CancellationToken cancellationToken)
     {
+        allowFileSource &= Volatile.Read(ref _materializedSnapshot)?.ProtocolVersion >= ProtocolConstants.FileArtworkVersion;
         IndexedCollectionInputContract.ValidateReference(item);
         StableIdentifier.Validate(artworkHandle, nameof(artworkHandle));
         cancellationToken.ThrowIfCancellationRequested();
@@ -99,7 +104,7 @@ public sealed partial class WidgetProcessClient
                 try
                 {
                     await session.WriteAsync(new() { Type = MessageTypes.ResolveIndexedArtwork, RequestId = pending.RequestId,
-                        Payload = RuntimeJson.ToElement(new ResolveIndexedArtworkPayload(item, artworkHandle)) }, writeDeadline.Token).ConfigureAwait(false);
+                        Payload = RuntimeJson.ToElement(new ResolveIndexedArtworkPayload(item, artworkHandle, allowFileSource)) }, writeDeadline.Token).ConfigureAwait(false);
                     sent = true;
                 }
                 catch { session.Terminate(); throw; }
@@ -114,13 +119,7 @@ public sealed partial class WidgetProcessClient
             DemandIndexedSession(session, request);
             if (response.Type != MessageTypes.Artwork) throw new WidgetProtocolViolationException("Invalid indexed artwork response.");
             var payload = RuntimeJson.FromElement<EncodedArtworkPayload>(response.Payload);
-            if (payload.ContentType is null && payload.ContentBase64 is null) return null;
-            if (payload.ContentBase64 is null || payload.ContentType is null ||
-                WidgetEncodedArtworkContract.ParseContentType(payload.ContentType) is not { } contentType)
-                throw new WidgetProtocolViolationException("Invalid indexed artwork metadata.");
-            var result = new WidgetEncodedArtwork(contentType, Convert.FromBase64String(payload.ContentBase64));
-            if (!WidgetEncodedArtworkContract.IsValid(result)) throw new WidgetProtocolViolationException("Invalid indexed artwork bytes.");
-            return result;
+            return ArtworkPayloadReader.Read(payload, allowFileSource);
         }
         finally
         {

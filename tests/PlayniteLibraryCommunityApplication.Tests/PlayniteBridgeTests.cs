@@ -220,6 +220,7 @@ public sealed class PlayniteBridgeTests
             nameof(PlayniteBridgeClient.ProbeAsync),
             nameof(PlayniteBridgeClient.QueryGamesAsync),
             nameof(PlayniteBridgeClient.ResolveArtworkAsync),
+            nameof(PlayniteBridgeClient.ResolveArtworkFileAsync),
             nameof(PlayniteBridgeClient.ResolveGameAsync),
             nameof(PlayniteBridgeClient.SaveCredentialAsync),
             nameof(PlayniteBridgeClient.SetCategoriesAsync),

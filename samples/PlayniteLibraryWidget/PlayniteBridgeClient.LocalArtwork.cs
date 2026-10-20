@@ -1,4 +1,6 @@
 using System.Text.Json;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
@@ -9,7 +11,19 @@ internal sealed partial class PlayniteBridgeClient
     private readonly CancellationTokenSource _artworkLifetime = new();
     private Task<IReadOnlyDictionary<string, LocalArtworkPaths>>? _artworkPaths;
     private int _disposed;
+    private readonly string _artworkPathRevision = Guid.NewGuid().ToString("N");
     private sealed record LocalArtworkPaths(string? Cover, string? Background);
+
+    public async ValueTask<WidgetFileArtwork?> ResolveArtworkFileAsync(
+        string gameId, PlayniteBridgeArtworkKind kind, CancellationToken cancellationToken)
+    {
+        if (!preferLocalArtwork) return null;
+        var paths = await LocalArtworkPathsAsync(cancellationToken).ConfigureAwait(false);
+        if (!paths.TryGetValue(CanonicalGameId(gameId), out var entry)) return null;
+        var path = kind switch { PlayniteBridgeArtworkKind.Cover => entry.Cover,
+            PlayniteBridgeArtworkKind.Background => entry.Background, _ => null };
+        return path is null ? null : new WidgetFileArtwork(path, _artworkPathRevision);
+    }
 
     // Fixed read-only code, never caller-authored. Both count and total path text are
     // bounded inside Playnite before serialization. No image bytes are loaded here.
@@ -88,9 +102,7 @@ internal sealed partial class PlayniteBridgeClient
         if (!row.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.String) return null;
         var path = value.GetString()!;
         // Only ordinary local drive paths; no UNC, device paths, URLs or alternate streams.
-        return path.Length is >= 3 and <= 1024 && char.IsAsciiLetter(path[0]) &&
-            path[1] == ':' && path[2] is '\\' or '/' && path.IndexOf(':', 2) < 0 &&
-            !path.Contains('\0') && Path.IsPathFullyQualified(path) ? path : null;
+        return ArtworkFileContract.IsLocalPath(path) ? path : null;
     }
 
     private async ValueTask<PlayniteBridgeArtworkResult?> ReadLocalArtworkAsync(

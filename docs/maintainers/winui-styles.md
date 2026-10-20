@@ -42,6 +42,16 @@ are created only when authored, with one named Image automation peer for the vie
 The shared WRSS validator accepts only the nine keyword positions, not arbitrary
 percentages.
 
+File-backed artwork uses the same demand, size selection and native decoder as
+encoded/HTTPS artwork. `ArtworkFileStream` opens one read-only stream, checks the
+existing encoded-byte bound, and leaves format/dimension checks to the native
+decoder. No full managed image buffer or content hash is created. Streams close
+after decode, failure or cancellation. Package sources also check the final
+opened path against their bridge-admitted package root; full-access local sources
+do not pay for that containment lookup. File access does not broaden a widget's
+execution authority. File read/decode failures can use the existing byte resolver
+as a bounded fallback, retaining the original presentation/row lease.
+
 ## Shared text layout
 
 `WidgetTextStyleAdapter` projects existing WRSS typography onto native `TextBlock`

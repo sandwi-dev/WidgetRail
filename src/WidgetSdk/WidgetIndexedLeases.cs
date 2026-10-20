@@ -6,7 +6,8 @@ internal sealed record WidgetActionExecutionBinding(object Identity,
     Func<WidgetActionEvent, CancellationToken, ValueTask> Invoke);
 internal sealed record WidgetIndexedItemBinding(IndexedCollectionItem Declaration,
     Func<WidgetActionEvent, CancellationToken, ValueTask> Invoke,
-    Func<WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork);
+    Func<WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork,
+    Func<WidgetArtworkHandle, CancellationToken, ValueTask<WidgetArtworkSource?>>? ResolveArtworkSource = null);
 internal sealed record WidgetIndexedRead(IReadOnlyList<WidgetIndexedItemBinding> Items, int NodeCount);
 
 public abstract partial class Widget
@@ -128,7 +129,11 @@ public abstract partial class Widget
     }
 
     internal async ValueTask<WidgetEncodedArtwork?> ResolveIndexedArtworkAsync(IndexedCollectionItemReference reference,
-        string artworkHandle, CancellationToken cancellationToken)
+        string artworkHandle, CancellationToken cancellationToken) =>
+        await ResolveIndexedArtworkSourceAsync(reference, artworkHandle, false, cancellationToken).ConfigureAwait(false) as WidgetEncodedArtwork;
+
+    internal async ValueTask<WidgetArtworkSource?> ResolveIndexedArtworkSourceAsync(IndexedCollectionItemReference reference,
+        string artworkHandle, bool allowFileSource, CancellationToken cancellationToken)
     {
         IndexedCollectionInputContract.ValidateReference(reference);
         StableIdentifier.Validate(artworkHandle, nameof(artworkHandle));
@@ -140,7 +145,8 @@ public abstract partial class Widget
             RetireIndexedLeasesLocked();
             if (!indexedLeases.TryGetValue(reference.LeaseId, out lease!)) return null;
             item = lease.Read.Items.SingleOrDefault(candidate => candidate.Declaration.Key == reference.ItemKey)!;
-            if (item?.ResolveArtwork is null || !ContainsArtwork(item.Declaration.Root, artworkHandle)) return null;
+            if (item is null || item.ResolveArtwork is null && (!allowFileSource || item.ResolveArtworkSource is null) ||
+                !ContainsArtwork(item.Declaration.Root, artworkHandle)) return null;
             cancellationToken.ThrowIfCancellationRequested();
             WidgetLifetimeToken.ThrowIfCancellationRequested();
             if (activeIndexedArtwork >= 4) throw new InvalidOperationException("The indexed artwork read limit has been reached.");
@@ -149,14 +155,16 @@ public abstract partial class Widget
             ++activeIndexedArtwork;
         }
         var token = lifetime.Token;
-        var load = Task.Run(async () => await item.ResolveArtwork(new(artworkHandle), token).ConfigureAwait(false), token);
+        var load = Task.Run(async () => allowFileSource && item.ResolveArtworkSource is { } resolver
+            ? await resolver(new(artworkHandle), token).ConfigureAwait(false)
+            : item.ResolveArtwork is { } legacy ? await legacy(new(artworkHandle), token).ConfigureAwait(false) : null, token);
         _ = load.ContinueWith(task =>
         {
             _ = task.Exception;
             lock (indexedSourcesGate) --activeIndexedArtwork;
             lifetime.Dispose();
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        WidgetEncodedArtwork? result;
+        WidgetArtworkSource? result;
         try { result = await load.WaitAsync(token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !WidgetLifetimeToken.IsCancellationRequested)
         { throw new TimeoutException("Indexed artwork resolution timed out."); }
@@ -167,7 +175,7 @@ public abstract partial class Widget
             RetireIndexedLeasesLocked();
             if (!indexedLeases.TryGetValue(reference.LeaseId, out var current) || !ReferenceEquals(current, lease)) return null;
         }
-        if (result is not null && !WidgetEncodedArtworkContract.IsValid(result))
+        if (result is not null && !WidgetArtworkSourceContract.IsValid(result))
             throw new InvalidOperationException("The indexed artwork resolver returned invalid encoded artwork.");
         return result;
     }

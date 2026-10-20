@@ -155,6 +155,8 @@ internal interface IPlayniteBridgeClient : IDisposable
 
 internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
 {
+    ValueTask<WidgetFileArtwork?> ResolveArtworkFileAsync(string gameId, PlayniteBridgeArtworkKind kind,
+        CancellationToken cancellationToken) => ValueTask.FromResult<WidgetFileArtwork?>(null);
     ValueTask<PlayniteBridgeGamePage> QueryGamesAsync(
         PlayniteBridgeGameQuery query,
         CancellationToken cancellationToken);

@@ -42,7 +42,7 @@ internal sealed partial class WidgetStylesValidationPage
                 1, descriptor.InstanceId, snapshot.Sequence, snapshot.ActiveInputScopeId), descriptor, snapshot, entry.Styles);
             var fragment = new WidgetViewPresenter(presentationOnly: true);
             fragment.UseIndexedContainerStyles();
-            fragment.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png,
+            fragment.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png,
                 Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII=")));
             fragment.ApplyFragment(frame, entry.Row.Root, entry.Range.ScopeId);
             var container = new GridViewItem { Width = 150, Height = 225, HorizontalContentAlignment = HorizontalAlignment.Stretch,

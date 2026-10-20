@@ -30,8 +30,11 @@ internal sealed class WidgetProcessIndexedLease : IAsyncDisposable
         return await owner.AdmitIndexedInputAsync(session, request, input, correlation, cancellationToken).ConfigureAwait(false);
     }
 
-    internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(string itemKey, string artworkHandle,
-        CancellationToken cancellationToken = default)
+    internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(string itemKey, string artworkHandle, CancellationToken cancellationToken = default) =>
+        await ResolveArtworkSourceAsync(itemKey, artworkHandle, false, cancellationToken).ConfigureAwait(false) as WidgetEncodedArtwork;
+
+    internal async Task<WidgetArtworkSource?> ResolveArtworkSourceAsync(string itemKey, string artworkHandle,
+        bool allowFileSource, CancellationToken cancellationToken = default)
     {
         CancellationTokenSource demand;
         lock (gate)
@@ -44,7 +47,7 @@ internal sealed class WidgetProcessIndexedLease : IAsyncDisposable
             var reference = new IndexedCollectionItemReference(Lease.LeaseId, itemKey);
             IndexedCollectionInputContract.ValidateReference(reference);
             if (!Lease.Range.Items.Any(item => item.Key == itemKey)) throw new ArgumentException("Artwork item is outside this indexed lease.", nameof(itemKey));
-            return await owner.ResolveIndexedArtworkAsync(session, request, reference, artworkHandle, demand.Token).ConfigureAwait(false);
+            return await owner.ResolveIndexedArtworkSourceAsync(session, request, reference, artworkHandle, allowFileSource, demand.Token).ConfigureAwait(false);
         }
     }
 

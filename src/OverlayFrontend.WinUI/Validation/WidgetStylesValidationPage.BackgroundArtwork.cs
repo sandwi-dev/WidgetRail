@@ -22,7 +22,7 @@ internal sealed partial class WidgetStylesValidationPage
         var requests = 0;
         var bytes = await ArtworkBandsPngAsync();
         page.ResolveArtworkAsync = (_, _) =>
-        { ++requests; return Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, bytes)); };
+        { ++requests; return Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes)); };
         page.ArtworkGeneration = "background-style-fixture";
         var node = new ViewNode { Id = "styled-background", Kind = ViewNodeKind.BackgroundSurface,
             ArtworkHandle = "bands", ImageFit = ImageFit.Cover, RetainLastPresentation = true,

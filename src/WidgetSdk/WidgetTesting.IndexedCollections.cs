@@ -133,6 +133,16 @@ public sealed class WidgetIndexedCollectionTestHost : IDisposable
         }
     }
 
+    internal ValueTask<WidgetArtworkSource?> ArtworkSource(IndexedCollectionItemReference item, string handle,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return widget.ResolveIndexedArtworkSourceAsync(item, handle, true, cancellationToken);
+        }
+    }
+
     internal void Release(WidgetIndexedCollectionTestLease lease)
     {
         lock (gate)
@@ -196,6 +206,11 @@ public sealed class WidgetIndexedCollectionTestLease : IDisposable
     public ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(string itemKey, WidgetArtworkHandle handle,
         CancellationToken cancellationToken = default) =>
         host.Artwork(new(LeaseId, itemKey), handle.Value, cancellationToken);
+
+    /// <summary>Resolves a file-or-byte source with the same item lease authority.</summary>
+    public ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(string itemKey, WidgetArtworkHandle handle,
+        CancellationToken cancellationToken = default) =>
+        host.ArtworkSource(new(LeaseId, itemKey), handle.Value, cancellationToken);
 
     /// <summary>Releases retained data. Already-admitted actions keep their captured query/item.</summary>
     public void Dispose() => host.Release(this);

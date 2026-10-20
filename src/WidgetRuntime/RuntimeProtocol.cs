@@ -123,10 +123,13 @@ internal sealed record IndexedReleaseResultPayload([property: JsonRequired] bool
 internal sealed record IndexedCancellationResultPayload([property: JsonRequired] bool Cancelled);
 internal sealed record IndexedInputPayload(IndexedCollectionInputRequest Input, IndexedCollectionInputContext Correlation);
 internal sealed record IndexedInputAdmissionPayload(WidgetOperationAdmission? Admission);
-internal sealed record ResolveIndexedArtworkPayload(IndexedCollectionItemReference Item, string ArtworkHandle);
+internal sealed record ResolveIndexedArtworkPayload(IndexedCollectionItemReference Item, string ArtworkHandle,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AllowFileSource = false);
 internal sealed record CancelIndexedArtworkPayload(long RequestId);
-internal sealed record ResolveArtworkPayload(string ArtworkHandle);
-internal sealed record EncodedArtworkPayload(string? ContentType, string? ContentBase64);
+internal sealed record ResolveArtworkPayload(string ArtworkHandle,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AllowFileSource = false);
+internal sealed record EncodedArtworkPayload(string? ContentType, string? ContentBase64,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArtworkFileReference? File = null);
 internal sealed record DashboardGestureActivationRequestPayload(
     long ActivationId,
     string CapabilityId,

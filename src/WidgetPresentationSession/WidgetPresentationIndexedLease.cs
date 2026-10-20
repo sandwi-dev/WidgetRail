@@ -81,6 +81,9 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         owner.ResolveIndexedArtworkAsync(this, itemKey, artworkHandle, cancellationToken);
 
+    public Task<WidgetArtworkSource?> ResolveArtworkSourceAsync(string itemKey, string artworkHandle, CancellationToken cancellationToken = default) =>
+        owner.ResolveIndexedArtworkSourceAsync(this, itemKey, artworkHandle, true, cancellationToken);
+
     public Task<WidgetOperationAdmission?> AdmitPreviewActionAsync(WidgetPresentationFrame displayed,
         string itemKey, IndexedCollectionPreviewAction action, long sequence = 0,
         long monotonicTimestampMicroseconds = 0, CancellationToken cancellationToken = default)

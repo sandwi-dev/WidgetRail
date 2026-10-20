@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetBridge.Contracts")]
 [assembly: InternalsVisibleTo("WidgetBridge.Tests")]
 [assembly: InternalsVisibleTo("WidgetPresentationSession")]
+[assembly: InternalsVisibleTo("OverlayFrontend.WinUI")]
 [assembly: InternalsVisibleTo("WidgetApplicationRuntime")]
 [assembly: InternalsVisibleTo("WidgetRuntime.Tests")]
 [assembly: InternalsVisibleTo("WidgetSdk.Tests")]

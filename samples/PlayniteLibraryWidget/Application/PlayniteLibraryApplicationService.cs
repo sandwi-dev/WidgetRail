@@ -56,6 +56,28 @@ internal sealed partial class PlayniteLibraryApplicationService(
 
     public bool OwnsArtworkContent => true;
 
+    public async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArtworkRegistration? registration;
+        lock (_artworkGate) _artwork.TryGetValue(handle.Value, out registration);
+        if (registration is null) return null;
+        return await ResolveArtworkSourceCoreAsync(handle, registration, false, token).ConfigureAwait(false);
+    }
+
+    private async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceCoreAsync(
+        WidgetArtworkHandle handle, ArtworkRegistration registration, bool captured, CancellationToken token)
+    {
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
+        var file = await _client.ResolveArtworkFileAsync(registration.GameId, registration.Kind, lifetime.Token).ConfigureAwait(false);
+        lifetime.Token.ThrowIfCancellationRequested();
+        if (!captured)
+            lock (_artworkGate)
+                if (!_artwork.TryGetValue(handle.Value, out var current) || !ReferenceEquals(current, registration)) return null;
+        return file is not null ? file :
+            await ResolveArtworkCoreAsync(handle, registration, captured, lifetime.Token).ConfigureAwait(false);
+    }
+
     internal long RetainedArtworkBytes
     {
         get { lock (_artworkGate) return _artworkContent.RetainedBytes; }

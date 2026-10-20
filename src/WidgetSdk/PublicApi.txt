@@ -102,6 +102,7 @@ ctor WidgetRail.WidgetSdk.WidgetDisplayProfileRestore(string Id, string ProfileN
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfileSummary(string Id, string Name, string Mode, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor> Displays, bool MatchesCurrent, bool Available, string? UnavailableReason)
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfilesState(string Mode, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor> Displays, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayProfileSummary> Profiles, WidgetRail.WidgetSdk.WidgetDisplayProfileRestore? PendingRestore, string? Outcome)
 ctor WidgetRail.WidgetSdk.WidgetEncodedArtwork(WidgetRail.WidgetSdk.WidgetArtworkContentType contentType, System.ReadOnlyMemory<byte> bytes)
+ctor WidgetRail.WidgetSdk.WidgetFileArtwork(string path, string revision, bool packageRelative = false)
 ctor WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>()
 ctor WidgetRail.WidgetSdk.WidgetFocusTargetResult(string? Id, WidgetRail.WidgetSdk.WidgetFocusTargetState State)
 ctor WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>()
@@ -1326,6 +1327,7 @@ method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.AcquirePreviewAsync(
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.ContinueAsync(string collectionId, bool retry = false, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.PublishSnapshot() -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
+method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkSourceAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RouteAction(string itemKey, WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? contextActionOwnerId = null, string? contextActionId = null, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RoutePreviewAction(string itemKey, string ownerId, string actionId, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
 method WidgetRail.WidgetSdk.WidgetIndexedItemContext.Id(string name) -> string
@@ -2368,6 +2370,7 @@ method virtual WidgetRail.WidgetSdk.Widget.OnIntentCompletedAsync(WidgetRail.Wid
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnPrepareIntentAsync(string key, WidgetRail.WidgetProtocol.WidgetIntentRequest request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Text.Json.JsonElement?>
 method virtual WidgetRail.WidgetSdk.Widget.OnResolveArtworkAsync(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
+method virtual WidgetRail.WidgetSdk.Widget.OnResolveArtworkSourceAsync(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>
 method virtual WidgetRail.WidgetSdk.Widget.OnSuggestTextAsync(WidgetRail.WidgetProtocol.TextSuggestionQuery query, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.TextSuggestionResult>
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
@@ -2567,6 +2570,7 @@ property System.Func<System.Threading.CancellationToken,System.Threading.Tasks.V
 property System.Func<TAuthority,TObservation,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.MatchesProjectionAuthority { get; set; }
 property System.Func<TContext,string,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetElement>> WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.Resolve { get; set; }
 property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.OnAction { get; set; }
+property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ResolveArtworkSource { get; set; }
 property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ResolveArtwork { get; set; }
 property System.Func<TExecution,WidgetRail.WidgetSdk.WidgetOperationContext,System.Threading.Tasks.ValueTask<TResult?>> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Execute { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemKey { get; set; }
@@ -2579,6 +2583,8 @@ property System.Func<TObservation,long>? WidgetRail.WidgetSdk.WidgetOutOfBandCom
 property System.Func<TQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCollectionItemKey>?>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.OccurrenceKeys { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.OnAction { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.OnAction { get; set; }
+property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ResolveArtworkSource { get; set; }
+property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ResolveArtworkSource { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ResolveArtwork { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ResolveArtwork { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetIndexedItemContext,WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.RenderItem { get; set; }
@@ -2910,6 +2916,7 @@ property bool WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.ModesTruncated { 
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.IsPrimary { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Available { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.MatchesCurrent { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetFileArtwork.PackageRelative { get; }
 property bool WidgetRail.WidgetSdk.WidgetFocusTargetResult.IsEnabled { get; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.InvalidateBearerSecretOnUnauthorized { get; set; }
@@ -3314,6 +3321,8 @@ property string WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Mode { get; set
 property string WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Name { get; set; }
 property string WidgetRail.WidgetSdk.WidgetDisplayProfilesState.Mode { get; set; }
 property string WidgetRail.WidgetSdk.WidgetElement.Id { get; set; }
+property string WidgetRail.WidgetSdk.WidgetFileArtwork.Path { get; }
+property string WidgetRail.WidgetSdk.WidgetFileArtwork.Revision { get; }
 property string WidgetRail.WidgetSdk.WidgetIdScope.Prefix { get; }
 property string WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.LeaseId { get; }
 property string WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Name { get; set; }
@@ -3441,6 +3450,7 @@ property uint WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshDenominator {
 property uint WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshNumerator { get; set; }
 type abstract class WidgetRail.WidgetSdk.ContainerElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type abstract class WidgetRail.WidgetSdk.Widget
+type abstract class WidgetRail.WidgetSdk.WidgetArtworkSource
 type abstract class WidgetRail.WidgetSdk.WidgetElement : System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>
 type abstract interface WidgetRail.WidgetSdk.IWidgetCapabilityClient
 type abstract interface WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<TPayload> : System.IAsyncDisposable
@@ -3641,7 +3651,8 @@ type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfileSummary : System.IEqu
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfilesService
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfilesState : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayProfilesState>
 type sealed class WidgetRail.WidgetSdk.WidgetDocumentService
-type sealed class WidgetRail.WidgetSdk.WidgetEncodedArtwork
+type sealed class WidgetRail.WidgetSdk.WidgetEncodedArtwork : WidgetRail.WidgetSdk.WidgetArtworkSource
+type sealed class WidgetRail.WidgetSdk.WidgetFileArtwork : WidgetRail.WidgetSdk.WidgetArtworkSource
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext> : System.IEquatable<WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>>
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
 type sealed class WidgetRail.WidgetSdk.WidgetHostServices

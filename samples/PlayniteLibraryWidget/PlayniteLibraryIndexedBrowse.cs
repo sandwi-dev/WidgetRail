@@ -55,6 +55,7 @@ internal static class PlayniteLibraryIndexedBrowse
             FocusSummaryContext: true, BrowseLayout: true)),
         OnAction = onAction ?? throw new ArgumentNullException(nameof(onAction)),
         ResolveArtwork = (content, item, handle, token) => content.Query.ResolveArtworkAsync(item, handle, token),
+        ResolveArtworkSource = (content, item, handle, token) => content.Query.ResolveArtworkSourceAsync(item, handle, token),
     };
 
     internal static WidgetElement Grid(

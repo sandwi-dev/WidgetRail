@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.WidgetPresentationSession;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -68,6 +69,8 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
             presenter.UseIndexedContainerStyles();
             presenter.Failed = row.Owner.Failed;
             presenter.ArtworkGeneration = row.Lease.LeaseId;
+            presenter.ResolveArtworkFallbackAsync = async (handle, token) =>
+                await row.Owner.ResolveArtworkAsync(row, handle, token, allowFileSource: false) as WidgetEncodedArtwork;
             presenter.ResolveArtworkAsync = async (handle, token) =>
             {
                 try { return await row.Owner.ResolveArtworkAsync(row, handle, token); }

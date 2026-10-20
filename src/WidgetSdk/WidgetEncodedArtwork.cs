@@ -14,7 +14,7 @@ public enum WidgetArtworkContentType
 /// One value-owned encoded artwork resource. The runtime preserves these bytes
 /// exactly; presentation sizing occurs only after trusted native decode.
 /// </summary>
-public sealed class WidgetEncodedArtwork
+public sealed class WidgetEncodedArtwork : WidgetArtworkSource
 {
     private readonly byte[] _bytes;
 

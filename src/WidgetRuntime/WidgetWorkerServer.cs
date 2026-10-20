@@ -574,12 +574,17 @@ internal sealed class WidgetWorkerServer
             break;
         case MessageTypes.ResolveArtwork:
             var artworkRequest = RuntimeJson.FromElement<ResolveArtworkPayload>(request.Payload);
-            var artwork = await _widget.ResolveArtworkAsync(
-                artworkRequest.ArtworkHandle, cancellationToken).ConfigureAwait(false);
-            if (artwork is not null && !WidgetEncodedArtworkContract.IsValid(artwork))
+            var artwork = await _widget.ResolveArtworkSourceAsync(
+                artworkRequest.ArtworkHandle, artworkRequest.AllowFileSource, cancellationToken).ConfigureAwait(false);
+            if (artwork is not null && !WidgetArtworkSourceContract.IsValid(artwork))
                 throw new WidgetProtocolViolationException(
                     "Widget returned invalid trusted encoded artwork.");
-            if (artwork is null)
+            if (artwork is WidgetFileArtwork fileArtwork)
+            {
+                await ReplyAsync(MessageTypes.Artwork, request.RequestId,
+                    new EncodedArtworkPayload(null, null, fileArtwork.File), cancellationToken).ConfigureAwait(false);
+            }
+            else if (artwork is null)
             {
                 await ReplyAsync(
                     MessageTypes.Artwork,
@@ -591,8 +596,8 @@ internal sealed class WidgetWorkerServer
             {
                 await SendArtworkAsync(
                     request.RequestId,
-                    WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType),
-                    artwork.Bytes,
+                    WidgetEncodedArtworkContract.ContentTypeValue(((WidgetEncodedArtwork)artwork).ContentType),
+                    ((WidgetEncodedArtwork)artwork).Bytes,
                     cancellationToken).ConfigureAwait(false);
             }
             break;
@@ -696,10 +701,11 @@ internal sealed class WidgetWorkerServer
             Payload = RuntimeJson.ToElement(payload),
         }, cancellationToken);
 
-    private Task SendEncodedArtworkAsync(long requestId, WidgetEncodedArtwork? artwork, CancellationToken cancellationToken) =>
+    private Task SendEncodedArtworkAsync(long requestId, WidgetArtworkSource? artwork, CancellationToken cancellationToken) =>
+        artwork is WidgetFileArtwork file ? ReplyAsync(MessageTypes.Artwork, requestId, new EncodedArtworkPayload(null, null, file.File), cancellationToken) :
         artwork is null
             ? ReplyAsync(MessageTypes.Artwork, requestId, new EncodedArtworkPayload(null, null), cancellationToken)
-            : SendArtworkAsync(requestId, WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType), artwork.Bytes, cancellationToken);
+            : SendArtworkAsync(requestId, WidgetEncodedArtworkContract.ContentTypeValue(((WidgetEncodedArtwork)artwork).ContentType), ((WidgetEncodedArtwork)artwork).Bytes, cancellationToken);
 
     private async Task SendArtworkAsync(
         long requestId,

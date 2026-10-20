@@ -43,7 +43,7 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
                 if (rejectRevision) { rejectRevision = false; throw new WidgetPresentationSessionException("presentation_stale", "Replaced fixture snapshot."); }
             }
             if (handle == "slow") { enteredSlow.TrySetResult(); await releaseSlow.Task; }
-            return new(WidgetArtworkContentType.Png, Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII="));
+            return new WidgetEncodedArtwork(WidgetArtworkContentType.Png, Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII="));
         };
         Loaded += (_, _) => running ??= RunAsync();
     }

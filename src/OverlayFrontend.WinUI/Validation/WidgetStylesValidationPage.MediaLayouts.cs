@@ -77,7 +77,7 @@ internal sealed partial class WidgetStylesValidationPage
         App.Window.AppWindow.Resize(new((int)(1040 * scale), (int)(840 * scale)));
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         var artwork = await ArtworkPngAsync(128, 128);
-        presenter.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, artwork));
+        presenter.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, artwork));
         presenter.ResolvePackageIconAsync = (icon, _) =>
         {
             var filename = icon.AssetId switch {

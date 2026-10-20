@@ -401,12 +401,12 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     /// command. Late results are discarded by ID and cannot complete a replacement demand.
     /// </summary>
     public Task<WidgetPresentationArtwork> ResolveArtworkAsync(
-        WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken = default) =>
-        ResolveArtworkCoreAsync(authority, artworkHandle, cancellationToken);
+        WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken = default, bool allowFileSource = false) =>
+        ResolveArtworkCoreAsync(authority, artworkHandle, cancellationToken, allowFileSource: allowFileSource);
 
     private async Task<WidgetPresentationArtwork> ResolveArtworkCoreAsync(
         WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken,
-        WidgetPinnedSelection? selection = null, WidgetPinnedProjection? projection = null)
+        WidgetPinnedSelection? selection = null, WidgetPinnedProjection? projection = null, bool allowFileSource = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artworkHandle);
         cancellationToken.ThrowIfCancellationRequested();
@@ -427,7 +427,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                     "artwork_saturated", "The presentation artwork request queue is full.");
             demandLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
             demandLifetime.CancelAfter(_options.ArtworkTimeout);
-            _artwork.Add(demandId, new(authority, artworkHandle, demandLifetime.Token, completion, selection, projection));
+            _artwork.Add(demandId, new(authority, artworkHandle, demandLifetime.Token, completion, selection, projection, allowFileSource));
         }
         var demandToken = demandLifetime.Token;
         var cancellationRegistration = demandToken.Register(() =>
@@ -446,12 +446,12 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             var admission = projection is null ? RequestAsync(
                 BridgeMessageTypes.ResolveArtwork,
                 new BridgeArtworkRequest(authority.WidgetId, artworkHandle,
-                    authority.RuntimeGeneration, authority.PresentationGeneration, demandId),
+                    authority.RuntimeGeneration, authority.PresentationGeneration, demandId, allowFileSource),
                 BridgeMessageTypes.Acknowledged, demandToken) : RequestAsync(
                 BridgeMessageTypes.ResolvePinnedArtwork,
                 new BridgePinnedArtworkRequest(1, authority.WidgetId, authority.WidgetInstanceId,
                     authority.RuntimeGeneration, authority.PresentationGeneration, projection.LayoutId,
-                    authority.SnapshotSequence, projection.Snapshot.ActiveInputScopeId, artworkHandle, demandId),
+                    authority.SnapshotSequence, projection.Snapshot.ActiveInputScopeId, artworkHandle, demandId, allowFileSource),
                 BridgeMessageTypes.Acknowledged, demandToken);
             _ = admission.ContinueWith(static task => { _ = task.Exception; },
                 CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
@@ -883,7 +883,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
         {
             "widgetId", "artworkHandle", "runtimeGeneration", "presentationGeneration",
-            "demandId", "contentType", "contentBase64",
+            "demandId", "contentType", "contentBase64", "file",
         }, "widgetId", "artworkHandle", "contentType", "contentBase64");
         var widgetId = ReadString(payload, "widgetId");
         var handle = ReadString(payload, "artworkHandle");
@@ -910,6 +910,10 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
             if (!TryAdmitArtworkCompletionLocked(demandId!, pending)) return;
         }
+        var file = payload.TryGetProperty("file", out var fileValue) && fileValue.ValueKind != JsonValueKind.Null
+            ? BridgeJson.FromElement<ArtworkFileReference>(fileValue) : null;
+        if (file is not null && (!pending.AllowFileSource || file.PackageRelative || !ArtworkFileContract.IsValid(file)))
+            throw new BridgeProtocolException("WidgetBridge returned invalid artwork file authority.");
         var contentTypeValue = ReadString(payload, "contentType", allowEmpty: true);
         if (!payload.TryGetProperty("contentBase64", out var encodedValue) || encodedValue.ValueKind != JsonValueKind.String)
             throw new BridgeProtocolException("WidgetBridge returned invalid artwork encoding.");
@@ -924,6 +928,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         }
         if (bytes.Length > ProtocolConstants.MaximumEncodedArtworkBytes)
             throw new BridgeProtocolException("WidgetBridge returned oversized artwork.");
+        if (file is not null && (contentTypeValue.Length != 0 || bytes.Length != 0))
+            throw new BridgeProtocolException("WidgetBridge returned conflicting artwork sources.");
         var contentType = WidgetEncodedArtworkContract.ParseContentType(contentTypeValue);
         if (bytes.Length != 0 &&
             (contentType is null ||
@@ -942,7 +948,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 pending.Authority,
                 handle,
                 contentType ?? WidgetArtworkContentType.Png,
-                bytes);
+                bytes) { File = file };
             if (!pending.Completion.TrySetResult(result)) return;
         }
         ArtworkResolved?.Invoke(this, new WidgetPresentationArtworkEventArgs(result));

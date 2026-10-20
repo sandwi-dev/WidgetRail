@@ -18,7 +18,7 @@ internal sealed partial class WidgetStylesValidationPage
         var page = new WidgetViewPresenter { Width = 120, Height = 120 };
         var requests = 0;
         page.ResolveArtworkAsync = (_, _) =>
-        { ++requests; return Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, bytes)); };
+        { ++requests; return Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes)); };
         page.ArtworkGeneration = "ordinary-styles";
         host.Children.Add(page);
         var node = new ViewNode { Id = "ordinary-art", Kind = ViewNodeKind.Image, ArtworkHandle = "bands",

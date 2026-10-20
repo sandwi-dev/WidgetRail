@@ -139,7 +139,8 @@ internal sealed record BridgeArtworkRequest(
     string ArtworkHandle,
     string? RuntimeGeneration = null,
     string? PresentationGeneration = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DemandId = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DemandId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AllowFileSource = false);
 internal sealed record BridgePackageIconRequest(
     string WidgetId,
     string RuntimeGeneration,
@@ -200,7 +201,8 @@ internal sealed record BridgePresentationEstablishment(
 internal sealed record BridgePinnedActionRequest(string WidgetId, string InstanceId, string RuntimeGeneration,
     string PresentationGeneration, WidgetRail.WidgetSdk.PinnedActionInput Input, BridgeWorkerRun? WorkerRun = null);
 internal sealed record BridgePinnedArtworkRequest(int Version, string WidgetId, string InstanceId, string RuntimeGeneration,
-    string PresentationGeneration, string LayoutId, long SnapshotSequence, string InputScopeId, string ArtworkHandle, string DemandId);
+    string PresentationGeneration, string LayoutId, long SnapshotSequence, string InputScopeId, string ArtworkHandle, string DemandId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AllowFileSource = false);
 internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action, BridgeWorkerRun? WorkerRun = null);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(
@@ -246,7 +248,8 @@ internal sealed record BridgeEncodedArtworkEvent(
     string PresentationGeneration,
     string ContentType,
     ReadOnlyMemory<byte> ContentBase64,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DemandId = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DemandId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArtworkFileReference? File = null);
 internal sealed record BridgeLegacyArtworkEvent(
     string WidgetId,
     string ArtworkHandle,
@@ -497,10 +500,12 @@ internal sealed record BridgeIndexedInputRequest(
     IndexedCollectionInputRequest Input, IndexedCollectionInputContext Context);
 internal sealed record BridgeIndexedArtworkRequest(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
-    IndexedCollectionItemReference Item, string ArtworkHandle, string DemandId);
+    IndexedCollectionItemReference Item, string ArtworkHandle, string DemandId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AllowFileSource = false);
 internal sealed record BridgeIndexedArtworkResponse(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
     IndexedCollectionItemReference Item, string ArtworkHandle, string DemandId,
-    string ContentType, ReadOnlyMemory<byte> ContentBase64);
+    string ContentType, ReadOnlyMemory<byte> ContentBase64,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ArtworkFileReference? File = null);
 
 internal sealed record BridgeWidgetManagementRequest(string WidgetId, string RuntimeGeneration);

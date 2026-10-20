@@ -41,7 +41,7 @@ internal sealed partial class PlayniteLibraryApplicationService
                 {
                     ObjectDisposedException.ThrowIf(_disposed, this);
                     return PlayniteLibraryItem.From(Project(game, stale, registerArtwork: false, retrievedAt));
-                }, ResolveCapturedArtworkAsync);
+                }, ResolveCapturedArtworkAsync, ResolveCapturedArtworkSourceAsync);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (ObjectDisposedException) { throw; }
@@ -93,6 +93,18 @@ internal sealed partial class PlayniteLibraryApplicationService
 
     private static string ArtworkHandle(string gameId, string revision, PlayniteBridgeArtworkKind kind) =>
         ContentId("artwork-handle", gameId, revision, kind.ToString());
+
+    private ValueTask<WidgetArtworkSource?> ResolveCapturedArtworkSourceAsync(PlayniteBridgeGame game,
+        WidgetArtworkHandle handle, CancellationToken token)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        token.ThrowIfCancellationRequested();
+        var revision = ContentId("artwork-revision", game.Id, GameRevision(game));
+        foreach (var kind in new[] { PlayniteBridgeArtworkKind.Cover, PlayniteBridgeArtworkKind.Background })
+            if (string.Equals(handle.Value, ArtworkHandle(game.Id, revision, kind), StringComparison.Ordinal))
+                return ResolveArtworkSourceCoreAsync(handle, new(game.Id, revision, kind), captured: true, token);
+        return ValueTask.FromResult<WidgetArtworkSource?>(null);
+    }
 
     private ValueTask<WidgetEncodedArtwork?> ResolveCapturedArtworkAsync(PlayniteBridgeGame game,
         WidgetArtworkHandle handle, CancellationToken token)

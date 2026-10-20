@@ -465,6 +465,11 @@ static async Task TrustedArtworkTransportPreservesBytes()
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(webP.Bytes.Span)));
     Assert.True(await client.ResolveArtworkAsync("trusted.artwork.forged") is null,
         "Undeclared artwork handle crossed worker authority.");
+    var file = await client.ResolveArtworkSourceAsync(handle!, true);
+    Assert.True(file is WidgetFileArtwork { Path: @"C:\images\transport.jpg", Revision: "revision-1" },
+        "File artwork did not cross the real worker transport.");
+    Assert.True(await client.ResolveArtworkSourceAsync("trusted.artwork.forged", true) is null,
+        "Undeclared file artwork crossed worker authority.");
 }
 
 static async Task ProcessAdmissionFailsBeforeLaunch()
@@ -3765,6 +3770,8 @@ file sealed class TestWidget : Widget
 
 file sealed class TrustedArtworkProbeWidget : Widget
 {
+    public override ValueTask<WidgetArtworkSource?> OnResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token = default) =>
+        ValueTask.FromResult<WidgetArtworkSource?>(new WidgetFileArtwork(@"C:\images\transport.jpg", "revision-1"));
     internal const string Handle = "trusted.artwork.transport";
     internal const string WebPHandle = "trusted.artwork.transport-webp";
     internal const int ByteCount = 888_424;

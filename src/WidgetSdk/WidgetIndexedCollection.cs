@@ -13,6 +13,8 @@ public sealed record WidgetIndexedCollectionOptions<TQuery, TItem> where TQuery 
     public required Func<TQuery, TItem, WidgetActionEvent, CancellationToken, ValueTask> OnAction { get; init; }
     /// <summary>Resolves opaque artwork declared by this row; HTTPS images remain host-owned.</summary>
     public Func<TQuery, TItem, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork { get; init; }
+    /// <summary>Optional file-or-byte resolver; existing byte resolution remains the fallback.</summary>
+    public Func<TQuery, TItem, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetArtworkSource?>>? ResolveArtworkSource { get; init; }
     /// <summary>Opt-in complete ordered unique occurrence keys for local queries of at most 512 items.
     /// Preserve occurrence keys across insertions/removals/reordering. Membership changes still require PublishQuery.
     /// Return null for queries that do not opt in. The host retains surviving focus and viewport; this never authorizes stale row actions.</summary>
@@ -250,7 +252,8 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
                 WidgetDeclarationSnapshot.Freeze(node with { CollectionItemKey = key.Value }, 1, ref nodeCount));
             result[index] = new(declaration,
                 (action, token) => options.OnAction(captured.Value, item, action, token),
-                options.ResolveArtwork is { } resolver ? (handle, token) => resolver(captured.Value, item, handle, token) : null);
+                options.ResolveArtwork is { } resolver ? (handle, token) => resolver(captured.Value, item, handle, token) : null,
+                options.ResolveArtworkSource is { } sourceResolver ? (handle, token) => sourceResolver(captured.Value, item, handle, token) : null);
         }
         cancellationToken.ThrowIfCancellationRequested();
         widgetLifetime.ThrowIfCancellationRequested();

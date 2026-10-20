@@ -207,7 +207,11 @@ public sealed partial class WidgetPresentationSession
     }
 
     internal async Task<WidgetEncodedArtwork?> ResolveIndexedArtworkAsync(WidgetPresentationIndexedLease lease,
-        string itemKey, string handle, CancellationToken cancellationToken)
+        string itemKey, string handle, CancellationToken cancellationToken) =>
+        await ResolveIndexedArtworkSourceAsync(lease, itemKey, handle, false, cancellationToken).ConfigureAwait(false) as WidgetEncodedArtwork;
+
+    internal async Task<WidgetArtworkSource?> ResolveIndexedArtworkSourceAsync(WidgetPresentationIndexedLease lease,
+        string itemKey, string handle, bool allowFileSource, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var reference = new IndexedCollectionItemReference(lease.LeaseId, itemKey);
@@ -228,7 +232,7 @@ public sealed partial class WidgetPresentationSession
             lifetime.CancelAfter(_options.ArtworkTimeout);
             var authority = lease.Authority;
             var request = new BridgeIndexedArtworkRequest(authority.WidgetId, authority.WidgetInstanceId,
-                authority.RuntimeGeneration, authority.PresentationGeneration, reference, handle, Guid.NewGuid().ToString("N"));
+                authority.RuntimeGeneration, authority.PresentationGeneration, reference, handle, Guid.NewGuid().ToString("N"), allowFileSource);
             operation = new(lease, request, lifetime);
             _indexedArtworkDemands.Add(request.DemandId, operation);
         }
@@ -251,15 +255,26 @@ public sealed partial class WidgetPresentationSession
             if (!MatchesIndexedIdentity(lease.Authority, payload.WidgetId, payload.InstanceId, payload.RuntimeGeneration, payload.PresentationGeneration) ||
                 payload.Item != operation.Request.Item || payload.ArtworkHandle != handle || payload.DemandId != operation.Request.DemandId)
                 throw new BridgeProtocolException("WidgetBridge returned foreign indexed artwork authority.");
-            if (payload.ContentType == string.Empty && payload.ContentBase64.IsEmpty)
+            if (payload.File is null && payload.ContentType == string.Empty && payload.ContentBase64.IsEmpty)
             {
                 using (_gate.Enter()) { operation.Lifetime.Token.ThrowIfCancellationRequested(); DemandIndexedLeaseLocked(lease); }
                 return null;
             }
-            var type = WidgetEncodedArtworkContract.ParseContentType(payload.ContentType);
-            if (type is null) throw new BridgeProtocolException("WidgetBridge returned unsupported indexed artwork.");
-            var artwork = new WidgetEncodedArtwork(type.Value, payload.ContentBase64);
-            if (!WidgetEncodedArtworkContract.IsValid(artwork)) throw new BridgeProtocolException("WidgetBridge returned invalid indexed artwork bytes.");
+            WidgetArtworkSource artwork;
+            if (payload.File is { } file)
+            {
+                if (!allowFileSource || file.PackageRelative || !ArtworkFileContract.IsValid(file) ||
+                    payload.ContentType.Length != 0 || !payload.ContentBase64.IsEmpty)
+                    throw new BridgeProtocolException("WidgetBridge returned invalid indexed file authority.");
+                artwork = new WidgetFileArtwork(file);
+            }
+            else
+            {
+                var type = WidgetEncodedArtworkContract.ParseContentType(payload.ContentType);
+                if (type is null) throw new BridgeProtocolException("WidgetBridge returned unsupported indexed artwork.");
+                artwork = new WidgetEncodedArtwork(type.Value, payload.ContentBase64);
+                if (!WidgetArtworkSourceContract.IsValid(artwork)) throw new BridgeProtocolException("WidgetBridge returned invalid indexed artwork bytes.");
+            }
             using (_gate.Enter()) { operation.Lifetime.Token.ThrowIfCancellationRequested(); DemandIndexedLeaseLocked(lease); }
             return artwork;
         }

@@ -64,6 +64,28 @@ independent visible demand; recycled or retired rows release theirs. A later
 request for the same artwork is valid. Expected missing/network/format failures
 remain local to the image slot rather than replacing the whole widget.
 
+Resolvers can return a `WidgetArtworkSource` through `ResolveArtworkSource`.
+Use `WidgetEncodedArtwork` for generated/downloaded bytes or
+`new WidgetFileArtwork(path, revision)` for full-access local artwork. A sandboxed
+widget can return an admitted package asset with
+`new WidgetFileArtwork("assets/cover.png", revision, packageRelative: true)`.
+Package paths must name verified package content. Arbitrary local paths do not
+grant sandboxed widgets access through the host.
+
+Keep `ResolveArtwork` when a byte fallback is available. File-capable hosts ask
+for sources; older workers retain the byte route, and native file failures can
+fall back through the byte resolver under the same demand and lease authority.
+Ordinary widgets use `OnResolveArtworkSourceAsync`; the existing
+`OnResolveArtworkAsync` byte callback remains supported. Source-aware ordinary
+widgets advertise protocol 97; indexed and deferred templates advertise the
+current SDK protocol.
+
+File paths travel only in resource responses, never in view declarations.
+Revision is an author-owned source version, not a host-computed hash. When image
+content changes, publish a new/versioned artwork handle so retained pixels are
+invalidated through the normal presentation lifecycle. The host does not poll
+files or hash them on each frame.
+
 ## Examples and validation
 
 - [Playnite Home](../../samples/PlayniteLibraryWidget/PlayniteLibraryIndexedHome.cs)

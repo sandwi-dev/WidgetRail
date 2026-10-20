@@ -26,13 +26,13 @@ internal sealed partial class WidgetStylesValidationPage
             ++requests;
             return handle switch
             {
-                "http400" => Task.FromException<WidgetEncodedArtwork?>(new COMException("Fixture HTTP 400", unchecked((int)0x80190190))),
-                "missing" => Task.FromException<WidgetEncodedArtwork?>(new IOException("Fixture resource unavailable")),
-                "retired-indexed" => Task.FromException<WidgetEncodedArtwork?>(new WidgetRail.WidgetPresentationSession.WidgetPresentationSessionException(
+                "http400" => Task.FromException<WidgetArtworkSource?>(new COMException("Fixture HTTP 400", unchecked((int)0x80190190))),
+                "missing" => Task.FromException<WidgetArtworkSource?>(new IOException("Fixture resource unavailable")),
+                "retired-indexed" => Task.FromException<WidgetArtworkSource?>(new WidgetRail.WidgetPresentationSession.WidgetPresentationSessionException(
                     "request_failed", "Indexed artwork lease is unavailable.")),
-                "unexpected" => Task.FromException<WidgetEncodedArtwork?>(new InvalidOperationException("Fixture host defect")),
-                "corrupt" => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, new byte[] { 1, 2, 3, 4 })),
-                _ => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, bytes)),
+                "unexpected" => Task.FromException<WidgetArtworkSource?>(new InvalidOperationException("Fixture host defect")),
+                "corrupt" => Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, new byte[] { 1, 2, 3, 4 })),
+                _ => Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes)),
             };
         };
         try

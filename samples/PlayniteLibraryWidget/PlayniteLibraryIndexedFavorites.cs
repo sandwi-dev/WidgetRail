@@ -13,6 +13,7 @@ internal static class PlayniteLibraryIndexedFavorites
         ReadRange = (content, start, count, token) => ValueTask.FromResult(content.Query.ReadFavorites(start, count, token)),
         ItemKey = item => item.Key,
         ResolveArtwork = (content, item, handle, token) => content.Query.ResolveArtworkAsync(item, handle, fixedArtwork, token),
+        ResolveArtworkSource = (content, item, handle, token) => content.Query.ResolveArtworkSourceAsync(item, handle, fixedArtwork, token),
         OnAction = action,
         RenderItem = (content, item, _) => PlayniteLibraryPresentation.FavoriteCard(content, item),
     };

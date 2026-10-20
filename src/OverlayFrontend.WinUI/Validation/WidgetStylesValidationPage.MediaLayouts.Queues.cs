@@ -25,7 +25,7 @@ internal sealed partial class WidgetStylesValidationPage
         var scale = XamlRoot.RasterizationScale;
         App.Window.AppWindow.Resize(new((int)(1040 * scale), (int)(840 * scale)));
         var artwork = await ArtworkPngAsync(128, 128);
-        presenter.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, artwork));
+        presenter.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, artwork));
         presenter.ResolvePackageIconAsync = (icon, _) =>
         {
             var filename = icon.AssetId switch { "spotify.saved.outline" => "heart-outline.svg",

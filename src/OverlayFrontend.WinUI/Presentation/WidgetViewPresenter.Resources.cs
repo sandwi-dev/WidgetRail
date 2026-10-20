@@ -24,7 +24,8 @@ internal sealed partial class WidgetViewPresenter
     private readonly HashSet<Task> retirements = [];
     private bool disposed;
     public Action<Exception>? Failed { get; set; }
-    internal Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? ResolveArtworkAsync { get; set; }
+    internal Func<string, CancellationToken, Task<WidgetArtworkSource?>>? ResolveArtworkAsync { get; set; }
+    internal Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? ResolveArtworkFallbackAsync { get; set; }
     internal string ArtworkGeneration { get; set; } = string.Empty;
     internal Func<bool>? ArtworkAuthorityCurrent { get; set; }
 
@@ -93,11 +94,12 @@ internal sealed partial class WidgetViewPresenter
             if (parent is null) return;
             if (!artworkReveals.TryGetValue(binding, out var reveal)) artworkReveals.Add(binding, reveal = new(layer));
             reveal.Play(appearance, systemAnimationsEnabled);
-        }, ResolveArtworkAsync, ArtworkGeneration, ArtworkAuthorityCurrent);
+        }, ResolveArtworkAsync, ArtworkGeneration, ArtworkAuthorityCurrent, ResolveArtworkFallbackAsync);
     }
 
     private void UpdateArtwork(Binding binding, ViewNode node, Action<ImageSource?> publish,
-        Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolver, string generation, Func<bool>? sourceCurrent = null)
+        Func<string, CancellationToken, Task<WidgetArtworkSource?>>? resolver, string generation, Func<bool>? sourceCurrent = null,
+        Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? fallback = null)
     {
         if (!presentationActive || sourceCurrent?.Invoke() == false) return;
         var artworkStyle = ResolveArtworkStyle(binding, node);
@@ -137,14 +139,26 @@ internal sealed partial class WidgetViewPresenter
                 if (resolver is not null)
                 {
                     var artwork = await resolver(opaque, token);
-                    return artwork is null ? null : new(artwork.Bytes);
+                    return artwork switch
+                    {
+                        WidgetEncodedArtwork encoded => new(encoded.Bytes),
+                        WidgetFileArtwork file => new(ReadOnlyMemory<byte>.Empty, File: file.File,
+                            Fallback: fallback is null ? null : async ct => await fallback(opaque, ct) is { } bytes ? new(bytes.Bytes) : null),
+                        _ => null,
+                    };
                 }
                 if (Session is { } session && demand.Origin is { } captured)
                 {
                     var artwork = captured.Selection is { } selection && captured.Projection is { } projection
-                        ? await session.ResolvePinnedArtworkAsync(selection, projection, opaque, token)
-                        : await session.ResolveArtworkAsync(captured.Frame.Authority, opaque, token);
-                    return new(artwork.EncodedBytes);
+                        ? await session.ResolvePinnedArtworkAsync(selection, projection, opaque, token, allowFileSource: true)
+                        : await session.ResolveArtworkAsync(captured.Frame.Authority, opaque, token, allowFileSource: true);
+                    return new(artwork.EncodedBytes, File: artwork.File, Fallback: artwork.File is null ? null : async ct =>
+                    {
+                        var bytes = captured.Selection is { } pinned && captured.Projection is { } layout
+                            ? await session.ResolvePinnedArtworkAsync(pinned, layout, opaque, ct)
+                            : await session.ResolveArtworkAsync(captured.Frame.Authority, opaque, ct);
+                        return new(bytes.EncodedBytes);
+                    });
                 }
             }
             else if (node.ImageSource is { } uri && Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps)

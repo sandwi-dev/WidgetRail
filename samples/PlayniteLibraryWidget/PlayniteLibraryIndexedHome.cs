@@ -49,6 +49,7 @@ internal static class PlayniteLibraryIndexedHome
         RenderItem = (content, item, _) => RenderItem(content, item),
         OnAction = onAction ?? throw new ArgumentNullException(nameof(onAction)),
         ResolveArtwork = (content, item, handle, token) => content.Query.ResolveArtworkAsync(item, handle, fixedArtwork, token),
+        ResolveArtworkSource = (content, item, handle, token) => content.Query.ResolveArtworkSourceAsync(item, handle, fixedArtwork, token),
     };
 
     internal static WidgetElement RenderItem(PlayniteLibraryHomeContent content, PlayniteLibraryHomeItem item) => PlayniteLibraryPresentation.RenderTile(new(

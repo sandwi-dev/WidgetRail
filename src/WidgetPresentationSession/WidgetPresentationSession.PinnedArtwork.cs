@@ -4,10 +4,10 @@ public sealed partial class WidgetPresentationSession
 {
     /// <summary>Resolves only artwork declared by this displayed and still-selected pinned projection.</summary>
     public Task<WidgetPresentationArtwork> ResolvePinnedArtworkAsync(WidgetPinnedSelection selection,
-        WidgetPinnedProjection projection, string artworkHandle, CancellationToken cancellationToken = default)
+        WidgetPinnedProjection projection, string artworkHandle, CancellationToken cancellationToken = default, bool allowFileSource = false)
     {
         ArgumentNullException.ThrowIfNull(selection); ArgumentNullException.ThrowIfNull(projection);
-        return ResolveArtworkCoreAsync(projection.Frame.Authority, artworkHandle, cancellationToken, selection, projection);
+        return ResolveArtworkCoreAsync(projection.Frame.Authority, artworkHandle, cancellationToken, selection, projection, allowFileSource);
     }
 
     private void DemandPinnedArtworkLocked(WidgetPinnedSelection selection, WidgetPinnedProjection projection, string handle)

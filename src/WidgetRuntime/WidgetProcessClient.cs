@@ -314,34 +314,23 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
         protocolVersion is >= ProtocolConstants.CursorRetentionVersion
             ? action : action with { RetainedCollectionKeys = null };
 
-    internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
-        string artworkHandle,
-        CancellationToken cancellationToken = default)
+    internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(string artworkHandle, CancellationToken cancellationToken = default) =>
+        await ResolveArtworkSourceAsync(artworkHandle, false, cancellationToken).ConfigureAwait(false) as WidgetEncodedArtwork;
+
+    internal async Task<WidgetArtworkSource?> ResolveArtworkSourceAsync(
+        string artworkHandle, bool allowFileSource, CancellationToken cancellationToken = default)
     {
+        allowFileSource &= Volatile.Read(ref _materializedSnapshot)?.ProtocolVersion >= ProtocolConstants.FileArtworkVersion;
         StableIdentifier.Validate(artworkHandle, nameof(artworkHandle));
         var response = await RequestAsync(
             MessageTypes.ResolveArtwork,
-            new ResolveArtworkPayload(artworkHandle),
+            new ResolveArtworkPayload(artworkHandle, allowFileSource),
             cancellationToken).ConfigureAwait(false);
         if (response.Type != MessageTypes.Artwork)
             throw new WidgetProtocolViolationException(
                 $"Expected artwork, received '{response.Type}'.");
         var payload = RuntimeJson.FromElement<EncodedArtworkPayload>(response.Payload);
-        if (payload.ContentType is null && payload.ContentBase64 is null) return null;
-        if (payload.ContentType is null || payload.ContentBase64 is null ||
-            WidgetEncodedArtworkContract.ParseContentType(payload.ContentType) is not { } contentType)
-            throw new WidgetProtocolViolationException("Worker returned invalid artwork metadata.");
-        byte[] bytes;
-        try { bytes = Convert.FromBase64String(payload.ContentBase64); }
-        catch (FormatException exception)
-        {
-            throw new WidgetProtocolViolationException(
-                "Worker returned malformed artwork bytes.", exception);
-        }
-        var artwork = new WidgetEncodedArtwork(contentType, bytes);
-        if (!WidgetEncodedArtworkContract.IsValid(artwork))
-            throw new WidgetProtocolViolationException("Worker returned invalid artwork bytes.");
-        return artwork;
+        return ArtworkPayloadReader.Read(payload, allowFileSource);
     }
 
     public async Task SendEmbeddedMediaPlaybackEventAsync(

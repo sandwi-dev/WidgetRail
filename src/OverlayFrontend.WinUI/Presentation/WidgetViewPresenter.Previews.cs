@@ -331,11 +331,15 @@ internal sealed partial class WidgetViewPresenter
         fragment.EnsureInteractionAsync = async (authority, token) =>
             PreviewInputCurrent(fragment) && await AdmitInteractionAsync(authority, token) && PreviewInputCurrent(fragment);
         fragment.Session = Session;
-        fragment.ResolveArtworkAsync = source.ContentLease is { } previewLease ? (handle,token)=>previewLease.ResolveArtworkAsync(source.ContentKey!,handle,token) : row is null ? ResolveArtworkAsync : async (handle, token) =>
+        fragment.ResolveArtworkAsync = source.ContentLease is { } previewLease ? (handle,token)=>previewLease.ResolveArtworkSourceAsync(source.ContentKey!,handle,token) : row is null ? ResolveArtworkAsync : async (handle, token) =>
         {
             try { return await row.Owner.ResolveArtworkAsync(row, handle, token); }
             catch (WidgetRail.WidgetPresentationSession.WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { return null; }
         };
+        fragment.ResolveArtworkFallbackAsync = source.ContentLease is { } fallbackLease
+            ? (handle, token) => fallbackLease.ResolveArtworkAsync(source.ContentKey!, handle, token)
+            : row is null ? ResolveArtworkFallbackAsync : async (handle, token) =>
+                await row.Owner.ResolveArtworkAsync(row, handle, token, allowFileSource: false) as WidgetEncodedArtwork;
         fragment.ArtworkGeneration = source.ContentLease?.LeaseId ?? (row is null ? ArtworkGeneration : row.Lease.LeaseId + ":" + row.Item.Key.Length + ":" + row.Item.Key);
         fragment.ArtworkAuthorityCurrent = source.ContentLease is { } contentLease ? ()=>contentLease.IsCurrent : row is null ? ArtworkAuthorityCurrent : () => row.Lease.IsCurrent && previewSource?.Key.Equals(source.Key) == true;
         fragment.Failed = ReportFailure;

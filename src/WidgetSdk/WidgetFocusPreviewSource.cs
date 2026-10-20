@@ -11,6 +11,8 @@ public sealed record WidgetFocusPreviewOptions<TContext> where TContext : notnul
     public Func<TContext, string, WidgetActionEvent, CancellationToken, ValueTask>? OnAction { get; init; }
     /// <summary>Resolves opaque artwork handles declared in this preview using its captured context.</summary>
     public Func<TContext, string, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork { get; init; }
+    /// <summary>Optional file-or-byte resolver; existing byte resolution remains the fallback.</summary>
+    public Func<TContext, string, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetArtworkSource?>>? ResolveArtworkSource { get; init; }
     /// <summary>Provider deadline; defaults to five seconds, with an allowed range of 250 ms to ten seconds.</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(5);
 }
@@ -99,7 +101,8 @@ public sealed class WidgetFocusPreviewSource<TContext> : IWidgetIndexedCollectio
         var root = WidgetDeclarationSnapshot.Freeze(content.ToProtocolNode(), 1, ref count);
         var binding = new WidgetIndexedItemBinding(new(key, root),
             (action, ct) => options.OnAction?.Invoke(captured.Value, key, action, ct) ?? ValueTask.CompletedTask,
-            options.ResolveArtwork is { } resolver ? (handle, ct) => resolver(captured.Value, key, handle, ct) : null);
+            options.ResolveArtwork is { } resolver ? (handle, ct) => resolver(captured.Value, key, handle, ct) : null,
+            options.ResolveArtworkSource is { } sourceResolver ? (handle, ct) => sourceResolver(captured.Value, key, handle, ct) : null);
         return new(Array.AsReadOnly(new[] { binding }), count);
     }
 }

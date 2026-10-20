@@ -19,7 +19,7 @@ internal sealed partial class WidgetStylesValidationPage
         page.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Full }, true);
         host.Children.Add(page);
         var bytes = await ArtworkPngAsync(160, 220);
-        page.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png, bytes));
+        page.ResolveArtworkAsync = (_, _) => Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes));
         var image = new ViewNode { Id = "reveal.art", Kind = ViewNodeKind.Image, ArtworkHandle = "poster-reveal", ImageFit = ImageFit.Cover, AccessibilityLabel = "Poster artwork" };
         var copy = new ViewNode { Id = "reveal.copy", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[new() { Id = "reveal.title", Kind = ViewNodeKind.Text, Text = "Poster" }] };
         var root = new ViewNode { Id = "reveal.poster", Kind = ViewNodeKind.ActionSurface, ActionId = "poster",
