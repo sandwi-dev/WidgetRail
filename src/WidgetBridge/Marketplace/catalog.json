@@ -2,31 +2,26 @@
   {
     "id": "widgetrail.samples.poe1-companion", "publisher": "widgetrail.samples", "name": "PoE1 Path of Building (Beta)",
     "description": "Plan Path of Exile builds, edit skills and equipment, and compare trade upgrades using a pinned Path of Building Community beta engine. Full-access add-on.",
-    "setupRequirements": ["Trade features require signing in to the official Path of Exile trade website. Build planning works without signing in."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/poe1-timeless.png"]
   },
   {
     "id": "widgetrail.samples.poe2-companion", "publisher": "widgetrail.samples", "name": "PoE2 Path of Building (Beta)",
     "description": "Plan Path of Exile 2 builds, manage loadouts and skill groups, and rank trade upgrades using a pinned Path of Building Community beta engine. Full-access add-on.",
-    "setupRequirements": ["Trade features require signing in to the official Path of Exile trade website. Build planning works without signing in."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/calculations.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/trade-ranking.png"]
   },
   {
     "id": "widgetrail.samples.mapgenie", "publisher": "widgetrail.samples", "name": "MapGenie",
     "description": "Explore interactive game maps, find collectibles and track your progress.",
-    "setupRequirements": ["A MapGenie account is needed to save map progress; some website features require a paid plan."],
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
     "description": "Watch Twitch streams with controller navigation and pinnable webapp windows.",
-    "setupRequirements": ["A Twitch account is needed for chat and account features. Twitch controls stream access and subscription requirements."],
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.discord", "publisher": "widgetrail.samples", "name": "Discord",
     "description": "Use Discord's web app with controller input and pinnable pop-outs.",
-    "setupRequirements": ["Sign in with your Discord account in the widget's website view."],
     "screenshots": []
   },
   {
@@ -49,7 +44,7 @@
   {
     "id": "widgetrail.samples.spotify", "publisher": "widgetrail.samples", "name": "Spotify",
     "description": "Browse your Spotify library and control playback with your controller.",
-    "setupRequirements": ["Requires a Spotify account and your own Spotify developer app Client ID.", "Register http://127.0.0.1:43827/callback/ as the app's redirect URI. Spotify developer-mode access restrictions apply.", "Spotify Premium is required for playback controls and listening through WidgetRail."],
+    "setupRequirements": ["Requires your own Spotify developer app Client ID.", "Register http://127.0.0.1:43827/callback/ as the app's redirect URI. Spotify developer-mode access restrictions apply.", "Spotify Premium is required for playback controls and listening through WidgetRail."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/search-player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/pinned-player.png"]
   },
   {
@@ -61,7 +56,7 @@
   {
     "id": "widgetrail.samples.ytmusic", "publisher": "widgetrail.samples", "name": "YouTube Music",
     "description": "Browse music and keep playback controls pinned while playing.",
-    "setupRequirements": ["A Google account is needed for your personal library. Sign-in opens Chrome, or Edge as a fallback.", "Public search and supported playback can work without signing in. No developer app, Python installation or YTMDesktop is required."],
+    "setupRequirements": ["Signing in requires Chrome or Edge."],
     "screenshots": []
   },
   {
@@ -93,9 +88,6 @@
     "publisher": "widgetrail.firstparty",
     "name": "Media Controls",
     "description": "Control playback in apps that expose Windows media sessions.",
-    "setupRequirements": [
-      "Playback controls depend on the active media app supporting Windows media controls."
-    ],
     "screenshots": []
   },
   {
@@ -120,7 +112,7 @@
     "name": "Network Controls",
     "description": "Manage Wi-Fi, Bluetooth and connected devices through Windows.",
     "setupRequirements": [
-      "Wi-Fi and Bluetooth controls require compatible hardware and drivers. Some Windows-managed changes may require keyboard or mouse interaction."
+      "Some network setup opens Windows dialogs that need a keyboard or mouse."
     ],
     "screenshots": []
   },
@@ -145,9 +137,6 @@
     "publisher": "widgetrail.samples",
     "name": "Browser",
     "description": "Open websites in a controller-friendly browser and keep pages pinned while playing.",
-    "setupRequirements": [
-      "Websites may require their own accounts or subscriptions."
-    ],
     "screenshots": []
   }
 ]
