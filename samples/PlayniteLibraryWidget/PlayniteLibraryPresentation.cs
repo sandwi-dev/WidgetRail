@@ -244,7 +244,7 @@ internal static partial class PlayniteLibraryPresentation
             var error = PlayniteLibraryAvailabilityPresentation.Error(snapshot.Error);
             content = UI.Stack("playnite-library.content",
                 UI.EmptyState(state.CanStartPlaynite ? "Playnite isn't running" : error.Title,
-                    state.CanStartPlaynite ? "Start Playnite in the tray to load your library." : error.Message,
+                    state.CanStartPlaynite ? "Start Playnite to load your library." : error.Message,
                     "playnite-library.offline",
                     new ComponentAction(state.CanStartPlaynite ? "Start Playnite…" : "Try again",
                         state.CanStartPlaynite ? PlayniteLibraryWidget.SetupPrefix + "prompt" : "playnite-library.retry")))

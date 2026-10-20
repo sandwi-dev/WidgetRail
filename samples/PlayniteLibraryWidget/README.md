@@ -32,9 +32,10 @@ the dialog offers **Install integration and start Playnite** instead. The check
 also runs when entering the widget from its tray preview. B dismisses it to a recovery screen;
 the launch action can be reopened there. Starting Playnite keeps focus on the busy
 button and reports connection failures in the same dialog. It starts
-Playnite Desktop in the tray, suppressing its splash screen and overriding fullscreen
-startup for this launch, with the selected data profile and your normal
-library-update settings, then loads the library automatically.
+Playnite with the selected data profile and normal library-update settings, suppresses
+the splash screen, and requests a tray start. Playnite can still briefly show its
+main window and take focus; its fullscreen startup preference is also respected.
+Setup continues if the overlay hides. Reopen WidgetRail to see its result.
 
 Healthy existing Bridge builds are reused. Setup only replaces the specifically
 recognized older build; unfamiliar or newer integrations remain under your control.

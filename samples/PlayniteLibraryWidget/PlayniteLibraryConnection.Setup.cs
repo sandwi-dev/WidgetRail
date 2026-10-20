@@ -15,8 +15,10 @@ internal static partial class PlayniteLibraryConnectionPresentation
             : needsSetup ? setup.Plan!.ActionLabel : "Start Playnite";
         var children = new List<WidgetElement>
         {
-            UI.Text(needsSetup ? setup.Plan!.Message : "Start Playnite in the tray to use your library. Your normal library updates will run.",
+            UI.Text(needsSetup ? setup.Plan!.Message : "Start Playnite to use your library. Your normal library updates will run.",
                 prefix + "stopped.message").Classes("playnite-library-setup-path"),
+            UI.Text("Playnite may open a window or switch focus during startup. Setup continues; reopen WidgetRail to return here.",
+                prefix + "stopped.visibility").Classes("playnite-library-setup-path"),
         };
         if (setup.Progress is { } progress)
             children.Add(UI.Text(progress, prefix + "stopped.progress").Classes("playnite-library-setup-path"));

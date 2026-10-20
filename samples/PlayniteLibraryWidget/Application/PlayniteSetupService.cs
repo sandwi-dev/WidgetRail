@@ -62,7 +62,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                 return Plan(PlayniteSetupAction.Manual, "Integration folder needs attention", "The expected integration folder contains an unrecognized installation. Use manual setup so its files are preserved.", null, null, defaultTarget);
             package.Validate();
             return Plan(PlayniteSetupAction.Install, "Connect your Playnite library",
-                "Install the bundled Playnite Bridge integration, start Playnite in the tray, and connect automatically. " +
+                "Install the bundled Playnite Bridge integration, start Playnite, and connect automatically. " +
                 (installation.Running ? "Playnite will restart once. " : "") + "Your library and integration settings are preserved.", null, null,
                 Path.Combine(installation.DataDirectory, "Extensions", PlayniteSetupFiles.ExtensionId));
         }
@@ -92,7 +92,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
         }
         return installation.Running
             ? Plan(PlayniteSetupAction.Restart, "Restart to reconnect the integration", "Playnite is running but its integration is not ready. Restart this profile, check the connection, and preserve the installed integration files.", version, digest, extension)
-            : Plan(PlayniteSetupAction.Start, "Start and connect Playnite", "Start the selected Playnite profile in the tray, check the integration, and save its connection securely.", version, digest, extension);
+            : Plan(PlayniteSetupAction.Start, "Start and connect Playnite", "Start the selected Playnite profile, check the integration, and save its connection securely.", version, digest, extension);
 
         PlayniteSetupPlan Plan(PlayniteSetupAction action, string title, string message, string? version, string? digest, string? path) =>
             new(installation, action, title, message, version, digest, path);
@@ -170,7 +170,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                 token.ThrowIfCancellationRequested();
                 deployment?.Commit();
             }
-            progress("Starting Playnite in the tray…");
+            progress("Starting Playnite…");
             await platform.StartAsync(installation, token).ConfigureAwait(false);
             progress("Waiting for Playnite and checking the connection…");
             var credential = await WaitForConnectionAsync(installation, token).ConfigureAwait(false);

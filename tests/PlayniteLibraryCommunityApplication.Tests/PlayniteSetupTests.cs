@@ -78,10 +78,10 @@ public sealed class PlayniteSetupTests
         using var fixture = new Fixture();
         fixture.Install("1.5.3", Fixture.Original);
         var info = PlayniteSetupPlatform.LaunchInfo(fixture.Installation);
-        CollectionAssert.AreEqual(new[] { "--startdesktop", "--startclosedtotray", "--hidesplashscreen", "--userdatadir", fixture.Data }, info.ArgumentList.ToArray());
+        CollectionAssert.AreEqual(new[] { "--startclosedtotray", "--hidesplashscreen", "--userdatadir", fixture.Data }, info.ArgumentList.ToArray());
         var fullscreen = PlayniteSetupPlatform.LaunchInfo(fixture.Installation with { Fullscreen = true });
         Assert.AreEqual(Path.Combine(fixture.Program, "Playnite.DesktopApp.exe"), fullscreen.FileName,
-            "A background connection must not reopen fullscreen or apply its display mode.");
+            "Launch the Desktop executable; Playnite retains ownership of its startup preferences.");
         CollectionAssert.AreEqual(info.ArgumentList.ToArray(), fullscreen.ArgumentList.ToArray());
         Assert.IsFalse(info.UseShellExecute);
         var result = await fixture.Service.StartAsync(fixture.Installation, _ => { }, default);
