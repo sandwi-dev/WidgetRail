@@ -6,6 +6,27 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal static partial class PlayniteLibraryConnectionPresentation
 {
+    internal static WidgetModal StoppedDialog(PlayniteSetupView setup)
+    {
+        var prefix = PlayniteLibraryWidget.SetupPrefix;
+        var children = new List<WidgetElement>
+        {
+            UI.Text("Start Playnite in the tray to use your library. Your normal library updates will run.",
+                prefix + "stopped.message").Classes("playnite-library-setup-path"),
+        };
+        if (setup.Progress is { } progress)
+            children.Add(UI.Text(progress, prefix + "stopped.progress").Classes("playnite-library-setup-path"));
+        else if (setup.Message is { } message && !setup.Connected)
+            children.Add(UI.Alert("Could not connect", message, AlertTone.Warning, prefix + "stopped.error"));
+        children.Add(UI.Button("Start Playnite", PlayniteLibraryWidget.SetupStartAction, PlayniteLibraryWidget.SetupStartAction)
+            .Busy(setup.Busy).Classes("playnite-library-setup-primary"));
+        children.Add(UI.Button("Connection settings", PlayniteLibraryWidget.PlayniteOpenActionId, prefix + "stopped.settings")
+            .Disabled(setup.Busy));
+        return new("playnite-start-dialog", "Playnite isn't running",
+            UI.Stack(prefix + "stopped.content", children.ToArray()).Classes("playnite-library-setup-actions"),
+            PlayniteLibraryWidget.SetupStartAction, prefix + "dismiss");
+    }
+
     private static WidgetView RenderSetup(PlayniteLibraryConnectionState state)
     {
         var setup = state.Setup!;

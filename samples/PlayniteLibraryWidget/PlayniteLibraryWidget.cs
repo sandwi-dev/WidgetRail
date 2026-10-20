@@ -198,7 +198,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             navigation.Route == PlayniteLibraryRoute.Library ? _indexedHome : null, favoritesSource:
             navigation.Route == PlayniteLibraryRoute.Library ? _indexedFavorites : null);
         var root = ScopePresentation(navigation, view.Root);
-        var initialFocusId = view.FocusGroupEntryRequest is not null ||
+        var initialFocusId = state.HomeWarmDisplayOnly || state.CanStartPlaynite || view.FocusGroupEntryRequest is not null ||
             navigation.Route == PlayniteLibraryRoute.Categories ||
             navigation.Route == PlayniteLibraryRoute.Browse &&
             local.BrowseInitialFocusId is not null
@@ -208,7 +208,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
             : navigation.InitialFocusId ?? view.InitialFocusId;
         initialFocusId = ResolveInitialFocus(
             root, initialFocusId, view.InitialFocusId, navigation.InputScopeId,
-            allowDisabledRequestedTarget: navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse);
+            allowDisabledRequestedTarget: !state.HomeWarmDisplayOnly && !state.CanStartPlaynite &&
+                navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse);
         var page = view with
         {
             Root = root,
@@ -216,14 +217,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
             ActiveInputScopeId = navigation.InputScopeId,
         };
         lock (_gate)
-            if (navigation.Route == PlayniteLibraryRoute.Browse && local.DetailsItem is null &&
+            if (!state.CanStartPlaynite && navigation.Route == PlayniteLibraryRoute.Browse && local.DetailsItem is null &&
                 local.ContentEntryScopeId == navigation.InputScopeId && local.ContentEntryRequestId > 0 &&
                 local.ContentEntryRequestId == BrowseState.ModalReturnRequestId &&
                 BrowseState.ModalReturn is { } returnTarget &&
                 returnTarget.QueryGeneration == _indexedBrowse.Descriptor.QueryGeneration)
                 page = page with { FocusGroupEntryRequest = _indexedBrowse.Enter(
                     PlayniteLibraryPresentation.ScrollId, local.ContentEntryRequestId, returnTarget) };
-        if (navigation.Route == PlayniteLibraryRoute.Library && local.DetailsItem is null &&
+        if (!state.CanStartPlaynite && !state.HomeWarmDisplayOnly &&
+            navigation.Route == PlayniteLibraryRoute.Library && local.DetailsItem is null &&
             local.ContentEntryScopeId == navigation.InputScopeId && local.ContentEntryRequestId > 0 &&
             local.ContentEntryRequestId == HomeState.ModalReturnRequestId && HomeState.ModalReturn is { } homeReturn)
         {
@@ -231,6 +233,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (homeReturn.QueryGeneration == source.Descriptor.QueryGeneration)
                 page = page with { FocusGroupEntryRequest = source.Enter(homeReturn.CollectionId, local.ContentEntryRequestId, homeReturn) };
         }
+        if (local.StoppedPlayniteDialogOpen && local.StoppedPlaynite is not null &&
+            navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
+            return page.WithModal(PlayniteLibraryConnectionPresentation.StoppedDialog(local.Setup));
         if (local.FilterDraft is { } draft && navigation.Route == PlayniteLibraryRoute.Browse)
             return page.WithModal(PlayniteLibraryPresentation.Filters(state, draft));
         if (local.DetailsItem is { } details && navigation.Route is
@@ -597,6 +602,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteOpenActionId:
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                _model.Update(state => state with { StoppedPlayniteDialogOpen = false });
                 if (_navigation.Push(PlayniteLibraryRoute.PlayniteConnection,
                         action.SourceElementId) == WidgetNavigationResult.Changed)
                 {
@@ -1906,7 +1912,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         ActiveCategoryId = local.ActiveCategoryId,
         CanStartPlaynite = local.StoppedPlaynite is not null,
-        PlayniteSetupBusy = local.Setup.Busy,
+        HomeWarmDisplayOnly = route == PlayniteLibraryRoute.Library && local.IndexedHome.Publication?.Query.IsWarmDisplayOnly == true,
         SearchFocusPending = local.SearchFocusPending,
         SearchExpanded = local.SearchExpanded,
         BrowseInitialFocusId = local.BrowseInitialFocusId,

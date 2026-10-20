@@ -9,6 +9,65 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod]
+    public async Task StoppedPlayniteOpensFocusedDialogAndDismissesToReachableRecovery()
+    {
+        var warm = new PlayniteLibraryPrivateState(PlayniteLibraryPrivateState.CurrentVersion,
+            [new("saved-offline", "Cached game", "Steam")]);
+        var host = new FakeHost(1, new WidgetTestPrivateState(System.Text.Json.JsonSerializer.Serialize(warm), 1))
+            { FailAfterOffset = 0 };
+        var services = host.Services();
+        var setup = new SetupFixture { Stopped = true, Pending = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        var widget = WidgetTestHost.Attach(new LauncherWidget(new TestApplicationService(services, host),
+            new FakeConnectionClient(), setupService: setup), services);
+        await Interactive(widget);
+        try
+        {
+            await WaitFor(() => widget.Collection.Status == WidgetPagedResourceStatus.Error &&
+                widget.RenderState.Value.StoppedPlaynite is not null, "stopped cached library");
+            var modal = Snapshot(widget, 172_001);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(modal).Count);
+            Assert.AreEqual("playnite-start-dialog.scope", modal.ActiveInputScopeId);
+            Assert.AreEqual(LauncherWidget.SetupStartAction, modal.InitialFocusId);
+            Assert.IsNull(modal.FocusGroupEntryRequest);
+            var primary = Nodes(modal.Root).Single(node => node.Id == modal.InitialFocusId);
+            Assert.IsFalse(primary.IsDisabled == true);
+            Assert.IsFalse(Nodes(modal.Root).Any(node => node.Kind == ViewNodeKind.IndexedCollection),
+                "Offline recovery must not leave focusable collection shells full of disabled cached games.");
+            await widget.OnActionAsync(new(LauncherWidget.SetupPrefix + "dismiss", "playnite-start-dialog.close"));
+            var page = Snapshot(widget, 172_002);
+            Assert.IsFalse(Nodes(page.Root).Any(node => node.Kind == ViewNodeKind.ModalLayer));
+            Assert.AreEqual("playnite-library.offline.action", page.InitialFocusId);
+            Assert.IsFalse(Nodes(page.Root).Single(node => node.Id == page.InitialFocusId).IsDisabled == true);
+            await widget.OnActionAsync(new(LauncherWidget.SetupPrefix + "prompt", page.InitialFocusId!));
+            Assert.AreEqual("playnite-start-dialog.scope", Snapshot(widget, 172_003).ActiveInputScopeId);
+            await widget.OnActionAsync(new(LauncherWidget.SetupStartAction, LauncherWidget.SetupStartAction));
+            await WaitFor(() => setup.StartCalls == 1, "start from dialog");
+            var busy = Snapshot(widget, 172_004);
+            Assert.AreEqual(LauncherWidget.SetupStartAction, busy.InitialFocusId);
+            Assert.IsTrue(Nodes(busy.Root).Single(node => node.Id == busy.InitialFocusId).IsBusy == true);
+            setup.Pending.SetResult(new(false, "Not ready", "Finish the Playnite startup dialog, then retry."));
+            await WaitFor(() => !widget.RenderState.Value.Setup.Busy, "failed start");
+            Assert.AreEqual("playnite-start-dialog.scope", Snapshot(widget, 172_005).ActiveInputScopeId);
+            setup.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await widget.OnActionAsync(new(LauncherWidget.SetupStartAction, LauncherWidget.SetupStartAction));
+            await WaitFor(() => setup.StartCalls == 2, "second start");
+            await widget.OnActionAsync(new(LauncherWidget.SetupPrefix + "dismiss", "playnite-start-dialog.close"));
+            setup.Pending.SetResult(new(false, "Not ready", "Try again."));
+            await WaitFor(() => !widget.RenderState.Value.Setup.Busy, "dismissed operation finishes");
+            Assert.AreEqual("playnite-library.offline.action", Snapshot(widget, 172_007).InitialFocusId,
+                "Finishing a dismissed operation must not navigate to another page.");
+            await widget.OnActionAsync(new(LauncherWidget.SetupPrefix + "prompt", "playnite-library.offline.action"));
+            setup.Pending = null;
+            host.FailAfterOffset = null;
+            await widget.OnActionAsync(new(LauncherWidget.SetupStartAction, LauncherWidget.SetupStartAction));
+            await WaitFor(() => widget.RenderState.Value.StoppedPlaynite is null &&
+                widget.Collection.Status == WidgetPagedResourceStatus.Ready, "start recovery");
+            Assert.IsFalse(Nodes(Snapshot(widget, 172_006).Root).Any(node => node.Kind == ViewNodeKind.ModalLayer));
+        }
+        finally { setup.Pending?.TrySetCanceled(); await Background(widget); }
+    }
+
+    [TestMethod]
     [DataRow(false, false)]
     [DataRow(false, true)]
     [DataRow(true, false)]

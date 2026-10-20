@@ -22,7 +22,7 @@ internal sealed record PlayniteLibraryPresentationState(
     internal string? ActiveCategoryId { get; init; }
     internal bool SearchFocusPending { get; init; }
     internal bool CanStartPlaynite { get; init; }
-    internal bool PlayniteSetupBusy { get; init; }
+    internal bool HomeWarmDisplayOnly { get; init; }
     internal bool SearchExpanded { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
     internal long ContentEntryRequestId { get; init; }
@@ -128,10 +128,7 @@ internal static partial class PlayniteLibraryPresentation
             header = UI.Row("playnite-library.home.actions",
                     NavigationTabs(state),
                     UI.Row("playnite-library.home.utilities",
-                            [.. state.CanStartPlaynite ? new WidgetElement[] {
-                                UI.Button("Start Playnite", PlayniteLibraryWidget.SetupStartAction, PlayniteLibraryWidget.SetupStartAction)
-                                    .Busy(state.PlayniteSetupBusy).Disabled(!state.Interactive).Classes("playnite-library-control") } : [],
-                            LibraryNavigation(state, renderActionsEnabled)])
+                            LibraryNavigation(state, renderActionsEnabled))
                         .Classes("playnite-library-home-utilities"))
                 .Classes("playnite-library-home-actions");
         if (state.Route == PlayniteLibraryRoute.Categories)
@@ -240,6 +237,19 @@ internal static partial class PlayniteLibraryPresentation
                             PlayniteLibraryWidget.PlayniteOpenActionId, WidgetGlyph.Settings)))
                 .Classes("playnite-library-content");
             initialFocus = "playnite-library.connection-required.action";
+        }
+        else if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
+                 (state.CanStartPlaynite || state.HomeWarmDisplayOnly && snapshot.Status == WidgetPagedResourceStatus.Error))
+        {
+            var error = PlayniteLibraryAvailabilityPresentation.Error(snapshot.Error);
+            content = UI.Stack("playnite-library.content",
+                UI.EmptyState(state.CanStartPlaynite ? "Playnite isn't running" : error.Title,
+                    state.CanStartPlaynite ? "Start Playnite in the tray to load your library." : error.Message,
+                    "playnite-library.offline",
+                    new ComponentAction(state.CanStartPlaynite ? "Start Playnite…" : "Try again",
+                        state.CanStartPlaynite ? PlayniteLibraryWidget.SetupPrefix + "prompt" : "playnite-library.retry")))
+                .Classes("playnite-library-content");
+            initialFocus = "playnite-library.offline.action";
         }
         else if (state.Route == PlayniteLibraryRoute.Categories)
         {
@@ -359,7 +369,7 @@ internal static partial class PlayniteLibraryPresentation
                     .Classes("playnite-library-warning"));
             }
             content = UI.Stack("playnite-library.content", children.ToArray()).Classes("playnite-library-content");
-            initialFocus = HomeRailId;
+            initialFocus = state.HomeWarmDisplayOnly ? "playnite-library.home.view-library" : HomeRailId;
         }
         else if (indexedBrowse is { Descriptor.Count: > 0 })
         {
@@ -469,7 +479,7 @@ internal static partial class PlayniteLibraryPresentation
                 .Classes("playnite-library-content");
         }
         FocusGroupEntryRequest? contentEntry = null;
-        if (indexedHome is { Descriptor.Count: > 0 } && catalogPage)
+        if (indexedHome is { Descriptor.Count: > 0 } && catalogPage && !state.HomeWarmDisplayOnly)
         {
             if (state.ContentEntryRequestId > 0 && snapshot.Status is WidgetPagedResourceStatus.Ready or WidgetPagedResourceStatus.Error)
                 contentEntry = indexedHome.Enter(HomeRailId, state.ContentEntryRequestId);
@@ -483,7 +493,7 @@ internal static partial class PlayniteLibraryPresentation
                 contentEntry = indexedBrowse.Enter(ScrollId, state.ContentEntryRequestId);
             }
         }
-        else if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
+        else if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse && !catalogPage &&
             content is ContainerElement contentGroup)
         {
             // Only results belong to this group. Header and filter controls must
@@ -619,7 +629,7 @@ internal static partial class PlayniteLibraryPresentation
         }
         if (state.Route == PlayniteLibraryRoute.Browse &&
             state.BrowseInitialFocusId is null &&
-            !catalogPage && contentEntry is null)
+            !catalogPage && contentEntry is null && !state.CanStartPlaynite)
             initialFocus = "playnite-library.search";
         if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
         {

@@ -18,7 +18,11 @@ public sealed partial class PlayniteLibraryWidget
             {
                 var stopped = await _setupService.StoppedInstallationAsync(context.CancellationToken).ConfigureAwait(false);
                 context.CancellationToken.ThrowIfCancellationRequested();
-                _model.Update(state => state.Setup.Busy || context.CancellationToken.IsCancellationRequested ? state : state with { StoppedPlaynite = stopped });
+                _model.Update(state => state.Setup.Busy || context.CancellationToken.IsCancellationRequested ? state : state with
+                {
+                    StoppedPlaynite = stopped,
+                    StoppedPlayniteDialogOpen = stopped is not null && state.DetailsItem is null && state.FilterDraft is null,
+                });
             }
             catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested) { }
             catch (Exception) { _model.Update(state => state with { StoppedPlaynite = null }); }
@@ -64,18 +68,19 @@ public sealed partial class PlayniteLibraryWidget
                     ? await _setupService.StartAsync(stopped!, Progress, context.CancellationToken).ConfigureAwait(false)
                     : await _setupService.ApplyAsync(plan!, Progress, context.CancellationToken).ConfigureAwait(false);
                 _model.Update(state => state with { Setup = state.Setup with { Busy = false, Progress = null,
-                    Message = result.Message, Connected = result.Connected }, StoppedPlaynite = result.Connected ? null : state.StoppedPlaynite });
+                    Message = result.Message, Connected = result.Connected }, StoppedPlaynite = result.Connected ? null : state.StoppedPlaynite,
+                    StoppedPlayniteDialogOpen = !result.Connected && state.StoppedPlayniteDialogOpen });
                 if (result.Connected)
                 {
                     _application.ResetConnectionCache();
                     _playniteConnection.Reset();
                     _model.Update(state => state with { PlayniteKind = PlayniteBridgeConnectionKind.Connected, PlayniteCode = "connected" });
                     if (_navigation.Value.Route == PlayniteLibraryRoute.PlayniteConnection) _navigation.Back(SetupPrefix + "apply");
-                    if (_navigation.Value.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
+                    if (_navigation.Value.Route == PlayniteLibraryRoute.Library)
                         await ReturnToLibraryAsync().ConfigureAwait(false);
+                    else if (_navigation.Value.Route == PlayniteLibraryRoute.Browse)
+                        await ReloadQueryAsync(preserveContentFocus: true).ConfigureAwait(false);
                 }
-                else if (_navigation.Value.Route != PlayniteLibraryRoute.PlayniteConnection)
-                    _navigation.Push(PlayniteLibraryRoute.PlayniteConnection, SetupStartAction);
             }
             catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested) { FinishSetupError("Setup was interrupted. Open connection settings to retry or recover it."); }
             catch (Exception error) { FinishSetupError(SetupError(error)); }
@@ -96,6 +101,16 @@ public sealed partial class PlayniteLibraryWidget
     private ValueTask<bool> TryHandleSetupActionAsync(WidgetActionEvent action)
     {
         if (!action.ActionId.StartsWith(SetupPrefix, StringComparison.Ordinal)) return ValueTask.FromResult(false);
+        if (action.ActionId == SetupPrefix + "dismiss" && LifecycleState == WidgetLifecycleState.Interactive)
+        {
+            _model.Update(state => state with { StoppedPlayniteDialogOpen = false });
+            return ValueTask.FromResult(true);
+        }
+        if (action.ActionId == SetupPrefix + "prompt" && LifecycleState == WidgetLifecycleState.Interactive)
+        {
+            _model.Update(state => state with { StoppedPlayniteDialogOpen = state.StoppedPlaynite is not null });
+            return ValueTask.FromResult(true);
+        }
         if (_setupService is null || LifecycleState != WidgetLifecycleState.Interactive || _model.Value.Setup.Busy) return ValueTask.FromResult(true);
         switch (action.ActionId[SetupPrefix.Length..])
         {

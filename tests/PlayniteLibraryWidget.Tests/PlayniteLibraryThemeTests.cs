@@ -219,6 +219,29 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task WarmHomeFailureFocusesRecoveryInsteadOfDisabledSavedGames(bool canStart)
+    {
+        var organization = PlayniteLibraryPrivateState.Empty with
+        {
+            Items = [new("saved-offline-theme", "Cached game", "Steam")],
+        };
+        var state = State(Snapshot(WidgetPagedResourceStatus.Error, []), organization,
+            PlayniteLibraryRoute.Library, []) with { ContentEntryRequestId = 1, CanStartPlaynite = canStart };
+        await using var fixture = new IndexedPresentationFixture(state, [], warmDisplayOnly: true);
+        await fixture.StartAsync();
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.offline-theme");
+        var snapshot = host.CurrentSnapshot;
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        Assert.IsFalse(Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.IndexedCollection));
+        Assert.AreEqual("playnite-library.offline.action", snapshot.InitialFocusId);
+        var recovery = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
+        Assert.IsFalse(recovery.IsDisabled == true);
+        Assert.AreEqual(canStart ? WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget.SetupPrefix + "prompt" : "playnite-library.retry", recovery.ActionId);
+    }
+
+    [TestMethod]
     public async Task IndexedWarmHomeKeepsMissingArtworkLabelsWithoutEnablingSavedOnlyGames()
     {
         var organization = PlayniteLibraryPrivateState.Empty with
@@ -232,6 +255,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.warm-theme");
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot).Count);
         Assert.IsNull(host.CurrentSnapshot.FocusGroupEntryRequest, "Loading must not request entry into disabled saved-only rows.");
+        Assert.AreEqual("playnite-library.home.view-library", host.CurrentSnapshot.InitialFocusId,
+            "Loading must focus a reachable control, not the nonempty collection containing only disabled rows.");
         using var lease = await host.AcquireAsync(PlayniteLibraryPresentation.HomeRailId, 0, 1);
         var poster = lease.Range.Items.Single().Root;
         Assert.IsTrue(poster.IsDisabled == true);

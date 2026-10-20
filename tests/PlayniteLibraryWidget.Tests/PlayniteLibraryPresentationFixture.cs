@@ -45,7 +45,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         internal IndexedPresentationFixture(PlayniteLibraryPresentationState state,
             IReadOnlyList<PlayniteLibraryItem> items, bool warmDisplayOnly = false)
         {
-            this.state = state with { Collection = state.Collection with { Items = [] } };
+            this.state = state with { Collection = state.Collection with { Items = [] }, HomeWarmDisplayOnly = warmDisplayOnly };
             var byId = items.ToDictionary(item => item.Value.SavedId, StringComparer.Ordinal);
             var games = items.Select(item => new PlayniteBridgeGame(item.Value.SavedId,
                 item.Presentation.DisplayName, item.Presentation.Source.DisplayName,

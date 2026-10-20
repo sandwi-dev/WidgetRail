@@ -26,7 +26,10 @@ without requiring you to download a plugin or copy a token.
 3. Open the widget and choose **Set up connection**. Setup detects Playnite and its data profile; choose a profile if more than one is found.
 4. Select the displayed connection action. When installation or repair is needed, the button explains that Playnite will restart. Setup preserves its library and integration preferences, connects, and returns to your library.
 
-If Playnite is stopped later, the widget offers **Start Playnite**. It starts
+If Playnite is stopped later, opening the widget shows a **Playnite isn't running**
+dialog with **Start Playnite** already focused. B dismisses it to a recovery screen;
+the launch action can be reopened there. Starting Playnite keeps focus on the busy
+button and reports connection failures in the same dialog. It starts
 Playnite Desktop in the tray with the selected data profile and your normal
 library-update settings, then loads the library automatically.
 

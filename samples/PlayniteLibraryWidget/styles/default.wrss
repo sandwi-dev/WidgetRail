@@ -192,6 +192,7 @@
 .wrail-modal { background-material: acrylic; background-tint-opacity: var(--acrylic-tint-opacity, .35); background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25); width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
 /* The shared row header reserves hint width; long titles wrap in the remaining space. */
 .wrail-modal__title { font-size: 24px; line-height: 1.2; }
+#playnite-start-dialog { width: 560px; height: 380px; max-height: 460px; min-height: 0px; }
 
 /* Compact browsing: one toolbar, quiet filter chips, and one focused summary. */
 .playnite-library-toolbar { width: 100%; min-width: 0; align: center; gap: 10px; }
