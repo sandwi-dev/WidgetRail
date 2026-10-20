@@ -65,10 +65,8 @@ internal static class PlayniteLibraryDetailsPresentation
         if (!current || launching || launchState is not null)
             controlItems.Add(UI.Text(!current ? "Game no longer in the current results" : status,
                 Prefix + "status").Classes("playnite-library-details-meta"));
-        controlItems.Add(extras.Tab == PlayniteDetailsTab.Achievements ? buttons.AddClasses("playnite-library-achievement-game-actions") : buttons);
-        controlItems.Add(extras.Tab == PlayniteDetailsTab.Achievements
-            ? CompletionSelect(extras, completion, generation, !current).AddClasses("playnite-library-achievement-completion")
-            : CompletionSelect(extras, completion, generation, !current));
+        controlItems.Add(buttons);
+        controlItems.Add(CompletionSelect(extras, completion, generation, !current));
         var controls = UI.Stack(Prefix + "controls", controlItems.ToArray())
             .Classes("playnite-library-details-controls");
         var tabName = extras.Tab.ToString().ToLowerInvariant();
@@ -118,20 +116,16 @@ internal static class PlayniteLibraryDetailsPresentation
         var tabBody = extras.Tab == PlayniteDetailsTab.Achievements
             ? UI.Grid(Prefix + "achievements.viewport", [GridTrack.Star()], [GridTrack.Star()], tabContent.ToArray()).Classes("playnite-library-achievement-page")
             : (WidgetElement)UI.VerticalScroll(modalId + ".scroll", content.ToArray()).Classes("playnite-library-details-scroll");
-        var header = extras.Tab == PlayniteDetailsTab.Achievements
-            ? UI.Row(Prefix + "overview-header", controls.AddClasses("playnite-library-achievement-game-controls"))
-                .Classes("playnite-library-achievement-game-header")
-            : UI.Row(Prefix + "overview-header", poster, controls).Classes("playnite-library-details-header");
-        // Keep the rail outside the changing section: the compact achievements header
-        // must not move navigation or bypass its content transition. A star row keeps
-        // the indexed achievements viewport bounded without adding an outer scroll.
-        var section = UI.Grid(Prefix + "tab.content", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
-                header, tabBody.InGrid(row: 1))
-            .Spacing(16, 0).Classes("playnite-library-details-layout")
+        var header = UI.Row(Prefix + "overview-header", poster, controls).Classes("playnite-library-details-header");
+        // Game identity and actions belong to the modal, not the selected section.
+        // Keep them and the rail stationary while only the bounded section animates.
+        var section = UI.Grid(Prefix + "tab.content", [GridTrack.Star()], [GridTrack.Star()], tabBody)
+            .Classes("playnite-library-details-layout")
             .TransitionContent(Prefix + "navigation", tabName, (int)extras.Tab);
-        var body = UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
-                navigationRail,
-                section.InGrid(row: 1))
+        var body = UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+                header,
+                navigationRail.InGrid(row: 1),
+                section.InGrid(row: 2))
             .Spacing(16, 0).Classes("playnite-library-details-layout")
             .Shortcut(ControllerButton.LeftBumper, Prefix + "tab.previous", "Previous details tab")
             .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab")

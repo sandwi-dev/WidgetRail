@@ -577,15 +577,15 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(ViewNodeKind.Row, nodes.Single(node => node.Id == "playnite-library.details.actions").Kind);
         Assert.AreEqual(ViewNodeKind.Grid, options.Kind);
         Assert.AreEqual(GridTrackSizing.Auto, options.GridLayout!.Rows[0].Sizing);
-        Assert.AreEqual(GridTrackSizing.Star, options.GridLayout.Rows[1].Sizing);
-        var section = options.Children[1];
-        Assert.AreEqual("playnite-library.details.overview-header", section.Children[0].Id);
-        Assert.AreEqual(ViewNodeKind.Scroll, section.Children[1].Kind);
-        Assert.AreEqual(1, section.Children[1].GridCell!.Row);
-        Assert.IsTrue(options.Children[0].StyleClasses.Contains("playnite-library-details-tabs"));
-        Assert.IsFalse(Nodes(options.Children[0]).Any(node => node.Id == "playnite-library.details." + "poster"));
+        Assert.AreEqual(GridTrackSizing.Auto, options.GridLayout.Rows[1].Sizing);
+        Assert.AreEqual(GridTrackSizing.Star, options.GridLayout.Rows[2].Sizing);
+        var section = options.Children[2];
+        Assert.AreEqual("playnite-library.details.overview-header", options.Children[0].Id);
+        Assert.AreEqual(ViewNodeKind.Scroll, section.Children[0].Kind);
+        Assert.IsTrue(options.Children[1].StyleClasses.Contains("playnite-library-details-tabs"));
+        Assert.IsFalse(Nodes(options.Children[1]).Any(node => node.Id == "playnite-library.details." + "poster"));
         CollectionAssert.AreEqual(new[] { "Overview", "Information", "Achievements", "Activity", "Links" },
-            Nodes(options.Children[0]).Where(node => node.ActionId?.StartsWith("playnite-library.details." + "tab.") == true)
+            Nodes(options.Children[1]).Where(node => node.ActionId?.StartsWith("playnite-library.details." + "tab.") == true)
                 .Select(node => node.Text).ToArray());
         Assert.IsFalse(nodes.Any(node => node.Kind == ViewNodeKind.Button && node.Text is "Close" or "Refresh"));
         var header = snapshot.Root.Children[1].Children[0];
@@ -635,6 +635,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         };
         var page = (await CapturePresentationAsync(State(Snapshot(WidgetPagedResourceStatus.Ready, [game]),
             PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []))).View;
+        string? sharedHeader = null;
         foreach (var state in cases)
         {
             var view = page.WithModal(PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null, extras: state));
@@ -644,20 +645,26 @@ public sealed partial class PlayniteLibraryLayoutTests
             if (!state.ConfirmUninstall)
             {
                 var layout = Nodes(snapshot.Root).Single(node => node.Id == PlayniteLibraryDetailsPresentation.ContentId);
-                Assert.AreEqual(2, layout.Children.Count);
-                var rail = layout.Children[0];
+                Assert.AreEqual(3, layout.Children.Count);
+                var header = layout.Children[0];
+                Assert.AreEqual("playnite-library.details.overview-header", header.Id);
+                var headerJson = System.Text.Json.JsonSerializer.Serialize(header);
+                sharedHeader ??= headerJson;
+                Assert.AreEqual(sharedHeader, headerJson, "Artwork and game controls must retain the same layout on every tab and load state.");
+                Assert.IsTrue(Nodes(header).All(node => node.Transition is null), "The shared game header must not animate with a section.");
+                var rail = layout.Children[1];
                 Assert.IsTrue(rail.StyleClasses.Contains("playnite-library-details-tabs"),
-                    "Tabs stay immediately below the modal title, ahead of every variable-height section.");
+                    "Tabs stay below the shared header, ahead of every variable-height section.");
                 Assert.IsFalse(Nodes(rail).Any(node => node.Id == "playnite-library.details.overview-header"));
-                var section = layout.Children[1];
+                var section = layout.Children[2];
                 Assert.AreEqual("playnite-library.details.tab.content", section.Id);
                 Assert.AreEqual(state.Tab.ToString().ToLowerInvariant(), section.Transition!.Key,
                     "Achievements, including loading and empty states, must share the section transition.");
-                Assert.AreEqual(GridTrackSizing.Star, layout.GridLayout!.Rows[1].Sizing);
-                Assert.AreEqual(GridTrackSizing.Star, section.GridLayout!.Rows[1].Sizing);
-                Assert.AreEqual("playnite-library.details.overview-header", section.Children[0].Id);
+                Assert.AreEqual(GridTrackSizing.Star, layout.GridLayout!.Rows[2].Sizing);
+                Assert.AreEqual(GridTrackSizing.Star, section.GridLayout!.Rows[0].Sizing);
+                Assert.IsFalse(Nodes(section).Any(node => node.Id is "playnite-library.details.overview-header" or "playnite-library.details.play"));
                 Assert.AreEqual(state.Tab == PlayniteDetailsTab.Achievements ? ViewNodeKind.Grid : ViewNodeKind.Scroll,
-                    section.Children[1].Kind, "The virtualized achievement viewport must not acquire an outer scroll viewer.");
+                    section.Children[0].Kind, "The virtualized achievement viewport must not acquire an outer scroll viewer.");
             }
             ExportFixture("Details-" + state.Tab + "-" + state.Page + "-" + state.AchievementsLoading + "-" + state.ActivityLoading + "-" + state.ConfirmUninstall, snapshot);
         }
