@@ -8,9 +8,21 @@ public sealed partial class MarketplaceWidget
     private sealed record BrowseContext(MarketplaceSnapshot Snapshot, Section Section, string Search,
         string? Selected, string? ReviewToken, string SourceKey, MarketplaceItem[] Items, TextSuggestionCatalog Suggestions)
     {
-        internal bool Matches(State state) => ReferenceEquals(Snapshot, state.Snapshot) && Section == state.Section &&
-            Search == state.Search && Selected == state.Selected && ReviewToken == state.ReviewToken;
+        internal bool Matches(State state) => Section == state.Section && Search == state.Search &&
+            Selected == state.Selected && ReviewToken == state.ReviewToken &&
+            (ReferenceEquals(Snapshot, state.Snapshot) || SameListings(Snapshot.Items, state.Snapshot.Items) &&
+                (Section != Section.Updates ||
+                    (Snapshot.UpdateBatch?.Items.Select(item => item.PackageId) ?? []).SequenceEqual(
+                        state.Snapshot.UpdateBatch?.Items.Select(item => item.PackageId) ?? [], StringComparer.Ordinal)));
     }
+
+    // Transport snapshots own new list instances. Only listing changes affect
+    // these read-only previews; operation progress and check times do not.
+    private static bool SameListings(IReadOnlyList<MarketplaceItem> left, IReadOnlyList<MarketplaceItem> right) =>
+        ReferenceEquals(left, right) || left.Count == right.Count && left.Zip(right).All(pair =>
+            pair.First with { Screenshots = pair.Second.Screenshots, SetupRequirements = pair.Second.SetupRequirements } == pair.Second &&
+            pair.First.Screenshots.SequenceEqual(pair.Second.Screenshots, StringComparer.Ordinal) &&
+            (pair.First.SetupRequirements ?? []).SequenceEqual(pair.Second.SetupRequirements ?? [], StringComparer.Ordinal));
 
     private readonly object browseGate = new();
     private BrowseContext? browseContext;

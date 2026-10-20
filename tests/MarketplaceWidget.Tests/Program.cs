@@ -14,7 +14,8 @@ var tests = new (string Name,Func<Task> Run)[] {
     ("Catalogue screenshot actions preserve image identity and return to the exact card", () => ScreenshotNavigation(null)),
     ("Catalogue setup requirements are visible before download and navigation stays outside scrolling", SetupPresentation),
     ("Catalogue empty loading stale and prerequisite states keep navigation usable", () => ExportEdgeStates(null)),
-    ("Reopening checks releases while a slow refresh preserves navigation and existing content", RefreshOnOpening),
+    ("Reopening checks releases without changing preview identity or the update shortcut", RefreshOnOpening),
+    ("Preview sources ignore transport and operation changes but follow changed listing metadata", PreviewSnapshotStability),
     ("Downloads retain focus and installation requires the exact open full-trust review", Review),
     ("Retained older release availability is labelled in browse and details", RetainedAvailability),
     ("Retained newer versions remain available through normal update actions", RetainedUpdate),
@@ -404,11 +405,62 @@ static async Task RefreshOnOpening()
     Check(f.View().InitialFocusId == card.Id, "Refresh lost the remembered card on Back");
     f.RefreshGate.SetResult();
     await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
+    var source = Node(f, "marketplace.previews")!.FocusPreviewSource;
+    var suggestions = Node(f, "marketplace.search")!.TextEntrySuggestions;
+    var checkedText = Node(f, "marketplace.checked")!.Text;
     await WidgetTestHost.SetLifecycleStateAsync(f.Widget, WidgetLifecycleState.Background);
     f.Commands.Clear();
+    f.StatusGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    f.RefreshGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    f.Snapshot = f.Snapshot with { Revision = f.Snapshot.Revision + 1, CheckedAtUtc = f.Snapshot.CheckedAtUtc!.Value.AddMinutes(1) };
     await WidgetTestHost.SetLifecycleStateAsync(f.Widget, WidgetLifecycleState.Interactive);
+    await Until(() => f.Commands.Any(c => c.Action == "status"));
+    Check(Node(f, "marketplace.refresh")?.IsBusy == true && f.View().Root.Shortcuts.Any(s => s.Button == ControllerButton.Y),
+        "Resume removed the Y guide entry instead of keeping the busy button");
+    await f.Act("marketplace.refresh");
+    Check(!f.Commands.Any(c => c.Action == "refresh"), "Busy shortcut started a competing refresh");
+    f.StatusGate.SetResult();
+    await Until(() => Node(f, "marketplace.checked")!.Text != checkedText);
     await Until(() => f.Commands.Any(c => c.Action == "refresh"));
-    Check(f.Commands.All(c => c.Action is "status" or "refresh"), "Reopening mutated a package without user action");
+    Check(f.Commands.Where(c => c.Action == "refresh").All(c => !c.ForceRefresh), "Reopening bypassed host freshness");
+    Check(Node(f, "marketplace.previews")!.FocusPreviewSource == source && Node(f, "marketplace.search")!.TextEntrySuggestions == suggestions,
+        "An unchanged resumed catalogue retired its preview or search source");
+    Check(f.View().InitialFocusId == card.Id && Node(f, "marketplace.tab.installed")?.IsSelected == true,
+        "Resume lost the selected card or section");
+    f.RefreshGate.SetResult();
+    await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
+    Check(f.View().Root.Shortcuts.Any(s => s.Button == ControllerButton.Y) && Node(f, "marketplace.previews")!.FocusPreviewSource == source,
+        "Completing the automatic check changed the guide or preview source");
+    await f.Act("marketplace.refresh");
+    await Until(() => f.Commands.Any(c => c.Action == "refresh" && c.ForceRefresh));
+}
+
+static async Task PreviewSnapshotStability()
+{
+    await using var f = new Fixture(); await f.Start();
+    await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
+    using var host = WidgetTestHost.CreateIndexedCollectionHost(f.Widget, "catalogue-stable-preview");
+    var surface = Walk(host.CurrentSnapshot.Root).Single(n => n.Id == "marketplace.previews");
+    var card = Walk(host.CurrentSnapshot.Root).First(n => n.Kind == ViewNodeKind.ActionSurface);
+    using var preview = await host.AcquirePreviewAsync(surface.Id, card.FocusPreviewKey!);
+    for (var index = 0; index < 3; ++index)
+    {
+        f.Snapshot = f.Snapshot with { Revision = f.Snapshot.Revision + 1,
+            Operation = new(new string('a', 32), "refresh", "completed", null, Message: "Check completed " + index) };
+        await f.Act("marketplace.status");
+        await Until(() => Node(f, "marketplace.status")?.Text == "Check completed " + index && Node(f, "marketplace.refresh")?.IsBusy != true);
+        host.PublishSnapshot();
+        Check(Node(f, surface.Id)!.FocusPreviewSource == surface.FocusPreviewSource,
+            "Status-only changes replaced the preview source");
+    }
+    f.Snapshot = f.Snapshot with { Revision = f.Snapshot.Revision + 1, Items = f.Snapshot.Items.Select(item =>
+        item.Id == Fixture.Id ? item with { Description = "Updated listing", SetupRequirements = ["New prerequisite"] } : item).ToArray() };
+    await f.Act("marketplace.status");
+    await Until(() => Node(f, surface.Id)!.FocusPreviewSource != surface.FocusPreviewSource);
+    host.PublishSnapshot();
+    using var changed = await host.AcquirePreviewAsync(surface.Id, card.FocusPreviewKey!);
+    Check(Walk(changed.Range.Items.Single().Root).Any(node => node.Text?.Contains("New prerequisite") == true),
+        "Real listing changes left the old preview content cached");
 }
 static async Task LargeInventoryUpdates()
 {
@@ -528,6 +580,7 @@ sealed class Fixture : IAsyncDisposable
     internal MarketplaceSnapshot Snapshot=new(1,[new(Id,"First widget","Controller-first example.",[],"2.0.0","1.0.0",1024),new("example.second","Second widget","Another example.",[],"1.0.0")],CheckedAtUtc:DateTimeOffset.UtcNow);
     internal System.Collections.Concurrent.ConcurrentQueue<MarketplaceCommand> Commands=new();
     internal TaskCompletionSource? RefreshGate;
+    internal TaskCompletionSource? StatusGate;
     internal MarketplaceWidget Widget;
     internal Fixture()
     {
@@ -535,6 +588,7 @@ sealed class Fixture : IAsyncDisposable
         foreach(var action in new[]{"status","refresh","inventory","download","install","cancel","download-updates","install-updates"})
             builder.WithHandler(WidgetMarketplaceCapabilities.Command(action),async (command,token)=>{
                 Commands.Enqueue(command);
+                if (command.Action == "status" && StatusGate is not null) await StatusGate.Task.WaitAsync(token);
                 if (command.Action == "refresh" && RefreshGate is not null) await RefreshGate.Task.WaitAsync(token);
                 if(command.Action=="download")Snapshot=Snapshot with {Revision=2,Operation=new(new string('a',32),"download","running",Id)};
                 if (command.Action == "download-updates") Snapshot = Snapshot with { Revision = 2,
@@ -548,7 +602,8 @@ sealed class Fixture : IAsyncDisposable
                     UpdateBatch = Snapshot.UpdateBatch! with { ReviewToken = null, Items = Snapshot.UpdateBatch!.Items.Select(item => item with { State="completed",Review=null }).ToArray() } };
                 if(command.Action=="install")Snapshot=Snapshot with {Revision=4,Items=Snapshot.Items.Select(i=>i.Id==Id?i with {InstalledVersion="2.0.0",AvailableVersionSaved=true}:i).ToArray(),
                     Operation=new(new string('a',32),"install","completed",Id,Message:"Widget updated")};
-                return Snapshot;
+                // Match IPC: even unchanged responses contain fresh list instances.
+                return JsonSerializer.Deserialize<MarketplaceSnapshot>(JsonSerializer.Serialize(Snapshot))!;
             });
         Widget=WidgetTestHost.Attach(new MarketplaceWidget(),builder.Build());
     }

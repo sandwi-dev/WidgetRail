@@ -280,7 +280,9 @@ public sealed partial class MarketplaceWidget : Widget
         if (selected is not null) root = root.Shortcut(ControllerButton.B,"marketplace.back",label: "Catalogue");
         else root = root.Shortcut(ControllerButton.X,"marketplace.tab.updates",label: "Updates");
         if (state.ReviewToken is null) root = root.Shortcut(ControllerButton.LeftStick, "marketplace.search.focus", label: "Search");
-        if (!busy) root = root.Shortcut(ControllerButton.Y,"marketplace.refresh",label: "Check updates");
+        // Keep the guide stable while checks run. OnActionAsync already rejects
+        // refresh during work, downloads and reviews; the button shows busy.
+        root = root.Shortcut(ControllerButton.Y,"marketplace.refresh",label: "Check updates");
         if (selected is null && state.ReviewToken is null)
         {
             var previous = state.Section switch { Section.Browse => "updates", Section.Installed => "browse", _ => "installed" };
