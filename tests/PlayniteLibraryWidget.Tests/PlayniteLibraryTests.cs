@@ -2581,7 +2581,7 @@ public sealed partial class PlayniteLibraryTests
         {
             "_application", "_gate", "_launchGeneration", "_launchStateRecency",
             "_launchStates", "_indexedHome", "_indexedBrowse", "_indexedFavorites",
-            "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementPreviewContext", "achievementPreviews", "_hiddenRows", "_model", "_navigation", "_organization",
+            "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementBrowse", "achievementRows", "achievementPreviews", "_hiddenRows", "_model", "_navigation", "_organization",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",

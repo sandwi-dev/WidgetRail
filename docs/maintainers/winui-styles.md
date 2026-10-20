@@ -54,6 +54,13 @@ as a bounded fallback, retaining the original presentation/row lease.
 
 ## Shared text layout
 
+Rich previews authored inside a widget dialog use that dialog's active input
+scope and paint in the `WidgetDialogPreview` band, above dialog media and below
+fullscreen/shell surfaces. A background page cannot supply a preview while the
+dialog owns focus. Opening a transient control or retiring its source still
+dismisses the preview. Read-only previews do not take focus; widgets can offer an
+explicit details action for longer content without turning the preview interactive.
+
 `WidgetTextStyleAdapter` projects existing WRSS typography onto native `TextBlock`
 properties. Plain text, button/select/text-entry labels, shared component text and
 indexed presentation fragments use the same implementation and complete state maps.

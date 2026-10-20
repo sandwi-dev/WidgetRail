@@ -30,6 +30,18 @@ revealed. Local icons use captured deferred-preview file artwork authority;
 HTTPS icons use the host's existing image path. No library-wide achievement cache
 or polling is added.
 
+Achievement browsing uses an indexed collection over an immutable local query.
+Provider API names supply stable hashed keys; legacy data falls back to name and
+description. Filtering/search/sorting never calls the provider. Unrevealed secret
+names and descriptions do not participate in search or numerical-progress sorting.
+The parent snapshot contains only the viewport and tools, regardless of list size.
+Artwork resolves for realized rows; description previews are deferred. Full details
+reuse the same content builder, with explicit secret reveal and keyed Back entry.
+Filter/search/sort and the current data survive Refresh while the next read is in
+flight. Queries within the host's 512-key continuity budget preserve surviving focus
+and viewport across reordering; explicit detail return uses an indexed target at any
+supported list size. Rows never authorize actions from a retired query.
+
 ## Navigation and library behavior
 
 Home and Library are peer navigation destinations. Library selects Browse; Home

@@ -6,10 +6,13 @@ internal enum PlayniteDetailsTab { Description, Information, Achievements, Activ
 internal sealed record PlayniteGameLink(string Name, string Url);
 internal sealed record PlayniteGameDetails(WidgetAppLibraryItem Item, PlayniteBridgeGame? Game = null);
 internal enum PlayniteAchievementProvider { SuccessStory, PlayniteAchievements }
+internal enum AchievementFilter { All, Locked, Unlocked }
+internal enum AchievementSort { Recent, Rarity, Name, Progress }
 internal sealed record PlayniteAchievementProgress(int Current, int Maximum);
 internal sealed record PlayniteAchievement(string Name, string Description, bool Unlocked,
     DateTimeOffset? UnlockedAt, double? Percent, int? GamerScore, bool Hidden)
 {
+    internal string? Id { get; init; }
     internal PlayniteAchievementProgress? Progress { get; init; }
     internal string? Icon { get; init; }
 }
@@ -46,6 +49,12 @@ internal sealed record PlayniteDetailsExtras
     internal string? OperationMessage { get; init; }
     internal bool OperationBusy { get; init; }
     internal bool ConfirmUninstall { get; init; }
-    internal IReadOnlySet<int> RevealedAchievements { get; init; } = new HashSet<int>();
+    internal IReadOnlySet<string> RevealedAchievements { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+    internal AchievementFilter AchievementFilter { get; init; }
+    internal AchievementSort AchievementSort { get; init; }
+    internal string AchievementSearch { get; init; } = "";
+    internal string? InspectedAchievement { get; init; }
+    internal string? AchievementReturnKey { get; init; }
+    internal long AchievementReturnRequest { get; init; }
     internal int Page { get; init; }
 }

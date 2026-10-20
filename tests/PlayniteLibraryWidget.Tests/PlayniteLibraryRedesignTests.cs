@@ -188,14 +188,14 @@ public sealed partial class PlayniteLibraryTests
         var surface = PageNodes(widget, host.CurrentSnapshot.Root).Single(node => node.Id == DetailAction + "preview-surface");
         Assert.IsNotNull(surface.FocusPreviewSource);
         Assert.IsFalse(PageNodes(widget, host.CurrentSnapshot.Root).Any(node => node.Text == "Secret description"));
-        using var preview = await host.AcquirePreviewAsync(surface.Id, "achievement.0");
+        using var preview = await host.AcquirePreviewAsync(surface.Id, PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]));
         var nodes = Nodes(preview.Range.Items.Single().Root).ToArray();
         Assert.IsFalse(nodes.Any(node => node.Text is "Secret name" or "Secret description"));
         Assert.IsTrue(nodes.Any(node => node.Text == "Secret achievement"));
         Assert.IsFalse(nodes.Any(node => node.IsFocusable));
         Assert.IsFalse(nodes.Any(node => node.ArtworkHandle is not null || node.ImageSource is not null || node.Kind == ViewNodeKind.Progress));
         Assert.IsNull(await preview.ResolveArtworkSourceAsync(preview.Range.Items.Single().Key,
-            PlayniteLibraryDetailsPresentation.AchievementIconHandle(0)));
+            PlayniteAchievementBrowse.IconHandle(PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]))));
         await Background(widget);
     }
 
@@ -216,18 +216,18 @@ public sealed partial class PlayniteLibraryTests
         await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
         using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "achievement-icon");
         var surface = PageNodes(widget, host.CurrentSnapshot.Root).Single(node => node.Id == DetailAction + "preview-surface");
-        Assert.IsTrue(PageNodes(widget, host.CurrentSnapshot.Root).Any(node => node.Text?.Contains("From PlayniteAchievements") == true));
-        using var preview = await host.AcquirePreviewAsync(surface.Id, "achievement.0");
+        Assert.IsTrue(PageNodes(widget, host.CurrentSnapshot.Root).Any(node => node.Text == "PlayniteAchievements"));
+        using var preview = await host.AcquirePreviewAsync(surface.Id, PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]));
         var row = preview.Range.Items.Single();
         var nodes = Nodes(row.Root).ToArray();
-        var handle = PlayniteLibraryDetailsPresentation.AchievementIconHandle(0);
+        var handle = PlayniteAchievementBrowse.IconHandle(PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]));
         Assert.IsTrue(nodes.Any(node => node.ArtworkHandle == handle.Value));
         Assert.IsTrue(nodes.Any(node => node.Kind == ViewNodeKind.Progress));
         Assert.IsFalse(nodes.Any(node => node.IsFocusable || node.ImageSource?.Contains("C:") == true));
         var artwork = await preview.ResolveArtworkSourceAsync(row.Key, handle) as WidgetFileArtwork;
         Assert.IsNotNull(artwork);
         Assert.AreEqual(@"C:\cache\steps.png", artwork.Path);
-        Assert.IsNull(await preview.ResolveArtworkSourceAsync(row.Key, PlayniteLibraryDetailsPresentation.AchievementIconHandle(1)));
+        Assert.IsNull(await preview.ResolveArtworkSourceAsync(row.Key, new WidgetArtworkHandle("forged-icon")));
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsClose, "close"));
         host.PublishSnapshot();
         Assert.IsNull(await preview.ResolveArtworkSourceAsync(row.Key, handle));

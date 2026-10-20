@@ -44,12 +44,30 @@ internal sealed partial class WidgetViewPresenter
         root.KeyDown += ModalKeyDown;
         root.AddHandler(PointerPressedEvent, pressed, true);
         root.AddHandler(PointerWheelChangedEvent, wheel, true);
+        // Dialog paint portals live outside this presenter's visual subtree.
+        // Forward their preview events through the same owner and scope checks.
+        var portal = !ReferenceEquals(root, this);
+        PointerEventHandler previewMoved = (sender, args) => { if (previewEventsAttached) PreviewPointerMoved(sender, args); };
+        PointerEventHandler previewExited = (sender, args) => { if (previewEventsAttached) PreviewPointerExited(sender, args); };
+        RoutedEventHandler previewFocused = (sender, args) => { if (previewEventsAttached) PreviewGotFocus(sender, args); };
+        RoutedEventHandler previewLost = (sender, args) => { if (previewEventsAttached) PreviewLostFocus(sender, args); };
+        KeyEventHandler previewKey = (sender, args) => { if (previewEventsAttached) PreviewKeyPressed(sender, args); };
+        if (portal)
+        {
+            root.PointerMoved += previewMoved; root.PointerExited += previewExited;
+            root.GotFocus += previewFocused; root.LostFocus += previewLost; root.PreviewKeyDown += previewKey;
+        }
         return new InputRootLease(() =>
         {
             root.ContextRequested -= NativeContextRequested; root.PreviewKeyDown -= NativeContextKeyDown;
             root.GotFocus -= focused; root.GettingFocus -= OnGettingFocus; root.PreviewKeyDown -= key; root.PreviewKeyDown -= DirectionalKeyDown;
             root.KeyDown -= ModalKeyDown;
             root.RemoveHandler(PointerPressedEvent, pressed); root.RemoveHandler(PointerWheelChangedEvent, wheel);
+            if (portal)
+            {
+                root.PointerMoved -= previewMoved; root.PointerExited -= previewExited;
+                root.GotFocus -= previewFocused; root.LostFocus -= previewLost; root.PreviewKeyDown -= previewKey;
+            }
         });
     }
     private sealed class InputRootLease(Action release) : IDisposable

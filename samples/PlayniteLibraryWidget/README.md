@@ -81,9 +81,11 @@ Pinned views keep showing the page without its modal.
 first, with [SuccessStory](https://github.com/Lacro59/playnite-successstory-plugin) as a fallback,
 and **Activity** requires [GameActivity](https://github.com/Lacro59/playnite-gameactivity-plugin)
 in Playnite, with saved data for the selected game. Missing data is explained in the
-relevant tab. Locked secret achievements remain hidden until selected. Long achievement
-and activity lists show 20 entries per page. Focus an achievement to see its description,
-icon and progress, where available, in a read-only preview. Data loads when you open the
+relevant tab. Achievements scroll continuously, with local search, All/Locked/Unlocked
+filters, and sorting by recent unlocks, rarity, name or numerical progress when available.
+Focus a row for a read-only preview; select it for full details. **B** returns to the
+same achievement. Secret descriptions, icons and progress stay hidden until you choose
+**Reveal achievement**. Activity retains 20 entries per page. Data loads when you open the
 tab and is reused while that game's details remain open. **Refresh** reads the latest
 locally synced data; it does not ask Steam or another service to sync achievements.
 

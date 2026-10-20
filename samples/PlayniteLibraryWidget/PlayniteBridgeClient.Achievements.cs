@@ -55,6 +55,7 @@ internal sealed partial class PlayniteBridgeClient
             if (characters > 200000) return null;
             if (unlocked) unlockedCount++;
             rows.Add(new {
+                apiName = text(read(item, "ApiName"), 256),
                 name = name, description = description, unlocked = unlocked,
                 dateUnlocked = read(item, "UnlockTimeUtc"), percent = read(item, "GlobalPercentUnlocked"),
                 gamerScore = read(item, "Points"), isHidden = (bool)hiddenValue,

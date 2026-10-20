@@ -178,7 +178,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed || applying || !presentationActive || !presentationInputEnabled || presentationOnly ||
             !IsLoaded || presentation?.IsCurrent != true || HasTransientControl || activeTransition is not null ||
-            surfaceResize?.Playback is { IsCompleted: false } || effectiveView?.Root.Kind == ViewNodeKind.ModalLayer)
+            surfaceResize?.Playback is { IsCompleted: false })
             return null;
         if ((previewEntered || previewPointerIntent && previewPointerOverChrome) && previewSource is { } retained &&
             PreviewEnterButton(retained) is not null && RetainedPreviewIsCurrent(retained))
@@ -204,7 +204,7 @@ internal sealed partial class WidgetViewPresenter
             // Nearest presentation owner is authoritative even when it uses inline layout.
             if (declaration.Node.FocusPreview is not { } options ||
                 previewPointerIntent && !options.OnHover || !previewPointerIntent && !options.OnFocus ||
-                !bindings.TryGetValue(declaration.Node.Id, out var owner) ||
+                !bindings.TryGetValue(declaration.Node.Id, out var owner) || owner.Identity.Scope != activeScope ||
                 VisibleAnchorBounds(anchor, this) is not { Valid: true }) return null;
             return new(owner, source, anchor, row, content, row?.Lease.Range.ScopeId ?? source.Identity.Scope, options,
                 contentKey is null ? null : declaration.Node.FocusPreviewSource,contentKey);
@@ -308,7 +308,9 @@ internal sealed partial class WidgetViewPresenter
 
             previewLayer = new Grid { IsHitTestVisible = true };
             previewLayer.Children.Add(previewFrame);
-            previewPortal = new(layers, this, previewLayer, PresentationLayer.ContentPreview, passive: PreviewEnterButton(source) is null, followComposition: false, attachInput: false);
+            previewPortal = new(layers, this, previewLayer,
+                effectiveView?.Root.Kind == ViewNodeKind.ModalLayer ? PresentationLayer.WidgetDialogPreview : PresentationLayer.ContentPreview,
+                passive: PreviewEnterButton(source) is null, followComposition: false, attachInput: false);
             // NativeTextScaleScope follows the portal's logical owner for authored
             // font sizes. WinUI property inheritance follows its paint parent instead.
             // Forward the already-scaled default once at the fragment root; explicit

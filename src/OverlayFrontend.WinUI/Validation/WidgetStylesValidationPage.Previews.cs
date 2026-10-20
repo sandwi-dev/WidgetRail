@@ -58,6 +58,7 @@ internal sealed partial class WidgetStylesValidationPage
                 var caption = "Adjust this setting without leaving your current page.";
                 var busy = false;
                 var showFirst = true;
+                var dialogMode = false;
                 var secondPreview = true;
                 Publish();
                 await Wait(() => Find<Button>("Widget.preview.first", root) is { IsLoaded: true });
@@ -234,6 +235,15 @@ internal sealed partial class WidgetStylesValidationPage
                 showFirst = false; secondPreview = false; Publish();
                 await Task.Delay(240);
                 Check(!page.IsFocusPreviewOpen, "Removed source cannot reopen from an old timer");
+                showFirst = true; secondPreview = true; dialogMode = true; Publish();
+                await Wait(() => Find<Button>("Widget.preview.first", root) is { IsLoaded: true });
+                first = Find<Button>("Widget.preview.first", root)!;
+                first.Focus(FocusState.Keyboard);
+                await Wait(() => page.IsFocusPreviewOpen);
+                Check(ReferenceEquals(FocusManager.GetFocusedElement(page.XamlRoot), first), "Dialog preview opens without stealing focus from its active dialog");
+                Check((int)PresentationLayer.WidgetDialogPreview > (int)PresentationLayer.WidgetDialogMedia &&
+                    (int)PresentationLayer.WidgetDialogPreview < (int)PresentationLayer.ShellOverlay, "Dialog previews paint above dialog media and below shell overlays");
+                dialogMode = false; Publish();
                 page.Width = 900; root.Width = 920;
 
                 void Publish()
@@ -251,6 +261,8 @@ internal sealed partial class WidgetStylesValidationPage
                         secondElement.InGrid(row: 1, column: 2)).Classes("preview-page");
                     var view = new WidgetView(UI.FocusPresentationSurface(content, UI.Text("Fallback", "preview.default"), "preview.surface")
                         with { Preview = options }, showFirst ? "preview.first" : "preview.second");
+                    if (dialogMode) view = new WidgetView(UI.Button("Background", "background", "preview.background"))
+                        .WithModal(new("preview.modal", "Dialog previews", view.Root, "preview.first", "preview.close"));
                     var snapshot = view.CreateSnapshot("preview.instance", ++sequence);
                     var styles = new Dictionary<string, BridgeNodeRenderStyles>();
                     void Visit(ViewNode node)

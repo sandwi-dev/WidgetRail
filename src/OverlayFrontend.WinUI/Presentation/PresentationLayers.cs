@@ -15,6 +15,7 @@ internal enum PresentationLayer
     ContentPreview = 150,
     WidgetDialog = 200,
     WidgetDialogMedia = 300,
+    WidgetDialogPreview = 350,
     FullscreenBackdrop = 400,
     FullscreenMedia = 500,
     FullscreenChrome = 600,

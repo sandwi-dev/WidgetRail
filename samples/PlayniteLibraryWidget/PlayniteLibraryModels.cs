@@ -80,6 +80,7 @@ internal sealed class PlayniteLibraryActionFeedback(
 
 internal sealed record PlayniteLibraryRenderState
 {
+    internal long AchievementReturnSequence { get; init; }
     internal PlayniteLibraryFilterDraft? FilterDraft { get; init; }
     // Collection is the Home route's independent query/selection model.
     internal required PlayniteLibraryCollectionState Collection { get; init; }

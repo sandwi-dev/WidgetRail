@@ -236,7 +236,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             var current = CurrentCollectionSnapshot.Items.Concat(local.FixedRows.All)
                 .FirstOrDefault(item => item.Key == details.Key);
-            return page.WithModal(PlayniteLibraryDetailsPresentation.Create(
+            var achievementList = PrepareAchievements(local);
+            return ApplyAchievementReturn(page.WithModal(PlayniteLibraryDetailsPresentation.Create(
                 details, local.DetailsCapturedTarget?.IsCurrent ?? current is not null, local.LaunchingSavedId, local.Status,
                 state.LaunchStates.TryGetValue(details.Value.SavedId, out var launchState) ? launchState : null,
                 local.DetailsLoading, local.DetailsError, local.DetailsExtras, state.Organization.Categories,
@@ -245,7 +246,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 state.OrganizationBusy || state.BrowseRetained,
                 local.DetailsExtras.ResolveCompletionStatus(
                     state.CompletionStatuses.GetValueOrDefault(details.Value.SavedId)) ?? string.Empty,
-                local.DetailsGeneration, PrepareAchievementPreviews(local)));
+                local.DetailsGeneration, achievementPreviews?.Descriptor, achievementList, achievementBrowse)), local.DetailsExtras);
         }
         return page;
     }
@@ -1327,7 +1328,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
     }
 
     public override ValueTask<WidgetArtworkSource?> OnResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token = default) =>
-        _application.OwnsArtworkContent ? _application.ResolveArtworkSourceAsync(handle, token) : ValueTask.FromResult<WidgetArtworkSource?>(null);
+        InspectedAchievementArtwork(handle) is { } icon ? ValueTask.FromResult<WidgetArtworkSource?>(icon) :
+            _application.OwnsArtworkContent ? _application.ResolveArtworkSourceAsync(handle, token) : ValueTask.FromResult<WidgetArtworkSource?>(null);
 
     public override ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
         WidgetArtworkHandle handle,
@@ -1933,11 +1935,17 @@ public sealed partial class PlayniteLibraryWidget : Widget
             DetailsItem = item, DetailsGeneration = generation,
             DetailsCapturedTarget = preserveTab ? state.DetailsCapturedTarget : capturedTarget,
             DetailsOpening = preserveTab ? state.DetailsOpening : state.DetailsOpening + 1,
-            DetailsLoading = true, DetailsError = null, DetailsExtras = new() { Tab = tab },
+            DetailsLoading = true, DetailsError = null, DetailsExtras = preserveTab ? state.DetailsExtras with
+            {
+                Full = null, Activity = null, CompletionStatuses = null, CompletionStatusesLoading = false,
+                ActivityLoading = false, AchievementsLoading = false, ActivityError = null, AchievementsError = null,
+                CompletionStatusesError = null, OperationMessage = null, ConfirmedCompletionStatus = null,
+                InspectedAchievement = null, AchievementReturnRequest = 0,
+            } : new() { Tab = tab },
         });
         LoadDetailsOverview(item, generation);
         LoadCompletionStatuses();
-        LoadDetailsSection(tab);
+        LoadDetailsSection(tab, refresh: preserveTab);
     }
 
     private void LoadDetailsOverview(PlayniteLibraryItem item, long generation)

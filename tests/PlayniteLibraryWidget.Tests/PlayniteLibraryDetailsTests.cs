@@ -454,8 +454,12 @@ public sealed partial class PlayniteLibraryTests
         Assert.IsFalse(PageNodes(widget, secret.Root).Any(node => node.Text is "Secret name" or "Secret description"));
         Assert.IsFalse(PageNodes(widget, secret.Root).Any(node => node.AccessibilityLabel?.Contains("Secret name") == true));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(secret).Count);
-        await widget.OnActionAsync(new(DetailAction + "achievement.0", "achievement"));
+        var achievementKey = PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]);
+        await widget.OnActionAsync(new(DetailAction + "achievement.open." + achievementKey, "achievement"));
+        Assert.IsFalse(PageNodes(widget, Snapshot(widget, 122_003).Root).Any(node => node.Text == "Secret name"));
+        await widget.OnActionAsync(new(DetailAction + "achievement.reveal." + achievementKey, "achievement"));
         Assert.IsTrue(PageNodes(widget, Snapshot(widget, 122_003).Root).Any(node => node.Text == "Secret name"));
+        await widget.OnActionAsync(new(DetailAction + "achievement.back", "back"));
         await widget.OnActionAsync(new(DetailAction + "uninstall.confirm", "confirm"));
         Assert.AreEqual(0, application.InstallationRequests.Count);
         await widget.OnActionAsync(new(DetailAction + "uninstall", "options"));

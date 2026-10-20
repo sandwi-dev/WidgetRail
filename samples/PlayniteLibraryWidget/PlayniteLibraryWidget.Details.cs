@@ -88,13 +88,13 @@ public sealed partial class PlayniteLibraryWidget
         }, WidgetOperationLifetime.Active);
     }
 
-    private void LoadDetailsSection(PlayniteDetailsTab tab)
+    private void LoadDetailsSection(PlayniteDetailsTab tab, bool refresh = false)
     {
         var state = _model.Value;
         if (state.DetailsItem is not { } game || tab is not (PlayniteDetailsTab.Achievements or PlayniteDetailsTab.Activity)) return;
         var achievements = tab == PlayniteDetailsTab.Achievements;
-        if (achievements ? state.DetailsExtras.Achievements is not null || state.DetailsExtras.AchievementsLoading
-            : state.DetailsExtras.Activity is not null || state.DetailsExtras.ActivityLoading) return;
+        if (achievements ? !refresh && state.DetailsExtras.Achievements is not null || state.DetailsExtras.AchievementsLoading
+            : !refresh && state.DetailsExtras.Activity is not null || state.DetailsExtras.ActivityLoading) return;
         var generation = state.DetailsGeneration;
         UpdateDetails(generation, value => achievements
             ? value with { AchievementsLoading = true, AchievementsError = null }
@@ -135,6 +135,30 @@ public sealed partial class PlayniteLibraryWidget
         var state = _model.Value;
         if (LifecycleState != WidgetLifecycleState.Interactive || state.DetailsItem is not { } item) return true;
         var name = action.ActionId[DetailsPrefix.Length..];
+        if (name == "achievement.back") { ReturnToAchievements(); return true; }
+        if (name.StartsWith("achievement.open.", StringComparison.Ordinal)) { InspectAchievement(name[17..]); return true; }
+        if (name.StartsWith("achievement.reveal.", StringComparison.Ordinal))
+        {
+            var key = name[19..];
+            if (key == state.DetailsExtras.InspectedAchievement && achievementBrowse?.ByKey.ContainsKey(key) == true)
+                UpdateDetails(state.DetailsGeneration, value => value with { RevealedAchievements = new HashSet<string>(value.RevealedAchievements, StringComparer.Ordinal) { key } });
+            return true;
+        }
+        if (name == "achievement.search" && action.CommittedText is { } text)
+        {
+            UpdateDetails(state.DetailsGeneration, value => value with { AchievementSearch = text.Trim()[..Math.Min(text.Trim().Length, 128)], AchievementReturnRequest = 0 });
+            return true;
+        }
+        if (name.StartsWith("achievement.filter.", StringComparison.Ordinal) && Enum.TryParse<AchievementFilter>(name[19..], out var filter) && Enum.IsDefined(filter))
+        {
+            UpdateDetails(state.DetailsGeneration, value => value with { AchievementFilter = filter, AchievementReturnRequest = 0 });
+            return true;
+        }
+        if (name.StartsWith("achievement.sort.", StringComparison.Ordinal) && Enum.TryParse<AchievementSort>(name[17..], out var sort) && Enum.IsDefined(sort))
+        {
+            UpdateDetails(state.DetailsGeneration, value => value with { AchievementSort = sort, AchievementReturnRequest = 0 });
+            return true;
+        }
         if (name.StartsWith("tab.", StringComparison.Ordinal) &&
             Enum.TryParse<PlayniteDetailsTab>(name[4..], true, out var tab) && Enum.IsDefined(tab))
         {
@@ -162,13 +186,6 @@ public sealed partial class PlayniteLibraryWidget
                 ? state.DetailsExtras.Achievements?.Items.Count ?? 0 : state.DetailsExtras.Activity?.Sessions.Count ?? 0;
             UpdateDetails(state.DetailsGeneration, value => value with
             { Page = Math.Clamp(value.Page + (name.EndsWith("next", StringComparison.Ordinal) ? 1 : -1), 0, Math.Max(0, (count - 1) / PlayniteLibraryDetailsPresentation.PageSize)) });
-            return true;
-        }
-        if (name.StartsWith("achievement.", StringComparison.Ordinal) && int.TryParse(name[12..], out var index) &&
-            state.DetailsExtras.Achievements is { } list && index >= 0 && index < list.Items.Count)
-        {
-            UpdateDetails(state.DetailsGeneration, value => value with
-            { RevealedAchievements = new HashSet<int>(value.RevealedAchievements) { index } });
             return true;
         }
         if (name == "uninstall")
