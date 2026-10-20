@@ -37,6 +37,10 @@ internal enum WidgetResizeReason { WidgetSwitch, ContentSizeChanged }
 /// <summary>Existing global preset meaning, independent of controls and compositor resources.</summary>
 internal static class WidgetMotionPolicy
 {
+    internal static bool CanAnimateSize(double width, double height) =>
+        double.IsFinite(width) && double.IsFinite(height) &&
+        width > 0 && height > 0 && width <= float.MaxValue && height <= float.MaxValue;
+
     // Whole-overlay entrance is independent of section and widget-switch presets.
     // Preserve the original brief bottom-anchored zoom and directional easing.
     internal static WidgetMotionRecipe OverlayVisibility(AppearanceSettings appearance, bool systemAnimationsEnabled,

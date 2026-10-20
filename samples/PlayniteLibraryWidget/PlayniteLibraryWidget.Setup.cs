@@ -17,11 +17,13 @@ public sealed partial class PlayniteLibraryWidget
             try
             {
                 var stopped = await _setupService.StoppedInstallationAsync(context.CancellationToken).ConfigureAwait(false);
+                var plan = stopped is null ? null : await _setupService.InspectAsync(stopped, context.CancellationToken).ConfigureAwait(false);
                 context.CancellationToken.ThrowIfCancellationRequested();
                 _model.Update(state => state.Setup.Busy || context.CancellationToken.IsCancellationRequested ? state : state with
                 {
                     StoppedPlaynite = stopped,
                     StoppedPlayniteDialogOpen = stopped is not null && state.DetailsItem is null && state.FilterDraft is null,
+                    Setup = state.Setup with { Plan = plan, Message = null, Connected = false },
                 });
             }
             catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested) { }

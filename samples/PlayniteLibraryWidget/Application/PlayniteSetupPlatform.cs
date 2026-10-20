@@ -106,8 +106,8 @@ internal sealed partial class PlayniteSetupPlatform : IPlayniteSetupPlatform
     }
 
     internal static ProcessStartInfo LaunchInfo(PlayniteSetupInstallation installation) => StartInfo(
-        Path.Combine(installation.ProgramDirectory, installation.Fullscreen ? "Playnite.FullscreenApp.exe" : "Playnite.DesktopApp.exe"),
-        installation.DataDirectory, "--startclosedtotray");
+        Path.Combine(installation.ProgramDirectory, "Playnite.DesktopApp.exe"),
+        installation.DataDirectory, "--startdesktop", "--startclosedtotray", "--hidesplashscreen");
 
     private static ProcessStartInfo StartInfo(string executable, string dataDirectory, params string[] arguments)
     {

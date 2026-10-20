@@ -9,6 +9,38 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod]
+    public async Task EnteringFromPreviewRechecksStoppedPlayniteAndOffersMissingIntegrationSetup()
+    {
+        var host = new FakeHost(1);
+        var services = host.Services();
+        var setup = new SetupFixture();
+        var widget = WidgetTestHost.Attach(new LauncherWidget(new TestApplicationService(services, host),
+            new FakeConnectionClient(), setupService: setup), services);
+        await Visible(widget);
+        await Ready(widget, host);
+        setup.Stopped = true;
+        setup.MissingIntegration = true;
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        try
+        {
+            await WaitFor(() => widget.RenderState.Value.StoppedPlayniteDialogOpen, "preview entry detects stopped Playnite");
+            var snapshot = Snapshot(widget, 173_001);
+            var primary = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
+            Assert.AreEqual(LauncherWidget.SetupPrefix + "apply", primary.ActionId);
+            Assert.AreEqual("Install integration and start Playnite", primary.Text);
+            Assert.IsFalse(primary.IsDisabled == true);
+            await widget.OnActionAsync(new(LauncherWidget.SetupPrefix + "dismiss", "playnite-start-dialog.close"));
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await WaitFor(() => widget.RenderState.Value.StoppedPlayniteDialogOpen, "reopening rechecks");
+            await widget.OnActionAsync(new(primary.ActionId!, primary.Id));
+            await WaitFor(() => setup.ApplyCalls == 1 && !widget.RenderState.Value.Setup.Busy, "setup applied");
+            Assert.AreEqual(0, setup.StartCalls, "A missing integration must use installation setup, not a launch that can never connect.");
+        }
+        finally { await Background(widget); }
+    }
+
+    [TestMethod]
     public async Task StoppedPlayniteOpensFocusedDialogAndDismissesToReachableRecovery()
     {
         var warm = new PlayniteLibraryPrivateState(PlayniteLibraryPrivateState.CurrentVersion,
@@ -27,7 +59,7 @@ public sealed partial class PlayniteLibraryTests
             var modal = Snapshot(widget, 172_001);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(modal).Count);
             Assert.AreEqual("playnite-start-dialog.scope", modal.ActiveInputScopeId);
-            Assert.AreEqual(LauncherWidget.SetupStartAction, modal.InitialFocusId);
+            Assert.AreEqual(LauncherWidget.SetupPrefix + "stopped.primary", modal.InitialFocusId);
             Assert.IsNull(modal.FocusGroupEntryRequest);
             var primary = Nodes(modal.Root).Single(node => node.Id == modal.InitialFocusId);
             Assert.IsFalse(primary.IsDisabled == true);
@@ -43,7 +75,7 @@ public sealed partial class PlayniteLibraryTests
             await widget.OnActionAsync(new(LauncherWidget.SetupStartAction, LauncherWidget.SetupStartAction));
             await WaitFor(() => setup.StartCalls == 1, "start from dialog");
             var busy = Snapshot(widget, 172_004);
-            Assert.AreEqual(LauncherWidget.SetupStartAction, busy.InitialFocusId);
+            Assert.AreEqual(LauncherWidget.SetupPrefix + "stopped.primary", busy.InitialFocusId);
             Assert.IsTrue(Nodes(busy.Root).Single(node => node.Id == busy.InitialFocusId).IsBusy == true);
             setup.Pending.SetResult(new(false, "Not ready", "Finish the Playnite startup dialog, then retry."));
             await WaitFor(() => !widget.RenderState.Value.Setup.Busy, "failed start");
@@ -108,7 +140,7 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(1, setup.StartCalls);
         Assert.AreEqual(0, setup.ApplyCalls, "Starting stopped Playnite must not install or replace its integration.");
         var busy = Snapshot(widget, 170_002);
-        Assert.IsTrue(Nodes(busy.Root).Single(node => node.Id == LauncherWidget.SetupStartAction).IsBusy == true);
+        Assert.IsTrue(Nodes(busy.Root).Single(node => node.ActionId == LauncherWidget.SetupStartAction).IsBusy == true);
         setup.Pending.SetResult(new(true, "Connected", "Ready"));
         await WaitFor(() => !widget.RenderState.Value.Setup.Busy && widget.RenderState.Value.StoppedPlaynite is null, "connected");
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget, 170_003)).Count);
@@ -141,7 +173,9 @@ public sealed partial class PlayniteLibraryTests
     private sealed class SetupFixture : IPlayniteSetupService
     {
         internal readonly PlayniteSetupInstallation Installation = new("fixture", @"C:\Games\Playnite", @"D:\Profiles\Playnite", "Playnite profile", false, false);
-        internal PlayniteSetupPlan Plan => new(Installation, PlayniteSetupAction.Install, "Connect Playnite", "Install integration and connect.", null, null, null);
+        internal PlayniteSetupPlan Plan => new(Installation, Stopped && !MissingIntegration ? PlayniteSetupAction.Start : PlayniteSetupAction.Install,
+            "Connect Playnite", "Install integration and connect.", null, null, null);
+        internal bool MissingIntegration;
         internal bool Stopped;
         internal int ApplyCalls;
         internal int StartCalls;

@@ -31,7 +31,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
         // discovery happens only when Playnite is stopped or setup is opened.
         if (platform.HasRunningProcess()) return null;
         var found = await DiscoverAsync(null, null, token).ConfigureAwait(false);
-        return found.Message is null && found.Installations.Count == 1 && FindExtension(found.Installations[0]) is not null ? found.Installations[0] : null;
+        return found.Message is null && found.Installations.Count == 1 ? found.Installations[0] : null;
     }
 
     public async ValueTask<PlayniteSetupPlan> InspectAsync(PlayniteSetupInstallation installation, CancellationToken token)

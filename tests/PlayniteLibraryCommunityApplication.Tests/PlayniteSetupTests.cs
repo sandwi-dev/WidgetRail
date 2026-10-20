@@ -12,6 +12,24 @@ public sealed class PlayniteSetupTests
 {
     [TestMethod]
     [TestCategory("LivePlaynite")]
+    public async Task LiveStoppedDiscoveryFindsRememberedInstallationWithoutStartingIt()
+    {
+        if (Environment.GetEnvironmentVariable("WRAIL_TEST_LIVE_PLAYNITE_STOPPED") != "1")
+            Assert.Inconclusive("Explicit opt-in required for read-only stopped installation discovery.");
+        var platform = new PlayniteSetupPlatform();
+        Assert.IsFalse(platform.HasRunningProcess(), "Playnite must already be stopped.");
+        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WidgetRail", "community-apps", "widgetrail.samples.playnite-library");
+        var service = new PlayniteSetupService(root, Path.Combine(root, "unused"), platform);
+        var found = await service.DiscoverAsync(null, null, default);
+        Assert.AreEqual(1, found.Installations.Count, found.Message);
+        Assert.IsNull(found.Message);
+        Assert.IsNotNull(await service.StoppedInstallationAsync(default));
+        Assert.IsFalse(platform.HasRunningProcess());
+    }
+
+    [TestMethod]
+    [TestCategory("LivePlaynite")]
     public async Task LiveGuidedSetupReusesHealthyIntegrationWithoutRestart()
     {
         if (Environment.GetEnvironmentVariable("WRAIL_TEST_LIVE_PLAYNITE_SETUP") != "1")
@@ -60,7 +78,11 @@ public sealed class PlayniteSetupTests
         using var fixture = new Fixture();
         fixture.Install("1.5.3", Fixture.Original);
         var info = PlayniteSetupPlatform.LaunchInfo(fixture.Installation);
-        CollectionAssert.AreEqual(new[] { "--startclosedtotray", "--userdatadir", fixture.Data }, info.ArgumentList.ToArray());
+        CollectionAssert.AreEqual(new[] { "--startdesktop", "--startclosedtotray", "--hidesplashscreen", "--userdatadir", fixture.Data }, info.ArgumentList.ToArray());
+        var fullscreen = PlayniteSetupPlatform.LaunchInfo(fixture.Installation with { Fullscreen = true });
+        Assert.AreEqual(Path.Combine(fixture.Program, "Playnite.DesktopApp.exe"), fullscreen.FileName,
+            "A background connection must not reopen fullscreen or apply its display mode.");
+        CollectionAssert.AreEqual(info.ArgumentList.ToArray(), fullscreen.ArgumentList.ToArray());
         Assert.IsFalse(info.UseShellExecute);
         var result = await fixture.Service.StartAsync(fixture.Installation, _ => { }, default);
         Assert.IsTrue(result.Connected, result.Message);
@@ -91,6 +113,8 @@ public sealed class PlayniteSetupTests
     public async Task FreshSetupDeploysBundleAndConnectsWithoutCopyingToken()
     {
         using var fixture = new Fixture();
+        Assert.IsNotNull(await fixture.Service.StoppedInstallationAsync(default),
+            "A missing Bridge must still offer setup for the detected stopped installation.");
         var plan = await fixture.Service.InspectAsync(fixture.Installation, default);
         Assert.AreEqual(PlayniteSetupAction.Install, plan.Action);
         var result = await fixture.Service.ApplyAsync(plan, _ => { }, default);

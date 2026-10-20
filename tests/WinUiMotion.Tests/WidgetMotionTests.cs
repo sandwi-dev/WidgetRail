@@ -10,6 +10,16 @@ namespace WinUiMotion.Tests;
 public sealed class WidgetMotionTests
 {
     [TestMethod]
+    [DataRow(0d, 600d, false)]
+    [DataRow(800d, 0d, false)]
+    [DataRow(double.NaN, 600d, false)]
+    [DataRow(800d, double.PositiveInfinity, false)]
+    [DataRow(double.MaxValue, 600d, false)]
+    [DataRow(800d, 600d, true)]
+    public void DetachedOrUnarrangedTransitionSurfacesCannotAnimate(double width, double height, bool expected) =>
+        Assert.AreEqual(expected, WidgetMotionPolicy.CanAnimateSize(width, height));
+
+    [TestMethod]
     public void OverlayEntranceUsesOriginalZoomAndDirectionalEasingWithSharedSpeed()
     {
         var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full,

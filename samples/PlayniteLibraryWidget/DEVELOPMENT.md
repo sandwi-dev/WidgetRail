@@ -126,8 +126,11 @@ handling, recovery, and connection checks from the declarative setup UI.
 Setup operations use widget lifetime so hiding the overlay does not interrupt a
 deployment; no automatic installation runs on activation. A cheap process-name
 check on activation suppresses the start action while Playnite is running.
-When stopped, a unique detected profile with Bridge gets a start-in-tray action.
-Launch uses argument lists with `--startclosedtotray` and `--userdatadir`; it does
+When stopped, a unique detected profile gets a focused launch/setup dialog, including
+profiles whose Bridge is missing. Inspection supplies the appropriate install, repair,
+or launch action. Entering Interactive from a Visible tray preview also rechecks.
+Launch uses argument lists with `--startdesktop`, `--startclosedtotray`,
+`--hidesplashscreen`, and `--userdatadir`; it does
 not override normal library-update preferences. Shutdown uses Playnite's supported
 `--shutdown` command and a bounded wait, never process termination.
 

@@ -9,22 +9,26 @@ internal static partial class PlayniteLibraryConnectionPresentation
     internal static WidgetModal StoppedDialog(PlayniteSetupView setup)
     {
         var prefix = PlayniteLibraryWidget.SetupPrefix;
+        var needsSetup = setup.Plan is { Action: not (PlayniteSetupAction.Start or PlayniteSetupAction.Connect) };
+        var primaryAction = needsSetup ? prefix + "apply" : PlayniteLibraryWidget.SetupStartAction;
+        var primaryLabel = setup.Plan?.Action == PlayniteSetupAction.Install ? "Install integration and start Playnite"
+            : needsSetup ? setup.Plan!.ActionLabel : "Start Playnite";
         var children = new List<WidgetElement>
         {
-            UI.Text("Start Playnite in the tray to use your library. Your normal library updates will run.",
+            UI.Text(needsSetup ? setup.Plan!.Message : "Start Playnite in the tray to use your library. Your normal library updates will run.",
                 prefix + "stopped.message").Classes("playnite-library-setup-path"),
         };
         if (setup.Progress is { } progress)
             children.Add(UI.Text(progress, prefix + "stopped.progress").Classes("playnite-library-setup-path"));
         else if (setup.Message is { } message && !setup.Connected)
             children.Add(UI.Alert("Could not connect", message, AlertTone.Warning, prefix + "stopped.error"));
-        children.Add(UI.Button("Start Playnite", PlayniteLibraryWidget.SetupStartAction, PlayniteLibraryWidget.SetupStartAction)
-            .Busy(setup.Busy).Classes("playnite-library-setup-primary"));
+        children.Add(UI.Button(primaryLabel, primaryAction, prefix + "stopped.primary")
+            .Busy(setup.Busy).Disabled(needsSetup && setup.Plan?.CanApply != true).Classes("playnite-library-setup-primary"));
         children.Add(UI.Button("Connection settings", PlayniteLibraryWidget.PlayniteOpenActionId, prefix + "stopped.settings")
             .Disabled(setup.Busy));
         return new("playnite-start-dialog", "Playnite isn't running",
             UI.Stack(prefix + "stopped.content", children.ToArray()).Classes("playnite-library-setup-actions"),
-            PlayniteLibraryWidget.SetupStartAction, prefix + "dismiss");
+            needsSetup && setup.Plan?.CanApply != true ? prefix + "stopped.settings" : prefix + "stopped.primary", prefix + "dismiss");
     }
 
     private static WidgetView RenderSetup(PlayniteLibraryConnectionState state)

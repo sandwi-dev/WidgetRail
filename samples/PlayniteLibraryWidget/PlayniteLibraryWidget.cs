@@ -356,6 +356,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
         CancellationToken stateLifetime)
     {
         CursorDiagnostic("lifecycle", current.ToString(), _navigation.Value.Route);
+        // Opening from the tray changes Visible to Interactive without another
+        // OnActivated callback. Recheck the process/profile for that entry too.
+        if (previous == WidgetLifecycleState.Visible && current == WidgetLifecycleState.Interactive)
+            RefreshStoppedPlaynite();
         if (current != WidgetLifecycleState.Interactive)
         {
             ClearPendingBackFocus();

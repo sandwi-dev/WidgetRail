@@ -116,7 +116,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private Rect? Bounds(FrameworkElement element)
     {
-        if (!element.IsLoaded || element.ActualWidth <= 0 || element.ActualHeight <= 0) return null;
+        if (!element.IsLoaded || !WidgetMotionPolicy.CanAnimateSize(element.ActualWidth, element.ActualHeight)) return null;
         return element.TransformToVisual(this).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
     }
     private static void ApplyMotionGeometry(Binding binding)
@@ -149,7 +149,8 @@ internal sealed partial class WidgetViewPresenter
         {
             if (!ReferenceEquals(activeTransition, commit)) return;
             foreach (var section in commit.Sections)
-                if (!bindings.TryGetValue(section.IncomingId, out var binding) || Bounds(binding.LayoutElement) is null)
+                if (!bindings.TryGetValue(section.IncomingId, out var binding) || Bounds(binding.LayoutElement) is null ||
+                    Bounds(section.Outgoing) is null)
                 {
                     // This publication's native layout has completed. An empty
                     // target is valid and must not retain the old page waiting
