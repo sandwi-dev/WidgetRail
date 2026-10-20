@@ -82,6 +82,35 @@ internal sealed partial class WidgetStylesValidationPage
                         page.Apply(new(new(descriptor.Id,scenario,scenario,1,returned.WidgetInstanceId,2,returned.ActiveInputScopeId),descriptor,returned,styles));
                         await Wait(()=>Find<Button>("Widget."+optionId,root) is {} button&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),button));
                         Check(true,scenario+": return request focuses the exact Gem options button");
+                        async Task Move(FocusNavigationDirection direction,string target)
+                        {
+                            page.MoveFocus(direction);
+                            await Task.Delay(40);
+                            var focused=FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+                            var actual=focused is null?"none":Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(focused);
+                            Check(actual=="Widget."+target,scenario+$": {direction} reaches {target} (actual {actual})");
+                        }
+                        var gemId=kind[3..];
+                        await Move(FocusNavigationDirection.Down,"pob.gem-remove."+gemId);
+                        await Move(FocusNavigationDirection.Left,"pob.gem-replace."+gemId);
+                        await Move(FocusNavigationDirection.Up,"pob.gem."+gemId+"level");
+                        await Move(FocusNavigationDirection.Right,"pob.gem."+gemId+"quality");
+                        await Move(FocusNavigationDirection.Right,"pob.gem."+gemId+"count");
+                        await Move(FocusNavigationDirection.Right,optionId);
+                        await Move(FocusNavigationDirection.Left,"pob.gem."+gemId+"count");
+                        await Move(FocusNavigationDirection.Left,"pob.gem."+gemId+"quality");
+                        await Move(FocusNavigationDirection.Left,"pob.gem."+gemId+"level");
+                        await Move(FocusNavigationDirection.Down,"pob.gem-replace."+gemId);
+                        await Move(FocusNavigationDirection.Right,"pob.gem-remove."+gemId);
+                        var more=Find<Button>("Widget.pob.skill-options",root)!;
+                        more.Focus(FocusState.Keyboard);
+                        more.StartBringIntoView(new BringIntoViewOptions{AnimationDesired=false});
+                        await Task.Delay(40);
+                        await Move(FocusNavigationDirection.Left,"pob.group-manage");
+                        await Move(FocusNavigationDirection.Right,"pob.skill-options");
+                        await Move(FocusNavigationDirection.Left,"pob.group-manage");
+                        var groupRow=Nodes(snapshot.Root).Single(node=>node.Id=="pob.group-manage").Focus!.Left!;
+                        await Move(FocusNavigationDirection.Left,groupRow);
                     }
                     continue;
                 }

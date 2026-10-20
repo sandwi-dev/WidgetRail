@@ -9,6 +9,11 @@ internal static class GemEffectsTests
 {
     internal static async Task RunAsync(int game, string root, string runtime, string adapter, Action<bool, string> check)
     {
+        var padded=JsonSerializer.SerializeToElement(new{runs=new[]{
+            new{text="   ",tone="muted"},new{text="   Category: ",tone="muted"},new{text="Rakiata's Flow",tone="text"}}});
+        var normalized=PobWidget.GemTooltipRuns(padded);
+        check(normalized.SequenceEqual(new[]{new PobWidget.FormattedRun("Category: ","muted"),new PobWidget.FormattedRun("Rakiata's Flow","text")}),
+            "Gem reader removes tooltip icon padding across runs without losing colours or inline spaces");
         await using var engine = new PobEngine(root, runtime, adapter);
         var build = await engine.ExecuteAsync(new { op = "new" }, default);
         var groups = new List<int>();
@@ -29,6 +34,9 @@ internal static class GemEffectsTests
             check(details.State.GetProperty("lines").GetArrayLength() > 0 && details.State.GetProperty("lines").EnumerateArray().Any(l => l.GetProperty("runs").GetArrayLength() > 0),
                 "Upstream tooltip supplies formatted details for " + (gem == 1 ? "a non-main active gem" : "its support gem"));
             check(WorkStateTests.SameBuild(details.Xml, baseline), "Reading gem effects preserves the build and main skill");
+            check(details.State.GetProperty("lines").EnumerateArray().Select(PobWidget.GemTooltipRuns)
+                .All(runs=>runs.Count==0||!char.IsWhiteSpace(runs[0].Text[0])),
+                "Upstream gem details align to the reader edge");
         }
         var folder = Path.Combine(Path.GetTempPath(), "pob-gem-effects-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder); var buildId = Guid.NewGuid().ToString("N");

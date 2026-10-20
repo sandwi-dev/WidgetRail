@@ -62,13 +62,29 @@ public sealed partial class PobWidget
         if (preview && shown.Length == 0) shown = lines.Take(6).ToArray();
         foreach (var (line, index) in shown.Select((line, index) => (line, index)))
         {
-            var runs = ReadFormattedRuns(line, "text", "runs");
+            var runs = GemTooltipRuns(line);
             AddRuns(rows, preview ? SummaryRuns(runs, S(line, "kind") == "description" ? 480 : 220, maximumRuns: 25) : runs,
                 "gem-effects.line." + index, preview ? "pob-preview-description" : "pob-text");
         }
         if (lines.Length == 0) rows.Add(Text("PoB provides no description for this gem.", "gem-effects.none", "pob-muted"));
         if (preview) rows.Add(Text("Select gem for full details", "gem-effects.more", "pob-preview-meta"));
         return rows.ToArray();
+    }
+
+    internal static IReadOnlyList<FormattedRun> GemTooltipRuns(JsonElement line)
+    {
+        // PoB pads tooltip headers for its icon. Our reader has no icon column;
+        // strip only the leading padding, retaining inline spacing and colours.
+        var runs = new List<FormattedRun>();
+        var leading = true;
+        foreach (var run in ReadFormattedRuns(line, "text", "runs"))
+        {
+            var text = leading ? run.Text.TrimStart() : run.Text;
+            if (text.Length == 0) continue;
+            leading = false;
+            runs.Add(run with { Text = text });
+        }
+        return runs;
     }
 
     private bool HandleGemEffectsAction(WidgetActionEvent action)

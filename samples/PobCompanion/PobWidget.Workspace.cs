@@ -250,7 +250,7 @@ public sealed partial class PobWidget
                     Button("Find upgrades","trade").FocusLeft(returnId).FocusRight("pob.similar-start.equipped").FocusUp("pob."+action).InGrid(row:1),
                     SimilarEntry("equipped").InGrid(row:1,column:1),
                     BrowseTradeButton().FocusLeft("pob.similar-start.equipped").FocusUp("pob.item-manage").InGrid(row:1,column:2)).Spacing(8,8),
-                UI.VerticalScroll("pob.detail.scroll",details.Select(row=>LinkLeft(row,returnId)).ToArray()).Classes("pob-scroll"))
+                UI.VerticalScroll("pob.detail.scroll",details.ToArray()).Classes("pob-scroll"))
                 .RememberChildFocus("pob."+action).Classes("pob-panel","pob-tree-main");
         }
         if(skills&&entries.Length==0)
@@ -275,16 +275,6 @@ public sealed partial class PobWidget
         if(entries.Length>0)rows=QuickControls(rows,"pob."+kind+"."+I(entries[0],"id"),"pob.inventory.tools",skills?"Group controls":"Equipment controls",quick);
         return Split("inventory",UI.Stack("pob.list",tools,WithRowPreviews(rows,skills)).Classes("pob-panel","pob-tree-main"), detailPanel, 1, 1.55);
     }
-
-    private static WidgetElement LinkLeft(WidgetElement element,string target)=>element switch
-    {
-        ButtonElement button=>button.FocusLeft(target),
-        ActionSurfaceElement action=>action.FocusLeft(target),
-        TextEntryElement field=>field.FocusLeft(target),
-        SelectElement select=>select.FocusLeft(target),
-        ContainerElement container=>container with {Children=container.Children.Select(child=>LinkLeft(child,target)).ToArray()},
-        _=>element,
-    };
 
     private List<WidgetElement> ItemDetails(JsonElement item,string prefix="item")
     {
