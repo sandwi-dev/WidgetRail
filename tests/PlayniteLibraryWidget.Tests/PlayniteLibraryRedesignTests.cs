@@ -185,6 +185,10 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
         using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "achievement-preview");
+        await widget.OnActionAsync(new(DetailAction + "achievement.search", "search") { CommittedText = "description" });
+        host.PublishSnapshot();
+        Assert.AreEqual(1, Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == PlayniteAchievementBrowse.ListId).IndexedCollection!.Count,
+            "Searching a secret's actual description must find its concealed row.");
         Assert.IsFalse(Nodes(host.CurrentSnapshot.Root).Any(node => node.Id == DetailAction + "preview-surface"));
         var entry = new PlayniteAchievementBrowse(widget.RenderState.Value.DetailsGeneration, widget.RenderState.Value.DetailsExtras).Rows[0];
         var rowSnapshot = new WidgetView(PlayniteAchievementPresentation.Row(entry, "test-row")).CreateSnapshot("test-row", 1);

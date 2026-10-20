@@ -49,8 +49,11 @@ internal sealed class PlayniteAchievementBrowse
                 entry.Name, entry.Item.Unlocked ? "Unlocked" : "Locked"))
             .Where(suggestion => TextSuggestionContract.IsValid(new([suggestion]), 1, TextSuggestionContract.MaximumQueryLength)));
         var search = state.AchievementSearch.Trim();
+        // Searching known text may find a secret; displaying it still requires reveal.
+        // Keep the concealed label searchable as well, without suggesting secret names.
         if (search.Length > 0) filtered = filtered.Where(entry => entry.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-            !entry.Secret && entry.Item.Description.Contains(search, StringComparison.OrdinalIgnoreCase));
+            entry.Item.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            entry.Item.Description.Contains(search, StringComparison.OrdinalIgnoreCase));
         Rows = (state.AchievementSort switch
         {
             AchievementSort.Name => filtered.OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase),

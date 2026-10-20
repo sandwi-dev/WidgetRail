@@ -8,12 +8,20 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod]
-    public void AchievementSearchDoesNotExposeSecretsAndKeysSurviveProgressChanges()
+    [DataRow("boss")]
+    [DataRow("SPOILER")]
+    [DataRow("Secret achievement")]
+    public void AchievementSearchFindsSecretsWithoutRevealingThemAndKeysSurviveProgressChanges(string search)
     {
         var secret = new PlayniteAchievement("Spoiler", "Defeat the final boss", false, null, 2, null, true) { Id = "secret", Progress = new(3, 10) };
         var visible = new PlayniteAchievement("Explorer", "Visit ten places", false, null, 10, null, false) { Id = "explorer", Progress = new(8, 10) };
-        var state = new PlayniteDetailsExtras { Achievements = new(true, 2, 0, [secret, visible]), AchievementSearch = "boss" };
-        Assert.AreEqual(0, new PlayniteAchievementBrowse(1, state).Rows.Count);
+        var state = new PlayniteDetailsExtras { Achievements = new(true, 2, 0, [secret, visible]), AchievementSearch = search };
+        var match = new PlayniteAchievementBrowse(1, state).Rows.Single();
+        Assert.IsTrue(match.Secret);
+        Assert.AreEqual("Secret achievement", match.Name);
+        Assert.AreEqual(1, new PlayniteAchievementBrowse(1, state with { AchievementFilter = AchievementFilter.Locked }).Rows.Count);
+        Assert.AreEqual(0, new PlayniteAchievementBrowse(1, state with { AchievementFilter = AchievementFilter.Unlocked }).Rows.Count);
+        Assert.AreEqual(0, new PlayniteAchievementBrowse(1, state with { AchievementSearch = "unrelated" }).Rows.Count);
         state = state with { AchievementSearch = "", AchievementSort = AchievementSort.Progress };
         Assert.AreEqual("Explorer", new PlayniteAchievementBrowse(1, state).Rows[0].Name);
         var key = PlayniteAchievementEntry.KeyFor(secret);
