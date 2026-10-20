@@ -52,6 +52,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private long paddingToken;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
+    internal Action? ScrollOwnerRetiring { get; set; }
     internal void RefreshAppearanceBinding(WidgetPresentationBinding binding)
     {
         if (source is not null) source.Update(binding, source.Declaration);
@@ -104,6 +105,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         var layout = declaration.CollectionLayout ?? throw new InvalidDataException("Indexed collection layout is missing.");
         var replaceView = view is null || layoutKind != layout.Kind || axis != declaration.ScrollAxis;
         var replaceSource = source is null || !source.CanUpdate(binding, declaration);
+        if (replaceView || replaceSource) ScrollOwnerRetiring?.Invoke();
         var continuity = replaceSource && !replaceView ? CaptureContinuity(binding, declaration) : null;
         if (replaceSource || replaceView) CancelContinuity();
         // Protect current row focus before either native view or source retires.

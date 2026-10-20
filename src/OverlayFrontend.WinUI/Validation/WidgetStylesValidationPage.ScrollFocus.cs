@@ -52,6 +52,7 @@ internal sealed partial class WidgetStylesValidationPage
             "queued reverse movement returns to the boundary without replaying forward movement");
         Check(presenter.ScrollBy(0, 480), "right-stick scrolling selects the focused declaration's native viewport");
         await Wait(() => scroll.VerticalOffset >= 470);
+        await Wait(presenter.SettleScrollFocus);
         var settledOffset = scroll.VerticalOffset;
         Check(presenter.SettleScrollFocus(), "right-stick release finds a ready visible focus target");
         var target = FocusManager.GetFocusedElement(XamlRoot) as Button;
@@ -65,11 +66,13 @@ internal sealed partial class WidgetStylesValidationPage
         target = FocusManager.GetFocusedElement(XamlRoot) as Button;
         presenter.ScrollBy(0, 1);
         await Task.Delay(30);
+        await Wait(presenter.SettleScrollFocus);
         Check(presenter.SettleScrollFocus() && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), target),
             "free scrolling preserves an already-visible focused control");
         presenter.ScrollBy(0, 300);
         presenter.SetAutomaticFocusEnabled(false);
         await Task.Delay(30);
+        await Wait(presenter.SettleScrollFocus);
         Check(presenter.SettleScrollFocus() && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), target),
             "revoking widget focus cancels pending scroll settlement");
         presenter.SetAutomaticFocusEnabled(true);
@@ -93,6 +96,7 @@ internal sealed partial class WidgetStylesValidationPage
         Check(Find<ScrollViewer>("Widget.scroll-reading.viewport")!.VerticalOffset>0 &&
             Find<ScrollViewer>("Widget.scroll-focus.viewport")!.VerticalOffset==leftOffset,
             "fixed detail actions scroll their own panel instead of the neighboring list");
+        await Wait(presenter.SettleScrollFocus);
         Check(presenter.SettleScrollFocus() && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<ScrollViewer>("Widget.scroll-reading.viewport")),
             "text-only scrolling settles on the container instead of waiting for nonexistent rows");
         Find<ScrollViewer>("Widget.scroll-reading.viewport")!.ChangeView(null,0,null,true);
@@ -114,6 +118,7 @@ internal sealed partial class WidgetStylesValidationPage
         Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),reading),"Down scrolls the focused reading region without moving to another panel");
         var beforeStick=reading.VerticalOffset;
         presenter.ScrollBy(0,80);await Wait(()=>reading.VerticalOffset>beforeStick);
+        await Wait(presenter.SettleScrollFocus);
         Check(presenter.SettleScrollFocus()&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),reading),
             "right-stick scrolling retains the reading-region focus");
         reading.ChangeView(null,0,null,true);await Wait(()=>reading.VerticalOffset<.5);
@@ -144,6 +149,7 @@ internal sealed partial class WidgetStylesValidationPage
         await Wait(()=>!reading.IsTabStop);
         Check(!reading.IsTabStop,"a fitted region retires its stop after focus leaves");
         await MixedReadingFocusAsync();
+        await AnimatedScrollLifetimeAsync();
         presenter.Width = priorWidth; presenter.Height = priorHeight;
     }
 
@@ -174,12 +180,14 @@ internal sealed partial class WidgetStylesValidationPage
             await Wait(()=>(horizontal?scroll.HorizontalOffset:scroll.VerticalOffset)>330);
             Check(presenter.ScrollFocusOutlineForValidation is null&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.mixed.first")),
                 "continued scrolling does not settle focus between samples (horizontal="+horizontal+")");
+            await Wait(presenter.SettleScrollFocus);
             Check(presenter.SettleScrollFocus()&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),scroll),
                 "scroll release focuses the container when all actions are outside the viewport (horizontal="+horizontal+")");
             presenter.ScrollBy(horizontal?1000:0,horizontal?0:1000);
             await Wait(()=>(horizontal?scroll.HorizontalOffset:scroll.VerticalOffset)>500);
             Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),scroll),
                 "a newly visible option waits for scroll release before taking reading focus (horizontal="+horizontal+")");
+            await Wait(presenter.SettleScrollFocus);
             Check(presenter.SettleScrollFocus()&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.mixed.last")),
                 "scroll release settles onto a newly visible option (horizontal="+horizontal+")");
             await Wait(()=>!scroll.IsTabStop);

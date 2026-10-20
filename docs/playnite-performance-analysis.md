@@ -1,7 +1,8 @@
 # Playnite library scrolling: memory and performance analysis
 
 Baseline: `7facc40a`. Branch: `codex/playnite-performance`. Investigation started
-2026-10-19. Two production optimizations are retained; the fixture and diagnostics
+2026-10-19. The first phase retained two memory/publication optimizations; the
+later controller-animation findings are recorded below. Fixtures and diagnostics
 are excluded from ordinary Release frontends.
 
 ## Findings
@@ -27,7 +28,7 @@ The retained changes are:
    revision, and exact page ownership. Fetch admission stays bounded until
    publication finishes. Retired data cannot regain input authority.
 
-These apply to shared host infrastructure, not just the Playnite widget. No
+These initial changes apply to shared host infrastructure, not just the Playnite widget. No
 widget cache budget, image quality, native cache length, or controller behavior
 was changed. Production does not force garbage collection or trim working sets.
 
@@ -338,3 +339,130 @@ was excluded; subsequent launches completed. Raw observations, including that
 failed launch and release-time cases, remain under the performance artifacts.
 The scroll-request trace is compiled only into validation builds, with no new
 production logging.
+
+## Native wheel and controller animation comparison
+
+The original callback measurements did not establish displayed smoothness.
+The next experiment therefore recorded the actual native grid at 30 samples per
+second, with the same 2,000-game provider and roughly 17,000 DIPs of downward
+travel over eight seconds. `Analyze-PlayniteMotion.py` crops out static chrome
+and compares the middle seven seconds. Runs are under
+`artifacts/performance/playnite-stress/`.
+
+| Run | Input route | Identical viewport samples / 209 | Longest identical run | Mean image-correlation confidence |
+| --- | --- | ---: | ---: | ---: |
+| `stick-native-capture` | Previously unanimated controller offsets | 32 (15.3%) | 69 ms | .962 |
+| `wheel-native-final` | Actual OS wheel input | 0 | 0 ms | .972 |
+| `controller-native-final` | Controller through animated native `ChangeView` | 0 | 0 ms | .968 |
+
+The older controller capture also had 43 high-confidence estimates of zero
+vertical displacement, including frames where artwork fading changed pixels
+without moving the grid. Wheel and animated-controller captures had none.
+All 209 pairs in each of these three captures contained trackable texture.
+These are captured-screen observations, not GPU present times or proof of
+60/120-fps presentation. The UI callback p99 for the old controller and wheel
+was approximately 56–57 ms in both cases; callback timing alone concealed the
+visible difference.
+
+Targeted `WM_MOUSEWHEEL` delivery to the main window and its deepest WinUI child
+produced no wheel events or scrolling. Actual `SendInput` wheel input worked,
+but depends on foreground/pointer routing. It remains an opt-in validation
+baseline guarded to the fixture's own process. **No synthetic mouse input is
+used for production controller scrolling.** Rejected message routes and direct
+animation prototypes were removed from maintained source and archived under
+`artifacts/performance/reference/`.
+The final wheel fixture also verifies takeover from an active controller scroll:
+the controller relinquishes pending focus settlement without cancelling the
+new native wheel motion.
+
+The production route retains `GridView`, `ScrollViewer`, native virtualization,
+the existing stick sampler and the accepted destination accumulator. It lets
+WinUI animate the viewport rather than applying every offset without animation.
+Reversing resets the old destination and retargets native animation from the
+current position. Reduced motion still requests immediate offsets.
+
+Interruption uses the public `UIElement.CancelDirectManipulations` on the scroll
+content. An isolated native probe showed that sending an immediate offset
+alongside cancellation can cause a later position correction. Cancellation
+alone stops at the compositor's current position and reports that final pose
+asynchronously; reversal through animated retargeting reaches its new destination.
+Neither path adds an application animation timer or a movement queue.
+
+A separate release-time bug was reproduced: native focus reveal can run after
+the synchronous `Focus()` call, moving the viewport back toward a newly focused
+scaled tile. Passive focus settlement now temporarily disables
+`BringIntoViewOnFocusChange` on that viewport. Explicit navigation, pointer or
+wheel input, author-requested reveal, focus departure, unloading and presentation
+teardown retire that ownership. Original effective policy and ordinary bindings
+are restored. Raw `ReadLocalValue` expressions cannot safely be restored through
+`SetValue`; the full GridView test caught that during development.
+
+The `native-animation-directions-2` run passed full downward hold, downward
+bursts, upward bursts and partial downward hold with **zero backward requested
+destinations, native offsets, loaded-artwork movement or release corrections**.
+The native regression suite also covers full/reduced/system-disabled motion,
+reversal, input revocation, hide/resume, replacement, directional interruption
+and pressing Select before animation finishes. Select cannot activate the old
+offscreen row.
+
+Query replacement received a separate regression check with 100 ms provider
+delay. The same native collection can survive a new query, so viewport identity
+alone was insufficient: an old pending destination could prevent settlement
+after the replacement restored its position. The collection now notifies its
+presenter before replacing its view/source. The presenter retires that
+collection's scroll intent without duplicating the source's replacement rules.
+The existing continuity policy still preserves surviving items and position.
+`native-cache2-query-motion-fixed` verifies replacement, narrowing to one item,
+restoration and subsequent settlement during active native motion.
+
+## Cold native cache experiment
+
+The earlier runtime cache experiment was inconclusive because containers had
+already been realized. The fixture now accepts `-CacheLength 1`, `2` or `4` and
+replaces the grid template **before the first collection is created**.
+
+| Native cache length | Ready containers | Ready frontend private bytes, MiB | Observation |
+| --- | ---: | ---: | --- |
+| Default 4 | 70 | 246–254 | Retained production default |
+| 2 | 42 | 205–221 | Lower ready memory, but less margin for delayed rows |
+| 1 | 28 | 217 | Visibly late/fading covers during normal fast scrolling |
+
+These are exploratory runs, not matched estimates of Task Manager's Memory
+column; private bytes and private working set differ. The reduced caches saved
+roughly 25–35 MiB in representative ready-state comparisons, but did not
+establish an equivalent artwork experience. With an intentionally slower
+100 ms provider, both cache 2 and cache 4 could outscroll delivered artwork;
+cache 2 also exposed a completely empty grid region in an inspected frame.
+Cache 1's late covers were visible even with the normal 15 ms provider.
+**Neither reduced cache was adopted.**
+
+Blank/background-only captures cannot establish stationary scrolling: the
+pixels can remain identical while empty slots move. The analyzer now labels
+whether each pair has enough texture to track, alongside its raw repeated-frame
+count. Do not treat the delayed-provider captures as a smoothness benchmark.
+The normal-provider controller/wheel comparisons use textured visible artwork.
+
+Reproduce native captured comparisons with the same candidate/fixture arguments
+described above, adding `-WheelComparison stick -CaptureComparison` or
+`-WheelComparison wheel-input -CaptureComparison`. Only the latter moves the
+pointer and injects wheel input; it aborts if foreground ownership or the
+pointer changes. `-NavigationOnly -ProviderDelayMilliseconds 100` runs the query
+and navigation regression without repeating the long allocation workload.
+
+Final validation of the animation changes:
+
+- `dotnet test --project tests/WinUiShell.Tests/WinUiShell.Tests.csproj -c Release --no-restore`
+  with a unique binary log: **310 passed, 0 failed, 0 skipped**.
+- `release-native-focus.json`: **74 native checks passed**.
+- `release-native-directional.json`: **93 native checks passed**.
+- `native-final-delayed-lifecycle`: passed all three stress traversals with
+  100 ms provider delay, rapid directional navigation, reversal, query replacement
+  while animating, background/reopen and disposal.
+- `controller-native-final` and `wheel-native-final`: completed native captures,
+  each with **0 / 209 stationary textured viewport pairs**; wheel takeover
+  additionally passed without inheriting controller focus settlement.
+
+These checks establish the reproduced improvement and the tested lifecycle
+behavior. They do not promise the same memory figure or frame cadence for every
+library, driver, monitor or slow upstream provider. A user comparison in the
+normal profile remains the acceptance step before integrating the branch.

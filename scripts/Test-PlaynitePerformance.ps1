@@ -8,7 +8,12 @@ param(
     [switch]$WithoutArtwork,
     [switch]$HeapSnapshot,
     [switch]$NavigationChecks,
+    [switch]$NavigationOnly,
     [switch]$ScrollDirectionChecks,
+    [ValidateSet('stick','wheel-input')][string]$WheelComparison,
+    [ValidateRange(1,4)][int]$CacheLength,
+    [ValidateRange(0,2000)][int]$ProviderDelayMilliseconds=15,
+    [switch]$CaptureComparison,
     [switch]$Prepare
 )
 $ErrorActionPreference='Stop'
@@ -67,11 +72,12 @@ if($Prepare){
 }
 if(!(Test-Path -LiteralPath "$fixture/fixture-owned")){throw 'Missing isolated fixture ownership marker.'}
 New-Item -ItemType Directory -Path $output|Out-Null
-@{GameCount=$GameCount;Artwork=!$WithoutArtwork;DelayMilliseconds=15}|ConvertTo-Json|Set-Content "$fixture/performance.json"
+@{GameCount=$GameCount;Artwork=!$WithoutArtwork;DelayMilliseconds=$ProviderDelayMilliseconds}|ConvertTo-Json|Set-Content "$fixture/performance.json"
 $pipe='playnite-perf-'+[guid]::NewGuid().ToString('N')
 $oldFixture=$env:WRAIL_PLAYNITE_PROCESS_FIXTURE_ROOT
 $bridgeProcess=$null
 $frontendProcess=$null
+$recording=$null
 $measurements=[Collections.Generic.List[object]]::new()
 try {
     $env:WRAIL_PLAYNITE_PROCESS_FIXTURE_ROOT=$fixture
@@ -82,11 +88,15 @@ try {
     $frontendArguments=@("--indexed-validation-pipe=$pipe","--playnite-performance-output=`"$output`"")
     if($HeapSnapshot){$frontendArguments+='--playnite-performance-heap-pause'}
     if($NavigationChecks){$frontendArguments+='--playnite-performance-navigation'}
+    if($NavigationOnly){$frontendArguments+='--playnite-navigation-only'}
     if($ScrollDirectionChecks){$frontendArguments+='--playnite-scroll-direction'}
+    if($WheelComparison){$frontendArguments+="--playnite-wheel-comparison=$WheelComparison"}
+    if($CacheLength){$frontendArguments+="--playnite-cache-length=$CacheLength"}
+    if($CaptureComparison){$frontendArguments+='--playnite-comparison-capture'}
     $frontendProcess=Start-Process $frontend -ArgumentList $frontendArguments `
         -WindowStyle Hidden -PassThru
     $env:WRAIL_PLAYNITE_PROCESS_FIXTURE_ROOT=$oldFixture
-    @{SourceCommit=(& git -C $repository rev-parse HEAD);GameCount=$GameCount;Artwork=!$WithoutArtwork;
+    @{SourceCommit=(& git -C $repository rev-parse HEAD);GameCount=$GameCount;Artwork=!$WithoutArtwork;CacheLength=$CacheLength;ProviderDelayMilliseconds=$ProviderDelayMilliseconds;
       Frontend=$frontend;Bridge=$bridge;FrontendPid=$frontendProcess.Id;BridgePid=$bridgeProcess.Id;
       FrontendAssemblySha256=(Get-FileHash (Join-Path (Split-Path $frontend) 'OverlayFrontend.WinUI.dll')).Hash;
       ContractsSha256=(Get-FileHash (Join-Path (Split-Path $frontend) 'WidgetBridge.Contracts.dll')).Hash;
@@ -102,6 +112,14 @@ try {
         $phase=if(Test-Path "$output/progress.json"){
             try{(Get-Content "$output/progress.json" -Raw|ConvertFrom-Json).phase}catch{'transition'}
         }else{'startup'}
+        if($CaptureComparison -and !$recording -and (Test-Path "$output/comparison-ready.json")){
+            $recording=Start-Process winapp -ArgumentList @('ui','record','-a',$frontendProcess.Id,'--duration-sec','11','--fps','30',
+                '--max-edge','1360','--frames','--capture-screen','-o',"`"$output/native-scroll.mp4`"",'--json') `
+                -WindowStyle Hidden -PassThru -RedirectStandardOutput "$output/capture.json" -RedirectStandardError "$output/capture-error.log"
+            Start-Sleep -Milliseconds 900
+            if($recording.HasExited){throw 'Native recording failed to start.'}
+            Set-Content "$output/capture-started" -Value 'Recording started'
+        }
         if($HeapSnapshot -and $phase -eq 'heap-diagnostic' -and !(Test-Path "$output/heap-complete")){
             & (Join-Path $repository 'artifacts/performance/tools/dotnet-gcdump.exe') collect -p $frontendProcess.Id `
                 -o "$output/frontend.gcdump" -t 25 > "$output/gcdump.log" 2>&1
@@ -127,4 +145,5 @@ try {
     if($bridgeProcess -and !$bridgeProcess.HasExited){
         if(!$bridgeProcess.WaitForExit(5000)){Stop-Process -Id $bridgeProcess.Id}
     }
+    if($recording -and !$recording.HasExited){$recording.WaitForExit(20000)|Out-Null}
 }

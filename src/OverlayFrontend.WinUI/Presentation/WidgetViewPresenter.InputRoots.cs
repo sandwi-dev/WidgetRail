@@ -9,13 +9,15 @@ internal sealed partial class WidgetViewPresenter
     internal IDisposable AttachPresentationInput(UIElement root)
     {
         RoutedEventHandler focused = (_, _) => { RememberFocus(); RefreshScrollFocusOutline(); NotifyControllerGuideChanged(); };
-        PointerEventHandler pressed = (_, _) => { CancelGroupEntry(); CancelScrollReveal(); scrollGesture=null;directionalScroll=null;RefreshScrollFocusOutline(); };
+        PointerEventHandler pressed = (_, _) => { CancelPassiveScrollFocus(); CancelGroupEntry(); CancelScrollReveal(); scrollGesture=null;directionalScroll=null;RefreshScrollFocusOutline(); };
         PointerEventHandler wheel = (_, _) =>
         {
+            CancelPassiveScrollFocus();
             CancelScrollReveal();
-            // Native wheel input establishes a new position independently of
-            // the controller's last accepted asynchronous scroll destination.
-            scrollGesture?.ResetOffsets();
+            // Wheel input now owns the viewport. Retire controller settlement
+            // without cancelling the native wheel motion already admitted.
+            if (scrollGesture is { } gesture) gesture.Animated = false;
+            scrollGesture = null;
         };
         KeyEventHandler key = (_, args) =>
         {
@@ -27,7 +29,7 @@ internal sealed partial class WidgetViewPresenter
                 Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Home or
                 Windows.System.VirtualKey.End or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or
                 Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space or Windows.System.VirtualKey.Escape)
-            { CancelGroupEntry(); CancelScrollReveal(); }
+            { CancelPassiveScrollFocus(); scrollGesture?.Stop(); CancelGroupEntry(); CancelScrollReveal(); }
         };
         root.ContextRequested += NativeContextRequested;
         root.PreviewKeyDown += NativeContextKeyDown;

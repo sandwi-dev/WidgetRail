@@ -38,6 +38,18 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
     internal PlaynitePerformanceValidationPage(string pipe,string output)
     {
         this.pipe=pipe;this.output=output;
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--playnite-cache-length") is { } cacheText)
+        {
+            var cache = int.Parse(cacheText, System.Globalization.CultureInfo.InvariantCulture);
+            if (cache is < 1 or > 4) throw new ArgumentOutOfRangeException(nameof(cacheText));
+            // Replace the template BEFORE any collection is created. Changing an
+            // already-realized panel cannot measure its cold allocation budget.
+            Application.Current.Resources["WidgetIndexedGridPanel"] =
+                Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                    "<ItemsPanelTemplate xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\">" +
+                    $"<ItemsWrapGrid Orientation=\"Horizontal\" GroupHeaderPlacement=\"Top\" CacheLength=\"{cache}\" />" +
+                    "</ItemsPanelTemplate>");
+        }
         var root=new Grid();root.Children.Add(presenter);Content=root;
         PresentationLayers.Attach(root);
         presenter.Failed=error=>failure??=error;
@@ -73,9 +85,19 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             await Until(()=>View() is GridView {Items.Count:>0,ActualHeight:>0}&&Descendants(presenter).OfType<WidgetArtworkView>().Any());
             await Task.Delay(3000,lifetime.Token);
             Sample("ready");
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--playnite-wheel-comparison") is { } wheelMode)
+            {
+                await CompareWheelAsync(wheelMode);
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--playnite-scroll-direction"))
             {
                 await CheckScrollDirectionAsync();
+                return;
+            }
+            if (Environment.GetCommandLineArgs().Contains("--playnite-navigation-only"))
+            {
+                await CheckNavigationAsync();
                 return;
             }
             CompositionTarget.Rendering+=Rendering;
@@ -203,14 +225,30 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             startIndex:steps*columns,steps:steps,settleMilliseconds:35,cancellationToken:lifetime.Token,direction:NavigationDirection.Up);
         await Until(()=>FocusedIndex(view)==0);
         navigationChecks.Add("Reversing controller movement returns to the original item");
-        foreach(var query in new[]{"Fixture Game 00001",""})
+        foreach(var query in new[]{"Fixture Game","Fixture Game 00001",""})
         {
+            var priorView = View()!;
+            var priorItems = priorView.ItemsSource;
+            var priorScroll = Descendants(priorView).OfType<ScrollViewer>().First();
+            if (priorView.Items.Count > 1)
+            {
+                presenter.ScrollBy(0, 900);
+                await Until(() => priorScroll.VerticalOffset > 20);
+            }
             var frame=session!.GetState(WidgetId)!.LastGood!;
             await session.SendActionAsync(frame.Authority,new("playnite-library.search.commit","playnite-library.search",
                 InputScopeId:frame.Snapshot.ActiveInputScopeId){CommittedText=query},lifetime.Token);
-            await Until(()=>View()?.Items.Count==(query.Length==0?count:1));
+            await Until(()=>View()?.Items.Count==(query=="Fixture Game 00001"?1:count) &&
+                !ReferenceEquals(View()!.ItemsSource, priorItems));
+            await Task.Delay(800, lifetime.Token);
+            var currentScroll = Descendants(View()!).OfType<ScrollViewer>().First();
+            var replacedOffset = currentScroll.VerticalOffset;
+            await Until(presenter.SettleScrollFocus);
+            await Task.Delay(250, lifetime.Token);
+            if (Math.Abs(currentScroll.VerticalOffset-replacedOffset)>1)
+                throw new InvalidOperationException("Retired query scrolling moved the replacement collection.");
         }
-        navigationChecks.Add("Search replacement and restoration retire old ranges without rendering failures");
+        navigationChecks.Add("Search replacement and restoration during native motion retire old ranges without delayed scrolling");
     }
     private static int? FocusedIndex(ListViewBase view)
     {

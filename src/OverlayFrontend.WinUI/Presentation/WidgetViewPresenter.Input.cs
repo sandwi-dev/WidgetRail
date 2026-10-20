@@ -27,6 +27,14 @@ internal sealed partial class WidgetViewPresenter
             return true;
         }
         UseFocusedPreviewSource();
+        if (phase == ControllerEventPhase.Pressed)
+        {
+            CancelPassiveScrollFocus();
+            scrollGesture?.Stop();
+            // A must not activate the old offscreen item while native motion is
+            // finishing. If visible rows are still loading, consume this press.
+            if (button == ControllerButton.A && !SettleScrollFocus()) return true;
+        }
         if (textEntryPopup is { } edit) { edit.Dialog.Handle(button, phase); return true; }
         if (FocusedBrowser is { } browser && browser.HandleButton(button, phase)) return true;
         if (FocusedMediaPlayer?.Handle(button, phase) == true) return true;

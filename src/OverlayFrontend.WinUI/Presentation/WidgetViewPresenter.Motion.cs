@@ -25,6 +25,7 @@ internal sealed partial class WidgetViewPresenter
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Apply appearance on the widget dispatcher.");
         if (appearance != value || systemAnimationsEnabled != animationsEnabled)
         {
+            scrollGesture = null;
             SettleTransitions(); SettleModalExit(); SettleWidgetResize();
             foreach (var reveal in artworkReveals.Values) reveal.Cancel();
         }

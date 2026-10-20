@@ -83,6 +83,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         automaticFocusEnabled = enabled;
         if (!enabled)
         {
+            CancelPassiveScrollFocus();
             scrollGesture = null;
             directionalScroll = null;
             ClearEntryLayoutWait();
@@ -320,7 +321,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         // a spatial target or cancel the only pending route back to real content.
         if (FindIndexedCollection() is { IsFocusParked: true, IsEntryPending: true }) return true;
         if (FocusedBrowser is { IsInteracting: true } browser && browser.MoveFocus(direction)) return true;
+        CancelPassiveScrollFocus();
+        scrollGesture?.Stop();
         if (!SettleScrollFocus()) return true;
+        CancelPassiveScrollFocus();
         CancelGroupEntry();
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
         if (MoveContextFocus(direction) || MoveSelectFocus(direction) || MoveSlider(direction)) return true;
@@ -441,7 +445,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     {
                         if (!applying && automaticFocusEnabled && presentationActive && presentationInputEnabled)
                             RememberCollectionFocus(declaration.Identity, item);
-                    }, PresentationChanged = QueueSurfaceUpdate, ContextChanged = () => { ValidateTransientControl(); NotifyControllerGuideChanged(); } };
+                    }, PresentationChanged = QueueSurfaceUpdate, ScrollOwnerRetiring = () => RetireCollectionScrolling(declaration.Identity.Id),
+                    ContextChanged = () => { ValidateTransientControl(); NotifyControllerGuideChanged(); } };
                 ConfigureCollectionTrace((WidgetIndexedCollectionView)element);
                 break;
             case ViewNodeKind.BackgroundSurface:

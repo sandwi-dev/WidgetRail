@@ -19,6 +19,8 @@ internal sealed partial class WidgetViewPresenter
         if (!enabled)
         {
             ClearFocusPreview(); ClearDeferredPreviews();
+            CancelPassiveScrollFocus();
+            scrollGesture = null;
             directionalScroll = null;
             ResetSliderValues(); SetSliderAdjustment(null);
             DismissTransientControl();

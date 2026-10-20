@@ -34,6 +34,7 @@ internal sealed partial class WidgetViewPresenter
         if (!active)
         {
             CancelScrollReveal();
+            CancelPassiveScrollFocus();
             scrollGesture = null;
             directionalScroll = null;
             foreach (var reveal in artworkReveals.Values) reveal.Cancel();

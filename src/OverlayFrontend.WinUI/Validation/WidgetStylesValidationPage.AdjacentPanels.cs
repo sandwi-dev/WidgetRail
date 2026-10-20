@@ -110,6 +110,7 @@ internal sealed partial class WidgetStylesValidationPage
         presenter.ScrollBy(0, 2000);
         await Wait(() => rightScroll.VerticalOffset > 500);
         Check(Focused(rightScroll), "revealing a detail action waits for scroll release before settling focus");
+        await Wait(presenter.SettleScrollFocus);
         Check(presenter.SettleScrollFocus() && Focused(Details()), "scroll release settles on the revealed action");
 
         // A tall nested panel may exist in layout but only its high strip is visible.

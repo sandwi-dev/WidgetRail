@@ -8,10 +8,75 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
+    private PassiveScrollFocus? passiveScrollFocus;
+    private void RetireCollectionScrolling(string id)
+    {
+        // Called before native source replacement, while the old viewport still
+        // owns its motion. The new query keeps its existing continuity policy.
+        if (scrollGesture?.Owner.Identity.Id == id) scrollGesture = null;
+        if (directionalScroll?.Owner.Identity.Id == id) directionalScroll = null;
+        if (passiveScrollFocus is { } focus && FindBinding(focus.Viewport)?.Identity.Id == id)
+            CancelPassiveScrollFocus();
+    }
+    private void CancelPassiveScrollFocus()
+    {
+        var previous = passiveScrollFocus;
+        passiveScrollFocus = null;
+        previous?.Dispose();
+    }
+    private void RetirePassiveScrollFocus(PassiveScrollFocus expected)
+    {
+        if (ReferenceEquals(passiveScrollFocus, expected)) CancelPassiveScrollFocus();
+    }
+
+    // WinUI can queue focus's BringIntoView until after Focus() returns. Its
+    // native focus-reveal policy must remain disabled for this passive focus
+    // ownership, not an arbitrary dispatcher delay. Explicit input/reveal,
+    // focus departure and unloading all restore the original native policy.
+    private sealed class PassiveScrollFocus : IDisposable
+    {
+        private readonly ScrollViewer scroll;
+        private readonly Control target;
+        private readonly bool previous;
+        private readonly Microsoft.UI.Xaml.Data.Binding? previousBinding;
+        private readonly Action<PassiveScrollFocus> ended;
+        private bool disposed;
+        internal ScrollViewer Viewport => scroll;
+        internal PassiveScrollFocus(ScrollViewer scroll, Control target, Action<PassiveScrollFocus> ended)
+        {
+            this.scroll = scroll; this.target = target; this.ended = ended;
+            previous = scroll.BringIntoViewOnFocusChange;
+            previousBinding = scroll.GetBindingExpression(ScrollViewer.BringIntoViewOnFocusChangeProperty)?.ParentBinding;
+            scroll.BringIntoViewOnFocusChange = false;
+            scroll.Unloaded += End;
+            target.LostFocus += End;
+            target.Unloaded += End;
+        }
+        private void End(object sender, RoutedEventArgs args) => ended(this);
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            scroll.Unloaded -= End;
+            target.LostFocus -= End;
+            target.Unloaded -= End;
+            // Native templates may expose an expression from ReadLocalValue,
+            // which cannot be passed back through SetValue. Preserve ordinary
+            // bindings explicitly; otherwise restore the effective boolean.
+            if (previousBinding is not null)
+                scroll.SetBinding(ScrollViewer.BringIntoViewOnFocusChangeProperty, previousBinding);
+            else scroll.BringIntoViewOnFocusChange = previous;
+        }
+    }
+
     private sealed record ScrollGesture(ScrollViewer Viewport, Binding Owner, string Scope)
     {
         internal ScrollOffsetAccumulator Horizontal { get; } = new();
         internal ScrollOffsetAccumulator Vertical { get; } = new();
+        internal int HorizontalDirection;
+        internal int VerticalDirection;
+        internal bool Animated;
+        internal bool Intermediate;
         internal double Tolerance => 1 / (Viewport.XamlRoot?.RasterizationScale ?? 1);
         internal void Observe()
         {
@@ -19,6 +84,18 @@ internal sealed partial class WidgetViewPresenter
             Vertical.Observe(Viewport.VerticalOffset, Viewport.ScrollableHeight, Tolerance);
         }
         internal void ResetOffsets() { Horizontal.Reset(); Vertical.Reset(); }
+        internal void Stop()
+        {
+            var stop = Animated;
+            Animated = Intermediate = false;
+            ResetOffsets();
+            if (stop && Viewport.IsLoaded)
+            {
+                // Native cancellation reports its final compositor position
+                // asynchronously. Do not send a stale ChangeView alongside it.
+                (Viewport.Content as UIElement)?.CancelDirectManipulations();
+            }
+        }
     }
     private ScrollGesture? currentScrollGesture;
     private ScrollGesture? scrollGesture
@@ -26,6 +103,7 @@ internal sealed partial class WidgetViewPresenter
         get=>currentScrollGesture;
         set
         {
+            if (!ReferenceEquals(currentScrollGesture, value)) currentScrollGesture?.Stop();
             if(!ReferenceEquals(currentScrollGesture?.Viewport,value?.Viewport))
             {
                 if(currentScrollGesture is {} old)old.Viewport.ViewChanged-=ScrollFocusViewChanged;
@@ -37,20 +115,27 @@ internal sealed partial class WidgetViewPresenter
     private void ScrollFocusViewChanged(object? sender, ScrollViewerViewChangedEventArgs args)
     {
         scrollGesture?.Observe();
+        if (scrollGesture is { } gesture)
+        {
+            gesture.Intermediate = args.IsIntermediate;
+            if (!args.IsIntermediate && !gesture.Horizontal.IsPending && !gesture.Vertical.IsPending) gesture.Animated = false;
+        }
         RefreshScrollFocusOutline();
     }
 
     /// <summary>
     /// Applies one normalized DIP movement to the active native scroll owner.
     /// The input owner supplies cadence and sensitivity; WinUI owns extent,
-    /// virtualization and painting. No queued animation or focus move is added.
+    /// virtualization, compositor animation and painting. No custom animation
+    /// queue or focus move is added.
     /// </summary>
     internal bool ScrollBy(double horizontalDelta, double verticalDelta)
     {
         if (previewEntered && previewSurface?.Fragment is { } preview) return preview.ScrollBy(horizontalDelta, verticalDelta);
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Scroll on the widget dispatcher.");
-        if (!presentationActive || disposed || applying || !IsLoaded || frame is null || !double.IsFinite(horizontalDelta) || !double.IsFinite(verticalDelta)) return false;
+        if (!presentationActive || !presentationInputEnabled || disposed || applying || !IsLoaded || frame is null || !double.IsFinite(horizontalDelta) || !double.IsFinite(verticalDelta)) return false;
         if (HasTransientControl) return true;
+        CancelPassiveScrollFocus();
         CancelScrollReveal();
         if (FocusedBrowser?.Scroll(horizontalDelta, verticalDelta) == true) return true;
         directionalScroll = null;
@@ -80,13 +165,24 @@ internal sealed partial class WidgetViewPresenter
                 ? prior : new ScrollGesture(target, owner, activeScope);
         scrollGesture = gesture;
         if (owner.Element is WidgetIndexedCollectionView indexed) indexed.CancelHostNavigation();
+        var horizontalDirection = Math.Sign(horizontalDelta);
+        var verticalDirection = Math.Sign(verticalDelta);
+        var reversing = horizontalDirection != 0 && gesture.HorizontalDirection != 0 && horizontalDirection != gesture.HorizontalDirection ||
+            verticalDirection != 0 && gesture.VerticalDirection != 0 && verticalDirection != gesture.VerticalDirection;
+        // Retarget native animation from the current position when reversing,
+        // rather than accumulating from the old forward destination.
+        if (reversing) gesture.ResetOffsets();
+        if (horizontalDirection != 0) gesture.HorizontalDirection = horizontalDirection;
+        if (verticalDirection != 0) gesture.VerticalDirection = verticalDirection;
         var horizontal = gesture.Horizontal.Propose(target.HorizontalOffset, horizontalDelta, target.ScrollableWidth, gesture.Tolerance);
         var vertical = gesture.Vertical.Propose(target.VerticalOffset, verticalDelta, target.ScrollableHeight, gesture.Tolerance);
+        var animate = !Motion.WidgetMotionOptions.From(appearance, systemAnimationsEnabled).Reduced;
         TraceScrollRequest(horizontal, vertical);
-        if (target.ChangeView(horizontal, vertical, null, disableAnimation: true))
+        if (target.ChangeView(horizontal, vertical, null, disableAnimation: !animate))
         {
             gesture.Horizontal.Accepted(horizontal);
             gesture.Vertical.Accepted(vertical);
+            gesture.Animated = animate;
         }
         return true;
 
@@ -109,6 +205,8 @@ internal sealed partial class WidgetViewPresenter
             activeScope != gesture.Scope || !gesture.Viewport.IsLoaded ||
             !bindings.TryGetValue(gesture.Owner.Identity.Id, out var owner) || !ReferenceEquals(owner, gesture.Owner))
         { scrollGesture = null; return true; }
+        gesture.Observe();
+        if (gesture.Animated && (gesture.Intermediate || gesture.Horizontal.IsPending || gesture.Vertical.IsPending)) return false;
         var scroll = gesture.Viewport;
         var visible = WidgetScrollViewport.ContentBounds(scroll);
         if (visible.Width <= 0 || visible.Height <= 0) return false;
@@ -143,34 +241,28 @@ internal sealed partial class WidgetViewPresenter
         if (target is null) return owner.Element is not WidgetIndexedCollectionView && FocusReadingRegion();
         // An oversized row may only partially fit. Focus must not undo the user's
         // scroll offset through WinUI's automatic BringIntoView request.
-        scroll.BringIntoViewRequested += SuppressBringIntoView;
-        try
-        {
-            if (!target.Focus(FocusState.Keyboard)) return false;
-            scrollGesture = null;
-            return true;
-        }
-        finally { scroll.BringIntoViewRequested -= SuppressBringIntoView; }
+        return FocusWithoutReveal(target);
 
         bool FocusReadingRegion()
         {
             if(!scroll.IsTabStop)return false;
-            scroll.BringIntoViewRequested+=SuppressBringIntoView;
-            try
-            {
-                if(!scroll.Focus(FocusState.Keyboard))return false;
-                scrollGesture=null;return true;
-            }
-            finally{scroll.BringIntoViewRequested-=SuppressBringIntoView;}
+            return FocusWithoutReveal(scroll);
         }
-
-        static void SuppressBringIntoView(UIElement sender, BringIntoViewRequestedEventArgs args) => args.Handled = true;
-        static bool IsWithin(DependencyObject? child, DependencyObject ancestor)
+        bool FocusWithoutReveal(Control control)
         {
-            for (; child is not null; child = VisualTreeHelper.GetParent(child))
-                if (ReferenceEquals(child, ancestor)) return true;
-            return false;
+            CancelPassiveScrollFocus();
+            passiveScrollFocus = new(scroll, control, RetirePassiveScrollFocus);
+            if (!control.Focus(FocusState.Keyboard)) { CancelPassiveScrollFocus(); return false; }
+            scrollGesture = null;
+            return true;
         }
+    }
+
+    private static bool IsWithin(DependencyObject? child, DependencyObject ancestor)
+    {
+        for (; child is not null; child = VisualTreeHelper.GetParent(child))
+            if (ReferenceEquals(child, ancestor)) return true;
+        return false;
     }
 
     private static ScrollViewer? NearestScroll(DependencyObject element)

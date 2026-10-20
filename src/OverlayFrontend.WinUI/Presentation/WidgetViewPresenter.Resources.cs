@@ -212,6 +212,7 @@ internal sealed partial class WidgetViewPresenter
         if (disposed) return;
         disposed = true;
         DisposePreviewEvents();
+        CancelPassiveScrollFocus();
         scrollGesture = null;
         CancelScrollReveal();
         directionalScroll = null;

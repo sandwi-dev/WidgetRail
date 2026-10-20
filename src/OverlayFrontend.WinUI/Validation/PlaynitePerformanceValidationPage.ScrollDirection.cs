@@ -105,7 +105,7 @@ internal sealed partial class PlaynitePerformanceValidationPage
             var heldBackwards = backwards.Where(change => change.current.Seconds < releasedAt).ToArray();
             var heldArtworkBackwards = visualBackwards.Where(change => change.current.Seconds < releasedAt &&
                 change.previous.AnchorHasContent && change.current.AnchorHasContent).ToArray();
-            reversed |= heldBackwards.Length != 0 || requestBackwards.Length != 0 || heldArtworkBackwards.Length != 0;
+            reversed |= backwards.Length != 0 || requestBackwards.Length != 0 || heldArtworkBackwards.Length != 0;
             results.Add(new { mode, heldBackwards = heldBackwards.Length, heldArtworkBackwards = heldArtworkBackwards.Length,
                 releaseBackwards = backwards.Length - heldBackwards.Length,
                 placeholderOrReleaseMovements = visualBackwards.Length - heldArtworkBackwards.Length,
@@ -149,6 +149,6 @@ internal sealed partial class PlaynitePerformanceValidationPage
                     rectangle = args.TargetRect.ToString() });
         }
         await File.WriteAllTextAsync(Path.Combine(output, "direction-summary.json"), JsonSerializer.Serialize(results), lifetime.Token);
-        if (reversed) throw new InvalidOperationException("Continuous one-direction input produced a backward scroll destination or offset.");
+        if (reversed) throw new InvalidOperationException("Held scrolling or release produced a backward scroll destination or offset.");
     }
 }

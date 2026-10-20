@@ -28,6 +28,8 @@ internal sealed partial class WidgetViewPresenter
         if (pendingScrollReveal is { } old && (old.Request != request || !ReferenceEquals(old.Scroll, scroll) || !ReferenceEquals(old.Target, target)))
             CancelScrollReveal();
         if (request.RequestId <= lastScrollRevealRequest) return;
+        CancelPassiveScrollFocus();
+        scrollGesture = null;
         CancelScrollReveal();
         lastScrollRevealRequest = request.RequestId;
         var pending = new PendingScrollReveal(request, scroll, target);
@@ -49,6 +51,8 @@ internal sealed partial class WidgetViewPresenter
         if (pendingIndexedScrollReveal is { } old && (old.Request != request || !ReferenceEquals(old.Collection, binding)))
             CancelScrollReveal();
         if (request.RequestId <= lastScrollRevealRequest) return;
+        CancelPassiveScrollFocus();
+        scrollGesture = null;
         CancelScrollReveal();
         lastScrollRevealRequest = request.RequestId;
         var pending = new PendingIndexedScrollReveal(request, binding);
