@@ -87,8 +87,8 @@ The separate tint setting is intentional: tint density is not subtree opacity.
 High contrast replaces either material with the Windows surface/text pair and
 a two-DIP outline. Reduced transparency detaches acrylic and makes the fill
 opaque. Windows also controls acrylic's native fallback when advanced effects
-are unavailable. These frame properties apply to the global `preview` role. Modal panels also
-support the material properties described below; arbitrary widget containers do not.
+are unavailable. These frame properties apply to the global `preview` role. Panel containers also
+support the opt-in material properties described below.
 
 In-app acrylic samples compatible content in the same compositor. It is not a
 desktop/game backdrop or a screen-capture effect; separate HWND/WebView surfaces
@@ -108,13 +108,16 @@ card around preview content. Internal sections, spacing and typography remain
 widget-owned. The existing preview width, height, content-fitting and input
 options are unchanged.
 
-## Modal materials
+## Panel materials
 
-Modal panels (`.wrail-modal`) also support the three `background-material` /
+Stack, Row, Grid, Scroll and focus-presentation containers, including modal
+panels (`.wrail-modal`), also support the three `background-material` /
 `background-tint-opacity` / `background-luminosity-opacity` properties. Their
 `opacity` remains ordinary container opacity, so leave it unset to keep text
-sharp. Ordinary containers use alpha backgrounds; material declarations on them
-do not enable acrylic.
+sharp. Containers retain solid/alpha backgrounds unless they explicitly choose
+`acrylic`. Keep inner rows, buttons and artwork on ordinary fills. The theme tokens
+`--acrylic-tint-opacity` and `--acrylic-luminosity-opacity` provide consistent defaults
+with stronger tinting in Mineral Light.
 
 
 ## Scrollbars

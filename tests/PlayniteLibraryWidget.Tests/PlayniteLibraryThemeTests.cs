@@ -65,6 +65,20 @@ public sealed partial class PlayniteLibraryLayoutTests
             Resolve("stack", "playnite-library-home-content").Get("background")?.Text, "Home uses the same translucent fill as its focused summary.");
         Assert.AreEqual(text, Resolve("button", "playnite-library-section-link").Get("color")?.Text);
         Assert.AreEqual("acrylic", Resolve("stack", "wrail-modal").Get("background-material")?.Text);
+        foreach (var panel in new[] { "playnite-library-home-actions", "playnite-library-home-summary",
+                     "playnite-library-home-content", "playnite-library-browse-foreground" })
+        {
+            var material = Resolve("stack", panel);
+            Assert.AreEqual("acrylic", material.Get("background-material")?.Text, panel);
+            Assert.AreEqual(themeName == "builtin-mineral-light" ? .55 : .35,
+                material.Get("background-tint-opacity")?.Number, panel);
+            Assert.AreEqual(themeName == "builtin-mineral-light" ? .5 : .25,
+                material.Get("background-luminosity-opacity")?.Number, panel);
+            Assert.IsNull(material.Get("opacity"), "Panel material must not fade its children.");
+        }
+        foreach (var ordinary in new[] { "playnite-library-tile", "playnite-library-summary-strip",
+                     "playnite-library-home-surface", "playnite-library-favorite-card" })
+            Assert.IsNull(Resolve("stack", ordinary).Get("background-material"), ordinary);
         Assert.AreEqual(raised, Resolve("action-surface", "playnite-library-category").Get("background")?.Text);
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-summary-title").Get("color")?.Text);

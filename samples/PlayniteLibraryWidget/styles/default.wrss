@@ -185,7 +185,7 @@
 
 /* Give long game titles and controller hints independent, full-width rows. */
 /* Dense details use tinted acrylic without reducing text opacity. */
-.wrail-modal { background-material: acrylic; background-tint-opacity: .35; background-luminosity-opacity: .25; width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
+.wrail-modal { background-material: acrylic; background-tint-opacity: var(--acrylic-tint-opacity, .35); background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25); width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
 .wrail-modal__header { direction: column; align: start; gap: 10px; }
 .wrail-modal__title { width: 100%; font-size: 24px; line-height: 1.2; }
 .playnite-library-details-header-hints { width: 100%; justify: end; gap: 16px; }
@@ -253,3 +253,11 @@
 .playnite-library-details-completion-select { max-width: 400px; min-width: 240px; }
 
 .playnite-library-section-tools { min-width: 0; align: center; gap: 18px; }
+
+/* One material per foreground panel; covers, badges and inner rows keep ordinary fills. */
+.playnite-library-home-actions, .playnite-library-home-summary,
+.playnite-library-home-content, .playnite-library-browse-foreground {
+  background-material: acrylic;
+  background-tint-opacity: var(--acrylic-tint-opacity, .35);
+  background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25);
+}

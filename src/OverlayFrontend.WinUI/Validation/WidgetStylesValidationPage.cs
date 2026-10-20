@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Environment.GetCommandLineArgs().Contains("--acrylic-panels-only"))
+        { await AcrylicPanelsAsync(); return; }
         if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--indexed-publication-output") is {} publicationOutput)
         {
             var count=0;Exception? failure=null;

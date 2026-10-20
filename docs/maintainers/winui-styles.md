@@ -322,12 +322,16 @@ fallbacks for standalone controls, not the production appearance update path.
 The native scope fixture covers simultaneous values, logical-tree first layout,
 chrome isolation, live changes and reparenting. Styling/typography suite460 passes.
 
-## Modal background material
+## Panel background material
 
-Native modal panels honor `background-material: acrylic`, `background-tint-opacity`
+Opted-in Stack, Row, Grid, Scroll and focus-presentation containers (including
+modal panels) honor `background-material: acrylic`, `background-tint-opacity`
 and `background-luminosity-opacity`. They cache one in-app `AcrylicBrush` per panel;
 text and controls keep their own opacity. High contrast and reduced-transparency
 preferences use the ordinary accessible fill. Windows owns the opaque fallback
 when system transparency is unavailable. Removing the material or retiring the
-panel releases its brush. Ordinary container backgrounds remain solid or alpha
-fills; acrylic is implemented for modal panels and anchored preview frames.
+panel releases its brush. Containers use their existing solid or alpha fill unless
+they explicitly request acrylic. Buttons, cover items, imagery and full-overlay
+backdrops are excluded. Theme tokens `--acrylic-tint-opacity` and
+`--acrylic-luminosity-opacity` share the preview defaults, including the stronger
+Mineral Light tint. Use one material around a group rather than on every row.

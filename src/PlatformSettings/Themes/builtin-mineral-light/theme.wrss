@@ -5,6 +5,8 @@
    fills and motion; do not replace them with broad role declarations. */
 
 :root {
+  --acrylic-tint-opacity: .55;
+  --acrylic-luminosity-opacity: .5;
   --canvas: #e5ebec;
   --canvas-veil: rgba(15, 32, 38, 0.48);
   --surface: #f5f8f8;
@@ -87,10 +89,4 @@ title, .wrail-section-header__title, .wrail-dialog__title,
 .wrail-choice-row--selected, .wrail-picker__option--selected {
   border-left-color: var(--accent);
   border-left-width: 2px;
-}
-
-/* Keep dark preview text legible over darker underlying content. */
-preview {
-  background-tint-opacity: .55;
-  background-luminosity-opacity: .5;
 }

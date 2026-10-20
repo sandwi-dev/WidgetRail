@@ -64,6 +64,8 @@ internal sealed partial class WidgetViewPresenter
         { previous.Dispose(); nativeStyles.Remove(binding); }
         if (!nativeStyles.TryGetValue(binding, out var adapter))
             nativeStyles.Add(binding, adapter = new(target, node.IsFocusable || target is ScrollViewer or ListViewBase));
+        adapter.SupportsBackgroundMaterial = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
+            ViewNodeKind.Scroll or ViewNodeKind.FocusPresentationSurface;
         adapter.ContextHintButton = WidgetContextIndicator.Resolve(node);
         adapter.StretchComposedContent = node.Kind == ViewNodeKind.ActionSurface;
         adapter.ContextHintAdmitted = () => !disposed && presentationActive && presentationInputEnabled && ContextOwnerAvailable(binding);
@@ -197,6 +199,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     internal WidgetScrollEdgeCues? ScrollEdgeCues => scrollEdgeCues;
     internal ControllerButton? ContextHintButton { get; set; }
     internal bool StretchComposedContent { get; set; }
+    internal bool SupportsBackgroundMaterial { get; set; }
     internal Func<bool>? ContextHintAdmitted { get; set; }
     internal Panel? ContextHintHost { get; set; }
     internal WidgetContextIndicator? ContextIndicator => contextIndicator;
@@ -204,7 +207,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly Dictionary<DependencyProperty, object> originals = [];
     private readonly Dictionary<string, (Color Color, SolidColorBrush Brush)> brushes = new(StringComparer.Ordinal);
     private (Color Color, double Amount, LinearGradientBrush Brush)? shadedBackground;
-    private AcrylicBrush? modalAcrylic;
+    private AcrylicBrush? surfaceAcrylic;
     private FontFamily? fontFamily;
     internal TextBlock? TextContent { get; set; }
     private TextBlock? styledText;
@@ -655,20 +658,20 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     }
     private Brush? SurfaceBackground(SolidColorBrush? background, IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, bool contrast)
     {
-        if (element is WidgetModalPanel && background is not null && !contrast && !accessibility.ReducedTransparency &&
+        if (SupportsBackgroundMaterial && background is not null && !contrast && !accessibility.ReducedTransparency &&
             style?.GetValueOrDefault("background-material")?.Text == "acrylic")
         {
-            // In-app acrylic samples the content behind the dialog. Native Windows
+            // In-app acrylic samples the content behind the opted-in panel. Native Windows
             // transparency policy can replace it with this opaque fallback.
-            modalAcrylic ??= new AcrylicBrush { TintTransitionDuration = TimeSpan.Zero };
-            modalAcrylic.TintColor = modalAcrylic.FallbackColor = background.Color with { A = byte.MaxValue };
-            modalAcrylic.TintOpacity = Math.Clamp(Number(style, "background-tint-opacity") ?? .65, 0, 1);
-            modalAcrylic.TintLuminosityOpacity = Number(style, "background-luminosity-opacity") is { } luminosity
+            surfaceAcrylic ??= new AcrylicBrush { TintTransitionDuration = TimeSpan.Zero };
+            surfaceAcrylic.TintColor = surfaceAcrylic.FallbackColor = background.Color with { A = byte.MaxValue };
+            surfaceAcrylic.TintOpacity = Math.Clamp(Number(style, "background-tint-opacity") ?? .65, 0, 1);
+            surfaceAcrylic.TintLuminosityOpacity = Number(style, "background-luminosity-opacity") is { } luminosity
                 ? Math.Clamp(luminosity, 0, 1) : null;
             shadedBackground = null;
-            return modalAcrylic;
+            return surfaceAcrylic;
         }
-        modalAcrylic = null;
+        surfaceAcrylic = null;
         var amount = contrast ? 0 : Math.Clamp(Number(style, "surface-shading") ?? 0, -.25, .25);
         if (background is null || amount == 0 || background.Color.A == 0) { shadedBackground = null; return background; }
         if (shadedBackground is { } cached && cached.Color == background.Color && cached.Amount == amount) return cached.Brush;
@@ -779,7 +782,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         selectorPaint?.Dispose(); selectorPaint = null;
         focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
-        modalAcrylic = null;
+        surfaceAcrylic = null;
         shadedBackground = null;
         RestoreResources();
         if (interactive) { element.GotFocus -= Changed; element.LostFocus -= Changed; }
