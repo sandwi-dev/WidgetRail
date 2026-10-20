@@ -6,10 +6,7 @@ namespace WidgetRail.Samples.PobCompanion;
 
 public sealed partial class PobWidget
 {
-    private readonly PobDisclosureState calculationDisclosure = new();
     private readonly PobDisclosureState inactiveConfigurationDisclosure = new();
-    private string CalculationDisclosureContext() => string.Join("\u001f", documentId ?? "", calculationCell,
-        calculationSelection.Group, calculationSelection.Skill, calculationSelection.Mode, calculationSelection.Minion);
     private string InactiveConfigurationContext() => string.Join("\u001f", documentId ?? "", configSection,
         S(A(State,"configSets").FirstOrDefault(set=>B(set,"active")),"id"));
     private void RevealConfigurationSummary(PobConfigurationOption option)
@@ -24,10 +21,7 @@ public sealed partial class PobWidget
         if (split.Length != 2 || !long.TryParse(split[1], NumberStyles.None, CultureInfo.InvariantCulture, out var token)) return false;
         PobDisclosureState owner;
         string group;
-        if (split[0] == "summary-calculation" && detailKind == "calculations" &&
-            calculationDisclosure.Current?.Context == CalculationDisclosureContext())
-        { owner = calculationDisclosure; group = "pob.calculation.disclosure"; }
-        else if (split[0] == "summary-inactive-config" && section == "Configuration" && detailKind.Length == 0 &&
+        if (split[0] == "summary-inactive-config" && section == "Configuration" && detailKind.Length == 0 &&
             string.IsNullOrWhiteSpace(filter) && inactiveConfigurationDisclosure.Current?.Context == InactiveConfigurationContext())
         { owner = inactiveConfigurationDisclosure; group = "pob.config.inactive.disclosure"; }
         else return false;

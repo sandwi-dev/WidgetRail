@@ -1158,7 +1158,7 @@ public static class ViewSnapshotValidator
 
                 void CollectCollectionItems(ViewNode current, string currentPath)
                 {
-                    if (!ReferenceEquals(current, node) && current.Kind is ViewNodeKind.Scroll)
+                    if (!ReferenceEquals(current, node) && current.Kind is ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection)
                         return;
                     if (current.CollectionItemKey is { } key)
                     {
@@ -1176,7 +1176,7 @@ public static class ViewSnapshotValidator
 
                 static bool ContainsCollectionItem(ViewNode current, bool isRoot)
                 {
-                    if (!isRoot && current.Kind is ViewNodeKind.Scroll) return false;
+                    if (!isRoot && current.Kind is ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection) return false;
                     if (current.CollectionItemKey is not null) return true;
                     return (current.Children ?? []).Any(child =>
                         ContainsCollectionItem(child, isRoot: false));

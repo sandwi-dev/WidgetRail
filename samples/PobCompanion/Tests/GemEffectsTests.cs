@@ -70,6 +70,8 @@ internal static class GemEffectsTests
                 }
                 await Act(title.ActionId!);
                 check(Nodes(View().Root).Any(n => n.Id == "pob.feature-reading.body"), "Selecting a gem opens its full scrollable details");
+                var fullOutput=Environment.GetEnvironmentVariable("POB_GEM_EFFECT_FIXTURES");
+                if(!string.IsNullOrEmpty(fullOutput))File.WriteAllBytes(Path.Combine(fullOutput,$"poe{game}-gem{gem}-full.json"),SnapshotJson.Serialize(View()));
                 await Act("feature-close"); await Act("gem-options." + gem); await Act("back");
                 var view = View(); var target = view.FocusGroupEntryRequest!;
                 check(target.GroupId == "pob.gem-options." + gem + ".return" &&

@@ -36,9 +36,10 @@ internal sealed partial class WidgetStylesValidationPage
             var headerOnly=Environment.GetCommandLineArgs().Contains("--pob-header-only");
             var editorOnly=Environment.GetCommandLineArgs().Contains("--pob-editor-only");
             var historyOnly=Environment.GetCommandLineArgs().Contains("--pob-history-only");
+            var gemDetailsOnly=Environment.GetCommandLineArgs().Contains("--pob-gem-details-only");
             foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"widgetrail.builtin.velvet-dusk","high-contrast"})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in historyOnly?new[]{"history-undo","history-redo"}:editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-expanded","calculation-collapsed","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in gemDetailsOnly?new[]{"gem1-full","gem2-full"}:historyOnly?new[]{"history-undo","history-redo"}:editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-details","calculation-explanation","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
@@ -82,7 +83,7 @@ internal sealed partial class WidgetStylesValidationPage
                     await Wait(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject current&&AutomationProperties.GetAutomationId(current)=="Widget."+target);
                     Check(true,$"PoE{game} {scenario} establishes its declared native focus target at {size.Width} DIP");
                 }
-                if(snapshot.Root.Kind==ViewNodeKind.ModalLayer)
+                if(snapshot.Root.Kind==ViewNodeKind.ModalLayer&&!gemDetailsOnly)
                 {
                     var panel=Find<FrameworkElement>("Widget."+snapshot.Root.Children[1].Id,root)!;
                     await Wait(()=>panel.ActualWidth>0&&panel.ActualHeight>0);
@@ -110,6 +111,19 @@ internal sealed partial class WidgetStylesValidationPage
                     Check(Find<FrameworkElement>("Widget.pob.trade-session",root) is not null,"Trade actions occupy a distinct workspace row");
                     if(themeId=="widgetrail.builtin.velvet-dusk"&&game==2)
                         await Capture(Path.Combine(directory,$"native-header-{size.Width}.png"));
+                }
+                if(gemDetailsOnly)
+                {
+                    var panel=Find<FrameworkElement>("Widget.pob-feature-reading",root)!;
+                    var scroll=Find<ScrollViewer>("Widget.pob.feature-reading.body",root)!;
+                    var bounds=panel.TransformToVisual(page).TransformBounds(new(0,0,panel.ActualWidth,panel.ActualHeight));
+                    Check(bounds.Left>=15&&bounds.Top>=15&&bounds.Right<=page.ActualWidth-15&&bounds.Bottom<=page.ActualHeight-15,"Gem reader fits the viewport");
+                    Check(scroll.ViewportHeight>=size.Height*.5,"Gem reader gives at least half the viewport to details");
+                    Check(Descendants(panel).OfType<ScrollViewer>().Count()==1&&scroll.ExtentWidth<=scroll.ViewportWidth+1,"Gem reader has one scroll region and no horizontal overflow");
+                    var close=Find<Button>("Widget.pob-feature-reading.close",root)!;
+                    Check(close.IsEnabled&&close.ActualHeight>=40,"Gem reader retains an accessible Close action");
+                    if(game==2&&scenario=="gem1-full"&&themeId=="widgetrail.builtin.velvet-dusk")await Capture(Path.Combine(directory,$"native-gem-details-{size.Width}.png"));
+                    continue;
                 }
                 if(editorOnly)
                 {
@@ -168,21 +182,39 @@ internal sealed partial class WidgetStylesValidationPage
                 }
                 if(disclosures)
                 {
-                    var toggleId=scenario.StartsWith("calculation-",StringComparison.Ordinal)?"pob.calculation.details-toggle":"pob.config.inactive.toggle";
-                    var toggle=Find<Button>("Widget."+toggleId,root)!;
-                    toggle.StartBringIntoView();
-                    await Wait(()=>VisibleInAncestorScrolls(toggle));
-                    Check(toggle.Focus(FocusState.Keyboard),"Disclosure toggle accepts native focus at constrained size and text scale");
                     Check(Descendants(page).OfType<ScrollViewer>().All(s=>s.ExtentWidth<=s.ViewportWidth+1),"Disclosure layout has no horizontal overflow");
                     if(scenario.StartsWith("calculation-",StringComparison.Ordinal))
                     {
-                        Check(Find<TextBlock>("Widget.pob.calculation.value",root) is {ActualHeight:>0},"Calculation total remains present beside disclosure");
-                        Check(Find<TextBlock>("Widget.pob.calculation.context",root) is {ActualHeight:>0},"Calculation context remains present beside disclosure");
-                        Check((Find<FrameworkElement>("Widget.pob.calculation.source-list",root)is not null)==scenario.EndsWith("expanded",StringComparison.Ordinal),"Calculation sources follow disclosure state");
+                        Check(Find<TextBlock>("Widget.pob.calculation.value",root) is {ActualHeight:>0}&&
+                            (Find<FrameworkElement>("Widget.pob.calculation.source-list",root)is not null)==(scenario=="calculation-details"),"Calculation total and available sources remain present");
+                        foreach(var pair in new[]{("pob.calculation.search-controls","pob.calculation.tools"),("pob.calculation.setup","pob.calculation.detail-heading")})
+                        {
+                            var control=Find<FrameworkElement>("Widget."+pair.Item1,root)!;
+                            var content=Find<FrameworkElement>("Widget."+pair.Item2,root)!;
+                            Check(control.ActualHeight<=content.ActualHeight+1,"Calculation controls fit their content: "+pair.Item1);
+                        }
+                        Check(Find<Button>("Widget.pob.calculation.details-toggle",root)is null,"Detailed calculation does not offer a hide-breakdown control");
+                        foreach(var pair in new[]{("pob.calculation.search-controls","pob.calculation.list"),("pob.calculation.setup","pob.calculation.explanation")})
+                        {
+                            if(Find<FrameworkElement>("Widget."+pair.Item2,root)is not {} following)continue;
+                            var preceding=Find<FrameworkElement>("Widget."+pair.Item1,root)!;
+                            var gap=following.TransformToVisual(page).TransformPoint(new()).Y-preceding.TransformToVisual(page).TransformPoint(new(0,preceding.ActualHeight)).Y;
+                            Check(gap is >=-1 and <=16,"Calculation list/breakdown directly follows controls: "+pair.Item2);
+                        }
+                        if(game==2&&themeId=="widgetrail.builtin.velvet-dusk"&&
+                            (scenario=="calculation-details"&&size.Width==1320||scenario=="calculation-explanation"&&size.Width==820))
+                            await Capture(Path.Combine(directory,$"native-{scenario}-{size.Width}.png"));
                     }
-                    var count=dispatched.Count;page.ActivateFocused();await Wait(()=>dispatched.Count==count+1);
-                    Check(dispatched[^1]==declared.Single(n=>n.Id==toggleId).ActionId,"Disclosure uses its declared action without activating another control");
-                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),toggle),"Disclosure activation retains its opener");
+                    else
+                    {
+                        var toggleId="pob.config.inactive.toggle";
+                        var toggle=Find<Button>("Widget."+toggleId,root)!;
+                        toggle.StartBringIntoView();await Wait(()=>VisibleInAncestorScrolls(toggle));
+                        Check(toggle.Focus(FocusState.Keyboard),"Disclosure toggle accepts native focus at constrained size and text scale");
+                        var count=dispatched.Count;page.ActivateFocused();await Wait(()=>dispatched.Count==count+1);
+                        Check(dispatched[^1]==declared.Single(n=>n.Id==toggleId).ActionId,"Disclosure uses its declared action without activating another control");
+                        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),toggle),"Disclosure activation retains its opener");
+                    }
                     foreach(var row in disclosureRows.Values.Where(items=>items.Length>0).Select(items=>items[0]))
                     {
                         if(Find<Button>("Widget."+row.Id,root)is not {} button)continue;

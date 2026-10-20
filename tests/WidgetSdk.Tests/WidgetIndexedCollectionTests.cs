@@ -137,6 +137,11 @@ internal static class WidgetIndexedCollectionTests
         var request = widget.Request(0, 2);
         var range = await widget.ReadIndexedRangeAsync(request, CancellationToken.None);
         IndexedCollectionContract.ValidateRange(parent, request, range);
+        var containingScroll=parent with {Root=parent.Root with {Kind=ViewNodeKind.Scroll,ScrollAxis=ScrollAxis.Vertical}};
+        IndexedCollectionContract.ValidateRange(containingScroll,request,range);
+        var legacyRows=containingScroll with {Root=containingScroll.Root with {Children=[range.Items[0].Root]}};
+        True(ViewSnapshotValidator.Validate(legacyRows).Any(error=>error.Code=="collection_anchor_required"),
+            "a containing scroll does not claim indexed rows but still validates its own legacy keyed rows");
         var wrongRanges = new[]
         {
             range with { WidgetInstanceId = "other-widget" }, range with { CollectionId = "other-collection" },

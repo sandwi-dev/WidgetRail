@@ -334,10 +334,11 @@ public sealed partial class PobWidget
             }).ToArray();
             var selected=Array.FindIndex(passive.Choices,c=>B(c,"active"));
             return view.WithModal(new("pob-passive-choices","Choose passive effect",
-                UI.Stack("pob.passive-choices.body",options).Classes("pob-card"),options[Math.Max(0,selected)].Id,"passive-choice-close"));
+                UI.Stack("pob.passive-choices.body",options).Classes("pob-reading-body"),options[Math.Max(0,selected)].Id,"passive-choice-close"));
         }
-        if(featureReading is {} reading)return view.WithModal(new("pob.feature-reading",reading.Title,
-            UI.VerticalScroll("pob.feature-reading.body",reading.Rows).Classes("pob-scroll","pob-card"),"pob.feature-reading.close","feature-close"));
+        if(featureReading is {} reading)return view.WithModal(new("pob-feature-reading",reading.Title,
+            UI.VerticalScroll("pob.feature-reading.body",reading.Rows).Classes("pob-scroll","pob-reading-body"),"pob-feature-reading.close","feature-close")
+            {ScrollContent=false});
         if(featureRemoval is {} removal)return view.WithModal(new("pob.feature-removal",removal.Title,
             UI.Stack("pob.feature-removal.body",Text("Undo can restore this deletion.","feature-removal.help"),UI.Row("pob.feature-removal.actions",Button("Cancel","feature-close"),Button("Delete","feature-confirm"))).Classes("pob-card"),"pob.feature-close","feature-close"));
         return view;

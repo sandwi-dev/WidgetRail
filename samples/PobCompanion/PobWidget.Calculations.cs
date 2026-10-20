@@ -110,7 +110,6 @@ public sealed partial class PobWidget
         }
         if(id.StartsWith("calculation-source.",StringComparison.Ordinal)&&int.TryParse(id["calculation-source.".Length..],out var index)&&index>=0&&index<calculationSources.Items.Length)
         {
-            if(calculationDisclosure.Current is not {Expanded:true} disclosure||disclosure.Context!=CalculationDisclosureContext())return true;
             var source=calculationSources.Items[index];var rows=new List<WidgetElement>();
             for(var i=0;i<source.Cells.Length;i++)
             {
@@ -171,19 +170,16 @@ public sealed partial class PobWidget
             SelectWithUnavailable("Calculation section",sections.Select(s=>new SelectOption(S(s,"id"),S(s,"title"),"calculation-section."+S(s,"id"),S(s,"id")==calculationSection)).ToArray(),"pob.calculation.section").Classes("pob-select"),
             SearchField(UI.TextEntry(calculationSearch,"Search this section","calculation-search","pob.calculation.search",100),calculationCatalog,
                 ()=>A(selected,"items").Select(c=>(S(c,"title"),S(c,"title"),S(selected,"title")))).Classes("pob-input"),Text($"{entries.Length} calculations","calculation.count","pob-small pob-muted")),"pob.calculation.section","pob.calculation.cells","Calculations",NeedsQuickControls(entries.Length));
-        var list=QuickControls(UI.Stack("pob.calculation.list",UI.CollectionList("pob.calculation.cells",calculationCollection,80,"Calculations").Classes("pob-scroll")).Classes("pob-workspace"),"pob.calculation.cells","pob.calculation.tools","Section and search",NeedsQuickControls(entries.Length));
+        var list=QuickControls(UI.Stack("pob.calculation.list",UI.CollectionList("pob.calculation.cells",calculationCollection,80,"Calculations").Classes("pob-scroll","pob-calculation-list-viewport")).Classes("pob-workspace"),"pob.calculation.cells","pob.calculation.tools","Section and search",NeedsQuickControls(entries.Length));
         var chosen=A(selected,"items").FirstOrDefault(c=>S(c,"id")==calculationCell);
         var context=calculationCatalog.GetProperty("context");
         var heading=UI.Stack("pob.calculation.detail-heading",Text(S(chosen,"title"),"calculation.title","pob-heading"),Text(CalculationValue(S(chosen,"value")),"calculation.value","pob-heading pob-gold"),
             Text($"{(calculationSelection.Group==0?"Following main skill":"Inspecting")}: {S(context,"skill")} · {(B(context,"minion")?"Minion":"Player")}","calculation.context","pob-small pob-muted"),CalculationModeControls(context));
-        var supportingHeader=new List<WidgetElement>{heading};
         var right=new List<WidgetElement>();
         var explanationSections=A(calculationDetail,"sections");
         var explanationLines=explanationSections.Sum(entry=>A(entry,"lines").Length+(S(entry,"footer").Length>0?1:0));
         var hasSupportingDetails=explanationLines>0||calculationSources.Items.Length>0;
-        var disclosure=calculationDisclosure.Select(CalculationDisclosureContext(),defaultExpanded:true);
         var explanation=new List<WidgetElement>();
-        if(disclosure.Expanded)
         foreach(var (entry,index) in explanationSections.Select((entry,index)=>(entry,index)))
         {
             var lines=A(entry,"lines");
@@ -192,22 +188,17 @@ public sealed partial class PobWidget
                 AddFormatted(explanation,line,"text","runs",$"calculation.explanation.{index}.{lineIndex}",emphasizeStats:true);
             if(S(entry,"footer").Length>0)explanation.Add(Text(S(entry,"footer"),"calculation.explanation.footer."+index,"pob-muted"));
         }
-        if(hasSupportingDetails)
-            supportingHeader.Add(DisclosureButton(disclosure,"breakdown · "+string.Join(" · ",new[]{
-                    explanationLines>0?$"{explanationLines} "+(explanationLines==1?"line":"lines"):null,
-                    calculationSources.Items.Length>0?$"{calculationSources.Items.Length} "+(calculationSources.Items.Length==1?"source row":"source rows"):null}.Where(value=>value is not null)),
-                "summary-calculation","pob.calculation.details-toggle","pob.calculation.disclosure"));
-        right.Add(UI.VerticalScroll("pob.calculation.setup",supportingHeader.ToArray()).Classes("pob-scroll"));
-        if(disclosure.Expanded&&explanation.Count>0)right.Add(UI.VerticalScroll("pob.calculation.explanation",explanation.ToArray()).Classes("pob-scroll","pob-calculation-explanation"));
-        if(disclosure.Expanded&&calculationSources.Items.Length>0)
+        right.Add(UI.Stack("pob.calculation.setup",heading));
+        if(explanation.Count>0)right.Add(UI.Stack("pob.calculation.explanation",explanation.ToArray()).Classes("pob-reading-body"));
+        if(calculationSources.Items.Length>0)
         {
             right.Add(Text("Sources and breakdown · Select a row for all fields","calculation.sources-count","pob-small pob-muted"));
-            right.Add(QuickControls(UI.Stack("pob.calculation.sources",UI.CollectionList("pob.calculation.source-list",calculationSourceCollection,112,"Calculation sources").Classes("pob-scroll")).Classes("pob-workspace"),"pob.calculation.source-list","pob.calculation.tools","Section and search",NeedsQuickControls(calculationSources.Items.Length)));
+            right.Add(QuickControls(UI.Stack("pob.calculation.sources",UI.CollectionList("pob.calculation.source-list",calculationSourceCollection,112,"Calculation sources").Classes("pob-scroll","pob-calculation-list-viewport")).Classes("pob-workspace"),"pob.calculation.source-list","pob.calculation.tools","Section and search",NeedsQuickControls(calculationSources.Items.Length)));
         }
         else if(!hasSupportingDetails)right.Add(Text("PoB provides no further breakdown for this value.","calculation.empty","pob-muted"));
-        var rightPanel=UI.Stack("pob.calculation.right",right.ToArray()).RememberChildFocus("pob.calculation.mode").Classes("pob-panel","pob-workspace");
-        return Split("calculations",UI.Stack("pob.calculation.left",
-            UI.VerticalScroll("pob.calculation.search-controls",tools).Classes("pob-scroll"),list).Classes("pob-panel","pob-workspace"),rightPanel,1,1.6);
+        var rightPanel=UI.VerticalScroll("pob.calculation.right",right.ToArray()).RememberChildFocus("pob.calculation.mode").Classes("pob-panel","pob-workspace");
+        return Split("calculations",UI.VerticalScroll("pob.calculation.left",
+            UI.Stack("pob.calculation.search-controls",tools),list).Classes("pob-panel","pob-workspace"),rightPanel,1,1.6);
     }
 
     private string? CurrentCalculationStat()=>A(calculationCatalog,"sections").SelectMany(s=>A(s,"items"))

@@ -58,7 +58,7 @@ internal static class DisclosureWorkflowTests
             await Action("calculation-cell."+totalBase.GetProperty("id").GetString());
             var baseline=(PobResult)Get("result")!;
             var title=Node("pob.calculation.title").Text;var value=Node("pob.calculation.value").Text;var context=Node("pob.calculation.context").Text;
-            check(Has("pob.calculation.details-toggle"),"PoB Life calculation exposes supporting detail disclosure");
+            check(!Has("pob.calculation.details-toggle")&&Has("pob.calculation.source-list"),"Detailed calculations always show available sources without a redundant toggle");
             if(Environment.GetEnvironmentVariable("POB_DISCLOSURE_FIXTURES") is {Length:>0} calculationFixtures)
             {
                 Directory.CreateDirectory(calculationFixtures);
@@ -68,32 +68,35 @@ internal static class DisclosureWorkflowTests
                 {
                     var source=Nodes(host.CurrentSnapshot.Root).FirstOrDefault(node=>node.Id==collectionId)?.IndexedCollection;
                     if(source is null||source.Count==0)continue;
-                    using var lease=await host.AcquireAsync(collectionId,0,Math.Min(3,source.Count));
+                    using var lease=await ReadRange();
                     materialized[collectionId]=lease.Range.Items.Select(item=>item.Root).ToArray();
+                    async Task<WidgetIndexedCollectionTestLease> ReadRange()
+                    {
+                        try{return await host.AcquireAsync(collectionId,0,Math.Min(3,source.Count));}
+                        catch(ProtocolValidationException error){throw new InvalidOperationException(string.Join("; ",error.Errors),error);}
+                    }
                 }
                 File.WriteAllText(Path.Combine(calculationFixtures,$"poe{game}-calculation-disclosure-rows.json"),JsonSerializer.Serialize(materialized));
             }
-            Export("calculation-expanded");
-            var toggle=Node("pob.calculation.details-toggle");
-            check(toggle.Text!.Contains("source rows",StringComparison.Ordinal)&&!toggle.Text.Contains("0 lines",StringComparison.Ordinal),"Breakdown toggle reports available supporting detail without empty counts");
-            await Action(toggle.ActionId!,focused:"pob.calculation.source-list");
-            check(!Has("pob.calculation.explanation")&&!Has("pob.calculation.source-list")&&Has("pob.calculation.mode"),"Collapsed breakdown removes only explanations/sources, keeping mode controls");
+            Export("calculation-details");
+            await Action("summary-calculation.1",focused:"pob.calculation.source-list");
+            check(Has("pob.calculation.source-list")&&Has("pob.calculation.mode"),"Retired breakdown actions cannot hide sources or mode controls");
             check(Node("pob.calculation.title").Text==title&&Node("pob.calculation.value").Text==value&&Node("pob.calculation.context").Text==context,
-                "Selected calculation value and context remain visible when collapsed");
-            check(View().FocusGroupEntryRequest?.GroupId=="pob.calculation.disclosure","Collapse from child focus explicitly returns to the stable toggle");
-            check(ReferenceEquals(Get("result"),baseline),"Collapsing calculation details does not calculate or change the build");Valid();Export("calculation-collapsed");
-            var token=Node("pob.calculation.details-toggle").ActionId;
+                "Retired breakdown actions leave the selected calculation value and context unchanged");
+            check(ReferenceEquals(Get("result"),baseline),"Reading calculation details does not change the build");Valid();
             await Action("calculation-cell."+(string)Get("calculationCell")!);
-            check(Node("pob.calculation.details-toggle").ActionId==token&&Node("pob.calculation.details-toggle").Text!.StartsWith("Show",StringComparison.Ordinal),"Same-cell source refresh preserves collapsed state and toggle identity");
+            check(Has("pob.calculation.source-list"),"Same-cell refresh keeps sources visible");
             await Action("calculation-mode.BUFFED");
-            check(Node("pob.calculation.details-toggle").Text!.StartsWith("Hide",StringComparison.Ordinal),"Changed calculation context starts with its own disclosure preference");
-            await Action(token!);
-            check(Node("pob.calculation.details-toggle").Text!.StartsWith("Hide",StringComparison.Ordinal),"Late prior-context toggle cannot collapse the newly selected context");
-            Set("calculationDetail",JsonSerializer.SerializeToElement(new{sections=Array.Empty<object>()}));
+            check(Has("pob.calculation.source-list"),"Changed calculation context keeps its sources visible");
             // PublishCalculations owns the matching source list; use its current empty typed payload through a no-source cell context.
             var sourcesType=Get("calculationSources")!.GetType();
             var items=sourcesType.GetProperty("Items")!.PropertyType.GetElementType()!;
             Set("calculationSources",Activator.CreateInstance(sourcesType,new object[]{Array.CreateInstance(items,0)}));
+            Set("calculationDetail",JsonSerializer.SerializeToElement(new{sections=new[]{new{title="Damage taken",lines=new[]{
+                new{text="Final damage taken:"},new{text="348.9 incoming damage"},new{text="x 0.350 damage multiplier"},new{text="= 122.1"}}}}}));
+            check(Has("pob.calculation.explanation")&&!Has("pob.calculation.source-list"),"Explanation-only breakdown remains available without source rows");
+            Export("calculation-explanation");
+            Set("calculationDetail",JsonSerializer.SerializeToElement(new{sections=Array.Empty<object>()}));
             check(!Has("pob.calculation.details-toggle")&&Has("pob.calculation.empty"),"A calculation with no optional breakdown has no empty disclosure");
             await Action("back");await Action("section.4");
             Set("result",baseline);Set("filter","");Set("configChangedOnly",false);

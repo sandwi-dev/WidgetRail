@@ -44,7 +44,7 @@ The widgets are named **PoE1 Path of Building (Beta)** and **PoE2 Path of Buildi
 
 `PobInspectionContext` reads loadout and weapon context from the existing upstream snapshot/XML, cached for the exact result/group. It distinguishes the active calculation weapon set from the group's enabled weapon sets and omits missing optional context. Known warning destinations use supplied identities, never inferred warning text.
 
-`PobDisclosureState` retains at most 24 recent presentation contexts per owner. Calculation breakdown and saved-inactive-setting toggles retire stale tokens on context changes, retain summary values, and return focus to the toggle. Search reveals matching retained configuration controls. Disclosure never mutates the build.
+`PobDisclosureState` retains at most 24 recent presentation contexts per owner. Saved-inactive-setting toggles retire stale tokens on context changes, retain summary values, and return focus to the toggle. Search reveals matching retained configuration controls. Disclosure never mutates the build. Detailed calculations always show their available breakdown and source rows.
 
 ## Engine pins and PoE2 beta audit
 
