@@ -114,8 +114,7 @@ internal static class PlayniteLibraryDetailsPresentation
         }
         else if (extras.Tab == PlayniteDetailsTab.Achievements) tabContent.Add(PlayniteAchievementPresentation.Page(extras, achievementQuery, achievementList));
         else AddActivity(tabContent, extras);
-        content.Add(UI.Stack(Prefix + "tab.content", tabContent.ToArray()).Classes("playnite-library-details-content")
-            .TransitionContent(Prefix + "navigation", tabName, (int)extras.Tab));
+        content.Add(UI.Stack(Prefix + "section.content", tabContent.ToArray()).Classes("playnite-library-details-content"));
         var tabBody = extras.Tab == PlayniteDetailsTab.Achievements
             ? UI.Grid(Prefix + "achievements.viewport", [GridTrack.Star()], [GridTrack.Star()], tabContent.ToArray()).Classes("playnite-library-achievement-page")
             : (WidgetElement)UI.VerticalScroll(modalId + ".scroll", content.ToArray()).Classes("playnite-library-details-scroll");
@@ -123,10 +122,16 @@ internal static class PlayniteLibraryDetailsPresentation
             ? UI.Row(Prefix + "overview-header", controls.AddClasses("playnite-library-achievement-game-controls"))
                 .Classes("playnite-library-achievement-game-header")
             : UI.Row(Prefix + "overview-header", poster, controls).Classes("playnite-library-details-header");
-        var body = UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
-                header,
-                navigationRail.InGrid(row: 1),
-                tabBody.InGrid(row: 2))
+        // Keep the rail outside the changing section: the compact achievements header
+        // must not move navigation or bypass its content transition. A star row keeps
+        // the indexed achievements viewport bounded without adding an outer scroll.
+        var section = UI.Grid(Prefix + "tab.content", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+                header, tabBody.InGrid(row: 1))
+            .Spacing(16, 0).Classes("playnite-library-details-layout")
+            .TransitionContent(Prefix + "navigation", tabName, (int)extras.Tab);
+        var body = UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+                navigationRail,
+                section.InGrid(row: 1))
             .Spacing(16, 0).Classes("playnite-library-details-layout")
             .Shortcut(ControllerButton.LeftBumper, Prefix + "tab.previous", "Previous details tab")
             .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab")
