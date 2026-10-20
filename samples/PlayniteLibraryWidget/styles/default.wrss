@@ -200,8 +200,8 @@
 .playnite-library-chip:focused { color: var(--text); outline-width: var(--focus-width, 2px); outline-color: var(--focus); outline-offset: -2px; }
 .playnite-library-filter-tag { font-size: 14px; color: var(--text-muted); background: var(--surface-subtle, var(--surface-muted)); padding: 5px 10px; corner-radius: 7px; }
 .playnite-library-filter-dialog { width: 100%; min-width: 0; gap: 12px; padding: 2px; }
-.playnite-library-primary { background: var(--accent); color: var(--canvas, var(--surface)); border-color: transparent; }
-.playnite-library-primary:focused { outline-color: var(--canvas, var(--surface)); }
+.playnite-library-primary { background: var(--surface-raised); color: var(--text); font-weight: 600; }
+.playnite-library-primary:focused { outline-color: var(--focus); }
 .playnite-library-browse-summary-surface { align: stretch; width: 100%; min-width: 0; min-height: 0; flex-grow: 1; gap: 12px; justify: start; }
 .playnite-library-summary-strip { width: 100%; min-width: 0; min-height: 90px; padding: 12px 16px; gap: 14px; align: center; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px;  }
 .playnite-library-summary-copy { min-width: 0; flex-grow: 1; gap: 6px; }

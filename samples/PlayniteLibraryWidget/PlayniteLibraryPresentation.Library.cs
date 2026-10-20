@@ -84,7 +84,8 @@ internal static partial class PlayniteLibraryPresentation
         {
             ScrollContent = true,
             HeaderActions = UI.ControllerHint(ControllerButton.B, "Cancel", "playnite-library.filters.cancel-hint"),
-            AnchoredPresentation = new(new(ElementId: PlayniteLibraryActions.FiltersOpen), Width: 420, Height: 560),
+            AnchoredPresentation = new(new(ElementId: PlayniteLibraryActions.FiltersOpen), Width: 420, Height: 560)
+                { SizeToContentHeight = true },
         };
     }
 

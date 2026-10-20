@@ -123,6 +123,8 @@ public sealed partial class PlayniteLibraryTests
         var before = provider.Queries.Count;
         var owner = widget.RenderState.Value.IndexedBrowse.Publication!.QueryOwner;
         await widget.OnActionAsync(new(PlayniteLibraryActions.FiltersOpen, PlayniteLibraryActions.FiltersOpen));
+        Assert.IsTrue(Snapshot(widget, 150_000).Root.AnchoredPresentation?.SizeToContentHeight,
+            "The filter dialog should fit its controls instead of reserving its maximum height.");
         await widget.OnActionAsync(new("playnite-library.filters.installed", "installed"));
         await widget.OnActionAsync(new("playnite-library.filters.recent", "recent"));
         Assert.AreEqual(before, provider.Queries.Count);
