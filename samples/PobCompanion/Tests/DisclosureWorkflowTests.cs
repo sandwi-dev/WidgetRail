@@ -47,6 +47,21 @@ internal static class DisclosureWorkflowTests
             if(Environment.GetEnvironmentVariable("POB_DISCLOSURE_FIXTURES") is not {Length:>0} fixtures)return;
             Directory.CreateDirectory(fixtures);File.WriteAllBytes(Path.Combine(fixtures,$"poe{game}-"+name+".json"),SnapshotJson.Serialize(View()));
         }
+        async Task ExportCalculationRows(string name)
+        {
+            if(Environment.GetEnvironmentVariable("POB_DISCLOSURE_FIXTURES") is not {Length:>0} fixtures)return;
+            Directory.CreateDirectory(fixtures);
+            using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"pob-disclosures",500);
+            var materialized=new Dictionary<string,ViewNode[]>();
+            foreach(var collectionId in new[]{"pob.calculation.cells","pob.calculation.source-list"})
+            {
+                var source=Nodes(host.CurrentSnapshot.Root).FirstOrDefault(node=>node.Id==collectionId)?.IndexedCollection;
+                if(source is null||source.Count==0)continue;
+                using var lease=await host.AcquireAsync(collectionId,0,Math.Min(3,source.Count));
+                materialized[collectionId]=lease.Range.Items.Select(item=>item.Root).ToArray();
+            }
+            File.WriteAllText(Path.Combine(fixtures,$"poe{game}-{name}-rows.json"),JsonSerializer.Serialize(materialized));
+        }
         try
         {
             await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);await Idle();
@@ -59,25 +74,7 @@ internal static class DisclosureWorkflowTests
             var baseline=(PobResult)Get("result")!;
             var title=Node("pob.calculation.title").Text;var value=Node("pob.calculation.value").Text;var context=Node("pob.calculation.context").Text;
             check(!Has("pob.calculation.details-toggle")&&Has("pob.calculation.source-list"),"Detailed calculations always show available sources without a redundant toggle");
-            if(Environment.GetEnvironmentVariable("POB_DISCLOSURE_FIXTURES") is {Length:>0} calculationFixtures)
-            {
-                Directory.CreateDirectory(calculationFixtures);
-                using var host=WidgetTestHost.CreateIndexedCollectionHost(widget,"pob-disclosures",500);
-                var materialized=new Dictionary<string,ViewNode[]>();
-                foreach(var collectionId in new[]{"pob.calculation.cells","pob.calculation.source-list"})
-                {
-                    var source=Nodes(host.CurrentSnapshot.Root).FirstOrDefault(node=>node.Id==collectionId)?.IndexedCollection;
-                    if(source is null||source.Count==0)continue;
-                    using var lease=await ReadRange();
-                    materialized[collectionId]=lease.Range.Items.Select(item=>item.Root).ToArray();
-                    async Task<WidgetIndexedCollectionTestLease> ReadRange()
-                    {
-                        try{return await host.AcquireAsync(collectionId,0,Math.Min(3,source.Count));}
-                        catch(ProtocolValidationException error){throw new InvalidOperationException(string.Join("; ",error.Errors),error);}
-                    }
-                }
-                File.WriteAllText(Path.Combine(calculationFixtures,$"poe{game}-calculation-disclosure-rows.json"),JsonSerializer.Serialize(materialized));
-            }
+            await ExportCalculationRows("calculation-disclosure");
             Export("calculation-details");
             await Action("summary-calculation.1",focused:"pob.calculation.source-list");
             check(Has("pob.calculation.source-list")&&Has("pob.calculation.mode"),"Retired breakdown actions cannot hide sources or mode controls");
@@ -88,6 +85,15 @@ internal static class DisclosureWorkflowTests
             check(Has("pob.calculation.source-list"),"Same-cell refresh keeps sources visible");
             await Action("calculation-mode.BUFFED");
             check(Has("pob.calculation.source-list"),"Changed calculation context keeps its sources visible");
+            var maximumHitSection=catalog.GetProperty("sections").EnumerateArray().First(section=>
+                section.GetProperty("items").EnumerateArray().Any(cell=>cell.GetProperty("outputs").EnumerateArray().Any(output=>output.GetString()=="LightningMaximumHitTaken")));
+            var maximumHit=maximumHitSection.GetProperty("items").EnumerateArray().First(cell=>
+                cell.GetProperty("outputs").EnumerateArray().Any(output=>output.GetString()=="LightningMaximumHitTaken"));
+            await Action("calculation-section."+maximumHitSection.GetProperty("id").GetString());
+            await Action("calculation-cell."+maximumHit.GetProperty("id").GetString());
+            check(Node("pob.calculation.source-list").IndexedCollection?.Count==1&&Has("pob.calculation.explanation"),
+                "Maximum lightning hit exposes its explanation and single source row");
+            Export("calculation-short");await ExportCalculationRows("calculation-short");
             // PublishCalculations owns the matching source list; use its current empty typed payload through a no-source cell context.
             var sourcesType=Get("calculationSources")!.GetType();
             var items=sourcesType.GetProperty("Items")!.PropertyType.GetElementType()!;

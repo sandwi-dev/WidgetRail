@@ -39,7 +39,7 @@ internal sealed partial class WidgetStylesValidationPage
             var gemDetailsOnly=Environment.GetCommandLineArgs().Contains("--pob-gem-details-only");
             foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"widgetrail.builtin.velvet-dusk","high-contrast"})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in gemDetailsOnly?new[]{"gem1-full","gem2-full"}:historyOnly?new[]{"history-undo","history-redo"}:editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-details","calculation-explanation","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in gemDetailsOnly?new[]{"gem1-full","gem2-full"}:historyOnly?new[]{"history-undo","history-redo"}:editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-details","calculation-short","calculation-explanation","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
@@ -58,7 +58,7 @@ internal sealed partial class WidgetStylesValidationPage
                 };
                 var collection=scenario=="search"?"pob.unified.results":"pob.build-comparison.rows";
                 var disclosureRows=scenario.StartsWith("calculation-",StringComparison.Ordinal)
-                    ?JsonSerializer.Deserialize<Dictionary<string,ViewNode[]>>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-calculation-disclosure-rows.json")))!:new();
+                    ?JsonSerializer.Deserialize<Dictionary<string,ViewNode[]>>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-"+(scenario=="calculation-short"?"calculation-short":"calculation-disclosure")+"-rows.json")))!:new();
                 ViewNode Materialize(ViewNode node)=>node.Kind==ViewNodeKind.IndexedCollection&&disclosureRows.TryGetValue(node.Id,out var detailRows)
                     ?new ViewNode{Id=node.Id,Kind=ViewNodeKind.Scroll,ScrollAxis=ScrollAxis.Vertical,StyleClasses=node.StyleClasses,InitialChildFocusId=detailRows.FirstOrDefault()?.Id,Children=detailRows}
                     :node.Kind==ViewNodeKind.IndexedCollection&&node.Id==collection
@@ -186,7 +186,19 @@ internal sealed partial class WidgetStylesValidationPage
                     if(scenario.StartsWith("calculation-",StringComparison.Ordinal))
                     {
                         Check(Find<TextBlock>("Widget.pob.calculation.value",root) is {ActualHeight:>0}&&
-                            (Find<FrameworkElement>("Widget.pob.calculation.source-list",root)is not null)==(scenario=="calculation-details"),"Calculation total and available sources remain present");
+                            (Find<FrameworkElement>("Widget.pob.calculation.source-list",root)is not null)==(scenario is "calculation-details" or "calculation-short"),"Calculation total and available sources remain present");
+                        if(scenario=="calculation-short")
+                        {
+                            var sources=Find<ScrollViewer>("Widget.pob.calculation.source-list",root)!;
+                            Check(sources.ViewportHeight<=sources.ExtentHeight+1,"A single source row does not reserve empty scrolling space");
+                            if(size.Width==1320&&!contrast)
+                                Check(Find<ScrollViewer>("Widget.pob.calculation.right",root)!.ScrollableHeight<=1,"Fitting maximum-hit details do not scroll");
+                            if(game==2&&themeId==ThemeIdentity.BuiltInMineralLight&&size.Width==1320)
+                                await Capture(Path.Combine(directory,"native-calculation-short.png"));
+                        }
+                        foreach(var collectionId in new[]{"pob.calculation.cells","pob.calculation.source-list"})
+                            if(Find<ScrollViewer>("Widget."+collectionId,root) is {} collectionViewport)
+                                Check(collectionViewport.ActualHeight>0&&collectionViewport.ActualHeight<=page.ActualHeight*.5+1,"Calculation lists retain a bounded viewport: "+collectionId);
                         foreach(var pair in new[]{("pob.calculation.search-controls","pob.calculation.tools"),("pob.calculation.setup","pob.calculation.detail-heading")})
                         {
                             var control=Find<FrameworkElement>("Widget."+pair.Item1,root)!;

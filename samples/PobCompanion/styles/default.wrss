@@ -109,7 +109,8 @@ text { color: var(--text); text-align: start; }
 .pob-operation-copy { flex-grow:1; min-width:0px; gap:4px; }
 .pob-operation-title { color:var(--text); font-size:14px; font-weight:600; }
 
-.pob-calculation-list-viewport { height:400px; max-height:50vh; min-height:144px; }
+/* Short lists fit their rows; long lists keep a bounded virtualized viewport. */
+.pob-calculation-list-viewport { flex-grow:0; max-height:50vh; min-height:0px; }
 
 /* One aligned result row is one controller target. Text can wrap at larger scales. */
 .pob-build-comparison-row { min-height:48px; padding:8px 12px; gap:4px; align:stretch; text-align:start; background:var(--surface-raised); border-color:transparent; border-width:1px; corner-radius:6px; }
