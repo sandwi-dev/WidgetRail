@@ -10,6 +10,7 @@ public sealed partial class MainWindow : Window
     private Input.PlatformInputPump? input;
     private Input.NativeBrowserDialogController? nativeBrowserDialog;
     private Input.OverlayKeyboardShortcut? keyboardShortcut;
+    private Input.OverlayMouseSession? mouseSession;
     private int keyboardSettingsVersion;
     private readonly Input.ControllerInputTrace? controllerTrace;
     private readonly Input.GamepadKeyBoundary? gamepadKeys;
@@ -96,11 +97,16 @@ public sealed partial class MainWindow : Window
                 // controller pump (including hardware-free validation).
                 var ownsForeground = Input.PlatformInputPump.IsForegroundProcess();
                 (RootFrame.Content as Shell.OverlayShellPage)?.SetForeground(ownsForeground);
-                if (!ownsForeground) (RootFrame.Content as Shell.OverlayShellPage)?.ResetInputPresentation();
+                if (!ownsForeground)
+                {
+                    mouseSession?.End();
+                    (RootFrame.Content as Shell.OverlayShellPage)?.ResetInputPresentation();
+                }
             }
         };
         Closed += (_, _) =>
         {
+            mouseSession?.Dispose(); mouseSession = null;
             themeSettings.Changed -= SystemThemeChanged;
             RetireOverlaySizing();
             controllerTrace?.Dispose();
@@ -150,6 +156,8 @@ public sealed partial class MainWindow : Window
         var page = new Shell.OverlayShellPage(options,
             unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)), initiallyVisible: !startHidden);
         RootFrame.Content = page;
+        mouseSession = new(WinRT.Interop.WindowNative.GetWindowHandle(this), DispatcherQueue);
+        AppWindow.Changed += (_, args) => { if (args.DidVisibilityChange && !AppWindow.IsVisible) mouseSession?.End(); };
         ConfigureDevelopment(page, options);
         ConfigureProductionValidation(page, arguments);
         // Production has no validation title/card/Close row. Keep one native
@@ -303,6 +311,7 @@ public sealed partial class MainWindow : Window
     {
         if (cleanupStarted) return;
         cleanupStarted = true;
+        mouseSession?.Dispose(); mouseSession = null;
         nativeBrowserDialog?.Dispose(); nativeBrowserDialog = null;
         RetireDevelopment();
         CancelTaskHandoff();

@@ -119,12 +119,12 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         web.GotFocus += (_, _) => { if (input && !HasDialog) { toolbarFocused = false; UpdateChromeVisibility(); interacting = true; browsing = true; InteractionChanged?.Invoke(); } };
         web.PointerMoved += (_, args) =>
         {
-            if (input && args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
+            if (input && !Input.OverlayMouseSession.SuppressesHover(XamlRoot) && args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
                 UseDesktopPointer();
         };
         web.PointerPressed += (_, _) =>
         {
-            if (!input) return;
+            if (!input || Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
             UseDesktopPointer();
         };
         SetPresentation(false, false);

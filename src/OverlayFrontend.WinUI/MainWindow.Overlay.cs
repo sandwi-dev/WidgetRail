@@ -56,6 +56,15 @@ public sealed partial class MainWindow
         nativeBrowserDialog?.SetHostVisibility(true);
         Activate();
         input?.AcquireForeground();
+        if (entering && Input.PlatformInputPump.IsForegroundProcess())
+        {
+            try { mouseSession?.Begin(); }
+            catch (Exception error)
+            {
+                mouseSession?.End();
+                Diagnostics.FrontendFailureLog.Current.Write("overlay-mouse", error);
+            }
+        }
         StartInput();
         QueueOverlayOpen();
     }
@@ -64,6 +73,7 @@ public sealed partial class MainWindow
     {
         if (cleanupStarted || !overlayRequestedVisible) return;
         if (DeferHideForChooser(immediate: false)) return;
+        mouseSession?.End();
         nativeBrowserDialog?.SetHostVisibility(false);
         if (overlayOpenPending && overlayMotion?.Playback is not { IsCompleted: false })
         { HideOverlayImmediately(); return; }

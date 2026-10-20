@@ -44,6 +44,7 @@ public sealed partial class MainWindow
 
     private async Task<bool> PrepareOverlayHandoffAsync(OverlayShellPage page, TaskHandoff handoff)
     {
+        mouseSession?.End();
         handoff.Started = true;
         handoff.Version = ++overlayVisibilityVersion;
         overlayRequestedVisible = false;

@@ -46,7 +46,12 @@ public sealed partial class MainWindow
             var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
             AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(880 * scale), (int)Math.Ceiling(680 * scale)));
         }
-        if (validateController || replayController)
+        if (Shell.FrontendArguments.Value(arguments, "--validate-overlay-mouse") is { } mouseResult)
+        {
+            AppWindow.ResizeClient(new(1100, 950));
+            RootFrame.Content = new Validation.OverlayMouseValidationPage(mouseResult);
+        }
+        else if (validateController || replayController)
         {
             var page = new Validation.ControllerValidationPage();
             RootFrame.Content = page;

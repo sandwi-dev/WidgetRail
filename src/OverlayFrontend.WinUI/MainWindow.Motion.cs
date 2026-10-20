@@ -97,6 +97,7 @@ public sealed partial class MainWindow
     private void HideOverlayImmediately()
     {
         if (DeferHideForChooser(immediate: true)) return;
+        mouseSession?.End();
         nativeBrowserDialog?.SetHostVisibility(false);
         CancelTaskHandoff();
         overlayRequestedVisible = false;
@@ -111,6 +112,7 @@ public sealed partial class MainWindow
 
     private void CompleteOverlayHide()
     {
+        mouseSession?.End();
         AppWindow.Hide();
         (RootFrame.Content as OverlayShellPage)?.CompleteExitPresentation();
     }

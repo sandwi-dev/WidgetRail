@@ -6,6 +6,7 @@ internal static partial class Program
     // production switch/replay diagnostics still elect their real settings profile.
     static partial void IsValidationLaunch(IReadOnlyList<string> arguments, ref bool fixture)
     {
+        if (Shell.FrontendArguments.Value(arguments, "--validate-overlay-mouse") is not null) { fixture = true; return; }
         if (arguments.Contains("--validate-dialog-input")) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-line-graph") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-banner-style") is not null) { fixture = true; return; }

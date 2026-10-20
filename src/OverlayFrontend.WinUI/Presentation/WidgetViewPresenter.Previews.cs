@@ -105,6 +105,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private void PreviewPointerMoved(object sender, PointerRoutedEventArgs args)
     {
+        if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
         // Touch contact has no persistent hover. Neither hover nor preview selects a list row.
         if (args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch) return;
         SetPreviewPointerTarget(args.OriginalSource as DependencyObject);
@@ -121,6 +122,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private void PreviewPointerExited(object sender, PointerRoutedEventArgs args)
     {
+        if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
         previewPointerIntent = true;
         if (PreviewEnterButton(previewSource) is not null) { _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); return; }
         previewPointerTarget = null; ClearFocusPreview();
@@ -175,10 +177,11 @@ internal sealed partial class WidgetViewPresenter
             !IsLoaded || presentation?.IsCurrent != true || HasTransientControl || activeTransition is not null ||
             surfaceResize?.Playback is { IsCompleted: false } || effectiveView?.Root.Kind == ViewNodeKind.ModalLayer)
             return null;
-        if ((previewEntered || previewPointerIntent && previewPointerOverChrome) && previewSource is { } retained &&
+        var usePointer = previewPointerIntent && !Input.OverlayMouseSession.SuppressesHover(XamlRoot);
+        if ((previewEntered || usePointer && previewPointerOverChrome) && previewSource is { } retained &&
             PreviewEnterButton(retained) is not null && RetainedPreviewIsCurrent(retained))
             return retained with { Content = retained.Provider is not null ? retained.Content : retained.Row?.Item.Root.FocusPresentation ?? declarations[retained.Source.Identity.Id].Node.FocusPresentation! };
-        var target = previewPointerIntent ? previewPointerTarget : XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        var target = usePointer ? previewPointerTarget : XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
         var source = FindBinding(target);
         if (source is null || source.Identity.Scope != activeScope || !Navigable(source)) return null;
         WidgetIndexedRow? row = null;
@@ -198,7 +201,7 @@ internal sealed partial class WidgetViewPresenter
             if (declaration.Node.Kind != ViewNodeKind.FocusPresentationSurface) continue;
             // Nearest presentation owner is authoritative even when it uses inline layout.
             if (declaration.Node.FocusPreview is not { } options ||
-                previewPointerIntent && !options.OnHover || !previewPointerIntent && !options.OnFocus ||
+                usePointer && !options.OnHover || !usePointer && !options.OnFocus ||
                 !bindings.TryGetValue(declaration.Node.Id, out var owner) ||
                 VisibleAnchorBounds(anchor, this) is not { Valid: true }) return null;
             return new(owner, source, anchor, row, content, row?.Lease.Range.ScopeId ?? source.Identity.Scope, options,
@@ -290,8 +293,16 @@ internal sealed partial class WidgetViewPresenter
             previewChrome = previewFrame.Surface;
             previewChrome.Child = previewContentPanel;
             previewChrome.IsHitTestVisible = PreviewEnterButton(source) is not null;
-            previewChrome.PointerEntered += (_, _) => { previewExitRevision++; previewPointerIntent = true; previewPointerOverChrome = true; };
-            previewChrome.PointerExited += (_, _) => { previewPointerOverChrome = false; _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); };
+            previewChrome.PointerEntered += (_, _) =>
+            {
+                if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
+                previewExitRevision++; previewPointerIntent = true; previewPointerOverChrome = true;
+            };
+            previewChrome.PointerExited += (_, _) =>
+            {
+                if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
+                previewPointerOverChrome = false; _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision);
+            };
 
             previewLayer = new Grid { IsHitTestVisible = true };
             previewLayer.Children.Add(previewFrame);

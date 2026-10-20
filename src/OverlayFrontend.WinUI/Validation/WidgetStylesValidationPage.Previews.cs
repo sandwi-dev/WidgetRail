@@ -63,6 +63,23 @@ internal sealed partial class WidgetStylesValidationPage
                 var first = Find<Button>("Widget.preview.first", root)!;
                 var second = Find<Button>("Widget.preview.second", root)!;
                 first.Focus(FocusState.Keyboard);
+                if (Environment.GetCommandLineArgs().Contains("--mouse-preview-only"))
+                {
+                    using var mouse = new Input.OverlayMouseSession(App.WindowHandle, DispatcherQueue);
+                    mouse.Begin();
+                    page.SetPreviewPointerTarget(second);
+                    await Wait(() => page.IsFocusPreviewOpen && Find<TextBlock>("Widget.preview.first.details", root) is { ActualHeight: > 0 });
+                    Check(mouse.WaitingForMovement && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), first),
+                        "Hidden stationary mouse cannot replace the controller-focused preview");
+                    second.Focus(FocusState.Keyboard);
+                    page.SetPreviewPointerTarget(first);
+                    await Wait(() => page.IsFocusPreviewOpen && Find<TextBlock>("Widget.preview.second.details", root) is { ActualHeight: > 0 });
+                    Check(mouse.WaitingForMovement && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), second),
+                        "Controller can move previews again despite a late cached hover target");
+                    mouse.End();
+                    await page.HandleControllerButtonAsync(ControllerButton.RightStick, ControllerEventPhase.Released);
+                    continue;
+                }
                 if (highContrast)
                 {
                     page.Width = 420; root.Width = 440; page.Height = 320; root.Height = 340;
