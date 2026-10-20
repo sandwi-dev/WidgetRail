@@ -20,6 +20,7 @@ public sealed partial class PlayniteLibraryWidget
                 AchievementsLoading = false,
                 ActivityLoading = false,
                 CompletionStatusesLoading = false,
+                AchievementSearchRequest = 0,
                 OperationBusy = false,
                 ConfirmUninstall = false,
                 OperationMessage = state.DetailsExtras.OperationBusy
@@ -135,28 +136,39 @@ public sealed partial class PlayniteLibraryWidget
         var state = _model.Value;
         if (LifecycleState != WidgetLifecycleState.Interactive || state.DetailsItem is not { } item) return true;
         var name = action.ActionId[DetailsPrefix.Length..];
-        if (name == "achievement.back") { ReturnToAchievements(); return true; }
-        if (name.StartsWith("achievement.open.", StringComparison.Ordinal)) { InspectAchievement(name[17..]); return true; }
+        if (action.ActionId != PlayniteAchievementBrowse.SearchFocusAction && state.DetailsExtras.AchievementSearchRequest != 0)
+            UpdateDetails(state.DetailsGeneration, value => value with { AchievementSearchRequest = 0 });
+        if (action.ActionId == PlayniteAchievementBrowse.SearchFocusAction)
+        {
+            if (state.DetailsExtras.Tab == PlayniteDetailsTab.Achievements &&
+                !state.DetailsExtras.ConfirmUninstall && state.DetailsExtras.Achievements is { Available: true })
+                _model.Update(value => value with
+                {
+                    AchievementFocusSequence = value.AchievementFocusSequence + 1,
+                    DetailsExtras = value.DetailsExtras with { AchievementSearchRequest = value.AchievementFocusSequence + 1 },
+                });
+            return true;
+        }
         if (name.StartsWith("achievement.reveal.", StringComparison.Ordinal))
         {
             var key = name[19..];
-            if (key == state.DetailsExtras.InspectedAchievement && achievementBrowse?.ByKey.ContainsKey(key) == true)
+            if (state.DetailsExtras.Tab == PlayniteDetailsTab.Achievements && achievementBrowse?.ByKey.TryGetValue(key, out var entry) == true && entry.Secret)
                 UpdateDetails(state.DetailsGeneration, value => value with { RevealedAchievements = new HashSet<string>(value.RevealedAchievements, StringComparer.Ordinal) { key } });
             return true;
         }
         if (name == "achievement.search" && action.CommittedText is { } text)
         {
-            UpdateDetails(state.DetailsGeneration, value => value with { AchievementSearch = text.Trim()[..Math.Min(text.Trim().Length, 128)], AchievementReturnRequest = 0 });
+            UpdateDetails(state.DetailsGeneration, value => value with { AchievementSearch = text.Trim()[..Math.Min(text.Trim().Length, 128)] });
             return true;
         }
         if (name.StartsWith("achievement.filter.", StringComparison.Ordinal) && Enum.TryParse<AchievementFilter>(name[19..], out var filter) && Enum.IsDefined(filter))
         {
-            UpdateDetails(state.DetailsGeneration, value => value with { AchievementFilter = filter, AchievementReturnRequest = 0 });
+            UpdateDetails(state.DetailsGeneration, value => value with { AchievementFilter = filter });
             return true;
         }
         if (name.StartsWith("achievement.sort.", StringComparison.Ordinal) && Enum.TryParse<AchievementSort>(name[17..], out var sort) && Enum.IsDefined(sort))
         {
-            UpdateDetails(state.DetailsGeneration, value => value with { AchievementSort = sort, AchievementReturnRequest = 0 });
+            UpdateDetails(state.DetailsGeneration, value => value with { AchievementSort = sort });
             return true;
         }
         if (name.StartsWith("tab.", StringComparison.Ordinal) &&

@@ -24,7 +24,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod]
-    public async Task AchievementBrowseVirtualizesAndReturnsToSameOccurrenceWithoutMoreReads()
+    public async Task AchievementBrowseVirtualizesAndRoutesSearchAndTabsWithoutMoreReads()
     {
         var provider = new FakeHost(1);
         var widget = Create(provider, out TestApplicationService application);
@@ -46,18 +46,28 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(4000, declaration.IndexedCollection!.Count);
         using var lease = await host.AcquireAsync(declaration.Id, 100, 4);
         var row = lease.Range.Items[2];
-        Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.A));
-        await WaitIndexed(() => widget.RenderState.Value.DetailsExtras.InspectedAchievement == row.Key);
-        var detail = host.PublishSnapshot();
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(detail).Count);
-        Assert.IsTrue(Nodes(detail.Root).Any(node => node.Text == "Back to achievements"));
-        await widget.OnActionAsync(new(DetailAction + "achievement.back", "back"));
-        var returned = host.PublishSnapshot();
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(returned).Count);
-        Assert.AreEqual(row.Key, returned.FocusGroupEntryRequest!.IndexedItem!.ItemKey);
+        Assert.IsNull(row.Root.ActionId);
+        Assert.IsTrue(Nodes(row.Root).Any(node => node.Text?.StartsWith("Description ") == true));
+        Assert.AreNotEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.A));
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.LeftStick));
+        await WaitIndexed(() => widget.RenderState.Value.DetailsExtras.AchievementSearchRequest > 0);
+        var search = host.PublishSnapshot();
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(search).Count);
+        Assert.AreEqual(PlayniteAchievementBrowse.SearchGroupId, search.FocusGroupEntryRequest!.GroupId);
+        var request = search.FocusGroupEntryRequest.RequestId;
+        Assert.AreEqual(request, host.PublishSnapshot().FocusGroupEntryRequest!.RequestId);
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.RightBumper));
+        await WaitIndexed(() => widget.RenderState.Value.DetailsExtras.Tab == PlayniteDetailsTab.Activity);
+        host.PublishSnapshot();
+        Assert.IsNull(host.CurrentSnapshot.FocusGroupEntryRequest);
+        await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
+        host.PublishSnapshot();
         await widget.OnActionAsync(new(DetailAction + "achievement.filter.Locked", "filter"));
         host.PublishSnapshot();
         Assert.AreEqual(2000, Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == declaration.Id).IndexedCollection!.Count);
+        var field = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == PlayniteAchievementBrowse.SearchId);
+        var suggestions = await widget.OnSuggestTextAsync(new(field.Id, field.TextEntrySuggestions!.Key, Guid.NewGuid().ToString("N"), 1, "Achievement 2"), default);
+        Assert.IsTrue(suggestions.Items.Any(item => item.Value == "Achievement 2"), "Suggestions can discover unlocked achievements while Locked is selected.");
         Assert.AreNotEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.A));
         await widget.OnActionAsync(new(DetailAction + "achievement.search", "search") { CommittedText = "Description 3999" });
         host.PublishSnapshot();

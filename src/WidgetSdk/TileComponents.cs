@@ -111,13 +111,13 @@ public sealed record ActionSurfaceElement : WidgetElement
 {
     internal ActionSurfaceElement(
         string id,
-        string actionId,
+        string? actionId,
         string accessibilityLabel,
         ActionSurfaceOrientation orientation,
         IReadOnlyList<WidgetElement> children) : base(RequireId(id))
     {
         StableIdentifier.Validate(id, nameof(id));
-        StableIdentifier.Validate(actionId, nameof(actionId));
+        if (actionId is not null) StableIdentifier.Validate(actionId, nameof(actionId));
         ArgumentException.ThrowIfNullOrWhiteSpace(accessibilityLabel);
         if (accessibilityLabel.Length > ProtocolConstants.MaximumStringLength)
             throw new ArgumentException(
@@ -144,12 +144,13 @@ public sealed record ActionSurfaceElement : WidgetElement
         RequiredStyleClasses = ["wrail-action-surface"];
     }
 
-    public string ActionId { get; init; }
+    public string? ActionId { get; init; }
     public WidgetIntentRequest? Intent { get; init; }
     /// <summary>Binds a host-routed intent to the surface's primary activation.</summary>
     public ActionSurfaceElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
         WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
-        this with { Intent = WidgetIntentRequest.Create(contract, payload, presentation) };
+        ActionId is null ? throw new InvalidOperationException("Reading surfaces cannot activate intents.") :
+            this with { Intent = WidgetIntentRequest.Create(contract, payload, presentation) };
     public string AccessibilityLabel { get; init; }
     public ActionSurfaceOrientation Orientation { get; init; }
     public ActionSurfacePresentation? Presentation { get; init; }
@@ -213,7 +214,7 @@ public sealed record ActionSurfaceElement : WidgetElement
             Shortcuts =
             [
                 .. Shortcuts,
-                new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy),
+                new ControllerShortcut(button, actionId ?? ActionId ?? throw new ArgumentException("Reading-surface shortcuts require an explicit action.", nameof(actionId)), phase, repeatPolicy),
             ],
         };
     public ActionSurfaceElement Shortcut(
@@ -226,7 +227,7 @@ public sealed record ActionSurfaceElement : WidgetElement
             Shortcuts =
             [
                 .. Shortcuts,
-                new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy, label),
+                new ControllerShortcut(button, actionId ?? ActionId ?? throw new ArgumentException("Reading-surface shortcuts require an explicit action.", nameof(actionId)), phase, repeatPolicy, label),
             ],
         };
     public ActionSurfaceElement ContextAction(
@@ -332,10 +333,16 @@ public static partial class UI
         ActionSurfaceOrientation orientation,
         params WidgetElement[] children)
     {
+        StableIdentifier.Validate(action, nameof(action));
         ArgumentNullException.ThrowIfNull(children);
         return new ActionSurfaceElement(
             id, action, accessibilityLabel, orientation, children.ToArray());
     }
+
+    /// <summary>Creates a focusable rich reading surface with no primary activation or Select hint.</summary>
+    public static ActionSurfaceElement ReadingSurface(string id, string accessibilityLabel,
+        ActionSurfaceOrientation orientation, params WidgetElement[] children) =>
+        new(id, null, accessibilityLabel, orientation, children);
 
     /// <summary>
     /// Creates a controller-first tile with separate title, subtitle, metadata,

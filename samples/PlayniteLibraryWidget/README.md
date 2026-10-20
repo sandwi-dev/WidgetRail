@@ -40,7 +40,7 @@ You can reopen connection settings through **Menu → Playnite connection**.
 | --- | --- |
 | A | Open game details; choose Play inside details to launch |
 | LB / RB | Switch Home and Library, or details tabs while a game is open |
-| RS click | Jump to Library search |
+| L3 / left-stick click | Jump to search in Library or Achievements |
 | Right stick movement | Scroll the focused list or panel |
 | Y | Play/install the focused game; refresh while inside details |
 | X | Open the focused game’s quick actions |
@@ -83,9 +83,10 @@ and **Activity** requires [GameActivity](https://github.com/Lacro59/playnite-gam
 in Playnite, with saved data for the selected game. Missing data is explained in the
 relevant tab. Achievements scroll continuously, with local search, All/Locked/Unlocked
 filters, and sorting by recent unlocks, rarity, name or numerical progress when available.
-Focus a row for a read-only preview; select it for full details. **B** returns to the
-same achievement. Secret descriptions, icons and progress stay hidden until you choose
-**Reveal achievement**. Activity retains 20 entries per page. Data loads when you open the
+Each row shows its description, icon, status, rarity, unlock date and available progress
+directly. Ordinary rows are read-only. Press **A** on a secret achievement to reveal its
+description and artwork. Search suggestions use all loaded, revealed achievement names;
+the active filter still controls results. Activity retains 20 entries per page. Data loads when you open the
 tab and is reused while that game's details remain open. **Refresh** reads the latest
 locally synced data; it does not ask Steam or another service to sync achievements.
 

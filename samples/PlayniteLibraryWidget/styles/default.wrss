@@ -243,9 +243,6 @@
 .playnite-library-details-content { gap: 12px; min-width: 0; }
 .playnite-library-details-row { direction: column; min-width: 0; padding: 10px 12px; gap: 4px; background: var(--surface-subtle, var(--surface-muted)); corner-radius: 10px; }
 .playnite-library-rich-preview { min-width: 0; gap: 10px; }
-.playnite-library-achievement-heading { min-width: 0; gap: 12px; align: center; }
-.playnite-library-achievement-heading-text { min-width: 0; flex-grow: 1; gap: 4px; }
-.playnite-library-achievement-icon { width: 64px; height: 64px; flex-grow: 0; corner-radius: 8px; }
 .playnite-library-achievement-page, .playnite-library-achievement-list { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .playnite-library-achievement-game-header { min-width: 0; align: center; gap: 16px; }
 .playnite-library-achievement-game-actions { max-width: 260px; flex-grow: 0; }
@@ -257,6 +254,7 @@
 .playnite-library-achievement-total-progress { flex-grow: 1; min-width: 48px; }
 .playnite-library-achievement-tools { min-width: 0; align: center; gap: 8px; }
 .playnite-library-achievement-search { min-width: 100px; flex-grow: 1; font-size: 15px; }
+.playnite-library-achievement-search-group { min-width: 0; flex-grow: 1; align: center; gap: 8px; }
 .playnite-library-achievement-filters { gap: 4px; align: center; }
 .playnite-library-achievement-sort { width: 170px; min-width: 120px; font-size: 15px; }
 .playnite-library-achievement-row { direction: row; align: center; justify: start; text-align: start; min-width: 0; min-height: 64px; padding: 8px 12px; gap: 12px; corner-radius: 8px; background: var(--surface-subtle, var(--surface-muted)); }
@@ -265,8 +263,6 @@
 .playnite-library-achievement-name { color: var(--text); text-align: start; font-size: 17px; font-weight: 600; max-lines: 2; }
 .playnite-library-achievement-meta { color: var(--text-muted); text-align: start; font-size: 14px; max-lines: 2; }
 .playnite-library-achievement-progress-label { color: var(--text); font-size: 15px; }
-.playnite-library-achievement-full-description { color: var(--text); font-size: 18px; line-height: 1.45; max-lines: 128; overflow-wrap: anywhere; }
-.playnite-library-achievement-full-title { color: var(--text); font-size: 22px; font-weight: 600; max-lines: 8; overflow-wrap: anywhere; }
 .playnite-library-preview-title { color: var(--text); font-size: 20px; font-weight: 600; max-lines: 3; }
 .playnite-library-preview-state { color: var(--text-muted); font-size: 14px; }
 .playnite-library-positive { color: var(--data-green, var(--accent)); }
@@ -283,3 +279,5 @@
   background-tint-opacity: var(--acrylic-tint-opacity, .35);
   background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25);
 }
+
+.playnite-library-achievement-description { color: var(--text); text-align: start; font-size: 16px; line-height: 1.35; max-lines: 128; overflow-wrap: anywhere; }

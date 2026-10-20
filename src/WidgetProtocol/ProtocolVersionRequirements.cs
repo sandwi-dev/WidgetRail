@@ -337,6 +337,9 @@ internal sealed class ProtocolVersionRequirements
                         $"Grid requires protocol version {ProtocolConstants.ResponsiveGridVersion} or later.");
                     break;
                 case ViewNodeKind.ActionSurface:
+                    if (node.ActionId is null)
+                        Add("reading-surface", ProtocolConstants.ReadingSurfaceVersion, path,
+                            $"Read-only focus surfaces require protocol version {ProtocolConstants.ReadingSurfaceVersion} or later.");
                     if (ActionSurfaceContentBudget.RequiresExpandedBudget(node))
                         Add("action-surface-rich-text-budget", ProtocolConstants.ActionSurfaceRichTextBudgetVersion,
                             path, $"Expanded action-surface rich text requires protocol version {ProtocolConstants.ActionSurfaceRichTextBudgetVersion} or later.");

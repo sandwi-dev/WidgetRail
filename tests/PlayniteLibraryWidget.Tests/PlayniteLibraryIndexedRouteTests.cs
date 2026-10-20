@@ -161,7 +161,7 @@ public sealed partial class PlayniteLibraryTests
         await WaitIndexed(() => !widget.RenderState.Value.OrganizationBusy);
         host.PublishSnapshot();
         using var sentinel = await host.AcquireAsync(PlayniteLibraryPresentation.ScrollId, 0, 1);
-        Assert.AreEqual(WidgetOperationAdmission.Enqueued, sentinel.RouteAction(sentinel.Range.Items[0].Key, ControllerButton.RightStick));
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, sentinel.RouteAction(sentinel.Range.Items[0].Key, ControllerButton.LeftStick));
         await WaitIndexed(() => widget.RenderState.Value.SearchFocusPending);
         Assert.AreEqual(0, provider.Launches.Count);
         await Background(widget);

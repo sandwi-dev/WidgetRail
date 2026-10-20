@@ -25,8 +25,8 @@ Missing, incompatible, malformed or failed optional reads use the existing
 SuccessStory endpoint. A valid empty result remains empty. Results are kept only
 with the current game's details; tab revisits reuse them, while reopening details
 or Refresh reads again. Existing details generations and cancellation fence late
-responses. Secret achievement previews omit both artwork and progress until
-revealed. Local icons use captured deferred-preview file artwork authority;
+responses. Secret achievement rows omit both artwork and progress until
+revealed. Local icons use captured indexed-row file artwork authority;
 HTTPS icons use the host's existing image path. No library-wide achievement cache
 or polling is added.
 
@@ -35,12 +35,15 @@ Provider API names supply stable hashed keys; legacy data falls back to name and
 description. Filtering/search/sorting never calls the provider. Unrevealed secret
 names and descriptions do not participate in search or numerical-progress sorting.
 The parent snapshot contains only the viewport and tools, regardless of list size.
-Artwork resolves for realized rows; description previews are deferred. Full details
-reuse the same content builder, with explicit secret reveal and keyed Back entry.
+Artwork resolves for realized rows. Descriptions and metadata render inline, with
+`UI.ReadingSurface` for ordinary rows and a primary reveal action only for secrets.
+There is no achievement preview provider or secondary details page. L3 enters the
+search field through a one-shot remembered-group request; tab changes and suspension
+retire that request. The shared local `TextSuggestionCatalog` searches every revealed
+name regardless of the active filter, without fetching data or committing the input.
 Filter/search/sort and the current data survive Refresh while the next read is in
 flight. Queries within the host's 512-key continuity budget preserve surviving focus
-and viewport across reordering; explicit detail return uses an indexed target at any
-supported list size. Rows never authorize actions from a retired query.
+and viewport across reordering. Rows never authorize actions from a retired query.
 
 ## Navigation and library behavior
 
@@ -196,7 +199,7 @@ contains only immutable local projections needed to produce a coherent view.
 ## Navigation and game details
 
 Home (`Library` internally) and Library (`Browse` internally) are root destinations.
-They retain separate indexed collections and native remembered item focus. RS click requests
+They retain separate indexed collections and native remembered item focus. L3 click requests
 one-shot entry into the single-field search group; analog scrolling remains host-owned.
 A poster opens a `WidgetModal` instead of launching. The modal retains the game's
 opaque identity and displays current provider metadata, rechecking current membership
@@ -217,7 +220,7 @@ max-lines: 128 and up to 64 real paragraph nodes instead of 240-character chunks
 The original 4096-character normalized-text limit remains.
 Home and Library use the same navigation header and frame; Library filters/results occupy
 a separate panel below it. Both fill available height with 24 logical pixels of vertical
-padding. The themed count badge follows Clear, and RS Search is shown in its footer.
+padding. The themed count badge follows Clear, and L3 Search is shown in its footer.
 The modal uses tile artwork beside source and vertically stacked controls, with a
 full-width navigation rail beneath. `WidgetModal.HeaderActions` replaces the default
 Close button with X/Y/B controller hints; the ordinary B dismissal shortcut remains.

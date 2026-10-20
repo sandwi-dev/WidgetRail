@@ -21,21 +21,10 @@ internal static class PlayniteLibraryDetailsPresentation
         bool loading = false, string? error = null, PlayniteDetailsExtras? extras = null,
         IReadOnlyList<PlayniteLibraryCategory>? categories = null, string? openingId = null,
         bool favorite = false, bool organizationBusy = false, string? completionStatus = null, long generation = 0,
-        IndexedCollectionDescriptor? achievementPreviews = null, WidgetElement? achievementList = null, PlayniteAchievementBrowse? achievementQuery = null)
+        WidgetElement? achievementList = null, PlayniteAchievementBrowse? achievementQuery = null)
     {
         extras ??= new();
         var modalId = openingId ?? "playnite-library.details";
-        if (extras.InspectedAchievement is { } inspected && achievementQuery?.ByKey.TryGetValue(inspected, out var selected) == true)
-            return new(modalId, item.Presentation.DisplayName,
-                UI.Grid(ContentId, [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
-                    UI.Button("Back to achievements", Prefix + "achievement.back", Prefix + "achievement.back"),
-                    UI.VerticalScroll(Prefix + "achievement.detail.scroll", PlayniteAchievementPresentation.Detail(selected, full: true)).InGrid(row: 1))
-                    .Spacing(12, 0).Classes("playnite-library-details-layout"),
-                Prefix + "achievement.back", Prefix + "achievement.back")
-            {
-                ScrollContent = false,
-                HeaderActions = UI.ControllerHint(ControllerButton.B, "Back", Prefix + "achievement.back.hint"),
-            };
         if (extras.ConfirmUninstall)
             return new(modalId, "Uninstall " + item.Presentation.DisplayName + "?",
                 UI.Stack(Prefix + "confirm",
@@ -152,13 +141,7 @@ internal static class PlayniteLibraryDetailsPresentation
                 UI.ControllerHint(ControllerButton.X, "Game options", Prefix + "options.hint"))
             .ContextMenu(ControllerButton.X,
                 menu);
-        // Keep the same native ancestry on every tab, including loading and empty results.
-        WidgetElement presentedBody = UI.FocusPresentationSurface(body, UI.Text("", Prefix + "preview.empty"), Prefix + "preview-surface") with
-            {
-                Preview = new(Width: 420, Height: 360) { SizeToContentHeight = true },
-                PreviewSource = achievementPreviews,
-            };
-        return new(modalId, presentation.DisplayName, presentedBody, PlayId, PlayniteLibraryActions.DetailsClose)
+        return new(modalId, presentation.DisplayName, body, PlayId, PlayniteLibraryActions.DetailsClose)
         {
             ScrollContent = false,
             HeaderActions = UI.Row(Prefix + "header-hints", options,

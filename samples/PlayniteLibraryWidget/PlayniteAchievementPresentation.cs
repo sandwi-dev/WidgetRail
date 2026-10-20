@@ -26,17 +26,23 @@ internal static class PlayniteAchievementPresentation
             query?.All.Any(entry => !entry.Secret && entry.Item.Progress is not null) == true).Select(sort =>
             new SelectOption(sort.ToString(), sort switch { AchievementSort.Recent => "Recent unlocks", AchievementSort.Progress => "Closest to completion", _ => sort.ToString() },
                 Prefix + "achievement.sort." + sort, IsSelected: state.AchievementSort == sort)).ToArray();
+        var search = UI.TextEntry(state.AchievementSearch, "Search achievements", PlayniteAchievementBrowse.SearchId, PlayniteAchievementBrowse.SearchId, 128);
+        if (query is not null) search = search.Suggest(query.SuggestionSource);
         var toolbar = UI.Row(Prefix + "achievements.tools",
-            UI.TextEntry(state.AchievementSearch, "Search achievements", Prefix + "achievement.search", Prefix + "achievement.search", 128)
-                .Classes("playnite-library-achievement-search"),
+            UI.Row(PlayniteAchievementBrowse.SearchGroupId,
+                search.Classes("playnite-library-achievement-search"),
+                UI.ControllerGlyph(ControllerButton.LeftStick, Prefix + "achievement.search.hint"))
+                .RememberChildFocus(PlayniteAchievementBrowse.SearchId).Classes("playnite-library-achievement-search-group"),
             UI.Row(Prefix + "achievement.filters", filters).Classes("playnite-library-achievement-filters"),
             UI.Select("Sort", sorts, Prefix + "achievement.sort").Classes("playnite-library-achievement-sort"))
             .Classes("playnite-library-achievement-tools");
         WidgetElement results = data.Total == 0 ? UI.Text(data.ProviderName + " reports no achievements for this game.", Prefix + "achievements.empty") :
-            query?.Rows.Count == 0 ? UI.Text("No achievements match these filters.", Prefix + "achievements.no-matches") :
+            query?.Rows.Count == 0 ? UI.Text(state.AchievementFilter == AchievementFilter.All ? "No achievements match this search." :
+                "No " + state.AchievementFilter.ToString().ToLowerInvariant() + " achievements match. Select All to search every achievement.", Prefix + "achievements.no-matches") :
             list ?? UI.Text("Loading achievements…", Prefix + "achievements.loading");
         return UI.Grid(Prefix + "achievements.page", [GridTrack.Auto(), GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
-            summary, toolbar.InGrid(row: 1), results.InGrid(row: 2)).Spacing(8, 0).Classes("playnite-library-achievement-page");
+            summary, toolbar.InGrid(row: 1), results.InGrid(row: 2)).Spacing(8, 0).Classes("playnite-library-achievement-page")
+            .Shortcut(ControllerButton.LeftStick, PlayniteAchievementBrowse.SearchFocusAction, "Search achievements");
     }
 
     internal static WidgetElement Row(PlayniteAchievementEntry entry, string id)
@@ -48,51 +54,30 @@ internal static class PlayniteAchievementPresentation
             .Classes("playnite-library-achievement-row-icon"));
         var meta = item.Unlocked ? "Unlocked" : "Locked";
         if (item.Percent is { } rarity) meta += $" · {rarity:0.#}% of players";
-        if (item.Unlocked && item.UnlockedAt is { } date) meta += " · " + date.ToLocalTime().ToString("d");
-        children.Add(UI.Stack(id + ".text",
+        if (item.Unlocked && item.UnlockedAt is { } date) meta += " · " + date.ToLocalTime().ToString("g");
+        if (item.GamerScore is { } points) meta += $" · {points} points";
+        var text = new List<WidgetElement>
+        {
             UI.Text(entry.Name, id + ".name").Classes("playnite-library-achievement-name"),
-            UI.Text(meta, id + ".meta").Classes("playnite-library-achievement-meta"))
-            .Classes("playnite-library-achievement-row-text"));
-        if (!entry.Secret && !item.Unlocked && item.Progress is { } progress)
-            children.Add(UI.Text($"{progress.Current:N0} / {progress.Maximum:N0}", id + ".progress").Classes("playnite-library-achievement-progress-label"));
-        else if (item.Unlocked) children.Add(UI.Icon(WidgetGlyph.Check, id + ".check", "Unlocked").Classes("playnite-library-positive"));
-        var action = Prefix + "achievement.open." + entry.Key;
-        return UI.ActionSurface(action, id, entry.Name + ". " + meta + ". Open details.", ActionSurfaceOrientation.Horizontal, children.ToArray())
-            .Classes("playnite-library-achievement-row").PresentOnFocus(entry.Key);
-    }
-
-    internal static WidgetElement Detail(PlayniteAchievementEntry entry, bool full)
-    {
-        var item = entry.Item;
-        var id = Prefix + "achievement.detail";
-        var heading = new List<WidgetElement>();
-        if (Icon(entry, id + ".icon") is { } icon) heading.Add(icon.Classes("playnite-library-achievement-icon"));
-        heading.Add(UI.Stack(id + ".heading-text",
-            UI.Text(entry.Name, id + ".title").Classes(full ? "playnite-library-achievement-full-title" : "playnite-library-preview-title"),
-            UI.Text(item.Unlocked ? "Unlocked" : "Locked", id + ".state")
-                .Classes(item.Unlocked ? ["playnite-library-preview-state", "playnite-library-positive"] : ["playnite-library-preview-state"]))
-            .Classes("playnite-library-achievement-heading-text"));
-        var content = new List<WidgetElement>
-        {
-            UI.Row(id + ".heading", heading.ToArray()).Classes("playnite-library-achievement-heading"),
-            UI.Text(entry.Secret ? "The description and artwork are hidden." : item.Description, id + ".description")
-                .Classes(full ? "playnite-library-achievement-full-description" : "playnite-library-preview-description"),
+            UI.Text(meta, id + ".meta").Classes("playnite-library-achievement-meta"),
+            UI.Text(entry.Secret ? "Reveal this achievement to see its description and artwork." : item.Description, id + ".description")
+                .Classes("playnite-library-achievement-description"),
         };
-        if (entry.Secret)
-            content.Add(full ? UI.Button("Reveal achievement", Prefix + "achievement.reveal." + entry.Key, id + ".reveal") :
-                UI.Text("Select to view or reveal this achievement.", id + ".hint").Classes("playnite-library-details-meta"));
-        else
+        if (!entry.Secret && !item.Unlocked && item.Progress is { } progress)
         {
-            if (item.UnlockedAt is { } date && item.Unlocked) content.Add(UI.Text("Unlocked " + date.ToLocalTime().ToString("g"), id + ".date").Classes("playnite-library-details-meta"));
-            if (item.Percent is { } percent) content.Add(UI.Text($"{percent:0.#}% of players", id + ".rarity").Classes("playnite-library-details-meta"));
-            if (item.GamerScore is { } score) content.Add(UI.Text($"{score} points", id + ".points").Classes("playnite-library-details-meta"));
-            if (!item.Unlocked && item.Progress is { } progress)
-            {
-                content.Add(UI.Text($"{progress.Current:N0} of {progress.Maximum:N0}", id + ".progress-text").Classes("playnite-library-details-meta"));
-                content.Add(UI.Progress(progress.Current, progress.Maximum, id + ".progress"));
-            }
+            text.Add(UI.Text($"{progress.Current:N0} / {progress.Maximum:N0}", id + ".progress-label").Classes("playnite-library-achievement-progress-label"));
+            text.Add(UI.Progress(progress.Current, progress.Maximum, id + ".progress"));
         }
-        return UI.Stack(id, content.ToArray()).Classes("playnite-library-rich-preview");
+        children.Add(UI.Stack(id + ".text", text.ToArray()).Classes("playnite-library-achievement-row-text"));
+        if (item.Unlocked) children.Add(UI.Icon(WidgetGlyph.Check, id + ".check", "Unlocked").Classes("playnite-library-positive"));
+        if (entry.Secret) children.Add(UI.ControllerHint(ControllerButton.A, "Reveal", id + ".reveal-hint"));
+        var label = entry.Name + ". " + meta + ". " + (entry.Secret ? "Reveal achievement." : item.Description);
+        // The visible description remains complete; the accessible row name has the protocol's bound.
+        label = label[..Math.Min(label.Length, ProtocolConstants.MaximumStringLength)];
+        return (entry.Secret
+            ? UI.ActionSurface(Prefix + "achievement.reveal." + entry.Key, id, label, ActionSurfaceOrientation.Horizontal, children.ToArray())
+            : UI.ReadingSurface(id, label, ActionSurfaceOrientation.Horizontal, children.ToArray()))
+            .Classes("playnite-library-achievement-row");
     }
 
     private static WidgetElement? Icon(PlayniteAchievementEntry entry, string id) => entry.Secret || entry.Item.Icon is not { } icon ? null :

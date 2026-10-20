@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
@@ -16,6 +17,9 @@ internal sealed class PlayniteAchievementBrowse
 {
     internal const string ListId = "playnite-library.details.achievements.list";
     internal const string Prefix = "playnite-library.details.";
+    internal const string SearchId = Prefix + "achievement.search";
+    internal const string SearchGroupId = Prefix + "achievement.search.group";
+    internal const string SearchFocusAction = Prefix + "achievement.search.focus";
     internal PlayniteAchievementBrowse(long generation, PlayniteDetailsExtras state)
     {
         Generation = generation;
@@ -38,6 +42,12 @@ internal sealed class PlayniteAchievementBrowse
             AchievementFilter.Unlocked => entry.Item.Unlocked,
             _ => true,
         });
+        Suggestions = new TextSuggestionCatalog(entries.Where(entry => !entry.Secret && !string.IsNullOrWhiteSpace(entry.Name))
+            .DistinctBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(entry => new TextSuggestion(entry.Key,
+                entry.Name.Length <= TextSuggestionContract.MaximumLabelLength ? entry.Name : entry.Name[..(TextSuggestionContract.MaximumLabelLength - 1)] + "…",
+                entry.Name, entry.Item.Unlocked ? "Unlocked" : "Locked"))
+            .Where(suggestion => TextSuggestionContract.IsValid(new([suggestion]), 1, TextSuggestionContract.MaximumQueryLength)));
         var search = state.AchievementSearch.Trim();
         if (search.Length > 0) filtered = filtered.Where(entry => entry.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
             !entry.Secret && entry.Item.Description.Contains(search, StringComparison.OrdinalIgnoreCase));
@@ -55,6 +65,8 @@ internal sealed class PlayniteAchievementBrowse
     internal IReadOnlyList<PlayniteAchievementEntry> All { get; }
     internal IReadOnlyDictionary<string, PlayniteAchievementEntry> ByKey { get; }
     internal IReadOnlyList<PlayniteAchievementEntry> Rows { get; }
+    internal string SuggestionSource { get; } = "playnite.achievements." + Guid.NewGuid().ToString("N");
+    internal TextSuggestionCatalog Suggestions { get; }
     internal bool SameInputs(long generation, PlayniteDetailsExtras state) => Generation == generation &&
         ReferenceEquals(State.Achievements, state.Achievements) && ReferenceEquals(State.RevealedAchievements, state.RevealedAchievements) &&
         State.AchievementFilter == state.AchievementFilter && State.AchievementSort == state.AchievementSort &&

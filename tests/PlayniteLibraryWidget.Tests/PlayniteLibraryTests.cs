@@ -146,7 +146,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task LibraryIsRootAndRightStickClickTargetsOnlySearch()
+    public async Task LibraryIsRootAndLeftStickClickTargetsOnlySearch()
     {
         var host = new FakeHost(20);
         var widget = Create(host);
@@ -157,14 +157,14 @@ public sealed partial class PlayniteLibraryTests
         var page = Snapshot(widget, 110_010);
         Assert.IsFalse(await Route(widget, page, ControllerButton.B, page.InitialFocusId!),
             "Root Library leaves Back to the host.");
-        Assert.IsTrue(await Route(widget, page, ControllerButton.RightStick, page.InitialFocusId!));
+        Assert.IsTrue(await Route(widget, page, ControllerButton.LeftStick, page.InitialFocusId!));
         await WaitFor(() => widget.RenderState.Value.SearchFocusPending, "search entry");
         var search = Snapshot(widget, 110_011);
         Assert.AreEqual("playnite-library.search.group", search.FocusGroupEntryRequest?.GroupId);
         Assert.AreEqual("playnite-library.search", search.InitialFocusId);
         var request = search.FocusGroupEntryRequest!.RequestId;
         Assert.AreEqual(request, Snapshot(widget, 110_012).FocusGroupEntryRequest?.RequestId);
-        Assert.IsTrue(await Route(widget, Snapshot(widget, 110_012), ControllerButton.RightStick, search.InitialFocusId!));
+        Assert.IsTrue(await Route(widget, Snapshot(widget, 110_012), ControllerButton.LeftStick, search.InitialFocusId!));
         await WaitFor(() => widget.RenderState.Value.ContentEntryRequestId > request, "repeat search entry");
         Assert.IsTrue(Snapshot(widget, 110_013).FocusGroupEntryRequest!.RequestId > request);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
@@ -2581,7 +2581,7 @@ public sealed partial class PlayniteLibraryTests
         {
             "_application", "_gate", "_launchGeneration", "_launchStateRecency",
             "_launchStates", "_indexedHome", "_indexedBrowse", "_indexedFavorites",
-            "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementBrowse", "achievementRows", "achievementPreviews", "_hiddenRows", "_model", "_navigation", "_organization",
+            "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementBrowse", "achievementRows", "_hiddenRows", "_model", "_navigation", "_organization",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",

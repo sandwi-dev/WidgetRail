@@ -448,7 +448,7 @@ internal static partial class PlayniteLibraryPresentation
         {
             var hints = new List<WidgetElement>
             {
-                UI.ControllerHint(ControllerButton.RightStick, "Search", "playnite-library.browse.hint.search"),
+                UI.ControllerHint(ControllerButton.LeftStick, "Search", "playnite-library.browse.hint.search"),
             };
             if ((indexedBrowse?.Descriptor.Count ?? 0) != 0)
                 hints.Add(StableControllerHint(ControllerButton.X, "Game options",
@@ -627,7 +627,7 @@ internal static partial class PlayniteLibraryPresentation
                 .Shortcut(ControllerButton.LeftBumper, siblingAction, label: "Previous tab")
                 .Shortcut(ControllerButton.RightBumper, siblingAction, label: "Next tab");
             if (state.Route == PlayniteLibraryRoute.Browse)
-                root = ((ContainerElement)root).Shortcut(ControllerButton.RightStick,
+                root = ((ContainerElement)root).Shortcut(ControllerButton.LeftStick,
                     PlayniteLibraryActions.SearchFocus, label: "Search");
             if (state.SearchFocusPending && state.ContentEntryRequestId > 0 &&
                 state.Route == PlayniteLibraryRoute.Browse)

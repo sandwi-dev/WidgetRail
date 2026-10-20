@@ -51,6 +51,13 @@ Publish retained data through an indexed/discovered source instead. The shared
 
 ## Focus, input and artwork
 
+For rich indexed content with no primary action, use `UI.ReadingSurface(id, label,
+orientation, children)`. It stays focusable for controller reading and scrolling,
+but has no activation action or Select hint. Ancestor shortcuts still work. It uses
+the same bounded ActionSurface content contract and requires protocol 98. Supply an
+explicit action ID for any authored shortcut; activation intents require an ordinary
+action surface instead.
+
 Keep the collection ID and occurrence keys stable across content updates. Use
 `IndexedCollectionFocusTarget` for keyed entry; the host retains native scroll
 position and restores remembered focus when the target is still usable. Right

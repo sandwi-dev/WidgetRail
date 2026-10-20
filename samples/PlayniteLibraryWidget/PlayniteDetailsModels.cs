@@ -53,8 +53,6 @@ internal sealed record PlayniteDetailsExtras
     internal AchievementFilter AchievementFilter { get; init; }
     internal AchievementSort AchievementSort { get; init; }
     internal string AchievementSearch { get; init; } = "";
-    internal string? InspectedAchievement { get; init; }
-    internal string? AchievementReturnKey { get; init; }
-    internal long AchievementReturnRequest { get; init; }
+    internal long AchievementSearchRequest { get; init; }
     internal int Page { get; init; }
 }

@@ -166,6 +166,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     && IsInlineLink(declaration, plan) == IsInlineLink(declarations[declaration.Node.Id], declarations)
                     && declarations[declaration.Node.Id].Node.Transition?.Kind == declaration.Node.Transition?.Kind
                     && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
+                    && (declaration.Node.Kind != ViewNodeKind.ActionSurface ||
+                        (declarations[declaration.Node.Id].Node.ActionId is null) == (declaration.Node.ActionId is null))
                     ? retained : Create(declaration, IsModalDialog(declaration, plan), IsInlineLink(declaration, plan)));
             var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
             if (sameOwner) RetainBackgroundPaint(nextBindings, plan);
@@ -466,7 +468,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     ? new WidgetPosterPanel() : new Grid();
                 // Worker admission owns action sequencing. A pending IPC response
                 // must not suppress another deliberate press on an enabled control.
-                element = presentationOnly ? children : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                element = presentationOnly ? children : node.ActionId is null
+                    ? new ContentControl { Content = children, IsTabStop = true, HorizontalContentAlignment = HorizontalAlignment.Stretch, UseSystemFocusVisuals = true }
+                    : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
                     Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
             case ViewNodeKind.TextEntry:

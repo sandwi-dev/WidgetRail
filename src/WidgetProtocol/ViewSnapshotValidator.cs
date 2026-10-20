@@ -1239,9 +1239,9 @@ public static class ViewSnapshotValidator
                         Add($"{path}.children", "invalid_poster_structure",
                             "A poster ActionSurface requires one bounded bottom Stack and may precede it with one Cover Image artwork child.");
                 }
-                if (string.IsNullOrWhiteSpace(node.ActionId))
+                if (node.ActionId is not null && string.IsNullOrWhiteSpace(node.ActionId) || node.ActionId is null && node.Intent is not null)
                     AddIdentifier($"{path}.actionId", "required",
-                        "An action surface requires an action ID.",
+                        "An activating surface requires a nonempty action ID; reading surfaces cannot bind an activation intent.",
                         ProtocolValidationIdentifierKind.Action,
                         ProtocolValidationIdentifierState.Missing, null);
                 if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))

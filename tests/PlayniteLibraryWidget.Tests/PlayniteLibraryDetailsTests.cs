@@ -455,11 +455,8 @@ public sealed partial class PlayniteLibraryTests
         Assert.IsFalse(PageNodes(widget, secret.Root).Any(node => node.AccessibilityLabel?.Contains("Secret name") == true));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(secret).Count);
         var achievementKey = PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]);
-        await widget.OnActionAsync(new(DetailAction + "achievement.open." + achievementKey, "achievement"));
-        Assert.IsFalse(PageNodes(widget, Snapshot(widget, 122_003).Root).Any(node => node.Text == "Secret name"));
         await widget.OnActionAsync(new(DetailAction + "achievement.reveal." + achievementKey, "achievement"));
-        Assert.IsTrue(PageNodes(widget, Snapshot(widget, 122_003).Root).Any(node => node.Text == "Secret name"));
-        await widget.OnActionAsync(new(DetailAction + "achievement.back", "back"));
+        Assert.IsTrue(widget.RenderState.Value.DetailsExtras.RevealedAchievements.Contains(achievementKey));
         await widget.OnActionAsync(new(DetailAction + "uninstall.confirm", "confirm"));
         Assert.AreEqual(0, application.InstallationRequests.Count);
         await widget.OnActionAsync(new(DetailAction + "uninstall", "options"));
@@ -670,8 +667,8 @@ public sealed partial class PlayniteLibraryLayoutTests
                 var frame = nodes.Single(node => node.Id == "playnite-library.browse.frame");
                 CollectionAssert.AreEqual(new[] { header.Id, "playnite-library.browse.page" }, frame.Children.Select(node => node.Id).ToArray());
                 var hint = nodes.Single(node => node.Id == "playnite-library.browse.hint.search.key");
-                Assert.AreEqual(ControllerPrompt.RightStickPress, hint.ControllerPrompt);
-                Assert.IsTrue(nodes.SelectMany(node => node.Shortcuts).Any(shortcut => shortcut.Button == ControllerButton.RightStick && shortcut.ActionId == PlayniteLibraryActions.SearchFocus));
+                Assert.AreEqual(ControllerPrompt.LeftStickPress, hint.ControllerPrompt);
+                Assert.IsTrue(nodes.SelectMany(node => node.Shortcuts).Any(shortcut => shortcut.Button == ControllerButton.LeftStick && shortcut.ActionId == PlayniteLibraryActions.SearchFocus));
             }
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
         }

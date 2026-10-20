@@ -171,7 +171,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod]
-    public async Task AchievementPreviewIsLazyReadOnlyAndDoesNotRevealSecrets()
+    public async Task AchievementRowsDoNotRevealSecretsAndHaveNoPreview()
     {
         var provider = new FakeHost(1);
         var widget = Create(provider, out TestApplicationService application);
@@ -185,22 +185,37 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
         using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "achievement-preview");
-        var surface = PageNodes(widget, host.CurrentSnapshot.Root).Single(node => node.Id == DetailAction + "preview-surface");
-        Assert.IsNotNull(surface.FocusPreviewSource);
-        Assert.IsFalse(PageNodes(widget, host.CurrentSnapshot.Root).Any(node => node.Text == "Secret description"));
-        using var preview = await host.AcquirePreviewAsync(surface.Id, PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]));
+        Assert.IsFalse(Nodes(host.CurrentSnapshot.Root).Any(node => node.Id == DetailAction + "preview-surface"));
+        var entry = new PlayniteAchievementBrowse(widget.RenderState.Value.DetailsGeneration, widget.RenderState.Value.DetailsExtras).Rows[0];
+        var rowSnapshot = new WidgetView(PlayniteAchievementPresentation.Row(entry, "test-row")).CreateSnapshot("test-row", 1);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(rowSnapshot).Count,
+            string.Join("; ", ViewSnapshotValidator.Validate(rowSnapshot).Select(error => error.Path + ": " + error.Message)));
+        using var preview = await host.AcquireAsync(PlayniteAchievementBrowse.ListId, 0, 1);
         var nodes = Nodes(preview.Range.Items.Single().Root).ToArray();
         Assert.IsFalse(nodes.Any(node => node.Text is "Secret name" or "Secret description"));
         Assert.IsTrue(nodes.Any(node => node.Text == "Secret achievement"));
-        Assert.IsFalse(nodes.Any(node => node.IsFocusable));
+        Assert.IsTrue(nodes[0].IsFocusable);
         Assert.IsFalse(nodes.Any(node => node.ArtworkHandle is not null || node.ImageSource is not null || node.Kind == ViewNodeKind.Progress));
         Assert.IsNull(await preview.ResolveArtworkSourceAsync(preview.Range.Items.Single().Key,
             PlayniteAchievementBrowse.IconHandle(PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]))));
+        var field = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == PlayniteAchievementBrowse.SearchId);
+        var query = new TextSuggestionQuery(field.Id, field.TextEntrySuggestions!.Key, Guid.NewGuid().ToString("N"), 1, "Secret");
+        Assert.AreEqual(0, (await widget.OnSuggestTextAsync(query, default)).Items.Count);
+        var key = preview.Range.Items.Single().Key;
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, preview.RouteAction(key, ControllerButton.A));
+        await WaitIndexed(() => widget.RenderState.Value.DetailsExtras.RevealedAchievements.Contains(key));
+        host.PublishSnapshot();
+        Assert.IsTrue((await widget.OnSuggestTextAsync(query, default)).Unavailable, "A retired suggestion source cannot leak into a newer editor.");
+        using var revealed = await host.AcquireAsync(PlayniteAchievementBrowse.ListId, 0, 1);
+        Assert.IsNull(revealed.Range.Items.Single().Root.ActionId);
+        Assert.IsTrue(Nodes(revealed.Range.Items.Single().Root).Any(node => node.Text == "Secret description"));
+        field = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == PlayniteAchievementBrowse.SearchId);
+        Assert.AreEqual("Secret name", (await widget.OnSuggestTextAsync(query with { SourceKey = field.TextEntrySuggestions!.Key }, default)).Items.Single().Value);
         await Background(widget);
     }
 
     [TestMethod]
-    public async Task AchievementIconBelongsOnlyToItsCapturedPreviewAndShowsProgress()
+    public async Task AchievementReadingRowOwnsItsIconAndShowsDescriptionAndProgress()
     {
         var provider = new FakeHost(1);
         var widget = Create(provider, out TestApplicationService application);
@@ -215,15 +230,17 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
         using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "achievement-icon");
-        var surface = PageNodes(widget, host.CurrentSnapshot.Root).Single(node => node.Id == DetailAction + "preview-surface");
+
         Assert.IsTrue(PageNodes(widget, host.CurrentSnapshot.Root).Any(node => node.Text == "PlayniteAchievements"));
-        using var preview = await host.AcquirePreviewAsync(surface.Id, PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]));
+        using var preview = await host.AcquireAsync(PlayniteAchievementBrowse.ListId, 0, 1);
         var row = preview.Range.Items.Single();
         var nodes = Nodes(row.Root).ToArray();
         var handle = PlayniteAchievementBrowse.IconHandle(PlayniteAchievementEntry.KeyFor(widget.RenderState.Value.DetailsExtras.Achievements!.Items[0]));
         Assert.IsTrue(nodes.Any(node => node.ArtworkHandle == handle.Value));
         Assert.IsTrue(nodes.Any(node => node.Kind == ViewNodeKind.Progress));
-        Assert.IsFalse(nodes.Any(node => node.IsFocusable || node.ImageSource?.Contains("C:") == true));
+        Assert.IsNull(row.Root.ActionId);
+        Assert.IsTrue(nodes.Any(node => node.Text == "Complete ten steps"));
+        Assert.IsFalse(nodes.Any(node => node.ImageSource?.Contains("C:") == true || node.FocusPreviewKey is not null));
         var artwork = await preview.ResolveArtworkSourceAsync(row.Key, handle) as WidgetFileArtwork;
         Assert.IsNotNull(artwork);
         Assert.AreEqual(@"C:\cache\steps.png", artwork.Path);

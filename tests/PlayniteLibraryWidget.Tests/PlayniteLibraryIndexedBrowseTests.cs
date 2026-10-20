@@ -68,7 +68,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         await widget.Entered.Task.WaitAsync(IndexedLimit);
         Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(second.Key, ControllerButton.A,
             contextActionOwnerId: second.Root.Id, contextActionId: PlayniteLibraryActions.Favorite));
-        Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(second.Key, ControllerButton.RightStick));
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(second.Key, ControllerButton.LeftStick));
         lease.Dispose();
         var replacement = new PlayniteLibraryBrowseQuery(BrowseCapture(BrowseGames(2), new(false)),
             PlayniteLibraryPrivateState.Empty, false);

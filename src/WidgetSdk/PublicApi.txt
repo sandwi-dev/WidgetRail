@@ -1953,6 +1953,7 @@ method static WidgetRail.WidgetSdk.UI.PosterTile(string title, string stateLabel
 method static WidgetRail.WidgetSdk.UI.PosterTile(string title, string stateLabel, string action, string id, string? subtitle = null, string? metadata = null, WidgetRail.WidgetSdk.TileArtwork? artwork = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method static WidgetRail.WidgetSdk.UI.Progress(double value, double maximum, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ProgressElement
 method static WidgetRail.WidgetSdk.UI.ProviderContent(WidgetRail.WidgetProtocol.ProviderDocumentReference reference, WidgetRail.WidgetProtocol.BrowserInteractionMode interactionMode, string id, string accessibleName = "Document content") -> WidgetRail.WidgetSdk.WebBrowserElement
+method static WidgetRail.WidgetSdk.UI.ReadingSurface(string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ActionSurfaceOrientation orientation, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method static WidgetRail.WidgetSdk.UI.ResponsiveBranch(WidgetRail.WidgetProtocol.ResponsiveVisibility visibility, WidgetRail.WidgetSdk.WidgetElement child) -> WidgetRail.WidgetSdk.WidgetElement
 method static WidgetRail.WidgetSdk.UI.ResponsiveGrid(string id, double minimumColumnWidth, int? maximumColumns = null, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.GridElement
 method static WidgetRail.WidgetSdk.UI.RichText(string id, params WidgetRail.WidgetSdk.WidgetElement[] spans) -> WidgetRail.WidgetSdk.RichTextElement
@@ -3202,7 +3203,6 @@ property string WidgetRail.WidgetSdk.ActionSheetItem.ActionId { get; set; }
 property string WidgetRail.WidgetSdk.ActionSheetItem.Id { get; set; }
 property string WidgetRail.WidgetSdk.ActionSheetItem.Label { get; set; }
 property string WidgetRail.WidgetSdk.ActionSurfaceElement.AccessibilityLabel { get; set; }
-property string WidgetRail.WidgetSdk.ActionSurfaceElement.ActionId { get; set; }
 property string WidgetRail.WidgetSdk.ButtonElement.ActionId { get; set; }
 property string WidgetRail.WidgetSdk.ButtonElement.Label { get; set; }
 property string WidgetRail.WidgetSdk.CapturedMediaElement.AccessibleName { get; set; }
@@ -3372,6 +3372,7 @@ property string WidgetRail.WidgetSdk.WidgetTaskWindowRequest.WindowId { get; set
 property string WidgetRail.WidgetSdk.WindowPreviewElement.AccessibilityLabel { get; set; }
 property string WidgetRail.WidgetSdk.WindowPreviewElement.WindowId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSheetItem.AccessibilityLabel { get; set; }
+property string? WidgetRail.WidgetSdk.ActionSurfaceElement.ActionId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.FocusPersistenceId { get; set; }
