@@ -40,6 +40,16 @@ internal sealed partial class WidgetStylesValidationPage
         presenter.GotFocus-=observeReveal;scroll.ViewChanged-=observeView;
         first.Focus(FocusState.Keyboard);first.StartBringIntoView(new(){AnimationDesired=false});
         await Wait(()=>scroll.VerticalOffset<1);
+        presenter.ScrollBy(0, 100);
+        presenter.ScrollBy(0, 1);
+        await Wait(() => scroll.VerticalOffset >= 100.5);
+        Check(Math.Abs(scroll.VerticalOffset - 101) < 1,
+            "two controller samples in one dispatch accumulate instead of replacing the pending movement");
+        presenter.ScrollBy(0, -60);
+        presenter.ScrollBy(0, -41);
+        await Wait(() => scroll.VerticalOffset < 1);
+        Check(scroll.VerticalOffset < 1,
+            "queued reverse movement returns to the boundary without replaying forward movement");
         Check(presenter.ScrollBy(0, 480), "right-stick scrolling selects the focused declaration's native viewport");
         await Wait(() => scroll.VerticalOffset >= 470);
         var settledOffset = scroll.VerticalOffset;

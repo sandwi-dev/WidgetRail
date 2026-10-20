@@ -73,6 +73,11 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             await Until(()=>View() is GridView {Items.Count:>0,ActualHeight:>0}&&Descendants(presenter).OfType<WidgetArtworkView>().Any());
             await Task.Delay(3000,lifetime.Token);
             Sample("ready");
+            if (Environment.GetCommandLineArgs().Contains("--playnite-scroll-direction"))
+            {
+                await CheckScrollDirectionAsync();
+                return;
+            }
             CompositionTarget.Rendering+=Rendering;
             for(var pass=0;pass<3;pass++)
             {

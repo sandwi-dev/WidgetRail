@@ -8,6 +8,7 @@ param(
     [switch]$WithoutArtwork,
     [switch]$HeapSnapshot,
     [switch]$NavigationChecks,
+    [switch]$ScrollDirectionChecks,
     [switch]$Prepare
 )
 $ErrorActionPreference='Stop'
@@ -81,6 +82,7 @@ try {
     $frontendArguments=@("--indexed-validation-pipe=$pipe","--playnite-performance-output=`"$output`"")
     if($HeapSnapshot){$frontendArguments+='--playnite-performance-heap-pause'}
     if($NavigationChecks){$frontendArguments+='--playnite-performance-navigation'}
+    if($ScrollDirectionChecks){$frontendArguments+='--playnite-scroll-direction'}
     $frontendProcess=Start-Process $frontend -ArgumentList $frontendArguments `
         -WindowStyle Hidden -PassThru
     $env:WRAIL_PLAYNITE_PROCESS_FIXTURE_ROOT=$oldFixture

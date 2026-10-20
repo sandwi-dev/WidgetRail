@@ -10,7 +10,13 @@ internal sealed partial class WidgetViewPresenter
     {
         RoutedEventHandler focused = (_, _) => { RememberFocus(); RefreshScrollFocusOutline(); NotifyControllerGuideChanged(); };
         PointerEventHandler pressed = (_, _) => { CancelGroupEntry(); CancelScrollReveal(); scrollGesture=null;directionalScroll=null;RefreshScrollFocusOutline(); };
-        PointerEventHandler wheel = (_, _) => CancelScrollReveal();
+        PointerEventHandler wheel = (_, _) =>
+        {
+            CancelScrollReveal();
+            // Native wheel input establishes a new position independently of
+            // the controller's last accepted asynchronous scroll destination.
+            scrollGesture?.ResetOffsets();
+        };
         KeyEventHandler key = (_, args) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;

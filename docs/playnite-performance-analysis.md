@@ -277,3 +277,64 @@ The cumulative candidate is `artifacts/performance/playnite-candidate`. It uses
 the existing installed widget packages; no Playnite or PoB package update is
 required. Performance changes are on `codex/playnite-performance`, awaiting
 user acceptance before integration into main.
+
+## Follow-up: continuous right-stick scroll stability
+
+The reported symptom was clarified as holding the right stick down continuously
+in the Library grid. This is different from directional focus navigation and
+from a pause caused solely by allocation or rendering work.
+
+A confirmed input bug was found in the shared `WidgetViewPresenter.ScrollBy`
+path. `ChangeView` applies asynchronously, but every relative movement was based
+on the last reported `VerticalOffset`. The native input pump can drain up to 16
+queued controller packets in one dispatcher turn. For example, a movement of
+100 followed by 1 could request destinations 100 and then 1 while the reported
+offset was still zero. The second request discarded most of the first movement.
+
+The correction retains one accepted destination per axis and active viewport,
+accumulates subsequent deltas against that destination, and clears it when the
+native view catches up. Bounds and physical-pixel rounding are respected. Wheel
+input drops the controller's pending offsets; owner changes discard the whole
+gesture. It adds no movement queue, timer, smoothing, or change to stick speed,
+deadzone, axis hysteresis or the existing hitch cap. Focus settlement retains its
+existing behavior.
+
+The fixture now has `-ScrollDirectionChecks`. It uses the production right-stick
+sampler at full and partial deflection, plus short batches of packets in one UI
+dispatch. Short synchronous delays in that **test only** emulate time spent
+polling/dispatching queued packets; no such delay is in production. It records
+actual requested destinations, native offsets, visible tile positions, and
+whether artwork was already present. Holding and release phases are separate.
+
+- `burst-direction-baseline`: 157 backward requested destinations while holding
+  down and 163 while holding up; maximum retreats were 74.8 and 70.4 DIPs.
+- `held-scroll-final`: zero backward requests, zero backward native offsets,
+  and zero reversals of already-present visible artwork during all four held
+  scenarios (full down, batched down, batched up, partial down).
+- The observed small tile-position shifts were placeholders acquiring their
+  six-DIP margins before their artwork appeared. These are recorded separately
+  from movement of already-present artwork.
+- An exploratory run also showed automatic viewport adjustment after releasing
+  the stick and transferring focus to a scaled tile. That is a separate
+  release-time case; it is not evidence for the continuous-hold symptom and was
+  not changed in this correction.
+
+The trace confirms incorrect destination ordering and discarded movement. It
+does **not** establish that every backward request was visibly presented by the
+compositor, or that this fully explains the user's perceived rubberband. The
+candidate requires the user's comparison with the actual library before that
+claim can be made.
+
+Validation: all 310 shell tests passed, including four accumulator regression
+cases; all 44 native scroll/focus checks passed, including a real two-request
+burst and reverse burst in one dispatcher turn. Existing checks cover ordinary
+and horizontal reading regions, focus continuity, boundary handling and focus
+revocation. The original memory stress test drove absolute positions, and its
+navigation checks used directional focus: neither asserted relative-scroll
+request ordering. The new fixture closes that specific coverage gap.
+
+One initial diagnostic launch failed its bridge handshake before scrolling and
+was excluded; subsequent launches completed. Raw observations, including that
+failed launch and release-time cases, remain under the performance artifacts.
+The scroll-request trace is compiled only into validation builds, with no new
+production logging.

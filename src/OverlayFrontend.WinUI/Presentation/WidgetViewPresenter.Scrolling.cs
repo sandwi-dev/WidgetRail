@@ -8,7 +8,18 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    private sealed record ScrollGesture(ScrollViewer Viewport, Binding Owner, string Scope);
+    private sealed record ScrollGesture(ScrollViewer Viewport, Binding Owner, string Scope)
+    {
+        internal ScrollOffsetAccumulator Horizontal { get; } = new();
+        internal ScrollOffsetAccumulator Vertical { get; } = new();
+        internal double Tolerance => 1 / (Viewport.XamlRoot?.RasterizationScale ?? 1);
+        internal void Observe()
+        {
+            Horizontal.Observe(Viewport.HorizontalOffset, Viewport.ScrollableWidth, Tolerance);
+            Vertical.Observe(Viewport.VerticalOffset, Viewport.ScrollableHeight, Tolerance);
+        }
+        internal void ResetOffsets() { Horizontal.Reset(); Vertical.Reset(); }
+    }
     private ScrollGesture? currentScrollGesture;
     private ScrollGesture? scrollGesture
     {
@@ -23,7 +34,11 @@ internal sealed partial class WidgetViewPresenter
             currentScrollGesture=value;RefreshScrollFocusOutline();
         }
     }
-    private void ScrollFocusViewChanged(object? sender,ScrollViewerViewChangedEventArgs args)=>RefreshScrollFocusOutline();
+    private void ScrollFocusViewChanged(object? sender, ScrollViewerViewChangedEventArgs args)
+    {
+        scrollGesture?.Observe();
+        RefreshScrollFocusOutline();
+    }
 
     /// <summary>
     /// Applies one normalized DIP movement to the active native scroll owner.
@@ -60,16 +75,26 @@ internal sealed partial class WidgetViewPresenter
         if (target is null) return false;
         var owner = FindBinding(target);
         if (owner is null) return false;
-        scrollGesture = new(target, owner, activeScope);
+        var gesture = scrollGesture is { } prior && ReferenceEquals(prior.Viewport, target) &&
+            ReferenceEquals(prior.Owner, owner) && prior.Scope == activeScope
+                ? prior : new ScrollGesture(target, owner, activeScope);
+        scrollGesture = gesture;
         if (owner.Element is WidgetIndexedCollectionView indexed) indexed.CancelHostNavigation();
-        target.ChangeView(Math.Clamp(target.HorizontalOffset + horizontalDelta, 0, target.ScrollableWidth),
-            Math.Clamp(target.VerticalOffset + verticalDelta, 0, target.ScrollableHeight), null, disableAnimation: true);
+        var horizontal = gesture.Horizontal.Propose(target.HorizontalOffset, horizontalDelta, target.ScrollableWidth, gesture.Tolerance);
+        var vertical = gesture.Vertical.Propose(target.VerticalOffset, verticalDelta, target.ScrollableHeight, gesture.Tolerance);
+        TraceScrollRequest(horizontal, vertical);
+        if (target.ChangeView(horizontal, vertical, null, disableAnimation: true))
+        {
+            gesture.Horizontal.Accepted(horizontal);
+            gesture.Vertical.Accepted(vertical);
+        }
         return true;
 
         bool CanScroll(ScrollViewer viewer) => viewer.IsLoaded && viewer.Visibility == Visibility.Visible &&
             (horizontalDelta != 0 && viewer.HorizontalScrollMode != ScrollMode.Disabled && viewer.ScrollableWidth > 0 ||
              verticalDelta != 0 && viewer.VerticalScrollMode != ScrollMode.Disabled && viewer.ScrollableHeight > 0);
     }
+    partial void TraceScrollRequest(double horizontal, double vertical);
 
     /// <summary>
     /// Rejoin directional navigation after free scrolling. Only native realized
