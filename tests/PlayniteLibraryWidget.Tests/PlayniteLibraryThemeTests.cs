@@ -61,7 +61,8 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.AreEqual(tinted, panel.Get("background")?.Text, style);
             Assert.IsNull(panel.Get("opacity"), style);
         }
-        Assert.AreEqual(surface, Resolve("stack", "playnite-library-home-content").Get("background")?.Text);
+        Assert.AreEqual(Resolve("stack", "playnite-library-home-summary").Get("background")?.Text,
+            Resolve("stack", "playnite-library-home-content").Get("background")?.Text, "Home uses the same translucent fill as its focused summary.");
         Assert.AreEqual(text, Resolve("button", "playnite-library-section-link").Get("color")?.Text);
         Assert.AreEqual("acrylic", Resolve("stack", "wrail-modal").Get("background-material")?.Text);
         Assert.AreEqual(raised, Resolve("action-surface", "playnite-library-category").Get("background")?.Text);

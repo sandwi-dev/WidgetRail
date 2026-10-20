@@ -232,6 +232,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(nodes.SelectMany(node => node.Shortcuts).Any(shortcut =>
             shortcut.Button == ControllerButton.Y && shortcut.ActionId == PlayniteLibraryActions.QuickPlay));
         var focusedSummary = launchTiles[0].FocusPresentation!;
+        var statusBadges = Nodes(focusedSummary).Single(node => node.Id.StartsWith("playnite-library.home.summary.game.badges.", StringComparison.Ordinal));
+        Assert.AreEqual(ViewNodeKind.Row, statusBadges.Kind, "Short statuses use a compact row rather than equal-width grid columns.");
         CollectionAssert.Contains(focusedSummary.StyleClasses.ToArray(),
             "playnite-library-home-summary");
         Assert.IsTrue(Nodes(focusedSummary).Any(node =>

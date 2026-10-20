@@ -1031,7 +1031,7 @@ internal static partial class PlayniteLibraryPresentation
                 .Classes("playnite-library-summary-title", "playnite-library-summary-title-home"),
             UI.Text(summary, "playnite-library.home.summary.game.subtitle." + id, summary)
                 .Classes("playnite-library-summary-meta"),
-            UI.ResponsiveGrid("playnite-library.home.summary.game.badges." + id, 120, 4, badges.ToArray())
+            UI.Row("playnite-library.home.summary.game.badges." + id, badges.ToArray())
                 .Classes("playnite-library-summary-badges"),
         };
         if (!string.IsNullOrWhiteSpace(metadata?.Description))

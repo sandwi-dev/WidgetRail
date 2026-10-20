@@ -321,3 +321,13 @@ chrome carries its own local scale. Global text-scale setters remain validation
 fallbacks for standalone controls, not the production appearance update path.
 The native scope fixture covers simultaneous values, logical-tree first layout,
 chrome isolation, live changes and reparenting. Styling/typography suite460 passes.
+
+## Modal background material
+
+Native modal panels honor `background-material: acrylic`, `background-tint-opacity`
+and `background-luminosity-opacity`. They cache one in-app `AcrylicBrush` per panel;
+text and controls keep their own opacity. High contrast and reduced-transparency
+preferences use the ordinary accessible fill. Windows owns the opaque fallback
+when system transparency is unavailable. Removing the material or retiring the
+panel releases its brush. Ordinary container backgrounds remain solid or alpha
+fills; acrylic is implemented for modal panels and anchored preview frames.

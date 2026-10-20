@@ -204,6 +204,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly Dictionary<DependencyProperty, object> originals = [];
     private readonly Dictionary<string, (Color Color, SolidColorBrush Brush)> brushes = new(StringComparer.Ordinal);
     private (Color Color, double Amount, LinearGradientBrush Brush)? shadedBackground;
+    private AcrylicBrush? modalAcrylic;
     private FontFamily? fontFamily;
     internal TextBlock? TextContent { get; set; }
     private TextBlock? styledText;
@@ -654,6 +655,20 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     }
     private Brush? SurfaceBackground(SolidColorBrush? background, IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, bool contrast)
     {
+        if (element is WidgetModalPanel && background is not null && !contrast && !accessibility.ReducedTransparency &&
+            style?.GetValueOrDefault("background-material")?.Text == "acrylic")
+        {
+            // In-app acrylic samples the content behind the dialog. Native Windows
+            // transparency policy can replace it with this opaque fallback.
+            modalAcrylic ??= new AcrylicBrush { TintTransitionDuration = TimeSpan.Zero };
+            modalAcrylic.TintColor = modalAcrylic.FallbackColor = background.Color with { A = byte.MaxValue };
+            modalAcrylic.TintOpacity = Math.Clamp(Number(style, "background-tint-opacity") ?? .65, 0, 1);
+            modalAcrylic.TintLuminosityOpacity = Number(style, "background-luminosity-opacity") is { } luminosity
+                ? Math.Clamp(luminosity, 0, 1) : null;
+            shadedBackground = null;
+            return modalAcrylic;
+        }
+        modalAcrylic = null;
         var amount = contrast ? 0 : Math.Clamp(Number(style, "surface-shading") ?? 0, -.25, .25);
         if (background is null || amount == 0 || background.Color.A == 0) { shadedBackground = null; return background; }
         if (shadedBackground is { } cached && cached.Color == background.Color && cached.Amount == amount) return cached.Brush;
@@ -764,6 +779,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         selectorPaint?.Dispose(); selectorPaint = null;
         focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
+        modalAcrylic = null;
+        shadedBackground = null;
         RestoreResources();
         if (interactive) { element.GotFocus -= Changed; element.LostFocus -= Changed; }
         element.ActualThemeChanged -= ThemeChanged; element.Unloaded -= Unloaded; element.Loaded -= FocusRootLoaded; element.SizeChanged -= ShapeSizeChanged;

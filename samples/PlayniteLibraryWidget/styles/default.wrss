@@ -20,7 +20,7 @@
 .playnite-library-home-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; overflow: clip; background: var(--canvas, var(--surface)); }
 .playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; overflow: clip; }
 .playnite-library-home-foreground { width: 100%; min-width: 520px; max-width: 1180px; height: 100%; min-height: 0px; flex-grow: 1; overflow: clip; padding: 18px 20px 16px; }
-.playnite-library-home-content { background: var(--surface); background-material: acrylic; background-tint-opacity: .78; background-luminosity-opacity: .65; border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 16px; padding: 14px 16px; width: 100%; min-width: 0px; min-height: 0px; flex-grow: 0; gap: 14px; }
+.playnite-library-home-content { background: alpha(var(--surface), .84); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 16px; padding: 14px 16px; width: 100%; min-width: 0px; min-height: 0px; flex-grow: 0; gap: 14px; }
 .playnite-library-home-fallback { gap: 12px; }
 .playnite-library-browse-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; padding: 0px; background: rgba(0, 0, 0, 0); overflow: clip; }
 .playnite-library-browse-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; background: var(--canvas, var(--surface)); overflow: clip; }
@@ -185,7 +185,7 @@
 
 /* Give long game titles and controller hints independent, full-width rows. */
 /* Dense details use tinted acrylic without reducing text opacity. */
-.wrail-modal { background-material: acrylic; background-tint-opacity: .65; background-luminosity-opacity: .5; width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
+.wrail-modal { background-material: acrylic; background-tint-opacity: .35; background-luminosity-opacity: .25; width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
 .wrail-modal__header { direction: column; align: start; gap: 10px; }
 .wrail-modal__title { width: 100%; font-size: 24px; line-height: 1.2; }
 .playnite-library-details-header-hints { width: 100%; justify: end; gap: 16px; }
@@ -205,7 +205,7 @@
 .playnite-library-primary { background: var(--accent); color: var(--canvas, var(--surface)); border-color: transparent; }
 .playnite-library-primary:focused { outline-color: var(--canvas, var(--surface)); }
 .playnite-library-browse-summary-surface { align: stretch; width: 100%; min-width: 0; min-height: 0; flex-grow: 1; gap: 12px; justify: start; }
-.playnite-library-summary-strip { width: 100%; min-width: 0; min-height: 90px; padding: 12px 16px; gap: 14px; align: center; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; background-material: acrylic; background-tint-opacity: .55; background-luminosity-opacity: .5; }
+.playnite-library-summary-strip { width: 100%; min-width: 0; min-height: 90px; padding: 12px 16px; gap: 14px; align: center; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px;  }
 .playnite-library-summary-copy { min-width: 0; flex-grow: 1; gap: 6px; }
 .playnite-library-summary-title-compact { font-size: 24px; max-lines: 1; }
 .playnite-library-summary-meta-row { min-width: 0; gap: 12px; align: center; }
@@ -216,7 +216,7 @@
 .playnite-library-play-key { color: var(--accent); }
 
 /* Home keeps bounded rows and uses the existing focus-driven game background. */
-.playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 760px; gap: 0px; padding: 16px 20px; overflow: clip; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 16px; background-material: acrylic; background-tint-opacity: .55; background-luminosity-opacity: .5; }
+.playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 760px; gap: 0px; padding: 16px 20px; overflow: clip; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 16px;  }
 .playnite-library-summary-title-home { font-size: 30px; }
 .playnite-library-summary-description { min-width: 0px; color: var(--text-muted); font-size: 16px; line-height: 1.4; max-lines: 2; text-overflow: ellipsis; }
 .playnite-library-section-heading { width: 100%; min-width: 0; justify: space-between; align: center; gap: 12px; }
