@@ -30,6 +30,19 @@ public sealed partial class PlayniteLibraryWidget
                                 throw new ArgumentException("Unknown achievement preview key.");
                             return ValueTask.FromResult(PlayniteLibraryDetailsPresentation.AchievementPreview(context.State, index));
                         },
+                        ResolveArtworkSource = (context, key, handle, token) =>
+                        {
+                            token.ThrowIfCancellationRequested();
+                            const string prefix = "achievement.";
+                            if (!key.StartsWith(prefix, StringComparison.Ordinal) || !int.TryParse(key[prefix.Length..], out var index) ||
+                                index < 0 || index >= context.State.Achievements!.Items.Count ||
+                                handle != PlayniteLibraryDetailsPresentation.AchievementIconHandle(index))
+                                return ValueTask.FromResult<WidgetArtworkSource?>(null);
+                            var item = context.State.Achievements.Items[index];
+                            var secret = item.Hidden && !item.Unlocked && !context.State.RevealedAchievements.Contains(index);
+                            return ValueTask.FromResult<WidgetArtworkSource?>(!secret && item.Icon is { } path && ArtworkFileContract.IsLocalPath(path)
+                                ? new WidgetFileArtwork(path, context.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture)) : null);
+                        },
                     });
             else achievementPreviews.Publish(achievementPreviewContext);
         }

@@ -243,6 +243,9 @@
 .playnite-library-details-content { gap: 12px; min-width: 0; }
 .playnite-library-details-row { direction: column; min-width: 0; padding: 10px 12px; gap: 4px; background: var(--surface-subtle, var(--surface-muted)); corner-radius: 10px; }
 .playnite-library-rich-preview { min-width: 0; gap: 10px; }
+.playnite-library-achievement-heading { min-width: 0; gap: 12px; align: center; }
+.playnite-library-achievement-heading-text { min-width: 0; flex-grow: 1; gap: 4px; }
+.playnite-library-achievement-icon { width: 64px; height: 64px; flex-grow: 0; corner-radius: 8px; }
 .playnite-library-preview-title { color: var(--text); font-size: 20px; font-weight: 600; max-lines: 3; }
 .playnite-library-preview-state { color: var(--text-muted); font-size: 14px; }
 .playnite-library-positive { color: var(--data-green, var(--accent)); }

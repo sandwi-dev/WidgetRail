@@ -35,6 +35,7 @@ internal enum PlayniteBridgeCommandKind
     Uninstall,
     ResolveArtwork,
     ResolveArtworkPaths,
+    CachedAchievements,
     Launch,
     SetFavorite,
     SetHidden,
@@ -960,8 +961,12 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
             VersionPolicy = HttpVersionPolicy.RequestVersionExact,
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
-        var jsonBody = command.Kind == PlayniteBridgeCommandKind.ResolveArtworkPaths
-            ? PlayniteBridgeClient.ArtworkPathsRequestBody : command.JsonBody;
+        var jsonBody = command.Kind switch
+        {
+            PlayniteBridgeCommandKind.ResolveArtworkPaths => PlayniteBridgeClient.ArtworkPathsRequestBody,
+            PlayniteBridgeCommandKind.CachedAchievements => PlayniteBridgeClient.CachedAchievementsRequestBody(command.GameId!),
+            _ => command.JsonBody,
+        };
         if (jsonBody is not null)
             request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1025,6 +1030,8 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
                     MaximumArtworkBytes),
             PlayniteBridgeCommandKind.ResolveArtworkPaths =>
                 (HttpMethod.Post, "api/eval", PlayniteBridgeClient.MaximumArtworkPathsBytes),
+            PlayniteBridgeCommandKind.CachedAchievements =>
+                (HttpMethod.Post, "api/eval", MaximumDetailBytes),
             PlayniteBridgeCommandKind.Launch =>
                 (HttpMethod.Post, Game(command.GameId) + "/launch", MaximumJsonBytes),
             PlayniteBridgeCommandKind.SetFavorite or

@@ -29,20 +29,28 @@ internal static class FileArtworkTests
         lease.Dispose();
         Check(await lease.ResolveArtworkSourceAsync("one", new("cover")) is null);
         await WidgetTestHost.DestroyAsync(widget);
+        using var fileOnly = new Fixture(fileOnly: true);
+        await WidgetTestHost.InitializeAsync(fileOnly);
+        await WidgetTestHost.SetLifecycleStateAsync(fileOnly, WidgetLifecycleState.Interactive);
+        using var fileHost = WidgetTestHost.CreateIndexedCollectionHost(fileOnly, "file-only.instance");
+        using var fileLease = await fileHost.AcquireAsync("rows", 0, 1);
+        Check(await fileLease.ResolveArtworkSourceAsync("one", new("cover")) is WidgetFileArtwork);
+        Check(await fileLease.ResolveArtworkAsync("one", new("cover")) is null);
+        await WidgetTestHost.DestroyAsync(fileOnly);
     }
 
     private static void Check(bool value) { if (!value) throw new Exception("File artwork contract failed."); }
     private sealed class Fixture : Widget, IDisposable
     {
         private readonly WidgetIndexedCollection<string, string> source;
-        internal Fixture() => source = CreateIndexedCollection<string, string>("source", "query", 1, new()
+        internal Fixture(bool fileOnly = false) => source = CreateIndexedCollection<string, string>("source", "query", 1, new()
         {
             ReadRange = (_, _, _, _) => ValueTask.FromResult<IReadOnlyList<string>>(["one"]),
             ItemKey = item => new(item),
             RenderItem = (_, _, _) => UI.ActionSurface("open", "item", "Item", ActionSurfaceOrientation.Vertical,
                 UI.Artwork(new("cover"), "image", "Cover")),
             OnAction = (_, _, _, _) => ValueTask.CompletedTask,
-            ResolveArtwork = (_, _, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png,
+            ResolveArtwork = fileOnly ? null : (_, _, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png,
                 Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYGBgAAAABQABeqhXUAAAAABJRU5ErkJggg=="))),
             ResolveArtworkSource = (_, _, _, _) => ValueTask.FromResult<WidgetArtworkSource?>(new WidgetFileArtwork(@"C:\images\cover.png", "v1")),
         });

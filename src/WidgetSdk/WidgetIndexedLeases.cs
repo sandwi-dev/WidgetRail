@@ -61,7 +61,7 @@ public abstract partial class Widget
                 IndexedCollectionContract.ValidateRange(parent, request, range);
                 if (!IndexedCollectionContract.RetainsPrefix(source.Descriptor, request.Source)) throw new InvalidOperationException("Indexed query retired.");
                 foreach (var item in read.Items)
-                    if (HasWidgetArtwork(item.Declaration.Root) && item.ResolveArtwork is null)
+                    if (HasWidgetArtwork(item.Declaration.Root) && item.ResolveArtwork is null && item.ResolveArtworkSource is null)
                         throw new InvalidOperationException("Indexed rows declaring widget-owned artwork require a captured artwork resolver.");
                 var lease = new IndexedCollectionLease(id, range);
                 indexedReservations.Remove(id);

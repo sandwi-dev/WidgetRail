@@ -77,11 +77,15 @@ games and **Game options → Uninstall** for installed games, with confirmation 
 uninstallation. Follow any Playnite or launcher prompts, then refresh to see the result.
 Pinned views keep showing the page without its modal.
 
-**Achievements** requires [SuccessStory](https://github.com/Lacro59/playnite-successstory-plugin)
+**Achievements** reads [PlayniteAchievements](https://github.com/justin-delano/PlayniteAchievements)
+first, with [SuccessStory](https://github.com/Lacro59/playnite-successstory-plugin) as a fallback,
 and **Activity** requires [GameActivity](https://github.com/Lacro59/playnite-gameactivity-plugin)
 in Playnite, with saved data for the selected game. Missing data is explained in the
 relevant tab. Locked secret achievements remain hidden until selected. Long achievement
-and activity lists show 20 entries per page. Focus an achievement to see its description in a read-only preview.
+and activity lists show 20 entries per page. Focus an achievement to see its description,
+icon and progress, where available, in a read-only preview. Data loads when you open the
+tab and is reused while that game's details remain open. **Refresh** reads the latest
+locally synced data; it does not ask Steam or another service to sync achievements.
 
 The interface follows your selected WidgetRail theme. Categories open by selecting
 the row; game covers retain their original artwork colors.

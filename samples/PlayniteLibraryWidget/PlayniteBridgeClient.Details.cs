@@ -45,9 +45,15 @@ internal sealed partial class PlayniteBridgeClient
     }
     public async ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token)
     {
+        var cached = await ReadCachedAchievementsAsync(CanonicalGameId(gameId), token).ConfigureAwait(false);
+        if (cached is not null) return cached;
         using var document = await ReadPluginDataAsync(gameId, PlayniteBridgeCommandKind.Achievements, token).ConfigureAwait(false);
         if (document is null) return PlayniteAchievements.Unavailable;
-        var root = document.RootElement;
+        return ParseAchievements(document.RootElement, PlayniteAchievementProvider.SuccessStory);
+    }
+
+    private static PlayniteAchievements ParseAchievements(JsonElement root, PlayniteAchievementProvider provider)
+    {
         if (!root.TryGetProperty("achievements", out var array) || array.ValueKind != JsonValueKind.Array ||
             array.GetArrayLength() > 4000 || !TryNonNegativeInteger(root, "total", out var total) ||
             !TryNonNegativeInteger(root, "unlocked", out var unlocked) || unlocked > total || total != array.GetArrayLength())
@@ -63,11 +69,17 @@ internal sealed partial class PlayniteBridgeClient
                 OptionalString(item, "description", 2048) ?? "", achieved,
                 ParseOptionalDate(item, "dateUnlocked"), percent,
                 TryNonNegativeInteger(item, "gamerScore", out var score) ? score : null,
-                item.TryGetProperty("isHidden", out var hidden) && hidden.ValueKind == JsonValueKind.True));
+                item.TryGetProperty("isHidden", out var hidden) && hidden.ValueKind == JsonValueKind.True)
+            {
+                Progress = TryNonNegativeInteger(item, "progress", out var progress) &&
+                    TryNonNegativeInteger(item, "progressMax", out var maximum) && maximum > 0 && progress <= maximum
+                    ? new PlayniteAchievementProgress(progress, maximum) : null,
+                Icon = AchievementIconSource(OptionalString(item, "icon", 2048)),
+            });
         }
         if (values.Count(value => value.Unlocked) != unlocked)
             throw new PlayniteBridgeDataException("invalid_playnite_data");
-        return new(true, total, unlocked, values.OrderByDescending(value => value.UnlockedAt).ToArray());
+        return new(true, total, unlocked, values.OrderByDescending(value => value.UnlockedAt).ToArray()) { Provider = provider };
     }
     public async ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token)
     {

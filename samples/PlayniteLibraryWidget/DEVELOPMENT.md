@@ -7,6 +7,29 @@ user-installed Playnite Bridge instance. The package owns its bounded localhost
 client, protected credential prompt, presentation, and organization state. It
 does not copy a product app-library provider into the package.
 
+## Achievement providers
+
+The Achievements tab makes one bounded, read-only eval request for the selected
+game's PlayniteAchievements cache. It locates the installed add-on by plugin ID,
+uses its public `AchievementDataService` and prefers `GetVisibleGameAchievementData`
+(falling back to the older public `GetGameAchievementData` method). It never starts
+a provider sync or reads the add-on's database schema directly. Only a validated
+canonical game GUID is inserted into the fixed script. Execution is off the
+Playnite UI thread, with a three-second execution deadline and bounded result text.
+The bridge compiles each eval using its C# 5 CodeDOM compiler before execution;
+that compilation is outside the script deadline, and its assembly remains loaded
+until Playnite exits. Per-game reads deliberately favor fresh cached progress over
+a library-wide startup snapshot. Never call eval for row focus or scrolling.
+
+Missing, incompatible, malformed or failed optional reads use the existing
+SuccessStory endpoint. A valid empty result remains empty. Results are kept only
+with the current game's details; tab revisits reuse them, while reopening details
+or Refresh reads again. Existing details generations and cancellation fence late
+responses. Secret achievement previews omit both artwork and progress until
+revealed. Local icons use captured deferred-preview file artwork authority;
+HTTPS icons use the host's existing image path. No library-wide achievement cache
+or polling is added.
+
 ## Navigation and library behavior
 
 Home and Library are peer navigation destinations. Library selects Browse; Home

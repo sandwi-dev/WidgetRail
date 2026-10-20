@@ -5,12 +5,20 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal enum PlayniteDetailsTab { Description, Information, Achievements, Activity, Links }
 internal sealed record PlayniteGameLink(string Name, string Url);
 internal sealed record PlayniteGameDetails(WidgetAppLibraryItem Item, PlayniteBridgeGame? Game = null);
+internal enum PlayniteAchievementProvider { SuccessStory, PlayniteAchievements }
+internal sealed record PlayniteAchievementProgress(int Current, int Maximum);
 internal sealed record PlayniteAchievement(string Name, string Description, bool Unlocked,
-    DateTimeOffset? UnlockedAt, double? Percent, int? GamerScore, bool Hidden);
+    DateTimeOffset? UnlockedAt, double? Percent, int? GamerScore, bool Hidden)
+{
+    internal PlayniteAchievementProgress? Progress { get; init; }
+    internal string? Icon { get; init; }
+}
 internal sealed record PlayniteAchievements(bool Available, int Total, int Unlocked,
     IReadOnlyList<PlayniteAchievement> Items)
 {
     internal static PlayniteAchievements Unavailable { get; } = new(false, 0, 0, []);
+    internal PlayniteAchievementProvider Provider { get; init; }
+    internal string ProviderName => Provider == PlayniteAchievementProvider.PlayniteAchievements ? "PlayniteAchievements" : "SuccessStory";
 }
 internal sealed record PlayniteSession(DateTimeOffset? Date, long Seconds, string? Action);
 internal sealed record PlayniteActivity(bool Available, long TotalSeconds, IReadOnlyList<PlayniteSession> Sessions)

@@ -246,11 +246,12 @@ internal static class PlayniteLibraryDetailsPresentation
         if (state.AchievementsError is { } error) { content.Add(Copy(error, "achievements.error")); return; }
         if (state.Achievements is not { Available: true } data)
         {
-            content.Add(Copy("No SuccessStory data is available for this game. Install and enable SuccessStory in Playnite, then let it sync this game and refresh here.", "achievements.unavailable"));
+            content.Add(Copy("No achievement data is available for this game. Sync it in PlayniteAchievements or SuccessStory in Playnite, then refresh here.", "achievements.unavailable"));
             return;
         }
-        if (data.Total == 0) { content.Add(Copy("SuccessStory reports no achievements for this game.", "achievements.empty")); return; }
+        if (data.Total == 0) { content.Add(Copy(data.ProviderName + " reports no achievements for this game.", "achievements.empty")); return; }
         content.Add(UI.Text($"{data.Unlocked} of {data.Total} unlocked", Prefix + "achievements.summary").Classes("playnite-library-details-section-title"));
+        content.Add(Copy("From " + data.ProviderName + " · Refresh to read the latest synced progress.", "achievements.provider"));
         content.Add(UI.Progress(data.Unlocked, data.Total, Prefix + "achievements.progress"));
         var page = Math.Clamp(state.Page, 0, Math.Max(0, (data.Items.Count - 1) / PageSize));
         for (var index = page * PageSize; index < Math.Min(data.Items.Count, (page + 1) * PageSize); index++)
@@ -262,6 +263,7 @@ internal static class PlayniteLibraryDetailsPresentation
             if (item.UnlockedAt is { } date && item.Unlocked) status += " | " + date.ToLocalTime().ToString("d");
             if (item.Percent is { } percent) status += $" | {percent:0.#}% of players";
             if (item.GamerScore is { } points) status += $" | {points} points";
+            if (!secret && !item.Unlocked && item.Progress is { } progress) status += $" | {progress.Current:N0} / {progress.Maximum:N0}";
             var id = Prefix + "achievement." + index;
             WidgetElement row = UI.ActionSurface(id, id, name + ". " + status,
                 ActionSurfaceOrientation.Vertical,
@@ -278,17 +280,34 @@ internal static class PlayniteLibraryDetailsPresentation
         var item = state.Achievements!.Items[index];
         var secret = item.Hidden && !item.Unlocked && !state.RevealedAchievements.Contains(index);
         var id = Prefix + "preview." + index;
-        return UI.Stack(id,
+        var heading = new List<WidgetElement>();
+        if (!secret && item.Icon is { } icon)
+            heading.Add((WidgetRail.WidgetProtocol.ArtworkFileContract.IsLocalPath(icon)
+                ? UI.Artwork(AchievementIconHandle(index), id + ".icon", "Achievement icon", ImageFit.Contain)
+                : UI.Image(icon, id + ".icon", "Achievement icon", ImageFit.Contain)).Classes("playnite-library-achievement-icon"));
+        heading.Add(UI.Stack(id + ".heading-text",
             UI.Text(secret ? "Secret achievement" : item.Name, id + ".title").Classes("playnite-library-preview-title"),
             UI.Text(item.Unlocked ? "Unlocked" : "Locked", id + ".state")
-                .Classes(item.Unlocked ? ["playnite-library-preview-state", "playnite-library-positive"] : ["playnite-library-preview-state"]),
+                .Classes(item.Unlocked ? ["playnite-library-preview-state", "playnite-library-positive"] : ["playnite-library-preview-state"]))
+            .Classes("playnite-library-achievement-heading-text"));
+        var content = new List<WidgetElement>
+        {
+            UI.Row(id + ".heading", heading.ToArray()).Classes("playnite-library-achievement-heading"),
             UI.Text(secret ? "Press A on the achievement to reveal it." : item.Description, id + ".description")
                 .Classes("playnite-library-preview-description"),
             UI.Text(item.Unlocked && item.UnlockedAt is { } date ? date.ToLocalTime().ToString("d") :
                 !secret && item.Percent is { } percent ? $"{percent:0.#}% of players" : "", id + ".meta")
-                .Classes("playnite-library-details-meta"))
-            .Classes("playnite-library-rich-preview");
+                .Classes("playnite-library-details-meta"),
+        };
+        if (!secret && !item.Unlocked && item.Progress is { } progress)
+        {
+            content.Add(UI.Text($"{progress.Current:N0} of {progress.Maximum:N0}", id + ".progress-text").Classes("playnite-library-details-meta"));
+            content.Add(UI.Progress(progress.Current, progress.Maximum, id + ".progress"));
+        }
+        return UI.Stack(id, content.ToArray()).Classes("playnite-library-rich-preview");
     }
+
+    internal static WidgetArtworkHandle AchievementIconHandle(int index) => new("playnite-library.achievement-icon." + index);
     private static void AddActivity(List<WidgetElement> content, PlayniteDetailsExtras state)
     {
         if (state.ActivityLoading) { content.Add(Loading("Loading activity...")); return; }
