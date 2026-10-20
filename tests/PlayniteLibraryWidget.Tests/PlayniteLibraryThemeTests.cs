@@ -102,7 +102,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(Resolve("backdrop").Get("background")?.Text,
             Resolve("modalLayer", "wrail-modal-layer").Get("background")?.Text);
         Assert.AreEqual("24px", Resolve("stack", "wrail-modal").Get("padding")?.Text);
-        Assert.AreEqual("column", Resolve("row", "wrail-modal__header").Get("direction")?.Text);
+        Assert.AreEqual("row", Resolve("row", "wrail-modal__header").Get("direction")?.Text);
         Assert.AreEqual("900px", Resolve("stack", "wrail-modal").Get("width")?.Text);
         Assert.AreEqual("0", Resolve("text", "playnite-library-details-field").Get("flex-grow")?.Text);
         Assert.AreEqual(accent, Resolve("text", "playnite-library-summary-badge-accent").Get("color")?.Text);

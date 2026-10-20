@@ -174,7 +174,7 @@
 .playnite-library-common-frame { width: 100%; height: 100%; min-width: 0px; min-height: 0px; max-width: 1180px; padding: 24px 20px; flex-grow: 1; gap: 12px; }
 .playnite-library-result-count { color: var(--text); background: var(--surface-subtle, var(--surface-muted)); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; font-size: 13px; font-weight: 600; min-width: 0px; padding: 9px 12px; margin: 0px 0px 0px 8px; }
 
-.playnite-library-details-header-hints { align: center; gap: 16px; }
+.playnite-library-details-header-hints { align: center; justify: end; flex-grow: 0; gap: 16px; }
 
 .playnite-library-details-button { width: 100%; min-width: 0; }
 
@@ -183,12 +183,10 @@
 .playnite-library-details-source-row { min-width: 0; align: center; gap: 12px; }
 .playnite-library-details-completion { color: var(--text); background: var(--surface-subtle, var(--surface-muted)); font-size: 13px; font-weight: 600; padding: 4px 10px; corner-radius: 8px; min-width: 0; max-lines: 2; overflow-wrap: anywhere; }
 
-/* Give long game titles and controller hints independent, full-width rows. */
 /* Dense details use tinted acrylic without reducing text opacity. */
 .wrail-modal { background-material: acrylic; background-tint-opacity: var(--acrylic-tint-opacity, .35); background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25); width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
-.wrail-modal__header { direction: column; align: start; gap: 10px; }
-.wrail-modal__title { width: 100%; font-size: 24px; line-height: 1.2; }
-.playnite-library-details-header-hints { width: 100%; justify: end; gap: 16px; }
+/* The shared row header reserves hint width; long titles wrap in the remaining space. */
+.wrail-modal__title { font-size: 24px; line-height: 1.2; }
 
 /* Compact browsing: one toolbar, quiet filter chips, and one focused summary. */
 .playnite-library-toolbar { width: 100%; min-width: 0; align: center; gap: 10px; }
