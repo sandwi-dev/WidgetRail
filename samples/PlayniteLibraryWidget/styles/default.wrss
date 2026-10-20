@@ -27,7 +27,7 @@
 .playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; padding: 18px; gap: 12px; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 16px; }
 .playnite-library-header { min-width: 0px; gap: 3px; overflow: visible; }
 .playnite-library-header-row { width: 100%; align: center; justify: space-between; gap: 16px; padding: 10px 14px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
-.playnite-library-home-actions { width: 100%; min-width: 0px; align: center; justify: space-between; gap: 12px; padding: 10px 14px; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 12px; }
+.playnite-library-home-actions { width: 100%; min-width: 0px; align: center; justify: space-between; gap: 12px; padding: 6px 14px; background: alpha(var(--surface), .84); border-color: alpha(var(--border, var(--surface-muted)), .84); border-width: 1px; corner-radius: 12px; }
 .playnite-library-home-utilities { min-width: 0px; flex-grow: 0; align: center; gap: 8px; }
 .playnite-library-control { min-height: 40px; flex-grow: 0; padding: 8px 12px; font-family: var(--font-text, Segoe UI); font-size: 13px; font-weight: 600; text-align: center; background: var(--surface-raised); color: var(--text); border-color: var(--border-strong, var(--text-muted)); border-width: 1px; corner-radius: 10px; outline-color: transparent; outline-width: 0px; outline-offset: var(--focus-offset, -1.5px); }
 .playnite-library-control:focused { border-color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
@@ -160,9 +160,10 @@
 .playnite-library-details-play { width: 100%; min-height: 44px; flex-grow: 0; background: var(--surface-active, #302f2b); color: var(--text); }
 .playnite-library-details-meta { color: var(--text-muted); max-lines: 3; text-overflow: ellipsis; overflow-wrap: anywhere; }
 
-.playnite-library-tabs { width: 400px; min-width: 0px; max-width: 400px; gap: 12px; padding: 6px 12px; }
+.playnite-library-tabs { width: 400px; min-width: 0px; max-width: 400px; min-height: 44px; gap: 12px; padding: 0px; background: transparent; border-width: 0px; surface-shading: 0; }
 .playnite-library-tab { width: 128px; min-width: 104px; flex-grow: 1; text-align: center; }
-.playnite-library-tab-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); }
+.playnite-library-tab-key { font-size: var(--controller-glyph-size, 24px); color: var(--text); }
+.playnite-library-nav-hint { color: var(--text); }
 
 .playnite-library-details-toolbar { align: center; gap: 12px; min-width: 0; }
 
@@ -224,7 +225,7 @@
 .playnite-library-section-link { min-height: 34px; padding: 4px 10px; color: var(--text); background: var(--surface-active, var(--surface-muted)); border-color: var(--border-strong, var(--text-muted)); border-width: 1px; font-size: 14px; }
 .playnite-library-section-link:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: -2px; }
 .playnite-library-favorites-row { width: 100%; min-width: 0; height: 94px; flex-grow: 0; padding: 4px; }
-.playnite-library-favorite-card { min-width: 0; width: 100%; min-height: 64px; padding: 9px 12px; gap: 10px; align: center; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; }
+.playnite-library-favorite-card { min-width: 0; width: 100%; min-height: 64px; margin: 4px 6px; padding: 9px 12px; gap: 10px; align: center; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; }
 .playnite-library-favorite-icon { color: var(--accent); width: 22px; height: 22px; }
 .playnite-library-favorite-card:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: -2px; }
 .playnite-library-favorite-title { font-size: 15px; font-weight: 600; color: var(--text); max-lines: 1; text-overflow: ellipsis; }

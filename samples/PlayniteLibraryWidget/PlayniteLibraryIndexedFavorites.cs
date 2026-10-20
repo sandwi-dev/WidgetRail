@@ -18,6 +18,6 @@ internal static class PlayniteLibraryIndexedFavorites
     };
 
     internal static WidgetElement Row(WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> source) =>
-        UI.CollectionGrid(Id, source, 240, 68, "Favorites", maximumColumns: 3)
+        UI.CollectionGrid(Id, source, 240, 80, "Favorites", maximumColumns: 3)
             .Classes("playnite-library-favorites-row");
 }

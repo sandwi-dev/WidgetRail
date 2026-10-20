@@ -952,14 +952,18 @@ internal static partial class PlayniteLibraryPresentation
 
     private static ContainerElement LibraryNavigation(
         PlayniteLibraryPresentationState state,
-        bool renderActionsEnabled) =>
-        UI.ControllerHint(ControllerButton.Menu, "More", "playnite-library.library.menu")
+        bool renderActionsEnabled)
+    {
+        var hint = UI.ControllerHint(ControllerButton.Menu, "More", "playnite-library.library.menu");
+        return (hint with { Children = hint.Children.Select(child =>
+                child.AddClasses("playnite-library-nav-hint")).ToArray() })
             .ContextMenu(ControllerButton.Menu,
                 new(PlayniteLibraryActions.Refresh, "Refresh library", IsDisabled: !renderActionsEnabled),
                 new(PlayniteLibraryActions.CategoriesOpen, "Categories", IsDisabled: !renderActionsEnabled),
                 new(PlayniteLibraryActions.HiddenOpen, "Hidden games",
                     IsDisabled: !renderActionsEnabled || state.Organization.ExcludedSavedIds.Count == 0),
                 new(PlayniteLibraryWidget.PlayniteOpenActionId, "Playnite connection", IsDisabled: !renderActionsEnabled));
+    }
 
     private static ActionSurfaceElement RevealPosterFallback(ActionSurfaceElement tile) => tile with
     {
