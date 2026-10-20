@@ -112,6 +112,7 @@ internal sealed partial class WidgetViewPresenter
     }
     internal void SetPreviewPointerTarget(DependencyObject? target)
     {
+        if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
         if (previewPointerIntent && ReferenceEquals(previewPointerTarget, target)) { previewExitRevision++; return; }
         if (PreviewEnterButton(previewSource) is not null && FindBinding(target) is null)
         { _ = DismissPreviewAfterPointerExitAsync(++previewExitRevision); return; }
@@ -130,7 +131,8 @@ internal sealed partial class WidgetViewPresenter
     private async Task DismissPreviewAfterPointerExitAsync(long revision)
     {
         await Task.Delay(150);
-        if (!disposed && revision == previewExitRevision && !previewPointerOverChrome && !previewEntered)
+        if (!disposed && revision == previewExitRevision && previewPointerIntent &&
+            !Input.OverlayMouseSession.SuppressesHover(XamlRoot) && !previewPointerOverChrome && !previewEntered)
         { previewPointerTarget = null; ClearFocusPreview(); }
     }
     private ControllerButton? PreviewEnterButton(PreviewSource? source) => source?.Options.EnterButton;
@@ -166,6 +168,7 @@ internal sealed partial class WidgetViewPresenter
     private void UseFocusedPreviewSource()
     {
         if (!previewPointerIntent) return;
+        ++previewExitRevision;
         previewPointerIntent = false; previewPointerTarget = null; previewPointerFocus = null; QueueSurfaceUpdate();
     }
     private void PreviewUnloaded(object sender, RoutedEventArgs args)
@@ -177,11 +180,10 @@ internal sealed partial class WidgetViewPresenter
             !IsLoaded || presentation?.IsCurrent != true || HasTransientControl || activeTransition is not null ||
             surfaceResize?.Playback is { IsCompleted: false } || effectiveView?.Root.Kind == ViewNodeKind.ModalLayer)
             return null;
-        var usePointer = previewPointerIntent && !Input.OverlayMouseSession.SuppressesHover(XamlRoot);
-        if ((previewEntered || usePointer && previewPointerOverChrome) && previewSource is { } retained &&
+        if ((previewEntered || previewPointerIntent && previewPointerOverChrome) && previewSource is { } retained &&
             PreviewEnterButton(retained) is not null && RetainedPreviewIsCurrent(retained))
             return retained with { Content = retained.Provider is not null ? retained.Content : retained.Row?.Item.Root.FocusPresentation ?? declarations[retained.Source.Identity.Id].Node.FocusPresentation! };
-        var target = usePointer ? previewPointerTarget : XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        var target = previewPointerIntent ? previewPointerTarget : XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
         var source = FindBinding(target);
         if (source is null || source.Identity.Scope != activeScope || !Navigable(source)) return null;
         WidgetIndexedRow? row = null;
@@ -201,7 +203,7 @@ internal sealed partial class WidgetViewPresenter
             if (declaration.Node.Kind != ViewNodeKind.FocusPresentationSurface) continue;
             // Nearest presentation owner is authoritative even when it uses inline layout.
             if (declaration.Node.FocusPreview is not { } options ||
-                usePointer && !options.OnHover || !usePointer && !options.OnFocus ||
+                previewPointerIntent && !options.OnHover || !previewPointerIntent && !options.OnFocus ||
                 !bindings.TryGetValue(declaration.Node.Id, out var owner) ||
                 VisibleAnchorBounds(anchor, this) is not { Valid: true }) return null;
             return new(owner, source, anchor, row, content, row?.Lease.Range.ScopeId ?? source.Identity.Scope, options,

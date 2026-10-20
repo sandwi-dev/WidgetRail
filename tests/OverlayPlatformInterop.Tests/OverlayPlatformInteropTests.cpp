@@ -498,6 +498,42 @@ int main(int argc, char** argv) {
     Check(guide.Accept(1'150),
           "a later Guide edge is admitted through the same shared policy");
 
+    using GuideSource = WidgetRailOverlayPlatformGuideSource;
+    // Replay the double toggles in the user's trace; one opening must remain
+    // open when the asynchronous fallback reports that same press later.
+    for (const auto delay : {172ULL, 188ULL, 499ULL}) {
+        for (const bool legacyFirst : {false, true}) {
+            guide.Reset();
+            const auto first = legacyFirst ? GuideSource::LegacyCompatibility : GuideSource::GameInput;
+            const auto other = legacyFirst ? GuideSource::GameInput : GuideSource::LegacyCompatibility;
+            Check(guide.Accept(1000, first), "first Guide source opens once");
+            Check(!guide.Accept(1000 + delay, other), "delayed alternate source cannot close the opening");
+            Check(guide.Accept(1000 + delay + 1, first), "rejected duplicate does not postpone a fresh same-source press");
+        }
+    }
+    guide.Reset();
+    Check(guide.Accept(1000, GuideSource::GameInput) && guide.Accept(1150, GuideSource::GameInput),
+        "rapid GameInput-only presses retain the existing 150 ms threshold");
+    guide.Reset();
+    Check(guide.Accept(1000, GuideSource::LegacyCompatibility) && guide.Accept(1150, GuideSource::LegacyCompatibility),
+        "legacy-only controllers retain rapid opening and closing");
+    guide.Reset();
+    Check(guide.Accept(1000, GuideSource::GameInput) && guide.Accept(1500, GuideSource::LegacyCompatibility),
+        "fallback remains available after the bounded cross-source window");
+    guide.Reset();
+    Check(guide.Accept(1000, GuideSource::GameInput) && guide.Accept(1150, GuideSource::DualSenseHid),
+        "independent HID sources do not inherit the compatibility delay");
+    guide.Reset();
+    bool replayVisible = false;
+    for (std::uint64_t cycle = 0; cycle < 20; ++cycle) {
+        const auto time = 1000 + cycle * 1000;
+        if (guide.Accept(time, GuideSource::GameInput)) replayVisible = !replayVisible;
+        if (guide.Accept(time + 188, GuideSource::LegacyCompatibility)) replayVisible = !replayVisible;
+        Check(replayVisible, "replayed opening remains visible after delayed duplicate");
+        if (guide.Accept(time + 500, GuideSource::GameInput)) replayVisible = !replayVisible;
+        Check(!replayVisible, "next deliberate Guide press closes the replayed overlay");
+    }
+
     widgetrail::platform::ControllerFrameTracker tracker;
     WidgetRailOverlayPlatformRawControllerState state;
     auto frame = tracker.Update(true, state, 0);

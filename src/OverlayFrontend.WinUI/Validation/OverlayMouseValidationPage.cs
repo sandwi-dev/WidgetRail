@@ -47,6 +47,9 @@ internal sealed partial class OverlayMouseValidationPage : Page
                     if (Environment.TickCount64 > deadline) throw new TimeoutException("Browser fixture did not load");
                     await Task.Delay(50);
                 }
+                var foregroundDeadline = Environment.TickCount64 + 15000;
+                while (!PlatformInputPump.IsForegroundProcess() && Environment.TickCount64 < foregroundDeadline)
+                    await Task.Delay(50);
                 await Task.Delay(200);
                 // Establish browser mouse support before creating any guard.
                 web.Enter();
@@ -122,9 +125,9 @@ internal sealed partial class OverlayMouseValidationPage : Page
                     web.SetPresentation(false, false);
                     App.Window.AppWindow.Hide();
                     await Task.Delay(150);
-                    session.Begin();
                     App.Window.AppWindow.Show();
                     App.Window.Activate();
+                    session.Begin();
                     web.SetPresentation(true, true);
                 }
             }

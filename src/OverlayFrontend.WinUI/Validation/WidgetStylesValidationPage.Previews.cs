@@ -53,7 +53,8 @@ internal sealed partial class WidgetStylesValidationPage
                     new((WrssDocument[])[package.Document], []), catalog.Load(highContrast ? ThemeIdentity.BuiltInMonoInk : themeId, "1.0.0").Package);
                 var theme = compiled.Theme ?? throw new InvalidOperationException("Invalid preview fixture theme");
                 var contentSized = Environment.GetCommandLineArgs().Contains("--content-sized-previews");
-                var options = new FocusPreviewOptions(360, 220, DelayMilliseconds: 180) { SizeToContentHeight = contentSized };
+                var mouseOnly = Environment.GetCommandLineArgs().Contains("--mouse-preview-only");
+                var options = new FocusPreviewOptions(360, 220, DelayMilliseconds: mouseOnly ? 40 : 180) { SizeToContentHeight = contentSized };
                 var caption = "Adjust this setting without leaving your current page.";
                 var busy = false;
                 var showFirst = true;
@@ -63,21 +64,49 @@ internal sealed partial class WidgetStylesValidationPage
                 var first = Find<Button>("Widget.preview.first", root)!;
                 var second = Find<Button>("Widget.preview.second", root)!;
                 first.Focus(FocusState.Keyboard);
-                if (Environment.GetCommandLineArgs().Contains("--mouse-preview-only"))
+                if (mouseOnly)
                 {
+                    var foregroundDeadline = Environment.TickCount64 + 15000;
+                    while (!Input.PlatformInputPump.IsForegroundProcess() && Environment.TickCount64 < foregroundDeadline)
+                        await Task.Delay(50);
+                    Check(Input.PlatformInputPump.IsForegroundProcess(), "Preview fixture owns foreground before mouse admission");
                     using var mouse = new Input.OverlayMouseSession(App.WindowHandle, DispatcherQueue);
+                    page.SetPreviewPointerTarget(null);
+                    await Wait(() => !page.IsFocusPreviewOpen);
                     mouse.Begin();
+                    await Task.Delay(250);
+                    Check(mouse.WaitingForMovement, "Mouse admission remains active for the preview checks");
+                    Check(!page.IsFocusPreviewOpen, "Hiding the mouse does not restore or create a preview");
+                    page.MoveFocus(FocusNavigationDirection.Right);
+                    page.MoveFocus(FocusNavigationDirection.Left);
                     page.SetPreviewPointerTarget(second);
                     await Wait(() => page.IsFocusPreviewOpen && Find<TextBlock>("Widget.preview.first.details", root) is { ActualHeight: > 0 });
                     Check(mouse.WaitingForMovement && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), first),
                         "Hidden stationary mouse cannot replace the controller-focused preview");
-                    second.Focus(FocusState.Keyboard);
+                    page.MoveFocus(FocusNavigationDirection.Right);
                     page.SetPreviewPointerTarget(first);
                     await Wait(() => page.IsFocusPreviewOpen && Find<TextBlock>("Widget.preview.second.details", root) is { ActualHeight: > 0 });
                     Check(mouse.WaitingForMovement && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), second),
                         "Controller can move previews again despite a late cached hover target");
                     mouse.End();
-                    await page.HandleControllerButtonAsync(ControllerButton.RightStick, ControllerEventPhase.Released);
+                    first.Focus(FocusState.Keyboard);
+                    page.SetPreviewPointerTarget(first);
+                    await Wait(() => page.IsFocusPreviewOpen && Find<TextBlock>("Widget.preview.first.details", root) is { ActualHeight: > 0 });
+                    var delayedExit = page.QueueHoverExitForValidation();
+                    page.MoveFocus(FocusNavigationDirection.Right);
+                    await delayedExit;
+                    Check(page.IsFocusPreviewOpen && Find<TextBlock>("Widget.preview.second.details", root) is { ActualHeight: > 0 },
+                        "A delayed hover exit cannot clear the newly controller-focused preview");
+                    // Resume without ever hovering a card: same focus and preview
+                    // survive the ordinary inactive/active publication boundary.
+                    await page.SetPresentationActiveAsync(false);
+                    await page.SetPresentationActiveAsync(true);
+                    second.Focus(FocusState.Keyboard);
+                    await Wait(() => page.IsFocusPreviewOpen);
+                    var stable = page.FocusPreviewChrome;
+                    await Task.Delay(350);
+                    Check(page.IsFocusPreviewOpen && ReferenceEquals(stable, page.FocusPreviewChrome),
+                        "Controller-only preview remains stable after presentation resumes");
                     continue;
                 }
                 if (highContrast)

@@ -50,19 +50,28 @@ WidgetRailOverlayPlatformNavigationEvent ConvertNavigation(
 namespace widgetrail::platform {
 
 bool GuideToggleDebouncer::Accept(
-    const std::uint64_t nowMilliseconds) noexcept {
+    const std::uint64_t nowMilliseconds,
+    const WidgetRailOverlayPlatformGuideSource source) noexcept {
+    using Source = WidgetRailOverlayPlatformGuideSource;
+    const bool compatibilityPair =
+        (source == Source::LegacyCompatibility && lastSource_ == Source::GameInput) ||
+        (source == Source::GameInput && lastSource_ == Source::LegacyCompatibility);
+    const auto interval = compatibilityPair
+        ? kGuideCrossSourceDebounceMilliseconds : kGuideDebounceMilliseconds;
     if (hasAccepted_ && nowMilliseconds >= lastAcceptedAt_ &&
-        nowMilliseconds - lastAcceptedAt_ < kGuideDebounceMilliseconds) {
+        nowMilliseconds - lastAcceptedAt_ < interval) {
         return false;
     }
     lastAcceptedAt_ = nowMilliseconds;
     hasAccepted_ = true;
+    lastSource_ = source;
     return true;
 }
 
 void GuideToggleDebouncer::Reset() noexcept {
     lastAcceptedAt_ = 0;
     hasAccepted_ = false;
+    lastSource_ = WidgetRailOverlayPlatformGuideSource::None;
 }
 
 void ControllerFrameTracker::ApplyWindowStateTransition(

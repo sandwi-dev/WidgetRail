@@ -869,7 +869,7 @@ WidgetRailOverlayPlatformDrainEvent(
         }
         switch (raw.kind) {
         case RawEventKind::GuidePressed:
-            if (!handle->guideDebouncer.Accept(nowMilliseconds)) continue;
+            if (!handle->guideDebouncer.Accept(nowMilliseconds, raw.guideSource)) continue;
             PublishEvent(
                 *event,
                 WidgetRailOverlayPlatformEventKind::GuideToggleRequested,
@@ -932,7 +932,8 @@ WidgetRailOverlayPlatformPollLegacyGuide(
     // first read on a GameInput notification: that was the delayed-Guide bug.
     if (handle->controllerIsolation.active() || !handle->guideCompatibility.available()) return WidgetRailOverlayPlatformStatus::Ok;
     const auto slots = handle->guideCompatibility.PollRisingEdges();
-    if (slots == 0 || !handle->guideDebouncer.Accept(nowMilliseconds)) {
+    if (slots == 0 || !handle->guideDebouncer.Accept(nowMilliseconds,
+            WidgetRailOverlayPlatformGuideSource::LegacyCompatibility)) {
         return WidgetRailOverlayPlatformStatus::Ok;
     }
     PublishEvent(

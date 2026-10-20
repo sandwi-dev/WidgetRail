@@ -46,9 +46,11 @@ internal sealed partial class OverlayMouseSession : IDisposable
             monitor = new(guard);
             monitor.WindowMessageReceived += OnMessage;
         }
-        if (!PlaceGuard()) { RetireGuard(); return; }
+        // Showing a native window can synchronously produce pointer-exit
+        // notifications. Fence those before changing the native hit-test owner.
         WaitingForMovement = true;
         suppressedOwners.Add(owner);
+        if (!PlaceGuard() || !WaitingForMovement) { End(); return; }
         SetCursor(0);
         timer.Start();
     }

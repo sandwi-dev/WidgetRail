@@ -8,15 +8,21 @@
 namespace widgetrail::platform {
 
 inline constexpr std::uint64_t kGuideDebounceMilliseconds = 150;
+// Compatibility polling allows a 250 ms driver call and a result up to 250 ms
+// old. A second API can therefore report the same press after the ordinary
+// debounce window. Keep rapid presses from one source responsive.
+inline constexpr std::uint64_t kGuideCrossSourceDebounceMilliseconds = 500;
 
 class GuideToggleDebouncer final {
 public:
-    [[nodiscard]] bool Accept(std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] bool Accept(std::uint64_t nowMilliseconds,
+        WidgetRailOverlayPlatformGuideSource source = WidgetRailOverlayPlatformGuideSource::None) noexcept;
     void Reset() noexcept;
 
 private:
     std::uint64_t lastAcceptedAt_{};
     bool hasAccepted_{};
+    WidgetRailOverlayPlatformGuideSource lastSource_{WidgetRailOverlayPlatformGuideSource::None};
 };
 
 class ControllerFrameTracker final {
