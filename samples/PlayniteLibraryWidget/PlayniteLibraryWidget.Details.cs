@@ -161,6 +161,19 @@ public sealed partial class PlayniteLibraryWidget
             UpdateDetails(state.DetailsGeneration, value => value with { AchievementSearch = text.Trim()[..Math.Min(text.Trim().Length, 128)] });
             return true;
         }
+        if (name == "achievement.search.clear")
+        {
+            _model.Update(value => value with
+            {
+                AchievementFocusSequence = value.AchievementFocusSequence + 1,
+                DetailsExtras = value.DetailsExtras with
+                {
+                    AchievementSearch = "",
+                    AchievementSearchRequest = value.AchievementFocusSequence + 1,
+                },
+            });
+            return true;
+        }
         if (name.StartsWith("achievement.filter.", StringComparison.Ordinal) && Enum.TryParse<AchievementFilter>(name[19..], out var filter) && Enum.IsDefined(filter))
         {
             UpdateDetails(state.DetailsGeneration, value => value with { AchievementFilter = filter });

@@ -55,7 +55,7 @@
 .playnite-library-source-row { color: var(--text); font-size: 13px; }
 .playnite-library-source-summary { color: var(--text-muted); font-size: 13px; }
 .playnite-library-query { min-width: 0px; flex-grow: 0; gap: 10px; padding: 4px; background: transparent; }
-.playnite-library-search { width: 100%; min-width: 0px; min-height: 42px; flex-grow: 1; font-weight: 400; text-align: start; }
+.playnite-library-search { min-width: 0px; min-height: 42px; flex-grow: 1; font-weight: 400; text-align: start; }
 .playnite-library-collections,
 .playnite-library-filters { align: center; min-width: 0px; gap: 8px; }
 .playnite-library-main { width: 100%; min-width: 0px; min-height: 0; }
@@ -190,8 +190,9 @@
 
 /* Compact browsing: one toolbar, quiet filter chips, and one focused summary. */
 .playnite-library-toolbar { width: 100%; min-width: 0; align: center; gap: 10px; }
-.playnite-library-search-group { flex-grow: 1; min-width: 0; }
-.playnite-library-search { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; }
+.playnite-library-search-group { flex-grow: 1; min-width: 0; align: center; gap: 8px; }
+.playnite-library-search-clear { flex-grow: 0; min-width: 64px; }
+.playnite-library-search { min-width: 0; min-height: 44px; font-size: 16px; }
 .playnite-library-sort { width: 170px; min-width: 120px; flex-grow: 0; font-size: 15px; }
 .playnite-library-filter-button { min-width: 88px; font-size: 15px; }
 .playnite-library-filter-chips { width: 100%; min-width: 0; min-height: 36px; gap: 6px; }
@@ -251,7 +252,7 @@
 .playnite-library-achievement-tools { min-width: 0; align: center; gap: 8px; }
 .playnite-library-achievement-search { min-width: 100px; flex-grow: 1; font-size: 15px; }
 .playnite-library-achievement-search-group { min-width: 0; flex-grow: 1; align: center; gap: 8px; }
-.playnite-library-achievement-filters { gap: 4px; align: center; }
+.playnite-library-achievement-filter { width: 150px; min-width: 120px; }
 .playnite-library-achievement-sort { width: 170px; min-width: 120px; font-size: 15px; }
 .playnite-library-achievement-row { direction: row; align: center; justify: start; text-align: start; min-width: 0; min-height: 64px; padding: 8px 12px; gap: 12px; corner-radius: 8px; background: var(--surface-subtle, var(--surface-muted)); }
 .playnite-library-achievement-row-icon { width: 44px; height: 44px; flex-grow: 0; corner-radius: 6px; }

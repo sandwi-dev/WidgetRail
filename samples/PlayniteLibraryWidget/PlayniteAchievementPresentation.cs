@@ -18,10 +18,8 @@ internal static class PlayniteAchievementPresentation
             UI.Progress(data.Unlocked, Math.Max(1, data.Total), Prefix + "achievements.progress").Classes("playnite-library-achievement-total-progress"),
             UI.Text(state.AchievementsLoading ? "Refreshing…" : state.AchievementsError is not null ? "Refresh failed · Try again" : data.ProviderName, Prefix + "achievements.provider").Classes("playnite-library-details-meta"))
             .Classes("playnite-library-achievement-summary-row");
-        var filters = Enum.GetValues<AchievementFilter>().Select(filter => (WidgetElement)UI.Button(filter.ToString(),
-            Prefix + "achievement.filter." + filter, Prefix + "achievement.filter." + filter)
-            .Selected(state.AchievementFilter == filter).Classes(state.AchievementFilter == filter
-                ? ["playnite-library-chip", "playnite-library-filter-active"] : ["playnite-library-chip"])).ToArray();
+        var filters = Enum.GetValues<AchievementFilter>().Select(filter => new SelectOption(filter.ToString(), filter.ToString(),
+            Prefix + "achievement.filter." + filter, IsSelected: state.AchievementFilter == filter)).ToArray();
         var sorts = Enum.GetValues<AchievementSort>().Where(sort => sort != AchievementSort.Progress || state.AchievementSort == sort ||
             query?.All.Any(entry => !entry.Secret && entry.Item.Progress is not null) == true).Select(sort =>
             new SelectOption(sort.ToString(), sort switch { AchievementSort.Recent => "Recent unlocks", AchievementSort.Progress => "Closest to completion", _ => sort.ToString() },
@@ -30,10 +28,12 @@ internal static class PlayniteAchievementPresentation
         if (query is not null) search = search.Suggest(query.SuggestionSource);
         var toolbar = UI.Row(Prefix + "achievements.tools",
             UI.Row(PlayniteAchievementBrowse.SearchGroupId,
-                search.Classes("playnite-library-achievement-search"),
-                UI.ControllerGlyph(ControllerButton.LeftStick, Prefix + "achievement.search.hint"))
+                UI.ControllerGlyph(ControllerButton.LeftStick, Prefix + "achievement.search.hint"),
+                search.Classes("playnite-library-achievement-search"))
                 .RememberChildFocus(PlayniteAchievementBrowse.SearchId).Classes("playnite-library-achievement-search-group"),
-            UI.Row(Prefix + "achievement.filters", filters).Classes("playnite-library-achievement-filters"),
+            UI.Button("Clear", Prefix + "achievement.search.clear", Prefix + "achievement.search.clear")
+                .Disabled(string.IsNullOrEmpty(state.AchievementSearch)).Classes("playnite-library-search-clear"),
+            UI.Select("Show", filters, Prefix + "achievement.filters", "Filter achievements").Classes("playnite-library-achievement-filter"),
             UI.Select("Sort", sorts, Prefix + "achievement.sort").Classes("playnite-library-achievement-sort"))
             .Classes("playnite-library-achievement-tools");
         WidgetElement results = data.Total == 0 ? UI.Text(data.ProviderName + " reports no achievements for this game.", Prefix + "achievements.empty") :

@@ -177,6 +177,34 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task ClearLibrarySearchPreservesFiltersAndReturnsToSearch()
+    {
+        var host = new FakeHost(20);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "library"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Library");
+        await widget.OnActionAsync(new(PlayniteLibraryActions.InstalledFilter, "filter"));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.SearchCommit, "playnite-library.search") { CommittedText = "game" });
+        await Bounded(widget.WhenLibraryIdleAsync(), "Search");
+        var before = Snapshot(widget, 110_020);
+        var group = PageNodes(widget, before.Root).Single(node => node.Id == "playnite-library.search.group");
+        Assert.AreEqual(ControllerPrompt.LeftStickPress, group.Children[0].ControllerPrompt);
+        Assert.AreEqual("playnite-library.search", group.Children[1].Id);
+        var clear = PageNodes(widget, before.Root).Single(node => node.Id == PlayniteLibraryActions.SearchClear);
+        Assert.IsFalse(clear.IsDisabled == true);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.SearchClear, clear.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Clear search");
+        var after = Snapshot(widget, 110_021);
+        Assert.AreEqual("", PageNodes(widget, after.Root).Single(node => node.Id == "playnite-library.search").TextEntryValue);
+        Assert.AreEqual("playnite-library.search.group", after.FocusGroupEntryRequest!.GroupId);
+        Assert.IsTrue(PageNodes(widget, after.Root).Single(node => node.Id == PlayniteLibraryActions.InstalledFilter).StyleClasses.Contains("playnite-library-filter-active"));
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(after).Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task DestinationNavigationRequestsOnlyGameContentOnce()
     {
         var host = new FakeHost(20);

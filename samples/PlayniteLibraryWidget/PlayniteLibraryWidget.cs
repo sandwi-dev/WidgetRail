@@ -648,8 +648,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     await ReturnToLibraryAsync(resetPresentation: false).ConfigureAwait(false);
                 }
                 return;
+            case PlayniteLibraryActions.SearchClear:
             case PlayniteLibraryActions.SearchCommit:
-                if (action.CommittedText is null) return;
+                var searchText = action.ActionId == PlayniteLibraryActions.SearchClear ? "" : action.CommittedText;
+                if (searchText is null) return;
                 _model.Update(state => state with { SearchExpanded = true });
                 if (_navigation.Value.Route == PlayniteLibraryRoute.Hidden)
                 {
@@ -657,7 +659,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     {
                         HiddenQuery = state.HiddenQuery with
                         {
-                            SearchText = NormalizeSearch(action.CommittedText),
+                            SearchText = NormalizeSearch(searchText),
                         },
                     });
                 }
@@ -666,10 +668,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     ReplaceQuery(CollectionForRoute(
                         _navigation.Value.Route, _model.Value).Query with
                     {
-                        SearchText = NormalizeSearch(action.CommittedText),
+                        SearchText = NormalizeSearch(searchText),
                     }, resetBrowseViewport:
                         _navigation.Value.Route == PlayniteLibraryRoute.Browse,
                         browseFocusId: "playnite-library.search");
+                }
+                if (action.ActionId == PlayniteLibraryActions.SearchClear && _navigation.Value.Route == PlayniteLibraryRoute.Browse)
+                {
+                    RequestContentEntry();
+                    _model.Update(state => state with { SearchFocusPending = true });
                 }
                 return;
             case PlayniteLibraryActions.QueryClear:

@@ -50,8 +50,12 @@ internal static partial class PlayniteLibraryPresentation
         active.Add(UI.Text(BrowseStatus(state), "playnite-library.status").Classes("playnite-library-result-count"));
         return UI.Stack("playnite-library.query",
             UI.Row("playnite-library.toolbar",
-                UI.Stack("playnite-library.search.group", search.Disabled(!enabled).Classes("playnite-library-control", "playnite-library-search"))
+                UI.Row("playnite-library.search.group",
+                    UI.ControllerGlyph(ControllerButton.LeftStick, "playnite-library.browse.hint.search.key"),
+                    search.Disabled(!enabled).Classes("playnite-library-control", "playnite-library-search"))
                     .RememberChildFocus("playnite-library.search").Classes("playnite-library-search-group"),
+                UI.Button("Clear", PlayniteLibraryActions.SearchClear, PlayniteLibraryActions.SearchClear)
+                    .Disabled(!enabled || string.IsNullOrEmpty(state.Query.SearchText)).Classes("playnite-library-control", "playnite-library-search-clear"),
                 UI.Select("Sort", SortOptions(state.Query.Sort), PlayniteLibraryActions.SortFilter, "Sort games")
                     .Disabled(!enabled || state.RecentlyPlayed).Classes("playnite-library-control", "playnite-library-sort"),
                 UI.Button("Filters", PlayniteLibraryActions.FiltersOpen, PlayniteLibraryActions.FiltersOpen)

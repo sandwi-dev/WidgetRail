@@ -446,10 +446,7 @@ internal static partial class PlayniteLibraryPresentation
 
         if (state.Route == PlayniteLibraryRoute.Browse)
         {
-            var hints = new List<WidgetElement>
-            {
-                UI.ControllerHint(ControllerButton.LeftStick, "Search", "playnite-library.browse.hint.search"),
-            };
+            var hints = new List<WidgetElement>();
             if ((indexedBrowse?.Descriptor.Count ?? 0) != 0)
                 hints.Add(StableControllerHint(ControllerButton.X, "Game options",
                     "playnite-library.hint.options", !state.OrganizationBusy && !state.BrowseRetained,
