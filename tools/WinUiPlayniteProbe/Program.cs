@@ -6,21 +6,37 @@ using WidgetRail.WidgetSdk;
 // The real package and real provider, through normal catalog/worker admission.
 // This probe exercises read-only navigation/details. It never activates Play,
 // Install, connection editing, favorites or any other game mutation.
-if (args.Length is < 2 or > 3) throw new ArgumentException("Usage: WinUiPlayniteProbe <shell-options.json> <report.json> [--diagnose-refresh]");
+if (args.Length is < 2 or > 3 ||
+    args.Length == 3 && args[2] is not ("--diagnose-refresh" or "--startup-only"))
+    throw new ArgumentException("Usage: WinUiPlayniteProbe <shell-options.json> <report.json> [--diagnose-refresh|--startup-only]");
 var options = JsonSerializer.Deserialize<Options>(File.ReadAllText(args[0])) ?? throw new InvalidDataException("Missing options.");
 const string widgetId = "widgetrail.samples.playnite-library";
 if (options.InitialWidgetId != widgetId) throw new InvalidDataException("This probe admits only the Playnite sample.");
+var startupOnly = args.Contains("--startup-only");
 // The full-trust sample owns its own private state independently of the bridge
-// profile. Use its existing development override for this automated probe.
-Environment.SetEnvironmentVariable("WRAIL_PLAYNITE_LIBRARY_DATA_ROOT", options.SettingsRoot);
+// profile. Navigation probes use an isolated override; startup-only checks the
+// supplied installation/profile without changing the widget's saved navigation.
+if (!startupOnly)
+    Environment.SetEnvironmentVariable("WRAIL_PLAYNITE_LIBRARY_DATA_ROOT", options.SettingsRoot);
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-await using var bridge = await OwnedBridgeProcess.StartAsync(new(options.InstallationRoot, options.SettingsRoot, options.InstalledCatalogRoot), timeout.Token);
+await using var bridge = await OwnedBridgeProcess.StartAsync(new(options.InstallationRoot, options.SettingsRoot, options.InstalledCatalogRoot)
+    { StartupWidgetId = widgetId }, timeout.Token);
 var session = bridge.Session;
 var reports = new List<object>();
 try
 {
     while (!(await session.ListWidgetsAsync(timeout.Token)).IsComplete) await Task.Delay(50, timeout.Token);
     await session.EstablishPresentationAsync(session.GetTarget(widgetId), WidgetLifecycleState.Interactive, timeout.Token);
+    if (startupOnly)
+    {
+        await Until(() => Nodes(Frame().Snapshot.Root).All(node => node.Id != "playnite-library.loading"));
+        if (session.GetState(widgetId)?.Failure is { } failure)
+            throw new InvalidOperationException(failure.Code);
+        Write(new { result = "passed", mode = "startup-only", bridgePid = bridge.ProcessId,
+            catalogComplete = true, page = Inventory(Frame().Snapshot.Root) });
+        Console.WriteLine("Candidate Bridge connection, complete catalog and Playnite presentation passed. No desktop UI was opened.");
+        return;
+    }
     if (args.Contains("--diagnose-refresh"))
     {
         await Task.Delay(5000, timeout.Token);
