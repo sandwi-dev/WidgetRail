@@ -87,6 +87,29 @@ function M.snapshot(result,textRuns,clean)
     for _,metric in ipairs(build.skillsTab.controls.sortGemsByDPSFieldControl.list)do result.gemSortMetrics[#result.gemSortMetrics+1]={id=metric.type,title=clean(metric.label)}end
   end
 end
+function M.gemDetails(req,textRuns,clean)
+  local tab=build.skillsTab;local group=index(req.group,tab.socketGroupList);local gem=index(req.gem,group.gemList)
+  local old=tab.displayGroup;tab:SetDisplayGroup(group);tab:UpdateGemSlots()
+  local picker=tab.gemSlots[req.gem].nameSpec;local previous=picker.tooltip;local t=tooltip()
+  t.maxWidth=600;picker.tooltip=t
+  local ok,err=pcall(picker.AddGemTooltip,picker,gem)
+  picker.tooltip=previous;tab:SetDisplayGroup(old);tab:UpdateGemSlots();assert(ok,err)
+  local lines={}
+  for _,line in ipairs(t.lines)do
+    if line.text then
+      local text=clean(line.text)
+      if text~='' and not text:match('^Tip:') then
+        local kind='metadata'
+        for _,entry in ipairs({{'GEMDESCRIPTION','description'},{'MAGIC','effect'},{'UNSUPPORTED','effect'},{'GEM','heading'}})do
+          local prefix=colorCodes[entry[1]]
+          if prefix and line.text:sub(1,#prefix)==prefix then kind=entry[2];break end
+        end
+        lines[#lines+1]={text=text,kind=kind,runs=textRuns(line.text)}
+      end
+    end
+  end
+  return {name=clean(gem.nameSpec or ''),lines=lines}
+end
 function M.quality(req,textRuns,clean)
   local tab=build.skillsTab;local g=index(req.group,tab.socketGroupList);index(req.gem,g.gemList)
   local old=tab.displayGroup;tab:SetDisplayGroup(g);tab:UpdateGemSlots()

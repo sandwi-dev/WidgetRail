@@ -72,6 +72,11 @@ public sealed class PobEngine(string engineDirectory, string runtimeDirectory, s
         ExecuteCoreAsync(new { op = "item-previews", items = new[] { new { key, itemId, uniqueKey } } },
             demand, expectedState, compare: false, readOnly: false, completionToken: widgetLifetime);
 
+    internal Task<PobResult> ReadGemDetailsAsync(int group, int gem, string expectedState,
+        CancellationToken demand, CancellationToken widgetLifetime) =>
+        ExecuteCoreAsync(new { op = "gem-details", group, gem }, demand, expectedState,
+            compare: false, readOnly: false, completionToken: widgetLifetime);
+
     private async Task<PobResult> ExecuteCoreAsync(object command, CancellationToken token, string? expectedState, bool compare, bool readOnly,
         CancellationToken? completionToken = null)
     {

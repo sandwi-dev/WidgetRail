@@ -14,23 +14,22 @@ public sealed partial class PobWidget
             var id=I(gem,"id");
             var fields = new[]{"level","quality","count"};
             var controls = fields.Select((field, index) => UI.Stack("pob.gemfield." + id + field,
-                Text(char.ToUpperInvariant(field[0]) + field[1..], "gemlabel."+id+field, "pob-small"),
+                Text(field=="level"&&B(gem,"levelReadOnly")?"Level · Granted":char.ToUpperInvariant(field[0]) + field[1..], "gemlabel."+id+field, "pob-small"),
                 field=="level"&&B(gem,"levelReadOnly")
-                    ? Text(S(gem,field),"gem."+id+field,"pob-field-label")
+                    ? UI.Stack("pob.gem.level-readonly."+id,Text(S(gem,field),"gem."+id+field,"pob-field-label")).Classes("pob-gem-level-readonly")
                     : (UI.TextEntry(S(gem,field),field,"gem."+id+"."+field,"pob.gem."+id+field) with { InputKind = field=="count"?TextEntryInputKind.Decimal:TextEntryInputKind.Integer }).Classes("pob-input"))
                 .InGrid(column:index)).ToArray();
-            var card=new List<WidgetElement>{Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue"),
-                UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],fields.Select(_=>GridTrack.Star()).ToArray(),controls).Spacing(0,8)};
-            var actions=new List<WidgetElement>{UI.Switch("Enabled",B(gem,"enabled"),"gem-enabled."+id,"pob.gem-enabled."+id).Classes("pob-toggle")};
-            if(!B(skill,"generated")){actions.Add(Button("Replace","gem-replace."+id));actions.Add(Button("Remove…","gem-remove."+id));}
-            actions.Add(Button("Gem options","gem-options."+id));
-            card.Add(UI.ResponsiveGrid("pob.gem.actions."+id,140,4,actions.ToArray()).Classes("pob-buildtools"));
-            if(B(gem,"levelReadOnly"))
-            {
-                var source=S(skill,"sourceName");var slot=S(skill,"slot");
-                var origin=source.Length>0?source+(slot.Length>0?" · "+slot:""):"this build's effects";
-                card.Add(Text("Granted by "+origin+". Level is determined by its source.","gem.source."+id,"pob-muted"));
-            }
+            var title=UI.ActionSurface("gem-details."+id,"pob.gem-details."+id,S(gem,"name")+" details",ActionSurfaceOrientation.Horizontal,
+                Text(S(gem,"name"),"gem.name."+id,"pob-heading pob-blue")).Classes("pob-list-item","pob-gem-name").PresentOnFocus(id.ToString());
+            var options=UI.Stack("pob.gem-options."+id+".return",Button("Gem options","gem-options."+id))
+                .RememberChildFocus("pob.gem-options."+id).Classes("pob-gem-options").InGrid(column:3);
+            var card=new List<WidgetElement>{
+                UI.Grid("pob.gem.header."+id,[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto()],title,
+                    UI.Switch("Enabled",B(gem,"enabled"),"gem-enabled."+id,"pob.gem-enabled."+id).Classes("pob-toggle").InGrid(column:1)).Spacing(0,8),
+                UI.Grid("pob.gemfields."+id,[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Star(),GridTrack.Star(),GridTrack.Auto()],
+                    controls.Concat(new WidgetElement[]{options}).ToArray()).Spacing(0,8)};
+            if(!B(skill,"generated"))card.Add(UI.Row("pob.gem.actions."+id,
+                Button("Replace","gem-replace."+id),Button("Remove…","gem-remove."+id)).Classes("pob-toolbar"));
             rows.Add(UI.Stack("pob.gemcard."+id,card.ToArray()).ContextMenu(ControllerButton.X,new WidgetContextAction("gem-quality."+id,"Quality effects")).Classes("pob-context-card"));
         }
         return rows;
@@ -59,6 +58,6 @@ public sealed partial class PobWidget
         // The group rail remains fixed; the entire selected-group editor scrolls.
         // A fixed context header otherwise consumes nearly all compact view height.
         var scroll=QuickControls(UI.VerticalScroll("pob.detail.scroll",new WidgetElement[]{tools}.Concat(rows.Select(row=>LinkLeft(row,returnId))).ToArray()).Classes("pob-scroll"),first,"pob.skill.actions","Skill controls",quick);
-        return UI.Stack("pob.detail",scroll).RememberChildFocus("pob.group-manage").Classes("pob-panel","pob-tree-main");
+        return UI.Stack("pob.detail",WithGemEffectsPreviews(scroll,group)).RememberChildFocus("pob.group-manage").Classes("pob-panel","pob-tree-main");
     }
 }

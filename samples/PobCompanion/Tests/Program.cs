@@ -100,7 +100,11 @@ if(args.Length==5)
         await EmptyBuildWorkflowTests.RunAsync(game,engineRoot,runtime,adapter,Check);
     }
     else if(args[4]=="--skill-management-only")await SkillManagementTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
-    else if(args[4]=="--skill-options-only")await SkillOptionTests.RunAsync(game,engineRoot,runtime,adapter,Check);
+    else if(args[4]=="--skill-options-only")
+    {
+        await SkillOptionTests.RunAsync(game,engineRoot,runtime,adapter,Check);
+        await GemEffectsTests.RunAsync(game,engineRoot,runtime,adapter,Check);
+    }
     else if(args[4]=="--skill-edits-only")await SkillEditTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--quick-controls-only")await QuickControlsTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);
     else if(args[4]=="--passive-choices-only")await PassiveChoiceTests.RunAsync(game,engineRoot,runtime,adapter,workXml,Check);

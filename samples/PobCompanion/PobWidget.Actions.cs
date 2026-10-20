@@ -16,6 +16,7 @@ public sealed partial class PobWidget
             if (busy) return ValueTask.CompletedTask;
             skillWorkspaceFocusRequested=false;
             skillWorkspaceReturnControl=null;
+            skillWorkspaceGemReturn=null;
             if(HandleUnifiedSearchAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleDisclosureAction(action)){Invalidate();return ValueTask.CompletedTask;}
             if(HandleWebsiteAction(action))return ValueTask.CompletedTask;

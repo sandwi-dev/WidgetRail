@@ -55,6 +55,9 @@ text { color: var(--text); text-align: start; }
 .pob-list-item { padding: 8px 10px; min-height: 48px; gap: 4px; text-align: start; align: start; background: var(--surface); border-color: transparent; border-width: 1px; corner-radius: 8px; }
 .pob-list-item:selected { background: var(--surface-raised); border-color: transparent; }
 .pob-list-item:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.pob-list-item.pob-gem-name { padding:4px 8px; min-height:44px; background:transparent; }
+.pob-gem-level-readonly { min-height:44px; padding:8px; justify:center; }
+.pob-gem-options { justify:end; }
 .pob-list-item.pob-passive-child { padding:8px 10px 8px 26px; background:transparent; }
 .pob-list-item.pob-passive-entry, .pob-list-item.pob-passive-child { align:stretch; text-align:start; }
 .pob-passive-heading { width:100%; min-width:0px; }

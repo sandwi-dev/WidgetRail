@@ -374,6 +374,7 @@ local function command(req)
   if op=='gem-controls'then return{state=skillManagement.gemControls(req,clean),xml=build:SaveDB('code')}end
   if op=='skill-copy' then return {state={groupClipboard=skillManagement.copy(req)},xml=build:SaveDB('code')}end
   if op=='inspect-item' then return {state={itemEditor=planningFeatures.inspectItem(req,textRuns,clean)},xml=build:SaveDB('code')}end
+  if op=='gem-details' then return {state=planningFeatures.gemDetails(req,textRuns,clean),xml=build:SaveDB('code')}end
   if op=='gem-quality' then return {state={lines=planningFeatures.quality(req,textRuns,clean)},xml=build:SaveDB('code')}end
   if op=='item-slots' then
     assert(type(req.raw)=='string' and #req.raw<=32768,'Invalid item text')

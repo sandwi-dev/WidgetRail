@@ -17,6 +17,7 @@ public sealed partial class PobWidget
     }
     private bool HandleGemOptionsAction(WidgetActionEvent action)
     {
+        if(HandleGemEffectsAction(action))return true;
         var parts=action.ActionId.Split('.');
         if(parts is ["gem-options",var id]&&int.TryParse(id,out var gem)&&detailKind=="skill")
         {
@@ -27,7 +28,13 @@ public sealed partial class PobWidget
             },"Reading gem options…");return true;
         }
         if(detailKind!="gem-options")return false;
-        if(action.ActionId=="back"){detailKind="skill";focusRequestSequence++;return true;}
+        if(action.ActionId=="back")
+        {
+            detailKind="skill";skillWorkspaceFocusRequested=true;
+            var group=A(State,"skills").FirstOrDefault(g=>I(g,"id")==detailId);
+            skillWorkspaceGemReturn=A(group,"gems").Any(g=>I(g,"id")==optionsGem)?optionsGem:null;
+            focusRequestSequence++;return true;
+        }
         if(parts is ["gem-extra",var controlId])
         {
             var control=A(gemOptions,"controls").FirstOrDefault(c=>S(c,"id")==controlId);

@@ -28,6 +28,7 @@ public sealed partial class PobWidget
     private bool skillOrderFocusRequested;
     private bool skillWorkspaceFocusRequested;
     private string? skillWorkspaceReturnControl;
+    private int? skillWorkspaceGemReturn;
     private (int Group,int Gem,string Name)? skillRemoval;
     private sealed record GemEntry(string Key,string Name,string Action,string Description="",GemInspectionData? Inspection=null);
     private sealed record GemQuery(GemEntry[] Entries,GemPickerContext? Context=null);

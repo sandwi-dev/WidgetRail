@@ -39,8 +39,10 @@ internal sealed partial class WidgetStylesValidationPage
                 page.ApplyAppearance(appearance,false);
                 var theme=ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package,new((WrssDocument[])[package.Document],[]),
                     catalog.Load(contrast?ThemeIdentity.BuiltInMonoInk:themeId,"1.0.0").Package).Theme!;
-                var readOnly=kind is "skills" or "equipment";
-                var snapshot=SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{kind}-"+(readOnly?"readonly":"inspection")+".json")));
+                var gemEffects=kind is "gem1" or "gem2";
+                var readOnly=gemEffects||kind is "skills" or "equipment";
+                var filename=gemEffects?$"poe{game}-{kind}.json":$"poe{game}-{kind}-"+(readOnly?"readonly":"inspection")+".json";
+                var snapshot=SnapshotJson.Deserialize(File.ReadAllBytes(Path.Combine(directory,filename)));
                 var row=readOnly?Nodes(snapshot.Root).First(node=>node.FocusPresentation is not null):JsonSerializer.Deserialize<ViewNode>(File.ReadAllBytes(Path.Combine(directory,$"poe{game}-{kind}-row.json")))!;
                 row=row with{CollectionItemKey=null};
                 var preview=row.FocusPresentation!;
@@ -71,6 +73,16 @@ internal sealed partial class WidgetStylesValidationPage
                     var panelBounds=chrome.TransformToVisual(page).TransformBounds(new(0,0,chrome.ActualWidth,chrome.ActualHeight));
                     Check(panelBounds.Left>=-1&&panelBounds.Top>=-1&&panelBounds.Right<=page.ActualWidth+1&&panelBounds.Bottom<=page.ActualHeight+1,scenario+": read-only panel fits viewport");
                     if(game==2&&size.Width==1320&&themeId==ThemeIdentity.BuiltInMonoInk)await Capture(Path.Combine(directory,$"native-{kind}.png"));
+                    if(gemEffects)
+                    {
+                        if(game==2&&kind=="gem1"&&size.Width==820&&themeId==ThemeIdentity.BuiltInMonoInk)
+                            await Capture(Path.Combine(directory,"native-gem-compact.png"));
+                        var optionId="pob.gem-options."+kind[3..];
+                        var returned=snapshot with{Sequence=2,FocusGroupEntryRequest=new(){RequestId=checks.Count+1,GroupId=optionId+".return"}};
+                        page.Apply(new(new(descriptor.Id,scenario,scenario,1,returned.WidgetInstanceId,2,returned.ActiveInputScopeId),descriptor,returned,styles));
+                        await Wait(()=>Find<Button>("Widget."+optionId,root) is {} button&&ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),button));
+                        Check(true,scenario+": return request focuses the exact Gem options button");
+                    }
                     continue;
                 }
                 var first=Nodes(preview).First(node=>node.Kind==ViewNodeKind.Button&&node.ActionId is not null);

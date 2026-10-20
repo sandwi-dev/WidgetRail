@@ -77,11 +77,12 @@ public sealed partial class PobWidget
         return UI.Stack("pob."+id,rows.ToArray()).Classes("pob-preview-content");
     }
 
-    private static IReadOnlyList<FormattedRun> SummaryRuns(IReadOnlyList<FormattedRun> source,int maximum)
+    private static IReadOnlyList<FormattedRun> SummaryRuns(IReadOnlyList<FormattedRun> source,int maximum,int maximumRuns=int.MaxValue)
     {
         var result=new List<FormattedRun>();var remaining=maximum;
         foreach(var run in source)
         {
+            if(result.Count>=maximumRuns-1){result.Add(new("…","muted"));break;}
             if(run.Text.Length<=remaining){result.Add(run);remaining-=run.Text.Length;continue;}
             var length=remaining>0&&char.IsHighSurrogate(run.Text[remaining-1])?remaining-1:remaining;
             if(length>0)result.Add(run with{Text=run.Text[..length]});
