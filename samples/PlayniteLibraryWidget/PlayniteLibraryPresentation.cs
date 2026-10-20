@@ -1044,7 +1044,9 @@ internal static partial class PlayniteLibraryPresentation
                     metadata.Description)
                 .Classes("playnite-library-summary-description"));
         if (compact) return BrowseSummary(title, summary, badges, current, id);
-        children.Add(QuickPlayHint(current, "playnite-library.home.summary.play." + id));
+        children.Add(UI.Row("playnite-library.home.summary.actions." + id,
+                QuickPlayHint(current, "playnite-library.home.summary.play." + id))
+            .Classes("playnite-library-actions"));
         var compactSummary = favorite ? "Favorite · " + summary : summary;
         if (!string.Equals(state, "Play", StringComparison.Ordinal))
             compactSummary = state + " · " + compactSummary;
