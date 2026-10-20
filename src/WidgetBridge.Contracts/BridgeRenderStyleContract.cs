@@ -13,6 +13,10 @@ internal static class BridgeRenderStyleContract
             requireComplete && styles.Count != nodeIds.Count)
             throw new BridgeProtocolException("Computed style map has an invalid node count.");
         var frozen = new Dictionary<string, BridgeNodeRenderStyles>(StringComparer.Ordinal);
+        // A range repeats the same tile styles many times. Share equal immutable
+        // states only within this validated payload; never retain a global cache.
+        var states = new Dictionary<IReadOnlyDictionary<string, BridgeComputedStyleValue>,
+            IReadOnlyDictionary<string, BridgeComputedStyleValue>>(StateComparer.Instance);
         var total = 0;
         foreach (var (id, style) in styles)
         {
@@ -28,16 +32,38 @@ internal static class BridgeRenderStyleContract
             if (state is null || state.Count > BridgeRenderStyleLimits.MaximumPropertiesPerState ||
                 (total += state.Count) > BridgeRenderStyleLimits.MaximumTotalProperties)
                 throw new BridgeProtocolException("Computed style map exceeds its property budget.");
-            var values = new Dictionary<string, BridgeComputedStyleValue>(StringComparer.Ordinal);
             foreach (var (name, value) in state)
             {
                 if (name.Length is < 1 or > BridgeRenderStyleLimits.MaximumPropertyNameLength || value is null ||
                     !Enum.IsDefined(value.Kind) || value.Text is null || value.Text.Length > BridgeRenderStyleLimits.MaximumValueTextLength ||
                     value.Unit is { Length: > 16 } || value.Number is { } number && !double.IsFinite(number))
                     throw new BridgeProtocolException("Computed style property is invalid.");
-                values.Add(name, value with { });
             }
-            return new ReadOnlyDictionary<string, BridgeComputedStyleValue>(values);
+            if (states.TryGetValue(state, out var existing)) return existing;
+            // Values are sealed records containing only immutable scalar data.
+            // Copy the caller-owned dictionary, not every immutable value.
+            var copy = new ReadOnlyDictionary<string, BridgeComputedStyleValue>(
+                state.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
+            states.Add(copy, copy);
+            return copy;
+        }
+    }
+
+    private sealed class StateComparer : IEqualityComparer<IReadOnlyDictionary<string, BridgeComputedStyleValue>>
+    {
+        internal static readonly StateComparer Instance = new();
+        public bool Equals(IReadOnlyDictionary<string, BridgeComputedStyleValue>? first,
+            IReadOnlyDictionary<string, BridgeComputedStyleValue>? second) => ReferenceEquals(first, second) ||
+            first is not null && second is not null && first.Count == second.Count &&
+            first.All(pair => second.TryGetValue(pair.Key, out var value) && pair.Value == value);
+
+        public int GetHashCode(IReadOnlyDictionary<string, BridgeComputedStyleValue> state)
+        {
+            // State equality is independent of dictionary enumeration order.
+            var hash = 0;
+            foreach (var pair in state)
+                hash = unchecked(hash + HashCode.Combine(StringComparer.Ordinal.GetHashCode(pair.Key), pair.Value));
+            return hash;
         }
     }
 

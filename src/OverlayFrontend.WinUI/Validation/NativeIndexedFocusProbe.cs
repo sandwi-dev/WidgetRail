@@ -26,7 +26,9 @@ internal static class NativeIndexedFocusProbe
         if (startIndex < 0 || startIndex >= view.Items.Count) throw new ArgumentOutOfRangeException(nameof(startIndex));
         view.ScrollIntoView(view.Items[startIndex], ScrollIntoViewAlignment.Leading);
         var deadline = Environment.TickCount64 + 5000;
-        while (view.ContainerFromIndex(startIndex) is not Control)
+        // Native realization precedes async row admission. A loading placeholder
+        // is not yet a valid starting point for the controller focus probe.
+        while (view.ContainerFromIndex(startIndex) is not Control { IsLoaded: true, IsEnabled: true, IsTabStop: true })
         {
             if (Environment.TickCount64 >= deadline) throw new TimeoutException("Native initial container did not realize.");
             await Task.Delay(15, cancellationToken);

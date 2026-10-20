@@ -2,7 +2,7 @@
 
 This executable hosts the production `PlayniteLibraryWidget` and
 `PlayniteLibraryApplicationService` through `WidgetApplicationBootstrap`.
-Only the Playnite provider is fake. It has three games, returns no artwork,
+Only the Playnite provider is fake. By default it has three games, returns no artwork,
 and records a launch into a temporary journal instead of starting a process.
 Connection probing is fake too; credentials, networking, and system actions
 are never used.
@@ -19,3 +19,11 @@ must identify an absolute temporary directory containing `fixture-owned`.
 Production entry points do not inspect this variable. The test restores the
 previous environment and drains the process before removing the temporary
 catalog.
+
+For native scrolling measurements, `scripts/Test-PlaynitePerformance.ps1` adds
+a fixture-owned `performance.json` with a bounded game count, generated local
+JPEGs, and a simulated provider delay. This mode still uses the production
+widget, application, bridge, indexed leases, and WinUI artwork pipeline.
+It never contacts Playnite or edits the user's library. See
+[the performance analysis](../../docs/playnite-performance-analysis.md) for
+build settings, reproduction commands, and measurement limitations.

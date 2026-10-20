@@ -220,7 +220,9 @@ public sealed partial class MainWindow
             RootFrame.Content = new Validation.GroupedCollectionValidationPage(flatBaseline: validateGroupedFlat, useRangeAdapter: validateGroupedAdapted);
         else if (indexedValidationPipe is not null)
         {
-            if (indexedValidationPipe.StartsWith("pinned-validation-", StringComparison.Ordinal))
+            if (Shell.FrontendArguments.Value(arguments,"--playnite-performance-output") is {} performanceOutput)
+                RootFrame.Content = new Validation.PlaynitePerformanceValidationPage(indexedValidationPipe,performanceOutput);
+            else if (indexedValidationPipe.StartsWith("pinned-validation-", StringComparison.Ordinal))
                 RootFrame.Content = new Validation.PinnedWidgetValidationPage(indexedValidationPipe);
             else if (indexedValidationPipe.StartsWith("discovered-validation-", StringComparison.Ordinal))
             {

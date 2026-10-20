@@ -8,6 +8,13 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetIndexedCollectionView
 {
+    internal object PerformanceStatistics()=>new
+    {
+        source?.Items.ResidentSlots,source?.Items.PeakResidentSlots,source?.Items.CompletedLoads,
+        source?.Items.CancelledLoads,source?.Items.FailedLoads,source?.Items.PendingReleases,
+        containers=containers.Count,retiring=retiring.Count,
+        cacheLength=view?.ItemsPanelRoot switch{ItemsWrapGrid grid=>grid.CacheLength,ItemsStackPanel stack=>stack.CacheLength,_=>(double?)null}
+    };
     internal bool HasPendingNativeNavigation => pendingIndex is not null;
     internal object NavigationDiagnosticState()
     {

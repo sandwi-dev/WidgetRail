@@ -40,6 +40,21 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--indexed-publication-output") is {} publicationOutput)
+        {
+            var count=0;Exception? failure=null;
+            try
+            {
+                count+=await IndexedSourcePublicationScenarios.RunAsync(DispatcherQueue);
+                count+=await IndexedSourceReentrancyScenarios.RunAsync(DispatcherQueue);
+                count+=await IndexedSourceLifetimeScenarios.RunAsync(DispatcherQueue);
+                count+=await IndexedSourceRetentionScenarios.RunAsync(DispatcherQueue);
+            }
+            catch(Exception error){failure=error;}
+            await File.WriteAllTextAsync(publicationOutput,System.Text.Json.JsonSerializer.Serialize(new{passed=failure is null,checks=count,error=failure?.ToString()}));
+            if(failure is not null)throw failure;
+            return;
+        }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--acrylic-previews-output") is { } acrylicOutput)
         { await AcrylicPreviewsAsync(acrylicOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--interactive-previews-output") is { } interactivePreviewsOutput)

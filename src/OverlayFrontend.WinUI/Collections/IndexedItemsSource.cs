@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Data;
@@ -336,6 +337,10 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var retained = false;
+        var accepted = false;
+        var finished = false;
+        KeyedCollectionItem<T>[]? admitted = null;
+        var nextIndex = 0;
         if (dispatcher.TryEnqueue(() =>
         {
             try
@@ -343,45 +348,19 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
                 if (!disposed && fetching.TryGetValue(page, out var current) && ReferenceEquals(current, fetch))
                 {
                     fetching.Remove(page);
+                    accepted = true;
                     if (failure is null && !fetch.Cancellation.IsCancellationRequested)
                     {
-                        try
-                        {
-                            var admitted = Validate(fetch.Request, items!);
-                            if (pages.Remove(page, out var previous)) Release(previous.Lifetime);
-                            pages.Add(page, items!);
-                            retained = true;
-                            ++CompletedLoads;
-                            // Binding/focus notifications can synchronously suspend,
-                            // dispose or refresh the source. Install ownership first
-                            // so those paths can retire this lease, and do not publish
-                            // the rest of a page after its presentation has retired.
-                            for (var index = 0; index < admitted.Length; ++index)
-                            {
-                                if (disposed || !active || ContentRevision != fetch.Request.ContentRevision ||
-                                    !pages.TryGetValue(page, out var published) || !ReferenceEquals(published, items)) break;
-                                GetSlot(fetch.Request.StartIndex + index).SetValue(admitted[index].Key, admitted[index].Value);
-                            }
-                        }
-                        catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
+                        admitted = Validate(fetch.Request, items!);
+                        if (pages.Remove(page, out var previous)) Release(previous.Lifetime);
+                        pages.Add(page, items!);
+                        retained = true;
                     }
-                    if (failure is not null && !fetch.Cancellation.IsCancellationRequested)
-                    {
-                        failedPages.Add(page); ++FailedLoads;
-                        for (var index = fetch.Request.StartIndex; index < fetch.Request.StartIndex + fetch.Request.Count; ++index)
-                            if (slots.TryGetValue(index, out var slot)) slot.SetFailed();
-                    }
-                    QueuePump();
                 }
             }
-            finally
-            {
-                if (!retained) Release(items?.Lifetime);
-                ownedFetches.Remove(fetch);
-                fetch.Cancellation.Dispose();
-                QueuePump();
-                completion.TrySetResult();
-            }
+            catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
+            if (admitted is not null) PublishBatch();
+            else Finish();
         })) await completion.Task.ConfigureAwait(false);
         else
         {
@@ -390,6 +369,66 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
             // explicit owner. The fetch task drains it before it can finish.
             if (items?.Lifetime is { } lifetime)
                 await ReleaseUndeliveredAsync(lifetime).ConfigureAwait(false);
+        }
+
+        void PublishBatch()
+        {
+            if (finished) return;
+            try
+            {
+                var start = Stopwatch.GetTimestamp();
+                var count = 0;
+                while (nextIndex < admitted!.Length)
+                {
+                    // Publishing a slot synchronously builds its bound native
+                    // row. Yield between small batches so input/layout can run.
+                    // Every continuation rechecks ownership, including changes
+                    // caused reentrantly by a binding notification.
+                    if (disposed || !active || fetch.Cancellation.IsCancellationRequested ||
+                        ContentRevision != fetch.Request.ContentRevision ||
+                        !pages.TryGetValue(page, out var published) || !ReferenceEquals(published, items)) break;
+                    var index = nextIndex++;
+                    GetSlot(fetch.Request.StartIndex + index).SetValue(admitted[index].Key, admitted[index].Value);
+                    if (nextIndex < admitted.Length && (++count >= 8 || Stopwatch.GetElapsedTime(start).TotalMilliseconds >= 2))
+                    {
+                        if (dispatcher.TryEnqueue(DispatcherQueuePriority.Low, PublishBatch)) return;
+                        break;
+                    }
+                }
+            }
+            catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
+            Finish();
+        }
+
+        void Finish()
+        {
+            if (finished) return;
+            finished = true;
+            try
+            {
+                if (accepted && !disposed && active && ContentRevision == fetch.Request.ContentRevision &&
+                    failure is not null && !fetch.Cancellation.IsCancellationRequested)
+                {
+                    failedPages.Add(page); ++FailedLoads;
+                    for (var index = fetch.Request.StartIndex; index < fetch.Request.StartIndex + fetch.Request.Count; ++index)
+                        if (slots.TryGetValue(index, out var slot)) slot.SetFailed();
+                }
+            }
+            finally
+            {
+                if (retained) ++CompletedLoads;
+                if (!retained) Release(items?.Lifetime);
+                // The native dispatcher can keep its completed callback wrapper
+                // until a later GC. Only pages/slots should retain the delivered
+                // range, not that callback's captured variable.
+                items = null;
+                admitted = null;
+                failure = null;
+                ownedFetches.Remove(fetch);
+                fetch.Cancellation.Dispose();
+                QueuePump();
+                completion.TrySetResult();
+            }
         }
     }
 

@@ -92,6 +92,32 @@ public sealed partial class IndexedRangeSessionTests
     }
 
     [TestMethod]
+    public void EqualComputedStatesShareImmutableStorageWithinOnePayload()
+    {
+        var color=new BridgeComputedStyleValue{Kind=WrssValueKind.Color,Text="#123456"};
+        var width=new BridgeComputedStyleValue{Kind=WrssValueKind.Length,Text="12px",Number=12,Unit="px"};
+        var first=new Dictionary<string,BridgeComputedStyleValue>{{"color",color},{"width",width}};
+        var reordered=new Dictionary<string,BridgeComputedStyleValue>{{"width",width with{}},{"color",color with{}}};
+        var changed=new Dictionary<string,BridgeComputedStyleValue>(first){["width"]=width with{Number=24}};
+        var source=new Dictionary<string,BridgeNodeRenderStyles>
+        {
+            ["one"]=new(){Base=first,Focused=reordered,Pressed=changed},
+            ["two"]=new(){Base=reordered,Focused=first,Pressed=changed}
+        };
+        var ids=source.Keys.ToHashSet();
+        var frozen=BridgeRenderStyleContract.ValidateAndFreeze(source,ids,true);
+        Assert.AreSame(frozen["one"].Base,frozen["one"].Focused);
+        Assert.AreSame(frozen["one"].Base,frozen["two"].Base);
+        Assert.AreNotSame(frozen["one"].Base,frozen["one"].Pressed);
+        Assert.AreEqual(24d,frozen["one"].Pressed["width"].Number);
+        Assert.AreNotSame(frozen["one"].Base,BridgeRenderStyleContract.ValidateAndFreeze(source,ids,true)["one"].Base);
+        first.Clear();reordered.Clear();changed.Clear();source.Clear();
+        Assert.AreEqual(12d,frozen["two"].Base["width"].Number);
+        Assert.ThrowsExactly<NotSupportedException>(()=>
+            ((IDictionary<string,BridgeComputedStyleValue>)frozen["two"].Base).Clear());
+    }
+
+    [TestMethod]
     public void ComputedStyleFreezingRejectsBudgetsAndMutatingSourceState()
     {
         var value = new BridgeComputedStyleValue { Kind = WrssValueKind.Color, Text = "#123456" };
