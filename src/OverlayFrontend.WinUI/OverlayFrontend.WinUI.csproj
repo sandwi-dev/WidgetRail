@@ -101,6 +101,16 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.7.0" />
     <PackageReference Include="WinUIEx" Version="2.9.3" />
   </ItemGroup>
+  <!-- The SDK dependency-file cache omits the post-trim runtime asset set.
+       A source-only change can retain a new framework DLL while reusing an old
+       deps.json. Regenerate this small manifest on trimmed publication; keep
+       normal build, trimming and ReadyToRun incrementality intact. -->
+  <Target Name="RefreshTrimmedPublishDependencyInputs"
+          BeforeTargets="GeneratePublishDependencyFile"
+          DependsOnTargets="_GeneratePublishDependencyFileInputCache"
+          Condition="'$(PublishTrimmed)' == 'true' And '$(GenerateDependencyFile)' == 'true'">
+    <Touch Files="$(_GeneratePublishDependencyFilePropertyInputsCache)" AlwaysCreate="true" />
+  </Target>
   <!-- Publish Properties -->
   <PropertyGroup>
     <!-- ILLink 10.0.10 can remove Monitor.Exit in nested async finally blocks.

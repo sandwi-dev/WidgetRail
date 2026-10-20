@@ -2,6 +2,32 @@
 
 Updated 2026-10-19. This ledger records implementation evidence, not final acceptance of the full plan.
 
+## Published startup dependency regression, 2026-10-19
+
+The previous cleanup candidate failed on first opening: BrowserOwner could not
+load System.IO.FileSystem.Watcher. Its DLL was present, but the published deps.json
+was stale and omitted it. The publish binlog confirms GeneratePublishDependencyFile
+was skipped as up-to-date after trimming retained the newly used assembly. Debug
+fixtures and process-liveness checks did not exercise this published startup path.
+
+The frontend now refreshes the dependency-generation input cache on trimmed
+publication, regenerating the small deps.json without disabling incremental
+compilation, trimming or ReadyToRun. ReleaseVerifier checks that local managed
+assembly references have runtime manifest entries. It rejects the known-bad
+candidate specifically for the watcher and accepts the prior working candidate.
+The corrected payload verifies **290** local managed references. A no-build
+republish with the old stale manifest deliberately restored to the intermediate
+cache regenerated correct metadata and passed the guard.
+
+`scripts/Test-PublishedStartup.ps1` exercises ordinary startup using the actual
+published executable, a fresh temporary profile, no controller capture and bounded
+phase/error checks. The corrected candidate reached browser-owner initialization
+and initial Settings presentation, then closed cleanly. Evidence:
+`artifacts/pob/startup-fix-published-smoke02/result.json` and
+`artifacts/pob/startup-fix-incremental.binlog`. The full cumulative payload is
+`artifacts/pob/cumulative-candidate-20261019-startup-fix`; it replaces the faulty
+candidate and runs hidden with the normal user profile.
+
 ## Explicit removal and browser-data reset, 2026-10-19
 
 Confirmed webapp removal and widget uninstall now include host-owned browser

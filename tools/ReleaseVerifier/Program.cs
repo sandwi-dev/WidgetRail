@@ -13,6 +13,7 @@ try
 {
     if (args.Length == 2)
     {
+        FrontendDependencyVerification.Verify(Path.GetFullPath(args[1]));
         FrontendCleanupVerification.Verify(Path.GetFullPath(args[1]));
         return 0;
     }
