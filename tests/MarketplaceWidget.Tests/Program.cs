@@ -320,12 +320,14 @@ static async Task Previews()
 {
     await using var f = new Fixture();
     f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(item => item with {
-        SetupRequirements = ["Separate service account required", "Configure your token inside the widget"],
+        SetupRequirements = item.Id == Fixture.Id ? ["Separate service account required", "Configure your token inside the widget"] : null,
         RetainedAvailability = true, IsPrerelease = true }).ToArray() };
     await f.Start(); await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
     using var host = WidgetTestHost.CreateIndexedCollectionHost(f.Widget, "catalogue-preview-test");
     var surface = Walk(host.CurrentSnapshot.Root).Single(n => n.Id == "marketplace.previews");
     var card = Walk(host.CurrentSnapshot.Root).First(n => n.Kind == ViewNodeKind.ActionSurface);
+    Check(Walk(host.CurrentSnapshot.Root).Where(n => n.Kind == ViewNodeKind.ActionSurface).Skip(1).All(n => n.FocusPreviewKey is null && n.FocusPresentation is null),
+        "Listings without setup still advertise a preview");
     Check(surface.FocusPreview is { EnterButton: null, SizeToContentHeight: true } && surface.FocusPreviewSource is not null,
         "Preview is not deferred and read-only");
     Check(!Walk(host.CurrentSnapshot.Root).Any(n => n.Text?.Contains("Configure your token") == true), "Previews were eagerly constructed");
@@ -333,6 +335,8 @@ static async Task Previews()
     using var preview = await host.AcquirePreviewAsync(surface.Id, card.FocusPreviewKey!);
     var content = preview.Range.Items.Single().Root;
     FocusPreviewContentContract.Validate(content, false);
+    Check(!Walk(content).Any(n => n.Id.EndsWith(".description", StringComparison.Ordinal) || n.Text == f.Snapshot.Items[0].Description),
+        "Preview repeats the listing description");
     Check(Walk(content).Any(n => n.Text?.Contains("Configure your token") == true) &&
         Walk(content).Any(n => n.Text?.Contains("Previously checked release") == true), "Preview dropped setup or release provenance");
     Check(!Walk(content).Any(n => n.ActionId is not null || n.Kind == ViewNodeKind.Image), "Preview has an action or network artwork");
@@ -437,7 +441,9 @@ static async Task RefreshOnOpening()
 
 static async Task PreviewSnapshotStability()
 {
-    await using var f = new Fixture(); await f.Start();
+    await using var f = new Fixture();
+    f.Snapshot = f.Snapshot with { Items = f.Snapshot.Items.Select(item => item with { SetupRequirements = ["A separate bridge is required"] }).ToArray() };
+    await f.Start();
     await Until(() => Node(f, "marketplace.refresh")?.IsBusy != true);
     using var host = WidgetTestHost.CreateIndexedCollectionHost(f.Widget, "catalogue-stable-preview");
     var surface = Walk(host.CurrentSnapshot.Root).Single(n => n.Id == "marketplace.previews");

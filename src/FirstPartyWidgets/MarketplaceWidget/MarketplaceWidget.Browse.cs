@@ -90,7 +90,6 @@ public sealed partial class MarketplaceWidget
         {
             UI.Text(item.Name, id + ".title").Classes("section-heading"),
             ItemBadges(item, id),
-            UI.Text(item.Description, id + ".description").Classes("diagnostic-line"),
             UI.Text(ItemStatus(item), id + ".version").Classes("page-help"),
         };
         if (item.DownloadBytes is { } size)

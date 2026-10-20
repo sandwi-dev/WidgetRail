@@ -317,8 +317,9 @@ public sealed partial class MarketplaceWidget : Widget
             ItemBadges(item, id) };
         var label = item.Name + ". " + ItemStatus(item) + ". " + item.Description;
         if (item.SetupRequirements is { Count: > 0 } setup) label += " Setup: " + setup[0];
-        return UI.ActionSurface("marketplace.select." + Key(item.Id), id, label,
-            ActionSurfaceOrientation.Vertical, content).Classes("marketplace-card", "marketplace-browse-card").PresentOnFocus(Key(item.Id));
+        var card = UI.ActionSurface("marketplace.select." + Key(item.Id), id, label,
+            ActionSurfaceOrientation.Vertical, content).Classes("marketplace-card", "marketplace-browse-card");
+        return item.SetupRequirements is { Count: > 0 } ? card.PresentOnFocus(Key(item.Id)) : card;
     }
 
     private static WidgetElement ItemBadges(MarketplaceItem item, string id)
