@@ -81,6 +81,12 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.IsNull(Resolve("stack", ordinary).Get("background-material"), ordinary);
         Assert.AreEqual(raised, Resolve("action-surface", "playnite-library-category").Get("background")?.Text);
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
+        Assert.AreEqual(raised, Resolve("button", "playnite-library-details-play").Get("background")?.Text);
+        Assert.AreEqual(text, Resolve("button", "playnite-library-details-play").Get("color")?.Text);
+        var focusedPlay = theme.Resolve(new WrssElement("button", null,
+            new HashSet<string>(["playnite-library-details-play"]),
+            new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
+        Assert.AreEqual(focus, focusedPlay.Get("outline-color")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-summary-title").Get("color")?.Text);
         Assert.AreEqual(text, Resolve("stack", "wrail-modal").Get("color")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-details-field").Get("color")?.Text);
