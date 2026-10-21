@@ -40,7 +40,7 @@
   {
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
     "description": "Browse and launch your Playnite games.",
-    "setupRequirements": ["Requires Playnite installed on this PC.", "Guided setup includes the Playnite Bridge integration and connects automatically. Playnite may need one restart.", "Keep Playnite running while browsing; the widget can start it in the tray."],
+    "setupRequirements": ["Requires Playnite installed on this PC.", "Guided setup includes the Playnite Bridge integration and connects automatically. Playnite may need one restart.", "The widget can start Playnite, but startup may show a window or take focus. Keep Playnite running while browsing."],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/home.png"]
   },
   {
@@ -58,7 +58,7 @@
   {
     "id": "widgetrail.samples.ytmusic", "publisher": "widgetrail.samples", "name": "YouTube Music",
     "description": "Browse music and keep playback controls pinned while playing.",
-    "setupRequirements": ["Signing in requires Chrome or Edge."],
+    "setupRequirements": ["Sign in with Google for your personal library and likes. Signing in requires Chrome or Edge.", "Supported public search and playback can work without signing in."],
     "screenshots": []
   },
   {
@@ -73,7 +73,7 @@
     "id": "widgetrail.firstparty.capture-library",
     "publisher": "widgetrail.firstparty",
     "name": "Capture Library",
-    "description": "Browse your screenshots and recordings, preview captures and manage saved files.",
+    "description": "Take screenshots, record clips with optional supported application audio, and browse, preview or manage your saved captures.",
     "setupRequirements": [],
     "screenshots": []
   },
@@ -88,7 +88,7 @@
   {
     "id": "widgetrail.firstparty.media-sessions",
     "publisher": "widgetrail.firstparty",
-    "name": "Media Controls",
+    "name": "Now Playing",
     "description": "Control playback in apps that expose Windows media sessions.",
     "screenshots": []
   },
@@ -122,7 +122,7 @@
     "id": "widgetrail.firstparty.power",
     "publisher": "widgetrail.firstparty",
     "name": "Power",
-    "description": "Lock, sleep, restart or shut down your PC from the overlay.",
+    "description": "Sleep, restart or shut down your PC from the overlay.",
     "setupRequirements": [],
     "screenshots": []
   },
