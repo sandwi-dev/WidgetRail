@@ -90,8 +90,7 @@ internal sealed partial class PlayniteSetupPlatform : IPlayniteSetupPlatform
         if (running.Any(process => !Matches(process, installation)))
             throw new PlayniteSetupException("Another Playnite profile is running. Close it before connecting this profile.");
         if (running.Count != 0) return;
-        using var process = Process.Start(LaunchInfo(installation));
-        if (process is null) throw new PlayniteSetupException("Playnite could not be started. Start it manually, then retry.");
+        await PlayniteDesktopLauncher.StartAsync(LaunchInfo(installation), token).ConfigureAwait(false);
     }
 
     internal static ProcessStartInfo LaunchInfo(PlayniteSetupInstallation installation) => StartInfo(

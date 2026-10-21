@@ -5,9 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\Application\PlayniteLibraryApplication.csproj" />
+    <ProjectReference Include="../PlayniteLaunchLifetimeFixture/PlayniteLaunchLifetimeFixture.csproj" ReferenceOutputAssembly="false" />
     <!-- Metadata-only setup fixture; never a runtime or compile-time dependency. -->
     <PackageDownload Include="PlayniteSDK" Version="[6.15.0]" />
     <None Include="$(NuGetPackageRoot)playnitesdk\6.15.0\lib\net462\Playnite.SDK.dll" Link="fixtures\Playnite.SDK.dll" CopyToOutputDirectory="PreserveNewest" />
