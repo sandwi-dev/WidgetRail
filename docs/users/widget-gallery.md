@@ -4,7 +4,7 @@ WidgetRail over **Hollow Knight: Silksong**, with examples of full widgets, rich
 
 Captured on 21 October 2026 from a local development candidate. Downloaded releases, themes and service pages may look different. [Capture details and credits](../images/widgets/README.md).
 
-[Quick controls](#audio-mixer) · [Browser](#browser) · [Music](#spotify) · [Path of Building](#poe1-path-of-building) · [Pinned video](#youtube-video)
+[Quick controls](#audio-mixer) Â· [Browser](#browser) Â· [Music](#spotify) Â· [Path of Building](#poe1-path-of-building) Â· [Pinned video](#youtube-video)
 
 
 ## Audio Mixer
@@ -73,6 +73,18 @@ Live game frame statistics and a compact pinned monitor. These readings illustra
 
 ![Performance Monitor pinned over Silksong](../images/widgets/performance-monitor-pinned.png)
 
+## Playnite Library
+
+Home, library, game details and achievement progress from the connected Playnite library.
+
+![Playnite home in WidgetRail](../images/widgets/playnite-home.png)
+
+![Playnite library in WidgetRail](../images/widgets/playnite-library.png)
+
+![Playnite details in WidgetRail](../images/widgets/playnite-details.png)
+
+![Playnite achievements in WidgetRail](../images/widgets/playnite-achievements.png)
+
 ## PoE1 Path of Building
 
 Skill-group and passive rich previews in an example planning build.
@@ -102,6 +114,12 @@ A public soundtrack search and its playback controls, including the pinned playe
 ![Spotify in WidgetRail](../images/widgets/spotify.png)
 
 ![Spotify pinned over Silksong](../images/widgets/spotify-pinned.png)
+
+## Task Switcher
+
+A live game thumbnail beside minimized applications; no conversation or terminal contents are visible.
+
+![Task switcher in WidgetRail](../images/widgets/task-switcher.png)
 
 ## Twitch
 

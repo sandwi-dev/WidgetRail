@@ -10,14 +10,13 @@ There is still no checked-in recording of the complete game → WidgetRail → g
 workflow. Sample MP4s in SDK/template assets are test media, not product demos.
 Do not label a mockup, a set of stills or a standalone game clip as that workflow.
 
-## Remaining capture coverage
+## Capture coverage
 
-The new set covers 17 marketplace widgets plus Settings and Catalogue. Playnite
-history and Task Switcher window previews are held out pending privacy review.
-Recent Apps needs its recent-activity permission approved before a useful capture.
-Discord is intentionally omitted from this capture session. Retain the existing
-Playnite listing images until replacements are reviewed; do not fill these gaps
-with unrelated screenshots or claim complete coverage.
+The set contains 32 screenshots covering 19 marketplace widgets plus Settings and
+Catalogue. Discord and Recent Apps were intentionally skipped. Playnite titles,
+play history and achievement progress are approved for inclusion; account
+identifiers remain excluded. Task Switcher was captured after the other
+applications were minimized, so their contents are not visible.
 
 Catalogue image URLs should reference the commit containing the reviewed PNGs.
 Local URL edits are preparation only: the images become available remotely after

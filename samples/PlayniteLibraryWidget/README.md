@@ -3,7 +3,9 @@
 Bring your Playnite library into WidgetRail. Browse game artwork, find something
 to play, and launch it with your controller without leaving the overlay.
 
-![Playnite Library home with a game rail and the selected game's artwork](screenshots/home.png)
+![Playnite Library home with a game rail and the selected game's artwork](../../docs/images/widgets/playnite-home.png)
+
+[Screenshot context and credits](../../docs/images/widgets/README.md).
 
 ## What you can do
 
@@ -131,7 +133,9 @@ locally synced data; it does not ask Steam or another service to sync achievemen
 The interface follows your selected WidgetRail theme. Categories open by selecting
 the row; game covers retain their original artwork colors.
 
-![Browsing a Playnite library with search, filters, and a game grid](screenshots/library.png)
+![Browsing a Playnite library with search, filters, and a game grid](../../docs/images/widgets/playnite-library.png)
+
+[Game details and achievements](../../docs/users/widget-gallery.md#playnite-library).
 
 ## Common questions
 

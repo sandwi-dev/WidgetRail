@@ -41,7 +41,7 @@
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
     "description": "Browse and launch your Playnite games.",
     "setupRequirements": ["Requires Playnite installed on this PC.", "Guided setup includes the Playnite Bridge integration and connects automatically. Playnite may need one restart.", "The widget can start Playnite, but startup may show a window or take focus. Keep Playnite running while browsing."],
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/PlayniteLibraryWidget/screenshots/home.png"]
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-home.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-details.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-achievements.png"]
   },
   {
     "id": "widgetrail.samples.spotify", "publisher": "widgetrail.samples", "name": "Spotify",
@@ -106,7 +106,7 @@
     "name": "Task Switcher",
     "description": "Switch between open windows and close or restart applications with your controller.",
     "setupRequirements": [],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/task-switcher.png"]
   },
   {
     "id": "widgetrail.firstparty.network-controls",
