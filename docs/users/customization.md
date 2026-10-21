@@ -4,6 +4,14 @@ Open Settings to adjust the overlay. Quit and Restart here
 refer to **WidgetRail**, not shutting down or restarting Windows. PC power
 actions live in the Power widget.
 
+## General
+
+Choose the overlay position and use **Start WidgetRail when I sign in** to manage
+startup from an installed copy. WidgetRail starts quietly; your opening shortcut
+shows the overlay. If Windows has disabled the registered entry, enable it in
+**Windows Settings → Apps → Startup**. The General startup switch is restored
+after preview.37; on that release, use the installer or Windows Startup Apps.
+
 ## Appearance
 
 New installations and reset appearance settings start with Mono Ink.

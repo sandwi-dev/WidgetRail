@@ -355,7 +355,7 @@ static bool HasIgnoredSegment(string root, string path)
     if (relative.Replace('\\', '/') is "docs/implementation-agent-goal.md" or
         "docs/review-planner-goal.md" or "docs/delivery-plan.md") return true;
     return relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-        .Any(segment => segment is ".git" or "bin" or "obj" or "artifacts" or "history" or "archive" or "logs");
+        .Any(segment => segment is ".git" or "bin" or "obj" or "node_modules" or "artifacts" or "history" or "archive" or "logs");
 }
 
 

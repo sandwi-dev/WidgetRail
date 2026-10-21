@@ -132,7 +132,8 @@ themes and widget lifecycle support. You do not need to build the native host to
 write an ordinary widget.
 
 The CLI includes templates, validation, previews and packaging. Explore
-[SDK Gallery](samples/SdkGalleryWidget/README.md) for working controls and layouts.
+[SDK Gallery](samples/SdkGalleryWidget/README.md), a buildable source example, for
+working controls and layouts.
 
 [Your first widget](docs/developers/widget-quickstart.md) · [Authoring guide](docs/developers/widget-authoring-guide.md) · [CLI reference](docs/reference/cli-workflows.md) · [Build the app from source](docs/maintainers/building.md)
 

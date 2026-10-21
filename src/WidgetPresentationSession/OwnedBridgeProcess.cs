@@ -13,10 +13,22 @@ public sealed record BridgeProcessOptions(string InstallationRoot, string Settin
     public bool WindowPreviews { get; init; }
     /// <summary>Opt in only when the frontend exchanges and applies controller-control preferences.</summary>
     public bool ExclusiveControllerControl { get; init; }
+    /// <summary>Opt in when the trusted Settings startup backend launches this frontend.</summary>
+    public bool StartupRegistration { get; init; }
     /// <summary>Optional host diagnostics for foreground delegation, without widget payloads.</summary>
     public Action<string>? ForegroundDelegationDiagnostic { get; init; }
     /// <summary>Optional external process-tree owner. Null preserves ordinary process startup.</summary>
     public string? ProcessOwnerJobName { get; init; }
+
+    internal WidgetPresentationSessionOptions CreateSessionOptions(Action<string> beforeInputWrite) => new()
+    {
+        ClientName = "WidgetRail.WinUI",
+        ConnectTimeout = ConnectTimeout,
+        WindowPreviews = WindowPreviews,
+        ExclusiveControllerControl = ExclusiveControllerControl,
+        StartupRegistration = StartupRegistration,
+        BeforeInputWrite = beforeInputWrite,
+    };
 
     internal ProcessStartInfo CreateStartInfo(string pipeName)
     {
@@ -108,9 +120,7 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(options.ConnectTimeout);
         var connection = WidgetPresentationSession.ConnectAsync(pipe,
-            new() { ClientName = "WidgetRail.WinUI", ConnectTimeout = options.ConnectTimeout, WindowPreviews = options.WindowPreviews,
-                ExclusiveControllerControl = options.ExclusiveControllerControl,
-                BeforeInputWrite = owner.DelegateForegroundForInput }, deadline.Token);
+            options.CreateSessionOptions(owner.DelegateForegroundForInput), deadline.Token);
         var exited = child.WaitForExitAsync(deadline.Token);
         try
         {

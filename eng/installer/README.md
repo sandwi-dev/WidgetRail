@@ -28,8 +28,10 @@ a bounded hash index. First startup seeds them through normal sandbox package
 admission, without granting capabilities. A durable per-package receipt means
 removal, disabling and user-selected versions survive subsequent app upgrades.
 Bare has an empty initial-widget index. Settings and Catalogue alone stay in the
-trusted shipping catalog. All optional widgets can be added through Catalogue in either bundle.
-Developer edition is retired; SDK tooling and source samples remain available.
+trusted shipping catalog. Both bundles can install the same optional widgets through Catalogue.
+Developer edition is retired; SDK tooling and buildable source examples remain
+available. SDK Gallery, Clock, Embedded Media Sample and Full Application Reference
+are source examples, not Catalogue downloads.
 Application update selection keeps the installed bundle (`production` or `bare`),
 and update plans verify that bundle again before and after setup.
 

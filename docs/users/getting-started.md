@@ -10,7 +10,8 @@ You can use a controller, with keyboard navigation available as a fallback.
 | Production | You want the everyday PC, audio, media, network, app, and Browser widgets. |
 | Bare | You want Settings and WidgetRail Catalogue, then choose your own widgets. |
 
-All optional widgets are available through Catalogue in either edition. Only
+Both editions can install the same optional widgets through Catalogue. Developer
+reference examples remain buildable from source. Only
 Settings and Catalogue are built-in. Both include the `wrail` CLI and widget templates. They use the same application
 version and share your WidgetRail data. Installing the other edition replaces
 the active edition; it does not create an independent setup.

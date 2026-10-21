@@ -22,9 +22,11 @@ Bare contains Settings and WidgetRail Catalogue. Production adds the initial
 optional-widget selection in `eng/release-content.json`: Capture Library,
 Performance Monitor, Now Playing, Games & Apps, Task Switcher, Audio Mixer,
 Network Controls, Power and Browser. Both bundles have the same host capabilities,
-runtimes and CLI. Developer edition is retired; SDK Gallery and other optional
-widgets are distributed through Catalogue. A listing requires a published package
-to be downloadable.
+runtimes and CLI. Developer edition is retired. SDK Gallery, Clock, Embedded Media
+Sample and Full Application Reference remain buildable source examples; they are
+not Catalogue listings or required release downloads. Other optional widgets are
+distributed through Catalogue. A listing requires a published package to be
+downloadable.
 
 Production's initial packages are enabled once through ordinary sandbox package
 admission, without granting capabilities. Existing selections and later removal
@@ -36,9 +38,10 @@ use the same review, consent, update and uninstall flow regardless of publisher.
 
 - Controller opening supports View + Menu or Guide/PS. Optional F1 is off by
   default and controlled from Settings → Controllers.
-- Startup at sign-in is selected in the installer. The startup backend targets
-  the WinUI executable, but the current WinUI handshake does not advertise the
-  Settings startup switch. Windows Startup Apps controls an existing entry.
+- Startup at sign-in is available in the installer and Settings → General. The
+  WinUI host advertises the startup backend, which targets its executable with
+  `--hidden`. Windows Startup Apps can override an existing entry. This restores
+  the Settings switch hidden in preview.37 and earlier WinUI releases.
 - App updates use explicit download and install actions. Supporting installers
   use unattended routine installation after preflight, with a separately confirmed
   interactive fallback. See [App updates](../reference/app-updates.md).

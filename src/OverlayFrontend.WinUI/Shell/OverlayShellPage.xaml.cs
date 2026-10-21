@@ -142,6 +142,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 StartupWidgetId = options.InitialWidgetId,
                 WindowPreviews = previewCaptures is not null,
                 ExclusiveControllerControl = ControllerControlStatusRequested is not null,
+                StartupRegistration = true,
                 ForegroundDelegationDiagnostic = message => WindowActivationDiagnostic?.Invoke(message),
                 ProcessOwnerJobName = options.Development?.JobName,
             }, lifetime.Token);

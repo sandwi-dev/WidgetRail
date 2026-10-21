@@ -58,4 +58,27 @@ public sealed class ApplicationControlSessionTests
         Assert.IsTrue(native.HeldDpadScroll);
         Assert.IsTrue(native.StartupRegistration);
     }
+
+    [TestMethod]
+    public async Task OwnedBridgeAdvertisesStartupWithoutHeldDpadScrolling()
+    {
+        var options = new BridgeProcessOptions(@"C:\candidate", @"C:\profile", @"C:\catalog")
+            { StartupRegistration = true };
+        await using var server = new ScriptedBridgeServer();
+        var service = server.RunAsync(async channel =>
+        {
+            var request = await channel.ReadAsync(default);
+            var hello = BridgeJson.FromElement<BridgeHello>(request.Payload);
+            Assert.IsTrue(hello.StartupRegistration);
+            Assert.IsFalse(hello.HeldDpadScroll);
+            await channel.WriteAsync(new BridgeEnvelope { Type = BridgeMessageTypes.HelloAccepted,
+                RequestId = request.RequestId, Payload = BridgeJson.ToElement(new { }) }, default);
+            var stop = await channel.ReadAsync(default);
+            await channel.WriteAsync(new BridgeEnvelope { Type = BridgeMessageTypes.Acknowledged,
+                RequestId = stop.RequestId, Payload = BridgeJson.ToElement(new { }) }, default);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName,
+            options.CreateSessionOptions(_ => { }))) { }
+        await service.WaitAsync(TimeSpan.FromSeconds(5));
+    }
 }

@@ -95,7 +95,11 @@ cleanup boundaries before describing uninstall as removing every possible sign-i
 
 ## Publish deliberately
 
-Publish every optional widget as a Catalogue package, including widgets preinstalled by Production. Discord, Game Help, Display Controls, Twitch and MapGenie remain separate downloads. Build their release assets separately:
+Publish every Catalogue-listed widget as a package, including widgets preinstalled
+by Production. SDK Gallery, Clock, Embedded Media Sample and Full Application
+Reference remain buildable source examples; they do not need Catalogue listings
+or release assets. Discord, Game Help, Display Controls, Twitch and MapGenie remain
+separate downloads. Build their release assets separately:
 
 ```powershell
 ./samples/DiscordWidget/Build-CommunityPackage.ps1

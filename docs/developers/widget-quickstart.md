@@ -7,9 +7,12 @@ your system volume or require an account.
 ## Before you start
 
 Install WidgetRail and a .NET SDK that supports `net8.0`. Both WidgetRail editions
-include the CLI and templates. Install SDK Gallery through Catalogue for
-interactive examples. You do not
-need Visual Studio C++ tools or the host source to write this widget.
+include the CLI and templates. You do not need Visual Studio C++ tools or the
+host source to write this widget.
+
+For additional interactive examples, build [SDK Gallery](../../samples/SdkGalleryWidget/README.md)
+from the repository and install its locally generated package. SDK Gallery is a
+source example, not a Catalogue download; it is optional for this tutorial.
 
 Open PowerShell in a folder where you keep your projects. Find the installed CLI:
 

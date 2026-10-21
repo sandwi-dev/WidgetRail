@@ -1,8 +1,10 @@
-# SDK Gallery community addon
+# SDK Gallery source example
 
 This sandboxed reference widget demonstrates the public controller-first
 `WidgetSdk` exactly as an independent addon can use it. It is intentionally not
-part of the built-in tray: install it only when developing or reviewing UI.
+part of the built-in tray or Catalogue. Build it from source and install the
+locally generated package when developing or reviewing UI; see the build and
+packaging instructions below.
 
 The seven pages cover:
 
@@ -115,7 +117,7 @@ community authors:
 .\samples\SdkGalleryWidget\Build-CommunityPackage.ps1 -Configuration Release
 ```
 
-Install it into the current user's Community catalog for local testing:
+Install it into the current user's local widget catalog for testing:
 
 ```powershell
 .\samples\SdkGalleryWidget\Build-CommunityPackage.ps1 -Configuration Release -Install
