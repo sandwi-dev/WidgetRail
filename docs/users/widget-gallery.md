@@ -4,7 +4,7 @@ WidgetRail over **Hollow Knight: Silksong**, with examples of full widgets, rich
 
 Captured on 21 October 2026 from a local development candidate. Downloaded releases, themes and service pages may look different. [Capture details and credits](../images/widgets/README.md).
 
-[Quick controls](#audio-mixer) Â· [Browser](#browser) Â· [Music](#spotify) Â· [Path of Building](#poe1-path-of-building) Â· [Pinned video](#youtube-video)
+[Quick controls](#audio-mixer) · [Browser](#browser) · [Music](#spotify) · [Path of Building](#poe1-path-of-building) · [Pinned video](#youtube-video)
 
 
 ## Audio Mixer
@@ -15,7 +15,7 @@ Starred game volume and output controls.
 
 ## Browser
 
-A public Wikipedia article, with a pinned page alongside the game.
+A public Wikipedia article in the browser and a game guide pinned alongside Silksong.
 
 ![Browser in WidgetRail](../images/widgets/browser.png)
 

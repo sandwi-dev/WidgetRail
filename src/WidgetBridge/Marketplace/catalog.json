@@ -139,6 +139,6 @@
     "publisher": "widgetrail.samples",
     "name": "Browser",
     "description": "Open websites in a controller-friendly browser and keep pages pinned while playing.",
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/browser.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/browser-pinned.png"]
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/browser.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/065d58ca06e9872ab305874a57cbdd10742b9f15/docs/images/widgets/browser-pinned.png"]
   }
 ]
